@@ -2,17 +2,14 @@ const http = require('http');
 const crypto = require('crypto');
 const PORT = process.env.PORT || 3000;
 
-// ─────────────────────────────────────────────
-// CONFIG ADMIN (defina no .env do Render)
-// ─────────────────────────────────────────────
 const ADMIN_USER = process.env.ADMIN_USER || 'lr1290';
 const ADMIN_PASS = process.env.ADMIN_PASS || 'admin123';
 
 // ─────────────────────────────────────────────
 // BANCO EM MEMÓRIA
 // ─────────────────────────────────────────────
-let keys = {};
-let logs = [];
+let keys     = {};
+let logs     = [];
 let sessions = {};
 
 const FULL_PERMISSIONS = [
@@ -73,24 +70,33 @@ function addLog(entry) {
 }
 
 function getIp(req) {
-  return req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'N/A';
+  return req.headers['x-forwarded-for']?.split(',')[0]?.trim()
+    || req.socket.remoteAddress || 'N/A';
 }
 
 function isAdminSession(req) {
   const cookie = req.headers.cookie || '';
-  const match = cookie.match(/zv_admin=([a-f0-9]+)/);
+  const match  = cookie.match(/zv_admin=([a-f0-9]+)/);
   if (!match) return false;
-  const session = sessions[match[1]];
-  if (!session) return false;
-  if (new Date() > new Date(session.expiresAt)) { delete sessions[match[1]]; return false; }
+  const s = sessions[match[1]];
+  if (!s) return false;
+  if (new Date() > new Date(s.expiresAt)) { delete sessions[match[1]]; return false; }
   return true;
 }
 
 function parseBody(req) {
   return new Promise(resolve => {
-    let body = '';
-    req.on('data', chunk => body += chunk);
-    req.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve({}); } });
+    let b = '';
+    req.on('data', c => b += c);
+    req.on('end', () => { try { resolve(JSON.parse(b)); } catch { resolve({}); } });
+  });
+}
+
+function parseFormBody(req) {
+  return new Promise(resolve => {
+    let b = '';
+    req.on('data', c => b += c);
+    req.on('end', () => resolve(new URLSearchParams(b)));
   });
 }
 
@@ -100,9 +106,9 @@ function sendJson(res, data, status = 200) {
   res.end(JSON.stringify(data));
 }
 
-function sendHtml(res, html) {
+function sendHtml(res, html, status = 200) {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.writeHead(200);
+  res.writeHead(status);
   res.end(html);
 }
 
@@ -111,9 +117,236 @@ function escHtml(s) {
 }
 
 // ─────────────────────────────────────────────
-// HTML
+// PÁGINA DE LOGIN DA EXTENSÃO
 // ─────────────────────────────────────────────
-function renderLogin(error = '') {
+function renderExtensionLogin({ callback, error = '', keyVal = '' }) {
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZapVoice — Ativar</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800;900&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --green:#00ff87;
+  --dark:#07070f;
+  --card:#0f0f1a;
+  --border:#1a1a2e;
+  --text:#e8e8f8;
+  --muted:#5a5a7a;
+  --red:#ff4560;
+}
+html,body{height:100%}
+body{
+  background:var(--dark);
+  color:var(--text);
+  font-family:'Space Mono',monospace;
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -10%, #00ff8718 0%, transparent 60%),
+    radial-gradient(ellipse 40% 40% at 80% 80%, #7c3aed0d 0%, transparent 60%);
+}
+.wrap{width:100%;max-width:440px;padding:24px}
+.card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:20px;
+  padding:48px 40px 40px;
+  box-shadow:0 0 80px #00ff8708, 0 40px 80px #00000060;
+  position:relative;
+  overflow:hidden;
+}
+.card::before{
+  content:'';
+  position:absolute;
+  top:0;left:0;right:0;
+  height:2px;
+  background:linear-gradient(90deg,transparent,var(--green),transparent);
+}
+.logo-wrap{text-align:center;margin-bottom:36px}
+.logo{
+  font-family:'Syne',sans-serif;
+  font-size:32px;
+  font-weight:900;
+  color:var(--green);
+  letter-spacing:-1.5px;
+  line-height:1;
+}
+.logo-sub{
+  color:var(--muted);
+  font-size:12px;
+  margin-top:8px;
+  letter-spacing:2px;
+  text-transform:uppercase;
+}
+.field{margin-bottom:20px}
+label{
+  display:block;
+  font-size:10px;
+  color:var(--muted);
+  text-transform:uppercase;
+  letter-spacing:2px;
+  margin-bottom:8px;
+}
+input{
+  width:100%;
+  padding:14px 18px;
+  background:#0a0a16;
+  border:1px solid var(--border);
+  border-radius:10px;
+  color:var(--text);
+  font-family:'Space Mono',monospace;
+  font-size:15px;
+  outline:none;
+  transition:border-color .2s, box-shadow .2s;
+  letter-spacing:1px;
+}
+input:focus{
+  border-color:var(--green);
+  box-shadow:0 0 0 3px #00ff8715;
+}
+input::placeholder{color:var(--muted)}
+.hint{
+  font-size:11px;
+  color:var(--muted);
+  margin-top:8px;
+  line-height:1.5;
+}
+.btn{
+  width:100%;
+  padding:16px;
+  background:var(--green);
+  color:#000;
+  border:none;
+  border-radius:10px;
+  font-family:'Syne',sans-serif;
+  font-weight:800;
+  font-size:16px;
+  letter-spacing:.5px;
+  cursor:pointer;
+  margin-top:8px;
+  transition:opacity .15s, transform .15s;
+  position:relative;
+  overflow:hidden;
+}
+.btn:hover{opacity:.88;transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.btn.loading{opacity:.6;pointer-events:none}
+.btn .spinner{
+  display:none;
+  width:18px;height:18px;
+  border:2px solid #00000040;
+  border-top-color:#000;
+  border-radius:50%;
+  animation:spin .6s linear infinite;
+  margin:0 auto;
+}
+.btn.loading .spinner{display:block}
+.btn.loading .btn-text{display:none}
+.error{
+  background:#ff456015;
+  border:1px solid #ff456035;
+  color:#ff7088;
+  padding:12px 16px;
+  border-radius:10px;
+  font-size:13px;
+  text-align:center;
+  margin-bottom:20px;
+  line-height:1.5;
+}
+.divider{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  margin:24px 0 0;
+  color:var(--muted);
+  font-size:11px;
+}
+.divider::before,.divider::after{
+  content:'';flex:1;
+  height:1px;
+  background:var(--border);
+}
+.footer{
+  text-align:center;
+  margin-top:16px;
+  font-size:11px;
+  color:var(--muted);
+  line-height:1.6;
+}
+.footer a{color:var(--green);text-decoration:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="logo-wrap">
+      <div class="logo">⚡ ZapVoice</div>
+      <div class="logo-sub">Ativação da Extensão</div>
+    </div>
+
+    ${error ? `<div class="error">${error}</div>` : ''}
+
+    <form method="POST" action="/extension/auth/verify" id="form">
+      <input type="hidden" name="callback" value="${escHtml(callback)}">
+
+      <div class="field">
+        <label>Sua Chave de Ativação</label>
+        <input
+          type="text"
+          name="key"
+          value="${escHtml(keyVal)}"
+          placeholder="ZV-XXXXX-XXXXX-XXXXX"
+          autocomplete="off"
+          autofocus
+          oninput="this.value=this.value.toUpperCase()"
+          required
+        >
+        <div class="hint">Você recebeu esta chave junto com a sua compra.</div>
+      </div>
+
+      <button type="submit" class="btn" id="btn">
+        <span class="btn-text">Ativar Agora</span>
+        <div class="spinner"></div>
+      </button>
+    </form>
+
+    <div class="divider">precisa de ajuda?</div>
+    <div class="footer">
+      Entre em contato com o vendedor<br>
+      <a href="https://www.dfg.com.br/pt/outros/zapvoice-pro-versao-3-16-15-brinde-entrega-automatica-971973941" target="_blank">dfg.com.br/user/lr1290</a>
+    </div>
+  </div>
+</div>
+<script>
+document.getElementById('form').addEventListener('submit', function() {
+  const btn = document.getElementById('btn');
+  btn.classList.add('loading');
+});
+// Formatar chave automaticamente com hifens
+document.querySelector('input[name="key"]').addEventListener('input', function(e) {
+  let v = e.target.value.replace(/[^A-Z0-9]/g,'');
+  if (v.length > 2) v = v.slice(0,2) + '-' + v.slice(2);
+  if (v.length > 8) v = v.slice(0,8) + '-' + v.slice(8);
+  if (v.length > 14) v = v.slice(0,14) + '-' + v.slice(14);
+  if (v.length > 17) v = v.slice(0,17);
+  e.target.value = v;
+});
+</script>
+</body>
+</html>`;
+}
+
+// ─────────────────────────────────────────────
+// PAINEL ADMIN — HTML
+// ─────────────────────────────────────────────
+function renderAdminLogin(error = '') {
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -152,7 +385,7 @@ button:hover{opacity:.85}
 function buildKeysHtml() {
   const rows = Object.entries(keys).map(([code, k]) => `
 <tr>
-  <td><span class="kc">${code}</span></td>
+  <td><span class="kc">${escHtml(code)}</span></td>
   <td>${escHtml(k.label)}</td>
   <td><span class="badge ${k.active?'on':'off'}">${k.active?'ATIVO':'BLOQUEADO'}</span></td>
   <td>${k.uses||0}</td>
@@ -161,8 +394,8 @@ function buildKeysHtml() {
   <td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR'):'-'}</td>
   <td>${new Date(k.createdAt).toLocaleString('pt-BR')}</td>
   <td>
-    <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${code}')">${k.active?'Bloquear':'Liberar'}</button>
-    <button class="bs bd" onclick="deleteKey('${code}')">Excluir</button>
+    <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
+    <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
   </td>
 </tr>`).join('');
   return rows || `<tr><td colspan="9" class="empty">Nenhuma chave cadastrada</td></tr>`;
@@ -177,12 +410,12 @@ function buildLogsHtml() {
   <td>${escHtml(l.phone||'-')}</td>
   <td>${escHtml(l.ip||'-')}</td>
   <td>${escHtml(l.wppVersion||'-')}</td>
-  <td><span class="badge ${l.action==='login_ok'?'on':l.action==='login_blocked'?'off':'warn'}">${l.action}</span></td>
+  <td><span class="badge ${l.action==='login_ok'?'on':l.action==='login_blocked'?'off':'warn'}">${escHtml(l.action)}</span></td>
 </tr>`).join('');
   return rows || `<tr><td colspan="7" class="empty">Nenhum log ainda</td></tr>`;
 }
 
-function renderDashboard() {
+function renderAdminDashboard() {
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -203,9 +436,9 @@ main{padding:28px 32px;max-width:1500px;margin:0 auto}
 .sc .n{font-family:'Syne',sans-serif;font-size:38px;font-weight:800;color:var(--green)}
 .sc .l{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-top:4px}
 .sec{background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:22px;overflow:hidden}
-.sh{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--border)}
+.sh{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:12px}
 .st{font-family:'Syne',sans-serif;font-weight:700;font-size:15px}
-.gf{display:flex;gap:10px;align-items:center}
+.gf{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .gf input{padding:9px 13px;background:var(--dark);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Space Mono',monospace;font-size:13px;outline:none;width:210px}
 .gf input:focus{border-color:var(--green)}
 .btn{padding:10px 18px;border:none;border-radius:8px;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;transition:opacity .2s}
@@ -228,7 +461,7 @@ tr:hover{background:#ffffff04}
 .off{background:#ff475720;color:var(--red)}
 .warn{background:#ffd32a20;color:var(--yellow)}
 .empty{text-align:center;color:var(--muted);padding:32px!important}
-.toast{position:fixed;bottom:28px;right:28px;padding:13px 22px;border-radius:10px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;display:none;z-index:999}
+.toast{position:fixed;bottom:28px;right:28px;padding:13px 22px;border-radius:10px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;display:none;z-index:999;box-shadow:0 8px 32px #00000060}
 @media(max-width:768px){.stats{grid-template-columns:1fr};main{padding:16px}}
 </style>
 </head>
@@ -273,9 +506,7 @@ tr:hover{background:#ffffff04}
     </div>
   </div>
 </main>
-
 <div class="toast" id="toast"></div>
-
 <script>
 function toast(msg,ok=true){
   const t=document.getElementById('toast');
@@ -291,16 +522,16 @@ async function generateKey(){
   const r=await fetch('/admin/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label})});
   const d=await r.json();
   if(d.ok){toast('Gerada: '+d.key);document.getElementById('nlabel').value='';refresh();}
-  else toast('Erro',false);
+  else toast('Erro ao gerar chave',false);
 }
 async function toggleKey(code){
-  const r=await fetch('/admin/api/keys/'+code+'/toggle',{method:'POST'});
+  const r=await fetch('/admin/api/keys/'+encodeURIComponent(code)+'/toggle',{method:'POST'});
   const d=await r.json();
   if(d.ok){toast(d.active?'Chave liberada!':'Chave bloqueada!');refresh();}
 }
 async function deleteKey(code){
   if(!confirm('Excluir chave '+code+'?'))return;
-  const r=await fetch('/admin/api/keys/'+code,{method:'DELETE'});
+  const r=await fetch('/admin/api/keys/'+encodeURIComponent(code),{method:'DELETE'});
   const d=await r.json();
   if(d.ok){toast('Chave excluída');refresh();}
 }
@@ -320,7 +551,7 @@ setInterval(refresh,30000);
 }
 
 // ─────────────────────────────────────────────
-// ROTEADOR
+// ROTEADOR PRINCIPAL
 // ─────────────────────────────────────────────
 async function handleRequest(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -328,137 +559,202 @@ async function handleRequest(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type,x-app-date');
   if (req.method === 'OPTIONS') { res.writeHead(200); res.end(); return; }
 
-  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const url  = new URL(req.url, `http://localhost:${PORT}`);
   const path = url.pathname;
-  const ip = getIp(req);
+  const ip   = getIp(req);
+
   console.log(`[${new Date().toISOString()}] ${req.method} ${path} — ${ip}`);
 
-  // LOGIN ADMIN
+  // ════════════════════════════════════════════
+  // EXTENSÃO — Página de login com chave
+  // GET /extension/auth/ → mostra formulário
+  // ════════════════════════════════════════════
+  if (path.startsWith('/extension/auth') && !path.startsWith('/extension/auth/verify') && req.method === 'GET') {
+    const callback = url.searchParams.get('callback') || '';
+    sendHtml(res, renderExtensionLogin({ callback }));
+    return;
+  }
+
+  // ════════════════════════════════════════════
+  // EXTENSÃO — Verificar chave e redirecionar
+  // POST /extension/auth/verify
+  // ════════════════════════════════════════════
+  if (path === '/extension/auth/verify' && req.method === 'POST') {
+    const form     = await parseFormBody(req);
+    const keyCode  = (form.get('key') || '').trim().toUpperCase();
+    const callback = form.get('callback') || '';
+
+    if (!keyCode || !keys[keyCode]) {
+      addLog({ keyCode: keyCode || '?', label: '-', phone: '-', ip, wppVersion: '-', action: 'key_not_found' });
+      sendHtml(res, renderExtensionLogin({
+        callback,
+        keyVal: keyCode,
+        error: '❌ Chave não encontrada. Verifique se digitou corretamente ou entre em contato com o vendedor.'
+      }));
+      return;
+    }
+
+    if (!keys[keyCode].active) {
+      addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'login_blocked' });
+      sendHtml(res, renderExtensionLogin({
+        callback,
+        keyVal: keyCode,
+        error: '🚫 Chave bloqueada. Entre em contato com o vendedor para mais informações.'
+      }));
+      return;
+    }
+
+    // Chave válida — atualiza estatísticas
+    keys[keyCode].uses = (keys[keyCode].uses || 0) + 1;
+    keys[keyCode].lastUsed = new Date().toISOString();
+    keys[keyCode].lastIp   = ip;
+
+    addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'login_ok' });
+
+    // Redireciona para o callback da extensão com os dados
+    const cb = new URL(callback);
+    cb.searchParams.set('key',        keyCode);
+    cb.searchParams.set('keyId',      `id-${keyCode}`);
+    cb.searchParams.set('ownerId',    'lr1290-owner');
+    cb.searchParams.set('managerId',  'lr1290-manager');
+    cb.searchParams.set('isPremium',  'true');
+    cb.searchParams.set('isLoggedIn', 'true');
+    cb.searchParams.set('planName',   'Pro');
+    cb.searchParams.set('marketplace','premium');
+    cb.searchParams.set('username',   keys[keyCode].label);
+    cb.searchParams.set('email',      'cliente@zapvoice.com.br');
+    cb.searchParams.set('plan_id',    'ZV_PRO');
+    cb.searchParams.set('permissions', FULL_PERMISSIONS.join(','));
+
+    res.writeHead(302, { Location: cb.toString() });
+    res.end();
+    return;
+  }
+
+  // ════════════════════════════════════════════
+  // EXTENSÃO — Validar chave via API (campo "Chave de acesso")
+  // POST /extension/v3/key
+  // ════════════════════════════════════════════
+  if (path === '/extension/v3/key' && req.method === 'POST') {
+    const body       = await parseBody(req);
+    const keyCode    = body.authKey;
+    const phone      = body.phoneNumber || '-';
+    const wppVersion = body.wppVersion  || '-';
+
+    if (!keyCode || !keys[keyCode]) {
+      addLog({ keyCode: keyCode||'?', label: '-', phone, ip, wppVersion, action: 'key_not_found' });
+      sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada. Contate o vendedor.' });
+      return;
+    }
+
+    if (!keys[keyCode].active) {
+      addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'login_blocked' });
+      sendJson(res, { authError: 'keyBlocked', authErrorMessage: 'Chave bloqueada. Contate o vendedor.' });
+      return;
+    }
+
+    keys[keyCode].uses      = (keys[keyCode].uses || 0) + 1;
+    keys[keyCode].lastUsed  = new Date().toISOString();
+    keys[keyCode].lastIp    = ip;
+    keys[keyCode].lastPhone = phone;
+
+    addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'login_ok' });
+    sendJson(res, getAuthData(keyCode));
+    return;
+  }
+
+  // ════════════════════════════════════════════
+  // EXTENSÃO — Usage endpoints
+  // ════════════════════════════════════════════
+  if (['/extension/v3/usage', '/extension/v3/get-usage', '/extension/v3/sync-usage'].includes(path)) {
+    sendJson(res, {
+      ok: true, status: true, limits: USAGE_LIMITS,
+      expires_at: new Date(Date.now() + 365*24*60*60*1000).toISOString(),
+      isExpired: false
+    });
+    return;
+  }
+
+  // ════════════════════════════════════════════
+  // ADMIN — Login
+  // ════════════════════════════════════════════
   if (path === '/admin/login' && req.method === 'POST') {
-    let body = '';
-    await new Promise(r => { req.on('data', c => body += c); req.on('end', r); });
-    const p = new URLSearchParams(body);
-    if (p.get('user') === ADMIN_USER && p.get('pass') === ADMIN_PASS) {
+    const form = await parseFormBody(req);
+    if (form.get('user') === ADMIN_USER && form.get('pass') === ADMIN_PASS) {
       const token = generateToken();
       sessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString() };
       res.setHeader('Set-Cookie', `zv_admin=${token}; Path=/; HttpOnly; SameSite=Strict`);
       res.writeHead(302, { Location: '/admin' }); res.end();
     } else {
-      sendHtml(res, renderLogin('Usuário ou senha incorretos'));
+      sendHtml(res, renderAdminLogin('Usuário ou senha incorretos'));
     }
     return;
   }
 
-  // LOGOUT ADMIN
+  // ADMIN — Logout
   if (path === '/admin/logout') {
     res.setHeader('Set-Cookie', 'zv_admin=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT');
     res.writeHead(302, { Location: '/admin' }); res.end(); return;
   }
 
-  // PAINEL ADMIN
+  // ADMIN — Painel
   if (path === '/admin' || path === '/admin/') {
-    if (!isAdminSession(req)) { sendHtml(res, renderLogin()); return; }
-    sendHtml(res, renderDashboard()); return;
+    if (!isAdminSession(req)) { sendHtml(res, renderAdminLogin()); return; }
+    sendHtml(res, renderAdminDashboard()); return;
   }
 
-  // API DATA
-  if (path === '/admin/api/data') {
+  // ADMIN API — Dados para refresh
+  if (path === '/admin/api/data' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     sendJson(res, {
-      totalKeys: Object.keys(keys).length,
+      totalKeys:  Object.keys(keys).length,
       activeKeys: Object.values(keys).filter(k=>k.active).length,
-      totalLogs: logs.length,
-      keysHtml: buildKeysHtml(),
-      logsHtml: buildLogsHtml()
+      totalLogs:  logs.length,
+      keysHtml:   buildKeysHtml(),
+      logsHtml:   buildLogsHtml()
     }); return;
   }
 
-  // API GERAR CHAVE
+  // ADMIN API — Gerar chave
   if (path === '/admin/api/keys' && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const body = await parseBody(req);
     const code = generateKey();
-    keys[code] = { label: body.label || 'Cliente', active: true, createdAt: new Date().toISOString(), uses: 0, lastUsed: null, lastIp: null, lastPhone: null };
+    keys[code] = {
+      label:      body.label || 'Cliente',
+      active:     true,
+      createdAt:  new Date().toISOString(),
+      uses:       0,
+      lastUsed:   null,
+      lastIp:     null,
+      lastPhone:  null
+    };
     sendJson(res, { ok: true, key: code }); return;
   }
 
-  // API TOGGLE CHAVE
+  // ADMIN API — Toggle chave
   if (path.match(/^\/admin\/api\/keys\/[^/]+\/toggle$/) && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const code = path.split('/')[4];
+    const code = decodeURIComponent(path.split('/')[4]);
     if (!keys[code]) { sendJson(res, { error: 'not found' }, 404); return; }
     keys[code].active = !keys[code].active;
     sendJson(res, { ok: true, active: keys[code].active }); return;
   }
 
-  // API DELETAR CHAVE
+  // ADMIN API — Deletar chave
   if (path.match(/^\/admin\/api\/keys\/[^/]+$/) && req.method === 'DELETE') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const code = path.split('/')[4];
+    const code = decodeURIComponent(path.split('/')[4]);
     delete keys[code];
     sendJson(res, { ok: true }); return;
   }
 
-  // EXTENSÃO: LOGIN EXTERNO
-  if (path.startsWith('/extension/auth') && req.method === 'GET') {
-    const callback = url.searchParams.get('callback');
-    addLog({ keyCode: 'external', label: 'Login Externo', phone: '-', ip, wppVersion: '-', action: 'external_login' });
-    if (callback) {
-      const cb = new URL(callback);
-      cb.searchParams.set('key', 'lr1290-free');
-      cb.searchParams.set('keyId', 'free-id');
-      cb.searchParams.set('ownerId', 'lr1290-owner');
-      cb.searchParams.set('managerId', 'lr1290-manager');
-      cb.searchParams.set('isPremium', 'true');
-      cb.searchParams.set('isLoggedIn', 'true');
-      cb.searchParams.set('planName', 'Pro');
-      cb.searchParams.set('marketplace', 'premium');
-      cb.searchParams.set('username', 'LR1290 Premium');
-      cb.searchParams.set('email', 'lr1290@dfg.com.br');
-      cb.searchParams.set('plan_id', 'ZV_PRO');
-      cb.searchParams.set('permissions', FULL_PERMISSIONS.join(','));
-      res.writeHead(302, { Location: cb.toString() }); res.end();
-    } else {
-      sendJson(res, { ok: true });
-    }
-    return;
-  }
-
-  // EXTENSÃO: VALIDAR CHAVE
-  if (path === '/extension/v3/key' && req.method === 'POST') {
-    const body = await parseBody(req);
-    const keyCode = body.authKey;
-    const phone = body.phoneNumber || '-';
-    const wppVersion = body.wppVersion || '-';
-
-    if (!keyCode || !keys[keyCode]) {
-      addLog({ keyCode: keyCode||'?', label: '-', phone, ip, wppVersion, action: 'key_not_found' });
-      sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada. Contate o vendedor.' }); return;
-    }
-
-    if (!keys[keyCode].active) {
-      addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'login_blocked' });
-      sendJson(res, { authError: 'keyBlocked', authErrorMessage: 'Chave bloqueada. Contate o vendedor.' }); return;
-    }
-
-    keys[keyCode].uses = (keys[keyCode].uses || 0) + 1;
-    keys[keyCode].lastUsed = new Date().toISOString();
-    keys[keyCode].lastIp = ip;
-    keys[keyCode].lastPhone = phone;
-    addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'login_ok' });
-    sendJson(res, getAuthData(keyCode)); return;
-  }
-
-  // EXTENSÃO: USAGE ENDPOINTS
-  if (['/extension/v3/usage', '/extension/v3/get-usage', '/extension/v3/sync-usage'].includes(path)) {
-    sendJson(res, { ok: true, status: true, limits: USAGE_LIMITS,
-      expires_at: new Date(Date.now() + 365*24*60*60*1000).toISOString(), isExpired: false }); return;
-  }
-
+  // Fallback
   sendJson(res, { ok: true });
 }
 
 http.createServer(handleRequest).listen(PORT, () => {
-  console.log(`✅ ZapVoice Admin Server — porta ${PORT}`);
-  console.log(`🔑 Painel: /admin  |  User: ${ADMIN_USER}`);
+  console.log(`✅ ZapVoice Server v3 — porta ${PORT}`);
+  console.log(`🔑 Admin: /admin  |  User: ${ADMIN_USER}`);
+  console.log(`🔒 Login extensão: /extension/auth/`);
 });
