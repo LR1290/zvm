@@ -1,0 +1,12 @@
+{
+  "name": "zapvoice-api-server",
+  "version": "1.0.0",
+  "description": "ZapVoice Local API Server by LR1290",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=14"
+  }
+}
