@@ -47,14 +47,14 @@ const FULL_PERMISSIONS = [
 ];
 
 const USAGE_LIMITS = {
-  audio:        { sent: 0, max: 99999 },
-  bulkMessages: { sent: 0, max: 99999 },
-  document:     { sent: 0, max: 99999 },
-  flow:         { sent: 0, max: 99999 },
-  funnel:       { sent: 0, max: 99999 },
-  media:        { sent: 0, max: 99999 },
-  message:      { sent: 0, max: 99999 },
-  scheduleItem: { sent: 0, max: 99999 }
+  audio:        { sent: 0, max: -1 },
+  bulkMessages: { sent: 0, max: -1 },
+  document:     { sent: 0, max: -1 },
+  flow:         { sent: 0, max: -1 },
+  funnel:       { sent: 0, max: -1 },
+  media:        { sent: 0, max: -1 },
+  message:      { sent: 0, max: -1 },
+  scheduleItem: { sent: 0, max: -1 }
 };
 
 // ─────────────────────────────────────────────
@@ -495,10 +495,34 @@ async function handleRequest(req, res) {
       cb.searchParams.set('email',       'cliente@zapvoice.com.br');
       cb.searchParams.set('plan_id',     'ZV_PRO');
       cb.searchParams.set('permissions', FULL_PERMISSIONS.join(','));
-      res.writeHead(302, { Location: cb.toString() });
-      res.end();
+      const finalUrl = cb.toString();
+      sendHtml(res, `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="refresh" content="0;url=${escHtml(finalUrl)}">
+<title>Ativando...</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#07070f;color:#e8e8f8;font-family:'Syne',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background-image:radial-gradient(ellipse 80% 50% at 50% -10%,#00ff8718 0%,transparent 60%)}
+.card{text-align:center;padding:48px}
+.check{font-size:64px;margin-bottom:24px}
+h2{font-size:24px;font-weight:800;color:#00ff87;margin-bottom:8px}
+p{color:#5a5a7a;font-size:14px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="check">✅</div>
+  <h2>Chave ativada com sucesso!</h2>
+  <p>Redirecionando para o ZapVoice...</p>
+</div>
+<script>window.location.replace(decodeURIComponent("` + `${encodeURIComponent(finalUrl)}` + `"));</script>
+</body>
+</html>`);
     } catch (e) {
-      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '❌ Callback inválido. Tente novamente.' }));
+      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: 'Callback invalido. Tente novamente.' }));
     }
     return;
   }
