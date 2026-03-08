@@ -335,7 +335,7 @@ document.querySelector('input[name="key"]').addEventListener('input', function(e
   if (v.length > 2) v = v.slice(0,2) + '-' + v.slice(2);
   if (v.length > 8) v = v.slice(0,8) + '-' + v.slice(8);
   if (v.length > 14) v = v.slice(0,14) + '-' + v.slice(14);
-  if (v.length > 17) v = v.slice(0,17);
+  if (v.length > 18) v = v.slice(0,18);
   e.target.value = v;
 });
 </script>
