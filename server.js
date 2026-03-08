@@ -61,9 +61,9 @@ const USAGE_LIMITS = {
 // HELPERS
 // ─────────────────────────────────────────────
 function generateKey() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
   const seg = () => Array.from({length:5}, () => chars[Math.floor(Math.random()*chars.length)]).join('');
-  return `ZV-${seg()}-${seg()}-${seg()}`;
+  return `zv-${seg()}-${seg()}-${seg()}`;
 }
 
 function generateToken() {
@@ -400,14 +400,16 @@ async function generateKey(){
   if(!label){toast('Informe o nome do cliente',false);return;}
   try{
     const r=await fetch('/admin/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label})});
+    if(r.status===401){toast('Sessão expirada, faça login novamente',false);setTimeout(()=>location.href='/admin',1500);return;}
     const d=await r.json();
     if(d.ok){toast('Gerada: '+d.key);document.getElementById('nlabel').value='';await doRefresh();}
-    else toast('Erro ao gerar chave',false);
-  }catch(e){toast('Erro de rede',false);}
+    else toast('Erro ao gerar chave: '+(d.error||'desconhecido'),false);
+  }catch(e){toast('Erro de rede: '+e.message,false);}
 }
 async function toggleKey(code){
   try{
     const r=await fetch('/admin/api/keys/'+encodeURIComponent(code)+'/toggle',{method:'POST'});
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
     const d=await r.json();
     if(d.ok){toast(d.active?'Chave liberada!':'Chave bloqueada!');await doRefresh();}
   }catch(e){toast('Erro',false);}
@@ -416,6 +418,7 @@ async function deleteKey(code){
   if(!confirm('Excluir chave '+code+'?'))return;
   try{
     const r=await fetch('/admin/api/keys/'+encodeURIComponent(code),{method:'DELETE'});
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
     const d=await r.json();
     if(d.ok){toast('Chave excluída');await doRefresh();}
   }catch(e){toast('Erro',false);}
@@ -461,7 +464,7 @@ async function handleRequest(req, res) {
   // ── EXTENSÃO: verifica chave e faz callback ──
   if (p === '/extension/auth/verify' && req.method === 'POST') {
     const form    = await parseFormBody(req);
-    const keyCode = (form.get('key') || '').trim().toUpperCase();
+    const keyCode = (form.get('key') || '').trim().toLowerCase();
     const callback = form.get('callback') || '';
 
     if (!keyCode || !keys[keyCode]) {
@@ -496,31 +499,8 @@ async function handleRequest(req, res) {
       cb.searchParams.set('plan_id',     'ZV_PRO');
       cb.searchParams.set('permissions', FULL_PERMISSIONS.join(','));
       const finalUrl = cb.toString();
-      sendHtml(res, `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<meta http-equiv="refresh" content="0;url=${escHtml(finalUrl)}">
-<title>Ativando...</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&display=swap" rel="stylesheet">
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:#07070f;color:#e8e8f8;font-family:'Syne',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background-image:radial-gradient(ellipse 80% 50% at 50% -10%,#00ff8718 0%,transparent 60%)}
-.card{text-align:center;padding:48px}
-.check{font-size:64px;margin-bottom:24px}
-h2{font-size:24px;font-weight:800;color:#00ff87;margin-bottom:8px}
-p{color:#5a5a7a;font-size:14px}
-</style>
-</head>
-<body>
-<div class="card">
-  <div class="check">✅</div>
-  <h2>Chave ativada com sucesso!</h2>
-  <p>Redirecionando para o ZapVoice...</p>
-</div>
-<script>window.location.replace(decodeURIComponent("` + `${encodeURIComponent(finalUrl)}` + `"));</script>
-</body>
-</html>`);
+      res.writeHead(302, { Location: finalUrl });
+      res.end();
     } catch (e) {
       sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: 'Callback invalido. Tente novamente.' }));
     }
@@ -530,7 +510,7 @@ p{color:#5a5a7a;font-size:14px}
   // ── EXTENSÃO: validação via campo "Chave de acesso" ──
   if (p === '/extension/v3/key' && req.method === 'POST') {
     const body       = await parseBody(req);
-    const keyCode    = body.authKey;
+    const keyCode    = (body.authKey || '').toLowerCase();
     const phone      = body.phoneNumber || '-';
     const wppVersion = body.wppVersion  || '-';
 
