@@ -1,12 +1,13 @@
 {
-  "name": "zapvoice-api-server",
-  "version": "1.0.0",
-  "description": "ZapVoice Local API Server by LR1290",
+  "name": "zapvoice-key-server",
+  "version": "2.0.0",
+  "description": "ZapVoice Key Server com Painel Admin",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
-  "engines": {
-    "node": ">=14"
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "uuid": "^9.0.0"
   }
 }
