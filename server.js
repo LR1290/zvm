@@ -1,17 +1,46 @@
 const http = require('http');
 const crypto = require('crypto');
-const PORT = process.env.PORT || 3000;
+const fs = require('fs');
+const path = require('path');
 
+const PORT = process.env.PORT || 3000;
 const ADMIN_USER = process.env.ADMIN_USER || 'lr1290';
 const ADMIN_PASS = process.env.ADMIN_PASS || 'admin123';
 
 // ─────────────────────────────────────────────
-// BANCO EM MEMÓRIA
+// PERSISTÊNCIA EM ARQUIVO
 // ─────────────────────────────────────────────
-let keys     = {};
-let logs     = [];
+const DB_FILE = process.env.DB_PATH || '/tmp/zapvoice_db.json';
+
+function loadDb() {
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      const raw = fs.readFileSync(DB_FILE, 'utf8');
+      return JSON.parse(raw);
+    }
+  } catch (e) {
+    console.error('Erro ao carregar DB:', e.message);
+  }
+  return { keys: {}, logs: [] };
+}
+
+function saveDb() {
+  try {
+    fs.writeFileSync(DB_FILE, JSON.stringify({ keys, logs }, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Erro ao salvar DB:', e.message);
+  }
+}
+
+// Carrega dados persistidos
+const db = loadDb();
+let keys     = db.keys || {};
+let logs     = db.logs || [];
 let sessions = {};
 
+// ─────────────────────────────────────────────
+// CONSTANTES
+// ─────────────────────────────────────────────
 const FULL_PERMISSIONS = [
   "create_flow","massive_dispatching","schedule_item",
   "send_flow","send_funnel","send_trigger"
@@ -46,19 +75,19 @@ function getAuthData(keyCode) {
     numberWarning: false,
     segments: [],
     data: {
-      key: keyCode,
-      keyId: `id-${keyCode}`,
-      ownerId: "lr1290-owner",
-      managerId: "lr1290-manager",
+      key:         keyCode,
+      keyId:       `id-${keyCode}`,
+      ownerId:     'lr1290-owner',
+      managerId:   'lr1290-manager',
       permissions: FULL_PERMISSIONS,
-      username: keys[keyCode]?.label || "Cliente ZapVoice",
-      paymentUrl: null,
-      marketplace: "premium",
-      email: "cliente@zapvoice.com.br",
-      planName: "Pro",
-      plan_id: "ZV_PRO",
-      isLoggedIn: true,
-      isPremium: true,
+      username:    keys[keyCode]?.label || 'Cliente ZapVoice',
+      paymentUrl:  null,
+      marketplace: 'premium',
+      email:       'cliente@zapvoice.com.br',
+      planName:    'Pro',
+      plan_id:     'ZV_PRO',
+      isLoggedIn:  true,
+      isPremium:   true,
       isBasicPlan: false
     }
   };
@@ -67,6 +96,7 @@ function getAuthData(keyCode) {
 function addLog(entry) {
   logs.unshift({ ...entry, timestamp: new Date().toISOString() });
   if (logs.length > 500) logs = logs.slice(0, 500);
+  saveDb();
 }
 
 function getIp(req) {
@@ -129,158 +159,29 @@ function renderExtensionLogin({ callback, error = '', keyVal = '' }) {
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800;900&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --green:#00ff87;
-  --dark:#07070f;
-  --card:#0f0f1a;
-  --border:#1a1a2e;
-  --text:#e8e8f8;
-  --muted:#5a5a7a;
-  --red:#ff4560;
-}
+:root{--green:#00ff87;--dark:#07070f;--card:#0f0f1a;--border:#1a1a2e;--text:#e8e8f8;--muted:#5a5a7a;--red:#ff4560}
 html,body{height:100%}
-body{
-  background:var(--dark);
-  color:var(--text);
-  font-family:'Space Mono',monospace;
-  min-height:100vh;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  background-image:
-    radial-gradient(ellipse 80% 50% at 50% -10%, #00ff8718 0%, transparent 60%),
-    radial-gradient(ellipse 40% 40% at 80% 80%, #7c3aed0d 0%, transparent 60%);
-}
+body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;display:flex;align-items:center;justify-content:center;background-image:radial-gradient(ellipse 80% 50% at 50% -10%,#00ff8718 0%,transparent 60%),radial-gradient(ellipse 40% 40% at 80% 80%,#7c3aed0d 0%,transparent 60%)}
 .wrap{width:100%;max-width:440px;padding:24px}
-.card{
-  background:var(--card);
-  border:1px solid var(--border);
-  border-radius:20px;
-  padding:48px 40px 40px;
-  box-shadow:0 0 80px #00ff8708, 0 40px 80px #00000060;
-  position:relative;
-  overflow:hidden;
-}
-.card::before{
-  content:'';
-  position:absolute;
-  top:0;left:0;right:0;
-  height:2px;
-  background:linear-gradient(90deg,transparent,var(--green),transparent);
-}
+.card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:48px 40px 40px;box-shadow:0 0 80px #00ff8708,0 40px 80px #00000060;position:relative;overflow:hidden}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--green),transparent)}
 .logo-wrap{text-align:center;margin-bottom:36px}
-.logo{
-  font-family:'Syne',sans-serif;
-  font-size:32px;
-  font-weight:900;
-  color:var(--green);
-  letter-spacing:-1.5px;
-  line-height:1;
-}
-.logo-sub{
-  color:var(--muted);
-  font-size:12px;
-  margin-top:8px;
-  letter-spacing:2px;
-  text-transform:uppercase;
-}
+.logo{font-family:'Syne',sans-serif;font-size:32px;font-weight:900;color:var(--green);letter-spacing:-1.5px;line-height:1}
+.logo-sub{color:var(--muted);font-size:12px;margin-top:8px;letter-spacing:2px;text-transform:uppercase}
 .field{margin-bottom:20px}
-label{
-  display:block;
-  font-size:10px;
-  color:var(--muted);
-  text-transform:uppercase;
-  letter-spacing:2px;
-  margin-bottom:8px;
-}
-input{
-  width:100%;
-  padding:14px 18px;
-  background:#0a0a16;
-  border:1px solid var(--border);
-  border-radius:10px;
-  color:var(--text);
-  font-family:'Space Mono',monospace;
-  font-size:15px;
-  outline:none;
-  transition:border-color .2s, box-shadow .2s;
-  letter-spacing:1px;
-}
-input:focus{
-  border-color:var(--green);
-  box-shadow:0 0 0 3px #00ff8715;
-}
+label{display:block;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin-bottom:8px}
+input{width:100%;padding:14px 18px;background:#0a0a16;border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:'Space Mono',monospace;font-size:15px;outline:none;transition:border-color .2s,box-shadow .2s;letter-spacing:1px}
+input:focus{border-color:var(--green);box-shadow:0 0 0 3px #00ff8715}
 input::placeholder{color:var(--muted)}
-.hint{
-  font-size:11px;
-  color:var(--muted);
-  margin-top:8px;
-  line-height:1.5;
-}
-.btn{
-  width:100%;
-  padding:16px;
-  background:var(--green);
-  color:#000;
-  border:none;
-  border-radius:10px;
-  font-family:'Syne',sans-serif;
-  font-weight:800;
-  font-size:16px;
-  letter-spacing:.5px;
-  cursor:pointer;
-  margin-top:8px;
-  transition:opacity .15s, transform .15s;
-  position:relative;
-  overflow:hidden;
-}
+.hint{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5}
+.btn{width:100%;padding:16px;background:var(--green);color:#000;border:none;border-radius:10px;font-family:'Syne',sans-serif;font-weight:800;font-size:16px;letter-spacing:.5px;cursor:pointer;margin-top:8px;transition:opacity .15s,transform .15s}
 .btn:hover{opacity:.88;transform:translateY(-1px)}
 .btn:active{transform:translateY(0)}
-.btn.loading{opacity:.6;pointer-events:none}
-.btn .spinner{
-  display:none;
-  width:18px;height:18px;
-  border:2px solid #00000040;
-  border-top-color:#000;
-  border-radius:50%;
-  animation:spin .6s linear infinite;
-  margin:0 auto;
-}
-.btn.loading .spinner{display:block}
-.btn.loading .btn-text{display:none}
-.error{
-  background:#ff456015;
-  border:1px solid #ff456035;
-  color:#ff7088;
-  padding:12px 16px;
-  border-radius:10px;
-  font-size:13px;
-  text-align:center;
-  margin-bottom:20px;
-  line-height:1.5;
-}
-.divider{
-  display:flex;
-  align-items:center;
-  gap:12px;
-  margin:24px 0 0;
-  color:var(--muted);
-  font-size:11px;
-}
-.divider::before,.divider::after{
-  content:'';flex:1;
-  height:1px;
-  background:var(--border);
-}
-.footer{
-  text-align:center;
-  margin-top:16px;
-  font-size:11px;
-  color:var(--muted);
-  line-height:1.6;
-}
+.error{background:#ff456015;border:1px solid #ff456035;color:#ff7088;padding:12px 16px;border-radius:10px;font-size:13px;text-align:center;margin-bottom:20px;line-height:1.5}
+.divider{display:flex;align-items:center;gap:12px;margin:24px 0 0;color:var(--muted);font-size:11px}
+.divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--border)}
+.footer{text-align:center;margin-top:16px;font-size:11px;color:var(--muted);line-height:1.6}
 .footer a{color:var(--green);text-decoration:none}
-@keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -290,33 +191,18 @@ input::placeholder{color:var(--muted)}
       <div class="logo">⚡ ZapVoice</div>
       <div class="logo-sub">Ativação da Extensão</div>
     </div>
-
     ${error ? `<div class="error">${error}</div>` : ''}
-
-    <form method="POST" action="/extension/auth/verify" id="form">
+    <form method="POST" action="/extension/auth/verify">
       <input type="hidden" name="callback" value="${escHtml(callback)}">
-
       <div class="field">
         <label>Sua Chave de Ativação</label>
-        <input
-          type="text"
-          name="key"
-          value="${escHtml(keyVal)}"
+        <input type="text" name="key" id="keyInput" value="${escHtml(keyVal)}"
           placeholder="ZV-XXXXX-XXXXX-XXXXX"
-          autocomplete="off"
-          autofocus
-          oninput="this.value=this.value.toUpperCase()"
-          required
-        >
+          autocomplete="off" autofocus required maxlength="20">
         <div class="hint">Você recebeu esta chave junto com a sua compra.</div>
       </div>
-
-      <button type="submit" class="btn" id="btn">
-        <span class="btn-text">Ativar Agora</span>
-        <div class="spinner"></div>
-      </button>
+      <button type="submit" class="btn">Ativar Agora</button>
     </form>
-
     <div class="divider">precisa de ajuda?</div>
     <div class="footer">
       Entre em contato com o vendedor<br>
@@ -325,26 +211,21 @@ input::placeholder{color:var(--muted)}
   </div>
 </div>
 <script>
-document.getElementById('form').addEventListener('submit', function() {
-  const btn = document.getElementById('btn');
-  btn.classList.add('loading');
-});
-// Formatar chave automaticamente com hifens
-document.querySelector('input[name="key"]').addEventListener('input', function(e) {
-  let v = e.target.value.replace(/[^A-Z0-9]/g,'');
-  if (v.length > 2) v = v.slice(0,2) + '-' + v.slice(2);
-  if (v.length > 8) v = v.slice(0,8) + '-' + v.slice(8);
-  if (v.length > 14) v = v.slice(0,14) + '-' + v.slice(14);
-  if (v.length > 20) v = v.slice(0,20);
-  e.target.value = v;
+document.getElementById('keyInput').addEventListener('input', function(e) {
+  let raw = e.target.value.replace(/[^A-Za-z0-9]/g,'').toUpperCase();
+  let out = '';
+  if (raw.length > 0)  out = raw.slice(0,2);
+  if (raw.length > 2)  out += '-' + raw.slice(2,7);
+  if (raw.length > 7)  out += '-' + raw.slice(7,12);
+  if (raw.length > 12) out += '-' + raw.slice(12,17);
+  e.target.value = out;
 });
 </script>
-</body>
-</html>`;
+</body></html>`;
 }
 
 // ─────────────────────────────────────────────
-// PAINEL ADMIN — HTML
+// PAINEL ADMIN
 // ─────────────────────────────────────────────
 function renderAdminLogin(error = '') {
   return `<!DOCTYPE html>
@@ -357,15 +238,14 @@ function renderAdminLogin(error = '') {
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--green:#00ff87;--dark:#0a0a0f;--card:#111118;--border:#1e1e2e;--text:#e2e2f0;--muted:#6b6b8a}
 body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;display:flex;align-items:center;justify-content:center;background-image:radial-gradient(ellipse at 50% 0%,#00ff8715 0%,transparent 70%)}
-.box{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:48px;width:100%;max-width:400px;box-shadow:0 0 60px #00ff8710}
+.box{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:48px;width:100%;max-width:400px}
 .logo{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--green);text-align:center;letter-spacing:-1px}
 .logo span{color:var(--muted);font-weight:400;font-size:13px;display:block;margin-top:4px}
 form{margin-top:32px;display:flex;flex-direction:column;gap:16px}
 label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
 input{width:100%;padding:12px 16px;background:var(--dark);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Space Mono',monospace;font-size:14px;margin-top:6px;outline:none;transition:border-color .2s}
 input:focus{border-color:var(--green)}
-button{padding:14px;background:var(--green);color:#000;border:none;border-radius:8px;font-family:'Syne',sans-serif;font-weight:700;font-size:15px;cursor:pointer;margin-top:8px;transition:opacity .2s}
-button:hover{opacity:.85}
+button{padding:14px;background:var(--green);color:#000;border:none;border-radius:8px;font-family:'Syne',sans-serif;font-weight:700;font-size:15px;cursor:pointer;margin-top:8px}
 .err{background:#ff003315;border:1px solid #ff003340;color:#ff6b6b;padding:12px 16px;border-radius:8px;font-size:13px;text-align:center;margin-top:16px}
 </style>
 </head>
@@ -383,7 +263,9 @@ button:hover{opacity:.85}
 }
 
 function buildKeysHtml() {
-  const rows = Object.entries(keys).map(([code, k]) => `
+  const entries = Object.entries(keys);
+  if (!entries.length) return `<tr><td colspan="9" class="empty">Nenhuma chave cadastrada</td></tr>`;
+  return entries.map(([code, k]) => `
 <tr>
   <td><span class="kc">${escHtml(code)}</span></td>
   <td>${escHtml(k.label)}</td>
@@ -398,11 +280,11 @@ function buildKeysHtml() {
     <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
   </td>
 </tr>`).join('');
-  return rows || `<tr><td colspan="9" class="empty">Nenhuma chave cadastrada</td></tr>`;
 }
 
 function buildLogsHtml() {
-  const rows = logs.slice(0,150).map(l => `
+  if (!logs.length) return `<tr><td colspan="7" class="empty">Nenhum log ainda</td></tr>`;
+  return logs.slice(0,150).map(l => `
 <tr>
   <td>${new Date(l.timestamp).toLocaleString('pt-BR')}</td>
   <td><span class="kc" style="font-size:11px">${escHtml(l.keyCode||'-')}</span></td>
@@ -412,7 +294,6 @@ function buildLogsHtml() {
   <td>${escHtml(l.wppVersion||'-')}</td>
   <td><span class="badge ${l.action==='login_ok'?'on':l.action==='login_blocked'?'off':'warn'}">${escHtml(l.action)}</span></td>
 </tr>`).join('');
-  return rows || `<tr><td colspan="7" class="empty">Nenhum log ainda</td></tr>`;
 }
 
 function renderAdminDashboard() {
@@ -445,7 +326,7 @@ main{padding:28px 32px;max-width:1500px;margin:0 auto}
 .btn:hover{opacity:.8}
 .bp{background:var(--green);color:#000}
 .bw{background:#ffd32a20;color:var(--yellow);border:1px solid var(--yellow)}
-.bs{padding:5px 11px;border:none;border-radius:6px;cursor:pointer;font-family:'Space Mono',monospace;font-size:11px;transition:opacity .2s;margin-right:3px}
+.bs{padding:5px 11px;border:none;border-radius:6px;cursor:pointer;font-family:'Space Mono',monospace;font-size:11px;margin-right:3px}
 .bs:hover{opacity:.8}
 .bg{background:#00ff8720;color:var(--green);border:1px solid var(--green)}
 .bd{background:#ff475720;color:var(--red);border:1px solid var(--red)}
@@ -455,13 +336,13 @@ th{padding:11px 15px;text-align:left;font-size:10px;text-transform:uppercase;let
 td{padding:13px 15px;font-size:12px;border-bottom:1px solid var(--border);vertical-align:middle}
 tr:last-child td{border-bottom:none}
 tr:hover{background:#ffffff04}
-.kc{font-family:'Space Mono',monospace;color:var(--green);font-size:12px;letter-spacing:1px}
+.kc{color:var(--green);font-size:12px;letter-spacing:1px}
 .badge{padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:1px}
 .on{background:#00ff8720;color:var(--green)}
 .off{background:#ff475720;color:var(--red)}
 .warn{background:#ffd32a20;color:var(--yellow)}
 .empty{text-align:center;color:var(--muted);padding:32px!important}
-.toast{position:fixed;bottom:28px;right:28px;padding:13px 22px;border-radius:10px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;display:none;z-index:999;box-shadow:0 8px 32px #00000060}
+.toast{position:fixed;bottom:28px;right:28px;padding:13px 22px;border-radius:10px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;display:none;z-index:999}
 @media(max-width:768px){.stats{grid-template-columns:1fr};main{padding:16px}}
 </style>
 </head>
@@ -476,7 +357,6 @@ tr:hover{background:#ffffff04}
     <div class="sc"><div class="n" id="s-active">${Object.values(keys).filter(k=>k.active).length}</div><div class="l">Chaves Ativas</div></div>
     <div class="sc"><div class="n" id="s-logs">${logs.length}</div><div class="l">Acessos Registrados</div></div>
   </div>
-
   <div class="sec">
     <div class="sh">
       <div class="st">Chaves de Acesso</div>
@@ -492,11 +372,10 @@ tr:hover{background:#ffffff04}
       </table>
     </div>
   </div>
-
   <div class="sec">
     <div class="sh">
       <div class="st">Log de Acessos</div>
-      <button class="btn bw" onclick="refreshLogs()">↻ Atualizar</button>
+      <button class="btn bw" onclick="doRefresh()">↻ Atualizar</button>
     </div>
     <div class="ov">
       <table>
@@ -518,40 +397,48 @@ function toast(msg,ok=true){
 }
 async function generateKey(){
   const label=document.getElementById('nlabel').value.trim();
-  if(!label){toast('Informe o nome do cliente',false);return}
-  const r=await fetch('/admin/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label})});
-  const d=await r.json();
-  if(d.ok){toast('Gerada: '+d.key);document.getElementById('nlabel').value='';refresh();}
-  else toast('Erro ao gerar chave',false);
+  if(!label){toast('Informe o nome do cliente',false);return;}
+  try{
+    const r=await fetch('/admin/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label})});
+    const d=await r.json();
+    if(d.ok){toast('Gerada: '+d.key);document.getElementById('nlabel').value='';await doRefresh();}
+    else toast('Erro ao gerar chave',false);
+  }catch(e){toast('Erro de rede',false);}
 }
 async function toggleKey(code){
-  const r=await fetch('/admin/api/keys/'+encodeURIComponent(code)+'/toggle',{method:'POST'});
-  const d=await r.json();
-  if(d.ok){toast(d.active?'Chave liberada!':'Chave bloqueada!');refresh();}
+  try{
+    const r=await fetch('/admin/api/keys/'+encodeURIComponent(code)+'/toggle',{method:'POST'});
+    const d=await r.json();
+    if(d.ok){toast(d.active?'Chave liberada!':'Chave bloqueada!');await doRefresh();}
+  }catch(e){toast('Erro',false);}
 }
 async function deleteKey(code){
   if(!confirm('Excluir chave '+code+'?'))return;
-  const r=await fetch('/admin/api/keys/'+encodeURIComponent(code),{method:'DELETE'});
-  const d=await r.json();
-  if(d.ok){toast('Chave excluída');refresh();}
+  try{
+    const r=await fetch('/admin/api/keys/'+encodeURIComponent(code),{method:'DELETE'});
+    const d=await r.json();
+    if(d.ok){toast('Chave excluída');await doRefresh();}
+  }catch(e){toast('Erro',false);}
 }
-async function refresh(){
-  const r=await fetch('/admin/api/data');
-  const d=await r.json();
-  document.getElementById('s-total').textContent=d.totalKeys;
-  document.getElementById('s-active').textContent=d.activeKeys;
-  document.getElementById('s-logs').textContent=d.totalLogs;
-  document.getElementById('kb').innerHTML=d.keysHtml;
-  document.getElementById('lb').innerHTML=d.logsHtml;
+async function doRefresh(){
+  try{
+    const r=await fetch('/admin/api/data');
+    const d=await r.json();
+    if(d.error){return;}
+    document.getElementById('s-total').textContent=d.totalKeys||0;
+    document.getElementById('s-active').textContent=d.activeKeys||0;
+    document.getElementById('s-logs').textContent=d.totalLogs||0;
+    document.getElementById('kb').innerHTML=d.keysHtml||'';
+    document.getElementById('lb').innerHTML=d.logsHtml||'';
+  }catch(e){console.error('Refresh error',e);}
 }
-async function refreshLogs(){await refresh();toast('Logs atualizados');}
-setInterval(refresh,30000);
+setInterval(doRefresh,30000);
 </script>
 </body></html>`;
 }
 
 // ─────────────────────────────────────────────
-// ROTEADOR PRINCIPAL
+// ROTEADOR
 // ─────────────────────────────────────────────
 async function handleRequest(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -560,82 +447,64 @@ async function handleRequest(req, res) {
   if (req.method === 'OPTIONS') { res.writeHead(200); res.end(); return; }
 
   const url  = new URL(req.url, `http://localhost:${PORT}`);
-  const path = url.pathname;
+  const p    = url.pathname;
   const ip   = getIp(req);
+  console.log(`[${new Date().toISOString()}] ${req.method} ${p} — ${ip}`);
 
-  console.log(`[${new Date().toISOString()}] ${req.method} ${path} — ${ip}`);
-
-  // ════════════════════════════════════════════
-  // EXTENSÃO — Página de login com chave
-  // GET /extension/auth/ → mostra formulário
-  // ════════════════════════════════════════════
-  if (path.startsWith('/extension/auth') && !path.startsWith('/extension/auth/verify') && req.method === 'GET') {
+  // ── EXTENSÃO: mostra página de login com campo de chave ──
+  if (p === '/extension/auth/' || p === '/extension/auth' && req.method === 'GET') {
     const callback = url.searchParams.get('callback') || '';
     sendHtml(res, renderExtensionLogin({ callback }));
     return;
   }
 
-  // ════════════════════════════════════════════
-  // EXTENSÃO — Verificar chave e redirecionar
-  // POST /extension/auth/verify
-  // ════════════════════════════════════════════
-  if (path === '/extension/auth/verify' && req.method === 'POST') {
-    const form     = await parseFormBody(req);
-    const keyCode  = (form.get('key') || '').trim().toUpperCase();
+  // ── EXTENSÃO: verifica chave e faz callback ──
+  if (p === '/extension/auth/verify' && req.method === 'POST') {
+    const form    = await parseFormBody(req);
+    const keyCode = (form.get('key') || '').trim().toUpperCase();
     const callback = form.get('callback') || '';
 
     if (!keyCode || !keys[keyCode]) {
-      addLog({ keyCode: keyCode || '?', label: '-', phone: '-', ip, wppVersion: '-', action: 'key_not_found' });
-      sendHtml(res, renderExtensionLogin({
-        callback,
-        keyVal: keyCode,
-        error: '❌ Chave não encontrada. Verifique se digitou corretamente ou entre em contato com o vendedor.'
-      }));
+      addLog({ keyCode: keyCode||'?', label: '-', phone: '-', ip, wppVersion: '-', action: 'key_not_found' });
+      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '❌ Chave não encontrada. Verifique se digitou corretamente ou entre em contato com o vendedor.' }));
       return;
     }
-
     if (!keys[keyCode].active) {
       addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'login_blocked' });
-      sendHtml(res, renderExtensionLogin({
-        callback,
-        keyVal: keyCode,
-        error: '🚫 Chave bloqueada. Entre em contato com o vendedor para mais informações.'
-      }));
+      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '🚫 Chave bloqueada. Entre em contato com o vendedor.' }));
       return;
     }
 
-    // Chave válida — atualiza estatísticas
-    keys[keyCode].uses = (keys[keyCode].uses || 0) + 1;
+    keys[keyCode].uses     = (keys[keyCode].uses || 0) + 1;
     keys[keyCode].lastUsed = new Date().toISOString();
     keys[keyCode].lastIp   = ip;
-
     addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'login_ok' });
+    saveDb();
 
-    // Redireciona para o callback da extensão com os dados
-    const cb = new URL(callback);
-    cb.searchParams.set('key',        keyCode);
-    cb.searchParams.set('keyId',      `id-${keyCode}`);
-    cb.searchParams.set('ownerId',    'lr1290-owner');
-    cb.searchParams.set('managerId',  'lr1290-manager');
-    cb.searchParams.set('isPremium',  'true');
-    cb.searchParams.set('isLoggedIn', 'true');
-    cb.searchParams.set('planName',   'Pro');
-    cb.searchParams.set('marketplace','premium');
-    cb.searchParams.set('username',   keys[keyCode].label);
-    cb.searchParams.set('email',      'cliente@zapvoice.com.br');
-    cb.searchParams.set('plan_id',    'ZV_PRO');
-    cb.searchParams.set('permissions', FULL_PERMISSIONS.join(','));
-
-    res.writeHead(302, { Location: cb.toString() });
-    res.end();
+    try {
+      const cb = new URL(callback);
+      cb.searchParams.set('key',         keyCode);
+      cb.searchParams.set('keyId',       `id-${keyCode}`);
+      cb.searchParams.set('ownerId',     'lr1290-owner');
+      cb.searchParams.set('managerId',   'lr1290-manager');
+      cb.searchParams.set('isPremium',   'true');
+      cb.searchParams.set('isLoggedIn',  'true');
+      cb.searchParams.set('planName',    'Pro');
+      cb.searchParams.set('marketplace', 'premium');
+      cb.searchParams.set('username',    keys[keyCode].label);
+      cb.searchParams.set('email',       'cliente@zapvoice.com.br');
+      cb.searchParams.set('plan_id',     'ZV_PRO');
+      cb.searchParams.set('permissions', FULL_PERMISSIONS.join(','));
+      res.writeHead(302, { Location: cb.toString() });
+      res.end();
+    } catch (e) {
+      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '❌ Callback inválido. Tente novamente.' }));
+    }
     return;
   }
 
-  // ════════════════════════════════════════════
-  // EXTENSÃO — Validar chave via API (campo "Chave de acesso")
-  // POST /extension/v3/key
-  // ════════════════════════════════════════════
-  if (path === '/extension/v3/key' && req.method === 'POST') {
+  // ── EXTENSÃO: validação via campo "Chave de acesso" ──
+  if (p === '/extension/v3/key' && req.method === 'POST') {
     const body       = await parseBody(req);
     const keyCode    = body.authKey;
     const phone      = body.phoneNumber || '-';
@@ -646,7 +515,6 @@ async function handleRequest(req, res) {
       sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada. Contate o vendedor.' });
       return;
     }
-
     if (!keys[keyCode].active) {
       addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'login_blocked' });
       sendJson(res, { authError: 'keyBlocked', authErrorMessage: 'Chave bloqueada. Contate o vendedor.' });
@@ -657,16 +525,14 @@ async function handleRequest(req, res) {
     keys[keyCode].lastUsed  = new Date().toISOString();
     keys[keyCode].lastIp    = ip;
     keys[keyCode].lastPhone = phone;
-
     addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'login_ok' });
+    saveDb();
     sendJson(res, getAuthData(keyCode));
     return;
   }
 
-  // ════════════════════════════════════════════
-  // EXTENSÃO — Usage endpoints
-  // ════════════════════════════════════════════
-  if (['/extension/v3/usage', '/extension/v3/get-usage', '/extension/v3/sync-usage'].includes(path)) {
+  // ── EXTENSÃO: usage endpoints ──
+  if (['/extension/v3/usage','/extension/v3/get-usage','/extension/v3/sync-usage'].includes(p)) {
     sendJson(res, {
       ok: true, status: true, limits: USAGE_LIMITS,
       expires_at: new Date(Date.now() + 365*24*60*60*1000).toISOString(),
@@ -675,10 +541,8 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // ════════════════════════════════════════════
-  // ADMIN — Login
-  // ════════════════════════════════════════════
-  if (path === '/admin/login' && req.method === 'POST') {
+  // ── ADMIN: login ──
+  if (p === '/admin/login' && req.method === 'POST') {
     const form = await parseFormBody(req);
     if (form.get('user') === ADMIN_USER && form.get('pass') === ADMIN_PASS) {
       const token = generateToken();
@@ -691,20 +555,20 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // ADMIN — Logout
-  if (path === '/admin/logout') {
+  // ── ADMIN: logout ──
+  if (p === '/admin/logout') {
     res.setHeader('Set-Cookie', 'zv_admin=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT');
     res.writeHead(302, { Location: '/admin' }); res.end(); return;
   }
 
-  // ADMIN — Painel
-  if (path === '/admin' || path === '/admin/') {
+  // ── ADMIN: painel ──
+  if (p === '/admin' || p === '/admin/') {
     if (!isAdminSession(req)) { sendHtml(res, renderAdminLogin()); return; }
     sendHtml(res, renderAdminDashboard()); return;
   }
 
-  // ADMIN API — Dados para refresh
-  if (path === '/admin/api/data' && req.method === 'GET') {
+  // ── ADMIN API: dados ──
+  if (p === '/admin/api/data' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     sendJson(res, {
       totalKeys:  Object.keys(keys).length,
@@ -715,46 +579,41 @@ async function handleRequest(req, res) {
     }); return;
   }
 
-  // ADMIN API — Gerar chave
-  if (path === '/admin/api/keys' && req.method === 'POST') {
+  // ── ADMIN API: gerar chave ──
+  if (p === '/admin/api/keys' && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const body = await parseBody(req);
     const code = generateKey();
-    keys[code] = {
-      label:      body.label || 'Cliente',
-      active:     true,
-      createdAt:  new Date().toISOString(),
-      uses:       0,
-      lastUsed:   null,
-      lastIp:     null,
-      lastPhone:  null
-    };
+    keys[code] = { label: body.label || 'Cliente', active: true, createdAt: new Date().toISOString(), uses: 0, lastUsed: null, lastIp: null, lastPhone: null };
+    saveDb();
     sendJson(res, { ok: true, key: code }); return;
   }
 
-  // ADMIN API — Toggle chave
-  if (path.match(/^\/admin\/api\/keys\/[^/]+\/toggle$/) && req.method === 'POST') {
+  // ── ADMIN API: toggle ──
+  if (p.match(/^\/admin\/api\/keys\/[^/]+\/toggle$/) && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const code = decodeURIComponent(path.split('/')[4]);
+    const code = decodeURIComponent(p.split('/')[4]);
     if (!keys[code]) { sendJson(res, { error: 'not found' }, 404); return; }
     keys[code].active = !keys[code].active;
+    saveDb();
     sendJson(res, { ok: true, active: keys[code].active }); return;
   }
 
-  // ADMIN API — Deletar chave
-  if (path.match(/^\/admin\/api\/keys\/[^/]+$/) && req.method === 'DELETE') {
+  // ── ADMIN API: deletar ──
+  if (p.match(/^\/admin\/api\/keys\/[^/]+$/) && req.method === 'DELETE') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const code = decodeURIComponent(path.split('/')[4]);
+    const code = decodeURIComponent(p.split('/')[4]);
     delete keys[code];
+    saveDb();
     sendJson(res, { ok: true }); return;
   }
 
-  // Fallback
   sendJson(res, { ok: true });
 }
 
 http.createServer(handleRequest).listen(PORT, () => {
-  console.log(`✅ ZapVoice Server v3 — porta ${PORT}`);
-  console.log(`🔑 Admin: /admin  |  User: ${ADMIN_USER}`);
-  console.log(`🔒 Login extensão: /extension/auth/`);
+  console.log(`✅ ZapVoice Server v4 — porta ${PORT}`);
+  console.log(`💾 DB: ${DB_FILE}`);
+  console.log(`🔑 Admin: /admin | User: ${ADMIN_USER}`);
+  console.log(`📊 Chaves carregadas: ${Object.keys(keys).length}`);
 });
