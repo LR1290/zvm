@@ -301,7 +301,7 @@ function buildLogsHtml(arr) {
   <td>${escHtml(l.phone||'-')}</td>
   <td>${escHtml(l.ip||'-')}</td>
   <td>${escHtml(l.wppVersion||'-')}</td>
-  <td><span class="badge ${l.action==='login_ok'?'on':l.action==='relogin_ok'?'re':l.action==='login_blocked'||l.action==='auto_blocked'?'off':'warn'}">${escHtml(l.action)}</span></td>
+  <td><span class="badge ${l.action==='login_ok'?'on':l.action==='relogin_ok'?'re':l.action==='verify_ok'?'vr':l.action==='login_blocked'||l.action==='auto_blocked'?'off':'warn'}">${escHtml(l.action)}</span></td>
 </tr>`).join('');
 }
 
@@ -534,8 +534,10 @@ async function handleRequest(req, res) {
       return;
     }
 
-    // Checar limite ANTES de incrementar — rejeita se já esgotou
-    if (MAX_USES > 0 && (keys[keyCode].uses || 0) >= MAX_USES) {
+    // auth/verify NUNCA incrementa o contador — quem controla usos é somente /v3/key
+    // (verify apenas valida a chave e faz o redirect; /v3/key é quem autentica com phone)
+    // Mas ainda verifica se já está bloqueada por limite (para não deixar passar)
+    if (!keys[keyCode].active || (MAX_USES > 0 && (keys[keyCode].uses || 0) >= MAX_USES)) {
       keys[keyCode].active = false;
       addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'auto_blocked' });
       saveDb();
@@ -543,10 +545,9 @@ async function handleRequest(req, res) {
       return;
     }
 
-    keys[keyCode].uses     = (keys[keyCode].uses || 0) + 1;
     keys[keyCode].lastUsed = new Date().toISOString();
     keys[keyCode].lastIp   = ip;
-    addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'login_ok' });
+    addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'verify_ok' });
     saveDb();
 
     try {
