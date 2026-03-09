@@ -650,14 +650,14 @@ async function handleRequest(req, res) {
     }
     if (!keys[keyCode].active) {
       addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'login_blocked' });
-      sendJson(res, { authError: 'keyBlocked', authErrorMessage: 'Chave bloqueada. Contate o vendedor.' });
+      sendJson(res, { data: { message: 'CHAVE BLOQUEADA. Contate o vendedor.' } }, 403);
       return;
     }
     if (isKeyExpired(keys[keyCode])) {
       keys[keyCode].active = false;
       addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'expired' });
       saveDb();
-      sendJson(res, { authError: 'expiredKey', authErrorMessage: 'Chave expirada. Contate o vendedor.' });
+      sendJson(res, { data: { message: 'CHAVE EXPIRADA. Contate o vendedor.' } }, 403);
       return;
     }
 
@@ -669,7 +669,7 @@ async function handleRequest(req, res) {
         keys[keyCode].active = false;
         addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'auto_blocked' });
         saveDb();
-        sendJson(res, { authError: 'keyBlocked', authErrorMessage: 'Limite de ativações atingido. Contate o vendedor.' });
+        sendJson(res, { data: { message: 'CHAVE BLOQUEADA. Limite de ativações atingido.' } }, 403);
         return;
       }
       keys[keyCode].uses      = (keys[keyCode].uses || 0) + 1;
