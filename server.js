@@ -57,6 +57,9 @@ const USAGE_LIMITS = {
   scheduleItem: { sent: 0, max: -1 }
 };
 
+// Limite máximo de ativações por chave (0 = ilimitado)
+const MAX_USES = 3;
+
 // ─────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────
@@ -97,6 +100,11 @@ function addLog(entry) {
   logs.unshift({ ...entry, timestamp: new Date().toISOString() });
   if (logs.length > 500) logs = logs.slice(0, 500);
   saveDb();
+}
+
+function isKeyExpired(k) {
+  if (!k.expiresAt) return false;
+  return new Date() > new Date(k.expiresAt);
 }
 
 function getIp(req) {
@@ -270,11 +278,11 @@ function buildKeysHtml() {
   <td><span class="kc">${escHtml(code)}</span></td>
   <td>${escHtml(k.label)}</td>
   <td><span class="badge ${k.active?'on':'off'}">${k.active?'ATIVO':'BLOQUEADO'}</span></td>
-  <td>${k.uses||0}</td>
+  <td><span style="color:${(k.uses||0)>=MAX_USES&&!k.active?'var(--red)':'inherit'}">${k.uses||0}/${MAX_USES}</span></td>
   <td>${escHtml(k.lastPhone||'-')}</td>
   <td>${escHtml(k.lastIp||'-')}</td>
   <td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR'):'-'}</td>
-  <td>${new Date(k.createdAt).toLocaleString('pt-BR')}</td>
+  <td>${new Date(k.createdAt).toLocaleString('pt-BR')}${k.expiresAt?`<br><span style="font-size:10px;color:${new Date()>new Date(k.expiresAt)?'var(--red)':'var(--yellow)'}">exp: ${new Date(k.expiresAt).toLocaleDateString('pt-BR')}</span>`:''}</td>
   <td>
     <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
     <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
@@ -282,9 +290,10 @@ function buildKeysHtml() {
 </tr>`).join('');
 }
 
-function buildLogsHtml() {
-  if (!logs.length) return `<tr><td colspan="7" class="empty">Nenhum log ainda</td></tr>`;
-  return logs.slice(0,150).map(l => `
+function buildLogsHtml(arr) {
+  const src = arr ?? logs;
+  if (!src.length) return `<tr><td colspan="7" class="empty">Nenhum log ainda</td></tr>`;
+  return src.slice(0,150).map(l => `
 <tr>
   <td>${new Date(l.timestamp).toLocaleString('pt-BR')}</td>
   <td><span class="kc" style="font-size:11px">${escHtml(l.keyCode||'-')}</span></td>
@@ -292,7 +301,7 @@ function buildLogsHtml() {
   <td>${escHtml(l.phone||'-')}</td>
   <td>${escHtml(l.ip||'-')}</td>
   <td>${escHtml(l.wppVersion||'-')}</td>
-  <td><span class="badge ${l.action==='login_ok'?'on':l.action==='login_blocked'?'off':'warn'}">${escHtml(l.action)}</span></td>
+  <td><span class="badge ${l.action==='login_ok'?'on':l.action==='login_blocked'||l.action==='auto_blocked'?'off':'warn'}">${escHtml(l.action)}</span></td>
 </tr>`).join('');
 }
 
@@ -361,7 +370,8 @@ tr:hover{background:#ffffff04}
     <div class="sh">
       <div class="st">Chaves de Acesso</div>
       <div class="gf">
-        <input type="text" id="nlabel" placeholder="Nome do cliente">
+        <input type="text" id="nlabel" placeholder="Nome do cliente" style="width:170px">
+        <input type="number" id="ndays" placeholder="Dias (ex: 30)" min="1" style="width:130px" title="Validade em dias (vazio = sem expiração)">
         <button class="btn bp" onclick="generateKey()">+ Gerar Chave</button>
       </div>
     </div>
@@ -375,7 +385,12 @@ tr:hover{background:#ffffff04}
   <div class="sec">
     <div class="sh">
       <div class="st">Log de Acessos</div>
-      <button class="btn bw" onclick="doRefresh()">↻ Atualizar</button>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="date" id="logDate" style="padding:8px 12px;background:var(--dark);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Space Mono',monospace;font-size:12px;outline:none" onchange="filterLog()">
+        <button class="btn bw" onclick="clearDateFilter()" title="Limpar filtro">✕ Filtro</button>
+        <button class="btn bw" onclick="doRefresh()">↻ Atualizar</button>
+        <button class="btn" style="background:#ff475720;color:var(--red);border:1px solid var(--red)" onclick="clearLog()">🗑 Limpar Log</button>
+      </div>
     </div>
     <div class="ov">
       <table>
@@ -397,14 +412,48 @@ function toast(msg,ok=true){
 }
 async function generateKey(){
   const label=document.getElementById('nlabel').value.trim();
+  const days=document.getElementById('ndays').value.trim();
   if(!label){toast('Informe o nome do cliente',false);return;}
   try{
-    const r=await fetch('/admin/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label})});
+    const body={label};
+    if(days&&parseInt(days)>0)body.expireDays=parseInt(days);
+    const r=await fetch('/admin/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(r.status===401){toast('Sessão expirada, faça login novamente',false);setTimeout(()=>location.href='/admin',1500);return;}
     const d=await r.json();
-    if(d.ok){toast('Gerada: '+d.key);document.getElementById('nlabel').value='';await doRefresh();}
-    else toast('Erro ao gerar chave: '+(d.error||'desconhecido'),false);
+    if(d.ok){
+      const expMsg=days?' (expira em '+days+'d)':'';
+      toast('Gerada: '+d.key+expMsg);
+      document.getElementById('nlabel').value='';
+      document.getElementById('ndays').value='';
+      await doRefresh();
+    } else toast('Erro ao gerar chave: '+(d.error||'desconhecido'),false);
   }catch(e){toast('Erro de rede: '+e.message,false);}
+}
+async function filterLog(){
+  const date=document.getElementById('logDate').value;
+  if(!date)return;
+  try{
+    const r=await fetch('/admin/api/logs?date='+date);
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
+    const d=await r.json();
+    if(d.ok)document.getElementById('lb').innerHTML=d.logsHtml||'';
+  }catch(e){toast('Erro ao filtrar',false);}
+}
+function clearDateFilter(){
+  document.getElementById('logDate').value='';
+  doRefresh();
+}
+async function clearLog(){
+  const date=document.getElementById('logDate').value;
+  const msg=date?'Limpar logs do dia '+date+'?':'Limpar TODO o log de acessos?';
+  if(!confirm(msg))return;
+  try{
+    const body=date?{date}:{};
+    const r=await fetch('/admin/api/logs',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
+    const d=await r.json();
+    if(d.ok){toast(date?'Log do dia limpo!':'Log completo apagado!');document.getElementById('logDate').value='';await doRefresh();}
+  }catch(e){toast('Erro ao limpar',false);}
 }
 async function toggleKey(code){
   try{
@@ -477,10 +526,27 @@ async function handleRequest(req, res) {
       sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '🚫 Chave bloqueada. Entre em contato com o vendedor.' }));
       return;
     }
+    if (isKeyExpired(keys[keyCode])) {
+      keys[keyCode].active = false;
+      addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'expired' });
+      saveDb();
+      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '⏰ Chave expirada. Entre em contato com o vendedor.' }));
+      return;
+    }
 
     keys[keyCode].uses     = (keys[keyCode].uses || 0) + 1;
     keys[keyCode].lastUsed = new Date().toISOString();
     keys[keyCode].lastIp   = ip;
+
+    // Auto-bloquear ao atingir limite de ativações
+    if (MAX_USES > 0 && keys[keyCode].uses >= MAX_USES) {
+      keys[keyCode].active = false;
+      addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'auto_blocked' });
+      saveDb();
+      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '🚫 Limite de ativações atingido. Entre em contato com o vendedor.' }));
+      return;
+    }
+
     addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'login_ok' });
     saveDb();
 
@@ -524,11 +590,28 @@ async function handleRequest(req, res) {
       sendJson(res, { authError: 'keyBlocked', authErrorMessage: 'Chave bloqueada. Contate o vendedor.' });
       return;
     }
+    if (isKeyExpired(keys[keyCode])) {
+      keys[keyCode].active = false;
+      addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'expired' });
+      saveDb();
+      sendJson(res, { authError: 'expiredKey', authErrorMessage: 'Chave expirada. Contate o vendedor.' });
+      return;
+    }
 
     keys[keyCode].uses      = (keys[keyCode].uses || 0) + 1;
     keys[keyCode].lastUsed  = new Date().toISOString();
     keys[keyCode].lastIp    = ip;
     keys[keyCode].lastPhone = phone;
+
+    // Auto-bloquear ao atingir limite de ativações
+    if (MAX_USES > 0 && keys[keyCode].uses >= MAX_USES) {
+      keys[keyCode].active = false;
+      addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'auto_blocked' });
+      saveDb();
+      sendJson(res, { authError: 'keyBlocked', authErrorMessage: 'Limite de ativações atingido. Contate o vendedor.' });
+      return;
+    }
+
     addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'login_ok' });
     saveDb();
     sendJson(res, getAuthData(keyCode));
@@ -588,7 +671,16 @@ async function handleRequest(req, res) {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const body = await parseBody(req);
     const code = generateKey();
-    keys[code] = { label: body.label || 'Cliente', active: true, createdAt: new Date().toISOString(), uses: 0, lastUsed: null, lastIp: null, lastPhone: null };
+    // expiresAt: aceita 'YYYY-MM-DD' ou número de dias; null = sem expiração
+    let expiresAt = null;
+    if (body.expiresAt) {
+      expiresAt = new Date(body.expiresAt).toISOString();
+    } else if (body.expireDays && parseInt(body.expireDays) > 0) {
+      const d = new Date();
+      d.setDate(d.getDate() + parseInt(body.expireDays));
+      expiresAt = d.toISOString();
+    }
+    keys[code] = { label: body.label || 'Cliente', active: true, createdAt: new Date().toISOString(), uses: 0, lastUsed: null, lastIp: null, lastPhone: null, expiresAt };
     saveDb();
     sendJson(res, { ok: true, key: code }); return;
   }
@@ -601,6 +693,29 @@ async function handleRequest(req, res) {
     keys[code].active = !keys[code].active;
     saveDb();
     sendJson(res, { ok: true, active: keys[code].active }); return;
+  }
+
+  // ── ADMIN API: limpar log ──
+  if (p === '/admin/api/logs' && req.method === 'DELETE') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const body = await parseBody(req);
+    if (body.date) {
+      // Limpar apenas logs do dia especificado
+      const d = body.date; // 'YYYY-MM-DD'
+      logs = logs.filter(l => !l.timestamp.startsWith(d));
+    } else {
+      logs = [];
+    }
+    saveDb();
+    sendJson(res, { ok: true, remaining: logs.length }); return;
+  }
+
+  // ── ADMIN API: filtrar log por data ──
+  if (p === '/admin/api/logs' && req.method === 'GET') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const date = url.searchParams.get('date'); // 'YYYY-MM-DD' ou vazio = todos
+    const filtered = date ? logs.filter(l => l.timestamp.startsWith(date)) : logs;
+    sendJson(res, { ok: true, logsHtml: buildLogsHtml(filtered) }); return;
   }
 
   // ── ADMIN API: deletar ──
