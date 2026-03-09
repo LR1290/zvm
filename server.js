@@ -408,10 +408,6 @@ tr:hover{background:#ffffff04}
 .modal textarea{width:100%;background:var(--dark);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Space Mono',monospace;font-size:12px;padding:10px;outline:none;resize:vertical;min-height:90px}
 .modal textarea:focus{border-color:var(--green)}
 .modal-actions{display:flex;gap:8px;margin-top:14px;justify-content:flex-end}
-/* Webhook config */
-.wh-bar{display:flex;gap:8px;align-items:center;padding:14px 22px;border-top:1px solid var(--border);flex-wrap:wrap}
-.wh-bar input{flex:1;min-width:200px;padding:8px 12px;background:var(--dark);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Space Mono',monospace;font-size:12px;outline:none}
-.wh-bar input:focus{border-color:var(--green)}
 @media(max-width:900px){.stats{grid-template-columns:1fr 1fr};main{padding:16px}}
 @media(max-width:500px){.stats{grid-template-columns:1fr}}
 </style>
@@ -480,15 +476,6 @@ tr:hover{background:#ffffff04}
     </div>
   </div>
 
-  <div class="sec">
-    <div class="sh"><div class="st">⚙ Configurações</div></div>
-    <div class="wh-bar">
-      <span style="font-size:12px;color:var(--muted);white-space:nowrap">🔔 Webhook URL:</span>
-      <input type="url" id="webhookUrl" placeholder="https://seu-webhook.com/endpoint" value="${escHtml(WEBHOOK_URL)}">
-      <button class="btn bp" style="white-space:nowrap" onclick="saveWebhook()">Salvar</button>
-      <button class="btn bw" style="white-space:nowrap" onclick="testWebhook()">Testar</button>
-    </div>
-  </div>
 </main>
 
 <!-- Modal de notas -->
@@ -653,26 +640,6 @@ async function exportCSV(){
   }catch(e){toast('Erro ao exportar',false);}
 }
 
-// ── Webhook ──
-async function saveWebhook(){
-  const url=document.getElementById('webhookUrl').value.trim();
-  try{
-    const r=await fetch('/admin/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({webhookUrl:url})});
-    const d=await r.json();
-    if(d.ok)toast('Webhook salvo! Reinicie o servidor para aplicar.');
-    else toast('Erro ao salvar',false);
-  }catch(e){toast('Erro de rede',false);}
-}
-async function testWebhook(){
-  const url=document.getElementById('webhookUrl').value.trim();
-  if(!url){toast('Insira uma URL antes de testar',false);return;}
-  try{
-    const r=await fetch('/admin/api/webhook/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
-    const d=await r.json();
-    if(d.ok)toast('Webhook disparado! Verifique o receptor.');
-    else toast('Falha ao disparar: '+(d.error||'?'),false);
-  }catch(e){toast('Erro de rede',false);}
-}
 </script>
 </body></html>`;
 }
@@ -982,48 +949,6 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // ── ADMIN API: salvar config (webhook) ──
-  if (p === '/admin/api/settings' && req.method === 'POST') {
-    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    // Apenas confirma recebimento; a URL precisa ser configurada como env var WEBHOOK_URL
-    const body = await parseBody(req);
-    console.log('[SETTINGS] Nova webhook URL recebida:', body.webhookUrl);
-    sendJson(res, { ok: true, note: 'Configure WEBHOOK_URL como variável de ambiente no Render e faça redeploy.' });
-    return;
-  }
-
-  // ── ADMIN API: testar webhook ──
-  if (p === '/admin/api/webhook/test' && req.method === 'POST') {
-    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const body = await parseBody(req);
-    const testUrl = body.url || WEBHOOK_URL;
-    if (!testUrl) { sendJson(res, { ok: false, error: 'Nenhuma URL configurada' }); return; }
-
-    const payload = JSON.stringify({
-      event: 'test', keyCode: 'zv-teste-12345-xxxxx',
-      label: 'Cliente Teste', phone: '5521999999999', reason: 'Teste manual do admin',
-      timestamp: new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
-    });
-    try {
-      const u = new URL(testUrl);
-      const mod = await import(testUrl.startsWith('https') ? 'https' : 'http');
-      const options = {
-        hostname: u.hostname, port: u.port || (testUrl.startsWith('https') ? 443 : 80),
-        path: u.pathname + u.search, method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
-        timeout: 5000
-      };
-      await new Promise((resolve, reject) => {
-        const req2 = mod.default.request(options, r => { r.resume(); resolve(r.statusCode); });
-        req2.on('error', reject);
-        req2.on('timeout', () => { req2.destroy(); reject(new Error('timeout')); });
-        req2.write(payload); req2.end();
-      });
-      sendJson(res, { ok: true }); return;
-    } catch (e) {
-      sendJson(res, { ok: false, error: e.message }); return;
-    }
-  }
 
   sendJson(res, { ok: true });
 }
