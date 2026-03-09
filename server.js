@@ -534,12 +534,8 @@ async function handleRequest(req, res) {
       return;
     }
 
-    keys[keyCode].uses     = (keys[keyCode].uses || 0) + 1;
-    keys[keyCode].lastUsed = new Date().toISOString();
-    keys[keyCode].lastIp   = ip;
-
-    // Auto-bloquear ao atingir limite de ativações
-    if (MAX_USES > 0 && keys[keyCode].uses >= MAX_USES) {
+    // Checar limite ANTES de incrementar — rejeita se já esgotou
+    if (MAX_USES > 0 && (keys[keyCode].uses || 0) >= MAX_USES) {
       keys[keyCode].active = false;
       addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'auto_blocked' });
       saveDb();
@@ -547,6 +543,9 @@ async function handleRequest(req, res) {
       return;
     }
 
+    keys[keyCode].uses     = (keys[keyCode].uses || 0) + 1;
+    keys[keyCode].lastUsed = new Date().toISOString();
+    keys[keyCode].lastIp   = ip;
     addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'login_ok' });
     saveDb();
 
@@ -598,13 +597,8 @@ async function handleRequest(req, res) {
       return;
     }
 
-    keys[keyCode].uses      = (keys[keyCode].uses || 0) + 1;
-    keys[keyCode].lastUsed  = new Date().toISOString();
-    keys[keyCode].lastIp    = ip;
-    keys[keyCode].lastPhone = phone;
-
-    // Auto-bloquear ao atingir limite de ativações
-    if (MAX_USES > 0 && keys[keyCode].uses >= MAX_USES) {
+    // Checar limite ANTES de incrementar — rejeita se já esgotou
+    if (MAX_USES > 0 && (keys[keyCode].uses || 0) >= MAX_USES) {
       keys[keyCode].active = false;
       addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'auto_blocked' });
       saveDb();
@@ -612,6 +606,10 @@ async function handleRequest(req, res) {
       return;
     }
 
+    keys[keyCode].uses      = (keys[keyCode].uses || 0) + 1;
+    keys[keyCode].lastUsed  = new Date().toISOString();
+    keys[keyCode].lastIp    = ip;
+    keys[keyCode].lastPhone = phone;
     addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'login_ok' });
     saveDb();
     sendJson(res, getAuthData(keyCode));
