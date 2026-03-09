@@ -684,6 +684,22 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // ── EXTENSÃO: check-status (polling rápido sem log) ──
+  if (p === '/extension/v3/check-status' && req.method === 'POST') {
+    const body    = await parseBody(req);
+    const keyCode = (body.authKey || '').toLowerCase();
+    if (!keyCode || !keys[keyCode]) {
+      sendJson(res, { active: false, reason: 'not_found' });
+      return;
+    }
+    if (!keys[keyCode].active || isKeyExpired(keys[keyCode])) {
+      sendJson(res, { active: false, reason: 'blocked' });
+      return;
+    }
+    sendJson(res, { active: true });
+    return;
+  }
+
   // ── EXTENSÃO: usage endpoints ──
   if (['/extension/v3/usage','/extension/v3/get-usage','/extension/v3/sync-usage'].includes(p)) {
     sendJson(res, {
