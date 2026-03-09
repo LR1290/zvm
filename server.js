@@ -301,7 +301,7 @@ function buildLogsHtml(arr) {
   <td>${escHtml(l.phone||'-')}</td>
   <td>${escHtml(l.ip||'-')}</td>
   <td>${escHtml(l.wppVersion||'-')}</td>
-  <td><span class="badge ${l.action==='login_ok'?'on':l.action==='login_blocked'||l.action==='auto_blocked'?'off':'warn'}">${escHtml(l.action)}</span></td>
+  <td><span class="badge ${l.action==='login_ok'?'on':l.action==='relogin_ok'?'re':l.action==='login_blocked'||l.action==='auto_blocked'?'off':'warn'}">${escHtml(l.action)}</span></td>
 </tr>`).join('');
 }
 
@@ -597,20 +597,24 @@ async function handleRequest(req, res) {
       return;
     }
 
-    // Checar limite ANTES de incrementar — rejeita se já esgotou
-    if (MAX_USES > 0 && (keys[keyCode].uses || 0) >= MAX_USES) {
-      keys[keyCode].active = false;
-      addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'auto_blocked' });
-      saveDb();
-      sendJson(res, { authError: 'keyBlocked', authErrorMessage: 'Limite de ativações atingido. Contate o vendedor.' });
-      return;
+    // Relogin do mesmo telefone = não consome uso (rehydrate automático da extensão)
+    const samePhone = phone && phone !== '-' && keys[keyCode].lastPhone === phone;
+    if (!samePhone) {
+      // Checar limite ANTES de incrementar — rejeita se já esgotou
+      if (MAX_USES > 0 && (keys[keyCode].uses || 0) >= MAX_USES) {
+        keys[keyCode].active = false;
+        addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'auto_blocked' });
+        saveDb();
+        sendJson(res, { authError: 'keyBlocked', authErrorMessage: 'Limite de ativações atingido. Contate o vendedor.' });
+        return;
+      }
+      keys[keyCode].uses      = (keys[keyCode].uses || 0) + 1;
     }
 
-    keys[keyCode].uses      = (keys[keyCode].uses || 0) + 1;
     keys[keyCode].lastUsed  = new Date().toISOString();
     keys[keyCode].lastIp    = ip;
     keys[keyCode].lastPhone = phone;
-    addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'login_ok' });
+    addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: samePhone ? 'relogin_ok' : 'login_ok' });
     saveDb();
     sendJson(res, getAuthData(keyCode));
     return;
