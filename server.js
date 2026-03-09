@@ -692,7 +692,11 @@ async function handleRequest(req, res) {
       sendJson(res, { active: false, reason: 'not_found' });
       return;
     }
-    if (!keys[keyCode].active || isKeyExpired(keys[keyCode])) {
+    if (isKeyExpired(keys[keyCode])) {
+      sendJson(res, { active: false, reason: 'expired' });
+      return;
+    }
+    if (!keys[keyCode].active) {
       sendJson(res, { active: false, reason: 'blocked' });
       return;
     }
