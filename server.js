@@ -281,8 +281,8 @@ function buildKeysHtml() {
   <td><span style="color:${(k.uses||0)>=MAX_USES&&!k.active?'var(--red)':'inherit'}">${k.uses||0}/${MAX_USES}</span></td>
   <td>${escHtml(k.lastPhone||'-')}</td>
   <td>${escHtml(k.lastIp||'-')}</td>
-  <td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR'):'-'}</td>
-  <td>${new Date(k.createdAt).toLocaleString('pt-BR')}${k.expiresAt?`<br><span style="font-size:10px;color:${new Date()>new Date(k.expiresAt)?'var(--red)':'var(--yellow)'}">exp: ${new Date(k.expiresAt).toLocaleDateString('pt-BR')}</span>`:''}</td>
+  <td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
+  <td>${new Date(k.createdAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}${k.expiresAt?(()=>{const exp=new Date(k.expiresAt),now=new Date(),expired=now>exp,diffH=Math.round((exp-now)/36e5);const label=expired?'expirado':diffH<24?'exp: '+diffH+'h':('exp: '+exp.toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo'}));return`<br><span style="font-size:10px;color:${expired?'var(--red)':'var(--yellow)'}">` +label+'</span>'})():''}</td>
   <td>
     <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
     <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
@@ -295,7 +295,7 @@ function buildLogsHtml(arr) {
   if (!src.length) return `<tr><td colspan="7" class="empty">Nenhum log ainda</td></tr>`;
   return src.slice(0,150).map(l => `
 <tr>
-  <td>${new Date(l.timestamp).toLocaleString('pt-BR')}</td>
+  <td>${new Date(l.timestamp).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</td>
   <td><span class="kc" style="font-size:11px">${escHtml(l.keyCode||'-')}</span></td>
   <td>${escHtml(l.label||'-')}</td>
   <td>${escHtml(l.phone||'-')}</td>
@@ -371,7 +371,11 @@ tr:hover{background:#ffffff04}
       <div class="st">Chaves de Acesso</div>
       <div class="gf">
         <input type="text" id="nlabel" placeholder="Nome do cliente" style="width:170px">
-        <input type="number" id="ndays" placeholder="Dias (ex: 30)" min="1" style="width:130px" title="Validade em dias (vazio = sem expiração)">
+        <input type="number" id="nexpire" placeholder="Validade (ex: 30)" min="1" style="width:145px" title="Validade (vazio = sem expiração)">
+        <select id="nexpiretype" style="padding:8px 10px;background:var(--dark);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Space Mono',monospace;font-size:12px;outline:none">
+          <option value="days">Dias</option>
+          <option value="hours">Horas</option>
+        </select>
         <button class="btn bp" onclick="generateKey()">+ Gerar Chave</button>
       </div>
     </div>
@@ -412,19 +416,24 @@ function toast(msg,ok=true){
 }
 async function generateKey(){
   const label=document.getElementById('nlabel').value.trim();
-  const days=document.getElementById('ndays').value.trim();
+  const expire=document.getElementById('nexpire').value.trim();
+  const expireType=document.getElementById('nexpiretype').value;
   if(!label){toast('Informe o nome do cliente',false);return;}
   try{
     const body={label};
-    if(days&&parseInt(days)>0)body.expireDays=parseInt(days);
+    if(expire&&parseInt(expire)>0){
+      if(expireType==='hours')body.expireHours=parseInt(expire);
+      else body.expireDays=parseInt(expire);
+    }
     const r=await fetch('/admin/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(r.status===401){toast('Sessão expirada, faça login novamente',false);setTimeout(()=>location.href='/admin',1500);return;}
     const d=await r.json();
     if(d.ok){
-      const expMsg=days?' (expira em '+days+'d)':'';
+      const unit=expireType==='hours'?'h':'d';
+      const expMsg=expire?' (expira em '+expire+unit+')':'';
       toast('Gerada: '+d.key+expMsg);
       document.getElementById('nlabel').value='';
-      document.getElementById('ndays').value='';
+      document.getElementById('nexpire').value='';
       await doRefresh();
     } else toast('Erro ao gerar chave: '+(d.error||'desconhecido'),false);
   }catch(e){toast('Erro de rede: '+e.message,false);}
@@ -547,7 +556,7 @@ async function handleRequest(req, res) {
 
     keys[keyCode].lastUsed = new Date().toISOString();
     keys[keyCode].lastIp   = ip;
-    addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'verify_ok' });
+    // verify_ok não é logado — /v3/key registra o login real logo em seguida
     saveDb();
 
     try {
@@ -674,10 +683,14 @@ async function handleRequest(req, res) {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const body = await parseBody(req);
     const code = generateKey();
-    // expiresAt: aceita 'YYYY-MM-DD' ou número de dias; null = sem expiração
+    // expiresAt: aceita expireDays (dias) ou expireHours (horas); null = sem expiração
     let expiresAt = null;
     if (body.expiresAt) {
       expiresAt = new Date(body.expiresAt).toISOString();
+    } else if (body.expireHours && parseInt(body.expireHours) > 0) {
+      const d = new Date();
+      d.setTime(d.getTime() + parseInt(body.expireHours) * 60 * 60 * 1000);
+      expiresAt = d.toISOString();
     } else if (body.expireDays && parseInt(body.expireDays) > 0) {
       const d = new Date();
       d.setDate(d.getDate() + parseInt(body.expireDays));
