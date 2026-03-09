@@ -650,14 +650,14 @@ async function handleRequest(req, res) {
     }
     if (!keys[keyCode].active) {
       addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'login_blocked' });
-      sendJson(res, { data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave bloqueada.' } }, 403);
+      sendJson(res, { data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave bloqueada.', permissions: [] } }, 403);
       return;
     }
     if (isKeyExpired(keys[keyCode])) {
       keys[keyCode].active = false;
       addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'expired' });
       saveDb();
-      sendJson(res, { data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave expirada.' } }, 403);
+      sendJson(res, { data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave expirada.', permissions: [] } }, 403);
       return;
     }
 
@@ -669,7 +669,7 @@ async function handleRequest(req, res) {
         keys[keyCode].active = false;
         addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'auto_blocked' });
         saveDb();
-        sendJson(res, { data: { message: 'USUÁRIO NÃO ENCONTRADO. Limite de ativações atingido.' } }, 403);
+        sendJson(res, { data: { message: 'USUÁRIO NÃO ENCONTRADO. Limite de ativações atingido.', permissions: [] } }, 403);
         return;
       }
       keys[keyCode].uses      = (keys[keyCode].uses || 0) + 1;
