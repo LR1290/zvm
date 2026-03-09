@@ -273,8 +273,22 @@ button{padding:14px;background:var(--green);color:#000;border:none;border-radius
 function buildKeysHtml() {
   const entries = Object.entries(keys);
   if (!entries.length) return `<tr><td colspan="9" class="empty">Nenhuma chave cadastrada</td></tr>`;
-  return entries.map(([code, k]) => `
-<tr>
+  return entries.map(([code, k]) => {
+  const expHtml = k.expiresAt ? (()=>{
+    const exp = new Date(k.expiresAt), now = new Date(), expired = now > exp;
+    const diffMs = exp - now;
+    const diffH  = Math.floor(diffMs / 36e5);
+    const diffM  = Math.floor((diffMs % 36e5) / 60000);
+    const diffD  = Math.floor(diffMs / 864e5);
+    let label;
+    if (expired) label = 'expirado';
+    else if (diffH < 1) label = 'exp: ' + diffM + 'min';
+    else if (diffH < 24) label = 'exp: ' + diffH + 'h ' + diffM + 'min';
+    else label = 'exp: ' + diffD + 'd ' + (diffH % 24) + 'h — ' + exp.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'});
+    return `<br><span style="font-size:10px;color:${expired?'var(--red)':'var(--yellow)'}">${label}</span>`;
+  })() : '';
+  return `
+<tr data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${k.active?'ativo':'bloqueado'}" data-uses="${k.uses||0}" data-created="${k.createdAt}">
   <td><span class="kc">${escHtml(code)}</span></td>
   <td>${escHtml(k.label)}</td>
   <td><span class="badge ${k.active?'on':'off'}">${k.active?'ATIVO':'BLOQUEADO'}</span></td>
@@ -282,12 +296,13 @@ function buildKeysHtml() {
   <td>${escHtml(k.lastPhone||'-')}</td>
   <td>${escHtml(k.lastIp||'-')}</td>
   <td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
-  <td>${new Date(k.createdAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}${k.expiresAt?(()=>{const exp=new Date(k.expiresAt),now=new Date(),expired=now>exp,diffH=Math.round((exp-now)/36e5);const label=expired?'expirado':diffH<24?'exp: '+diffH+'h':('exp: '+exp.toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo'}));return`<br><span style="font-size:10px;color:${expired?'var(--red)':'var(--yellow)'}">` +label+'</span>'})():''}</td>
+  <td>${new Date(k.createdAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}${expHtml}</td>
   <td>
     <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
     <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
   </td>
-</tr>`).join('');
+</tr>`;
+  }).join('');
 }
 
 function buildLogsHtml(arr) {
@@ -371,17 +386,25 @@ tr:hover{background:#ffffff04}
       <div class="st">Chaves de Acesso</div>
       <div class="gf">
         <input type="text" id="nlabel" placeholder="Nome do cliente" style="width:170px">
-        <input type="number" id="nexpire" placeholder="Validade (ex: 30)" min="1" style="width:145px" title="Validade (vazio = sem expiração)">
-        <select id="nexpiretype" style="padding:8px 10px;background:var(--dark);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Space Mono',monospace;font-size:12px;outline:none">
-          <option value="days">Dias</option>
-          <option value="hours">Horas</option>
-        </select>
+        <input type="number" id="ndays" placeholder="Dias" min="0" style="width:70px" title="Dias de validade">
+        <input type="number" id="nhours" placeholder="Horas" min="0" style="width:75px" title="Horas de validade">
+        <input type="number" id="nmins" placeholder="Min" min="0" style="width:65px" title="Minutos de validade">
         <button class="btn bp" onclick="generateKey()">+ Gerar Chave</button>
       </div>
     </div>
     <div class="ov">
       <table>
-        <thead><tr><th>Chave</th><th>Cliente</th><th>Status</th><th>Usos</th><th>Telefone</th><th>Último IP</th><th>Último Acesso</th><th>Criada em</th><th>Ações</th></tr></thead>
+        <thead><tr>
+          <th>Chave</th>
+          <th class="sort" onclick="sortKeys('label')" id="th-label">Cliente<span class="arr"></span></th>
+          <th class="sort" onclick="sortKeys('status')" id="th-status">Status<span class="arr"></span></th>
+          <th class="sort" onclick="sortKeys('uses')" id="th-uses">Usos<span class="arr"></span></th>
+          <th class="sort" onclick="sortKeys('phone')" id="th-phone">Telefone<span class="arr"></span></th>
+          <th>Último IP</th>
+          <th>Último Acesso</th>
+          <th class="sort" onclick="sortKeys('created')" id="th-created">Criada em<span class="arr"></span></th>
+          <th>Ações</th>
+        </tr></thead>
         <tbody id="kb">${buildKeysHtml()}</tbody>
       </table>
     </div>
@@ -414,26 +437,57 @@ function toast(msg,ok=true){
   t.style.display='block';
   setTimeout(()=>t.style.display='none',3000);
 }
+let _sortCol=null,_sortDir=1;
+function sortKeys(col){
+  const tbody=document.getElementById('kb');
+  const rows=Array.from(tbody.querySelectorAll('tr[data-label]'));
+  if(!rows.length)return;
+  // Toggle direção
+  if(_sortCol===col)_sortDir*=-1; else{_sortCol=col;_sortDir=1;}
+  // Atualizar visual dos headers
+  ['label','status','uses','phone','created'].forEach(c=>{
+    const th=document.getElementById('th-'+c);
+    if(!th)return;
+    th.classList.remove('asc','desc');
+    if(c===col)th.classList.add(_sortDir===1?'asc':'desc');
+  });
+  rows.sort((a,b)=>{
+    let va,vb;
+    if(col==='uses'){va=parseInt(a.dataset.uses||0);vb=parseInt(b.dataset.uses||0);}
+    else if(col==='created'){va=a.dataset.created;vb=b.dataset.created;}
+    else if(col==='phone'){va=a.dataset.phone||'';vb=b.dataset.phone||'';}
+    else{va=(a.dataset[col]||'').toLowerCase();vb=(b.dataset[col]||'').toLowerCase();}
+    if(va<vb)return -1*_sortDir;
+    if(va>vb)return 1*_sortDir;
+    return 0;
+  });
+  rows.forEach(r=>tbody.appendChild(r));
+}
 async function generateKey(){
   const label=document.getElementById('nlabel').value.trim();
-  const expire=document.getElementById('nexpire').value.trim();
-  const expireType=document.getElementById('nexpiretype').value;
+  const days=parseInt(document.getElementById('ndays').value||0);
+  const hours=parseInt(document.getElementById('nhours').value||0);
+  const mins=parseInt(document.getElementById('nmins').value||0);
   if(!label){toast('Informe o nome do cliente',false);return;}
   try{
     const body={label};
-    if(expire&&parseInt(expire)>0){
-      if(expireType==='hours')body.expireHours=parseInt(expire);
-      else body.expireDays=parseInt(expire);
-    }
+    if(days>0)body.expireDays=days;
+    if(hours>0)body.expireHours=hours;
+    if(mins>0)body.expireMinutes=mins;
     const r=await fetch('/admin/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(r.status===401){toast('Sessão expirada, faça login novamente',false);setTimeout(()=>location.href='/admin',1500);return;}
     const d=await r.json();
     if(d.ok){
-      const unit=expireType==='hours'?'h':'d';
-      const expMsg=expire?' (expira em '+expire+unit+')':'';
+      const parts=[];
+      if(days>0)parts.push(days+'d');
+      if(hours>0)parts.push(hours+'h');
+      if(mins>0)parts.push(mins+'min');
+      const expMsg=parts.length?' (expira em '+parts.join(' ')+')':'';
       toast('Gerada: '+d.key+expMsg);
       document.getElementById('nlabel').value='';
-      document.getElementById('nexpire').value='';
+      document.getElementById('ndays').value='';
+      document.getElementById('nhours').value='';
+      document.getElementById('nmins').value='';
       await doRefresh();
     } else toast('Erro ao gerar chave: '+(d.error||'desconhecido'),false);
   }catch(e){toast('Erro de rede: '+e.message,false);}
@@ -687,14 +741,15 @@ async function handleRequest(req, res) {
     let expiresAt = null;
     if (body.expiresAt) {
       expiresAt = new Date(body.expiresAt).toISOString();
-    } else if (body.expireHours && parseInt(body.expireHours) > 0) {
-      const d = new Date();
-      d.setTime(d.getTime() + parseInt(body.expireHours) * 60 * 60 * 1000);
-      expiresAt = d.toISOString();
-    } else if (body.expireDays && parseInt(body.expireDays) > 0) {
-      const d = new Date();
-      d.setDate(d.getDate() + parseInt(body.expireDays));
-      expiresAt = d.toISOString();
+    } else {
+      const days    = parseInt(body.expireDays    || 0);
+      const hours   = parseInt(body.expireHours   || 0);
+      const minutes = parseInt(body.expireMinutes || 0);
+      if (days > 0 || hours > 0 || minutes > 0) {
+        const d = new Date();
+        d.setTime(d.getTime() + ((days * 1440) + (hours * 60) + minutes) * 60000);
+        expiresAt = d.toISOString();
+      }
     }
     keys[code] = { label: body.label || 'Cliente', active: true, createdAt: new Date().toISOString(), uses: 0, lastUsed: null, lastIp: null, lastPhone: null, expiresAt };
     saveDb();
