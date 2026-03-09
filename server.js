@@ -8,7 +8,7 @@ const ADMIN_USER = process.env.ADMIN_USER;
 const ADMIN_PASS = process.env.ADMIN_PASS;
 if (!ADMIN_USER || !ADMIN_PASS) {
   console.error('❌ ERRO CRÍTICO: Defina as variáveis de ambiente ADMIN_USER e ADMIN_PASS antes de iniciar.');
-  console.error('   No Render.com: Settings > Environment Variables');
+  console.error('   No Render.com: Settings > Environment Variables')asdasdasdsad;
   process.exit(1);
 }
 
