@@ -4,8 +4,13 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT       = process.env.PORT       || 3000;
-const ADMIN_USER = process.env.ADMIN_USER || 'lr1290';
-const ADMIN_PASS = process.env.ADMIN_PASS || 'admin123';
+const ADMIN_USER = process.env.ADMIN_USER;
+const ADMIN_PASS = process.env.ADMIN_PASS;
+if (!ADMIN_USER || !ADMIN_PASS) {
+  console.error('❌ ERRO CRÍTICO: Defina as variáveis de ambiente ADMIN_USER e ADMIN_PASS antes de iniciar.');
+  console.error('   No Render.com: Settings > Environment Variables');
+  process.exit(1);
+}
 
 // ─────────────────────────────────────────────
 // PERSISTÊNCIA
@@ -126,7 +131,7 @@ function getAuthData(keyCode) {
   return {
     numberWarning: false, segments: [],
     data: {
-      key: keyCode, keyId: `id-${keyCode}`, ownerId: 'lr1290-owner', managerId: 'lr1290-manager',
+      key: keyCode, keyId: `id-${keyCode}`, ownerId: 'zv-owner', managerId: 'zv-manager',
       permissions: FULL_PERMISSIONS, username: keys[keyCode]?.label || 'Cliente ZapVoice',
       paymentUrl: null, marketplace: 'premium', email: 'cliente@zapvoice.com.br',
       planName: 'Pro', plan_id: 'ZV_PRO', isLoggedIn: true, isPremium: true, isBasicPlan: false
@@ -736,8 +741,8 @@ async function handleRequest(req, res) {
       const cb = new URL(callback);
       cb.searchParams.set('key',         keyCode);
       cb.searchParams.set('keyId',       `id-${keyCode}`);
-      cb.searchParams.set('ownerId',     'lr1290-owner');
-      cb.searchParams.set('managerId',   'lr1290-manager');
+      cb.searchParams.set('ownerId',     'zv-owner');
+      cb.searchParams.set('managerId',   'zv-manager');
       cb.searchParams.set('isPremium',   'true');
       cb.searchParams.set('isLoggedIn',  'true');
       cb.searchParams.set('planName',    'Pro');
