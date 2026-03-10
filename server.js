@@ -611,9 +611,7 @@ async function doRefresh(){
     sw.style.color=(d.warnKeys>0)?'var(--orange)':'var(--green)';
     sw.closest('.sc').classList.toggle('warn-card',d.warnKeys>0);
     const swl=document.getElementById('s-warnlimit');
-    if(swl){swl.textContent=d.warnLimitKeys||0;swl.style.color=(d.warnLimitKeys>0)?'#ff8c00':'';
-    swl.closest('.sc').style.outline=(d.warnLimitKeys>0)?'1px solid #ff8c0050':'';
-    }
+    if(swl){swl.textContent=d.warnLimitKeys||0;swl.style.color=(d.warnLimitKeys>0)?'#ff8c00':'';swl.closest('.sc').style.outline=(d.warnLimitKeys>0)?'1px solid #ff8c0050':'';}
     document.getElementById('kb').innerHTML=d.keysHtml||'';
     document.getElementById('lb').innerHTML=d.logsHtml||'';
   }catch(e){console.error('Refresh error',e);}
@@ -710,20 +708,12 @@ async function handleRequest(req, res) {
       sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '🚫 Chave bloqueada. Entre em contato com o vendedor.' }));
       return;
     }
-    if (MAX_USES > 0 && (keys[keyCode].phones || []).length >= MAX_USES) {
-      keys[keyCode].warnCount = (keys[keyCode].warnCount || 0) + 1;
+    if (MAX_USES > 0 && (keys[keyCode].uses || 0) >= MAX_USES) {
+      keys[keyCode].active = false;
+      addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'auto_blocked' });
       saveDb();
-      if (keys[keyCode].warnCount > WARN_RETRIES) {
-        keys[keyCode].active = false;
-        addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'auto_blocked' });
-        saveDb();
-        fireWebhook('key_auto_blocked', keyCode, `Limite atingido e ignorado ${WARN_RETRIES}x`);
-        sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '🚫 Chave bloqueada após múltiplos avisos ignorados. Entre em contato com o vendedor.' }));
-        return;
-      }
-      const remaining = WARN_RETRIES - keys[keyCode].warnCount + 1;
-      addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'warn_limit' });
-      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: `\u26a0\ufe0f Limite de ativa\u00e7\u00f5es atingido. Voc\u00ea tem mais ${remaining} tentativa(s) antes do bloqueio. Contate o vendedor.` }));
+      fireWebhook('key_auto_blocked', keyCode, 'Limite de ativações atingido');
+      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '🚫 Limite de ativações atingido. Entre em contato com o vendedor.' }));
       return;
     }
     keys[keyCode].lastUsed = new Date().toISOString();
@@ -781,59 +771,80 @@ async function handleRequest(req, res) {
       return;
     }
 
-    // ── Lista de phones autorizados (migra do lastPhone se necessário) ──
+    // /v3/key só valida a chave — contagem de ativações ocorre em /v3/register-phone
+    if (phone && phone !== '-') keys[keyCode].lastPhone = phone;
+    keys[keyCode].lastUsed = new Date().toISOString();
+    keys[keyCode].lastIp   = ip;
+    addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'relogin_ok' });
+    saveDb();
+    sendJson(res, getAuthData(keyCode));
+    return;
+  }
+
+  // ── EXTENSÃO: registro de phone (chamado após WA conectar) ──
+  if (p === '/extension/v3/register-phone' && req.method === 'POST') {
+    if (!checkRateLimit(ip)) {
+      sendJson(res, { ok: false, error: 'rateLimited' }, 429); return;
+    }
+    const body    = await parseBody(req);
+    const keyCode = (body.authKey || '').toLowerCase();
+    const phone   = (body.phoneNumber || '').trim();
+
+    // Phone inválido — ignorar silenciosamente (WA ainda não conectou)
+    if (!phone || phone === '-' || phone.length < 8) {
+      sendJson(res, { ok: true, registered: false, reason: 'no_phone' }); return;
+    }
+    if (!keyCode || !keys[keyCode]) {
+      sendJson(res, { ok: false, error: 'key_not_found' }); return;
+    }
+    if (!keys[keyCode].active) {
+      sendJson(res, { ok: false, error: 'blocked' }); return;
+    }
+
+    // Migrar lastPhone para lista phones[] se necessário
     if (!keys[keyCode].phones) {
       keys[keyCode].phones = keys[keyCode].lastPhone ? [keys[keyCode].lastPhone] : [];
     }
 
-    // Phone vazio/desconhecido: tratar como relogin do número já registrado
-    // (ZapVoice pode chamar /v3/key antes de ter o phoneNumber disponível)
-    const hasPhone    = phone && phone !== '-';
-    const knownPhone  = hasPhone && keys[keyCode].phones.includes(phone);
-    const emptyPhone  = !hasPhone;
-
-    if (!knownPhone && !emptyPhone) {
-      // Telefone novo e diferente — verificar limite
-      if (MAX_USES > 0 && keys[keyCode].phones.length >= MAX_USES) {
-        // Limite atingido — contar tentativas de aviso
-        keys[keyCode].warnCount = (keys[keyCode].warnCount || 0) + 1;
-
-        if (keys[keyCode].warnCount > WARN_RETRIES) {
-          // Ignorou todos os avisos — bloquear
-          keys[keyCode].active = false;
-          addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'auto_blocked' });
-          saveDb();
-          fireWebhook('key_auto_blocked', keyCode, `Limite atingido e ignorado ${WARN_RETRIES}x por números novos`);
-          sendJson(res, { data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave bloqueada após múltiplos avisos ignorados.', permissions: [] } }, 403);
-          return;
-        }
-
-        // Avisar sem bloquear — número autorizado continua funcionando
-        const remaining = WARN_RETRIES - keys[keyCode].warnCount + 1;
-        addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'warn_limit' });
-        const authPayload      = getAuthData(keyCode);
-        authPayload.warnLimit  = true;
-        authPayload.warnMessage = `\u26a0\ufe0f Aten\u00e7\u00e3o: esta chave atingiu o limite de ativa\u00e7\u00f5es (${keys[keyCode].phones.length}/${MAX_USES} n\u00fameros). Voc\u00ea tem mais ${remaining} tentativa(s) de n\u00famero novo antes do bloqueio autom\u00e1tico. Entre em contato com o vendedor.`;
-        authPayload.warnRemaining = remaining;
-        keys[keyCode].lastUsed  = new Date().toISOString();
-        keys[keyCode].lastIp    = ip;
-        saveDb();
-        sendJson(res, authPayload);
-        return;
-      }
-
-      // Slot disponível — registrar novo número
-      keys[keyCode].phones.push(phone);
-      keys[keyCode].uses = keys[keyCode].phones.length;
+    // Número já registrado — relogin autorizado, não conta
+    if (keys[keyCode].phones.includes(phone)) {
+      keys[keyCode].lastPhone = phone;
+      keys[keyCode].lastUsed  = new Date().toISOString();
+      saveDb();
+      sendJson(res, { ok: true, registered: false, reason: 'already_registered' }); return;
     }
 
+    // Número novo — verificar limite
+    if (MAX_USES > 0 && keys[keyCode].phones.length >= MAX_USES) {
+      keys[keyCode].warnCount = (keys[keyCode].warnCount || 0) + 1;
+      saveDb();
+
+      if (keys[keyCode].warnCount > WARN_RETRIES) {
+        keys[keyCode].active = false;
+        addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion: '-', action: 'auto_blocked' });
+        saveDb();
+        fireWebhook('key_auto_blocked', keyCode, `Limite atingido e ignorado ${WARN_RETRIES}x`);
+        sendJson(res, { ok: false, blocked: true, error: 'auto_blocked' }); return;
+      }
+
+      const remaining = WARN_RETRIES - keys[keyCode].warnCount + 1;
+      addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion: '-', action: 'warn_limit' });
+      sendJson(res, {
+        ok: false,
+        warnLimit: true,
+        warnMessage: `⚠️ Esta chave atingiu o limite de ativações (${keys[keyCode].phones.length}/${MAX_USES} números). Você tem mais ${remaining} tentativa(s) de número novo antes do bloqueio automático. Entre em contato com o vendedor.`,
+        warnRemaining: remaining
+      }); return;
+    }
+
+    // Slot disponível — registrar número novo
+    keys[keyCode].phones.push(phone);
+    keys[keyCode].uses      = keys[keyCode].phones.length;
+    keys[keyCode].lastPhone = phone;
     keys[keyCode].lastUsed  = new Date().toISOString();
-    keys[keyCode].lastIp    = ip;
-    if (hasPhone) keys[keyCode].lastPhone = phone;
-    addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: (knownPhone || emptyPhone) ? 'relogin_ok' : 'login_ok' });
+    addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion: '-', action: 'login_ok' });
     saveDb();
-    sendJson(res, getAuthData(keyCode));
-    return;
+    sendJson(res, { ok: true, registered: true }); return;
   }
 
   // ── EXTENSÃO: check-status (polling 30s) ──
