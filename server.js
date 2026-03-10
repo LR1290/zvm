@@ -47,7 +47,7 @@ const USAGE_LIMITS = {
   message:      { sent:0, max:-1 }, scheduleItem: { sent:0, max:-1 }
 };
 const MAX_USES     = 3;
-const WARN_RETRIES = 5; // tentativas extras com número NOVO antes de bloquear automaticamente
+const WARN_RETRIES = 5; // tentativas de número NOVO após limite antes do bloqueio automático
 
 // Aviso de expiração antecipado: quantas horas antes mostrar banner
 const EXPIRY_WARN_HOURS = parseInt(process.env.EXPIRY_WARN_HOURS || '48');
@@ -341,8 +341,8 @@ function buildLogsHtml(arr) {
 // ADMIN: DASHBOARD — renderização completa
 // ─────────────────────────────────────────────
 function renderAdminDashboard() {
-  const expiringSoon    = Object.values(keys).filter(k => k.active && isKeyExpiringSoon(k)).length;
-  const warnLimitKeys   = Object.values(keys).filter(k => k.active && (k.warnCount||0) > 0).length;
+  const expiringSoon  = Object.values(keys).filter(k => k.active && isKeyExpiringSoon(k)).length;
+  const warnLimitKeys = Object.values(keys).filter(k => k.active && (k.warnCount||0) > 0).length;
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -781,51 +781,56 @@ async function handleRequest(req, res) {
       return;
     }
 
-    // ── Verificar se telefone já é autorizado (lista de phones) ──
-    if (!keys[keyCode].phones) keys[keyCode].phones = keys[keyCode].lastPhone ? [keys[keyCode].lastPhone] : [];
-    const knownPhone = phone && phone !== '-' && keys[keyCode].phones.includes(phone);
+    // ── Lista de phones autorizados (migra do lastPhone se necessário) ──
+    if (!keys[keyCode].phones) {
+      keys[keyCode].phones = keys[keyCode].lastPhone ? [keys[keyCode].lastPhone] : [];
+    }
 
-    if (!knownPhone) {
-      // Telefone novo — verificar se ainda há slots disponíveis
+    // Phone vazio/desconhecido: tratar como relogin do número já registrado
+    // (ZapVoice pode chamar /v3/key antes de ter o phoneNumber disponível)
+    const hasPhone    = phone && phone !== '-';
+    const knownPhone  = hasPhone && keys[keyCode].phones.includes(phone);
+    const emptyPhone  = !hasPhone;
+
+    if (!knownPhone && !emptyPhone) {
+      // Telefone novo e diferente — verificar limite
       if (MAX_USES > 0 && keys[keyCode].phones.length >= MAX_USES) {
-        // Limite atingido — incrementar contador de avisos
+        // Limite atingido — contar tentativas de aviso
         keys[keyCode].warnCount = (keys[keyCode].warnCount || 0) + 1;
-        saveDb();
 
         if (keys[keyCode].warnCount > WARN_RETRIES) {
-          // Ignorou os avisos WARN_RETRIES vezes — bloquear agora
+          // Ignorou todos os avisos — bloquear
           keys[keyCode].active = false;
           addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'auto_blocked' });
           saveDb();
-          fireWebhook('key_auto_blocked', keyCode, `Limite atingido e ignorado ${WARN_RETRIES}x`);
+          fireWebhook('key_auto_blocked', keyCode, `Limite atingido e ignorado ${WARN_RETRIES}x por números novos`);
           sendJson(res, { data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave bloqueada após múltiplos avisos ignorados.', permissions: [] } }, 403);
           return;
         }
 
-        // Avisar sem bloquear
+        // Avisar sem bloquear — número autorizado continua funcionando
         const remaining = WARN_RETRIES - keys[keyCode].warnCount + 1;
         addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'warn_limit' });
-        const authPayload = getAuthData(keyCode);
-        authPayload.warnLimit     = true;
-        authPayload.warnMessage   = `\u26a0\ufe0f Aten\u00e7\u00e3o: esta chave atingiu o limite de ativa\u00e7\u00f5es (${keys[keyCode].phones.length}/${MAX_USES}). Voc\u00ea tem mais ${remaining} tentativa(s) antes do bloqueio autom\u00e1tico. Entre em contato com o vendedor.`;
+        const authPayload      = getAuthData(keyCode);
+        authPayload.warnLimit  = true;
+        authPayload.warnMessage = `\u26a0\ufe0f Aten\u00e7\u00e3o: esta chave atingiu o limite de ativa\u00e7\u00f5es (${keys[keyCode].phones.length}/${MAX_USES} n\u00fameros). Voc\u00ea tem mais ${remaining} tentativa(s) de n\u00famero novo antes do bloqueio autom\u00e1tico. Entre em contato com o vendedor.`;
         authPayload.warnRemaining = remaining;
         keys[keyCode].lastUsed  = new Date().toISOString();
         keys[keyCode].lastIp    = ip;
-        keys[keyCode].lastPhone = phone;
         saveDb();
         sendJson(res, authPayload);
         return;
       }
 
-      // Slot disponível — registrar o novo telefone
+      // Slot disponível — registrar novo número
       keys[keyCode].phones.push(phone);
       keys[keyCode].uses = keys[keyCode].phones.length;
     }
 
     keys[keyCode].lastUsed  = new Date().toISOString();
     keys[keyCode].lastIp    = ip;
-    keys[keyCode].lastPhone = phone;
-    addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: knownPhone ? 'relogin_ok' : 'login_ok' });
+    if (hasPhone) keys[keyCode].lastPhone = phone;
+    addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: (knownPhone || emptyPhone) ? 'relogin_ok' : 'login_ok' });
     saveDb();
     sendJson(res, getAuthData(keyCode));
     return;
