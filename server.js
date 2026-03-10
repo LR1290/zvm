@@ -1146,7 +1146,7 @@ async function handleRequest(req, res) {
       return cols.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',');
     });
     const csv = [header, ...rows].join('\r\n');
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');aa
     res.setHeader('Content-Disposition', `attachment; filename="zapvoice-${new Date().toISOString().slice(0,10)}.csv"`);
     res.writeHead(200); res.end('\uFEFF' + csv); // BOM para Excel reconhecer UTF-8
     return;
@@ -1163,3 +1163,4 @@ http.createServer(handleRequest).listen(PORT, () => {
   console.log(`📊 Chaves: ${Object.keys(keys).length} | Webhook: ${WEBHOOK_URL || 'não configurado'}`);
   console.log(`⚠  Aviso expiração: ${EXPIRY_WARN_HOURS}h antes`);
 });
+aaa
