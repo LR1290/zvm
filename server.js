@@ -447,6 +447,7 @@ tr:hover{background:#ffffff04}
         <input type="number" id="ndays"  placeholder="Dias"  min="0" style="width:68px">
         <input type="number" id="nhours" placeholder="Horas" min="0" style="width:72px">
         <input type="number" id="nmins"  placeholder="Min"   min="0" style="width:65px">
+        <select id="nmaxuses" style="padding:9px 10px;background:var(--dark);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Space Mono',monospace;font-size:12px;outline:none;cursor:pointer"><option value="1">1 uso</option><option value="2">2 usos</option><option value="3" selected>3 usos</option><option value="5">5 usos</option><option value="10">10 usos</option><option value="-1">Ilimitado</option></select>
         <button class="btn bp" onclick="generateKey()">+ Gerar Chave</button>
       </div>
     </div>
@@ -570,9 +571,10 @@ async function generateKey(){
   const days=parseInt(document.getElementById('ndays').value||0);
   const hours=parseInt(document.getElementById('nhours').value||0);
   const mins=parseInt(document.getElementById('nmins').value||0);
+  const maxUses=parseInt(document.getElementById('nmaxuses').value||3);
   if(!label){toast('Informe o nome do cliente',false);return;}
   try{
-    const body={label};
+    const body={label,maxUses};
     if(days>0)body.expireDays=days;
     if(hours>0)body.expireHours=hours;
     if(mins>0)body.expireMinutes=mins;
@@ -582,7 +584,7 @@ async function generateKey(){
     if(d.ok){
       const parts=[];
       if(days>0)parts.push(days+'d'); if(hours>0)parts.push(hours+'h'); if(mins>0)parts.push(mins+'min');
-      toast('Gerada: '+d.key+(parts.length?' (expira em '+parts.join(' ')+')':''));
+      toast('Gerada: '+d.key+(parts.length?' (expira em '+parts.join(' ')+')':'')+(maxUses===-1?' — Ilimitado':' — '+maxUses+' uso(s)'));
       ['nlabel','ndays','nhours','nmins'].forEach(id=>document.getElementById(id).value='');
       await doRefresh();
     } else toast('Erro: '+(d.error||'desconhecido'),false);
@@ -888,8 +890,9 @@ async function handleRequest(req, res) {
     const knownPhone = hasPhone && keys[keyCode].phones.includes(phone);
     const isNewPhone = hasPhone && !knownPhone;
 
+    const keyMaxUses = (typeof keys[keyCode].maxUses === 'number') ? keys[keyCode].maxUses : MAX_USES;
     if (isNewPhone) {
-      if (MAX_USES > 0 && keys[keyCode].phones.length >= MAX_USES) {
+      if (keyMaxUses > 0 && keys[keyCode].phones.length >= keyMaxUses) {
         // Limite atingido por número novo — aviso + bloqueia o login deste número
         keys[keyCode].warnCount = (keys[keyCode].warnCount || 0) + 1;
         saveDb();
@@ -910,7 +913,7 @@ async function handleRequest(req, res) {
           warnLimit: true,
           warnRemaining: remaining,
           data: {
-            message: `USUÁRIO NÃO ENCONTRADO. Limite de ativações atingido (${keys[keyCode].phones.length}/${MAX_USES}). ${remaining} tentativa(s) de número novo restante(s). Contate o vendedor.`,
+            message: `USUÁRIO NÃO ENCONTRADO. Limite de ativações atingido (${keys[keyCode].phones.length}/${keyMaxUses}). ${remaining} tentativa(s) de número novo restante(s). Contate o vendedor.`,
             permissions: []
           }
         }, 403);
@@ -1012,7 +1015,8 @@ async function handleRequest(req, res) {
         expiresAt = d.toISOString();
       }
     }
-    keys[code] = { label: body.label || 'Cliente', active: true, createdAt: new Date().toISOString(), uses: 0, lastUsed: null, lastIp: null, lastPhone: null, deviceId: null, note: '', expiresAt };
+    const maxUses = parseInt(body.maxUses ?? 3);
+    keys[code] = { label: body.label || 'Cliente', active: true, createdAt: new Date().toISOString(), uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null, deviceId: null, note: '', expiresAt, maxUses: isNaN(maxUses) ? 3 : maxUses };
     saveDb();
     sendJson(res, { ok: true, key: code }); return;
   }
