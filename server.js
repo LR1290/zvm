@@ -708,7 +708,12 @@ async function handleRequest(req, res) {
       sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '🚫 Chave bloqueada. Entre em contato com o vendedor.' }));
       return;
     }
-    // Limite de ativações: verificado em /v3/key (onde o phoneNumber está disponível)
+    // Migrar lastPhone legado para phones[] se necessário
+    if (!keys[keyCode].phones) {
+      keys[keyCode].phones = keys[keyCode].lastPhone ? [keys[keyCode].lastPhone] : [];
+    }
+    // /auth/verify não tem phoneNumber — não pode saber se é usuário autorizado.
+    // O controle de limite acontece no /v3/key onde o phone real está disponível.
     keys[keyCode].lastUsed = new Date().toISOString();
     keys[keyCode].lastIp   = ip;
     saveDb();
