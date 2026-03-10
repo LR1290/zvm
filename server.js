@@ -307,7 +307,7 @@ function buildKeysHtml() {
   <td><span class="kc">${escHtml(code)}</span></td>
   <td>${escHtml(k.label)}</td>
   <td><span class="badge ${k.active?(k.warnCount>0?'wl':'on'):'off'}">${k.active?(k.warnCount>0?`AVISO (${k.warnCount}/${WARN_RETRIES})`:'ATIVO'):'BLOQUEADO'}</span></td>
-  <td><span style="color:${(k.phones||[]).length>=MAX_USES?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${MAX_USES}</span></td>
+  <td><span style="color:${((k.phones||[]).length>=(typeof k.maxUses==='number'&&k.maxUses>0?k.maxUses:MAX_USES)&&(typeof k.maxUses==='number'?k.maxUses:MAX_USES)>0)?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${typeof k.maxUses==='number'&&k.maxUses===-1?'∞':(typeof k.maxUses==='number'?k.maxUses:MAX_USES)}</span></td>
   <td>${escHtml(k.lastPhone||'-')}</td>
   <td>${escHtml(k.lastIp||'-')}</td>
   <td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
@@ -447,7 +447,7 @@ tr:hover{background:#ffffff04}
         <input type="number" id="ndays"  placeholder="Dias"  min="0" style="width:68px">
         <input type="number" id="nhours" placeholder="Horas" min="0" style="width:72px">
         <input type="number" id="nmins"  placeholder="Min"   min="0" style="width:65px">
-        <select id="nmaxuses" style="padding:9px 10px;background:var(--dark);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Space Mono',monospace;font-size:12px;outline:none;cursor:pointer"><option value="1">1 uso</option><option value="2">2 usos</option><option value="3" selected>3 usos</option><option value="5">5 usos</option><option value="10">10 usos</option><option value="-1">Ilimitado</option></select>
+        <input type="number" id="nmaxuses" placeholder="Usos" min="1" title="Máximo de números. Deixe vazio para 3 (padrão). Use -1 para ilimitado." style="width:72px;padding:9px 10px;background:var(--dark);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Space Mono',monospace;font-size:13px;outline:none">
         <button class="btn bp" onclick="generateKey()">+ Gerar Chave</button>
       </div>
     </div>
@@ -571,7 +571,7 @@ async function generateKey(){
   const days=parseInt(document.getElementById('ndays').value||0);
   const hours=parseInt(document.getElementById('nhours').value||0);
   const mins=parseInt(document.getElementById('nmins').value||0);
-  const maxUses=parseInt(document.getElementById('nmaxuses').value||3);
+  const _mu=document.getElementById('nmaxuses').value.trim();const maxUses=_mu===''?3:parseInt(_mu);
   if(!label){toast('Informe o nome do cliente',false);return;}
   try{
     const body={label,maxUses};
@@ -585,7 +585,7 @@ async function generateKey(){
       const parts=[];
       if(days>0)parts.push(days+'d'); if(hours>0)parts.push(hours+'h'); if(mins>0)parts.push(mins+'min');
       toast('Gerada: '+d.key+(parts.length?' (expira em '+parts.join(' ')+')':'')+(maxUses===-1?' — Ilimitado':' — '+maxUses+' uso(s)'));
-      ['nlabel','ndays','nhours','nmins'].forEach(id=>document.getElementById(id).value='');
+      ['nlabel','ndays','nhours','nmins','nmaxuses'].forEach(id=>document.getElementById(id).value='');
       await doRefresh();
     } else toast('Erro: '+(d.error||'desconhecido'),false);
   }catch(e){toast('Erro de rede',false);}
