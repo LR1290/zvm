@@ -270,22 +270,6 @@ input:focus{border-color:#00ff87}
     <label>Senha</label><input type="password" name="pass">
     <button type="submit" class="btn">Entrar</button>
   </form>
-
-<div id="modal-limit" style="display:none;position:fixed;inset:0;background:#000b;z-index:999;align-items:center;justify-content:center;" onclick="if(event.target===this)closeModal('modal-limit')">
-  <div style="background:#16162a;border:1px solid #333;border-radius:14px;padding:28px 32px;min-width:300px;max-width:90vw;box-shadow:0 8px 40px #0009">
-    <h3 style="margin:0 0 4px;color:#e0e0e0;font-size:.95rem">Definir Limite de Usos</h3>
-    <p style="margin:0 0 16px;color:#555;font-size:.74rem;word-break:break-all" id="ml-label"></p>
-    <input type="hidden" id="ml-code">
-    <label style="font-size:.78rem;color:#888;display:block;margin-bottom:6px;">Máx. de números únicos &nbsp;<span style="color:#555">( vazio ou 0 = ilimitado )</span></label>
-    <input id="ml-val" type="number" min="1" step="1" placeholder="Ex: 3"
-      style="width:100%;box-sizing:border-box;padding:9px 12px;background:#111;border:1px solid #333;border-radius:8px;color:#e0e0e0;font-size:.9rem;margin-bottom:20px;outline:none;"
-      onkeydown="if(event.key==='Enter')saveLimit();if(event.key==='Escape')closeModal('modal-limit')">
-    <div style="display:flex;gap:10px;justify-content:flex-end">
-      <button class="bs" style="background:#1a1a1a;color:#777;border:1px solid #2a2a2a" onclick="closeModal('modal-limit')">Cancelar</button>
-      <button class="bs" style="background:#00ff8818;color:#00ff88;border:1px solid #00ff8830" onclick="saveLimit()">Salvar</button>
-    </div>
-  </div>
-</div>
 </div></body></html>`;
 }
 
