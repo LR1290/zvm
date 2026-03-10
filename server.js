@@ -896,15 +896,7 @@ async function handleRequest(req, res) {
         // Limite atingido por número novo — aviso + bloqueia o login deste número
         keys[keyCode].warnCount = (keys[keyCode].warnCount || 0) + 1;
         saveDb();
-        if (keys[keyCode].warnCount > WARN_RETRIES) {
-          // Ignorou avisos demais — bloquear a chave inteira
-          keys[keyCode].active = false;
-          addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'auto_blocked' });
-          saveDb();
-          fireWebhook('key_auto_blocked', keyCode, `Limite atingido e ignorado ${WARN_RETRIES}x`);
-          sendJson(res, { data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave bloqueada após múltiplos avisos.', permissions: [] } }, 403);
-          return;
-        }
+        // Auto-bloqueio desativado — admin bloqueia manualmente se necessário
         const remaining = WARN_RETRIES - keys[keyCode].warnCount + 1;
         addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'warn_limit' });
         // HTTP 403 + USUÁRIO NÃO ENCONTRADO → extensão interpreta como userNotFound → desloga
