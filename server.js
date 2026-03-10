@@ -307,7 +307,7 @@ function buildKeysHtml() {
   <td><span class="kc">${escHtml(code)}</span></td>
   <td>${escHtml(k.label)}</td>
   <td><span class="badge ${k.active?(k.warnCount>0?'wl':'on'):'off'}">${k.active?(k.warnCount>0?`AVISO (${k.warnCount}/${WARN_RETRIES})`:'ATIVO'):'BLOQUEADO'}</span></td>
-  <td><span style="color:${(k.phones||[]).length>=MAX_USES?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${MAX_USES}</span></td>
+  <td><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
   <td>${escHtml(k.lastPhone||'-')}</td>
   <td>${escHtml(k.lastIp||'-')}</td>
   <td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
@@ -316,7 +316,7 @@ function buildKeysHtml() {
   <td>
     <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
     <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
-    ${(k.warnCount||0)>0 ? `<button class="bs" style="background:#ff8c0020;color:#ff8c00;border:1px solid #ff8c0040" onclick="resetWarn('${escHtml(code)}')">Limpar Avisos</button>` : ''}
+    ${(k.warnCount||0)>0 ? `<button class="bs bwarn" onclick="resetWarn('${escHtml(code)}')">⚠ Avisos</button>` : ''}
   </td>
 </tr>`;
   }).join('');
@@ -351,96 +351,164 @@ function renderAdminDashboard() {
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--green:#00ff87;--dark:#0a0a0f;--card:#111118;--border:#1e1e2e;--text:#e2e2f0;--muted:#6b6b8a;--red:#ff4757;--yellow:#ffd32a;--orange:#ff8600}
+:root{
+  --green:#00ff87;--dark:#080810;--card:#0f0f1a;--card2:#13131f;
+  --border:#1c1c2e;--border2:#252538;--text:#e2e2f0;--muted:#5a5a7a;
+  --red:#ff4757;--yellow:#ffd32a;--orange:#ff8600;--blue:#4f8ef7;--purple:#9b59b6;
+  --radius:10px;--radius-sm:6px;
+}
 body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh}
-header{display:flex;align-items:center;justify-content:space-between;padding:18px 32px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:100}
-.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green)}
-.hright{display:flex;align-items:center;gap:16px}
-a.out{color:var(--muted);font-size:12px;text-decoration:none}
-a.out:hover{color:var(--red)}
-main{padding:28px 32px;max-width:1600px;margin:0 auto}
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px}
-.sc{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;position:relative}
-.sc.warn-card{border-color:var(--orange)}
-.sc .n{font-family:'Syne',sans-serif;font-size:38px;font-weight:800;color:var(--green)}
+
+/* ── Header ── */
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;
+  border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:100;
+  box-shadow:0 2px 20px #00000040}
+.logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--green);
+  display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
+.hright{display:flex;align-items:center;gap:10px}
+a.out{color:var(--muted);font-size:11px;text-decoration:none;padding:6px 12px;
+  border:1px solid var(--border2);border-radius:var(--radius-sm);transition:all .2s}
+a.out:hover{color:var(--red);border-color:var(--red)}
+
+/* ── Main ── */
+main{padding:22px 24px;max-width:1700px;margin:0 auto}
+
+/* ── Stats ── */
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px}
+.sc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  padding:16px 18px;position:relative;overflow:hidden;transition:border-color .2s,transform .15s}
+.sc:hover{border-color:var(--border2);transform:translateY(-1px)}
+.sc.warn-card{border-color:#ff860050;background:#ff860008}
+.sc-icon{position:absolute;right:14px;top:14px;font-size:22px;opacity:.15}
+.sc .n{font-family:'Syne',sans-serif;font-size:30px;font-weight:800;color:var(--green);line-height:1.1}
 .sc.warn-card .n{color:var(--orange)}
-.sc .l{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-top:4px}
-.sec{background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:22px;overflow:hidden}
-.sh{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:12px}
-.st{font-family:'Syne',sans-serif;font-weight:700;font-size:15px}
-.gf{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.gf input{padding:9px 13px;background:var(--dark);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Space Mono',monospace;font-size:13px;outline:none}
-.gf input:focus{border-color:var(--green)}
-.btn{padding:10px 18px;border:none;border-radius:8px;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;transition:opacity .2s}
-.btn:hover{opacity:.8}
-.bp{background:var(--green);color:#000}
-.bw{background:#ffd32a20;color:var(--yellow);border:1px solid var(--yellow)}
-.bs{padding:5px 11px;border:none;border-radius:6px;cursor:pointer;font-family:'Space Mono',monospace;font-size:11px;margin-right:3px;transition:opacity .2s}
+.sc .l{color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:1.5px;margin-top:5px}
+
+/* ── Seções ── */
+.sec{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  margin-bottom:16px;overflow:hidden}
+.sh{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;
+  border-bottom:1px solid var(--border);background:var(--card2);flex-wrap:wrap;gap:10px}
+.st{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:var(--green);
+  display:flex;align-items:center;gap:6px}
+
+/* ── Form geração ── */
+.gen-form{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.gen-form input{
+  padding:7px 10px;background:var(--dark);border:1px solid var(--border);
+  border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;
+  font-size:11px;outline:none;transition:border .18s;
+}
+.gen-form input:focus{border-color:var(--green);background:#0a0a14}
+.gen-form input::placeholder{color:var(--muted)}
+.fi-name{width:148px}
+.fi-num{width:58px;text-align:center}
+.fi-sep{width:1px;height:24px;background:var(--border2);margin:0 2px;flex-shrink:0}
+.fi-label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;
+  display:flex;flex-direction:column;align-items:center;gap:3px}
+.fi-label input{margin:0}
+
+/* ── Botões principais ── */
+.btn{padding:7px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;
+  font-family:'Syne',sans-serif;font-weight:700;font-size:11px;
+  transition:all .18s;white-space:nowrap;letter-spacing:.3px}
+.btn:hover{opacity:.85;transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.bp{background:var(--green);color:#000;box-shadow:0 0 12px #00ff8730}
+.bw{background:#ffd32a12;color:var(--yellow);border:1px solid #ffd32a35}
+.br{background:#ff475712;color:var(--red);border:1px solid #ff475735}
+.bcsv{background:#4f8ef712;color:var(--blue);border:1px solid #4f8ef735}
+
+/* ── Botões de ação na tabela ── */
+.bs{padding:3px 8px;border:none;border-radius:4px;cursor:pointer;
+  font-family:'Space Mono',monospace;font-size:10px;margin-right:2px;
+  transition:all .15s;white-space:nowrap}
 .bs:hover{opacity:.8}
-.bg{background:#00ff8720;color:var(--green);border:1px solid var(--green)}
-.bd{background:#ff475720;color:var(--red);border:1px solid var(--red)}
+.bg{background:#00ff8712;color:var(--green);border:1px solid #00ff8730}
+.bd{background:#ff475712;color:var(--red);border:1px solid #ff475730}
+.bwarn{background:#ff8c0012;color:#ff8c00;border:1px solid #ff8c0030}
+
+/* ── Tabela ── */
 .ov{overflow-x:auto}
 table{width:100%;border-collapse:collapse}
-th{padding:11px 15px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:1px solid var(--border);font-weight:400;cursor:default}
-th.sort{cursor:pointer;user-select:none}
+th{padding:8px 11px;text-align:left;font-size:9px;text-transform:uppercase;
+  letter-spacing:1.5px;color:var(--muted);border-bottom:1px solid var(--border);
+  font-weight:400;white-space:nowrap;background:var(--card2)}
+th.sort{cursor:pointer;user-select:none;transition:color .15s}
 th.sort:hover{color:var(--text)}
-th.asc .arr::after{content:' ▲'}
-th.desc .arr::after{content:' ▼'}
-th:not(.asc):not(.desc) .arr::after{content:' ⇅';opacity:.3}
-td{padding:13px 15px;font-size:12px;border-bottom:1px solid var(--border);vertical-align:middle}
+th.asc .arr::after{content:' ▲';color:var(--green);font-size:8px}
+th.desc .arr::after{content:' ▼';color:var(--green);font-size:8px}
+th:not(.asc):not(.desc) .arr::after{content:' ⇅';opacity:.2;font-size:8px}
+td{padding:10px 11px;font-size:11px;border-bottom:1px solid #14141f;vertical-align:middle}
 tr:last-child td{border-bottom:none}
-tr:hover{background:#ffffff04}
-.kc{color:var(--green);font-size:12px;letter-spacing:1px}
-.badge{padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:1px}
-.on{background:#00ff8720;color:var(--green)}
-.off{background:#ff475720;color:var(--red)}
-.re{background:#4287f520;color:#4287f5}
-.vr{background:#9b59b620;color:#9b59b6}
-.warn{background:#ffd32a20;color:var(--yellow)}
-.wl{background:#ff8c0020;color:#ff8c00}
-.empty{text-align:center;color:var(--muted);padding:32px!important}
-.toast{position:fixed;bottom:28px;right:28px;padding:13px 22px;border-radius:10px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;display:none;z-index:999}
-/* Notas */
-.note-cell{cursor:pointer;max-width:160px}
+tr:hover td{background:#ffffff02}
+.kc{color:var(--green);font-size:11px;letter-spacing:.3px;font-family:'Space Mono',monospace}
+.badge{padding:2px 7px;border-radius:3px;font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase}
+.on{background:#00ff8718;color:var(--green);border:1px solid #00ff8730}
+.off{background:#ff475718;color:var(--red);border:1px solid #ff475730}
+.re{background:#4f8ef718;color:var(--blue)}
+.vr{background:#9b59b618;color:var(--purple)}
+.warn{background:#ffd32a18;color:var(--yellow)}
+.wl{background:#ff8c0018;color:#ff8c00}
+.empty{text-align:center;color:var(--muted);padding:40px!important;font-size:11px;letter-spacing:1px}
+
+/* ── Toast ── */
+.toast{position:fixed;bottom:20px;right:20px;padding:11px 18px;border-radius:var(--radius);
+  font-family:'Syne',sans-serif;font-weight:700;font-size:12px;display:none;z-index:9999;
+  box-shadow:0 6px 30px #00000070;max-width:380px;line-height:1.4}
+
+/* ── Notas ── */
+.note-cell{cursor:pointer;max-width:130px}
 .note-cell:hover .note-preview{color:var(--green)}
-.note-preview{color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:150px}
-/* Modal */
-.modal-bg{display:none;position:fixed;inset:0;background:#00000088;z-index:200;align-items:center;justify-content:center}
+.note-preview{color:var(--muted);font-size:10px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;display:block;max-width:120px}
+
+/* ── Modal ── */
+.modal-bg{display:none;position:fixed;inset:0;background:#00000090;z-index:200;
+  align-items:center;justify-content:center;backdrop-filter:blur(3px)}
 .modal-bg.open{display:flex}
-.modal{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:28px;width:380px;max-width:95vw}
-.modal h3{font-family:'Syne',sans-serif;font-size:15px;margin-bottom:14px;color:var(--green)}
-.modal textarea{width:100%;background:var(--dark);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Space Mono',monospace;font-size:12px;padding:10px;outline:none;resize:vertical;min-height:90px}
+.modal{background:var(--card);border:1px solid var(--border2);border-radius:12px;
+  padding:22px;width:340px;max-width:95vw;box-shadow:0 20px 60px #00000090}
+.modal h3{font-family:'Syne',sans-serif;font-size:13px;margin-bottom:11px;color:var(--green)}
+.modal textarea{width:100%;background:var(--dark);border:1px solid var(--border);
+  border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;
+  font-size:11px;padding:9px;outline:none;resize:vertical;min-height:80px;transition:border .2s}
 .modal textarea:focus{border-color:var(--green)}
-.modal-actions{display:flex;gap:8px;margin-top:14px;justify-content:flex-end}
-@media(max-width:900px){.stats{grid-template-columns:1fr 1fr};main{padding:16px}}
-@media(max-width:500px){.stats{grid-template-columns:1fr}}
+.modal-actions{display:flex;gap:8px;margin-top:11px;justify-content:flex-end}
+
+@media(max-width:1200px){.stats{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:750px){.stats{grid-template-columns:1fr 1fr};main{padding:14px 12px}}
+@media(max-width:420px){.stats{grid-template-columns:1fr};.gen-form{flex-direction:column;align-items:stretch}}
 </style>
 </head>
 <body>
 <header>
-  <div class="logo">⚡ ZapVoice Admin</div>
+  <div class="logo">⚡ ZapVoice</div>
   <div class="hright">
-    <button class="btn" style="background:#00ff8720;color:var(--green);border:1px solid var(--green);font-size:12px;padding:7px 14px" onclick="exportCSV()">⬇ CSV</button>
-    <a href="/admin/logout" class="out">[ sair ]</a>
+    <button class="btn bcsv" onclick="exportCSV()">⬇ CSV</button>
+    <a href="/admin/logout" class="out">↩ Sair</a>
   </div>
 </header>
 <main>
   <div class="stats">
-    <div class="sc"><div class="n" id="s-total">${Object.keys(keys).length}</div><div class="l">Total de Chaves</div></div>
-    <div class="sc"><div class="n" id="s-active">${Object.values(keys).filter(k=>k.active).length}</div><div class="l">Chaves Ativas</div></div>
-    <div class="sc ${expiringSoon > 0 ? 'warn-card' : ''}"><div class="n" id="s-warn" style="${expiringSoon>0?'color:var(--orange)':''}">${expiringSoon}</div><div class="l">Expirando em ${EXPIRY_WARN_HOURS}h</div></div>
-    <div class="sc"><div class="n" id="s-warnlimit" style="${warnLimitKeys>0?'color:#ff8c00':''}">${warnLimitKeys}</div><div class="l">Em Aviso de Limite</div></div>
-    <div class="sc"><div class="n" id="s-logs">${logs.length}</div><div class="l">Acessos Registrados</div></div>
+    <div class="sc"><div class="sc-icon">🔑</div><div class="n" id="s-total">${Object.keys(keys).length}</div><div class="l">Total de Chaves</div></div>
+    <div class="sc"><div class="sc-icon">✅</div><div class="n" id="s-active">${Object.values(keys).filter(k=>k.active).length}</div><div class="l">Chaves Ativas</div></div>
+    <div class="sc ${expiringSoon > 0 ? 'warn-card' : ''}"><div class="sc-icon">⏰</div><div class="n" id="s-warn" style="${expiringSoon>0?'color:var(--orange)':''}">${expiringSoon}</div><div class="l">Expirando em ${EXPIRY_WARN_HOURS}h</div></div>
+    <div class="sc"><div class="sc-icon">⚠️</div><div class="n" id="s-warnlimit" style="${warnLimitKeys>0?'color:#ff8c00':''}">${warnLimitKeys}</div><div class="l">Aviso de Limite</div></div>
+    <div class="sc"><div class="sc-icon">📋</div><div class="n" id="s-logs">${logs.length}</div><div class="l">Acessos Registrados</div></div>
   </div>
 
   <div class="sec">
     <div class="sh">
-      <div class="st">Chaves de Acesso</div>
-      <div class="gf">
-        <input type="text" id="nlabel" placeholder="Nome do cliente" style="width:170px">
-        <input type="number" id="ndays"  placeholder="Dias"  min="0" style="width:68px">
-        <input type="number" id="nhours" placeholder="Horas" min="0" style="width:72px">
-        <input type="number" id="nmins"  placeholder="Min"   min="0" style="width:65px">
+      <div class="st">🔑 Chaves de Acesso</div>
+      <div class="gen-form">
+        <input type="text" id="nlabel" class="fi-name" placeholder="Nome do cliente">
+        <div class="fi-sep"></div>
+        <label class="fi-label" title="Dias para expirar">Dias<input type="number" id="ndays" class="fi-num" placeholder="0" min="0"></label>
+        <label class="fi-label" title="Horas para expirar">Horas<input type="number" id="nhours" class="fi-num" placeholder="0" min="0"></label>
+        <label class="fi-label" title="Minutos para expirar">Min<input type="number" id="nmins" class="fi-num" placeholder="0" min="0"></label>
+        <div class="fi-sep"></div>
+        <label class="fi-label" title="Máx. números (vazio=3, -1=ilimitado)">Usos<input type="number" id="nuses" class="fi-num" placeholder="3" min="-1"></label>
         <button class="btn bp" onclick="generateKey()">+ Gerar Chave</button>
       </div>
     </div>
@@ -465,12 +533,12 @@ tr:hover{background:#ffffff04}
 
   <div class="sec">
     <div class="sh">
-      <div class="st">Log de Acessos</div>
+      <div class="st">📋 Log de Acessos</div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <input type="date" id="logDate" style="padding:8px 12px;background:var(--dark);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Space Mono',monospace;font-size:12px;outline:none" onchange="filterLog()">
+        <input type="date" id="logDate" style="padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:11px;outline:none" onchange="filterLog()">
         <button class="btn bw" onclick="clearDateFilter()">✕ Filtro</button>
         <button class="btn bw" onclick="doRefresh()">↻ Atualizar</button>
-        <button class="btn" style="background:#ff475720;color:var(--red);border:1px solid var(--red)" onclick="clearLog()">🗑 Limpar Log</button>
+        <button class="btn br" onclick="clearLog()">🗑 Limpar Log</button>
       </div>
     </div>
     <div class="ov">
@@ -533,9 +601,12 @@ async function generateKey(){
   const days=parseInt(document.getElementById('ndays').value||0);
   const hours=parseInt(document.getElementById('nhours').value||0);
   const mins=parseInt(document.getElementById('nmins').value||0);
+  const _u=document.getElementById('nuses').value.trim();
+  const maxUses=_u===''?3:parseInt(_u);
   if(!label){toast('Informe o nome do cliente',false);return;}
+  if(isNaN(maxUses)){toast('❌ Usos inválido',false);return;}
   try{
-    const body={label};
+    const body={label,maxUses};
     if(days>0)body.expireDays=days;
     if(hours>0)body.expireHours=hours;
     if(mins>0)body.expireMinutes=mins;
@@ -543,13 +614,14 @@ async function generateKey(){
     if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
     const d=await r.json();
     if(d.ok){
-      const parts=[];
-      if(days>0)parts.push(days+'d'); if(hours>0)parts.push(hours+'h'); if(mins>0)parts.push(mins+'min');
-      toast('Gerada: '+d.key+(parts.length?' (expira em '+parts.join(' ')+')':''));
-      ['nlabel','ndays','nhours','nmins'].forEach(id=>document.getElementById(id).value='');
+      const exp=[];
+      if(days>0)exp.push(days+'d'); if(hours>0)exp.push(hours+'h'); if(mins>0)exp.push(mins+'min');
+      const ul=maxUses===-1?'∞ usos':maxUses+' uso(s)';
+      toast('✅ '+d.key+(exp.length?' · '+exp.join(' '):'  sem expiração')+' · '+ul);
+      ['nlabel','ndays','nhours','nmins','nuses'].forEach(id=>document.getElementById(id).value='');
       await doRefresh();
-    } else toast('Erro: '+(d.error||'desconhecido'),false);
-  }catch(e){toast('Erro de rede',false);}
+    } else toast('❌ Erro: '+(d.error||'desconhecido'),false);
+  }catch(e){toast('❌ Erro de rede',false);}
 }
 async function filterLog(){
   const date=document.getElementById('logDate').value;
@@ -775,8 +847,9 @@ async function handleRequest(req, res) {
     const knownPhone = hasPhone && keys[keyCode].phones.includes(phone);
     const isNewPhone = hasPhone && !knownPhone;
 
+    const keyMaxUses = (typeof keys[keyCode].maxUses === 'number') ? keys[keyCode].maxUses : MAX_USES;
     if (isNewPhone) {
-      if (MAX_USES > 0 && keys[keyCode].phones.length >= MAX_USES) {
+      if (keyMaxUses > 0 && keys[keyCode].phones.length >= keyMaxUses) {
         // Limite atingido por número novo — aviso + bloqueia o login deste número
         keys[keyCode].warnCount = (keys[keyCode].warnCount || 0) + 1;
         saveDb();
@@ -797,7 +870,7 @@ async function handleRequest(req, res) {
           warnLimit: true,
           warnRemaining: remaining,
           data: {
-            message: `USUÁRIO NÃO ENCONTRADO. Limite de ativações atingido (${keys[keyCode].phones.length}/${MAX_USES}). ${remaining} tentativa(s) de número novo restante(s). Contate o vendedor.`,
+            message: `USUÁRIO NÃO ENCONTRADO. Limite de ativações atingido (${keys[keyCode].phones.length}/${keyMaxUses}). ${remaining} tentativa(s) de número novo restante(s). Contate o vendedor.`,
             permissions: []
           }
         }, 403);
@@ -899,7 +972,8 @@ async function handleRequest(req, res) {
         expiresAt = d.toISOString();
       }
     }
-    keys[code] = { label: body.label || 'Cliente', active: true, createdAt: new Date().toISOString(), uses: 0, lastUsed: null, lastIp: null, lastPhone: null, deviceId: null, note: '', expiresAt };
+    const maxUses = (body.maxUses !== undefined) ? parseInt(body.maxUses) : MAX_USES;
+    keys[code] = { label: body.label || 'Cliente', active: true, createdAt: new Date().toISOString(), uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null, deviceId: null, note: '', expiresAt, maxUses: isNaN(maxUses) ? MAX_USES : maxUses };
     saveDb();
     sendJson(res, { ok: true, key: code }); return;
   }
@@ -971,7 +1045,7 @@ async function handleRequest(req, res) {
     const rows = Object.entries(keys).map(([code, k]) => {
       const cols = [
         code, k.label, k.active ? 'ATIVO' : 'BLOQUEADO',
-        `${k.uses||0}/${MAX_USES}`, k.lastPhone||'',
+        `${(k.phones||[]).length}/${k.maxUses===-1?'Ilimitado':(k.maxUses>0?k.maxUses:MAX_USES)}`, k.lastPhone||'',
         k.lastIp||'',
         k.lastUsed ? new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}) : '',
         new Date(k.createdAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}),
