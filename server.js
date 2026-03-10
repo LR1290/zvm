@@ -315,6 +315,9 @@ function buildKeysHtml() {
   <td class="note-cell" onclick="openNote('${escHtml(code)}','${noteEsc.replace(/'/g,"\\'")}')"><span class="note-preview">${noteEsc || '<span style=\\"color:var(--muted)\\">—</span>'}</span></td>
   <td>
     <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
+    <button class="bs" style="background:#4287f520;color:#4287f5;border:1px solid #4287f540" onclick="openRenew('${escHtml(code)}')">Renovar</button>
+    <button class="bs" style="background:#9b59b620;color:#9b59b6;border:1px solid #9b59b640" onclick="resetPhones('${escHtml(code)}')">Reset Usos</button>
+    <button class="bs" style="background:#ffd32a20;color:var(--yellow);border:1px solid #ffd32a40" onclick="openEditLabel('${escHtml(code)}','${escHtml(k.label).replace(/'/g,"\\'")}')">Editar</button>
     <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
     ${(k.warnCount||0)>0 ? `<button class="bs" style="background:#ff8c0020;color:#ff8c00;border:1px solid #ff8c0040" onclick="resetWarn('${escHtml(code)}')">Limpar Avisos</button>` : ''}
   </td>
@@ -333,7 +336,7 @@ function buildLogsHtml(arr) {
   <td>${escHtml(l.phone||'-')}</td>
   <td>${escHtml(l.ip||'-')}</td>
   <td>${escHtml(l.wppVersion||'-')}</td>
-  <td><span class="badge ${l.action==='login_ok'?'on':l.action==='relogin_ok'?'re':l.action==='verify_ok'?'vr':l.action==='login_blocked'||l.action==='auto_blocked'?'off':l.action==='warn_limit'?'wl':'warn'}">${escHtml(l.action)}</span></td>
+  <td><span class="badge ${l.action==='login_ok'?'on':l.action==='relogin_ok'?'re':l.action==='verify_ok'?'vr':l.action==='login_blocked'||l.action==='auto_blocked'?'off':l.action==='warn_limit'||l.action==='device_mismatch'?'wl':l.action==='renew'?'rn':l.action==='phones_reset'?'pr':'warn'}">${escHtml(l.action)}</span></td>
 </tr>`).join('');
 }
 
@@ -398,6 +401,9 @@ tr:hover{background:#ffffff04}
 .vr{background:#9b59b620;color:#9b59b6}
 .warn{background:#ffd32a20;color:var(--yellow)}
 .wl{background:#ff8c0020;color:#ff8c00}
+.dm{background:#e056fd20;color:#e056fd}
+.rn{background:#00cec920;color:#00cec9}
+.pr{background:#6c5ce720;color:#a29bfe}
 .empty{text-align:center;color:var(--muted);padding:32px!important}
 .toast{position:fixed;bottom:28px;right:28px;padding:13px 22px;border-radius:10px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;display:none;z-index:999}
 /* Notas */
@@ -492,6 +498,37 @@ tr:hover{background:#ffffff04}
     <div class="modal-actions">
       <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeNote()">Cancelar</button>
       <button class="btn bp" onclick="saveNote()">Salvar Nota</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal de renovar -->
+<div class="modal-bg" id="renewModal">
+  <div class="modal">
+    <h3>🔄 Renovar — <span id="renewKeyLabel"></span></h3>
+    <input type="hidden" id="renewKeyCode">
+    <p style="font-size:11px;color:var(--muted);margin-bottom:14px">Adiciona prazo a partir da expiração atual (ou agora se já expirou).</p>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <input type="number" id="renewDays"  placeholder="Dias"  min="0" style="flex:1;padding:10px;background:var(--dark);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Space Mono',monospace;font-size:13px;outline:none">
+      <input type="number" id="renewHours" placeholder="Horas" min="0" style="flex:1;padding:10px;background:var(--dark);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Space Mono',monospace;font-size:13px;outline:none">
+      <input type="number" id="renewMins"  placeholder="Min"   min="0" style="flex:1;padding:10px;background:var(--dark);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Space Mono',monospace;font-size:13px;outline:none">
+    </div>
+    <div class="modal-actions">
+      <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeRenew()">Cancelar</button>
+      <button class="btn" style="background:#4287f5;color:#fff" onclick="doRenew()">Renovar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal editar label -->
+<div class="modal-bg" id="labelModal">
+  <div class="modal">
+    <h3>✏️ Editar Cliente — <span id="labelKeyCode2"></span></h3>
+    <input type="hidden" id="labelKeyCode">
+    <input type="text" id="labelText" placeholder="Nome do cliente" style="width:100%;padding:10px;background:var(--dark);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Space Mono',monospace;font-size:13px;outline:none;margin-bottom:14px">
+    <div class="modal-actions">
+      <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeEditLabel()">Cancelar</button>
+      <button class="btn" style="background:var(--yellow);color:#000" onclick="doEditLabel()">Salvar</button>
     </div>
   </div>
 </div>
@@ -655,6 +692,63 @@ async function exportCSV(){
   }catch(e){toast('Erro ao exportar',false);}
 }
 
+// ── Renovar ──
+function openRenew(code){
+  document.getElementById('renewKeyCode').value=code;
+  document.getElementById('renewKeyLabel').textContent=code;
+  ['renewDays','renewHours','renewMins'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('renewModal').classList.add('open');
+  setTimeout(()=>document.getElementById('renewDays').focus(),100);
+}
+function closeRenew(){document.getElementById('renewModal').classList.remove('open');}
+document.getElementById('renewModal').addEventListener('click',function(e){if(e.target===this)closeRenew();});
+async function doRenew(){
+  const code=document.getElementById('renewKeyCode').value;
+  const days=parseInt(document.getElementById('renewDays').value||0);
+  const hours=parseInt(document.getElementById('renewHours').value||0);
+  const mins=parseInt(document.getElementById('renewMins').value||0);
+  if(!days&&!hours&&!mins){toast('Informe pelo menos um prazo',false);return;}
+  try{
+    const r=await fetch('/admin/api/keys/'+encodeURIComponent(code)+'/renew',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({days,hours,minutes:mins})});
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
+    const d=await r.json();
+    if(d.ok){toast('Chave renovada!');closeRenew();await doRefresh();}else toast(d.error||'Erro',false);
+  }catch(e){toast('Erro de rede',false);}
+}
+
+// ── Reset Usos/Phones ──
+async function resetPhones(code){
+  if(!confirm('Resetar todos os números e usos da chave '+code+'?'))return;
+  try{
+    const r=await fetch('/admin/api/keys/'+encodeURIComponent(code)+'/reset-phones',{method:'POST'});
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
+    const d=await r.json();
+    if(d.ok){toast('Usos resetados!');await doRefresh();}else toast(d.error||'Erro',false);
+  }catch(e){toast('Erro',false);}
+}
+
+// ── Editar Label ──
+function openEditLabel(code,currentLabel){
+  document.getElementById('labelKeyCode').value=code;
+  document.getElementById('labelKeyCode2').textContent=code;
+  document.getElementById('labelText').value=currentLabel||'';
+  document.getElementById('labelModal').classList.add('open');
+  setTimeout(()=>document.getElementById('labelText').focus(),100);
+}
+function closeEditLabel(){document.getElementById('labelModal').classList.remove('open');}
+document.getElementById('labelModal').addEventListener('click',function(e){if(e.target===this)closeEditLabel();});
+async function doEditLabel(){
+  const code=document.getElementById('labelKeyCode').value;
+  const label=document.getElementById('labelText').value.trim();
+  if(!label){toast('Nome não pode ser vazio',false);return;}
+  try{
+    const r=await fetch('/admin/api/keys/'+encodeURIComponent(code)+'/label',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label})});
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
+    const d=await r.json();
+    if(d.ok){toast('Nome atualizado!');closeEditLabel();await doRefresh();}else toast(d.error||'Erro',false);
+  }catch(e){toast('Erro de rede',false);}
+}
+
 </script>
 </body></html>`;
 }
@@ -767,6 +861,27 @@ async function handleRequest(req, res) {
     // Migrar lastPhone legado para lista phones[]
     if (!keys[keyCode].phones) {
       keys[keyCode].phones = keys[keyCode].lastPhone ? [keys[keyCode].lastPhone] : [];
+    }
+
+    // Lock por deviceId (extensão): se chave já tem deviceId e veio um diferente, bloqueia
+    if (deviceId && keys[keyCode].deviceId && keys[keyCode].deviceId !== deviceId) {
+      keys[keyCode].warnCount = (keys[keyCode].warnCount || 0) + 1;
+      saveDb();
+      if (keys[keyCode].warnCount > WARN_RETRIES) {
+        keys[keyCode].active = false;
+        addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'auto_blocked' });
+        saveDb();
+        fireWebhook('key_auto_blocked', keyCode, 'DeviceID diferente ignorado múltiplas vezes');
+        sendJson(res, { data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave bloqueada.', permissions: [] } }, 403);
+        return;
+      }
+      addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'device_mismatch' });
+      sendJson(res, { warnLimit: true, warnRemaining: WARN_RETRIES - keys[keyCode].warnCount + 1, data: { message: `Extensão não autorizada. ${WARN_RETRIES - keys[keyCode].warnCount + 1} tentativa(s) restante(s). Contate o vendedor.`, permissions: [] } }, 403);
+      return;
+    }
+    // Registrar deviceId na primeira vez
+    if (deviceId && !keys[keyCode].deviceId) {
+      keys[keyCode].deviceId = deviceId;
     }
 
     const hasPhone   = phone && phone !== '-';
@@ -931,6 +1046,54 @@ async function handleRequest(req, res) {
     if (!keys[code]) { sendJson(res, { error: 'not found' }, 404); return; }
     const body = await parseBody(req);
     keys[code].note = String(body.note || '').slice(0, 500);
+    saveDb();
+    sendJson(res, { ok: true }); return;
+  }
+
+  // ── ADMIN API: renovar expiração ──
+  if (p.match(/^\/admin\/api\/keys\/[^/]+\/renew$/) && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const code = decodeURIComponent(p.split('/')[4]);
+    if (!keys[code]) { sendJson(res, { error: 'not found' }, 404); return; }
+    const body = await parseBody(req);
+    const days    = parseInt(body.days    || 0);
+    const hours   = parseInt(body.hours   || 0);
+    const minutes = parseInt(body.minutes || 0);
+    if (days === 0 && hours === 0 && minutes === 0) { sendJson(res, { error: 'nenhum prazo informado' }, 400); return; }
+    const base = keys[code].expiresAt && new Date(keys[code].expiresAt) > new Date()
+      ? new Date(keys[code].expiresAt)
+      : new Date();
+    base.setTime(base.getTime() + ((days * 1440) + (hours * 60) + minutes) * 60000);
+    keys[code].expiresAt = base.toISOString();
+    if (!keys[code].active) keys[code].active = true; // reativa se estava bloqueada por expiração
+    saveDb();
+    addLog({ keyCode: code, label: keys[code].label, phone: '-', ip, wppVersion: '-', action: 'renew' });
+    sendJson(res, { ok: true, expiresAt: keys[code].expiresAt }); return;
+  }
+
+  // ── ADMIN API: resetar phones (usos) ──
+  if (p.match(/^\/admin\/api\/keys\/[^/]+\/reset-phones$/) && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const code = decodeURIComponent(p.split('/')[4]);
+    if (!keys[code]) { sendJson(res, { error: 'not found' }, 404); return; }
+    keys[code].phones    = [];
+    keys[code].uses      = 0;
+    keys[code].lastPhone = null;
+    keys[code].deviceId  = null;
+    saveDb();
+    addLog({ keyCode: code, label: keys[code].label, phone: '-', ip, wppVersion: '-', action: 'phones_reset' });
+    sendJson(res, { ok: true }); return;
+  }
+
+  // ── ADMIN API: editar label ──
+  if (p.match(/^\/admin\/api\/keys\/[^/]+\/label$/) && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const code = decodeURIComponent(p.split('/')[4]);
+    if (!keys[code]) { sendJson(res, { error: 'not found' }, 404); return; }
+    const body = await parseBody(req);
+    const label = String(body.label || '').trim().slice(0, 100);
+    if (!label) { sendJson(res, { error: 'label vazio' }, 400); return; }
+    keys[code].label = label;
     saveDb();
     sendJson(res, { ok: true }); return;
   }
