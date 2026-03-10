@@ -59,7 +59,7 @@ const WEBHOOK_URL = process.env.WEBHOOK_URL || '';
 // RATE LIMITING (anti brute-force)
 // ─────────────────────────────────────────────
 const rateLimitMap = new Map(); // ip -> { count, resetAt }
-const RATE_LIMIT_MAX      = 20;   // tentativas por janela
+const RATE_LIMIT_MAX      = 4;    // tentativas por janela
 const RATE_LIMIT_WINDOW   = 60000; // 1 minuto
 const RATE_LIMIT_BLOCK_MS = 10 * 60000; // 10 min bloqueado após exceder
 
@@ -307,7 +307,7 @@ function buildKeysHtml() {
   <td><span class="kc">${escHtml(code)}</span></td>
   <td>${escHtml(k.label)}</td>
   <td><span class="badge ${k.active?(k.warnCount>0?'wl':'on'):'off'}">${k.active?(k.warnCount>0?`AVISO (${k.warnCount}/${WARN_RETRIES})`:'ATIVO'):'BLOQUEADO'}</span></td>
-  <td><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
+  <td><span style="color:${(k.phones||[]).length>=MAX_USES?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${MAX_USES}</span></td>
   <td>${escHtml(k.lastPhone||'-')}</td>
   <td>${escHtml(k.lastIp||'-')}</td>
   <td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
@@ -441,7 +441,6 @@ tr:hover{background:#ffffff04}
         <input type="number" id="ndays"  placeholder="Dias"  min="0" style="width:68px">
         <input type="number" id="nhours" placeholder="Horas" min="0" style="width:72px">
         <input type="number" id="nmins"  placeholder="Min"   min="0" style="width:65px">
-        <input type="number" id="nuses" placeholder="Usos" min="1" title="Máx. de números (vazio=3, -1=ilimitado)" style="width:72px">
         <button class="btn bp" onclick="generateKey()">+ Gerar Chave</button>
       </div>
     </div>
@@ -534,12 +533,9 @@ async function generateKey(){
   const days=parseInt(document.getElementById('ndays').value||0);
   const hours=parseInt(document.getElementById('nhours').value||0);
   const mins=parseInt(document.getElementById('nmins').value||0);
-  const _u=document.getElementById('nuses').value.trim();
-  const maxUses=_u===''?3:parseInt(_u);
   if(!label){toast('Informe o nome do cliente',false);return;}
-  if(isNaN(maxUses)){toast('Usos inválido',false);return;}
   try{
-    const body={label,maxUses};
+    const body={label};
     if(days>0)body.expireDays=days;
     if(hours>0)body.expireHours=hours;
     if(mins>0)body.expireMinutes=mins;
@@ -549,9 +545,8 @@ async function generateKey(){
     if(d.ok){
       const parts=[];
       if(days>0)parts.push(days+'d'); if(hours>0)parts.push(hours+'h'); if(mins>0)parts.push(mins+'min');
-      const usosLabel=maxUses===-1?'ilimitado':maxUses+' uso(s)';
-      toast('Gerada: '+d.key+(parts.length?' (expira em '+parts.join(' ')+')':'')+' — '+usosLabel);
-      ['nlabel','ndays','nhours','nmins','nuses'].forEach(id=>document.getElementById(id).value='');
+      toast('Gerada: '+d.key+(parts.length?' (expira em '+parts.join(' ')+')':''));
+      ['nlabel','ndays','nhours','nmins'].forEach(id=>document.getElementById(id).value='');
       await doRefresh();
     } else toast('Erro: '+(d.error||'desconhecido'),false);
   }catch(e){toast('Erro de rede',false);}
@@ -688,7 +683,9 @@ async function handleRequest(req, res) {
   // ── EXTENSÃO: verifica chave e faz callback ──
   if (p === '/extension/auth/verify' && req.method === 'POST') {
     if (!checkRateLimit(ip)) {
-      sendHtml(res, renderExtensionLogin({ callback: '', error: '⏳ Muitas tentativas. Aguarde alguns minutos.' }), 429);
+      const _blocked = rateLimitMap.get(ip);
+      const _minsLeft = _blocked ? Math.ceil((_blocked.blockedUntil - Date.now()) / 60000) : 10;
+      sendHtml(res, renderExtensionLogin({ callback: '', error: `⏳ Muitas tentativas. Aguarde ${_minsLeft} minuto(s) antes de tentar novamente.` }), 429);
       return;
     }
     const form     = await parseFormBody(req);
@@ -778,9 +775,8 @@ async function handleRequest(req, res) {
     const knownPhone = hasPhone && keys[keyCode].phones.includes(phone);
     const isNewPhone = hasPhone && !knownPhone;
 
-    const keyMaxUses = (typeof keys[keyCode].maxUses === 'number') ? keys[keyCode].maxUses : MAX_USES;
     if (isNewPhone) {
-      if (keyMaxUses > 0 && keys[keyCode].phones.length >= keyMaxUses) {
+      if (MAX_USES > 0 && keys[keyCode].phones.length >= MAX_USES) {
         // Limite atingido por número novo — aviso + bloqueia o login deste número
         keys[keyCode].warnCount = (keys[keyCode].warnCount || 0) + 1;
         saveDb();
@@ -801,7 +797,7 @@ async function handleRequest(req, res) {
           warnLimit: true,
           warnRemaining: remaining,
           data: {
-            message: `USUÁRIO NÃO ENCONTRADO. Limite de ativações atingido (${keys[keyCode].phones.length}/${keyMaxUses}). ${remaining} tentativa(s) de número novo restante(s). Contate o vendedor.`,
+            message: `USUÁRIO NÃO ENCONTRADO. Limite de ativações atingido (${keys[keyCode].phones.length}/${MAX_USES}). ${remaining} tentativa(s) de número novo restante(s). Contate o vendedor.`,
             permissions: []
           }
         }, 403);
@@ -903,8 +899,7 @@ async function handleRequest(req, res) {
         expiresAt = d.toISOString();
       }
     }
-    const maxUses = (body.maxUses !== undefined) ? parseInt(body.maxUses) : MAX_USES;
-    keys[code] = { label: body.label || 'Cliente', active: true, createdAt: new Date().toISOString(), uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null, deviceId: null, note: '', expiresAt, maxUses: isNaN(maxUses) ? MAX_USES : maxUses };
+    keys[code] = { label: body.label || 'Cliente', active: true, createdAt: new Date().toISOString(), uses: 0, lastUsed: null, lastIp: null, lastPhone: null, deviceId: null, note: '', expiresAt };
     saveDb();
     sendJson(res, { ok: true, key: code }); return;
   }
@@ -976,7 +971,7 @@ async function handleRequest(req, res) {
     const rows = Object.entries(keys).map(([code, k]) => {
       const cols = [
         code, k.label, k.active ? 'ATIVO' : 'BLOQUEADO',
-        `${(k.phones||[]).length}/${k.maxUses===-1?'Ilimitado':(k.maxUses>0?k.maxUses:MAX_USES)}`, k.lastPhone||'',
+        `${k.uses||0}/${MAX_USES}`, k.lastPhone||'',
         k.lastIp||'',
         k.lastUsed ? new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}) : '',
         new Date(k.createdAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}),
