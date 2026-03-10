@@ -708,12 +708,7 @@ async function handleRequest(req, res) {
       sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '🚫 Chave bloqueada. Entre em contato com o vendedor.' }));
       return;
     }
-    // Migrar lastPhone legado para phones[] se necessário
-    if (!keys[keyCode].phones) {
-      keys[keyCode].phones = keys[keyCode].lastPhone ? [keys[keyCode].lastPhone] : [];
-    }
-    // /auth/verify não tem phoneNumber — não pode saber se é usuário autorizado.
-    // O controle de limite acontece no /v3/key onde o phone real está disponível.
+    // Limite verificado em /v3/key (onde phoneNumber está disponível)
     keys[keyCode].lastUsed = new Date().toISOString();
     keys[keyCode].lastIp   = ip;
     saveDb();
@@ -774,16 +769,17 @@ async function handleRequest(req, res) {
       keys[keyCode].phones = keys[keyCode].lastPhone ? [keys[keyCode].lastPhone] : [];
     }
 
-    // phone vazio/"-": WA ainda não conectou — deixa passar sem contar
     const hasPhone   = phone && phone !== '-';
     const knownPhone = hasPhone && keys[keyCode].phones.includes(phone);
     const isNewPhone = hasPhone && !knownPhone;
 
     if (isNewPhone) {
       if (MAX_USES > 0 && keys[keyCode].phones.length >= MAX_USES) {
+        // Limite atingido por número novo — aviso + bloqueia o login deste número
         keys[keyCode].warnCount = (keys[keyCode].warnCount || 0) + 1;
         saveDb();
         if (keys[keyCode].warnCount > WARN_RETRIES) {
+          // Ignorou avisos demais — bloquear a chave inteira
           keys[keyCode].active = false;
           addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'auto_blocked' });
           saveDb();
@@ -793,14 +789,16 @@ async function handleRequest(req, res) {
         }
         const remaining = WARN_RETRIES - keys[keyCode].warnCount + 1;
         addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'warn_limit' });
-        const wp = getAuthData(keyCode);
-        wp.warnLimit     = true;
-        wp.warnMessage   = `⚠️ Limite de ativações atingido (${keys[keyCode].phones.length}/${MAX_USES}). ${remaining} tentativa(s) restante(s). Contate o vendedor.`;
-        wp.warnRemaining = remaining;
-        keys[keyCode].lastUsed = new Date().toISOString();
-        keys[keyCode].lastIp   = ip;
-        saveDb();
-        sendJson(res, wp);
+        // HTTP 403 + USUÁRIO NÃO ENCONTRADO → extensão interpreta como userNotFound → desloga
+        // warnLimit:true → patcher exibe toast de aviso em vez de mensagem genérica
+        sendJson(res, {
+          warnLimit: true,
+          warnRemaining: remaining,
+          data: {
+            message: `USUÁRIO NÃO ENCONTRADO. Limite de ativações atingido (${keys[keyCode].phones.length}/${MAX_USES}). ${remaining} tentativa(s) de número novo restante(s). Contate o vendedor.`,
+            permissions: []
+          }
+        }, 403);
         return;
       }
       keys[keyCode].phones.push(phone);
