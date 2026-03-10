@@ -46,7 +46,8 @@ const USAGE_LIMITS = {
   funnel:       { sent:0, max:-1 }, media:        { sent:0, max:-1 },
   message:      { sent:0, max:-1 }, scheduleItem: { sent:0, max:-1 }
 };
-const MAX_USES = 0;
+const MAX_USES     = 3;
+const WARN_RETRIES = 5; // tentativas extras antes do bloqueio automático após atingir MAX_USES
 
 // Aviso de expiração antecipado: quantas horas antes mostrar banner
 const EXPIRY_WARN_HOURS = parseInt(process.env.EXPIRY_WARN_HOURS || '48');
@@ -302,10 +303,10 @@ function buildKeysHtml() {
     const noteEsc  = escHtml(k.note || '');
 
     return `
-<tr data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${k.active?'ativo':'bloqueado'}" data-uses="${k.uses||0}" data-created="${k.createdAt}"${rowStyle}>
+<tr data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${k.active?(k.warnCount>0?'aviso':'ativo'):'bloqueado'}" data-uses="${k.uses||0}" data-created="${k.createdAt}"${rowStyle}>
   <td><span class="kc">${escHtml(code)}</span></td>
   <td>${escHtml(k.label)}</td>
-  <td><span class="badge ${k.active?'on':'off'}">${k.active?'ATIVO':'BLOQUEADO'}</span></td>
+  <td><span class="badge ${k.active?(k.warnCount>0?'wl':'on'):'off'}">${k.active?(k.warnCount>0?`AVISO (${k.warnCount}/${WARN_RETRIES})`:'ATIVO'):'BLOQUEADO'}</span></td>
   <td><span style="color:${(typeof k.maxUses==='number'&&k.maxUses>0&&(k.phones||[]).length>=k.maxUses)?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${typeof k.maxUses==='number'&&k.maxUses>0?k.maxUses:'∞'}</span></td>
   <td>${escHtml(k.lastPhone||'-')}</td>
   <td>${escHtml(k.lastIp||'-')}</td>
@@ -315,6 +316,7 @@ function buildKeysHtml() {
   <td>
     <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
     <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
+    ${(k.warnCount||0)>0 ? `<button class="bs" style="background:#ff8c0020;color:#ff8c00;border:1px solid #ff8c0040" onclick="resetWarn('${escHtml(code)}')">Limpar Avisos</button>` : ''}
     <button class="bs" style="background:#3a3aff15;color:#9090ff;border:1px solid #7b7bff40" onclick="setLimit('${escHtml(code)}')">${typeof k.maxUses==='number'&&k.maxUses>0?'Usos: '+k.maxUses:'∞ Ilimitado'}</button>
     <button class="bs" style="background:#ff550015;color:#ff8844;border:1px solid #ff550040" onclick="resetPhones('${escHtml(code)}')">Limpar Nºs</button>
   </td>
@@ -333,7 +335,7 @@ function buildLogsHtml(arr) {
   <td>${escHtml(l.phone||'-')}</td>
   <td>${escHtml(l.ip||'-')}</td>
   <td>${escHtml(l.wppVersion||'-')}</td>
-  <td><span class="badge ${l.action==='login_ok'?'on':l.action==='relogin_ok'?'re':l.action==='verify_ok'?'vr':l.action==='login_blocked'||l.action==='auto_blocked'?'off':l.action==='limit_reached'?'wl':'warn'}">${escHtml(l.action)}</span></td>
+  <td><span class="badge ${l.action==='login_ok'?'on':l.action==='relogin_ok'?'re':l.action==='verify_ok'?'vr':l.action==='login_blocked'||l.action==='auto_blocked'?'off':l.action==='warn_limit'?'wl':l.action==='limit_reached'?'wl':'warn'}">${escHtml(l.action)}</span></td>
 </tr>`).join('');
 }
 
@@ -343,6 +345,7 @@ function buildLogsHtml(arr) {
 function renderAdminDashboard() {
   const expiringSoon = Object.values(keys).filter(k => k.active && isKeyExpiringSoon(k)).length;
   const limitedKeys  = Object.values(keys).filter(k => k.active && typeof k.maxUses==='number' && k.maxUses>0).length;
+  const warnLimitKeys = Object.values(keys).filter(k => k.active && (k.warnCount || 0) > 0).length;
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -429,6 +432,7 @@ tr:hover{background:#ffffff04}
     <div class="sc"><div class="n" id="s-total">${Object.keys(keys).length}</div><div class="l">Total de Chaves</div></div>
     <div class="sc"><div class="n" id="s-active">${Object.values(keys).filter(k=>k.active).length}</div><div class="l">Chaves Ativas</div></div>
     <div class="sc ${expiringSoon > 0 ? 'warn-card' : ''}"><div class="n" id="s-warn" style="${expiringSoon>0?'color:var(--orange)':''}">${expiringSoon}</div><div class="l">Expirando em ${EXPIRY_WARN_HOURS}h</div></div>
+    <div class="sc"><div class="n" id="s-warnlimit" style="${warnLimitKeys>0?'color:#ff8c00':''}">${warnLimitKeys}</div><div class="l">Em Aviso de Limite</div></div>
     <div class="sc"><div class="n" id="s-limited">${limitedKeys}</div><div class="l">Com Limite Definido</div></div>
     <div class="sc"><div class="n" id="s-logs">${logs.length}</div><div class="l">Acessos Registrados</div></div>
   </div>
@@ -590,6 +594,14 @@ async function deleteKey(code){
     if(d.ok){toast('Chave excluída');await doRefresh();}
   }catch(e){toast('Erro',false);}
 }
+async function resetWarn(code){
+  try{
+    const r=await fetch('/admin/api/keys/'+encodeURIComponent(code)+'/reset-warn',{method:'POST'});
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
+    const d=await r.json();
+    if(d.ok){toast('Avisos resetados');await doRefresh();}else{toast(d.error||'Erro',false);}
+  }catch(e){toast('Erro',false);}
+}
 function setLimit(code){
   document.getElementById('ml-code').value=code;
   document.getElementById('ml-val').value='';
@@ -607,7 +619,7 @@ async function saveLimit(){
     const r=await fetch('/admin/api/keys/'+encodeURIComponent(code)+'/set-limit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
     const d=await r.json();
-    if(d.ok){toast(body.unlimited?'Limite removido':'Limite: '+body.maxUses+' usos');closeModal('modal-limit');await doRefresh();}
+    if(d.ok){toast(body.unlimited?'Limite removido (ilimitado)':'Limite definido: '+body.maxUses+' usos');closeModal('modal-limit');await doRefresh();}
     else toast(d.error||'Erro',false);
   }catch(e){toast('Erro de rede',false);}
 }
@@ -617,7 +629,7 @@ async function resetPhones(code){
     const r=await fetch('/admin/api/keys/'+encodeURIComponent(code)+'/reset-phones',{method:'POST'});
     if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
     const d=await r.json();
-    if(d.ok){toast('Números limpos');await doRefresh();}
+    if(d.ok){toast('Números limpos com sucesso');await doRefresh();}
     else toast(d.error||'Erro',false);
   }catch(e){toast('Erro de rede',false);}
 }
@@ -634,6 +646,9 @@ async function doRefresh(){
     sw.style.color=(d.warnKeys>0)?'var(--orange)':'var(--green)';
     sw.closest('.sc').classList.toggle('warn-card',d.warnKeys>0);
     const sl=document.getElementById('s-limited');if(sl)sl.textContent=d.limitedKeys||0;
+    const swl=document.getElementById('s-warnlimit');
+    if(swl){swl.textContent=d.warnLimitKeys||0;swl.style.color=(d.warnLimitKeys>0)?'#ff8c00':'';
+    swl.closest('.sc').style.outline=(d.warnLimitKeys>0)?'1px solid #ff8c0050':'';}
     document.getElementById('kb').innerHTML=d.keysHtml||'';
     document.getElementById('lb').innerHTML=d.logsHtml||'';
   }catch(e){console.error('Refresh error',e);}
@@ -678,6 +693,23 @@ async function exportCSV(){
 }
 
 </script>
+
+<div id="modal-limit" style="display:none;position:fixed;inset:0;background:#000b;z-index:999;align-items:center;justify-content:center;" onclick="if(event.target===this)closeModal('modal-limit')">
+  <div style="background:#16162a;border:1px solid #333;border-radius:14px;padding:28px 32px;min-width:300px;max-width:90vw;box-shadow:0 8px 40px #0009">
+    <h3 style="margin:0 0 4px;color:#e0e0e0;font-size:.95rem">Definir Limite de Usos</h3>
+    <p style="margin:0 0 16px;color:#555;font-size:.74rem;word-break:break-all" id="ml-label"></p>
+    <input type="hidden" id="ml-code">
+    <label style="font-size:.78rem;color:#888;display:block;margin-bottom:6px;">Máx. de números únicos &nbsp;<span style="color:#555">( vazio ou 0 = ilimitado )</span></label>
+    <input id="ml-val" type="number" min="1" step="1" placeholder="Ex: 3"
+      style="width:100%;box-sizing:border-box;padding:9px 12px;background:#111;border:1px solid #333;border-radius:8px;color:#e0e0e0;font-size:.9rem;margin-bottom:20px;outline:none;"
+      onkeydown="if(event.key==='Enter')saveLimit();if(event.key==='Escape')closeModal('modal-limit')">
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="bs" style="background:#1a1a1a;color:#777;border:1px solid #2a2a2a" onclick="closeModal('modal-limit')">Cancelar</button>
+      <button class="bs" style="background:#00ff8818;color:#00ff88;border:1px solid #00ff8830" onclick="saveLimit()">Salvar</button>
+    </div>
+  </div>
+</div>
+
 </body></html>`;
 }
 
@@ -730,7 +762,6 @@ async function handleRequest(req, res) {
       sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '🚫 Chave bloqueada. Entre em contato com o vendedor.' }));
       return;
     }
-
     keys[keyCode].lastUsed = new Date().toISOString();
     keys[keyCode].lastIp   = ip;
     saveDb();
@@ -786,22 +817,25 @@ async function handleRequest(req, res) {
       return;
     }
 
+    // Migrar lastPhone legado → lista phones[]
     if (!keys[keyCode].phones) {
       keys[keyCode].phones = keys[keyCode].lastPhone ? [keys[keyCode].lastPhone] : [];
     }
+
     const hasPhone   = phone && phone !== '-';
     const knownPhone = hasPhone && keys[keyCode].phones.includes(phone);
     const isNewPhone = hasPhone && !knownPhone;
-    const maxUses    = keys[keyCode].maxUses;
+    const maxUses    = keys[keyCode].maxUses; // undefined = ilimitado, número = limite por chave
     const limited    = typeof maxUses === 'number' && maxUses > 0;
 
     if (isNewPhone) {
       if (limited && keys[keyCode].phones.length >= maxUses) {
+        // Limite atingido — bloqueia ESTE número mas NÃO a chave (admin decide)
         addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'limit_reached' });
         keys[keyCode].lastUsed = new Date().toISOString();
         keys[keyCode].lastIp   = ip;
         saveDb();
-        sendJson(res, { data: { message: `USUÁRIO NÃO ENCONTRADO. Número não autorizado. Limite de ${maxUses} usos atingido.`, permissions: [] } }, 403);
+        sendJson(res, { data: { message: `USUÁRIO NÃO ENCONTRADO. Número não autorizado. Limite de ${maxUses} ativações atingido.`, permissions: [] } }, 403);
         return;
       }
       keys[keyCode].phones.push(phone);
@@ -874,13 +908,14 @@ async function handleRequest(req, res) {
   if (p === '/admin/api/data' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     sendJson(res, {
-      totalKeys:   Object.keys(keys).length,
-      activeKeys:  Object.values(keys).filter(k=>k.active).length,
-      warnKeys:    Object.values(keys).filter(k => k.active && isKeyExpiringSoon(k)).length,
-      limitedKeys: Object.values(keys).filter(k => k.active && typeof k.maxUses==='number' && k.maxUses>0).length,
-      totalLogs:   logs.length,
-      keysHtml:    buildKeysHtml(),
-      logsHtml:    buildLogsHtml()
+      totalKeys:     Object.keys(keys).length,
+      activeKeys:    Object.values(keys).filter(k=>k.active).length,
+      warnKeys:      Object.values(keys).filter(k => k.active && isKeyExpiringSoon(k)).length,
+      warnLimitKeys: Object.values(keys).filter(k => k.active && (k.warnCount||0) > 0).length,
+      limitedKeys:   Object.values(keys).filter(k => k.active && typeof k.maxUses==='number' && k.maxUses>0).length,
+      totalLogs:     logs.length,
+      keysHtml:      buildKeysHtml(),
+      logsHtml:      buildLogsHtml()
     }); return;
   }
 
@@ -947,6 +982,17 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true, active: keys[code].active }); return;
   }
 
+  // ── ADMIN API: reset-warn ──
+  if (p.match(/^\/admin\/api\/keys\/[^/]+\/reset-warn$/) && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const code = decodeURIComponent(p.split('/')[4]);
+    if (!keys[code]) { sendJson(res, { error: 'not found' }, 404); return; }
+    keys[code].warnCount = 0;
+    saveDb();
+    addLog({ keyCode: code, label: keys[code].label, phone: '-', ip, wppVersion: '-', action: 'warn_reset' });
+    sendJson(res, { ok: true }); return;
+  }
+
   // ── ADMIN API: nota ──
   if (p.match(/^\/admin\/api\/keys\/[^/]+\/note$/) && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
@@ -988,11 +1034,11 @@ async function handleRequest(req, res) {
   // ── ADMIN API: exportar CSV ──
   if (p === '/admin/api/export/csv' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const header = 'Chave,Cliente,Status,Usos,Telefone,Último IP,Último Acesso,Criada em,Expira em,Nota';
+    const header = 'Chave,Cliente,Status,Usos,Avisos,Telefone,Último IP,Último Acesso,Criada em,Expira em,Nota';
     const rows = Object.entries(keys).map(([code, k]) => {
       const cols = [
-        code, k.label, k.active ? 'ATIVO' : 'BLOQUEADO',
-        `${k.uses||0}/${MAX_USES}`, k.lastPhone||'',
+        code, k.label, k.active ? (k.warnCount > 0 ? 'AVISO' : 'ATIVO') : 'BLOQUEADO',
+        `${k.uses||0}/${MAX_USES}`, `${k.warnCount||0}/${WARN_RETRIES}`, k.lastPhone||'',
         k.lastIp||'',
         k.lastUsed ? new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}) : '',
         new Date(k.createdAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}),
