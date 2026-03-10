@@ -47,7 +47,7 @@ const USAGE_LIMITS = {
   message:      { sent:0, max:-1 }, scheduleItem: { sent:0, max:-1 }
 };
 const MAX_USES     = 3;
-const WARN_RETRIES = 5; // tentativas extras antes do bloqueio automático após atingir MAX_USES
+const WARN_RETRIES = 5; // tentativas extras com número NOVO antes de bloquear automaticamente
 
 // Aviso de expiração antecipado: quantas horas antes mostrar banner
 const EXPIRY_WARN_HOURS = parseInt(process.env.EXPIRY_WARN_HOURS || '48');
@@ -303,11 +303,11 @@ function buildKeysHtml() {
     const noteEsc  = escHtml(k.note || '');
 
     return `
-<tr data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${k.active?(k.warnCount>0?'aviso':'ativo'):'bloqueado'}" data-uses="${k.uses||0}" data-created="${k.createdAt}"${rowStyle}>
+<tr data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${k.active?'ativo':'bloqueado'}" data-uses="${k.uses||0}" data-created="${k.createdAt}"${rowStyle}>
   <td><span class="kc">${escHtml(code)}</span></td>
   <td>${escHtml(k.label)}</td>
   <td><span class="badge ${k.active?(k.warnCount>0?'wl':'on'):'off'}">${k.active?(k.warnCount>0?`AVISO (${k.warnCount}/${WARN_RETRIES})`:'ATIVO'):'BLOQUEADO'}</span></td>
-  <td><span style="color:${(k.uses||0)>=MAX_USES&&!k.active?'var(--red)':'inherit'}">${k.uses||0}/${MAX_USES}</span></td>
+  <td><span style="color:${(k.phones||[]).length>=MAX_USES?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${MAX_USES}</span></td>
   <td>${escHtml(k.lastPhone||'-')}</td>
   <td>${escHtml(k.lastIp||'-')}</td>
   <td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
@@ -341,8 +341,8 @@ function buildLogsHtml(arr) {
 // ADMIN: DASHBOARD — renderização completa
 // ─────────────────────────────────────────────
 function renderAdminDashboard() {
-  const expiringSoon = Object.values(keys).filter(k => k.active && isKeyExpiringSoon(k)).length;
-  const warnLimitKeys = Object.values(keys).filter(k => k.active && (k.warnCount || 0) > 0).length;
+  const expiringSoon    = Object.values(keys).filter(k => k.active && isKeyExpiringSoon(k)).length;
+  const warnLimitKeys   = Object.values(keys).filter(k => k.active && (k.warnCount||0) > 0).length;
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -612,7 +612,8 @@ async function doRefresh(){
     sw.closest('.sc').classList.toggle('warn-card',d.warnKeys>0);
     const swl=document.getElementById('s-warnlimit');
     if(swl){swl.textContent=d.warnLimitKeys||0;swl.style.color=(d.warnLimitKeys>0)?'#ff8c00':'';
-    swl.closest('.sc').style.outline=(d.warnLimitKeys>0)?'1px solid #ff8c0050':'';}
+    swl.closest('.sc').style.outline=(d.warnLimitKeys>0)?'1px solid #ff8c0050':'';
+    }
     document.getElementById('kb').innerHTML=d.keysHtml||'';
     document.getElementById('lb').innerHTML=d.logsHtml||'';
   }catch(e){console.error('Refresh error',e);}
@@ -709,20 +710,20 @@ async function handleRequest(req, res) {
       sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '🚫 Chave bloqueada. Entre em contato com o vendedor.' }));
       return;
     }
-    if (MAX_USES > 0 && (keys[keyCode].uses || 0) >= MAX_USES) {
+    if (MAX_USES > 0 && (keys[keyCode].phones || []).length >= MAX_USES) {
       keys[keyCode].warnCount = (keys[keyCode].warnCount || 0) + 1;
       saveDb();
       if (keys[keyCode].warnCount > WARN_RETRIES) {
         keys[keyCode].active = false;
         addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'auto_blocked' });
         saveDb();
-        fireWebhook('key_auto_blocked', keyCode, `Limite de ativações atingido e ignorado ${WARN_RETRIES}x`);
+        fireWebhook('key_auto_blocked', keyCode, `Limite atingido e ignorado ${WARN_RETRIES}x`);
         sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '🚫 Chave bloqueada após múltiplos avisos ignorados. Entre em contato com o vendedor.' }));
         return;
       }
       const remaining = WARN_RETRIES - keys[keyCode].warnCount + 1;
       addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'warn_limit' });
-      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: `⚠️ Atenção: limite de ativações atingido. Você tem mais ${remaining} tentativa(s) antes do bloqueio automático. Contate o vendedor.` }));
+      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: `\u26a0\ufe0f Limite de ativa\u00e7\u00f5es atingido. Voc\u00ea tem mais ${remaining} tentativa(s) antes do bloqueio. Contate o vendedor.` }));
       return;
     }
     keys[keyCode].lastUsed = new Date().toISOString();
@@ -780,41 +781,33 @@ async function handleRequest(req, res) {
       return;
     }
 
-    const samePhone = phone && phone !== '-' && keys[keyCode].lastPhone === phone;
+    // ── Verificar se telefone já é autorizado (lista de phones) ──
+    if (!keys[keyCode].phones) keys[keyCode].phones = keys[keyCode].lastPhone ? [keys[keyCode].lastPhone] : [];
+    const knownPhone = phone && phone !== '-' && keys[keyCode].phones.includes(phone);
 
-    // ── Fingerprint de dispositivo ──
-    if (deviceId) {
-      const storedDevice = keys[keyCode].deviceId;
-      if (storedDevice && storedDevice !== deviceId && !samePhone) {
-        // Dispositivo diferente E telefone diferente = novo dispositivo suspeito
-        addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'device_mismatch' });
-        // Conta como uso extra (não bloqueia automaticamente, apenas registra)
-      }
-      if (!storedDevice) keys[keyCode].deviceId = deviceId;
-    }
-
-    if (!samePhone) {
-      if (MAX_USES > 0 && (keys[keyCode].uses || 0) >= MAX_USES) {
-        // Já atingiu o limite — contar tentativas pós-aviso
+    if (!knownPhone) {
+      // Telefone novo — verificar se ainda há slots disponíveis
+      if (MAX_USES > 0 && keys[keyCode].phones.length >= MAX_USES) {
+        // Limite atingido — incrementar contador de avisos
         keys[keyCode].warnCount = (keys[keyCode].warnCount || 0) + 1;
         saveDb();
 
         if (keys[keyCode].warnCount > WARN_RETRIES) {
-          // Excedeu as tentativas de graça → bloqueia agora
+          // Ignorou os avisos WARN_RETRIES vezes — bloquear agora
           keys[keyCode].active = false;
           addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'auto_blocked' });
           saveDb();
-          fireWebhook('key_auto_blocked', keyCode, `Limite de ativações atingido e ignorado ${WARN_RETRIES}x`);
+          fireWebhook('key_auto_blocked', keyCode, `Limite atingido e ignorado ${WARN_RETRIES}x`);
           sendJson(res, { data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave bloqueada após múltiplos avisos ignorados.', permissions: [] } }, 403);
           return;
         }
 
-        // Ainda dentro das tentativas de aviso → retorna aviso sem bloquear
+        // Avisar sem bloquear
         const remaining = WARN_RETRIES - keys[keyCode].warnCount + 1;
         addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'warn_limit' });
         const authPayload = getAuthData(keyCode);
-        authPayload.warnLimit    = true;
-        authPayload.warnMessage  = `\u26a0\ufe0f Aten\u00e7\u00e3o: esta chave atingiu o limite de ativa\u00e7\u00f5es. Voc\u00ea tem mais ${remaining} tentativa(s) antes do bloqueio autom\u00e1tico. Entre em contato com o vendedor.`;
+        authPayload.warnLimit     = true;
+        authPayload.warnMessage   = `\u26a0\ufe0f Aten\u00e7\u00e3o: esta chave atingiu o limite de ativa\u00e7\u00f5es (${keys[keyCode].phones.length}/${MAX_USES}). Voc\u00ea tem mais ${remaining} tentativa(s) antes do bloqueio autom\u00e1tico. Entre em contato com o vendedor.`;
         authPayload.warnRemaining = remaining;
         keys[keyCode].lastUsed  = new Date().toISOString();
         keys[keyCode].lastIp    = ip;
@@ -823,13 +816,16 @@ async function handleRequest(req, res) {
         sendJson(res, authPayload);
         return;
       }
-      keys[keyCode].uses = (keys[keyCode].uses || 0) + 1;
+
+      // Slot disponível — registrar o novo telefone
+      keys[keyCode].phones.push(phone);
+      keys[keyCode].uses = keys[keyCode].phones.length;
     }
 
     keys[keyCode].lastUsed  = new Date().toISOString();
     keys[keyCode].lastIp    = ip;
     keys[keyCode].lastPhone = phone;
-    addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: samePhone ? 'relogin_ok' : 'login_ok' });
+    addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: knownPhone ? 'relogin_ok' : 'login_ok' });
     saveDb();
     sendJson(res, getAuthData(keyCode));
     return;
@@ -986,11 +982,11 @@ async function handleRequest(req, res) {
   // ── ADMIN API: exportar CSV ──
   if (p === '/admin/api/export/csv' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const header = 'Chave,Cliente,Status,Usos,Avisos,Telefone,Último IP,Último Acesso,Criada em,Expira em,Nota';
+    const header = 'Chave,Cliente,Status,Usos,Telefone,Último IP,Último Acesso,Criada em,Expira em,Nota';
     const rows = Object.entries(keys).map(([code, k]) => {
       const cols = [
-        code, k.label, k.active ? (k.warnCount > 0 ? 'AVISO' : 'ATIVO') : 'BLOQUEADO',
-        `${k.uses||0}/${MAX_USES}`, `${k.warnCount||0}/${WARN_RETRIES}`, k.lastPhone||'',
+        code, k.label, k.active ? 'ATIVO' : 'BLOQUEADO',
+        `${k.uses||0}/${MAX_USES}`, k.lastPhone||'',
         k.lastIp||'',
         k.lastUsed ? new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}) : '',
         new Date(k.createdAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}),
