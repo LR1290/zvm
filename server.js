@@ -1,7 +1,9 @@
 const http = require('http');
 const crypto = require('crypto');
-const fs = require('fs');
+// fs ainda usado para nada — mongodb substituiu persistência
+// Mantido para compatibilidade caso algum trecho use path
 const path = require('path');
+const { MongoClient } = require('mongodb');
 
 const PORT       = process.env.PORT       || 3000;
 const ADMIN_USER = process.env.ADMIN_USER;
@@ -13,31 +15,71 @@ if (!ADMIN_USER || !ADMIN_PASS) {
 }
 
 // ─────────────────────────────────────────────
-// PERSISTÊNCIA
+// PERSISTÊNCIA — MongoDB Atlas
+// MONGODB_URI: variável de ambiente com a connection string
+// Formato: mongodb+srv://user:pass@cluster.mongodb.net/zapvoice
 // ─────────────────────────────────────────────
-const DB_FILE = process.env.DB_PATH || '/tmp/zapvoice_db.json';
+const MONGODB_URI = process.env.MONGODB_URI || '';
 
-function loadDb() {
-  try {
-    if (!fs.existsSync(DB_FILE)) return { keys: {}, logs: [] };
-    const raw = fs.readFileSync(DB_FILE, 'utf8').trim();
-    // Detecta legado JSON puro ou novo formato cifrado (base64)
-    const plain = raw.startsWith('{') ? raw : decryptData(raw);
-    if (!plain) { console.error('[DB] Falha ao decifrar — iniciando vazio'); return { keys: {}, logs: [] }; }
-    return JSON.parse(plain);
-  } catch (e) { console.error('Erro ao carregar DB:', e.message); }
-  return { keys: {}, logs: [] };
-}
-function saveDb() {
-  try {
-    const json = JSON.stringify({ keys, logs }, null, 2);
-    fs.writeFileSync(DB_FILE, DB_SECRET ? encryptData(json) : json, 'utf8');
-  } catch (e) { console.error('Erro ao salvar DB:', e.message); }
+let _mongoClient = null;
+let _mongoDb     = null;
+
+async function getMongoDb() {
+  if (_mongoDb) return _mongoDb;
+  if (!MONGODB_URI) throw new Error('MONGODB_URI não configurado');
+  if (!_mongoClient) {
+    _mongoClient = new MongoClient(MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 5000,
+    });
+    await _mongoClient.connect();
+    console.log('✅ MongoDB conectado');
+  }
+  _mongoDb = _mongoClient.db('zapvoice');
+  return _mongoDb;
 }
 
-const db  = loadDb();
-let keys     = db.keys || {};
-let logs     = db.logs || [];
+// loadDb: carrega keys e logs do MongoDB (chamado na inicialização)
+async function loadDb() {
+  try {
+    const db = await getMongoDb();
+    const keysDoc = await db.collection('store').findOne({ _id: 'keys' });
+    const logsDoc = await db.collection('store').findOne({ _id: 'logs' });
+    return {
+      keys: keysDoc ? keysDoc.data : {},
+      logs: logsDoc ? logsDoc.data : [],
+    };
+  } catch (e) {
+    console.error('[DB] Erro ao carregar do MongoDB:', e.message);
+    return { keys: {}, logs: [] };
+  }
+}
+
+// saveDb: persiste keys e logs no MongoDB
+// Usa upsert para não duplicar documentos
+async function saveDb() {
+  try {
+    const db = await getMongoDb();
+    await Promise.all([
+      db.collection('store').updateOne(
+        { _id: 'keys' },
+        { $set: { _id: 'keys', data: keys, updatedAt: new Date() } },
+        { upsert: true }
+      ),
+      db.collection('store').updateOne(
+        { _id: 'logs' },
+        { $set: { _id: 'logs', data: logs, updatedAt: new Date() } },
+        { upsert: true }
+      ),
+    ]);
+  } catch (e) {
+    console.error('[DB] Erro ao salvar no MongoDB:', e.message);
+  }
+}
+
+// Variáveis globais — preenchidas após conectar
+let keys     = {};
+let logs     = [];
 let sessions = {};
 
 // ─────────────────────────────────────────────
@@ -83,30 +125,9 @@ function verifyHmac(rawBody, sig, ts) {
   catch { return false; }
 }
 
-// CAMADA 2 — Banco de dados cifrado com AES-256-GCM
-// DB_SECRET: string secreta separada do APP_SECRET
-const DB_SECRET = process.env.DB_SECRET || '';
-
-function encryptData(plain) {
-  if (!DB_SECRET) return plain;
-  const key = crypto.createHash('sha256').update(DB_SECRET).digest();
-  const iv  = crypto.randomBytes(12);
-  const c   = crypto.createCipheriv('aes-256-gcm', key, iv);
-  const enc = Buffer.concat([c.update(plain, 'utf8'), c.final()]);
-  const tag = c.getAuthTag();
-  return Buffer.concat([iv, tag, enc]).toString('base64');
-}
-
-function decryptData(data) {
-  if (!DB_SECRET) return data;
-  try {
-    const buf = Buffer.from(data, 'base64');
-    const key = crypto.createHash('sha256').update(DB_SECRET).digest();
-    const d   = crypto.createDecipheriv('aes-256-gcm', key, buf.slice(0,12));
-    d.setAuthTag(buf.slice(12,28));
-    return d.update(buf.slice(28)) + d.final('utf8');
-  } catch(e) { console.error('[DB-DECRYPT] Erro:', e.message); return null; }
-}
+// CAMADA 2 — Criptografia em repouso
+// Com MongoDB Atlas, os dados são cifrados nativamente pelo Atlas (AES-256)
+// DB_SECRET não é mais necessário — pode ser removido das variáveis de ambiente
 
 // CAMADA 3 — Rotas ofuscadas derivadas do APP_SECRET
 // Sem APP_SECRET as rotas ficam /admin e /extension (retrocompatível)
@@ -1145,12 +1166,28 @@ async function handleRequest(req, res) {
   sendJson(res, { ok: true });
 }
 
-http.createServer(handleRequest).listen(PORT, () => {
-  console.log(`✅ ZapVoice Server v6 — porta ${PORT}`);
-  console.log(`💾 DB: ${DB_FILE} ${DB_SECRET ? '🔒 CIFRADO (AES-256-GCM)' : '⚠ sem criptografia — defina DB_SECRET'}`);
-  console.log(`🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ inativo — defina APP_SECRET'}`);
-  console.log(`🔑 Admin: ${R_ADMIN} | User: ${ADMIN_USER}`);
-  console.log(`🌐 Extension: ${R_EXT}/v3/key`);
-  console.log(`📊 Chaves: ${Object.keys(keys).length} | Webhook: ${WEBHOOK_URL || 'não configurado'}`);
-  console.log(`⚠  Aviso expiração: ${EXPIRY_WARN_HOURS}h antes`);
-});
+// ── Inicialização assíncrona: conecta ao MongoDB antes de aceitar requests ──
+(async () => {
+  try {
+    if (!MONGODB_URI) {
+      console.error('❌ ERRO CRÍTICO: Defina MONGODB_URI nas variáveis de ambiente do Render.com');
+      console.error('   Formato: mongodb+srv://user:pass@cluster.mongodb.net/zapvoice');
+      process.exit(1);
+    }
+    const loaded = await loadDb();
+    keys = loaded.keys || {};
+    logs = loaded.logs || [];
+    console.log(`✅ ZapVoice Server v7 — porta ${PORT}`);
+    console.log(`🍃 MongoDB: conectado | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}`);
+    console.log(`🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ inativo — defina APP_SECRET'}`);
+    console.log(`🔑 Admin: ${R_ADMIN} | User: ${ADMIN_USER}`);
+    console.log(`🌐 Extension: ${R_EXT}/v3/key`);
+    console.log(`📊 Webhook: ${WEBHOOK_URL || 'não configurado'} | Expiração: ${EXPIRY_WARN_HOURS}h`);
+    http.createServer(handleRequest).listen(PORT, () => {
+      console.log(`🚀 Servidor ouvindo na porta ${PORT}`);
+    });
+  } catch (e) {
+    console.error('❌ Falha ao iniciar:', e.message);
+    process.exit(1);
+  }
+})();
