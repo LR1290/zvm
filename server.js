@@ -54,7 +54,6 @@ const USAGE_LIMITS = {
   message:      { sent:0, max:-1 }, scheduleItem: { sent:0, max:-1 }
 };
 const MAX_USES     = 3;
-const WARN_RETRIES = 5;
 
 // Aviso de expiração antecipado: quantas horas antes mostrar banner
 const EXPIRY_WARN_HOURS = parseInt(process.env.EXPIRY_WARN_HOURS || '48');
@@ -187,7 +186,7 @@ async function fireWebhook(event, keyCode, reason) {
   if (!WEBHOOK_URL) return;
   const k = keys[keyCode];
   const payload = {
-    event,       // 'key_blocked' | 'key_expired' | 'key_auto_blocked'
+    event,       // 'key_blocked' | 'key_expired'
     keyCode,
     label:       k?.label || '-',
     phone:       k?.lastPhone || '-',
@@ -397,7 +396,7 @@ function buildKeysHtml() {
 <tr data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${k.active?'ativo':'bloqueado'}" data-uses="${k.uses||0}" data-created="${k.createdAt}"${rowStyle}>
   <td><span class="kc">${escHtml(code)}</span></td>
   <td>${escHtml(k.label)}</td>
-  <td><span class="badge ${k.active?(k.warnCount>0?'wl':'on'):'off'}">${k.active?(k.warnCount>0?`AVISO (${k.warnCount}/${WARN_RETRIES})`:'ATIVO'):'BLOQUEADO'}</span></td>
+  <td><span class="badge ${k.active?(k.warnCount>0?'wl':'on'):'off'}">${k.active?(k.warnCount>0?`AVISO (${k.warnCount}x)`:'ATIVO'):'BLOQUEADO'}</span></td>
   <td><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
   <td>${escHtml(k.lastPhone||'-')}</td>
   <td>${escHtml(k.lastIp||'-')}</td>
@@ -424,7 +423,7 @@ function buildLogsHtml(arr) {
   <td>${escHtml(l.phone||'-')}</td>
   <td>${escHtml(l.ip||'-')}</td>
   <td>${escHtml(l.wppVersion||'-')}</td>
-  <td><span class="badge ${l.action==='login_ok'?'on':l.action==='relogin_ok'?'re':l.action==='verify_ok'?'vr':l.action==='login_blocked'||l.action==='auto_blocked'?'off':l.action==='warn_limit'?'wl':'warn'}">${escHtml(l.action)}</span></td>
+  <td><span class="badge ${l.action==='login_ok'?'on':l.action==='relogin_ok'?'re':l.action==='verify_ok'?'vr':l.action==='login_blocked'?'off':l.action==='warn_limit'?'wl':'warn'}">${escHtml(l.action)}</span></td>
 </tr>`).join('');
 }
 
@@ -938,25 +937,13 @@ async function handleRequest(req, res) {
     const keyMaxUses = (typeof keys[keyCode].maxUses === 'number') ? keys[keyCode].maxUses : MAX_USES;
     if (isNewPhone) {
       if (keyMaxUses > 0 && keys[keyCode].phones.length >= keyMaxUses) {
-        // Limite atingido por número novo — aviso + bloqueia o login deste número
+        // Limite atingido — apenas incrementa aviso, sem bloqueio automático
         keys[keyCode].warnCount = (keys[keyCode].warnCount || 0) + 1;
         saveDb();
-        if (keys[keyCode].warnCount > WARN_RETRIES) {
-          // Ignorou avisos demais — bloquear a chave inteira
-          keys[keyCode].active = false;
-          addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'auto_blocked' });
-          saveDb();
-          fireWebhook('key_auto_blocked', keyCode, `Limite atingido e ignorado ${WARN_RETRIES}x`);
-          sendJson(res, { data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave bloqueada após múltiplos avisos.', permissions: [] } }, 403);
-          return;
-        }
-        const remaining = WARN_RETRIES - keys[keyCode].warnCount + 1;
         addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'warn_limit' });
-        // HTTP 403 + USUÁRIO NÃO ENCONTRADO → extensão interpreta como userNotFound → desloga
-        // warnLimit:true → patcher exibe toast de aviso em vez de mensagem genérica
         sendJson(res, {
           warnLimit: true,
-          warnRemaining: remaining,
+          warnRemaining: keys[keyCode].warnCount,
           data: {
             message: `USUÁRIO NÃO ENCONTRADO. Limite de ativações atingido (${keys[keyCode].phones.length}/${keyMaxUses}). ${remaining} tentativa(s) de número novo restante(s). Contate o vendedor.`,
             permissions: []
