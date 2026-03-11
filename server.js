@@ -29,8 +29,11 @@ async function getMongoDb() {
   if (!MONGODB_URI) throw new Error('MONGODB_URI não configurado');
   if (!_mongoClient) {
     _mongoClient = new MongoClient(MONGODB_URI, {
-      serverSelectionTimeoutMS: 5000,
-      connectTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 10000,
+      connectTimeoutMS: 10000,
+      tls: true,
+      tlsAllowInvalidCertificates: false,
+      tlsAllowInvalidHostnames: false,
     });
     await _mongoClient.connect();
     console.log('✅ MongoDB conectado');
