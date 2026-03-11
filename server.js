@@ -125,35 +125,59 @@ const R_EXT      = '/extension'; // rotas da extensão SEMPRE fixas — patcher 
 // ─────────────────────────────────────────────
 // RATE LIMITING (anti brute-force)
 // ─────────────────────────────────────────────
-const rateLimitMap = new Map(); // ip -> { count, resetAt }
-const RATE_LIMIT_MAX      = 4;    // tentativas por janela
-const RATE_LIMIT_WINDOW   = 60000; // 1 minuto
-const RATE_LIMIT_BLOCK_MS = 10 * 60000; // 10 min bloqueado após exceder
+const rateLimitMap = new Map(); // ip+type -> { count, resetAt, blockedUntil }
 
-function checkRateLimit(ip) {
+// Limites separados por tipo de uso:
+// 'login'  — página de ativação manual (mais restrito)
+// 'api'    — /v3/key e /v3/check-status (extensão chama automaticamente)
+const RL_CONFIG = {
+  login: { max: 5,  windowMs: 60000,      blockMs: 10 * 60000 }, // 5 tentativas/min → bloqueia 10min
+  api:   { max: 30, windowMs: 60000,      blockMs:  2 * 60000 }, // 30 chamadas/min  → bloqueia 2min
+};
+
+function checkRateLimit(ip, type = 'api') {
   const now = Date.now();
-  let entry = rateLimitMap.get(ip);
-  if (!entry || now > entry.resetAt) {
-    entry = { count: 0, resetAt: now + RATE_LIMIT_WINDOW, blocked: false, blockedUntil: 0 };
-    rateLimitMap.set(ip, entry);
+  const key = ip + ':' + type;
+  const cfg = RL_CONFIG[type] || RL_CONFIG.api;
+  let e = rateLimitMap.get(key);
+
+  // Entrada nova ou janela expirada — mas só resetar se não estiver no período de bloqueio
+  if (!e) {
+    e = { count: 0, resetAt: now + cfg.windowMs, blockedUntil: 0 };
+    rateLimitMap.set(key, e);
   }
-  if (entry.blocked) {
-    if (now < entry.blockedUntil) return false;
-    entry.blocked = false; entry.count = 0; entry.resetAt = now + RATE_LIMIT_WINDOW;
+
+  // Ainda bloqueado?
+  if (now < e.blockedUntil) return false;
+
+  // Janela expirou e não está mais bloqueado → resetar contador
+  if (now > e.resetAt) {
+    e.count = 0;
+    e.resetAt = now + cfg.windowMs;
+    e.blockedUntil = 0;
   }
-  entry.count++;
-  if (entry.count > RATE_LIMIT_MAX) {
-    entry.blocked = true; entry.blockedUntil = now + RATE_LIMIT_BLOCK_MS;
-    console.warn(`[RATE-LIMIT] IP bloqueado: ${ip}`);
+
+  e.count++;
+  if (e.count > cfg.max) {
+    e.blockedUntil = now + cfg.blockMs;
+    console.warn(`[RATE-LIMIT] ${type} — IP bloqueado por ${cfg.blockMs/60000}min: ${ip}`);
     return false;
   }
   return true;
 }
+
+function getRateLimitWait(ip, type = 'login') {
+  const key = ip + ':' + type;
+  const e = rateLimitMap.get(key);
+  if (!e || Date.now() >= e.blockedUntil) return 0;
+  return Math.ceil((e.blockedUntil - Date.now()) / 60000);
+}
+
 // Limpar entradas antigas a cada 15 min
 setInterval(() => {
   const now = Date.now();
-  for (const [ip, e] of rateLimitMap.entries())
-    if (now > e.resetAt && !e.blocked) rateLimitMap.delete(ip);
+  for (const [k, e] of rateLimitMap.entries())
+    if (now > e.blockedUntil && now > e.resetAt) rateLimitMap.delete(k);
 }, 15 * 60000);
 
 // ─────────────────────────────────────────────
@@ -813,10 +837,9 @@ async function handleRequest(req, res) {
 
   // ── EXTENSÃO: verifica chave e faz callback ──
   if (p === R_EXT+'/auth/verify' && req.method === 'POST') {
-    if (!checkRateLimit(ip)) {
-      const _blocked = rateLimitMap.get(ip);
-      const _minsLeft = _blocked ? Math.ceil((_blocked.blockedUntil - Date.now()) / 60000) : 10;
-      sendHtml(res, renderExtensionLogin({ callback: '', error: `⏳ Muitas tentativas. Aguarde ${_minsLeft} minuto(s) antes de tentar novamente.` }), 429);
+    if (!checkRateLimit(ip, 'login')) {
+      const _mins = getRateLimitWait(ip, 'login');
+      sendHtml(res, renderExtensionLogin({ callback: '', error: `⏳ Muitas tentativas. Aguarde ${_mins} minuto(s) antes de tentar novamente.` }), 429);
       return;
     }
     const form     = await parseFormBody(req);
@@ -868,7 +891,7 @@ async function handleRequest(req, res) {
 
   // ── EXTENSÃO: validação via /v3/key ──
   if (p === R_EXT+'/v3/key' && req.method === 'POST') {
-    if (!checkRateLimit(ip)) {
+    if (!checkRateLimit(ip, 'api')) {
       sendJson(res, { authError: 'rateLimited', authErrorMessage: 'Muitas tentativas. Aguarde.' }, 429);
       return;
     }
