@@ -612,7 +612,7 @@ tr:hover td{background:#ffffff02}
 
 <div class="toast" id="toast"></div>
 <script>
-const _RA=''+R_ADMIN+'';
+const _RA='${R_ADMIN}';
 function toast(msg,ok=true){
   const t=document.getElementById('toast');
   t.textContent=msg;
