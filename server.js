@@ -19,13 +19,20 @@ const DB_FILE = process.env.DB_PATH || '/tmp/zapvoice_db.json';
 
 function loadDb() {
   try {
-    if (fs.existsSync(DB_FILE)) return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    if (!fs.existsSync(DB_FILE)) return { keys: {}, logs: [] };
+    const raw = fs.readFileSync(DB_FILE, 'utf8').trim();
+    // Detecta legado JSON puro ou novo formato cifrado (base64)
+    const plain = raw.startsWith('{') ? raw : decryptData(raw);
+    if (!plain) { console.error('[DB] Falha ao decifrar — iniciando vazio'); return { keys: {}, logs: [] }; }
+    return JSON.parse(plain);
   } catch (e) { console.error('Erro ao carregar DB:', e.message); }
   return { keys: {}, logs: [] };
 }
 function saveDb() {
-  try { fs.writeFileSync(DB_FILE, JSON.stringify({ keys, logs }, null, 2), 'utf8'); }
-  catch (e) { console.error('Erro ao salvar DB:', e.message); }
+  try {
+    const json = JSON.stringify({ keys, logs }, null, 2);
+    fs.writeFileSync(DB_FILE, DB_SECRET ? encryptData(json) : json, 'utf8');
+  } catch (e) { console.error('Erro ao salvar DB:', e.message); }
 }
 
 const db  = loadDb();
@@ -54,6 +61,72 @@ const EXPIRY_WARN_HOURS = parseInt(process.env.EXPIRY_WARN_HOURS || '48');
 
 // Webhook (opcional): URL para notificar bloqueio/expiração
 const WEBHOOK_URL = process.env.WEBHOOK_URL || '';
+
+// ─────────────────────────────────────────────
+// SEGURANÇA — variáveis de ambiente opcionais
+// Sem elas o servidor funciona normalmente (retrocompatível)
+// ─────────────────────────────────────────────
+
+// CAMADA 1 — HMAC request signing
+// APP_SECRET: string secreta definida no Render → Environment Variables
+// A extensão assina cada req com HMAC-SHA256(ts + '.' + body)
+const APP_SECRET       = process.env.APP_SECRET || '';
+const HMAC_TOLERANCE   = 5 * 60 * 1000; // 5 min tolerância de clock
+
+function verifyHmac(rawBody, sig, ts) {
+  if (!APP_SECRET) return true;                          // sem secret → passa
+  if (!sig || !ts) return false;
+  const t = parseInt(ts, 10);
+  if (isNaN(t) || Math.abs(Date.now() - t) > HMAC_TOLERANCE) return false; // replay attack
+  const expected = crypto.createHmac('sha256', APP_SECRET)
+    .update(ts + '.' + rawBody).digest('hex');
+  try { return crypto.timingSafeEqual(Buffer.from(sig,'hex'), Buffer.from(expected,'hex')); }
+  catch { return false; }
+}
+
+// CAMADA 2 — Banco de dados cifrado com AES-256-GCM
+// DB_SECRET: string secreta separada do APP_SECRET
+const DB_SECRET = process.env.DB_SECRET || '';
+
+function encryptData(plain) {
+  if (!DB_SECRET) return plain;
+  const key = crypto.createHash('sha256').update(DB_SECRET).digest();
+  const iv  = crypto.randomBytes(12);
+  const c   = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const enc = Buffer.concat([c.update(plain, 'utf8'), c.final()]);
+  const tag = c.getAuthTag();
+  return Buffer.concat([iv, tag, enc]).toString('base64');
+}
+
+function decryptData(data) {
+  if (!DB_SECRET) return data;
+  try {
+    const buf = Buffer.from(data, 'base64');
+    const key = crypto.createHash('sha256').update(DB_SECRET).digest();
+    const d   = crypto.createDecipheriv('aes-256-gcm', key, buf.slice(0,12));
+    d.setAuthTag(buf.slice(12,28));
+    return d.update(buf.slice(28)) + d.final('utf8');
+  } catch(e) { console.error('[DB-DECRYPT] Erro:', e.message); return null; }
+}
+
+// CAMADA 3 — Rotas ofuscadas derivadas do APP_SECRET
+// Sem APP_SECRET as rotas ficam /admin e /extension (retrocompatível)
+function deriveSlug(seed) {
+  if (!APP_SECRET) return null;
+  return crypto.createHmac('sha256', APP_SECRET).update(seed).digest('hex').slice(0, 14);
+}
+const _slugAdmin = deriveSlug('admin-panel');
+const _slugExt   = deriveSlug('extension-api');
+const R_ADMIN    = _slugAdmin ? '/' + _slugAdmin : '/admin';
+const R_EXT      = _slugExt   ? '/' + _slugExt   : '/extension';
+
+// CAMADA 4 — IP blocklist permanente (em memória, limpa ao reiniciar)
+const _permBlocked = new Set();
+function permBlock(ip, reason) {
+  if (_permBlocked.has(ip)) return;
+  _permBlocked.add(ip);
+  console.warn('[SEC] IP banido permanentemente:', ip, '—', reason);
+}
 
 // ─────────────────────────────────────────────
 // RATE LIMITING (anti brute-force)
@@ -266,7 +339,7 @@ input:focus{border-color:#00ff87}
 <div class="card">
   <div class="logo">⚡ ZapVoice Admin</div>
   ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
-  <form method="POST" action="/admin/login">
+  <form method="POST" action="${R_ADMIN}/login">
     <label>Usuário</label><input type="text" name="user" autocomplete="off">
     <label>Senha</label><input type="password" name="pass">
     <button type="submit" class="btn">Entrar</button>
@@ -463,7 +536,7 @@ tr:hover td{background:#ffffff02}
   <div class="logo">⚡ ZapVoice</div>
   <div class="hright">
     <button class="btn bcsv" onclick="exportCSV()">⬇ CSV</button>
-    <a href="/admin/logout" class="out">↩ Sair</a>
+    <a href="${R_ADMIN}/logout" class="out">↩ Sair</a>
   </div>
 </header>
 <main>
@@ -545,6 +618,7 @@ tr:hover td{background:#ffffff02}
 
 <div class="toast" id="toast"></div>
 <script>
+const _RA=''+R_ADMIN+'';
 function toast(msg,ok=true){
   const t=document.getElementById('toast');
   t.textContent=msg;
@@ -589,8 +663,8 @@ async function generateKey(){
     if(days>0)body.expireDays=days;
     if(hours>0)body.expireHours=hours;
     if(mins>0)body.expireMinutes=mins;
-    const r=await fetch('/admin/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
+    const r=await fetch(_RA+'/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
     const d=await r.json();
     if(d.ok){
       const exp=[];
@@ -606,8 +680,8 @@ async function filterLog(){
   const date=document.getElementById('logDate').value;
   if(!date)return;
   try{
-    const r=await fetch('/admin/api/logs?date='+date);
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
+    const r=await fetch(_RA+'/api/logs?date='+date);
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
     const d=await r.json();
     if(d.ok)document.getElementById('lb').innerHTML=d.logsHtml||'';
   }catch(e){toast('Erro ao filtrar',false);}
@@ -618,16 +692,16 @@ async function clearLog(){
   if(!confirm(date?'Limpar logs do dia '+date+'?':'Limpar TODO o log?'))return;
   try{
     const body=date?{date}:{};
-    const r=await fetch('/admin/api/logs',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
+    const r=await fetch(_RA+'/api/logs',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
     const d=await r.json();
     if(d.ok){toast(date?'Log do dia limpo!':'Log completo apagado!');document.getElementById('logDate').value='';await doRefresh();}
   }catch(e){toast('Erro ao limpar',false);}
 }
 async function toggleKey(code){
   try{
-    const r=await fetch('/admin/api/keys/'+encodeURIComponent(code)+'/toggle',{method:'POST'});
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
+    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/toggle',{method:'POST'});
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
     const d=await r.json();
     if(d.ok){toast(d.active?'Chave liberada!':'Chave bloqueada!');await doRefresh();}
   }catch(e){toast('Erro',false);}
@@ -635,23 +709,23 @@ async function toggleKey(code){
 async function deleteKey(code){
   if(!confirm('Excluir chave '+code+'?'))return;
   try{
-    const r=await fetch('/admin/api/keys/'+encodeURIComponent(code),{method:'DELETE'});
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
+    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code),{method:'DELETE'});
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
     const d=await r.json();
     if(d.ok){toast('Chave excluída');await doRefresh();}
   }catch(e){toast('Erro',false);}
 }
 async function resetWarn(code){
   try{
-    const r=await fetch('/admin/api/keys/'+encodeURIComponent(code)+'/reset-warn',{method:'POST'});
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
+    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/reset-warn',{method:'POST'});
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
     const d=await r.json();
     if(d.ok){toast('Avisos resetados');await doRefresh();}else{toast(d.error||'Erro',false);}
   }catch(e){toast('Erro',false);}
 }
 async function doRefresh(){
   try{
-    const r=await fetch('/admin/api/data');
+    const r=await fetch(_RA+'/api/data');
     const d=await r.json();
     if(d.error)return;
     document.getElementById('s-total').textContent=d.totalKeys||0;
@@ -683,8 +757,8 @@ async function saveNote(){
   const code=document.getElementById('noteKeyCode').value;
   const note=document.getElementById('noteText').value.trim();
   try{
-    const r=await fetch('/admin/api/keys/'+encodeURIComponent(code)+'/note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note})});
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
+    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note})});
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
     const d=await r.json();
     if(d.ok){toast('Nota salva!');closeNote();await doRefresh();}
     else toast('Erro ao salvar nota',false);
@@ -694,8 +768,8 @@ async function saveNote(){
 // ── Exportar CSV ──
 async function exportCSV(){
   try{
-    const r=await fetch('/admin/api/export/csv');
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
+    const r=await fetch(_RA+'/api/export/csv');
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
     const blob=await r.blob();
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
@@ -716,23 +790,43 @@ async function exportCSV(){
 async function handleRequest(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST,GET,OPTIONS,DELETE');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,x-app-date');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,x-app-date,x-app-sig,x-app-ts');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-Powered-By', 'PHP/7.4.3'); // fingerprint falso
   if (req.method === 'OPTIONS') { res.writeHead(200); res.end(); return; }
 
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const p   = url.pathname;
   const ip  = getIp(req);
+
+  // ── Camada 4: banimento permanente ──
+  if (_permBlocked.has(ip)) { res.writeHead(403); res.end(); return; }
+
+  // ── Camada 3: bloquear acesso às rotas originais quando slugs estão ativos ──
+  // Se APP_SECRET está configurado e alguém tenta /admin ou /extension → bane o IP
+  if (APP_SECRET) {
+    if (p === '/admin' || p.startsWith('/admin/')) {
+      permBlock(ip, 'tentativa de rota /admin com slug ativo');
+      res.writeHead(404); res.end('Not found'); return;
+    }
+    if (p.startsWith('/extension/')) {
+      permBlock(ip, 'tentativa de rota /extension com slug ativo');
+      res.writeHead(404); res.end('Not found'); return;
+    }
+  }
+
   console.log(`[${new Date().toISOString()}] ${req.method} ${p} — ${ip}`);
 
   // ── EXTENSÃO: página de login ──
-  if ((p === '/extension/auth/' || p === '/extension/auth') && req.method === 'GET') {
+  if ((p === R_EXT+'/auth/' || p === R_EXT+'/auth') && req.method === 'GET') {
     const callback = url.searchParams.get('callback') || '';
     sendHtml(res, renderExtensionLogin({ callback }));
     return;
   }
 
   // ── EXTENSÃO: verifica chave e faz callback ──
-  if (p === '/extension/auth/verify' && req.method === 'POST') {
+  if (p === R_EXT+'/auth/verify' && req.method === 'POST') {
     if (!checkRateLimit(ip)) {
       const _blocked = rateLimitMap.get(ip);
       const _minsLeft = _blocked ? Math.ceil((_blocked.blockedUntil - Date.now()) / 60000) : 10;
@@ -787,12 +881,18 @@ async function handleRequest(req, res) {
   }
 
   // ── EXTENSÃO: validação via /v3/key ──
-  if (p === '/extension/v3/key' && req.method === 'POST') {
+  if (p === R_EXT+'/v3/key' && req.method === 'POST') {
     if (!checkRateLimit(ip)) {
       sendJson(res, { authError: 'rateLimited', authErrorMessage: 'Muitas tentativas. Aguarde.' }, 429);
       return;
     }
-    const body       = await parseBody(req);
+    const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
+    if (!verifyHmac(rawBody, req.headers['x-app-sig']||'', req.headers['x-app-ts']||'')) {
+      addLog({ keyCode:'?', label:'-', phone:'-', ip, wppVersion:'-', action:'hmac_fail' });
+      sendJson(res, { authError: 'forbidden', authErrorMessage: 'Requisição inválida.' }, 403);
+      return;
+    }
+    let body; try { body = JSON.parse(rawBody); } catch { body = {}; }
     const keyCode    = (body.authKey || '').toLowerCase();
     const phone      = body.phoneNumber || '-';
     const wppVersion = body.wppVersion  || '-';
@@ -869,8 +969,12 @@ async function handleRequest(req, res) {
   }
 
   // ── EXTENSÃO: check-status (polling 30s) ──
-  if (p === '/extension/v3/check-status' && req.method === 'POST') {
-    const body    = await parseBody(req);
+  if (p === R_EXT+'/v3/check-status' && req.method === 'POST') {
+    const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
+    if (!verifyHmac(rawBody, req.headers['x-app-sig']||'', req.headers['x-app-ts']||'')) {
+      sendJson(res, { active: false, reason: 'forbidden' }); return;
+    }
+    let body; try { body = JSON.parse(rawBody); } catch { body = {}; }
     const keyCode = (body.authKey || '').toLowerCase();
     if (!keyCode || !keys[keyCode]) {
       sendJson(res, { active: false, reason: 'not_found' }); return;
@@ -889,7 +993,7 @@ async function handleRequest(req, res) {
   }
 
   // ── EXTENSÃO: usage ──
-  if (['/extension/v3/usage','/extension/v3/get-usage','/extension/v3/sync-usage'].includes(p)) {
+  if ([R_EXT+'/v3/usage',R_EXT+'/v3/get-usage',R_EXT+'/v3/sync-usage'].includes(p)) {
     sendJson(res, {
       ok: true, status: true, limits: USAGE_LIMITS,
       expires_at: new Date(Date.now() + 365*24*60*60*1000).toISOString(), isExpired: false
@@ -898,7 +1002,7 @@ async function handleRequest(req, res) {
   }
 
   // ── ADMIN: login ──
-  if (p === '/admin/login' && req.method === 'POST') {
+  if (p === R_ADMIN+'/login' && req.method === 'POST') {
     const form = await parseFormBody(req);
     if (form.get('user') === ADMIN_USER && form.get('pass') === ADMIN_PASS) {
       const token = generateToken();
@@ -910,19 +1014,19 @@ async function handleRequest(req, res) {
   }
 
   // ── ADMIN: logout ──
-  if (p === '/admin/logout') {
+  if (p === R_ADMIN+'/logout') {
     res.setHeader('Set-Cookie', 'zv_admin=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT');
     res.writeHead(302, { Location: '/admin' }); res.end(); return;
   }
 
   // ── ADMIN: painel ──
-  if (p === '/admin' || p === '/admin/') {
+  if (p === R_ADMIN || p === R_ADMIN+'/') {
     if (!isAdminSession(req)) { sendHtml(res, renderAdminLogin()); return; }
     sendHtml(res, renderAdminDashboard()); return;
   }
 
   // ── ADMIN API: dados ──
-  if (p === '/admin/api/data' && req.method === 'GET') {
+  if (p === R_ADMIN+'/api/data' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     sendJson(res, {
       totalKeys:     Object.keys(keys).length,
@@ -936,7 +1040,7 @@ async function handleRequest(req, res) {
   }
 
   // ── ADMIN API: gerar chave ──
-  if (p === '/admin/api/keys' && req.method === 'POST') {
+  if (p === R_ADMIN+'/api/keys' && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const body = await parseBody(req);
     const code = generateKey();
@@ -958,9 +1062,9 @@ async function handleRequest(req, res) {
   }
 
   // ── ADMIN API: toggle ──
-  if (p.match(/^\/admin\/api\/keys\/[^/]+\/toggle$/) && req.method === 'POST') {
+  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/[^/]+\/toggle$')) && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const code = decodeURIComponent(p.split('/')[4]);
+    const _ap=R_ADMIN.split('/').length; const code = decodeURIComponent(p.split('/')[ _ap]);
     if (!keys[code]) { sendJson(res, { error: 'not found' }, 404); return; }
     keys[code].active = !keys[code].active;
     saveDb();
@@ -969,9 +1073,9 @@ async function handleRequest(req, res) {
   }
 
   // ── ADMIN API: reset-warn ──
-  if (p.match(/^\/admin\/api\/keys\/[^/]+\/reset-warn$/) && req.method === 'POST') {
+  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/[^/]+\/reset-warn$')) && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const code = decodeURIComponent(p.split('/')[4]);
+    const _ap=R_ADMIN.split('/').length; const code = decodeURIComponent(p.split('/')[ _ap]);
     if (!keys[code]) { sendJson(res, { error: 'not found' }, 404); return; }
     keys[code].warnCount = 0;
     saveDb();
@@ -980,9 +1084,9 @@ async function handleRequest(req, res) {
   }
 
   // ── ADMIN API: nota ──
-  if (p.match(/^\/admin\/api\/keys\/[^/]+\/note$/) && req.method === 'POST') {
+  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/[^/]+\/note$')) && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const code = decodeURIComponent(p.split('/')[4]);
+    const _ap=R_ADMIN.split('/').length; const code = decodeURIComponent(p.split('/')[ _ap]);
     if (!keys[code]) { sendJson(res, { error: 'not found' }, 404); return; }
     const body = await parseBody(req);
     keys[code].note = String(body.note || '').slice(0, 500);
@@ -991,16 +1095,16 @@ async function handleRequest(req, res) {
   }
 
   // ── ADMIN API: deletar chave ──
-  if (p.match(/^\/admin\/api\/keys\/[^/]+$/) && req.method === 'DELETE') {
+  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/[^/]+$')) && req.method === 'DELETE') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const code = decodeURIComponent(p.split('/')[4]);
+    const _ap=R_ADMIN.split('/').length; const code = decodeURIComponent(p.split('/')[ _ap]);
     delete keys[code];
     saveDb();
     sendJson(res, { ok: true }); return;
   }
 
   // ── ADMIN API: limpar log ──
-  if (p === '/admin/api/logs' && req.method === 'DELETE') {
+  if (p === R_ADMIN+'/api/logs' && req.method === 'DELETE') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const body = await parseBody(req);
     if (body.date) { logs = logs.filter(l => !l.timestamp.startsWith(body.date)); }
@@ -1010,7 +1114,7 @@ async function handleRequest(req, res) {
   }
 
   // ── ADMIN API: filtrar log ──
-  if (p === '/admin/api/logs' && req.method === 'GET') {
+  if (p === R_ADMIN+'/api/logs' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const date = url.searchParams.get('date');
     const filtered = date ? logs.filter(l => l.timestamp.startsWith(date)) : logs;
@@ -1018,7 +1122,7 @@ async function handleRequest(req, res) {
   }
 
   // ── ADMIN API: exportar CSV ──
-  if (p === '/admin/api/export/csv' && req.method === 'GET') {
+  if (p === R_ADMIN+'/api/export/csv' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const header = 'Chave,Cliente,Status,Usos,Telefone,Último IP,Último Acesso,Criada em,Expira em,Nota';
     const rows = Object.entries(keys).map(([code, k]) => {
@@ -1045,9 +1149,11 @@ async function handleRequest(req, res) {
 }
 
 http.createServer(handleRequest).listen(PORT, () => {
-  console.log(`✅ ZapVoice Server v5 — porta ${PORT}`);
-  console.log(`💾 DB: ${DB_FILE}`);
-  console.log(`🔑 Admin: /admin | User: ${ADMIN_USER}`);
+  console.log(`✅ ZapVoice Server v6 — porta ${PORT}`);
+  console.log(`💾 DB: ${DB_FILE} ${DB_SECRET ? '🔒 CIFRADO (AES-256-GCM)' : '⚠ sem criptografia — defina DB_SECRET'}`);
+  console.log(`🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ inativo — defina APP_SECRET'}`);
+  console.log(`🔑 Admin: ${R_ADMIN} | User: ${ADMIN_USER}`);
+  console.log(`🌐 Extension: ${R_EXT}/v3/key`);
   console.log(`📊 Chaves: ${Object.keys(keys).length} | Webhook: ${WEBHOOK_URL || 'não configurado'}`);
   console.log(`⚠  Aviso expiração: ${EXPIRY_WARN_HOURS}h antes`);
 });
