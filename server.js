@@ -132,6 +132,48 @@ function verifyHmac(rawBody, sig, ts) {
 // Com MongoDB Atlas, os dados são cifrados nativamente pelo Atlas (AES-256)
 // DB_SECRET não é mais necessário — pode ser removido das variáveis de ambiente
 
+// ─────────────────────────────────────────────
+// 2FA TOTP — Google Authenticator compatível
+// TOTP_SECRET: variável de ambiente em Base32
+// Se não definido, 2FA fica desativado
+// ─────────────────────────────────────────────
+const TOTP_SECRET = process.env.TOTP_SECRET || '';
+
+function base32Decode(b32) {
+  const alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = 0, val = 0;
+  const out = [];
+  for (const c of b32.toUpperCase().replace(/=+$/, '')) {
+    val = (val << 5) | alpha.indexOf(c);
+    bits += 5;
+    if (bits >= 8) { bits -= 8; out.push((val >> bits) & 0xff); }
+  }
+  return Buffer.from(out);
+}
+
+function generateTOTP(secret, window = 0) {
+  const key   = base32Decode(secret);
+  const epoch = Math.floor(Date.now() / 1000);
+  const step  = Math.floor(epoch / 30) + window;
+  const buf   = Buffer.alloc(8);
+  buf.writeUInt32BE(Math.floor(step / 0x100000000), 0);
+  buf.writeUInt32BE(step >>> 0, 4);
+  const hmac  = crypto.createHmac('sha1', key).update(buf).digest();
+  const off   = hmac[hmac.length - 1] & 0xf;
+  const code  = ((hmac.readUInt32BE(off) & 0x7fffffff) % 1000000).toString().padStart(6, '0');
+  return code;
+}
+
+function verifyTOTP(secret, token) {
+  if (!secret) return true; // 2FA não configurado → passa
+  if (!token || token.length !== 6) return false;
+  // Verificar janela atual ± 1 (tolerância de 30s de clock skew)
+  for (const w of [-1, 0, 1]) {
+    if (generateTOTP(secret, w) === token) return true;
+  }
+  return false;
+}
+
 // CAMADA 3 — Rotas ofuscadas derivadas do APP_SECRET
 // Sem APP_SECRET as rotas ficam /admin e /extension (retrocompatível)
 function deriveSlug(seed) {
@@ -383,6 +425,7 @@ input:focus{border-color:#00ff87}
   <form method="POST" action="${R_ADMIN}/login">
     <label>Usuário</label><input type="text" name="user" autocomplete="off">
     <label>Senha</label><input type="password" name="pass">
+    ${TOTP_SECRET ? `<label>Código 2FA</label><input type="text" name="totp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" autocomplete="one-time-code" style="letter-spacing:4px;font-size:18px;text-align:center">` : ''}
     <button type="submit" class="btn">Entrar</button>
   </form>
 </div></body></html>`;
@@ -1024,12 +1067,17 @@ async function handleRequest(req, res) {
   // ── ADMIN: login ──
   if (p === R_ADMIN+'/login' && req.method === 'POST') {
     const form = await parseFormBody(req);
-    if (form.get('user') === ADMIN_USER && form.get('pass') === ADMIN_PASS) {
+    const credOk = form.get('user') === ADMIN_USER && form.get('pass') === ADMIN_PASS;
+    const totpOk = verifyTOTP(TOTP_SECRET, (form.get('totp') || '').trim());
+    if (credOk && totpOk) {
       const token = generateToken();
       sessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString() };
       res.setHeader('Set-Cookie', `zv_admin=${token}; Path=/; HttpOnly; SameSite=Strict`);
       res.writeHead(302, { Location: R_ADMIN }); res.end();
-    } else { sendHtml(res, renderAdminLogin('Usuário ou senha incorretos')); }
+    } else {
+      const msg = credOk && !totpOk ? 'Código 2FA inválido ou expirado' : 'Usuário ou senha incorretos';
+      sendHtml(res, renderAdminLogin(msg));
+    }
     return;
   }
 
@@ -1082,9 +1130,9 @@ async function handleRequest(req, res) {
   }
 
   // ── ADMIN API: toggle ──
-  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/[^/]+\/toggle$')) && req.method === 'POST') {
+  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/api\/keys\/[^/]+\/toggle$')) && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const _ap=R_ADMIN.split('/').length; const code = decodeURIComponent(p.split('/')[ _ap]);
+    const _segs=p.split('/'); const code = decodeURIComponent(_segs[_segs.length-2]);
     if (!keys[code]) { sendJson(res, { error: 'not found' }, 404); return; }
     keys[code].active = !keys[code].active;
     await saveDb();
@@ -1093,9 +1141,9 @@ async function handleRequest(req, res) {
   }
 
   // ── ADMIN API: reset-warn ──
-  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/[^/]+\/reset-warn$')) && req.method === 'POST') {
+  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/api\/keys\/[^/]+\/reset-warn$')) && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const _ap=R_ADMIN.split('/').length; const code = decodeURIComponent(p.split('/')[ _ap]);
+    const _segs=p.split('/'); const code = decodeURIComponent(_segs[_segs.length-2]);
     if (!keys[code]) { sendJson(res, { error: 'not found' }, 404); return; }
     keys[code].warnCount = 0;
     await saveDb();
@@ -1104,9 +1152,9 @@ async function handleRequest(req, res) {
   }
 
   // ── ADMIN API: nota ──
-  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/[^/]+\/note$')) && req.method === 'POST') {
+  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/api\/keys\/[^/]+\/note$')) && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const _ap=R_ADMIN.split('/').length; const code = decodeURIComponent(p.split('/')[ _ap]);
+    const _segs=p.split('/'); const code = decodeURIComponent(_segs[_segs.length-2]);
     if (!keys[code]) { sendJson(res, { error: 'not found' }, 404); return; }
     const body = await parseBody(req);
     keys[code].note = String(body.note || '').slice(0, 500);
@@ -1115,9 +1163,9 @@ async function handleRequest(req, res) {
   }
 
   // ── ADMIN API: deletar chave ──
-  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/[^/]+$')) && req.method === 'DELETE') {
+  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/api\/keys\/[^/]+$')) && req.method === 'DELETE') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const _ap=R_ADMIN.split('/').length; const code = decodeURIComponent(p.split('/')[ _ap]);
+    const _segs=p.split('/'); const code = decodeURIComponent(_segs[_segs.length-1]);
     delete keys[code];
     await saveDb();
     sendJson(res, { ok: true }); return;
@@ -1183,6 +1231,7 @@ async function handleRequest(req, res) {
     console.log(`✅ ZapVoice Server v7 — porta ${PORT}`);
     console.log(`🍃 MongoDB: conectado | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}`);
     console.log(`🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ inativo — defina APP_SECRET'}`);
+    console.log(`🔑 2FA:  ${TOTP_SECRET ? 'ATIVO' : '⚠ inativo — defina TOTP_SECRET'}`);
     console.log(`🔑 Admin: ${R_ADMIN} | User: ${ADMIN_USER}`);
     console.log(`🌐 Extension: ${R_EXT}/v3/key`);
     console.log(`📊 Webhook: ${WEBHOOK_URL || 'não configurado'} | Expiração: ${EXPIRY_WARN_HOURS}h`);
