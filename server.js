@@ -994,7 +994,7 @@ async function handleRequest(req, res) {
       const token = generateToken();
       sessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString() };
       res.setHeader('Set-Cookie', `zv_admin=${token}; Path=/; HttpOnly; SameSite=Strict`);
-      res.writeHead(302, { Location: '/admin' }); res.end();
+      res.writeHead(302, { Location: R_ADMIN }); res.end();
     } else { sendHtml(res, renderAdminLogin('Usuário ou senha incorretos')); }
     return;
   }
@@ -1002,7 +1002,7 @@ async function handleRequest(req, res) {
   // ── ADMIN: logout ──
   if (p === R_ADMIN+'/logout') {
     res.setHeader('Set-Cookie', 'zv_admin=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT');
-    res.writeHead(302, { Location: '/admin' }); res.end(); return;
+    res.writeHead(302, { Location: R_ADMIN }); res.end(); return;
   }
 
   // ── ADMIN: painel ──
