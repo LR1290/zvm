@@ -116,9 +116,8 @@ function deriveSlug(seed) {
   return crypto.createHmac('sha256', APP_SECRET).update(seed).digest('hex').slice(0, 14);
 }
 const _slugAdmin = deriveSlug('admin-panel');
-const _slugExt   = deriveSlug('extension-api');
 const R_ADMIN    = _slugAdmin ? '/' + _slugAdmin : '/admin';
-const R_EXT      = _slugExt   ? '/' + _slugExt   : '/extension';
+const R_EXT      = '/extension'; // rotas da extensão SEMPRE fixas — patcher usa URL hardcoded
 
 // CAMADA 4 — IP blocklist permanente (em memória, limpa ao reiniciar)
 const _permBlocked = new Set();
