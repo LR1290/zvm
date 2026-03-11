@@ -120,11 +120,12 @@ const R_ADMIN    = _slugAdmin ? '/' + _slugAdmin : '/admin';
 const R_EXT      = '/extension'; // rotas da extensão SEMPRE fixas — patcher usa URL hardcoded
 
 // CAMADA 4 — IP blocklist permanente (em memória, limpa ao reiniciar)
-const _permBlocked = new Set();
+const _permBlocked = new Map(); // ip -> expiresAt
+const PERM_BLOCK_MS = 60 * 60 * 1000; // 1 hora
 function permBlock(ip, reason) {
-  if (_permBlocked.has(ip)) return;
-  _permBlocked.add(ip);
-  console.warn('[SEC] IP banido permanentemente:', ip, '—', reason);
+  const already = _permBlocked.has(ip);
+  _permBlocked.set(ip, Date.now() + PERM_BLOCK_MS);
+  if (!already) console.warn('[SEC] IP banido por 1h:', ip, '—', reason);
 }
 
 // ─────────────────────────────────────────────
@@ -800,7 +801,10 @@ async function handleRequest(req, res) {
   const ip  = getIp(req);
 
   // ── Camada 4: banimento permanente ──
-  if (_permBlocked.has(ip)) { res.writeHead(403); res.end(); return; }
+  if (_permBlocked.has(ip)) {
+    if (Date.now() < _permBlocked.get(ip)) { res.writeHead(403); res.end(); return; }
+    _permBlocked.delete(ip); // ban expirou
+  }
 
   // ── Camada 3: bloquear acesso às rotas originais quando slugs estão ativos ──
   // Se APP_SECRET está configurado e alguém tenta /admin ou /extension → bane o IP
@@ -1139,6 +1143,16 @@ async function handleRequest(req, res) {
     return;
   }
 
+
+  // ── Rota de desbloqueio de emergência: /_unban/ADMIN_PASS ──
+  if (p.startsWith('/_unban/') && req.method === 'GET') {
+    const pass = decodeURIComponent(p.split('/')[2] || '');
+    if (pass !== ADMIN_PASS) { res.writeHead(404); res.end(); return; }
+    _permBlocked.delete(ip);
+    rateLimitMap.delete(ip);
+    sendJson(res, { ok: true, unblocked: ip, admin: R_ADMIN });
+    return;
+  }
 
   sendJson(res, { ok: true });
 }
