@@ -19,20 +19,13 @@ const DB_FILE = process.env.DB_PATH || '/tmp/zapvoice_db.json';
 
 function loadDb() {
   try {
-    if (!fs.existsSync(DB_FILE)) return { keys: {}, logs: [] };
-    const raw = fs.readFileSync(DB_FILE, 'utf8').trim();
-    // Detecta legado JSON puro ou novo formato cifrado (base64)
-    const plain = raw.startsWith('{') ? raw : decryptData(raw);
-    if (!plain) { console.error('[DB] Falha ao decifrar — iniciando vazio'); return { keys: {}, logs: [] }; }
-    return JSON.parse(plain);
+    if (fs.existsSync(DB_FILE)) return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
   } catch (e) { console.error('Erro ao carregar DB:', e.message); }
   return { keys: {}, logs: [] };
 }
 function saveDb() {
-  try {
-    const json = JSON.stringify({ keys, logs }, null, 2);
-    fs.writeFileSync(DB_FILE, DB_SECRET ? encryptData(json) : json, 'utf8');
-  } catch (e) { console.error('Erro ao salvar DB:', e.message); }
+  try { fs.writeFileSync(DB_FILE, JSON.stringify({ keys, logs }, null, 2), 'utf8'); }
+  catch (e) { console.error('Erro ao salvar DB:', e.message); }
 }
 
 const db  = loadDb();
@@ -63,76 +56,10 @@ const EXPIRY_WARN_HOURS = parseInt(process.env.EXPIRY_WARN_HOURS || '48');
 const WEBHOOK_URL = process.env.WEBHOOK_URL || '';
 
 // ─────────────────────────────────────────────
-// SEGURANÇA — variáveis de ambiente opcionais
-// Sem elas o servidor funciona normalmente (retrocompatível)
-// ─────────────────────────────────────────────
-
-// CAMADA 1 — HMAC request signing
-// APP_SECRET: string secreta definida no Render → Environment Variables
-// A extensão assina cada req com HMAC-SHA256(ts + '.' + body)
-const APP_SECRET       = process.env.APP_SECRET || '';
-const HMAC_TOLERANCE   = 5 * 60 * 1000; // 5 min tolerância de clock
-
-function verifyHmac(rawBody, sig, ts) {
-  if (!APP_SECRET) return true;                          // sem secret → passa
-  if (!sig || !ts) return false;
-  const t = parseInt(ts, 10);
-  if (isNaN(t) || Math.abs(Date.now() - t) > HMAC_TOLERANCE) return false; // replay attack
-  const expected = crypto.createHmac('sha256', APP_SECRET)
-    .update(ts + '.' + rawBody).digest('hex');
-  try { return crypto.timingSafeEqual(Buffer.from(sig,'hex'), Buffer.from(expected,'hex')); }
-  catch { return false; }
-}
-
-// CAMADA 2 — Banco de dados cifrado com AES-256-GCM
-// DB_SECRET: string secreta separada do APP_SECRET
-const DB_SECRET = process.env.DB_SECRET || '';
-
-function encryptData(plain) {
-  if (!DB_SECRET) return plain;
-  const key = crypto.createHash('sha256').update(DB_SECRET).digest();
-  const iv  = crypto.randomBytes(12);
-  const c   = crypto.createCipheriv('aes-256-gcm', key, iv);
-  const enc = Buffer.concat([c.update(plain, 'utf8'), c.final()]);
-  const tag = c.getAuthTag();
-  return Buffer.concat([iv, tag, enc]).toString('base64');
-}
-
-function decryptData(data) {
-  if (!DB_SECRET) return data;
-  try {
-    const buf = Buffer.from(data, 'base64');
-    const key = crypto.createHash('sha256').update(DB_SECRET).digest();
-    const d   = crypto.createDecipheriv('aes-256-gcm', key, buf.slice(0,12));
-    d.setAuthTag(buf.slice(12,28));
-    return d.update(buf.slice(28)) + d.final('utf8');
-  } catch(e) { console.error('[DB-DECRYPT] Erro:', e.message); return null; }
-}
-
-// CAMADA 3 — Rotas ofuscadas derivadas do APP_SECRET
-// Sem APP_SECRET as rotas ficam /admin e /extension (retrocompatível)
-function deriveSlug(seed) {
-  if (!APP_SECRET) return null;
-  return crypto.createHmac('sha256', APP_SECRET).update(seed).digest('hex').slice(0, 14);
-}
-const _slugAdmin = deriveSlug('admin-panel');
-const R_ADMIN    = _slugAdmin ? '/' + _slugAdmin : '/admin';
-const R_EXT      = '/extension'; // rotas da extensão SEMPRE fixas — patcher usa URL hardcoded
-
-// CAMADA 4 — IP blocklist permanente (em memória, limpa ao reiniciar)
-const _permBlocked = new Map(); // ip -> expiresAt
-const PERM_BLOCK_MS = 60 * 60 * 1000; // 1 hora
-function permBlock(ip, reason) {
-  const already = _permBlocked.has(ip);
-  _permBlocked.set(ip, Date.now() + PERM_BLOCK_MS);
-  if (!already) console.warn('[SEC] IP banido por 1h:', ip, '—', reason);
-}
-
-// ─────────────────────────────────────────────
 // RATE LIMITING (anti brute-force)
 // ─────────────────────────────────────────────
 const rateLimitMap = new Map(); // ip -> { count, resetAt }
-const RATE_LIMIT_MAX      = 4;    // tentativas por janela
+const RATE_LIMIT_MAX      = 20;   // tentativas por janela
 const RATE_LIMIT_WINDOW   = 60000; // 1 minuto
 const RATE_LIMIT_BLOCK_MS = 10 * 60000; // 10 min bloqueado após exceder
 
@@ -339,7 +266,7 @@ input:focus{border-color:#00ff87}
 <div class="card">
   <div class="logo">⚡ ZapVoice Admin</div>
   ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
-  <form method="POST" action="${R_ADMIN}/login">
+  <form method="POST" action="/admin/login">
     <label>Usuário</label><input type="text" name="user" autocomplete="off">
     <label>Senha</label><input type="password" name="pass">
     <button type="submit" class="btn">Entrar</button>
@@ -380,7 +307,7 @@ function buildKeysHtml() {
   <td><span class="kc">${escHtml(code)}</span></td>
   <td>${escHtml(k.label)}</td>
   <td><span class="badge ${k.active?(k.warnCount>0?'wl':'on'):'off'}">${k.active?(k.warnCount>0?`AVISO (${k.warnCount}/${WARN_RETRIES})`:'ATIVO'):'BLOQUEADO'}</span></td>
-  <td><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
+  <td><span style="color:${(k.phones||[]).length>=MAX_USES?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${MAX_USES}</span></td>
   <td>${escHtml(k.lastPhone||'-')}</td>
   <td>${escHtml(k.lastIp||'-')}</td>
   <td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
@@ -389,7 +316,7 @@ function buildKeysHtml() {
   <td>
     <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
     <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
-    ${(k.warnCount||0)>0 ? `<button class="bs bwarn" onclick="resetWarn('${escHtml(code)}')">⚠ Avisos</button>` : ''}
+    ${(k.warnCount||0)>0 ? `<button class="bs" style="background:#ff8c0020;color:#ff8c00;border:1px solid #ff8c0040" onclick="resetWarn('${escHtml(code)}')">Limpar Avisos</button>` : ''}
   </td>
 </tr>`;
   }).join('');
@@ -424,143 +351,96 @@ function renderAdminDashboard() {
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --green:#00ff87;--dark:#080810;--card:#0f0f1a;--card2:#13131f;
-  --border:#1c1c2e;--border2:#252538;--text:#e2e2f0;--muted:#5a5a7a;
-  --red:#ff4757;--yellow:#ffd32a;--orange:#ff8600;--blue:#4f8ef7;--purple:#9b59b6;
-  --radius:10px;--radius-sm:6px;
-}
+:root{--green:#00ff87;--dark:#0a0a0f;--card:#111118;--border:#1e1e2e;--text:#e2e2f0;--muted:#6b6b8a;--red:#ff4757;--yellow:#ffd32a;--orange:#ff8600}
 body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh}
-header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;
-  border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:100;
-  box-shadow:0 2px 20px #00000040}
-.logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--green);
-  display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
-.hright{display:flex;align-items:center;gap:10px}
-a.out{color:var(--muted);font-size:11px;text-decoration:none;padding:6px 12px;
-  border:1px solid var(--border2);border-radius:var(--radius-sm);transition:all .2s}
-a.out:hover{color:var(--red);border-color:var(--red)}
-main{padding:22px 24px;max-width:1700px;margin:0 auto}
-.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px}
-.sc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
-  padding:16px 18px;position:relative;overflow:hidden;transition:border-color .2s,transform .15s}
-.sc:hover{border-color:var(--border2);transform:translateY(-1px)}
-.sc.warn-card{border-color:#ff860050;background:#ff860008}
-.sc-icon{position:absolute;right:14px;top:14px;font-size:22px;opacity:.15}
-.sc .n{font-family:'Syne',sans-serif;font-size:30px;font-weight:800;color:var(--green);line-height:1.1}
+header{display:flex;align-items:center;justify-content:space-between;padding:18px 32px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:100}
+.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green)}
+.hright{display:flex;align-items:center;gap:16px}
+a.out{color:var(--muted);font-size:12px;text-decoration:none}
+a.out:hover{color:var(--red)}
+main{padding:28px 32px;max-width:1600px;margin:0 auto}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px}
+.sc{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;position:relative}
+.sc.warn-card{border-color:var(--orange)}
+.sc .n{font-family:'Syne',sans-serif;font-size:38px;font-weight:800;color:var(--green)}
 .sc.warn-card .n{color:var(--orange)}
-.sc .l{color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:1.5px;margin-top:5px}
-.sec{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
-  margin-bottom:16px;overflow:hidden}
-.sh{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;
-  border-bottom:1px solid var(--border);background:var(--card2);flex-wrap:wrap;gap:10px}
-.st{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:var(--green);
-  display:flex;align-items:center;gap:6px}
-.gen-form{display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap}
-.gen-form input{
-  padding:7px 10px;background:var(--dark);border:1px solid var(--border);
-  border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;
-  font-size:11px;outline:none;transition:border .18s;display:block;width:100%}
-.gen-form input:focus{border-color:var(--green);background:#0a0a14}
-.gen-form input::placeholder{color:var(--muted)}
-.fi-name{flex:1;min-width:130px;max-width:170px}
-.fi-name input{width:100%}
-.fi-group{display:flex;gap:5px;align-items:flex-end}
-.fi-col{display:flex;flex-direction:column;gap:3px}
-.fi-lbl{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;padding-left:2px}
-.fi-num{width:56px;text-align:center}
-.fi-sep{width:1px;height:28px;background:var(--border2);margin:0 3px;flex-shrink:0;align-self:flex-end;margin-bottom:2px}
-.btn{padding:7px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;
-  font-family:'Syne',sans-serif;font-weight:700;font-size:11px;
-  transition:all .18s;white-space:nowrap;letter-spacing:.3px}
-.btn:hover{opacity:.85;transform:translateY(-1px)}
-.btn:active{transform:translateY(0)}
-.bp{background:var(--green);color:#000;box-shadow:0 0 12px #00ff8730}
-.bw{background:#ffd32a12;color:var(--yellow);border:1px solid #ffd32a35}
-.br{background:#ff475712;color:var(--red);border:1px solid #ff475735}
-.bcsv{background:#4f8ef712;color:var(--blue);border:1px solid #4f8ef735}
-.bs{padding:3px 8px;border:none;border-radius:4px;cursor:pointer;
-  font-family:'Space Mono',monospace;font-size:10px;margin-right:2px;
-  transition:all .15s;white-space:nowrap}
+.sc .l{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-top:4px}
+.sec{background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:22px;overflow:hidden}
+.sh{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:12px}
+.st{font-family:'Syne',sans-serif;font-weight:700;font-size:15px}
+.gf{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.gf input{padding:9px 13px;background:var(--dark);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Space Mono',monospace;font-size:13px;outline:none}
+.gf input:focus{border-color:var(--green)}
+.btn{padding:10px 18px;border:none;border-radius:8px;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;transition:opacity .2s}
+.btn:hover{opacity:.8}
+.bp{background:var(--green);color:#000}
+.bw{background:#ffd32a20;color:var(--yellow);border:1px solid var(--yellow)}
+.bs{padding:5px 11px;border:none;border-radius:6px;cursor:pointer;font-family:'Space Mono',monospace;font-size:11px;margin-right:3px;transition:opacity .2s}
 .bs:hover{opacity:.8}
-.bg{background:#00ff8712;color:var(--green);border:1px solid #00ff8730}
-.bd{background:#ff475712;color:var(--red);border:1px solid #ff475730}
-.bwarn{background:#ff8c0012;color:#ff8c00;border:1px solid #ff8c0030}
+.bg{background:#00ff8720;color:var(--green);border:1px solid var(--green)}
+.bd{background:#ff475720;color:var(--red);border:1px solid var(--red)}
 .ov{overflow-x:auto}
 table{width:100%;border-collapse:collapse}
-th{padding:8px 11px;text-align:left;font-size:9px;text-transform:uppercase;
-  letter-spacing:1.5px;color:var(--muted);border-bottom:1px solid var(--border);
-  font-weight:400;white-space:nowrap;background:var(--card2)}
-th.sort{cursor:pointer;user-select:none;transition:color .15s}
+th{padding:11px 15px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:1px solid var(--border);font-weight:400;cursor:default}
+th.sort{cursor:pointer;user-select:none}
 th.sort:hover{color:var(--text)}
-th.asc .arr::after{content:' ▲';color:var(--green);font-size:8px}
-th.desc .arr::after{content:' ▼';color:var(--green);font-size:8px}
-th:not(.asc):not(.desc) .arr::after{content:' ⇅';opacity:.2;font-size:8px}
-td{padding:10px 11px;font-size:11px;border-bottom:1px solid #14141f;vertical-align:middle}
+th.asc .arr::after{content:' ▲'}
+th.desc .arr::after{content:' ▼'}
+th:not(.asc):not(.desc) .arr::after{content:' ⇅';opacity:.3}
+td{padding:13px 15px;font-size:12px;border-bottom:1px solid var(--border);vertical-align:middle}
 tr:last-child td{border-bottom:none}
-tr:hover td{background:#ffffff02}
-.kc{color:var(--green);font-size:11px;letter-spacing:.3px;font-family:'Space Mono',monospace}
-.badge{padding:2px 7px;border-radius:3px;font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase}
-.on{background:#00ff8718;color:var(--green);border:1px solid #00ff8730}
-.off{background:#ff475718;color:var(--red);border:1px solid #ff475730}
-.re{background:#4f8ef718;color:var(--blue)}
-.vr{background:#9b59b618;color:var(--purple)}
-.warn{background:#ffd32a18;color:var(--yellow)}
-.wl{background:#ff8c0018;color:#ff8c00}
-.empty{text-align:center;color:var(--muted);padding:40px!important;font-size:11px;letter-spacing:1px}
-.toast{position:fixed;bottom:20px;right:20px;padding:11px 18px;border-radius:var(--radius);
-  font-family:'Syne',sans-serif;font-weight:700;font-size:12px;display:none;z-index:9999;
-  box-shadow:0 6px 30px #00000070;max-width:380px;line-height:1.4}
-.note-cell{cursor:pointer;max-width:130px}
+tr:hover{background:#ffffff04}
+.kc{color:var(--green);font-size:12px;letter-spacing:1px}
+.badge{padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:1px}
+.on{background:#00ff8720;color:var(--green)}
+.off{background:#ff475720;color:var(--red)}
+.re{background:#4287f520;color:#4287f5}
+.vr{background:#9b59b620;color:#9b59b6}
+.warn{background:#ffd32a20;color:var(--yellow)}
+.wl{background:#ff8c0020;color:#ff8c00}
+.empty{text-align:center;color:var(--muted);padding:32px!important}
+.toast{position:fixed;bottom:28px;right:28px;padding:13px 22px;border-radius:10px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;display:none;z-index:999}
+/* Notas */
+.note-cell{cursor:pointer;max-width:160px}
 .note-cell:hover .note-preview{color:var(--green)}
-.note-preview{color:var(--muted);font-size:10px;white-space:nowrap;overflow:hidden;
-  text-overflow:ellipsis;display:block;max-width:120px}
-.modal-bg{display:none;position:fixed;inset:0;background:#00000090;z-index:200;
-  align-items:center;justify-content:center;backdrop-filter:blur(3px)}
+.note-preview{color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:150px}
+/* Modal */
+.modal-bg{display:none;position:fixed;inset:0;background:#00000088;z-index:200;align-items:center;justify-content:center}
 .modal-bg.open{display:flex}
-.modal{background:var(--card);border:1px solid var(--border2);border-radius:12px;
-  padding:22px;width:340px;max-width:95vw;box-shadow:0 20px 60px #00000090}
-.modal h3{font-family:'Syne',sans-serif;font-size:13px;margin-bottom:11px;color:var(--green)}
-.modal textarea{width:100%;background:var(--dark);border:1px solid var(--border);
-  border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;
-  font-size:11px;padding:9px;outline:none;resize:vertical;min-height:80px;transition:border .2s}
+.modal{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:28px;width:380px;max-width:95vw}
+.modal h3{font-family:'Syne',sans-serif;font-size:15px;margin-bottom:14px;color:var(--green)}
+.modal textarea{width:100%;background:var(--dark);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Space Mono',monospace;font-size:12px;padding:10px;outline:none;resize:vertical;min-height:90px}
 .modal textarea:focus{border-color:var(--green)}
-.modal-actions{display:flex;gap:8px;margin-top:11px;justify-content:flex-end}
-@media(max-width:1200px){.stats{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:750px){.stats{grid-template-columns:1fr 1fr};main{padding:14px 12px}}
-@media(max-width:420px){.stats{grid-template-columns:1fr};.gen-form{flex-direction:column;align-items:stretch}}
+.modal-actions{display:flex;gap:8px;margin-top:14px;justify-content:flex-end}
+@media(max-width:900px){.stats{grid-template-columns:1fr 1fr};main{padding:16px}}
+@media(max-width:500px){.stats{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <header>
-  <div class="logo">⚡ ZapVoice</div>
+  <div class="logo">⚡ ZapVoice Admin</div>
   <div class="hright">
-    <button class="btn bcsv" onclick="exportCSV()">⬇ CSV</button>
-    <a href="${R_ADMIN}/logout" class="out">↩ Sair</a>
+    <button class="btn" style="background:#00ff8720;color:var(--green);border:1px solid var(--green);font-size:12px;padding:7px 14px" onclick="exportCSV()">⬇ CSV</button>
+    <a href="/admin/logout" class="out">[ sair ]</a>
   </div>
 </header>
 <main>
   <div class="stats">
-    <div class="sc"><div class="sc-icon">🔑</div><div class="n" id="s-total">${Object.keys(keys).length}</div><div class="l">Total de Chaves</div></div>
-    <div class="sc"><div class="sc-icon">✅</div><div class="n" id="s-active">${Object.values(keys).filter(k=>k.active).length}</div><div class="l">Chaves Ativas</div></div>
-    <div class="sc ${expiringSoon > 0 ? 'warn-card' : ''}"><div class="sc-icon">⏰</div><div class="n" id="s-warn" style="${expiringSoon>0?'color:var(--orange)':''}">${expiringSoon}</div><div class="l">Expirando em ${EXPIRY_WARN_HOURS}h</div></div>
-    <div class="sc"><div class="sc-icon">⚠️</div><div class="n" id="s-warnlimit" style="${warnLimitKeys>0?'color:#ff8c00':''}">${warnLimitKeys}</div><div class="l">Aviso de Limite</div></div>
-    <div class="sc"><div class="sc-icon">📋</div><div class="n" id="s-logs">${logs.length}</div><div class="l">Acessos Registrados</div></div>
+    <div class="sc"><div class="n" id="s-total">${Object.keys(keys).length}</div><div class="l">Total de Chaves</div></div>
+    <div class="sc"><div class="n" id="s-active">${Object.values(keys).filter(k=>k.active).length}</div><div class="l">Chaves Ativas</div></div>
+    <div class="sc ${expiringSoon > 0 ? 'warn-card' : ''}"><div class="n" id="s-warn" style="${expiringSoon>0?'color:var(--orange)':''}">${expiringSoon}</div><div class="l">Expirando em ${EXPIRY_WARN_HOURS}h</div></div>
+    <div class="sc"><div class="n" id="s-warnlimit" style="${warnLimitKeys>0?'color:#ff8c00':''}">${warnLimitKeys}</div><div class="l">Em Aviso de Limite</div></div>
+    <div class="sc"><div class="n" id="s-logs">${logs.length}</div><div class="l">Acessos Registrados</div></div>
   </div>
 
   <div class="sec">
     <div class="sh">
-      <div class="st">🔑 Chaves de Acesso</div>
-      <div class="gen-form">
-        <div class="fi-name"><input type="text" id="nlabel" placeholder="Nome do cliente"></div>
-        <div class="fi-sep"></div>
-        <div class="fi-group">
-          <div class="fi-col"><span class="fi-lbl">Dias</span><input type="number" id="ndays" class="fi-num" placeholder="0" min="0"></div>
-          <div class="fi-col"><span class="fi-lbl">Horas</span><input type="number" id="nhours" class="fi-num" placeholder="0" min="0"></div>
-          <div class="fi-col"><span class="fi-lbl">Min</span><input type="number" id="nmins" class="fi-num" placeholder="0" min="0"></div>
-        </div>
-        <div class="fi-sep"></div>
-        <div class="fi-col"><span class="fi-lbl">Usos</span><input type="number" id="nuses" class="fi-num" placeholder="3" min="-1" title="Máx. números (vazio=3, -1=ilimitado)" style="width:60px"></div>
+      <div class="st">Chaves de Acesso</div>
+      <div class="gf">
+        <input type="text" id="nlabel" placeholder="Nome do cliente" style="width:170px">
+        <input type="number" id="ndays"  placeholder="Dias"  min="0" style="width:68px">
+        <input type="number" id="nhours" placeholder="Horas" min="0" style="width:72px">
+        <input type="number" id="nmins"  placeholder="Min"   min="0" style="width:65px">
         <button class="btn bp" onclick="generateKey()">+ Gerar Chave</button>
       </div>
     </div>
@@ -585,12 +465,12 @@ tr:hover td{background:#ffffff02}
 
   <div class="sec">
     <div class="sh">
-      <div class="st">📋 Log de Acessos</div>
+      <div class="st">Log de Acessos</div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <input type="date" id="logDate" style="padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:11px;outline:none" onchange="filterLog()">
+        <input type="date" id="logDate" style="padding:8px 12px;background:var(--dark);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Space Mono',monospace;font-size:12px;outline:none" onchange="filterLog()">
         <button class="btn bw" onclick="clearDateFilter()">✕ Filtro</button>
         <button class="btn bw" onclick="doRefresh()">↻ Atualizar</button>
-        <button class="btn br" onclick="clearLog()">🗑 Limpar Log</button>
+        <button class="btn" style="background:#ff475720;color:var(--red);border:1px solid var(--red)" onclick="clearLog()">🗑 Limpar Log</button>
       </div>
     </div>
     <div class="ov">
@@ -618,7 +498,6 @@ tr:hover td{background:#ffffff02}
 
 <div class="toast" id="toast"></div>
 <script>
-const _RA=''+R_ADMIN+'';
 function toast(msg,ok=true){
   const t=document.getElementById('toast');
   t.textContent=msg;
@@ -654,34 +533,30 @@ async function generateKey(){
   const days=parseInt(document.getElementById('ndays').value||0);
   const hours=parseInt(document.getElementById('nhours').value||0);
   const mins=parseInt(document.getElementById('nmins').value||0);
-  const _u=document.getElementById('nuses').value.trim();
-  const maxUses=_u===''?3:parseInt(_u);
   if(!label){toast('Informe o nome do cliente',false);return;}
-  if(isNaN(maxUses)){toast('❌ Usos inválido',false);return;}
   try{
-    const body={label,maxUses};
+    const body={label};
     if(days>0)body.expireDays=days;
     if(hours>0)body.expireHours=hours;
     if(mins>0)body.expireMinutes=mins;
-    const r=await fetch(_RA+'/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
+    const r=await fetch('/admin/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
     const d=await r.json();
     if(d.ok){
-      const exp=[];
-      if(days>0)exp.push(days+'d'); if(hours>0)exp.push(hours+'h'); if(mins>0)exp.push(mins+'min');
-      const ul=maxUses===-1?'∞ usos':maxUses+' uso(s)';
-      toast('✅ '+d.key+(exp.length?' · '+exp.join(' '):' · sem expiração')+' · '+ul);
-      ['nlabel','ndays','nhours','nmins','nuses'].forEach(id=>document.getElementById(id).value='');
+      const parts=[];
+      if(days>0)parts.push(days+'d'); if(hours>0)parts.push(hours+'h'); if(mins>0)parts.push(mins+'min');
+      toast('Gerada: '+d.key+(parts.length?' (expira em '+parts.join(' ')+')':''));
+      ['nlabel','ndays','nhours','nmins'].forEach(id=>document.getElementById(id).value='');
       await doRefresh();
-    } else toast('❌ Erro: '+(d.error||'desconhecido'),false);
-  }catch(e){toast('❌ Erro de rede',false);}
+    } else toast('Erro: '+(d.error||'desconhecido'),false);
+  }catch(e){toast('Erro de rede',false);}
 }
 async function filterLog(){
   const date=document.getElementById('logDate').value;
   if(!date)return;
   try{
-    const r=await fetch(_RA+'/api/logs?date='+date);
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
+    const r=await fetch('/admin/api/logs?date='+date);
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
     const d=await r.json();
     if(d.ok)document.getElementById('lb').innerHTML=d.logsHtml||'';
   }catch(e){toast('Erro ao filtrar',false);}
@@ -692,16 +567,16 @@ async function clearLog(){
   if(!confirm(date?'Limpar logs do dia '+date+'?':'Limpar TODO o log?'))return;
   try{
     const body=date?{date}:{};
-    const r=await fetch(_RA+'/api/logs',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
+    const r=await fetch('/admin/api/logs',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
     const d=await r.json();
     if(d.ok){toast(date?'Log do dia limpo!':'Log completo apagado!');document.getElementById('logDate').value='';await doRefresh();}
   }catch(e){toast('Erro ao limpar',false);}
 }
 async function toggleKey(code){
   try{
-    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/toggle',{method:'POST'});
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
+    const r=await fetch('/admin/api/keys/'+encodeURIComponent(code)+'/toggle',{method:'POST'});
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
     const d=await r.json();
     if(d.ok){toast(d.active?'Chave liberada!':'Chave bloqueada!');await doRefresh();}
   }catch(e){toast('Erro',false);}
@@ -709,23 +584,23 @@ async function toggleKey(code){
 async function deleteKey(code){
   if(!confirm('Excluir chave '+code+'?'))return;
   try{
-    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code),{method:'DELETE'});
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
+    const r=await fetch('/admin/api/keys/'+encodeURIComponent(code),{method:'DELETE'});
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
     const d=await r.json();
     if(d.ok){toast('Chave excluída');await doRefresh();}
   }catch(e){toast('Erro',false);}
 }
 async function resetWarn(code){
   try{
-    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/reset-warn',{method:'POST'});
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
+    const r=await fetch('/admin/api/keys/'+encodeURIComponent(code)+'/reset-warn',{method:'POST'});
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
     const d=await r.json();
     if(d.ok){toast('Avisos resetados');await doRefresh();}else{toast(d.error||'Erro',false);}
   }catch(e){toast('Erro',false);}
 }
 async function doRefresh(){
   try{
-    const r=await fetch(_RA+'/api/data');
+    const r=await fetch('/admin/api/data');
     const d=await r.json();
     if(d.error)return;
     document.getElementById('s-total').textContent=d.totalKeys||0;
@@ -757,8 +632,8 @@ async function saveNote(){
   const code=document.getElementById('noteKeyCode').value;
   const note=document.getElementById('noteText').value.trim();
   try{
-    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note})});
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
+    const r=await fetch('/admin/api/keys/'+encodeURIComponent(code)+'/note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note})});
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
     const d=await r.json();
     if(d.ok){toast('Nota salva!');closeNote();await doRefresh();}
     else toast('Erro ao salvar nota',false);
@@ -768,8 +643,8 @@ async function saveNote(){
 // ── Exportar CSV ──
 async function exportCSV(){
   try{
-    const r=await fetch(_RA+'/api/export/csv');
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
+    const r=await fetch('/admin/api/export/csv');
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='/admin',1500);return;}
     const blob=await r.blob();
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
@@ -790,46 +665,25 @@ async function exportCSV(){
 async function handleRequest(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST,GET,OPTIONS,DELETE');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,x-app-date,x-app-sig,x-app-ts');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('X-Powered-By', 'PHP/7.4.3'); // fingerprint falso
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,x-app-date');
   if (req.method === 'OPTIONS') { res.writeHead(200); res.end(); return; }
 
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const p   = url.pathname;
   const ip  = getIp(req);
-
-  // ── Camada 4: banimento permanente ──
-  if (_permBlocked.has(ip)) {
-    if (Date.now() < _permBlocked.get(ip)) { res.writeHead(403); res.end(); return; }
-    _permBlocked.delete(ip); // ban expirou
-  }
-
-  // ── Camada 3: bloquear acesso às rotas originais quando slugs estão ativos ──
-  // Se APP_SECRET está configurado e alguém tenta /admin ou /extension → bane o IP
-  if (APP_SECRET) {
-    if (p === '/admin' || p.startsWith('/admin/')) {
-      permBlock(ip, 'tentativa de rota /admin com slug ativo');
-      res.writeHead(404); res.end('Not found'); return;
-    }
-  }
-
   console.log(`[${new Date().toISOString()}] ${req.method} ${p} — ${ip}`);
 
   // ── EXTENSÃO: página de login ──
-  if ((p === R_EXT+'/auth/' || p === R_EXT+'/auth') && req.method === 'GET') {
+  if ((p === '/extension/auth/' || p === '/extension/auth') && req.method === 'GET') {
     const callback = url.searchParams.get('callback') || '';
     sendHtml(res, renderExtensionLogin({ callback }));
     return;
   }
 
   // ── EXTENSÃO: verifica chave e faz callback ──
-  if (p === R_EXT+'/auth/verify' && req.method === 'POST') {
+  if (p === '/extension/auth/verify' && req.method === 'POST') {
     if (!checkRateLimit(ip)) {
-      const _blocked = rateLimitMap.get(ip);
-      const _minsLeft = _blocked ? Math.ceil((_blocked.blockedUntil - Date.now()) / 60000) : 10;
-      sendHtml(res, renderExtensionLogin({ callback: '', error: `⏳ Muitas tentativas. Aguarde ${_minsLeft} minuto(s) antes de tentar novamente.` }), 429);
+      sendHtml(res, renderExtensionLogin({ callback: '', error: '⏳ Muitas tentativas. Aguarde alguns minutos.' }), 429);
       return;
     }
     const form     = await parseFormBody(req);
@@ -880,18 +734,12 @@ async function handleRequest(req, res) {
   }
 
   // ── EXTENSÃO: validação via /v3/key ──
-  if (p === R_EXT+'/v3/key' && req.method === 'POST') {
+  if (p === '/extension/v3/key' && req.method === 'POST') {
     if (!checkRateLimit(ip)) {
       sendJson(res, { authError: 'rateLimited', authErrorMessage: 'Muitas tentativas. Aguarde.' }, 429);
       return;
     }
-    const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
-    if (!verifyHmac(rawBody, req.headers['x-app-sig']||'', req.headers['x-app-ts']||'')) {
-      addLog({ keyCode:'?', label:'-', phone:'-', ip, wppVersion:'-', action:'hmac_fail' });
-      sendJson(res, { authError: 'forbidden', authErrorMessage: 'Requisição inválida.' }, 403);
-      return;
-    }
-    let body; try { body = JSON.parse(rawBody); } catch { body = {}; }
+    const body       = await parseBody(req);
     const keyCode    = (body.authKey || '').toLowerCase();
     const phone      = body.phoneNumber || '-';
     const wppVersion = body.wppVersion  || '-';
@@ -925,9 +773,8 @@ async function handleRequest(req, res) {
     const knownPhone = hasPhone && keys[keyCode].phones.includes(phone);
     const isNewPhone = hasPhone && !knownPhone;
 
-    const keyMaxUses = (typeof keys[keyCode].maxUses === 'number') ? keys[keyCode].maxUses : MAX_USES;
     if (isNewPhone) {
-      if (keyMaxUses > 0 && keys[keyCode].phones.length >= keyMaxUses) {
+      if (MAX_USES > 0 && keys[keyCode].phones.length >= MAX_USES) {
         // Limite atingido por número novo — aviso + bloqueia o login deste número
         keys[keyCode].warnCount = (keys[keyCode].warnCount || 0) + 1;
         saveDb();
@@ -948,7 +795,7 @@ async function handleRequest(req, res) {
           warnLimit: true,
           warnRemaining: remaining,
           data: {
-            message: `USUÁRIO NÃO ENCONTRADO. Limite de ativações atingido (${keys[keyCode].phones.length}/${keyMaxUses}). ${remaining} tentativa(s) de número novo restante(s). Contate o vendedor.`,
+            message: `USUÁRIO NÃO ENCONTRADO. Limite de ativações atingido (${keys[keyCode].phones.length}/${MAX_USES}). ${remaining} tentativa(s) de número novo restante(s). Contate o vendedor.`,
             permissions: []
           }
         }, 403);
@@ -968,12 +815,8 @@ async function handleRequest(req, res) {
   }
 
   // ── EXTENSÃO: check-status (polling 30s) ──
-  if (p === R_EXT+'/v3/check-status' && req.method === 'POST') {
-    const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
-    if (!verifyHmac(rawBody, req.headers['x-app-sig']||'', req.headers['x-app-ts']||'')) {
-      sendJson(res, { active: false, reason: 'forbidden' }); return;
-    }
-    let body; try { body = JSON.parse(rawBody); } catch { body = {}; }
+  if (p === '/extension/v3/check-status' && req.method === 'POST') {
+    const body    = await parseBody(req);
     const keyCode = (body.authKey || '').toLowerCase();
     if (!keyCode || !keys[keyCode]) {
       sendJson(res, { active: false, reason: 'not_found' }); return;
@@ -992,7 +835,7 @@ async function handleRequest(req, res) {
   }
 
   // ── EXTENSÃO: usage ──
-  if ([R_EXT+'/v3/usage',R_EXT+'/v3/get-usage',R_EXT+'/v3/sync-usage'].includes(p)) {
+  if (['/extension/v3/usage','/extension/v3/get-usage','/extension/v3/sync-usage'].includes(p)) {
     sendJson(res, {
       ok: true, status: true, limits: USAGE_LIMITS,
       expires_at: new Date(Date.now() + 365*24*60*60*1000).toISOString(), isExpired: false
@@ -1001,7 +844,7 @@ async function handleRequest(req, res) {
   }
 
   // ── ADMIN: login ──
-  if (p === R_ADMIN+'/login' && req.method === 'POST') {
+  if (p === '/admin/login' && req.method === 'POST') {
     const form = await parseFormBody(req);
     if (form.get('user') === ADMIN_USER && form.get('pass') === ADMIN_PASS) {
       const token = generateToken();
@@ -1013,19 +856,19 @@ async function handleRequest(req, res) {
   }
 
   // ── ADMIN: logout ──
-  if (p === R_ADMIN+'/logout') {
+  if (p === '/admin/logout') {
     res.setHeader('Set-Cookie', 'zv_admin=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT');
     res.writeHead(302, { Location: '/admin' }); res.end(); return;
   }
 
   // ── ADMIN: painel ──
-  if (p === R_ADMIN || p === R_ADMIN+'/') {
+  if (p === '/admin' || p === '/admin/') {
     if (!isAdminSession(req)) { sendHtml(res, renderAdminLogin()); return; }
     sendHtml(res, renderAdminDashboard()); return;
   }
 
   // ── ADMIN API: dados ──
-  if (p === R_ADMIN+'/api/data' && req.method === 'GET') {
+  if (p === '/admin/api/data' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     sendJson(res, {
       totalKeys:     Object.keys(keys).length,
@@ -1039,7 +882,7 @@ async function handleRequest(req, res) {
   }
 
   // ── ADMIN API: gerar chave ──
-  if (p === R_ADMIN+'/api/keys' && req.method === 'POST') {
+  if (p === '/admin/api/keys' && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const body = await parseBody(req);
     const code = generateKey();
@@ -1054,16 +897,15 @@ async function handleRequest(req, res) {
         expiresAt = d.toISOString();
       }
     }
-    const maxUses = (body.maxUses !== undefined) ? parseInt(body.maxUses) : MAX_USES;
-    keys[code] = { label: body.label || 'Cliente', active: true, createdAt: new Date().toISOString(), uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null, deviceId: null, note: '', expiresAt, maxUses: isNaN(maxUses) ? MAX_USES : maxUses };
+    keys[code] = { label: body.label || 'Cliente', active: true, createdAt: new Date().toISOString(), uses: 0, lastUsed: null, lastIp: null, lastPhone: null, deviceId: null, note: '', expiresAt };
     saveDb();
     sendJson(res, { ok: true, key: code }); return;
   }
 
   // ── ADMIN API: toggle ──
-  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/[^/]+\/toggle$')) && req.method === 'POST') {
+  if (p.match(/^\/admin\/api\/keys\/[^/]+\/toggle$/) && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const _ap=R_ADMIN.split('/').length; const code = decodeURIComponent(p.split('/')[ _ap]);
+    const code = decodeURIComponent(p.split('/')[4]);
     if (!keys[code]) { sendJson(res, { error: 'not found' }, 404); return; }
     keys[code].active = !keys[code].active;
     saveDb();
@@ -1072,9 +914,9 @@ async function handleRequest(req, res) {
   }
 
   // ── ADMIN API: reset-warn ──
-  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/[^/]+\/reset-warn$')) && req.method === 'POST') {
+  if (p.match(/^\/admin\/api\/keys\/[^/]+\/reset-warn$/) && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const _ap=R_ADMIN.split('/').length; const code = decodeURIComponent(p.split('/')[ _ap]);
+    const code = decodeURIComponent(p.split('/')[4]);
     if (!keys[code]) { sendJson(res, { error: 'not found' }, 404); return; }
     keys[code].warnCount = 0;
     saveDb();
@@ -1083,9 +925,9 @@ async function handleRequest(req, res) {
   }
 
   // ── ADMIN API: nota ──
-  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/[^/]+\/note$')) && req.method === 'POST') {
+  if (p.match(/^\/admin\/api\/keys\/[^/]+\/note$/) && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const _ap=R_ADMIN.split('/').length; const code = decodeURIComponent(p.split('/')[ _ap]);
+    const code = decodeURIComponent(p.split('/')[4]);
     if (!keys[code]) { sendJson(res, { error: 'not found' }, 404); return; }
     const body = await parseBody(req);
     keys[code].note = String(body.note || '').slice(0, 500);
@@ -1094,16 +936,16 @@ async function handleRequest(req, res) {
   }
 
   // ── ADMIN API: deletar chave ──
-  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/[^/]+$')) && req.method === 'DELETE') {
+  if (p.match(/^\/admin\/api\/keys\/[^/]+$/) && req.method === 'DELETE') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const _ap=R_ADMIN.split('/').length; const code = decodeURIComponent(p.split('/')[ _ap]);
+    const code = decodeURIComponent(p.split('/')[4]);
     delete keys[code];
     saveDb();
     sendJson(res, { ok: true }); return;
   }
 
   // ── ADMIN API: limpar log ──
-  if (p === R_ADMIN+'/api/logs' && req.method === 'DELETE') {
+  if (p === '/admin/api/logs' && req.method === 'DELETE') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const body = await parseBody(req);
     if (body.date) { logs = logs.filter(l => !l.timestamp.startsWith(body.date)); }
@@ -1113,7 +955,7 @@ async function handleRequest(req, res) {
   }
 
   // ── ADMIN API: filtrar log ──
-  if (p === R_ADMIN+'/api/logs' && req.method === 'GET') {
+  if (p === '/admin/api/logs' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const date = url.searchParams.get('date');
     const filtered = date ? logs.filter(l => l.timestamp.startsWith(date)) : logs;
@@ -1121,13 +963,13 @@ async function handleRequest(req, res) {
   }
 
   // ── ADMIN API: exportar CSV ──
-  if (p === R_ADMIN+'/api/export/csv' && req.method === 'GET') {
+  if (p === '/admin/api/export/csv' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const header = 'Chave,Cliente,Status,Usos,Telefone,Último IP,Último Acesso,Criada em,Expira em,Nota';
     const rows = Object.entries(keys).map(([code, k]) => {
       const cols = [
         code, k.label, k.active ? 'ATIVO' : 'BLOQUEADO',
-        `${(k.phones||[]).length}/${k.maxUses===-1?'Ilimitado':(k.maxUses>0?k.maxUses:MAX_USES)}`, k.lastPhone||'',
+        `${k.uses||0}/${MAX_USES}`, k.lastPhone||'',
         k.lastIp||'',
         k.lastUsed ? new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}) : '',
         new Date(k.createdAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}),
@@ -1144,25 +986,13 @@ async function handleRequest(req, res) {
   }
 
 
-  // ── Rota de desbloqueio de emergência: /_unban/ADMIN_PASS ──
-  if (p.startsWith('/_unban/') && req.method === 'GET') {
-    const pass = decodeURIComponent(p.split('/')[2] || '');
-    if (pass !== ADMIN_PASS) { res.writeHead(404); res.end(); return; }
-    _permBlocked.delete(ip);
-    rateLimitMap.delete(ip);
-    sendJson(res, { ok: true, unblocked: ip, admin: R_ADMIN });
-    return;
-  }
-
   sendJson(res, { ok: true });
 }
 
 http.createServer(handleRequest).listen(PORT, () => {
-  console.log(`✅ ZapVoice Server v6 — porta ${PORT}`);
-  console.log(`💾 DB: ${DB_FILE} ${DB_SECRET ? '🔒 CIFRADO (AES-256-GCM)' : '⚠ sem criptografia — defina DB_SECRET'}`);
-  console.log(`🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ inativo — defina APP_SECRET'}`);
-  console.log(`🔑 Admin: ${R_ADMIN} | User: ${ADMIN_USER}`);
-  console.log(`🌐 Extension: ${R_EXT}/v3/key`);
+  console.log(`✅ ZapVoice Server v5 — porta ${PORT}`);
+  console.log(`💾 DB: ${DB_FILE}`);
+  console.log(`🔑 Admin: /admin | User: ${ADMIN_USER}`);
   console.log(`📊 Chaves: ${Object.keys(keys).length} | Webhook: ${WEBHOOK_URL || 'não configurado'}`);
   console.log(`⚠  Aviso expiração: ${EXPIRY_WARN_HOURS}h antes`);
 });
