@@ -251,10 +251,10 @@ function getAuthData(keyCode) {
   };
 }
 
-function addLog(entry) {
+async function addLog(entry) {
   logs.unshift({ ...entry, timestamp: new Date().toISOString() });
   if (logs.length > 500) logs = logs.slice(0, 500);
-  saveDb();
+  await saveDb();
 }
 
 function isKeyExpired(k) {
@@ -867,27 +867,27 @@ async function handleRequest(req, res) {
     const callback = form.get('callback') || '';
 
     if (!keyCode || !keys[keyCode]) {
-      addLog({ keyCode: keyCode||'?', label: '-', phone: '-', ip, wppVersion: '-', action: 'key_not_found' });
+      await addLog({ keyCode: keyCode||'?', label: '-', phone: '-', ip, wppVersion: '-', action: 'key_not_found' });
       sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '❌ Chave não encontrada. Verifique se digitou corretamente ou entre em contato com o vendedor.' }));
       return;
     }
     if (isKeyExpired(keys[keyCode])) {
       keys[keyCode].active = false;
-      addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'expired' });
-      saveDb();
+      await addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'expired' });
+      await saveDb();
       fireWebhook('key_expired', keyCode, 'Expiração detectada no login');
       sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '⏰ Chave expirada. Entre em contato com o vendedor para renovar.' }));
       return;
     }
     if (!keys[keyCode].active) {
-      addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'login_blocked' });
+      await addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'login_blocked' });
       sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '🚫 Chave bloqueada. Entre em contato com o vendedor.' }));
       return;
     }
     // Limite verificado em /v3/key (onde phoneNumber está disponível)
     keys[keyCode].lastUsed = new Date().toISOString();
     keys[keyCode].lastIp   = ip;
-    saveDb();
+    await saveDb();
     try {
       const cb = new URL(callback);
       cb.searchParams.set('key',         keyCode);
@@ -917,7 +917,7 @@ async function handleRequest(req, res) {
     }
     const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
     if (!verifyHmac(rawBody, req.headers['x-app-sig']||'', req.headers['x-app-ts']||'')) {
-      addLog({ keyCode:'?', label:'-', phone:'-', ip, wppVersion:'-', action:'hmac_fail' });
+      await addLog({ keyCode:'?', label:'-', phone:'-', ip, wppVersion:'-', action:'hmac_fail' });
       sendJson(res, { authError: 'forbidden', authErrorMessage: 'Requisição inválida.' }, 403);
       return;
     }
@@ -928,20 +928,20 @@ async function handleRequest(req, res) {
     const deviceId   = body.deviceId    || '';
 
     if (!keyCode || !keys[keyCode]) {
-      addLog({ keyCode: keyCode||'?', label: '-', phone, ip, wppVersion, action: 'key_not_found' });
+      await addLog({ keyCode: keyCode||'?', label: '-', phone, ip, wppVersion, action: 'key_not_found' });
       sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada. Contate o vendedor.' });
       return;
     }
     if (isKeyExpired(keys[keyCode])) {
       keys[keyCode].active = false;
-      addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'expired' });
-      saveDb();
+      await addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'expired' });
+      await saveDb();
       fireWebhook('key_expired', keyCode, 'Expiração detectada no v3/key');
       sendJson(res, { data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave expirada.', permissions: [] } }, 403);
       return;
     }
     if (!keys[keyCode].active) {
-      addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'login_blocked' });
+      await addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'login_blocked' });
       sendJson(res, { data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave bloqueada.', permissions: [] } }, 403);
       return;
     }
@@ -960,8 +960,8 @@ async function handleRequest(req, res) {
       if (keyMaxUses > 0 && keys[keyCode].phones.length >= keyMaxUses) {
         // Limite atingido — apenas incrementa aviso, sem bloqueio automático
         keys[keyCode].warnCount = (keys[keyCode].warnCount || 0) + 1;
-        saveDb();
-        addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'warn_limit' });
+        await saveDb();
+        await addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'warn_limit' });
         sendJson(res, {
           warnLimit: true,
           warnRemaining: keys[keyCode].warnCount,
@@ -979,8 +979,8 @@ async function handleRequest(req, res) {
     keys[keyCode].lastUsed  = new Date().toISOString();
     keys[keyCode].lastIp    = ip;
     if (hasPhone) keys[keyCode].lastPhone = phone;
-    addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: isNewPhone ? 'login_ok' : 'relogin_ok' });
-    saveDb();
+    await addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: isNewPhone ? 'login_ok' : 'relogin_ok' });
+    await saveDb();
     sendJson(res, getAuthData(keyCode));
     return;
   }
@@ -1074,7 +1074,7 @@ async function handleRequest(req, res) {
     }
     const maxUses = (body.maxUses !== undefined) ? parseInt(body.maxUses) : MAX_USES;
     keys[code] = { label: body.label || 'Cliente', active: true, createdAt: new Date().toISOString(), uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null, deviceId: null, note: '', expiresAt, maxUses: isNaN(maxUses) ? MAX_USES : maxUses };
-    saveDb();
+    await saveDb();
     sendJson(res, { ok: true, key: code }); return;
   }
 
@@ -1084,7 +1084,7 @@ async function handleRequest(req, res) {
     const _ap=R_ADMIN.split('/').length; const code = decodeURIComponent(p.split('/')[ _ap]);
     if (!keys[code]) { sendJson(res, { error: 'not found' }, 404); return; }
     keys[code].active = !keys[code].active;
-    saveDb();
+    await saveDb();
     if (!keys[code].active) fireWebhook('key_blocked', code, 'Bloqueio manual pelo admin');
     sendJson(res, { ok: true, active: keys[code].active }); return;
   }
@@ -1095,8 +1095,8 @@ async function handleRequest(req, res) {
     const _ap=R_ADMIN.split('/').length; const code = decodeURIComponent(p.split('/')[ _ap]);
     if (!keys[code]) { sendJson(res, { error: 'not found' }, 404); return; }
     keys[code].warnCount = 0;
-    saveDb();
-    addLog({ keyCode: code, label: keys[code].label, phone: '-', ip, wppVersion: '-', action: 'warn_reset' });
+    await saveDb();
+    await addLog({ keyCode: code, label: keys[code].label, phone: '-', ip, wppVersion: '-', action: 'warn_reset' });
     sendJson(res, { ok: true }); return;
   }
 
@@ -1107,7 +1107,7 @@ async function handleRequest(req, res) {
     if (!keys[code]) { sendJson(res, { error: 'not found' }, 404); return; }
     const body = await parseBody(req);
     keys[code].note = String(body.note || '').slice(0, 500);
-    saveDb();
+    await saveDb();
     sendJson(res, { ok: true }); return;
   }
 
@@ -1116,7 +1116,7 @@ async function handleRequest(req, res) {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const _ap=R_ADMIN.split('/').length; const code = decodeURIComponent(p.split('/')[ _ap]);
     delete keys[code];
-    saveDb();
+    await saveDb();
     sendJson(res, { ok: true }); return;
   }
 
@@ -1126,7 +1126,7 @@ async function handleRequest(req, res) {
     const body = await parseBody(req);
     if (body.date) { logs = logs.filter(l => !l.timestamp.startsWith(body.date)); }
     else { logs = []; }
-    saveDb();
+    await saveDb();
     sendJson(res, { ok: true, remaining: logs.length }); return;
   }
 
