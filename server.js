@@ -810,10 +810,6 @@ async function handleRequest(req, res) {
       permBlock(ip, 'tentativa de rota /admin com slug ativo');
       res.writeHead(404); res.end('Not found'); return;
     }
-    if (p.startsWith('/extension/')) {
-      permBlock(ip, 'tentativa de rota /extension com slug ativo');
-      res.writeHead(404); res.end('Not found'); return;
-    }
   }
 
   console.log(`[${new Date().toISOString()}] ${req.method} ${p} — ${ip}`);
