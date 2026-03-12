@@ -895,6 +895,11 @@ async function handleRequest(req, res) {
   console.log(`[${new Date().toISOString()}] ${req.method} ${p} — ${ip}`);
 
   // ── EXTENSÃO: página de login ──
+  // ── HEALTH CHECK — para UptimeRobot e monitoramento ──
+  if (p === '/health' && req.method === 'GET') {
+    sendJson(res, { ok: true, ts: Date.now() }); return;
+  }
+
   if ((p === R_EXT+'/auth/' || p === R_EXT+'/auth') && req.method === 'GET') {
     const callback = url.searchParams.get('callback') || '';
     sendHtml(res, renderExtensionLogin({ callback }));
@@ -983,12 +988,12 @@ async function handleRequest(req, res) {
       await addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'expired' });
       await saveDb();
       fireWebhook('key_expired', keyCode, 'Expiração detectada no v3/key');
-      sendJson(res, { data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave expirada.', permissions: [] } }, 403);
+      sendJson(res, { authError: 'keyExpired', reason: 'expired', data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave expirada.', permissions: [] } }, 403);
       return;
     }
     if (!keys[keyCode].active) {
       await addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'login_blocked' });
-      sendJson(res, { data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave bloqueada.', permissions: [] } }, 403);
+      sendJson(res, { authError: 'keyBlocked', reason: 'blocked', data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave bloqueada.', permissions: [] } }, 403);
       return;
     }
 
@@ -1012,7 +1017,7 @@ async function handleRequest(req, res) {
           warnLimit: true,
           warnRemaining: keys[keyCode].warnCount,
           data: {
-            message: `USUÁRIO NÃO ENCONTRADO. Limite de ativações atingido (${keys[keyCode].phones.length}/${keyMaxUses}). ${remaining} tentativa(s) de número novo restante(s). Contate o vendedor.`,
+            message: `USUÁRIO NÃO ENCONTRADO. Limite de ativações atingido (${keys[keyCode].phones.length}/${keyMaxUses}). Contate o vendedor.`,
             permissions: []
           }
         }, 403);
