@@ -440,7 +440,18 @@ function buildKeysHtml() {
   return entries.map(([code, k]) => {
     const expired   = isKeyExpired(k);
     const warnSoon  = isKeyExpiringSoon(k);
-    const expHtml   = k.expiresAt ? (() => {
+    const expHtml   = (!k.expiresAt && k.expireDuration) ? (() => {
+      // Chave diferida — mostrar duração configurada
+      const total = k.expireDuration;
+      const d = Math.floor(total / 86400000);
+      const h = Math.floor((total % 86400000) / 3600000);
+      const m = Math.floor((total % 3600000) / 60000);
+      const parts = [];
+      if (d > 0) parts.push(d+'d');
+      if (h > 0) parts.push(h+'h');
+      if (m > 0) parts.push(m+'m');
+      return `<br><span style="color:var(--blue);font-size:10px" title="Tempo começa na 1ª ativação">⏱ Ao ativar: ${parts.join(' ')}</span>`;
+    })() : k.expiresAt ? (() => {
       const exp = new Date(k.expiresAt), now = new Date();
       const diffMs = exp - now;
       const diffH  = Math.floor(diffMs / 36e5);
@@ -463,7 +474,7 @@ function buildKeysHtml() {
 <tr data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${k.active?'ativo':'bloqueado'}" data-uses="${k.uses||0}" data-created="${k.createdAt}"${rowStyle}>
   <td><span class="kc">${escHtml(code)}</span></td>
   <td>${escHtml(k.label)}</td>
-  <td><span class="badge ${k.active?(k.warnCount>0?'wl':'on'):'off'}">${k.active?(k.warnCount>0?`AVISO (${k.warnCount}x)`:'ATIVO'):'BLOQUEADO'}</span></td>
+  <td><span class="badge ${k.active?(k.warnCount>0?'wl':'on'):'off'}">${k.active?(k.expireDuration&&!k.expiresAt?'AGUARDANDO':(k.warnCount>0?`AVISO (${k.warnCount}x)`:'ATIVO')):'BLOQUEADO'}</span></td>
   <td><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
   <td>${escHtml(k.lastPhone||'-')}</td>
   <td>${escHtml(k.lastIp||'-')}</td>
@@ -645,6 +656,7 @@ tr:hover td{background:#ffffff02}
         </div>
         <div class="fi-sep"></div>
         <div class="fi-col"><span class="fi-lbl">Usos</span><input type="number" id="nuses" class="fi-num" placeholder="3" min="-1" title="Máx. números (vazio=3, -1=ilimitado)" style="width:60px"></div>
+        <div class="fi-col" style="align-items:center;gap:4px"><label style="font-size:10px;color:var(--muted);white-space:nowrap" title="O tempo só começa a contar quando o cliente inserir a chave pela primeira vez"><input type="checkbox" id="ndeferred" style="margin-right:4px">⏱ Ativar ao 1º uso</label></div>
         <button class="btn bp" onclick="generateKey()">+ Gerar Chave</button>
       </div>
     </div>
@@ -747,6 +759,8 @@ async function generateKey(){
     if(days>0)body.expireDays=days;
     if(hours>0)body.expireHours=hours;
     if(mins>0)body.expireMinutes=mins;
+    const def=document.getElementById('ndeferred');
+    if(def&&def.checked)body.deferred=true;
     const r=await fetch(_RA+'/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
     const d=await r.json();
@@ -1027,6 +1041,15 @@ async function handleRequest(req, res) {
       keys[keyCode].uses = keys[keyCode].phones.length;
     }
 
+    // Ativação diferida — iniciar timer na primeira ativação real
+    if (keys[keyCode].expireDuration && !keys[keyCode].expiresAt && keys[keyCode].phones.length >= 1) {
+      const exp = new Date();
+      exp.setTime(exp.getTime() + keys[keyCode].expireDuration);
+      keys[keyCode].expiresAt = exp.toISOString();
+      keys[keyCode].activatedAt = new Date().toISOString();
+      console.log(`[DEFERRED] Chave ${keyCode} ativada — expira em ${keys[keyCode].expiresAt}`);
+    }
+
     keys[keyCode].lastUsed  = new Date().toISOString();
     keys[keyCode].lastIp    = ip;
     if (hasPhone) keys[keyCode].lastPhone = phone;
@@ -1118,18 +1141,26 @@ async function handleRequest(req, res) {
     const body = await parseBody(req);
     const code = generateKey();
     let expiresAt = null;
+    let expireDuration = null; // ms — para chaves com ativação diferida
     if (body.expiresAt) {
       expiresAt = new Date(body.expiresAt).toISOString();
     } else {
       const days = parseInt(body.expireDays || 0), hours = parseInt(body.expireHours || 0), minutes = parseInt(body.expireMinutes || 0);
       if (days > 0 || hours > 0 || minutes > 0) {
-        const d = new Date();
-        d.setTime(d.getTime() + ((days * 1440) + (hours * 60) + minutes) * 60000);
-        expiresAt = d.toISOString();
+        const durationMs = ((days * 1440) + (hours * 60) + minutes) * 60000;
+        if (body.deferred) {
+          // Tempo só começa a contar na primeira ativação
+          expireDuration = durationMs;
+          expiresAt = null;
+        } else {
+          const d = new Date();
+          d.setTime(d.getTime() + durationMs);
+          expiresAt = d.toISOString();
+        }
       }
     }
     const maxUses = (body.maxUses !== undefined) ? parseInt(body.maxUses) : MAX_USES;
-    keys[code] = { label: body.label || 'Cliente', active: true, createdAt: new Date().toISOString(), uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null, deviceId: null, note: '', expiresAt, maxUses: isNaN(maxUses) ? MAX_USES : maxUses };
+    keys[code] = { label: body.label || 'Cliente', active: true, createdAt: new Date().toISOString(), uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null, deviceId: null, note: '', expiresAt, expireDuration: expireDuration || null, maxUses: isNaN(maxUses) ? MAX_USES : maxUses };
     await saveDb();
     sendJson(res, { ok: true, key: code }); return;
   }
