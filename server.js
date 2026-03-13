@@ -27,19 +27,26 @@ let _mongoDb     = null;
 async function getMongoDb() {
   if (_mongoDb) return _mongoDb;
   if (!MONGODB_URI) throw new Error('MONGODB_URI não configurado');
-  if (!_mongoClient) {
-    _mongoClient = new MongoClient(MONGODB_URI, {
-      serverSelectionTimeoutMS: 10000,
-      connectTimeoutMS: 10000,
-      tls: true,
-      tlsAllowInvalidCertificates: false,
-      tlsAllowInvalidHostnames: false,
-    });
+  try {
+    if (!_mongoClient) {
+      _mongoClient = new MongoClient(MONGODB_URI, {
+        serverSelectionTimeoutMS: 10000,
+        connectTimeoutMS: 10000,
+        tls: true,
+        tlsAllowInvalidCertificates: false,
+        tlsAllowInvalidHostnames: false,
+      });
+    }
     await _mongoClient.connect();
+    _mongoDb = _mongoClient.db('lr1290');
     console.log('✅ MongoDB conectado');
+    return _mongoDb;
+  } catch (e) {
+    // Reseta cliente para forçar reconexão na próxima chamada
+    _mongoClient = null;
+    _mongoDb = null;
+    throw e;
   }
-  _mongoDb = _mongoClient.db('zapvoice');
-  return _mongoDb;
 }
 
 // loadDb: carrega keys e logs do MongoDB (chamado na inicialização)
