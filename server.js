@@ -403,6 +403,214 @@ input:focus{border-color:#00ff87}
 // ─────────────────────────────────────────────
 // ADMIN: LOGIN
 // ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// PORTAL DO CLIENTE
+// ─────────────────────────────────────────────
+function renderClientPortal() {
+  const BASE = `https://zapvoice-test-key-server.onrender.com`;
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZapVoice — Portal do Cliente</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;padding:20px}
+.wrap{width:100%;max-width:460px}
+.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:36px 32px;text-align:center}
+.logo{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:#00ff87;margin-bottom:4px}
+.sub{color:#6b6b8a;font-size:11px;letter-spacing:3px;text-transform:uppercase;margin-bottom:28px}
+label{display:block;text-align:left;font-size:10px;letter-spacing:2px;color:#6b6b8a;text-transform:uppercase;margin-bottom:8px}
+input{width:100%;padding:13px 16px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:10px;color:#00ff87;font-family:'Space Mono',monospace;font-size:15px;outline:none;letter-spacing:2px;transition:border .2s}
+input:focus{border-color:#00ff87}
+.btn{width:100%;padding:14px;background:#00ff87;border:none;border-radius:10px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:15px;cursor:pointer;margin-top:16px;transition:opacity .2s}
+.btn:hover{opacity:.85}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.err{background:#ff475715;border:1px solid #ff4757;border-radius:8px;color:#ff4757;padding:11px 14px;font-size:12px;margin-bottom:16px;text-align:left}
+.panel{margin-top:20px;text-align:left;display:none}
+.panel-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:#e2e2f0;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid #1e1e2e}
+.row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #1e1e2e30}
+.row:last-child{border-bottom:none}
+.row-label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#6b6b8a}
+.row-val{font-size:12px;color:#e2e2f0;text-align:right;max-width:62%}
+.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase}
+.badge-on{background:#00ff8720;color:#00ff87;border:1px solid #00ff8740}
+.badge-off{background:#ff475720;color:#ff4757;border:1px solid #ff475740}
+.badge-warn{background:#ffa50020;color:#ffa500;border:1px solid #ffa50040}
+.badge-def{background:#6b6b8a20;color:#6b6b8a;border:1px solid #6b6b8a40}
+.hint{margin-top:22px;color:#6b6b8a;font-size:11px;line-height:1.8}
+.hint a{color:#00ff87;text-decoration:none}
+.expire-bar-wrap{margin-top:6px;background:#1e1e2e;border-radius:6px;overflow:hidden;height:5px}
+.expire-bar{height:5px;border-radius:6px;transition:width .6s}
+.section-links{margin-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.link-btn{padding:12px 8px;background:#0a0a0f;border:1px solid #1e1e2e;border-radius:10px;color:#e2e2f0;font-family:'Space Mono',monospace;font-size:11px;text-align:center;text-decoration:none;transition:border-color .2s,color .2s;display:block;line-height:1.6}
+.link-btn:hover{border-color:#00ff87;color:#00ff87}
+.spinner{display:inline-block;width:15px;height:15px;border:2px solid #00ff8730;border-top-color:#00ff87;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-overlay{position:fixed;inset:0;background:#0a0a0f;display:flex;align-items:center;justify-content:center;z-index:99}
+.loading-overlay .spinner{width:28px;height:28px;border-width:3px}
+</style>
+</head><body>
+<div id="loading-overlay" class="loading-overlay"><span class="spinner"></span></div>
+<div class="wrap">
+  <div class="card">
+    <div class="logo">⚡ ZapVoice</div>
+    <div class="sub">Portal do Cliente</div>
+
+    <div id="form-area">
+      <div id="err-box" class="err" style="display:none"></div>
+      <label>Sua Chave de Ativação</label>
+      <input type="text" id="key-input" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false">
+      <p style="text-align:left;font-size:11px;color:#6b6b8a;margin-top:8px">Você recebeu esta chave junto com a sua compra.</p>
+      <button class="btn" id="check-btn" onclick="checkKey()">Consultar Minha Chave</button>
+    </div>
+
+    <div class="panel" id="result-panel">
+      <div class="panel-title" id="panel-name">Minha Conta</div>
+      <div class="row">
+        <span class="row-label">Status</span>
+        <span class="row-val" id="r-status"></span>
+      </div>
+      <div class="row">
+        <span class="row-label">Dispositivos</span>
+        <span class="row-val" id="r-phones"></span>
+      </div>
+      <div class="row">
+        <span class="row-label">Expira em</span>
+        <span class="row-val">
+          <span id="r-expires"></span>
+          <div class="expire-bar-wrap" id="r-bar-wrap" style="display:none">
+            <div class="expire-bar" id="r-bar"></div>
+          </div>
+        </span>
+      </div>
+      <div class="row" id="r-act-row" style="display:none">
+        <span class="row-label">Ativada em</span>
+        <span class="row-val" id="r-activated"></span>
+      </div>
+      <div class="row" id="r-last-row" style="display:none">
+        <span class="row-label">Último uso</span>
+        <span class="row-val" id="r-lastused"></span>
+      </div>
+      <div class="section-links" id="r-links"></div>
+      <button class="btn" style="margin-top:16px;background:#1e1e2e;color:#6b6b8a;font-size:12px" onclick="resetPanel()">← Consultar outra chave</button>
+    </div>
+
+    <div class="hint">Precisa de ajuda?<br>Entre em contato com o vendedor<br><a href="https://dfg.com.br/user/lr1290" target="_blank">dfg.com.br/user/lr1290</a></div>
+  </div>
+</div>
+<script>
+const API_BASE = '${BASE}';
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+}
+function fmtHours(h) {
+  if (h===null||h===undefined) return null;
+  if (h>=48) return Math.floor(h/24)+' dias';
+  if (h>=1) return h+'h';
+  return 'menos de 1h';
+}
+
+async function doCheck(key) {
+  const errBox = document.getElementById('err-box');
+  const btn    = document.getElementById('check-btn');
+  errBox.style.display = 'none';
+  if (!key) { errBox.textContent='⚠️ Digite sua chave de ativação.'; errBox.style.display='block'; return; }
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Consultando...';
+  try {
+    const r = await fetch(API_BASE+'/client/status', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key})
+    });
+    const d = await r.json();
+    if (!r.ok || d.error) {
+      errBox.textContent = '❌ Chave não encontrada. Verifique se digitou corretamente.';
+      errBox.style.display = 'block';
+      btn.disabled=false; btn.textContent='Consultar Minha Chave';
+      return;
+    }
+    showPanel(d, key);
+  } catch(e) {
+    errBox.textContent = '⚠️ Erro de conexão. Tente novamente.';
+    errBox.style.display = 'block';
+    btn.disabled=false; btn.textContent='Consultar Minha Chave';
+  }
+}
+
+function checkKey() {
+  const key = document.getElementById('key-input').value.trim().toLowerCase();
+  doCheck(key);
+}
+
+function showPanel(d, key) {
+  document.getElementById('form-area').style.display = 'none';
+  document.getElementById('result-panel').style.display = 'block';
+  document.getElementById('panel-name').textContent = '👤 '+d.label;
+
+  let badge;
+  if (d.deferred)                                       badge='<span class="badge badge-def">Aguardando 1º uso</span>';
+  else if (!d.active && d.expired)                      badge='<span class="badge badge-off">Expirada</span>';
+  else if (!d.active)                                   badge='<span class="badge badge-off">Bloqueada</span>';
+  else if (d.hoursLeft!==null && d.hoursLeft<48)        badge='<span class="badge badge-warn">Expirando em breve</span>';
+  else                                                  badge='<span class="badge badge-on">Ativa</span>';
+  document.getElementById('r-status').innerHTML = badge;
+
+  const maxTxt = d.maxUses===null ? '∞' : d.maxUses;
+  document.getElementById('r-phones').textContent = d.phones+' / '+maxTxt;
+
+  const expEl=document.getElementById('r-expires'), barWrap=document.getElementById('r-bar-wrap'), bar=document.getElementById('r-bar');
+  if (d.deferred) {
+    expEl.textContent='Ativa ao 1º uso'; barWrap.style.display='none';
+  } else if (d.expired) {
+    expEl.textContent='Expirada em '+fmtDate(d.expiresAt); barWrap.style.display='none';
+  } else if (d.expiresAt) {
+    const tl=fmtHours(d.hoursLeft);
+    expEl.textContent=fmtDate(d.expiresAt)+(tl?' ('+tl+' restantes)':'');
+    if (d.hoursLeft!==null) {
+      barWrap.style.display='block';
+      const pct=Math.min(100,Math.max(2,(d.hoursLeft/(24*30))*100));
+      bar.style.width=pct+'%';
+      bar.style.background=d.hoursLeft<24?'#ff4757':d.hoursLeft<72?'#ffa500':'#00ff87';
+    }
+  } else { expEl.textContent='Sem expiração'; barWrap.style.display='none'; }
+
+  if (d.activatedAt) { document.getElementById('r-act-row').style.display='flex'; document.getElementById('r-activated').textContent=fmtDate(d.activatedAt); }
+  if (d.lastUsed)    { document.getElementById('r-last-row').style.display='flex'; document.getElementById('r-lastused').textContent=fmtDate(d.lastUsed); }
+
+  document.getElementById('r-links').innerHTML=
+    '<a class="link-btn" href="https://app.zapvoice.com.br/dashboard/backup-fixer" target="_blank">🔧 Corrija<br>Backups</a>'+
+    '<a class="link-btn" href="https://app.zapvoice.com.br/dashboard/converter" target="_blank">🎵 Converta<br>Áudios</a>';
+}
+
+function resetPanel() {
+  document.getElementById('form-area').style.display='block';
+  document.getElementById('result-panel').style.display='none';
+  document.getElementById('r-act-row').style.display='none';
+  document.getElementById('r-last-row').style.display='none';
+  const btn=document.getElementById('check-btn');
+  btn.disabled=false; btn.textContent='Consultar Minha Chave';
+}
+
+document.getElementById('key-input').addEventListener('keydown', e=>{ if(e.key==='Enter') checkKey(); });
+
+// ── Auto-checagem: lê ?key= da URL (passado pela extensão via /plans/new?key=...) ──
+window.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('loading-overlay').style.display = 'none';
+  const params = new URLSearchParams(window.location.search);
+  const autoKey = (params.get('key') || '').trim().toLowerCase();
+  if (autoKey) {
+    document.getElementById('key-input').value = autoKey;
+    doCheck(autoKey);
+  }
+});
+</script>
+</body></html>`;
+}
+
 function renderAdminLogin(error = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -886,13 +1094,19 @@ async function exportCSV(){
 // ROTEADOR
 // ─────────────────────────────────────────────
 async function handleRequest(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST,GET,OPTIONS,DELETE');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,x-app-date,x-app-sig,x-app-ts');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('X-Powered-By', 'PHP/7.4.3'); // fingerprint falso
-  if (req.method === 'OPTIONS') { res.writeHead(200); res.end(); return; }
+  // ── CORS: permite extensões Chrome e qualquer origem ──
+  const _corsH = {
+    'Access-Control-Allow-Origin':  req.headers.origin || '*',
+    'Access-Control-Allow-Methods': 'POST,GET,OPTIONS,DELETE',
+    'Access-Control-Allow-Headers': 'Content-Type,x-app-date,x-app-sig,x-app-ts',
+    'Access-Control-Max-Age':       '86400',
+    'Vary':                         'Origin',
+    'X-Content-Type-Options':       'nosniff',
+    'X-Frame-Options':              'DENY',
+    'X-Powered-By':                 'PHP/7.4.3',
+  };
+  Object.entries(_corsH).forEach(([k, v]) => res.setHeader(k, v));
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const p   = url.pathname;
@@ -1250,6 +1464,49 @@ async function handleRequest(req, res) {
 
 
 
+  // ── /dashboard/backup-fixer e /dashboard/converter → passthrough para app.zapvoice.com.br ──
+  if (req.method === 'GET' && (p === '/dashboard/backup-fixer' || p === '/dashboard/converter')) {
+    res.writeHead(302, { Location: 'https://app.zapvoice.com.br' + p });
+    res.end();
+    return;
+  }
+
+  // ── Painel do cliente: POST /client/status (verifica chave e retorna dados JSON) ──
+  if (p === '/client/status' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const code = (body.key || '').trim().toLowerCase();
+    if (!code || !keys[code]) { sendJson(res, { error: 'not_found' }, 404); return; }
+    const k = keys[code];
+    const expired = isKeyExpired(k);
+    const hoursLeft = getHoursLeft(k);
+    sendJson(res, {
+      label:        k.label || 'Cliente',
+      active:       k.active && !expired,
+      expired,
+      expiresAt:    k.expiresAt || null,
+      activatedAt:  k.activatedAt || null,
+      lastUsed:     k.lastUsed || null,
+      phones:       (k.phones || []).length,
+      maxUses:      k.maxUses === -1 ? null : (k.maxUses > 0 ? k.maxUses : MAX_USES),
+      hoursLeft:    hoursLeft,
+      deferred:     !!(k.expireDuration && !k.expiresAt),
+      warnCount:    k.warnCount || 0,
+    });
+    return;
+  }
+
+  // ── Portal do cliente: todas as rotas públicas que a extensão abre ──
+  const CLIENT_PORTAL_PATHS = ['/', '/plans/manage', '/plans/new', '/dashboard/chaves'];
+  if (req.method === 'GET' && (
+    CLIENT_PORTAL_PATHS.includes(p) ||
+    p.startsWith('/unauthorized') ||
+    p.startsWith('/funnels') ||
+    p.startsWith('/labels')
+  )) {
+    sendHtml(res, renderClientPortal());
+    return;
+  }
+
   sendJson(res, { ok: true });
 }
 
@@ -1271,7 +1528,15 @@ async function handleRequest(req, res) {
     console.log(`🔑 Admin: ${R_ADMIN} | User: ${ADMIN_USER}`);
     console.log(`🌐 Extension: ${R_EXT}/v3/key`);
     console.log(`📊 Webhook: ${WEBHOOK_URL || 'não configurado'} | Expiração: ${EXPIRY_WARN_HOURS}h`);
-    http.createServer(handleRequest).listen(PORT, () => {
+    const safeHandler = (req, res) => {
+      handleRequest(req, res).catch(err => {
+        console.error(`[ERRO] ${req.method} ${req.url}:`, err);
+        if (!res.headersSent) { res.writeHead(500); res.end('Internal Server Error'); }
+      });
+    };
+    process.on('uncaughtException', err => console.error('[uncaughtException]', err));
+    process.on('unhandledRejection', err => console.error('[unhandledRejection]', err));
+    http.createServer(safeHandler).listen(PORT, () => {
       console.log(`🚀 Servidor ouvindo na porta ${PORT}`);
     });
   } catch (e) {
