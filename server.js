@@ -1463,7 +1463,7 @@ async function handleRequest(req, res) {
 
   // ── Painel do cliente: POST /client/status (verifica chave e retorna dados JSON) ──
   if (p === '/client/status' && req.method === 'POST') {
-    const body = await parseJsonBody(req);
+    const body = await parseBody(req);
     const code = (body.key || '').trim().toLowerCase();
     if (!code || !keys[code]) { sendJson(res, { error: 'not_found' }, 404); return; }
     const k = keys[code];
