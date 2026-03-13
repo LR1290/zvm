@@ -296,7 +296,21 @@ function getAuthData(keyCode) {
   };
 }
 
+// Ações que podem ser duplicadas por múltiplas chamadas em curto intervalo
+const DEDUP_ACTIONS = new Set(['expired', 'relogin_ok', 'login_blocked']);
+const DEDUP_WINDOW_MS = 60 * 1000; // 60 segundos
+
 async function addLog(entry) {
+  // Deduplicar: ignorar se já existe o mesmo keyCode+action nos últimos 60s
+  if (DEDUP_ACTIONS.has(entry.action)) {
+    const cutoff = Date.now() - DEDUP_WINDOW_MS;
+    const isDup = logs.some(l =>
+      l.keyCode === entry.keyCode &&
+      l.action  === entry.action  &&
+      new Date(l.timestamp).getTime() > cutoff
+    );
+    if (isDup) return;
+  }
   logs.unshift({ ...entry, timestamp: new Date().toISOString() });
   if (logs.length > 500) logs = logs.slice(0, 500);
   await saveDb();
@@ -697,6 +711,7 @@ function buildKeysHtml() {
   <td class="note-cell" onclick="openNote('${escHtml(code)}','${noteEsc.replace(/'/g,"\\'")}')"><span class="note-preview">${noteEsc || '<span style=\\"color:var(--muted)\\">—</span>'}</span></td>
   <td>
     <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
+    <button class="bs bg" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">+ Tempo</button>
     <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
     ${(k.warnCount||0)>0 ? `<button class="bs bwarn" onclick="resetWarn('${escHtml(code)}')">⚠ Avisos</button>` : ''}
   </td>
@@ -913,6 +928,33 @@ tr:hover td{background:#ffffff02}
 
 </main>
 
+<!-- Modal de renovar tempo -->
+<div class="modal-bg" id="renewModal">
+  <div class="modal" style="min-width:300px">
+    <h3>⏱ Adicionar Tempo — <span id="renewKeyLabel"></span></h3>
+    <input type="hidden" id="renewKeyCode">
+    <div style="display:flex;gap:10px;margin-bottom:12px">
+      <div style="flex:1;text-align:center">
+        <div style="font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Dias</div>
+        <input type="number" id="renewDays" class="fi-num" placeholder="0" min="0" style="width:100%;padding:8px;background:var(--dark);border:1px solid var(--border);border-radius:6px;color:var(--fg);font-family:inherit;font-size:14px;text-align:center">
+      </div>
+      <div style="flex:1;text-align:center">
+        <div style="font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Horas</div>
+        <input type="number" id="renewHours" class="fi-num" placeholder="0" min="0" style="width:100%;padding:8px;background:var(--dark);border:1px solid var(--border);border-radius:6px;color:var(--fg);font-family:inherit;font-size:14px;text-align:center">
+      </div>
+      <div style="flex:1;text-align:center">
+        <div style="font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px">Min</div>
+        <input type="number" id="renewMins" class="fi-num" placeholder="0" min="0" style="width:100%;padding:8px;background:var(--dark);border:1px solid var(--border);border-radius:6px;color:var(--fg);font-family:inherit;font-size:14px;text-align:center">
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px" id="renewCurrentExpiry"></div>
+    <div class="modal-actions">
+      <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeRenew()">Cancelar</button>
+      <button class="btn bp" onclick="saveRenew()">Adicionar Tempo</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal de notas -->
 <div class="modal-bg" id="noteModal">
   <div class="modal">
@@ -1065,6 +1107,43 @@ function openNote(code, currentNote){
 }
 function closeNote(){document.getElementById('noteModal').classList.remove('open');}
 document.getElementById('noteModal').addEventListener('click',function(e){if(e.target===this)closeNote();});
+
+function openRenew(code, label) {
+  document.getElementById('renewKeyCode').value = code;
+  document.getElementById('renewKeyLabel').textContent = label;
+  document.getElementById('renewDays').value = '';
+  document.getElementById('renewHours').value = '';
+  document.getElementById('renewMins').value = '';
+  // Mostrar expiração atual
+  const expInfo = document.getElementById('renewCurrentExpiry');
+  const row = [...document.querySelectorAll('#kb tr')].find(r => r.querySelector('td')?.textContent === code);
+  const expCell = row ? row.querySelectorAll('td')[7]?.textContent : '';
+  expInfo.textContent = expCell ? '📅 Expiração atual: ' + expCell.trim() : '📅 Sem expiração definida';
+  document.getElementById('renewModal').classList.add('open');
+  document.getElementById('renewDays').focus();
+}
+function closeRenew() { document.getElementById('renewModal').classList.remove('open'); }
+document.getElementById('renewModal').addEventListener('click', function(e) { if(e.target===this) closeRenew(); });
+async function saveRenew() {
+  const code  = document.getElementById('renewKeyCode').value;
+  const days  = parseInt(document.getElementById('renewDays').value)  || 0;
+  const hours = parseInt(document.getElementById('renewHours').value) || 0;
+  const mins  = parseInt(document.getElementById('renewMins').value)  || 0;
+  if (!days && !hours && !mins) { toast('Informe pelo menos um valor de tempo.', false); return; }
+  const r = await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/renew', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ days, hours, mins })
+  });
+  const d = await r.json();
+  if (d.ok) {
+    toast('✅ Tempo adicionado! Nova expiração: ' + new Date(d.expiresAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}));
+    closeRenew();
+    await doRefresh();
+  } else {
+    toast('Erro ao renovar: ' + (d.error||'?'), false);
+  }
+}
 async function saveNote(){
   const code=document.getElementById('noteKeyCode').value;
   const note=document.getElementById('noteText').value.trim();
@@ -1396,6 +1475,27 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true, active: keys[code].active }); return;
   }
 
+  // ── ADMIN API: renovar tempo ──
+  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/api\/keys\/[^/]+\/renew$')) && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const _segs = p.split('/'); const code = decodeURIComponent(_segs[_segs.length-2]);
+    if (!keys[code]) { sendJson(res, { error: 'not found' }, 404); return; }
+    const body = await parseBody(req);
+    const days = parseInt(body.days||0), hours = parseInt(body.hours||0), mins = parseInt(body.mins||0);
+    if (!days && !hours && !mins) { sendJson(res, { error: 'nenhum tempo informado' }, 400); return; }
+    const addMs = ((days * 1440) + (hours * 60) + mins) * 60000;
+    // Se a chave está expirada ou sem expiração, conta a partir de agora
+    // Se ainda está válida, soma ao tempo restante
+    const base = (keys[code].expiresAt && !isKeyExpired(keys[code]))
+      ? new Date(keys[code].expiresAt).getTime()
+      : Date.now();
+    keys[code].expiresAt = new Date(base + addMs).toISOString();
+    keys[code].active = true; // reativa se estava bloqueada por expiração
+    await saveDb();
+    await addLog({ keyCode: code, label: keys[code].label, phone: '-', ip, wppVersion: '-', action: 'renewed' });
+    sendJson(res, { ok: true, expiresAt: keys[code].expiresAt }); return;
+  }
+
   // ── ADMIN API: reset-warn ──
   if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/api\/keys\/[^/]+\/reset-warn$')) && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
@@ -1484,7 +1584,7 @@ async function handleRequest(req, res) {
     if (!code || !keys[code]) { sendJson(res, { error: 'not_found' }, 404); return; }
     const k = keys[code];
     const expired = isKeyExpired(k);
-    const hoursLeft = getHoursLeft(k);
+    const hoursLeft = hoursUntilExpiry(k);
     sendJson(res, {
       label:        k.label || 'Cliente',
       active:       k.active && !expired,
