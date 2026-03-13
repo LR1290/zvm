@@ -1094,13 +1094,19 @@ async function exportCSV(){
 // ROTEADOR
 // ─────────────────────────────────────────────
 async function handleRequest(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST,GET,OPTIONS,DELETE');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,x-app-date,x-app-sig,x-app-ts');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('X-Powered-By', 'PHP/7.4.3'); // fingerprint falso
-  if (req.method === 'OPTIONS') { res.writeHead(200); res.end(); return; }
+  // ── CORS: permite extensões Chrome e qualquer origem ──
+  const _corsH = {
+    'Access-Control-Allow-Origin':  req.headers.origin || '*',
+    'Access-Control-Allow-Methods': 'POST,GET,OPTIONS,DELETE',
+    'Access-Control-Allow-Headers': 'Content-Type,x-app-date,x-app-sig,x-app-ts',
+    'Access-Control-Max-Age':       '86400',
+    'Vary':                         'Origin',
+    'X-Content-Type-Options':       'nosniff',
+    'X-Frame-Options':              'DENY',
+    'X-Powered-By':                 'PHP/7.4.3',
+  };
+  Object.entries(_corsH).forEach(([k, v]) => res.setHeader(k, v));
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const p   = url.pathname;
@@ -1522,7 +1528,15 @@ async function handleRequest(req, res) {
     console.log(`🔑 Admin: ${R_ADMIN} | User: ${ADMIN_USER}`);
     console.log(`🌐 Extension: ${R_EXT}/v3/key`);
     console.log(`📊 Webhook: ${WEBHOOK_URL || 'não configurado'} | Expiração: ${EXPIRY_WARN_HOURS}h`);
-    http.createServer(handleRequest).listen(PORT, () => {
+    const safeHandler = (req, res) => {
+      handleRequest(req, res).catch(err => {
+        console.error(`[ERRO] ${req.method} ${req.url}:`, err);
+        if (!res.headersSent) { res.writeHead(500); res.end('Internal Server Error'); }
+      });
+    };
+    process.on('uncaughtException', err => console.error('[uncaughtException]', err));
+    process.on('unhandledRejection', err => console.error('[unhandledRejection]', err));
+    http.createServer(safeHandler).listen(PORT, () => {
       console.log(`🚀 Servidor ouvindo na porta ${PORT}`);
     });
   } catch (e) {
