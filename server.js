@@ -1546,12 +1546,9 @@ async function handleRequest(req, res) {
       console.log(`🚀 Servidor ouvindo na porta ${PORT}`);
 
       // ── Auto-ping: evita que o Render duerma o serviço no plano Free ──
-      // Faz uma requisição interna a cada 4 minutos (< 5min do limite do Render)
-      const SELF_URL = process.env.RENDER_EXTERNAL_URL
-        ? process.env.RENDER_EXTERNAL_URL + '/health'
-        : 'http://localhost:' + PORT + '/health';
+      // Usa http (não https) pois pinga localhost diretamente — sem TLS
       setInterval(() => {
-        http.get(SELF_URL, res => {
+        http.get({ hostname: 'localhost', port: PORT, path: '/health' }, res => {
           res.resume();
           console.log('[keep-alive] ping OK ' + res.statusCode);
         }).on('error', err => {
