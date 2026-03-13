@@ -597,14 +597,20 @@ function resetPanel() {
 
 document.getElementById('key-input').addEventListener('keydown', e=>{ if(e.key==='Enter') checkKey(); });
 
-// ── Auto-checagem: lê ?key= da URL (passado pela extensão via /plans/new?key=...) ──
+// ── Auto-checagem: lê ?key= da URL (passado pelo botão engrenagem da extensão) ──
 window.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('loading-overlay').style.display = 'none';
   const params = new URLSearchParams(window.location.search);
   const autoKey = (params.get('key') || '').trim().toLowerCase();
   if (autoKey) {
-    document.getElementById('key-input').value = autoKey;
-    doCheck(autoKey);
+    // Tem chave na URL: ocultar tudo e carregar direto
+    document.getElementById('loading-overlay').style.display = 'flex';
+    document.getElementById('form-area').style.display = 'none';
+    doCheck(autoKey).finally(() => {
+      document.getElementById('loading-overlay').style.display = 'none';
+    });
+  } else {
+    // Sem chave: mostrar formulário normalmente
+    document.getElementById('loading-overlay').style.display = 'none';
   }
 });
 </script>
@@ -1538,6 +1544,20 @@ async function handleRequest(req, res) {
     process.on('unhandledRejection', err => console.error('[unhandledRejection]', err));
     http.createServer(safeHandler).listen(PORT, () => {
       console.log(`🚀 Servidor ouvindo na porta ${PORT}`);
+
+      // ── Auto-ping: evita que o Render duerma o serviço no plano Free ──
+      // Faz uma requisição interna a cada 4 minutos (< 5min do limite do Render)
+      const SELF_URL = process.env.RENDER_EXTERNAL_URL
+        ? process.env.RENDER_EXTERNAL_URL + '/health'
+        : 'http://localhost:' + PORT + '/health';
+      setInterval(() => {
+        http.get(SELF_URL, res => {
+          res.resume();
+          console.log('[keep-alive] ping OK ' + res.statusCode);
+        }).on('error', err => {
+          console.warn('[keep-alive] erro: ' + err.message);
+        });
+      }, 4 * 60 * 1000);
     });
   } catch (e) {
     console.error('❌ Falha ao iniciar:', e.message);
