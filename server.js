@@ -1284,10 +1284,6 @@ async function handleRequest(req, res) {
       cb.searchParams.set('email',       'cliente@zapvoice.com.br');
       cb.searchParams.set('plan_id',     'ZV_PRO');
       cb.searchParams.set('permissions', FULL_PERMISSIONS.join(','));
-      // Gerar token de sessão para a extensão usar nos requests seguintes
-      const extToken = generateToken();
-      extSessions[extToken] = { keyCode, expiresAt: new Date(Date.now() + 30*24*60*60*1000).toISOString() };
-      cb.searchParams.set('extToken', extToken);
       res.writeHead(302, { Location: cb.toString() }); res.end();
     } catch (e) {
       sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: 'Callback inválido. Tente novamente.' }));
@@ -1304,11 +1300,11 @@ async function handleRequest(req, res) {
     const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
     let body; try { body = JSON.parse(rawBody); } catch { body = {}; }
     const keyCode    = (body.authKey || '').toLowerCase();
-    // Verificar por token de sessão (novo) OU por HMAC (legado)
-    const extToken = body.extToken || req.headers['x-ext-token'] || '';
-    const tokenOk  = verifyExtToken(extToken, keyCode);
-    const hmacOk   = verifyHmac(rawBody, req.headers['x-app-sig']||'', req.headers['x-app-ts']||'');
-    if (!tokenOk && !hmacOk) {
+    // Aceitar token de sessão (emitido pelo servidor) OU HMAC (fallback)
+    const _tok = (body._zv_et || '').trim();
+    const _tokOk  = _tok ? verifyExtToken(_tok, keyCode) : false;
+    const _hmacOk = !_tokOk && verifyHmac(rawBody, req.headers['x-app-sig']||'', req.headers['x-app-ts']||'');
+    if (!_tokOk && !_hmacOk) {
       await addLog({ keyCode:'?', label:'-', phone:'-', ip, wppVersion:'-', action:'hmac_fail' });
       sendJson(res, { authError: 'forbidden', authErrorMessage: 'Requisição inválida.' }, 403);
       return;
@@ -1380,7 +1376,13 @@ async function handleRequest(req, res) {
     if (hasPhone) keys[keyCode].lastPhone = phone;
     await addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: isNewPhone ? 'login_ok' : 'relogin_ok' });
     await saveDb();
-    sendJson(res, getAuthData(keyCode));
+    // Gerar/renovar token de sessão para esta chave — retornado na resposta
+    // A extensão salva e usa nas próximas requisições (sem HMAC hardcoded)
+    const _et = generateToken();
+    extSessions[_et] = { keyCode, expiresAt: new Date(Date.now() + 30*24*60*60*1000).toISOString() };
+    const _authData = getAuthData(keyCode);
+    _authData._zv_et = _et; // campo extra ignorado pela extensão original
+    sendJson(res, _authData);
     return;
   }
 
@@ -1389,10 +1391,10 @@ async function handleRequest(req, res) {
     const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
     let body; try { body = JSON.parse(rawBody); } catch { body = {}; }
     const keyCode = (body.authKey || '').toLowerCase();
-    const extToken = body.extToken || req.headers['x-ext-token'] || '';
-    const tokenOk  = verifyExtToken(extToken, keyCode);
-    const hmacOk   = verifyHmac(rawBody, req.headers['x-app-sig']||'', req.headers['x-app-ts']||'');
-    if (!tokenOk && !hmacOk) {
+    const _tok2 = (body._zv_et || '').trim();
+    const _tok2Ok  = _tok2 ? verifyExtToken(_tok2, keyCode) : false;
+    const _hmac2Ok = !_tok2Ok && verifyHmac(rawBody, req.headers['x-app-sig']||'', req.headers['x-app-ts']||'');
+    if (!_tok2Ok && !_hmac2Ok) {
       sendJson(res, { active: false, reason: 'forbidden' }); return;
     }
     if (!keyCode || !keys[keyCode]) {
