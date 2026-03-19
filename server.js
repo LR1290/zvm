@@ -309,6 +309,7 @@ function generateToken() { return crypto.randomBytes(32).toString('hex'); }
 function getAuthData(keyCode) {
   return {
     numberWarning: false, segments: [],
+    isLoggedIn: true, isPremium: true, // raiz — usado pelo refreshPremium no newInterval
     data: {
       key: keyCode, keyId: `id-${keyCode}`, ownerId: 'zv-owner', managerId: 'zv-manager',
       permissions: FULL_PERMISSIONS, username: keys[keyCode]?.label || 'Cliente ZapVoice',
@@ -1352,14 +1353,16 @@ async function handleRequest(req, res) {
         keys[keyCode].warnCount = (keys[keyCode].warnCount || 0) + 1;
         await saveDb();
         await addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'warn_limit' });
-        sendJson(res, {
-          warnLimit: true,
-          warnRemaining: keys[keyCode].warnCount,
-          data: {
-            message: `USUÁRIO NÃO ENCONTRADO. Limite de ativações atingido (${keys[keyCode].phones.length}/${keyMaxUses}). Contate o vendedor.`,
-            permissions: []
-          }
-        }, 403);
+        // Retornar 200 com numberWarning:true — formato que a extensão original espera
+        // 403 impedia o login completamente; agora o número entra mas admin vê o aviso
+        const _warnData = getAuthData(keyCode);
+        _warnData.numberWarning = true;
+        _warnData.warnLimit = true;
+        _warnData.warnRemaining = keys[keyCode].warnCount;
+        const _wet2 = generateToken();
+        extSessions[_wet2] = { keyCode, expiresAt: new Date(Date.now() + 30*24*60*60*1000).toISOString() };
+        _warnData._zv_et = _wet2;
+        sendJson(res, _warnData);
         return;
       }
       keys[keyCode].phones.push(phone);
