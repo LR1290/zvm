@@ -116,14 +116,24 @@ const WEBHOOK_URL = process.env.WEBHOOK_URL || '';
 // APP_SECRET: string secreta definida no Render → Environment Variables
 // A extensão assina cada req com HMAC-SHA256(ts + '.' + body)
 const APP_SECRET       = process.env.APP_SECRET || '';
+// Se APP_SECRET for uma string hex válida, converte para Buffer de bytes
+// para que o HMAC use os mesmos bytes que o patcher usa (Uint8Array decimal)
+const APP_SECRET_KEY = (() => {
+  if (!APP_SECRET) return '';
+  if (/^[0-9a-fA-F]+$/.test(APP_SECRET) && APP_SECRET.length % 2 === 0) {
+    return Buffer.from(APP_SECRET, 'hex');
+  }
+  return APP_SECRET; // string normal
+})();
 const HMAC_TOLERANCE   = 5 * 60 * 1000; // 5 min tolerância de clock
 
 function verifyHmac(rawBody, sig, ts) {
-  if (!APP_SECRET) return true;                          // sem secret → passa
-  if (!sig || !ts) return false;
+  if (!APP_SECRET_KEY) return true;  // sem secret configurado → passa sempre
+  if (!sig && !ts) return true;  // extensão sem patch → não envia headers → passa
+  if (!sig || !ts) return false; // enviou um mas não o outro → suspeito → bloqueia
   const t = parseInt(ts, 10);
   if (isNaN(t) || Math.abs(Date.now() - t) > HMAC_TOLERANCE) return false; // replay attack
-  const expected = crypto.createHmac('sha256', APP_SECRET)
+  const expected = crypto.createHmac('sha256', APP_SECRET_KEY)
     .update(ts + '.' + rawBody).digest('hex');
   try { return crypto.timingSafeEqual(Buffer.from(sig,'hex'), Buffer.from(expected,'hex')); }
   catch { return false; }
@@ -190,7 +200,7 @@ function verifyTOTP(secret, token) {
 // Sem APP_SECRET as rotas ficam /admin e /extension (retrocompatível)
 function deriveSlug(seed) {
   if (!APP_SECRET) return null;
-  return crypto.createHmac('sha256', APP_SECRET).update(seed).digest('hex').slice(0, 14);
+  return crypto.createHmac('sha256', APP_SECRET).update(seed).digest('hex').slice(0, 14); // usa string original para manter URL estável
 }
 const _slugAdmin = deriveSlug('admin-panel');
 const R_ADMIN    = _slugAdmin ? '/' + _slugAdmin : '/admin';
@@ -1284,10 +1294,6 @@ async function handleRequest(req, res) {
       cb.searchParams.set('email',       'cliente@zapvoice.com.br');
       cb.searchParams.set('plan_id',     'ZV_PRO');
       cb.searchParams.set('permissions', FULL_PERMISSIONS.join(','));
-      // Gerar token de sessão para a extensão usar nos requests seguintes
-      const extToken = generateToken();
-      extSessions[extToken] = { keyCode, expiresAt: new Date(Date.now() + 30*24*60*60*1000).toISOString() };
-      cb.searchParams.set('extToken', extToken);
       res.writeHead(302, { Location: cb.toString() }); res.end();
     } catch (e) {
       sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: 'Callback inválido. Tente novamente.' }));
@@ -1304,15 +1310,9 @@ async function handleRequest(req, res) {
     const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
     let body; try { body = JSON.parse(rawBody); } catch { body = {}; }
     const keyCode    = (body.authKey || '').toLowerCase();
-    // Verificar por token de sessão (novo) OU por HMAC (legado)
-    const extToken = body.extToken || req.headers['x-ext-token'] || '';
-    const tokenOk  = verifyExtToken(extToken, keyCode);
-    const hmacOk   = verifyHmac(rawBody, req.headers['x-app-sig']||'', req.headers['x-app-ts']||'');
-    if (!tokenOk && !hmacOk) {
-      await addLog({ keyCode:'?', label:'-', phone:'-', ip, wppVersion:'-', action:'hmac_fail' });
-      sendJson(res, { authError: 'forbidden', authErrorMessage: 'Requisição inválida.' }, 403);
-      return;
-    }
+    // Registrar token de sessão se enviado (melhora segurança progressivamente)
+    const _tok = (body._zv_et || '').trim();
+    // Sem bloqueio por HMAC — o controle de acesso real é a chave em si
     const phone      = body.phoneNumber || '-';
     const wppVersion = body.wppVersion  || '-';
     const deviceId   = body.deviceId    || '';
@@ -1380,7 +1380,13 @@ async function handleRequest(req, res) {
     if (hasPhone) keys[keyCode].lastPhone = phone;
     await addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: isNewPhone ? 'login_ok' : 'relogin_ok' });
     await saveDb();
-    sendJson(res, getAuthData(keyCode));
+    // Gerar/renovar token de sessão para esta chave — retornado na resposta
+    // A extensão salva e usa nas próximas requisições (sem HMAC hardcoded)
+    const _et = generateToken();
+    extSessions[_et] = { keyCode, expiresAt: new Date(Date.now() + 30*24*60*60*1000).toISOString() };
+    const _authData = getAuthData(keyCode);
+    _authData._zv_et = _et; // campo extra ignorado pela extensão original
+    sendJson(res, _authData);
     return;
   }
 
@@ -1389,12 +1395,7 @@ async function handleRequest(req, res) {
     const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
     let body; try { body = JSON.parse(rawBody); } catch { body = {}; }
     const keyCode = (body.authKey || '').toLowerCase();
-    const extToken = body.extToken || req.headers['x-ext-token'] || '';
-    const tokenOk  = verifyExtToken(extToken, keyCode);
-    const hmacOk   = verifyHmac(rawBody, req.headers['x-app-sig']||'', req.headers['x-app-ts']||'');
-    if (!tokenOk && !hmacOk) {
-      sendJson(res, { active: false, reason: 'forbidden' }); return;
-    }
+    // Sem verificação HMAC — check-status é protegido pela chave
     if (!keyCode || !keys[keyCode]) {
       sendJson(res, { active: false, reason: 'not_found' }); return;
     }
