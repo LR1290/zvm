@@ -200,7 +200,7 @@ function verifyTOTP(secret, token) {
 // Sem APP_SECRET as rotas ficam /admin e /extension (retrocompatível)
 function deriveSlug(seed) {
   if (!APP_SECRET) return null;
-  return crypto.createHmac('sha256', APP_SECRET_KEY).update(seed).digest('hex').slice(0, 14);
+  return crypto.createHmac('sha256', APP_SECRET).update(seed).digest('hex').slice(0, 14); // usa string original para manter URL estável
 }
 const _slugAdmin = deriveSlug('admin-panel');
 const R_ADMIN    = _slugAdmin ? '/' + _slugAdmin : '/admin';
