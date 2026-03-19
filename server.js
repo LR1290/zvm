@@ -83,7 +83,8 @@ async function saveDb() {
 // Variáveis globais — preenchidas após conectar
 let keys     = {};
 let logs     = [];
-let sessions = {};
+let sessions = {};      // sessões admin
+let extSessions = {};   // sessões de extensão: token → { keyCode, expiresAt }
 
 // ─────────────────────────────────────────────
 // CONSTANTES
@@ -126,6 +127,17 @@ function verifyHmac(rawBody, sig, ts) {
     .update(ts + '.' + rawBody).digest('hex');
   try { return crypto.timingSafeEqual(Buffer.from(sig,'hex'), Buffer.from(expected,'hex')); }
   catch { return false; }
+}
+
+// Verifica token de sessão da extensão (emitido no /auth/verify)
+// Mais seguro que HMAC hardcoded: sem segredo no JS do cliente
+function verifyExtToken(token, keyCode) {
+  if (!token) return false;
+  const s = extSessions[token];
+  if (!s) return false;
+  if (new Date() > new Date(s.expiresAt)) { delete extSessions[token]; return false; }
+  if (keyCode && s.keyCode !== keyCode) return false;
+  return true;
 }
 
 // CAMADA 2 — Criptografia em repouso
@@ -297,13 +309,19 @@ function getAuthData(keyCode) {
 }
 
 // Ações que podem ser duplicadas por múltiplas chamadas em curto intervalo
-const DEDUP_ACTIONS = new Set(['expired', 'relogin_ok', 'login_blocked']);
-const DEDUP_WINDOW_MS = 60 * 1000; // 60 segundos
+// relogin_ok: dedup de 8h (uma sessão típica — não poluir log com polling)
+// expired/login_blocked: dedup de 5min (evitar spam mas registrar se reocorrer)
+// login_ok: sem dedup — sempre registrar novo número
+const DEDUP_WINDOWS = {
+  'relogin_ok':    8 * 60 * 60 * 1000, // 8 horas
+  'expired':       5 * 60 * 1000,       // 5 minutos
+  'login_blocked': 5 * 60 * 1000,       // 5 minutos
+};
 
 async function addLog(entry) {
-  // Deduplicar: ignorar se já existe o mesmo keyCode+action nos últimos 60s
-  if (DEDUP_ACTIONS.has(entry.action)) {
-    const cutoff = Date.now() - DEDUP_WINDOW_MS;
+  const dedupMs = DEDUP_WINDOWS[entry.action];
+  if (dedupMs) {
+    const cutoff = Date.now() - dedupMs;
     const isDup = logs.some(l =>
       l.keyCode === entry.keyCode &&
       l.action  === entry.action  &&
@@ -1266,6 +1284,10 @@ async function handleRequest(req, res) {
       cb.searchParams.set('email',       'cliente@zapvoice.com.br');
       cb.searchParams.set('plan_id',     'ZV_PRO');
       cb.searchParams.set('permissions', FULL_PERMISSIONS.join(','));
+      // Gerar token de sessão para a extensão usar nos requests seguintes
+      const extToken = generateToken();
+      extSessions[extToken] = { keyCode, expiresAt: new Date(Date.now() + 30*24*60*60*1000).toISOString() };
+      cb.searchParams.set('extToken', extToken);
       res.writeHead(302, { Location: cb.toString() }); res.end();
     } catch (e) {
       sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: 'Callback inválido. Tente novamente.' }));
@@ -1280,13 +1302,17 @@ async function handleRequest(req, res) {
       return;
     }
     const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
-    if (!verifyHmac(rawBody, req.headers['x-app-sig']||'', req.headers['x-app-ts']||'')) {
+    let body; try { body = JSON.parse(rawBody); } catch { body = {}; }
+    const keyCode    = (body.authKey || '').toLowerCase();
+    // Verificar por token de sessão (novo) OU por HMAC (legado)
+    const extToken = body.extToken || req.headers['x-ext-token'] || '';
+    const tokenOk  = verifyExtToken(extToken, keyCode);
+    const hmacOk   = verifyHmac(rawBody, req.headers['x-app-sig']||'', req.headers['x-app-ts']||'');
+    if (!tokenOk && !hmacOk) {
       await addLog({ keyCode:'?', label:'-', phone:'-', ip, wppVersion:'-', action:'hmac_fail' });
       sendJson(res, { authError: 'forbidden', authErrorMessage: 'Requisição inválida.' }, 403);
       return;
     }
-    let body; try { body = JSON.parse(rawBody); } catch { body = {}; }
-    const keyCode    = (body.authKey || '').toLowerCase();
     const phone      = body.phoneNumber || '-';
     const wppVersion = body.wppVersion  || '-';
     const deviceId   = body.deviceId    || '';
@@ -1361,11 +1387,14 @@ async function handleRequest(req, res) {
   // ── EXTENSÃO: check-status (polling 30s) ──
   if (p === R_EXT+'/v3/check-status' && req.method === 'POST') {
     const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
-    if (!verifyHmac(rawBody, req.headers['x-app-sig']||'', req.headers['x-app-ts']||'')) {
-      sendJson(res, { active: false, reason: 'forbidden' }); return;
-    }
     let body; try { body = JSON.parse(rawBody); } catch { body = {}; }
     const keyCode = (body.authKey || '').toLowerCase();
+    const extToken = body.extToken || req.headers['x-ext-token'] || '';
+    const tokenOk  = verifyExtToken(extToken, keyCode);
+    const hmacOk   = verifyHmac(rawBody, req.headers['x-app-sig']||'', req.headers['x-app-ts']||'');
+    if (!tokenOk && !hmacOk) {
+      sendJson(res, { active: false, reason: 'forbidden' }); return;
+    }
     if (!keyCode || !keys[keyCode]) {
       sendJson(res, { active: false, reason: 'not_found' }); return;
     }
