@@ -741,6 +741,7 @@ function buildKeysHtml() {
   <td>
     <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
     <button class="bs bg" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">+ Tempo</button>
+    <button class="bs bg" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${k.maxUses!=null?k.maxUses:MAX_USES})">Usos</button>
     <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
     ${(k.warnCount||0)>0 ? `<button class="bs bwarn" onclick="resetWarn('${escHtml(code)}')">⚠ Avisos</button>` : ''}
   </td>
@@ -984,6 +985,23 @@ tr:hover td{background:#ffffff02}
   </div>
 </div>
 
+<!-- Modal de edição de usos -->
+<div class="modal-bg" id="editUsesModal">
+  <div class="modal" style="min-width:280px">
+    <h3>👥 Limite de Dispositivos — <span id="editUsesLabel"></span></h3>
+    <input type="hidden" id="editUsesCode">
+    <div style="margin-bottom:14px">
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Máx. números simultâneos</div>
+      <input type="number" id="editUsesValue" min="-1" style="width:100%;padding:10px;background:var(--dark);border:1px solid var(--border);border-radius:6px;color:var(--fg);font-family:inherit;font-size:16px;text-align:center">
+      <div style="font-size:11px;color:var(--muted);margin-top:8px">Use <strong style="color:var(--green)">-1</strong> para ilimitado</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeEditUses()">Cancelar</button>
+      <button class="btn bp" onclick="saveEditUses()">Salvar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal de notas -->
 <div class="modal-bg" id="noteModal">
   <div class="modal">
@@ -1153,6 +1171,37 @@ function openRenew(code, label) {
 }
 function closeRenew() { document.getElementById('renewModal').classList.remove('open'); }
 document.getElementById('renewModal').addEventListener('click', function(e) { if(e.target===this) closeRenew(); });
+
+function openEditUses(code, label, current) {
+  document.getElementById('editUsesCode').value = code;
+  document.getElementById('editUsesLabel').textContent = label;
+  document.getElementById('editUsesValue').value = current;
+  document.getElementById('editUsesModal').classList.add('open');
+  document.getElementById('editUsesValue').focus();
+  document.getElementById('editUsesValue').select();
+}
+function closeEditUses() { document.getElementById('editUsesModal').classList.remove('open'); }
+document.getElementById('editUsesModal').addEventListener('click', function(e) { if(e.target===this) closeEditUses(); });
+async function saveEditUses() {
+  const code  = document.getElementById('editUsesCode').value;
+  const val   = document.getElementById('editUsesValue').value.trim();
+  const maxUses = val === '' ? 3 : parseInt(val);
+  if (isNaN(maxUses) || maxUses < -1) { toast('❌ Valor inválido. Use -1 para ilimitado ou um número >= 1.', false); return; }
+  const r = await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/max-uses', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ maxUses })
+  });
+  const d = await r.json();
+  if (d.ok) {
+    const txt = maxUses === -1 ? 'ilimitado' : maxUses + ' dispositivo(s)';
+    toast('✅ Limite atualizado para ' + txt);
+    closeEditUses();
+    await doRefresh();
+  } else {
+    toast('Erro ao atualizar: ' + (d.error||'?'), false);
+  }
+}
 async function saveRenew() {
   const code  = document.getElementById('renewKeyCode').value;
   const days  = parseInt(document.getElementById('renewDays').value)  || 0;
@@ -1504,6 +1553,20 @@ async function handleRequest(req, res) {
     await saveDb();
     if (!keys[code].active) fireWebhook('key_blocked', code, 'Bloqueio manual pelo admin');
     sendJson(res, { ok: true, active: keys[code].active }); return;
+  }
+
+  // ── ADMIN API: editar maxUses ──
+  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/api\/keys\/[^/]+\/max-uses$')) && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const _segs = p.split('/'); const code = decodeURIComponent(_segs[_segs.length-2]);
+    if (!keys[code]) { sendJson(res, { error: 'not found' }, 404); return; }
+    const body = await parseBody(req);
+    const maxUses = parseInt(body.maxUses);
+    if (isNaN(maxUses) || maxUses < -1) { sendJson(res, { error: 'invalid' }, 400); return; }
+    keys[code].maxUses = maxUses;
+    await saveDb();
+    await addLog({ keyCode: code, label: keys[code].label, phone: '-', ip, wppVersion: '-', action: 'max_uses_updated' });
+    sendJson(res, { ok: true, maxUses }); return;
   }
 
   // ── ADMIN API: renovar tempo ──
