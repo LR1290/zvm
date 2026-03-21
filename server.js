@@ -29,8 +29,9 @@ async function getMongoDb() {
   if (!MONGODB_URI) throw new Error('MONGODB_URI não configurado');
   if (!_mongoClient) {
     _mongoClient = new MongoClient(MONGODB_URI, {
-      serverSelectionTimeoutMS: 10000,
-      connectTimeoutMS: 10000,
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 5000,
+      socketTimeoutMS: 5000,
       tls: true,
       tlsAllowInvalidCertificates: false,
       tlsAllowInvalidHostnames: false,
@@ -81,9 +82,10 @@ async function saveDb() {
 }
 
 // Variáveis globais — preenchidas após conectar
-let keys     = {};
-let logs     = [];
-let sessions = {};      // sessões admin
+let keys        = {};
+let logs        = [];
+let sessions    = {};      // sessões admin
+let serverReady = false;   // true após loadDb() — evita logout por dados ainda não carregados
 let extSessions = {};   // sessões de extensão: token → { keyCode, expiresAt }
 
 // ─────────────────────────────────────────────
@@ -1368,21 +1370,21 @@ async function handleRequest(req, res) {
     const deviceId   = body.deviceId    || '';
 
     if (!keyCode || !keys[keyCode]) {
-      await addLog({ keyCode: keyCode||'?', label: '-', phone, ip, wppVersion, action: 'key_not_found' });
       sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada. Contate o vendedor.' });
+      addLog({ keyCode: keyCode||'?', label: '-', phone, ip, wppVersion, action: 'key_not_found' }).catch(()=>{});
       return;
     }
     if (isKeyExpired(keys[keyCode])) {
       keys[keyCode].active = false;
-      await addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'expired' });
-      await saveDb();
-      fireWebhook('key_expired', keyCode, 'Expiração detectada no v3/key');
       sendJson(res, { authError: 'keyExpired', reason: 'expired', data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave expirada.', permissions: [] } }, 403);
+      addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'expired' }).catch(()=>{});
+      saveDb().catch(()=>{});
+      fireWebhook('key_expired', keyCode, 'Expiração detectada no v3/key');
       return;
     }
     if (!keys[keyCode].active) {
-      await addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'login_blocked' });
       sendJson(res, { authError: 'keyBlocked', reason: 'blocked', data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave bloqueada.', permissions: [] } }, 403);
+      addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'login_blocked' }).catch(()=>{});
       return;
     }
 
@@ -1400,8 +1402,6 @@ async function handleRequest(req, res) {
       if (keyMaxUses > 0 && keys[keyCode].phones.length >= keyMaxUses) {
         // Limite atingido — apenas incrementa aviso, sem bloqueio automático
         keys[keyCode].warnCount = (keys[keyCode].warnCount || 0) + 1;
-        await saveDb();
-        await addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'warn_limit' });
         sendJson(res, {
           warnLimit: true,
           warnRemaining: keys[keyCode].warnCount,
@@ -1410,6 +1410,8 @@ async function handleRequest(req, res) {
             permissions: []
           }
         }, 403);
+        addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'warn_limit' }).catch(()=>{});
+        saveDb().catch(()=>{});
         return;
       }
       keys[keyCode].phones.push(phone);
@@ -1428,15 +1430,17 @@ async function handleRequest(req, res) {
     keys[keyCode].lastUsed  = new Date().toISOString();
     keys[keyCode].lastIp    = ip;
     if (hasPhone) keys[keyCode].lastPhone = phone;
-    await addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: isNewPhone ? 'login_ok' : 'relogin_ok' });
-    await saveDb();
-    // Gerar/renovar token de sessão para esta chave — retornado na resposta
-    // A extensão salva e usa nas próximas requisições (sem HMAC hardcoded)
+    // Gerar token e responder IMEDIATAMENTE — não esperar MongoDB
     const _et = generateToken();
     extSessions[_et] = { keyCode, expiresAt: new Date(Date.now() + 30*24*60*60*1000).toISOString() };
     const _authData = getAuthData(keyCode);
-    _authData._zv_et = _et; // campo extra ignorado pela extensão original
+    _authData._zv_et = _et;
     sendJson(res, _authData);
+    // Salvar no banco em background — não bloqueia a resposta
+    const _action = isNewPhone ? 'login_ok' : 'relogin_ok';
+    addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: _action })
+      .catch(e => console.error('[LOG]', e.message));
+    saveDb().catch(e => console.error('[SAVEDB]', e.message));
     return;
   }
 
@@ -1446,6 +1450,10 @@ async function handleRequest(req, res) {
     let body; try { body = JSON.parse(rawBody); } catch { body = {}; }
     const keyCode = (body.authKey || '').toLowerCase();
     // Sem verificação HMAC — check-status é protegido pela chave
+    // Se o servidor ainda está inicializando, não deslogar o cliente
+    if (!serverReady) {
+      sendJson(res, { active: true }); return;
+    }
     if (!keyCode || !keys[keyCode]) {
       sendJson(res, { active: false, reason: 'not_found' }); return;
     }
@@ -1721,6 +1729,7 @@ async function handleRequest(req, res) {
     const loaded = await loadDb();
     keys = loaded.keys || {};
     logs = loaded.logs || [];
+    serverReady = true;
     console.log(`✅ ZapVoice Server v7 — porta ${PORT}`);
     console.log(`🍃 MongoDB: conectado | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}`);
     console.log(`🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ inativo — defina APP_SECRET'}`);
