@@ -744,6 +744,8 @@ function buildKeysHtml() {
     <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
     <button class="bs bg" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">+ Tempo</button>
     <button class="bs bg" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${k.maxUses!=null?k.maxUses:MAX_USES})">Usos</button>
+    <button class="bs bg" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">Renomear</button>
+    ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Números</button>`:''}
     <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
     ${(k.warnCount||0)>0 ? `<button class="bs bwarn" onclick="resetWarn('${escHtml(code)}')">⚠ Avisos</button>` : ''}
   </td>
@@ -1005,6 +1007,33 @@ tr:hover td{background:#ffffff02}
 </div>
 
 <!-- Modal de notas -->
+<div class="modal-bg" id="renameModal">
+  <div class="modal" style="min-width:300px">
+    <h3>✏️ Renomear — <span id="renameKeyLabel"></span></h3>
+    <input type="hidden" id="renameKeyCode">
+    <div style="margin-bottom:14px">
+      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Novo nome</div>
+      <input type="text" id="renameValue" maxlength="60" style="width:100%;padding:10px;background:var(--dark);border:1px solid var(--border);border-radius:6px;color:var(--fg);font-family:inherit;font-size:14px">
+    </div>
+    <div class="modal-actions">
+      <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeRename()">Cancelar</button>
+      <button class="btn bp" onclick="saveRename()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="phonesModal">
+  <div class="modal" style="min-width:320px">
+    <h3>📱 Números — <span id="phonesLabel"></span></h3>
+    <input type="hidden" id="phonesCode">
+    <div id="phonesList" style="margin-bottom:14px;max-height:220px;overflow-y:auto"></div>
+    <div class="modal-actions">
+      <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closePhones()">Fechar</button>
+      <button class="btn bd" id="removeAllPhonesBtn" onclick="removeAllPhones()">🗑 Remover Todos</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="noteModal">
   <div class="modal">
     <h3>📝 Nota — <span id="noteKeyLabel"></span></h3>
@@ -1184,6 +1213,77 @@ function openEditUses(code, label, current) {
 }
 function closeEditUses() { document.getElementById('editUsesModal').classList.remove('open'); }
 document.getElementById('editUsesModal').addEventListener('click', function(e) { if(e.target===this) closeEditUses(); });
+
+// ── Renomear ──
+function openRename(code, label) {
+  document.getElementById('renameKeyCode').value = code;
+  document.getElementById('renameKeyLabel').textContent = label;
+  document.getElementById('renameValue').value = label;
+  document.getElementById('renameModal').classList.add('open');
+  setTimeout(()=>{ document.getElementById('renameValue').focus(); document.getElementById('renameValue').select(); }, 50);
+}
+function closeRename() { document.getElementById('renameModal').classList.remove('open'); }
+document.getElementById('renameModal').addEventListener('click', function(e){ if(e.target===this) closeRename(); });
+document.getElementById('renameValue').addEventListener('keydown', function(e){ if(e.key==='Enter') saveRename(); });
+async function saveRename() {
+  const code  = document.getElementById('renameKeyCode').value;
+  const label = document.getElementById('renameValue').value.trim();
+  if (!label) { toast('❌ Nome não pode ser vazio.', false); return; }
+  try {
+    const r = await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/label', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({label}) });
+    const d = await r.json();
+    if (d.ok) { toast('✅ Renomeado: '+label); closeRename(); await doRefresh(); }
+    else toast('Erro: '+(d.error||'?'), false);
+  } catch(e) { toast('Erro de rede.', false); }
+}
+
+// ── Números ──
+function openPhones(code, label) {
+  document.getElementById('phonesCode').value = code;
+  document.getElementById('phonesLabel').textContent = label;
+  const list = document.getElementById('phonesList');
+  list.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px">Carregando...</div>';
+  document.getElementById('phonesModal').classList.add('open');
+  fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/phones')
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (!d.phones || d.phones.length === 0) {
+        list.innerHTML = '<div style="color:var(--muted);font-size:12px;text-align:center;padding:12px">Nenhum número cadastrado</div>';
+        document.getElementById('removeAllPhonesBtn').style.display = 'none';
+        return;
+      }
+      document.getElementById('removeAllPhonesBtn').style.display = '';
+      list.innerHTML = d.phones.map(function(phone){
+        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">'
+          + '<span style="font-size:13px;font-family:monospace">' + phone + '</span>'
+          + '<button class="bs bd" style="padding:4px 10px;font-size:11px" onclick="removePhone(''+encodeURIComponent(code)+'',''+encodeURIComponent(phone)+'')">Remover</button>'
+          + '</div>';
+      }).join('');
+    })
+    .catch(function(){ list.innerHTML = '<div style="color:var(--red);font-size:12px;padding:8px">Erro ao carregar</div>'; });
+}
+function closePhones() { document.getElementById('phonesModal').classList.remove('open'); }
+document.getElementById('phonesModal').addEventListener('click', function(e){ if(e.target===this) closePhones(); });
+async function removePhone(encCode, encPhone) {
+  const code  = decodeURIComponent(encCode);
+  const phone = decodeURIComponent(encPhone);
+  try {
+    const r = await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/phones', { method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({phone}) });
+    const d = await r.json();
+    if (d.ok) { toast('✅ Número removido: '+phone); closePhones(); await doRefresh(); }
+    else toast('Erro: '+(d.error||'?'), false);
+  } catch(e) { toast('Erro de rede.', false); }
+}
+async function removeAllPhones() {
+  const code = document.getElementById('phonesCode').value;
+  if (!confirm('Remover TODOS os números desta chave?')) return;
+  try {
+    const r = await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/phones', { method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({all:true}) });
+    const d = await r.json();
+    if (d.ok) { toast('✅ Todos removidos.'); closePhones(); await doRefresh(); }
+    else toast('Erro: '+(d.error||'?'), false);
+  } catch(e) { toast('Erro de rede.', false); }
+}
 async function saveEditUses() {
   const code  = document.getElementById('editUsesCode').value;
   const val   = document.getElementById('editUsesValue').value.trim();
@@ -1596,6 +1696,44 @@ async function handleRequest(req, res) {
     await saveDb();
     await addLog({ keyCode: code, label: keys[code].label, phone: '-', ip, wppVersion: '-', action: 'renewed' });
     sendJson(res, { ok: true, expiresAt: keys[code].expiresAt }); return;
+  }
+
+  // ── ADMIN API: renomear cliente ──
+  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/api\/keys\/[^/]+\/label$')) && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const _s = p.split('/'); const code = decodeURIComponent(_s[_s.length-2]);
+    if (!keys[code]) { sendJson(res, { error: 'not found' }, 404); return; }
+    const body = await parseBody(req);
+    const label = String(body.label||'').trim().slice(0,60);
+    if (!label) { sendJson(res, { error: 'label vazio' }, 400); return; }
+    keys[code].label = label;
+    saveDb().catch(()=>{});
+    sendJson(res, { ok: true, label }); return;
+  }
+
+  // ── ADMIN API: listar números ──
+  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/api\/keys\/[^/]+\/phones$')) && req.method === 'GET') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const _s = p.split('/'); const code = decodeURIComponent(_s[_s.length-2]);
+    if (!keys[code]) { sendJson(res, { error: 'not found' }, 404); return; }
+    sendJson(res, { ok: true, phones: keys[code].phones || [] }); return;
+  }
+
+  // ── ADMIN API: remover número(s) ──
+  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/api\/keys\/[^/]+\/phones$')) && req.method === 'DELETE') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const _s = p.split('/'); const code = decodeURIComponent(_s[_s.length-2]);
+    if (!keys[code]) { sendJson(res, { error: 'not found' }, 404); return; }
+    const body = await parseBody(req);
+    if (body.all) {
+      keys[code].phones = []; keys[code].uses = 0; keys[code].lastPhone = null;
+    } else if (body.phone) {
+      keys[code].phones = (keys[code].phones||[]).filter(p => p !== body.phone);
+      keys[code].uses = keys[code].phones.length;
+      if (keys[code].lastPhone === body.phone) keys[code].lastPhone = keys[code].phones[keys[code].phones.length-1]||null;
+    } else { sendJson(res, { error: 'informe phone ou all:true' }, 400); return; }
+    saveDb().catch(()=>{});
+    sendJson(res, { ok: true, phones: keys[code].phones }); return;
   }
 
   // ── ADMIN API: reset-warn ──
