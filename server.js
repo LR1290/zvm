@@ -745,7 +745,7 @@ function buildKeysHtml() {
     <button class="bs bg" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">+ Tempo</button>
     <button class="bs bg" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${k.maxUses!=null?k.maxUses:MAX_USES})">Usos</button>
     <button class="bs bg" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">Renomear</button>
-    ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')" >Números</button>`:''}
+    ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Numeros</button>`:''}
     <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
     ${(k.warnCount||0)>0 ? `<button class="bs bwarn" onclick="resetWarn('${escHtml(code)}')">⚠ Avisos</button>` : ''}
   </td>
@@ -1009,10 +1009,10 @@ tr:hover td{background:#ffffff02}
 <!-- Modal de notas -->
 <div class="modal-bg" id="renameModal">
   <div class="modal" style="min-width:300px">
-    <h3>✏️ Renomear — <span id="renameKeyLabel"></span></h3>
+    <h3>Renomear — <span id="renameKeyLabel"></span></h3>
     <input type="hidden" id="renameKeyCode">
     <div style="margin-bottom:14px">
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Novo nome</div>
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Novo nome</div>
       <input type="text" id="renameValue" maxlength="60" style="width:100%;padding:10px;background:var(--dark);border:1px solid var(--border);border-radius:6px;color:var(--fg);font-family:inherit;font-size:14px">
     </div>
     <div class="modal-actions">
@@ -1024,12 +1024,11 @@ tr:hover td{background:#ffffff02}
 
 <div class="modal-bg" id="phonesModal">
   <div class="modal" style="min-width:320px">
-    <h3>📱 Números — <span id="phonesLabel"></span></h3>
-    <input type="hidden" id="phonesCode">
-    <div id="phonesList" style="margin-bottom:14px;max-height:220px;overflow-y:auto"></div>
+    <h3>Numeros — <span id="phonesLabel"></span></h3>
+    <div id="phonesList" style="margin-bottom:14px;max-height:220px;overflow-y:auto;min-height:40px"></div>
     <div class="modal-actions">
       <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closePhones()">Fechar</button>
-      <button class="btn bd" id="removeAllPhonesBtn" onclick="removeAllPhones()">🗑 Remover Todos</button>
+      <button class="btn bd" id="removeAllPhonesBtn" onclick="removeAllPhones()">Remover Todos</button>
     </div>
   </div>
 </div>
@@ -1265,6 +1264,21 @@ async function saveNote(){
   }catch(e){toast('Erro de rede',false);}
 }
 
+// ── Exportar CSV ──
+async function exportCSV(){
+  try{
+    const r=await fetch(_RA+'/api/export/csv');
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download='zapvoice-chaves-'+new Date().toISOString().slice(0,10)+'.csv';
+    a.click(); URL.revokeObjectURL(url);
+    toast('CSV exportado!');
+  }catch(e){toast('Erro ao exportar',false);}
+}
+
 // ── Renomear ──
 function openRename(code, label) {
   document.getElementById('renameKeyCode').value = code;
@@ -1279,79 +1293,70 @@ document.getElementById('renameValue').addEventListener('keydown', function(e){ 
 async function saveRename() {
   var code  = document.getElementById('renameKeyCode').value;
   var label = document.getElementById('renameValue').value.trim();
-  if (!label) { toast('❌ Nome não pode ser vazio.', false); return; }
+  if (!label) { toast('Nome nao pode ser vazio.', false); return; }
   try {
     var r = await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/label', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:label})});
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
+    if(r.status===401){toast('Sessao expirada',false);setTimeout(function(){location.href=_RA},1500);return;}
     var d = await r.json();
-    if (d.ok) { toast('✅ Renomeado: '+label); closeRename(); await doRefresh(); }
+    if (d.ok) { toast('Renomeado: '+label); closeRename(); await doRefresh(); }
     else toast('Erro: '+(d.error||'?'), false);
   } catch(e) { toast('Erro de rede.', false); }
 }
 
-// ── Números ──
+// ── Numeros ──
 function openPhones(code, label) {
-  document.getElementById('phonesCode').value = code;
+  var modal = document.getElementById('phonesModal');
+  modal.dataset.code = code;
   document.getElementById('phonesLabel').textContent = label;
   var list = document.getElementById('phonesList');
-  list.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px">Carregando...</div>';
-  document.getElementById('phonesModal').classList.add('open');
+  list.innerHTML = 'Carregando...';
+  modal.classList.add('open');
   fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/phones')
     .then(function(r){ return r.json(); })
     .then(function(d){
       if (!d.phones || d.phones.length === 0) {
-        list.innerHTML = '<div style="color:var(--muted);font-size:12px;text-align:center;padding:12px">Nenhum número cadastrado</div>';
+        list.innerHTML = '<em style="color:var(--muted);font-size:12px">Nenhum numero cadastrado</em>';
         document.getElementById('removeAllPhonesBtn').style.display = 'none';
+        modal.dataset.phones = '[]';
         return;
       }
       document.getElementById('removeAllPhonesBtn').style.display = '';
-      list.innerHTML = d.phones.map(function(phone){
-        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">'
-          + '<span style="font-size:13px;font-family:monospace">' + phone + '</span>'
-          + '<button class="bs bd" style="padding:4px 10px;font-size:11px" onclick="removePhone(\'' + encodeURIComponent(code) + '\',\'' + encodeURIComponent(phone) + '\')">Remover</button>'
-          + '</div>';
-      }).join('');
+      modal.dataset.phones = JSON.stringify(d.phones);
+      var html = '';
+      d.phones.forEach(function(phone, i){
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">';
+        html += '<span style="font-size:13px;font-family:monospace">' + phone + '</span>';
+        html += '<button class="bs bd" style="padding:4px 10px;font-size:11px" data-idx="' + i + '" onclick="removePhone(this)">Remover</button>';
+        html += '</div>';
+      });
+      list.innerHTML = html;
     })
-    .catch(function(){ list.innerHTML = '<div style="color:var(--red);font-size:12px;padding:8px">Erro ao carregar</div>'; });
+    .catch(function(){ list.innerHTML = '<em style="color:var(--red)">Erro ao carregar</em>'; });
 }
 function closePhones() { document.getElementById('phonesModal').classList.remove('open'); }
 document.getElementById('phonesModal').addEventListener('click', function(e){ if(e.target===this) closePhones(); });
-async function removePhone(encCode, encPhone) {
-  var code  = decodeURIComponent(encCode);
-  var phone = decodeURIComponent(encPhone);
+async function removePhone(btn) {
+  var modal  = document.getElementById('phonesModal');
+  var code   = modal.dataset.code;
+  var phones = JSON.parse(modal.dataset.phones || '[]');
+  var phone  = phones[parseInt(btn.dataset.idx)];
+  if (!phone) { toast('Erro: numero nao encontrado', false); return; }
   try {
     var r = await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/phones', {method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:phone})});
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
     var d = await r.json();
-    if (d.ok) { toast('✅ Número removido: '+phone); closePhones(); await doRefresh(); }
+    if (d.ok) { toast('Numero removido: '+phone); closePhones(); await doRefresh(); }
     else toast('Erro: '+(d.error||'?'), false);
   } catch(e) { toast('Erro de rede.', false); }
 }
 async function removeAllPhones() {
-  var code = document.getElementById('phonesCode').value;
-  if (!confirm('Remover TODOS os números desta chave?')) return;
+  var code = document.getElementById('phonesModal').dataset.code;
+  if (!confirm('Remover TODOS os numeros desta chave?')) return;
   try {
     var r = await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/phones', {method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({all:true})});
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
     var d = await r.json();
-    if (d.ok) { toast('✅ Todos removidos.'); closePhones(); await doRefresh(); }
+    if (d.ok) { toast('Todos removidos.'); closePhones(); await doRefresh(); }
     else toast('Erro: '+(d.error||'?'), false);
   } catch(e) { toast('Erro de rede.', false); }
-}
-
-// ── Exportar CSV ──
-async function exportCSV(){
-  try{
-    const r=await fetch(_RA+'/api/export/csv');
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
-    const blob=await r.blob();
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url;
-    a.download='zapvoice-chaves-'+new Date().toISOString().slice(0,10)+'.csv';
-    a.click(); URL.revokeObjectURL(url);
-    toast('CSV exportado!');
-  }catch(e){toast('Erro ao exportar',false);}
 }
 
 </script>
@@ -1714,7 +1719,7 @@ async function handleRequest(req, res) {
     sendJson(res, {ok:true, label}); return;
   }
 
-  // ── ADMIN API: listar números ──
+  // ── ADMIN API: listar numeros ──
   if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/api\/keys\/[^/]+\/phones$')) && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, {error:'unauthorized'}, 401); return; }
     const _s=p.split('/'); const code=decodeURIComponent(_s[_s.length-2]);
@@ -1722,7 +1727,7 @@ async function handleRequest(req, res) {
     sendJson(res, {ok:true, phones:keys[code].phones||[]}); return;
   }
 
-  // ── ADMIN API: remover número(s) ──
+  // ── ADMIN API: remover numero(s) ──
   if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/api\/keys\/[^/]+\/phones$')) && req.method === 'DELETE') {
     if (!isAdminSession(req)) { sendJson(res, {error:'unauthorized'}, 401); return; }
     const _s=p.split('/'); const code=decodeURIComponent(_s[_s.length-2]);
