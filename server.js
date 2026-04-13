@@ -536,6 +536,11 @@ input:focus{border-color:#00ff87}
         <span class="row-label">Último uso</span>
         <span class="row-val" id="r-lastused"></span>
       </div>
+      <div id="r-phone-section" style="display:none;margin-top:14px">
+        <div style="font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Dispositivos cadastrados</div>
+        <div id="r-phone-list"></div>
+        <div style="font-size:10px;color:var(--muted);margin-top:8px">Remova um número para liberar o slot e entrar em outro dispositivo.</div>
+      </div>
       <div class="section-links" id="r-links"></div>
       <button class="btn" style="margin-top:16px;background:#1e1e2e;color:#6b6b8a;font-size:12px" onclick="resetPanel()">← Consultar outra chave</button>
     </div>
@@ -629,7 +634,25 @@ function showPanel(d, key) {
   document.getElementById('r-links').innerHTML=
     '<a class="link-btn" href="https://app.zapvoice.com.br/dashboard/backup-fixer" target="_blank">🔧 Corrija<br>Backups</a>'+
     '<a class="link-btn" href="https://app.zapvoice.com.br/dashboard/converter" target="_blank">🎵 Converta<br>Áudios</a>';
+
+  // Seção de gerenciamento de números
+  if (d.phoneList && d.phoneList.length > 0) {
+    const phoneSec = document.getElementById('r-phone-section');
+    phoneSec.style.display = 'block';
+    const ul = document.getElementById('r-phone-list');
+    ul.innerHTML = '';
+    d.phoneList.forEach(function(ph) {
+      const li = document.createElement('div');
+      li.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #1c1c2e';
+      li.innerHTML = '<span style="font-size:13px;font-family:monospace;color:#e2e2f0">'+ph+'</span>'
+        + '<button onclick="clientRemovePhone(''+key+'',''+ph+'')" style="padding:4px 12px;background:#ff4757;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px">Remover</button>';
+      ul.appendChild(li);
+    });
+  } else {
+    document.getElementById('r-phone-section').style.display = 'none';
+  }
 }
+
 
 function resetPanel() {
   document.getElementById('form-area').style.display='block';
@@ -638,6 +661,24 @@ function resetPanel() {
   document.getElementById('r-last-row').style.display='none';
   const btn=document.getElementById('check-btn');
   btn.disabled=false; btn.textContent='Consultar Minha Chave';
+}
+
+async function clientRemovePhone(key, phone) {
+  if (!confirm('Remover o numero ' + phone + ' desta chave?')) return;
+  try {
+    const r = await fetch(API_BASE+'/client/remove-phone', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({key: key, phone: phone})
+    });
+    const d = await r.json();
+    if (d.ok) {
+      alert('Numero removido! Voce pode fazer login novamente no WhatsApp Web.');
+      doCheck(key);
+    } else {
+      alert('Erro: ' + (d.error || '?'));
+    }
+  } catch(e) { alert('Erro de rede.'); }
 }
 
 document.getElementById('key-input').addEventListener('keydown', e=>{ if(e.key==='Enter') checkKey(); });
@@ -1841,12 +1882,29 @@ async function handleRequest(req, res) {
       activatedAt:  k.activatedAt || null,
       lastUsed:     k.lastUsed || null,
       phones:       (k.phones || []).length,
+      phoneList:    k.phones || [],
       maxUses:      k.maxUses === -1 ? null : (k.maxUses > 0 ? k.maxUses : MAX_USES),
       hoursLeft:    hoursLeft,
       deferred:     !!(k.expireDuration && !k.expiresAt),
       warnCount:    k.warnCount || 0,
     });
     return;
+  }
+
+  // ── Portal do cliente: remover proprio numero ──
+  if (p === '/client/remove-phone' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const code  = (body.key   || '').trim().toLowerCase();
+    const phone = (body.phone || '').trim();
+    if (!code || !keys[code]) { sendJson(res, { error: 'not_found' }, 404); return; }
+    if (!phone) { sendJson(res, { error: 'phone obrigatorio' }, 400); return; }
+    const phones = keys[code].phones || [];
+    if (!phones.includes(phone)) { sendJson(res, { error: 'numero nao encontrado' }, 404); return; }
+    keys[code].phones = phones.filter(p => p !== phone);
+    keys[code].uses = keys[code].phones.length;
+    if (keys[code].lastPhone === phone) keys[code].lastPhone = keys[code].phones[keys[code].phones.length-1] || null;
+    saveDb().catch(()=>{});
+    sendJson(res, { ok: true, phones: keys[code].phones }); return;
   }
 
   // ── Portal do cliente: todas as rotas públicas que a extensão abre ──
