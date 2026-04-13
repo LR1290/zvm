@@ -645,7 +645,7 @@ function showPanel(d, key) {
       const li = document.createElement('div');
       li.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #1c1c2e';
       li.innerHTML = '<span style="font-size:13px;font-family:monospace;color:#e2e2f0">'+ph+'</span>'
-        + '<button onclick="clientRemovePhone(''+key+'',''+ph+'')" style="padding:4px 12px;background:#ff4757;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px">Remover</button>';
+        + '<button onclick="clientRemovePhone(\\"'+key+'\\",\\"'+ph+'\\")" style="padding:4px 12px;background:#ff4757;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px">Remover</button>';
       ul.appendChild(li);
     });
   } else {
