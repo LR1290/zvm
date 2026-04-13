@@ -644,8 +644,15 @@ function showPanel(d, key) {
     d.phoneList.forEach(function(ph) {
       const li = document.createElement('div');
       li.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #1c1c2e';
-      li.innerHTML = '<span style="font-size:13px;font-family:monospace;color:#e2e2f0">'+ph+'</span>'
-        + '<button onclick="clientRemovePhone(\\"'+key+'\\",\\"'+ph+'\\")" style="padding:4px 12px;background:#ff4757;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px">Remover</button>';
+      const sp = document.createElement('span');
+      sp.style.cssText = 'font-size:13px;font-family:monospace;color:#e2e2f0';
+      sp.textContent = ph;
+      const btn = document.createElement('button');
+      btn.textContent = 'Remover';
+      btn.style.cssText = 'padding:4px 12px;background:#ff4757;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px';
+      btn.addEventListener('click', function() { clientRemovePhone(key, ph); });
+      li.appendChild(sp);
+      li.appendChild(btn);
       ul.appendChild(li);
     });
   } else {
