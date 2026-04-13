@@ -536,10 +536,10 @@ input:focus{border-color:#00ff87}
         <span class="row-label">Último uso</span>
         <span class="row-val" id="r-lastused"></span>
       </div>
-      <div id="r-phone-section" style="display:none;margin-top:14px">
-        <div style="font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Dispositivos cadastrados</div>
+      <div id="r-phone-section" style="display:none;margin-top:16px;border-top:1px solid #1e1e2e;padding-top:14px">
+        <div style="font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#6b6b8a;margin-bottom:10px">Dispositivos cadastrados</div>
         <div id="r-phone-list"></div>
-        <div style="font-size:10px;color:var(--muted);margin-top:8px">Remova um número para liberar o slot e entrar em outro dispositivo.</div>
+        <div style="font-size:10px;color:#6b6b8a;margin-top:8px">Remova um número para liberar o slot e entrar em outro dispositivo.</div>
       </div>
       <div class="section-links" id="r-links"></div>
       <button class="btn" style="margin-top:16px;background:#1e1e2e;color:#6b6b8a;font-size:12px" onclick="resetPanel()">← Consultar outra chave</button>
