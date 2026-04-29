@@ -1817,6 +1817,68 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // ── MOD: login ──
+  if (p === R_MOD+'/login' && req.method === 'POST') {
+    if (!MOD_USER || !MOD_PASS) { sendHtml(res, renderModLogin('Painel de moderador não configurado.')); return; }
+    const form = await parseFormBody(req);
+    const credOk = form.get('user') === MOD_USER && form.get('pass') === MOD_PASS;
+    const totpOk = MOD_TOTP ? verifyTOTP(MOD_TOTP, (form.get('totp') || '').trim()) : true;
+    if (credOk && totpOk) {
+      const token = generateToken();
+      modSessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString() };
+      res.setHeader('Set-Cookie', `zv_mod=${token}; Path=/; HttpOnly; SameSite=Strict`);
+      res.writeHead(302, { Location: R_MOD }); res.end();
+    } else {
+      const msg = credOk && !totpOk ? 'Código 2FA inválido ou expirado' : 'Usuário ou senha incorretos';
+      sendHtml(res, renderModLogin(msg));
+    }
+    return;
+  }
+
+  // ── MOD: logout ──
+  if (p === R_MOD+'/logout') {
+    const ck = (req.headers.cookie||'').match(/zv_mod=([a-f0-9]+)/);
+    if (ck) delete modSessions[ck[1]];
+    res.setHeader('Set-Cookie', 'zv_mod=; Path=/; Max-Age=0');
+    res.writeHead(302, { Location: R_MOD }); res.end(); return;
+  }
+
+  // ── MOD: dashboard ──
+  if ((p === R_MOD || p === R_MOD+'/') && req.method === 'GET') {
+    if (!MOD_USER) { res.writeHead(404); res.end('Not found'); return; }
+    if (!isModSession(req)) { sendHtml(res, renderModLogin()); return; }
+    sendHtml(res, renderModDashboard()); return;
+  }
+
+  // ── MOD API: dados (somente leitura) ──
+  if (p === R_MOD+'/api/data' && req.method === 'GET') {
+    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    sendJson(res, { keysHtml: buildModKeysHtml() }); return;
+  }
+
+  // ── MOD API: gerar chave ──
+  if (p === R_MOD+'/api/keys' && req.method === 'POST') {
+    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const body = await parseBody(req);
+    const label   = String(body.label || '').trim().slice(0, 60);
+    const days    = parseInt(body.days  || 0);
+    const hours   = parseInt(body.hours || 0);
+    const mins    = parseInt(body.mins  || 0);
+    const maxUses = typeof body.maxUses === 'number' ? body.maxUses : parseInt(body.maxUses ?? MAX_USES);
+    const code = generateCode();
+    const totalMins = days * 1440 + hours * 60 + (mins || 0);
+    const now  = new Date();
+    keys[code] = {
+      label, active: true, phones: [], uses: 0,
+      maxUses: isNaN(maxUses) ? MAX_USES : maxUses,
+      expiresAt:     totalMins > 0 ? new Date(now.getTime() + totalMins * 60000).toISOString() : null,
+      expireDuration: totalMins > 0 ? totalMins : null,
+      createdAt: now.toISOString(), lastUsed: null, lastIp: null, lastPhone: null, warnCount: 0, note: ''
+    };
+    saveDb().catch(()=>{});
+    sendJson(res, { ok: true, code }); return;
+  }
+
   // ── ADMIN: login ──
   if (p === R_ADMIN+'/login' && req.method === 'POST') {
     const form = await parseFormBody(req);
