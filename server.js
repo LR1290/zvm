@@ -319,10 +319,11 @@ function getAuthData(keyCode, userName) {
     key: keyCode, keyId: `id-${keyCode}`, ownerId: 'zv-owner', managerId: 'zv-manager',
     permissions: FULL_PERMISSIONS,
     paymentUrl: null, marketplace: 'premium', email: 'cliente@zapvoice.com.br',
-    planName: 'Pro', plan_id: 'ZV_PRO', isLoggedIn: true, isPremium: true, isBasicPlan: false
+    planName: 'Pro', plan_id: 'ZV_PRO', isLoggedIn: true, isPremium: true, isBasicPlan: false,
+    // userName recebido tem prioridade; fallback para label da chave para popular o store
+    // No refreshPremium seguinte o nome real do WPP já vem no body e sobrescreve
+    username: userName || keys[keyCode]?.label || ''
   };
-  // Só incluir username se vier preenchido — se omitido, o store mantém o nome do WPP
-  if (userName) data.username = userName;
   return {
     numberWarning: false, segments: [],
     isLoggedIn: true, isPremium: true, // raiz — usado pelo refreshPremium no newInterval
