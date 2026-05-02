@@ -1,6 +1,6 @@
 const http = require('http');
 const crypto = require('crypto');
-// fs ainda usado para nada — mongodb substituiu persistência
+// fs ainda usado para nada — mongodb substituiu persistênci
 // Mantido para compatibilidade caso algum trecho use path
 const path = require('path');
 const { MongoClient } = require('mongodb');
