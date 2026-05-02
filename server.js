@@ -1281,318 +1281,46 @@ tr:hover td{background:#ffffff02}
 
 <div class="toast" id="toast"></div>
 <script>
-const _RA='${R_ADMIN}';
-function toast(msg,ok=true){
-  const t=document.getElementById('toast');
-  t.textContent=msg;
-  t.style.background=ok?'var(--green)':'var(--red)';
-  t.style.color=ok?'#000':'#fff';
-  t.style.display='block';
-  setTimeout(()=>t.style.display='none',3200);
+const _RM = '${R_M}';
+function toast(msg, ok=true) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = ok ? 'var(--green)' : 'var(--red)';
+  t.style.color = ok ? '#000' : '#fff';
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3200);
 }
-let _sortCol=null,_sortDir=1;
-function sortKeys(col){
-  const tbody=document.getElementById('kb');
-  const rows=Array.from(tbody.querySelectorAll('tr[data-label]'));
-  if(!rows.length)return;
-  if(_sortCol===col)_sortDir*=-1; else{_sortCol=col;_sortDir=1;}
-  ['label','status','uses','phone','created'].forEach(c=>{
-    const th=document.getElementById('th-'+c);
-    if(!th)return;
-    th.classList.remove('asc','desc');
-    if(c===col)th.classList.add(_sortDir===1?'asc':'desc');
-  });
-  rows.sort((a,b)=>{
-    let va,vb;
-    if(col==='uses'){va=parseInt(a.dataset.uses||0);vb=parseInt(b.dataset.uses||0);}
-    else if(col==='created'){va=a.dataset.created;vb=b.dataset.created;}
-    else if(col==='phone'){va=a.dataset.phone||'';vb=b.dataset.phone||'';}
-    else{va=(a.dataset[col]||'').toLowerCase();vb=(b.dataset[col]||'').toLowerCase();}
-    if(va<vb)return -1*_sortDir; if(va>vb)return 1*_sortDir; return 0;
-  });
-  rows.forEach(r=>tbody.appendChild(r));
+async function doRefresh() {
+  try {
+    const r = await fetch(_RM+'/api/data');
+    if (r.status === 401) { location.href = _RM; return; }
+    const d = await r.json();
+    if (d.keysHtml) document.getElementById('kb').innerHTML = d.keysHtml;
+  } catch(e) {}
 }
-async function generateKey(){
-  const label=document.getElementById('nlabel').value.trim();
-  const days=parseInt(document.getElementById('ndays').value||0);
-  const hours=parseInt(document.getElementById('nhours').value||0);
-  const mins=parseInt(document.getElementById('nmins').value||0);
-  const _u=document.getElementById('nuses').value.trim();
-  const maxUses=_u===''?3:parseInt(_u);
-  if(!label){toast('Informe o nome do cliente',false);return;}
-  if(isNaN(maxUses)){toast('❌ Usos inválido',false);return;}
-  try{
-    const body={label,maxUses};
-    if(days>0)body.expireDays=days;
-    if(hours>0)body.expireHours=hours;
-    if(mins>0)body.expireMinutes=mins;
-    const def=document.getElementById('ndeferred');
-    if(def&&def.checked)body.deferred=true;
-    const r=await fetch(_RA+'/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
-    const d=await r.json();
-    if(d.ok){
-      const exp=[];
-      if(days>0)exp.push(days+'d'); if(hours>0)exp.push(hours+'h'); if(mins>0)exp.push(mins+'min');
-      const ul=maxUses===-1?'∞ usos':maxUses+' uso(s)';
-      toast('✅ '+d.key+(exp.length?' · '+exp.join(' '):' · sem expiração')+' · '+ul);
-      ['nlabel','ndays','nhours','nmins','nuses'].forEach(id=>document.getElementById(id).value='');
+async function generateKey() {
+  const label   = document.getElementById('nlabel').value.trim();
+  const days    = parseInt(document.getElementById('ndays').value  || 0);
+  const hours   = parseInt(document.getElementById('nhours').value || 0);
+  const mins    = parseInt(document.getElementById('nmins').value  || 0);
+  const _u      = document.getElementById('nuses').value.trim();
+  const maxUses = _u === '' ? 3 : parseInt(_u);
+  try {
+    const r = await fetch(_RM+'/api/keys', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({label, days, hours, mins, maxUses})
+    });
+    if (r.status === 401) { toast('Sessao expirada', false); setTimeout(() => location.href=_RM, 1500); return; }
+    const d = await r.json();
+    if (d.ok) {
+      toast('Chave criada: ' + d.code);
+      ['nlabel','ndays','nhours','nmins','nuses'].forEach(id => document.getElementById(id).value = '');
       await doRefresh();
-    } else toast('❌ Erro: '+(d.error||'desconhecido'),false);
-  }catch(e){toast('❌ Erro de rede',false);}
-}
-async function filterLog(){
-  const date=document.getElementById('logDate').value;
-  if(!date)return;
-  try{
-    const r=await fetch(_RA+'/api/logs?date='+date);
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
-    const d=await r.json();
-    if(d.ok)document.getElementById('lb').innerHTML=d.logsHtml||'';
-  }catch(e){toast('Erro ao filtrar',false);}
-}
-function clearDateFilter(){document.getElementById('logDate').value='';doRefresh();}
-async function clearLog(){
-  const date=document.getElementById('logDate').value;
-  if(!confirm(date?'Limpar logs do dia '+date+'?':'Limpar TODO o log?'))return;
-  try{
-    const body=date?{date}:{};
-    const r=await fetch(_RA+'/api/logs',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
-    const d=await r.json();
-    if(d.ok){toast(date?'Log do dia limpo!':'Log completo apagado!');document.getElementById('logDate').value='';await doRefresh();}
-  }catch(e){toast('Erro ao limpar',false);}
-}
-async function toggleKey(code){
-  try{
-    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/toggle',{method:'POST'});
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
-    const d=await r.json();
-    if(d.ok){toast(d.active?'Chave liberada!':'Chave bloqueada!');await doRefresh();}
-  }catch(e){toast('Erro',false);}
-}
-async function deleteKey(code){
-  if(!confirm('Excluir chave '+code+'?'))return;
-  try{
-    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code),{method:'DELETE'});
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
-    const d=await r.json();
-    if(d.ok){toast('Chave excluída');await doRefresh();}
-  }catch(e){toast('Erro',false);}
-}
-async function resetWarn(code){
-  try{
-    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/reset-warn',{method:'POST'});
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
-    const d=await r.json();
-    if(d.ok){toast('Avisos resetados');await doRefresh();}else{toast(d.error||'Erro',false);}
-  }catch(e){toast('Erro',false);}
-}
-async function doRefresh(){
-  try{
-    const r=await fetch(_RA+'/api/data');
-    const d=await r.json();
-    if(d.error)return;
-    document.getElementById('s-total').textContent=d.totalKeys||0;
-    document.getElementById('s-active').textContent=d.activeKeys||0;
-    document.getElementById('s-logs').textContent=d.totalLogs||0;
-    const sw=document.getElementById('s-warn');
-    sw.textContent=d.warnKeys||0;
-    sw.style.color=(d.warnKeys>0)?'var(--orange)':'var(--green)';
-    sw.closest('.sc').classList.toggle('warn-card',d.warnKeys>0);
-    const swl=document.getElementById('s-warnlimit');
-    if(swl){swl.textContent=d.warnLimitKeys||0;swl.style.color=(d.warnLimitKeys>0)?'#ff8c00':'';swl.closest('.sc').style.outline=(d.warnLimitKeys>0)?'1px solid #ff8c0050':'';}
-    document.getElementById('kb').innerHTML=d.keysHtml||'';
-    document.getElementById('lb').innerHTML=d.logsHtml||'';
-  }catch(e){console.error('Refresh error',e);}
-}
-setInterval(doRefresh,30000);
-
-// ── Notas ──
-function openNote(code, currentNote){
-  document.getElementById('noteKeyCode').value=code;
-  document.getElementById('noteKeyLabel').textContent=code;
-  document.getElementById('noteText').value=currentNote||'';
-  document.getElementById('noteModal').classList.add('open');
-  setTimeout(()=>document.getElementById('noteText').focus(),100);
-}
-function closeNote(){document.getElementById('noteModal').classList.remove('open');}
-document.getElementById('noteModal').addEventListener('click',function(e){if(e.target===this)closeNote();});
-
-function openRenew(code, label) {
-  document.getElementById('renewKeyCode').value = code;
-  document.getElementById('renewKeyLabel').textContent = label;
-  document.getElementById('renewDays').value = '';
-  document.getElementById('renewHours').value = '';
-  document.getElementById('renewMins').value = '';
-  // Mostrar expiração atual
-  const expInfo = document.getElementById('renewCurrentExpiry');
-  const row = [...document.querySelectorAll('#kb tr')].find(r => r.querySelector('td')?.textContent === code);
-  const expCell = row ? row.querySelectorAll('td')[7]?.textContent : '';
-  expInfo.textContent = expCell ? '📅 Expiração atual: ' + expCell.trim() : '📅 Sem expiração definida';
-  document.getElementById('renewModal').classList.add('open');
-  document.getElementById('renewDays').focus();
-}
-function closeRenew() { document.getElementById('renewModal').classList.remove('open'); }
-document.getElementById('renewModal').addEventListener('click', function(e) { if(e.target===this) closeRenew(); });
-
-function openEditUses(code, label, current) {
-  document.getElementById('editUsesCode').value = code;
-  document.getElementById('editUsesLabel').textContent = label;
-  document.getElementById('editUsesValue').value = current;
-  document.getElementById('editUsesModal').classList.add('open');
-  document.getElementById('editUsesValue').focus();
-  document.getElementById('editUsesValue').select();
-}
-function closeEditUses() { document.getElementById('editUsesModal').classList.remove('open'); }
-document.getElementById('editUsesModal').addEventListener('click', function(e) { if(e.target===this) closeEditUses(); });
-async function saveEditUses() {
-  const code  = document.getElementById('editUsesCode').value;
-  const val   = document.getElementById('editUsesValue').value.trim();
-  const maxUses = val === '' ? 3 : parseInt(val);
-  if (isNaN(maxUses) || maxUses < -1) { toast('❌ Valor inválido. Use -1 para ilimitado ou um número >= 1.', false); return; }
-  const r = await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/max-uses', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ maxUses })
-  });
-  const d = await r.json();
-  if (d.ok) {
-    const txt = maxUses === -1 ? 'ilimitado' : maxUses + ' dispositivo(s)';
-    toast('✅ Limite atualizado para ' + txt);
-    closeEditUses();
-    await doRefresh();
-  } else {
-    toast('Erro ao atualizar: ' + (d.error||'?'), false);
-  }
-}
-async function saveRenew() {
-  const code  = document.getElementById('renewKeyCode').value;
-  const days  = parseInt(document.getElementById('renewDays').value)  || 0;
-  const hours = parseInt(document.getElementById('renewHours').value) || 0;
-  const mins  = parseInt(document.getElementById('renewMins').value)  || 0;
-  if (!days && !hours && !mins) { toast('Informe pelo menos um valor de tempo.', false); return; }
-  const r = await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/renew', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ days, hours, mins })
-  });
-  const d = await r.json();
-  if (d.ok) {
-    toast('✅ Tempo adicionado! Nova expiração: ' + new Date(d.expiresAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}));
-    closeRenew();
-    await doRefresh();
-  } else {
-    toast('Erro ao renovar: ' + (d.error||'?'), false);
-  }
-}
-async function saveNote(){
-  const code=document.getElementById('noteKeyCode').value;
-  const note=document.getElementById('noteText').value.trim();
-  try{
-    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note})});
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
-    const d=await r.json();
-    if(d.ok){toast('Nota salva!');closeNote();await doRefresh();}
-    else toast('Erro ao salvar nota',false);
-  }catch(e){toast('Erro de rede',false);}
-}
-
-// ── Exportar CSV ──
-async function exportCSV(){
-  try{
-    const r=await fetch(_RA+'/api/export/csv');
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href='${R_ADMIN}',1500);return;}
-    const blob=await r.blob();
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url;
-    a.download='zapvoice-chaves-'+new Date().toISOString().slice(0,10)+'.csv';
-    a.click(); URL.revokeObjectURL(url);
-    toast('CSV exportado!');
-  }catch(e){toast('Erro ao exportar',false);}
-}
-
-// ── Renomear ──
-function openRename(code, label) {
-  document.getElementById('renameKeyCode').value = code;
-  document.getElementById('renameKeyLabel').textContent = label;
-  document.getElementById('renameValue').value = label;
-  document.getElementById('renameModal').classList.add('open');
-  setTimeout(function(){ var v=document.getElementById('renameValue'); v.focus(); v.select(); }, 50);
-}
-function closeRename() { document.getElementById('renameModal').classList.remove('open'); }
-document.getElementById('renameModal').addEventListener('click', function(e){ if(e.target===this) closeRename(); });
-document.getElementById('renameValue').addEventListener('keydown', function(e){ if(e.key==='Enter') saveRename(); });
-async function saveRename() {
-  var code  = document.getElementById('renameKeyCode').value;
-  var label = document.getElementById('renameValue').value.trim();
-  if (!label) { toast('Nome nao pode ser vazio.', false); return; }
-  try {
-    var r = await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/label', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:label})});
-    if(r.status===401){toast('Sessao expirada',false);setTimeout(function(){location.href=_RA},1500);return;}
-    var d = await r.json();
-    if (d.ok) { toast('Renomeado: '+label); closeRename(); await doRefresh(); }
-    else toast('Erro: '+(d.error||'?'), false);
+    } else toast('Erro: ' + (d.error||'?'), false);
   } catch(e) { toast('Erro de rede.', false); }
 }
-
-// ── Numeros ──
-function openPhones(code, label) {
-  var modal = document.getElementById('phonesModal');
-  modal.dataset.code = code;
-  document.getElementById('phonesLabel').textContent = label;
-  var list = document.getElementById('phonesList');
-  list.innerHTML = 'Carregando...';
-  modal.classList.add('open');
-  fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/phones')
-    .then(function(r){ return r.json(); })
-    .then(function(d){
-      if (!d.phones || d.phones.length === 0) {
-        list.innerHTML = '<em style="color:var(--muted);font-size:12px">Nenhum numero cadastrado</em>';
-        document.getElementById('removeAllPhonesBtn').style.display = 'none';
-        modal.dataset.phones = '[]';
-        return;
-      }
-      document.getElementById('removeAllPhonesBtn').style.display = '';
-      modal.dataset.phones = JSON.stringify(d.phones);
-      var html = '';
-      d.phones.forEach(function(phone, i){
-        html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">';
-        html += '<span style="font-size:13px;font-family:monospace">' + phone + '</span>';
-        html += '<button class="bs bd" style="padding:4px 10px;font-size:11px" data-idx="' + i + '" onclick="removePhone(this)">Remover</button>';
-        html += '</div>';
-      });
-      list.innerHTML = html;
-    })
-    .catch(function(){ list.innerHTML = '<em style="color:var(--red)">Erro ao carregar</em>'; });
-}
-function closePhones() { document.getElementById('phonesModal').classList.remove('open'); }
-document.getElementById('phonesModal').addEventListener('click', function(e){ if(e.target===this) closePhones(); });
-async function removePhone(btn) {
-  var modal  = document.getElementById('phonesModal');
-  var code   = modal.dataset.code;
-  var phones = JSON.parse(modal.dataset.phones || '[]');
-  var phone  = phones[parseInt(btn.dataset.idx)];
-  if (!phone) { toast('Erro: numero nao encontrado', false); return; }
-  try {
-    var r = await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/phones', {method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:phone})});
-    var d = await r.json();
-    if (d.ok) { toast('Numero removido: '+phone); closePhones(); await doRefresh(); }
-    else toast('Erro: '+(d.error||'?'), false);
-  } catch(e) { toast('Erro de rede.', false); }
-}
-async function removeAllPhones() {
-  var code = document.getElementById('phonesModal').dataset.code;
-  if (!confirm('Remover TODOS os numeros desta chave?')) return;
-  try {
-    var r = await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/phones', {method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({all:true})});
-    var d = await r.json();
-    if (d.ok) { toast('Todos removidos.'); closePhones(); await doRefresh(); }
-    else toast('Erro: '+(d.error||'?'), false);
-  } catch(e) { toast('Erro de rede.', false); }
-}
-
+setInterval(doRefresh, 30000);
 </script>
 </body></html>`;
 }
