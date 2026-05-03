@@ -8,6 +8,9 @@ const { MongoClient } = require('mongodb');
 const PORT       = process.env.PORT       || 3000;
 const ADMIN_USER = process.env.ADMIN_USER;
 const ADMIN_PASS = process.env.ADMIN_PASS;
+const MOD_USER   = process.env.MOD_USER || '';
+const MOD_PASS   = process.env.MOD_PASS || '';
+const MOD_TOTP   = process.env.MOD_TOTP || '';
 if (!ADMIN_USER || !ADMIN_PASS) {
   console.error('❌ ERRO CRÍTICO: Defina as variáveis de ambiente ADMIN_USER e ADMIN_PASS antes de iniciar.');
   console.error('   No Render.com: Settings > Environment Variables');
@@ -85,6 +88,7 @@ async function saveDb() {
 let keys        = {};
 let logs        = [];
 let sessions    = {};      // sessões admin
+let modSessions = {};      // sessões moderador
 let serverReady = false;   // true após loadDb() — evita logout por dados ainda não carregados
 let extSessions = {};   // sessões de extensão: token → { keyCode, expiresAt }
 
@@ -206,6 +210,8 @@ function deriveSlug(seed) {
 }
 const _slugAdmin = deriveSlug('admin-panel');
 const R_ADMIN    = _slugAdmin ? '/' + _slugAdmin : '/admin';
+const _slugMod   = deriveSlug('mod-panel');
+const R_MOD      = _slugMod   ? '/' + _slugMod   : '/mod';
 const R_EXT      = '/extension'; // rotas da extensão SEMPRE fixas — patcher usa URL hardcoded
 
 // CAMADA 4 — IP blocklist permanente (em memória, limpa ao reiniciar)
@@ -308,16 +314,20 @@ function generateKey() {
 }
 function generateToken() { return crypto.randomBytes(32).toString('hex'); }
 
-function getAuthData(keyCode) {
+function getAuthData(keyCode, userName) {
+  const data = {
+    key: keyCode, keyId: `id-${keyCode}`, ownerId: 'zv-owner', managerId: 'zv-manager',
+    permissions: FULL_PERMISSIONS,
+    paymentUrl: null, marketplace: 'premium', email: 'cliente@zapvoice.com.br',
+    planName: 'Pro', plan_id: 'ZV_PRO', isLoggedIn: true, isPremium: true, isBasicPlan: false,
+    // userName recebido tem prioridade; fallback para label da chave para popular o store
+    // No refreshPremium seguinte o nome real do WPP já vem no body e sobrescreve
+    username: userName || keys[keyCode]?.label || ''
+  };
   return {
     numberWarning: false, segments: [],
     isLoggedIn: true, isPremium: true, // raiz — usado pelo refreshPremium no newInterval
-    data: {
-      key: keyCode, keyId: `id-${keyCode}`, ownerId: 'zv-owner', managerId: 'zv-manager',
-      permissions: FULL_PERMISSIONS, username: keys[keyCode]?.label || 'Cliente ZapVoice',
-      paymentUrl: null, marketplace: 'premium', email: 'cliente@zapvoice.com.br',
-      planName: 'Pro', plan_id: 'ZV_PRO', isLoggedIn: true, isPremium: true, isBasicPlan: false
-    }
+    data
   };
 }
 
@@ -368,41 +378,173 @@ function getIp(req) {
     || req.socket.remoteAddress || 'N/A';
 }
 
-function isAdminSession(req) {
+function isModSession(req) {
   const cookie = req.headers.cookie || '';
-  const match  = cookie.match(/zv_admin=([a-f0-9]+)/);
+  const match  = cookie.match(/zv_mod=([a-f0-9]+)/);
   if (!match) return false;
-  const s = sessions[match[1]];
+  const s = modSessions[match[1]];
   if (!s) return false;
-  if (new Date() > new Date(s.expiresAt)) { delete sessions[match[1]]; return false; }
+  if (new Date() > new Date(s.expiresAt)) { delete modSessions[match[1]]; return false; }
   return true;
 }
 
-function parseBody(req) {
-  return new Promise(resolve => {
-    let b = '';
-    req.on('data', c => b += c);
-    req.on('end', () => { try { resolve(JSON.parse(b)); } catch { resolve({}); } });
-  });
-}
-function parseFormBody(req) {
-  return new Promise(resolve => {
-    let b = '';
-    req.on('data', c => b += c);
-    req.on('end', () => resolve(new URLSearchParams(b)));
-  });
+function buildModKeysHtml() {
+  const entries = Object.entries(keys);
+  if (!entries.length) return '<tr><td colspan="5" style="text-align:center;color:#5a5a7a;padding:20px">Nenhuma chave cadastrada</td></tr>';
+  return entries.map(([code, k]) => {
+    const expired  = isKeyExpired(k);
+    const statusCls = k.active && !expired ? 'on' : 'off';
+    const statusTxt = k.active ? (expired ? 'EXPIRADA' : 'ATIVO') : 'BLOQUEADO';
+    const expiresAt = k.expiresAt
+      ? new Date(k.expiresAt).toLocaleString('pt-BR', {timeZone:'America/Sao_Paulo'})
+      : 'Sem expiração';
+    return `<tr>
+  <td><span style="font-size:11px;font-family:monospace;color:#6b6b8a">${escHtml(code)}</span></td>
+  <td>${escHtml(k.label||'—')}</td>
+  <td><span class="badge ${statusCls}">${statusTxt}</span></td>
+  <td>${(k.phones||[]).length}/${k.maxUses===-1?'∞':(k.maxUses>0?k.maxUses:MAX_USES)}</td>
+  <td>${expiresAt}</td>
+</tr>`;
+  }).join('');
 }
 
-function sendJson(res, data, status = 200) {
-  res.setHeader('Content-Type', 'application/json');
-  res.writeHead(status); res.end(JSON.stringify(data));
+function renderModLogin(error = '') {
+  const totpHtml = MOD_TOTP
+    ? `<label>Código 2FA</label><input type="text" name="totp" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" style="width:100%;padding:12px 14px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:10px;color:#00ff87;font-family:monospace;font-size:18px;letter-spacing:6px;text-align:center;outline:none;margin-bottom:14px">`
+    : '';
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZapVoice — Moderador</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace}
+.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:36px 32px;width:100%;max-width:380px;text-align:center}
+.logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#00ff87;margin-bottom:4px}
+.sub{font-size:10px;color:#5a5a7a;letter-spacing:3px;text-transform:uppercase;margin-bottom:28px}
+label{display:block;font-size:10px;color:#6b6b8a;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;text-align:left}
+input{width:100%;padding:12px 14px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:10px;color:#e2e2f0;font-family:'Space Mono',monospace;font-size:14px;outline:none;margin-bottom:14px}
+input:focus{border-color:#00ff87}
+.err{background:#ff475715;border:1px solid #ff4757;border-radius:8px;color:#ff4757;padding:11px 14px;font-size:12px;margin-bottom:18px;text-align:left}
+.btn{width:100%;padding:14px;background:#00ff87;border:none;border-radius:10px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:15px;cursor:pointer}
+</style></head><body>
+<div class="card">
+  <div class="logo">ZapVoice</div>
+  <div class="sub">Painel Moderador</div>
+  ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
+  <form method="POST" action="${R_MOD}/login">
+    <label>Usuário</label><input type="text" name="user" autocomplete="username" required>
+    <label>Senha</label><input type="password" name="pass" autocomplete="current-password" required>
+    ${totpHtml}
+    <button class="btn" type="submit">Entrar</button>
+  </form>
+</div>
+</body></html>`;
 }
-function sendHtml(res, html, status = 200) {
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.writeHead(status); res.end(html);
+
+function renderModDashboard() {
+  const R_M = R_MOD;
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZapVoice — Moderador</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--border:#1c1c2e;--fg:#e2e2f0;--muted:#5a5a7a;--red:#ff4757;--radius:10px}
+body{background:var(--dark);font-family:'Space Mono',monospace;color:var(--fg);min-height:100vh}
+.top{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;justify-content:space-between;align-items:center}
+.top-logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--green)}
+.top-sub{font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase}
+.out{color:var(--muted);font-size:11px;text-decoration:none;border:1px solid var(--border);padding:6px 12px;border-radius:6px}
+.out:hover{color:var(--fg);border-color:var(--fg)}
+.wrap{max-width:1100px;margin:0 auto;padding:24px 20px}
+.section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px;margin-bottom:20px}
+.section-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--fg);margin-bottom:16px;text-transform:uppercase;letter-spacing:1px}
+.fi{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.fi-name{flex:1;min-width:180px}
+label{display:block;font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px}
+input[type=text],input[type=number]{background:var(--dark);border:1px solid var(--border);border-radius:6px;color:var(--fg);font-family:'Space Mono',monospace;font-size:12px;padding:8px 10px;width:100%}
+input[type=number]{width:80px}
+.btn-gen{background:var(--green);color:#000;border:none;border-radius:6px;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;padding:9px 20px;cursor:pointer}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;color:var(--muted);font-size:10px;letter-spacing:1px;text-transform:uppercase;padding:0 8px 10px}
+td{padding:10px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+.toast{display:none;position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:8px;font-size:13px;z-index:999}
+</style>
+</head>
+<body>
+<div class="top">
+  <div><div class="top-logo">ZapVoice</div><div class="top-sub">Moderador</div></div>
+  <a href="${R_M}/logout" class="out">↩ Sair</a>
+</div>
+<div class="wrap">
+  <div class="section">
+    <div class="section-title">Gerar Nova Chave</div>
+    <div class="fi">
+      <div class="fi-name"><label>Nome do Cliente</label><input type="text" id="nlabel" placeholder="Nome"></div>
+      <div><label>Dias</label><input type="number" id="ndays" min="0" value="30" style="width:70px"></div>
+      <div><label>Horas</label><input type="number" id="nhours" min="0" value="0" style="width:70px"></div>
+      <div><label>Min</label><input type="number" id="nmins" min="0" value="0" style="width:70px"></div>
+      <div><label>Dispositivos</label><input type="number" id="nuses" min="-1" value="1" style="width:80px"></div>
+      <button class="btn-gen" onclick="generateKey()">+ Gerar</button>
+    </div>
+  </div>
+  <div class="section">
+    <div class="section-title">Chaves</div>
+    <table>
+      <thead><tr>
+        <th>Código</th><th>Cliente</th><th>Status</th><th>Dispositivos</th><th>Último uso</th><th>Criada em</th>
+      </tr></thead>
+      <tbody id="kb">${buildModKeysHtml()}</tbody>
+    </table>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+const _RM = '${R_M}';
+function toast(msg, ok=true) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = ok ? 'var(--green)' : 'var(--red)';
+  t.style.color = ok ? '#000' : '#fff';
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3200);
 }
-function escHtml(s) {
-  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+async function doRefresh() {
+  try {
+    const r = await fetch(_RM+'/api/data');
+    if (r.status === 401) { location.href = _RM; return; }
+    const d = await r.json();
+    if (d.keysHtml) document.getElementById('kb').innerHTML = d.keysHtml;
+  } catch(e) {}
+}
+async function generateKey() {
+  const label   = document.getElementById('nlabel').value.trim();
+  const days    = parseInt(document.getElementById('ndays').value  || 0);
+  const hours   = parseInt(document.getElementById('nhours').value || 0);
+  const mins    = parseInt(document.getElementById('nmins').value  || 0);
+  const _u      = document.getElementById('nuses').value.trim();
+  const maxUses = _u === '' ? 3 : parseInt(_u);
+  try {
+    const r = await fetch(_RM+'/api/keys', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({label, days, hours, mins, maxUses})
+    });
+    if (r.status === 401) { toast('Sessao expirada', false); setTimeout(() => location.href=_RM, 1500); return; }
+    const d = await r.json();
+    if (d.ok) {
+      toast('Chave criada: ' + d.code);
+      ['nlabel','ndays','nhours','nmins','nuses'].forEach(id => document.getElementById(id).value = '');
+      await doRefresh();
+    } else toast('Erro: ' + (d.error||'?'), false);
+  } catch(e) { toast('Erro de rede.', false); }
+}
+setInterval(doRefresh, 30000);
+</script>
+</body>
+</html>`;
 }
 
 // ─────────────────────────────────────────────
@@ -440,7 +582,7 @@ input:focus{border-color:#00ff87}
     <p style="text-align:left;font-size:11px;color:#6b6b8a;margin-top:8px">Você recebeu esta chave junto com a sua compra.</p>
     <button type="submit" class="btn">Ativar Agora</button>
   </form>
-  <div class="hint">precisa de ajuda?<br>Entre em contato com o vendedor<br><a href="https://dfg.com.br/user/lr1290" target="_blank">dfg.com.br/user/lr1290</a></div>
+  <div class="hint">Precisa de ajuda?<br><a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20referente%20a%20minha%20renova%C3%A7%C3%A3o." target="_blank">💬 Falar com o suporte no WhatsApp</a></div>
 </div>
 </body></html>`;
 }
@@ -536,11 +678,16 @@ input:focus{border-color:#00ff87}
         <span class="row-label">Último uso</span>
         <span class="row-val" id="r-lastused"></span>
       </div>
+      <div id="r-phone-section" style="display:none;margin-top:16px;border-top:1px solid #1e1e2e;padding-top:14px">
+        <div style="font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#6b6b8a;margin-bottom:10px">Dispositivos cadastrados</div>
+        <div id="r-phone-list"></div>
+        <div style="font-size:10px;color:#6b6b8a;margin-top:8px">Remova um número para liberar o slot e entrar em outro dispositivo.</div>
+      </div>
       <div class="section-links" id="r-links"></div>
       <button class="btn" style="margin-top:16px;background:#1e1e2e;color:#6b6b8a;font-size:12px" onclick="resetPanel()">← Consultar outra chave</button>
     </div>
 
-    <div class="hint">Precisa de ajuda?<br>Entre em contato com o vendedor<br><a href="https://dfg.com.br/user/lr1290" target="_blank">dfg.com.br/user/lr1290</a></div>
+    <div class="hint">Precisa de ajuda?<br><a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20referente%20a%20minha%20renova%C3%A7%C3%A3o." target="_blank">💬 Falar com o suporte no WhatsApp</a></div>
   </div>
 </div>
 <script>
@@ -628,8 +775,34 @@ function showPanel(d, key) {
 
   document.getElementById('r-links').innerHTML=
     '<a class="link-btn" href="https://app.zapvoice.com.br/dashboard/backup-fixer" target="_blank">🔧 Corrija<br>Backups</a>'+
-    '<a class="link-btn" href="https://app.zapvoice.com.br/dashboard/converter" target="_blank">🎵 Converta<br>Áudios</a>';
+    '<a class="link-btn" href="https://app.zapvoice.com.br/dashboard/converter" target="_blank">🎵 Converta<br>Áudios</a>'+
+    '<a class="link-btn" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20referente%20a%20minha%20renova%C3%A7%C3%A3o." target="_blank" style="grid-column:span 2;border-color:#25d366;color:#25d366">💬 Suporte no WhatsApp</a>';
+
+  // Seção de gerenciamento de números
+  if (d.phoneList && d.phoneList.length > 0) {
+    const phoneSec = document.getElementById('r-phone-section');
+    phoneSec.style.display = 'block';
+    const ul = document.getElementById('r-phone-list');
+    ul.innerHTML = '';
+    d.phoneList.forEach(function(ph) {
+      const li = document.createElement('div');
+      li.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #1c1c2e';
+      const sp = document.createElement('span');
+      sp.style.cssText = 'font-size:13px;font-family:monospace;color:#e2e2f0';
+      sp.textContent = ph;
+      const btn = document.createElement('button');
+      btn.textContent = 'Remover';
+      btn.style.cssText = 'padding:4px 12px;background:#ff4757;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px';
+      btn.addEventListener('click', function() { clientRemovePhone(key, ph); });
+      li.appendChild(sp);
+      li.appendChild(btn);
+      ul.appendChild(li);
+    });
+  } else {
+    document.getElementById('r-phone-section').style.display = 'none';
+  }
 }
+
 
 function resetPanel() {
   document.getElementById('form-area').style.display='block';
@@ -638,6 +811,24 @@ function resetPanel() {
   document.getElementById('r-last-row').style.display='none';
   const btn=document.getElementById('check-btn');
   btn.disabled=false; btn.textContent='Consultar Minha Chave';
+}
+
+async function clientRemovePhone(key, phone) {
+  if (!confirm('Remover o numero ' + phone + ' desta chave?')) return;
+  try {
+    const r = await fetch(API_BASE+'/client/remove-phone', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({key: key, phone: phone})
+    });
+    const d = await r.json();
+    if (d.ok) {
+      alert('Numero removido! Voce pode fazer login novamente no WhatsApp Web.');
+      doCheck(key);
+    } else {
+      alert('Erro: ' + (d.error || '?'));
+    }
+  } catch(e) { alert('Erro de rede.'); }
 }
 
 document.getElementById('key-input').addEventListener('keydown', e=>{ if(e.key==='Enter') checkKey(); });
@@ -744,6 +935,8 @@ function buildKeysHtml() {
     <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
     <button class="bs bg" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">+ Tempo</button>
     <button class="bs bg" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${k.maxUses!=null?k.maxUses:MAX_USES})">Usos</button>
+    <button class="bs bg" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">Renomear</button>
+    ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Numeros</button>`:''}
     <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
     ${(k.warnCount||0)>0 ? `<button class="bs bwarn" onclick="resetWarn('${escHtml(code)}')">⚠ Avisos</button>` : ''}
   </td>
@@ -772,6 +965,7 @@ function buildLogsHtml(arr) {
 function renderAdminDashboard() {
   const expiringSoon  = Object.values(keys).filter(k => k.active && isKeyExpiringSoon(k)).length;
   const warnLimitKeys = Object.values(keys).filter(k => k.active && (k.warnCount||0) > 0).length;
+  const logsCount     = (typeof logs !== 'undefined' ? logs : []).length;
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -901,7 +1095,7 @@ tr:hover td{background:#ffffff02}
     <div class="sc"><div class="sc-icon">✅</div><div class="n" id="s-active">${Object.values(keys).filter(k=>k.active).length}</div><div class="l">Chaves Ativas</div></div>
     <div class="sc ${expiringSoon > 0 ? 'warn-card' : ''}"><div class="sc-icon">⏰</div><div class="n" id="s-warn" style="${expiringSoon>0?'color:var(--orange)':''}">${expiringSoon}</div><div class="l">Expirando em ${EXPIRY_WARN_HOURS}h</div></div>
     <div class="sc"><div class="sc-icon">⚠️</div><div class="n" id="s-warnlimit" style="${warnLimitKeys>0?'color:#ff8c00':''}">${warnLimitKeys}</div><div class="l">Aviso de Limite</div></div>
-    <div class="sc"><div class="sc-icon">📋</div><div class="n" id="s-logs">${logs.length}</div><div class="l">Acessos Registrados</div></div>
+    <div class="sc"><div class="sc-icon">📋</div><div class="n" id="s-logs">${logsCount}</div><div class="l">Acessos Registrados</div></div>
   </div>
 
   <div class="sec">
@@ -1005,6 +1199,32 @@ tr:hover td{background:#ffffff02}
 </div>
 
 <!-- Modal de notas -->
+<div class="modal-bg" id="renameModal">
+  <div class="modal" style="min-width:300px">
+    <h3>Renomear — <span id="renameKeyLabel"></span></h3>
+    <input type="hidden" id="renameKeyCode">
+    <div style="margin-bottom:14px">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Novo nome</div>
+      <input type="text" id="renameValue" maxlength="60" style="width:100%;padding:10px;background:var(--dark);border:1px solid var(--border);border-radius:6px;color:var(--fg);font-family:inherit;font-size:14px">
+    </div>
+    <div class="modal-actions">
+      <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeRename()">Cancelar</button>
+      <button class="btn bp" onclick="saveRename()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="phonesModal">
+  <div class="modal" style="min-width:320px">
+    <h3>Numeros — <span id="phonesLabel"></span></h3>
+    <div id="phonesList" style="margin-bottom:14px;max-height:220px;overflow-y:auto;min-height:40px"></div>
+    <div class="modal-actions">
+      <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closePhones()">Fechar</button>
+      <button class="btn bd" id="removeAllPhonesBtn" onclick="removeAllPhones()">Remover Todos</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="noteModal">
   <div class="modal">
     <h3>📝 Nota — <span id="noteKeyLabel"></span></h3>
@@ -1251,6 +1471,88 @@ async function exportCSV(){
   }catch(e){toast('Erro ao exportar',false);}
 }
 
+// ── Renomear ──
+function openRename(code, label) {
+  document.getElementById('renameKeyCode').value = code;
+  document.getElementById('renameKeyLabel').textContent = label;
+  document.getElementById('renameValue').value = label;
+  document.getElementById('renameModal').classList.add('open');
+  setTimeout(function(){ var v=document.getElementById('renameValue'); v.focus(); v.select(); }, 50);
+}
+function closeRename() { document.getElementById('renameModal').classList.remove('open'); }
+document.getElementById('renameModal').addEventListener('click', function(e){ if(e.target===this) closeRename(); });
+document.getElementById('renameValue').addEventListener('keydown', function(e){ if(e.key==='Enter') saveRename(); });
+async function saveRename() {
+  var code  = document.getElementById('renameKeyCode').value;
+  var label = document.getElementById('renameValue').value.trim();
+  if (!label) { toast('Nome nao pode ser vazio.', false); return; }
+  try {
+    var r = await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/label', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:label})});
+    if(r.status===401){toast('Sessao expirada',false);setTimeout(function(){location.href=_RA},1500);return;}
+    var d = await r.json();
+    if (d.ok) { toast('Renomeado: '+label); closeRename(); await doRefresh(); }
+    else toast('Erro: '+(d.error||'?'), false);
+  } catch(e) { toast('Erro de rede.', false); }
+}
+
+// ── Numeros ──
+function openPhones(code, label) {
+  var modal = document.getElementById('phonesModal');
+  modal.dataset.code = code;
+  document.getElementById('phonesLabel').textContent = label;
+  var list = document.getElementById('phonesList');
+  list.innerHTML = 'Carregando...';
+  modal.classList.add('open');
+  fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/phones')
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (!d.phones || d.phones.length === 0) {
+        list.innerHTML = '<em style="color:var(--muted);font-size:12px">Nenhum numero cadastrado</em>';
+        document.getElementById('removeAllPhonesBtn').style.display = 'none';
+        modal.dataset.phones = '[]';
+        return;
+      }
+      document.getElementById('removeAllPhonesBtn').style.display = '';
+      modal.dataset.phones = JSON.stringify(d.phones);
+      var html = '';
+      d.phones.forEach(function(phone, i){
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">';
+        html += '<span style="font-size:13px;font-family:monospace">' + phone + '</span>';
+        html += '<button class="bs bd" style="padding:4px 10px;font-size:11px" data-idx="' + i + '" onclick="removePhone(this)">Remover</button>';
+        html += '</div>';
+      });
+      list.innerHTML = html;
+    })
+    .catch(function(){ list.innerHTML = '<em style="color:var(--red)">Erro ao carregar</em>'; });
+}
+function closePhones() { document.getElementById('phonesModal').classList.remove('open'); }
+document.getElementById('phonesModal').addEventListener('click', function(e){ if(e.target===this) closePhones(); });
+async function removePhone(btn) {
+  var modal  = document.getElementById('phonesModal');
+  var code   = modal.dataset.code;
+  var phones = JSON.parse(modal.dataset.phones || '[]');
+  var phone  = phones[parseInt(btn.dataset.idx)];
+  if (!phone) { toast('Erro: numero nao encontrado', false); return; }
+  try {
+    var r = await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/phones', {method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:phone})});
+    if(r.status===401){toast('Sessao expirada',false);setTimeout(function(){location.href=_RA},1500);return;}
+    var d = await r.json();
+    if (d.ok) { toast('Numero removido: '+phone); closePhones(); await doRefresh(); }
+    else toast('Erro: '+(d.error||'?'), false);
+  } catch(e) { toast('Erro de rede.', false); }
+}
+async function removeAllPhones() {
+  var code = document.getElementById('phonesModal').dataset.code;
+  if (!confirm('Remover TODOS os numeros desta chave?')) return;
+  try {
+    var r = await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/phones', {method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({all:true})});
+    if(r.status===401){toast('Sessao expirada',false);setTimeout(function(){location.href=_RA},1500);return;}
+    var d = await r.json();
+    if (d.ok) { toast('Todos removidos.'); closePhones(); await doRefresh(); }
+    else toast('Erro: '+(d.error||'?'), false);
+  } catch(e) { toast('Erro de rede.', false); }
+}
+
 </script>
 </body></html>`;
 }
@@ -1312,7 +1614,7 @@ async function handleRequest(req, res) {
 
     if (!keyCode || !keys[keyCode]) {
       await addLog({ keyCode: keyCode||'?', label: '-', phone: '-', ip, wppVersion: '-', action: 'key_not_found' });
-      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '❌ Chave não encontrada. Verifique se digitou corretamente ou entre em contato com o vendedor.' }));
+      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '❌ Chave não encontrada. Verifique se digitou corretamente ou fale com o suporte.' }));
       return;
     }
     if (isKeyExpired(keys[keyCode])) {
@@ -1320,12 +1622,12 @@ async function handleRequest(req, res) {
       await addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'expired' });
       await saveDb();
       fireWebhook('key_expired', keyCode, 'Expiração detectada no login');
-      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '⏰ Chave expirada. Entre em contato com o vendedor para renovar.' }));
+      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '⏰ Chave expirada. Fale com o suporte para renovar.' }));
       return;
     }
     if (!keys[keyCode].active) {
       await addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'login_blocked' });
-      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '🚫 Chave bloqueada. Entre em contato com o vendedor.' }));
+      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '🚫 Chave bloqueada. Fale com o suporte.' }));
       return;
     }
     // Limite verificado em /v3/key (onde phoneNumber está disponível)
@@ -1433,7 +1735,7 @@ async function handleRequest(req, res) {
     // Gerar token e responder IMEDIATAMENTE — não esperar MongoDB
     const _et = generateToken();
     extSessions[_et] = { keyCode, expiresAt: new Date(Date.now() + 30*24*60*60*1000).toISOString() };
-    const _authData = getAuthData(keyCode);
+    const _authData = getAuthData(keyCode, body.userName || '');
     _authData._zv_et = _et;
     sendJson(res, _authData);
     // Salvar no banco em background — não bloqueia a resposta
@@ -1477,6 +1779,68 @@ async function handleRequest(req, res) {
       expires_at: new Date(Date.now() + 365*24*60*60*1000).toISOString(), isExpired: false
     });
     return;
+  }
+
+  // ── MOD: login ──
+  if (p === R_MOD+'/login' && req.method === 'POST') {
+    if (!MOD_USER || !MOD_PASS) { sendHtml(res, renderModLogin('Painel de moderador não configurado.')); return; }
+    const form = await parseFormBody(req);
+    const credOk = form.get('user') === MOD_USER && form.get('pass') === MOD_PASS;
+    const totpOk = MOD_TOTP ? verifyTOTP(MOD_TOTP, (form.get('totp') || '').trim()) : true;
+    if (credOk && totpOk) {
+      const token = generateToken();
+      modSessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString() };
+      res.setHeader('Set-Cookie', `zv_mod=${token}; Path=/; HttpOnly; SameSite=Strict`);
+      res.writeHead(302, { Location: R_MOD }); res.end();
+    } else {
+      const msg = credOk && !totpOk ? 'Código 2FA inválido ou expirado' : 'Usuário ou senha incorretos';
+      sendHtml(res, renderModLogin(msg));
+    }
+    return;
+  }
+
+  // ── MOD: logout ──
+  if (p === R_MOD+'/logout') {
+    const ck = (req.headers.cookie||'').match(/zv_mod=([a-f0-9]+)/);
+    if (ck) delete modSessions[ck[1]];
+    res.setHeader('Set-Cookie', 'zv_mod=; Path=/; Max-Age=0');
+    res.writeHead(302, { Location: R_MOD }); res.end(); return;
+  }
+
+  // ── MOD: dashboard ──
+  if ((p === R_MOD || p === R_MOD+'/') && req.method === 'GET') {
+    if (!MOD_USER) { res.writeHead(404); res.end('Not found'); return; }
+    if (!isModSession(req)) { sendHtml(res, renderModLogin()); return; }
+    sendHtml(res, renderModDashboard()); return;
+  }
+
+  // ── MOD API: dados (somente leitura) ──
+  if (p === R_MOD+'/api/data' && req.method === 'GET') {
+    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    sendJson(res, { keysHtml: buildModKeysHtml() }); return;
+  }
+
+  // ── MOD API: gerar chave ──
+  if (p === R_MOD+'/api/keys' && req.method === 'POST') {
+    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const body = await parseBody(req);
+    const label   = String(body.label || '').trim().slice(0, 60);
+    const days    = parseInt(body.days  || 0);
+    const hours   = parseInt(body.hours || 0);
+    const mins    = parseInt(body.mins  || 0);
+    const maxUses = typeof body.maxUses === 'number' ? body.maxUses : parseInt(body.maxUses ?? MAX_USES);
+    const code = generateCode();
+    const totalMins = days * 1440 + hours * 60 + (mins || 0);
+    const now  = new Date();
+    keys[code] = {
+      label, active: true, phones: [], uses: 0,
+      maxUses: isNaN(maxUses) ? MAX_USES : maxUses,
+      expiresAt:     totalMins > 0 ? new Date(now.getTime() + totalMins * 60000).toISOString() : null,
+      expireDuration: totalMins > 0 ? totalMins : null,
+      createdAt: now.toISOString(), lastUsed: null, lastIp: null, lastPhone: null, warnCount: 0, note: ''
+    };
+    saveDb().catch(()=>{});
+    sendJson(res, { ok: true, code }); return;
   }
 
   // ── ADMIN: login ──
@@ -1598,6 +1962,44 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true, expiresAt: keys[code].expiresAt }); return;
   }
 
+  // ── ADMIN API: renomear ──
+  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/api\/keys\/[^/]+\/label$')) && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, {error:'unauthorized'}, 401); return; }
+    const _s=p.split('/'); const code=decodeURIComponent(_s[_s.length-2]);
+    if (!keys[code]) { sendJson(res, {error:'not found'}, 404); return; }
+    const body=await parseBody(req);
+    const label=String(body.label||'').trim().slice(0,60);
+    if (!label) { sendJson(res, {error:'label vazio'}, 400); return; }
+    keys[code].label=label;
+    saveDb().catch(()=>{});
+    sendJson(res, {ok:true, label}); return;
+  }
+
+  // ── ADMIN API: listar numeros ──
+  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/api\/keys\/[^/]+\/phones$')) && req.method === 'GET') {
+    if (!isAdminSession(req)) { sendJson(res, {error:'unauthorized'}, 401); return; }
+    const _s=p.split('/'); const code=decodeURIComponent(_s[_s.length-2]);
+    if (!keys[code]) { sendJson(res, {error:'not found'}, 404); return; }
+    sendJson(res, {ok:true, phones:keys[code].phones||[]}); return;
+  }
+
+  // ── ADMIN API: remover numero(s) ──
+  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/api\/keys\/[^/]+\/phones$')) && req.method === 'DELETE') {
+    if (!isAdminSession(req)) { sendJson(res, {error:'unauthorized'}, 401); return; }
+    const _s=p.split('/'); const code=decodeURIComponent(_s[_s.length-2]);
+    if (!keys[code]) { sendJson(res, {error:'not found'}, 404); return; }
+    const body=await parseBody(req);
+    if (body.all) {
+      keys[code].phones=[]; keys[code].uses=0; keys[code].lastPhone=null;
+    } else if (body.phone) {
+      keys[code].phones=(keys[code].phones||[]).filter(ph=>ph!==body.phone);
+      keys[code].uses=keys[code].phones.length;
+      if (keys[code].lastPhone===body.phone) keys[code].lastPhone=keys[code].phones[keys[code].phones.length-1]||null;
+    } else { sendJson(res, {error:'informe phone ou all:true'}, 400); return; }
+    saveDb().catch(()=>{});
+    sendJson(res, {ok:true, phones:keys[code].phones}); return;
+  }
+
   // ── ADMIN API: reset-warn ──
   if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/api\/keys\/[^/]+\/reset-warn$')) && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
@@ -1695,12 +2097,29 @@ async function handleRequest(req, res) {
       activatedAt:  k.activatedAt || null,
       lastUsed:     k.lastUsed || null,
       phones:       (k.phones || []).length,
+      phoneList:    k.phones || [],
       maxUses:      k.maxUses === -1 ? null : (k.maxUses > 0 ? k.maxUses : MAX_USES),
       hoursLeft:    hoursLeft,
       deferred:     !!(k.expireDuration && !k.expiresAt),
       warnCount:    k.warnCount || 0,
     });
     return;
+  }
+
+  // ── Portal do cliente: remover proprio numero ──
+  if (p === '/client/remove-phone' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const code  = (body.key   || '').trim().toLowerCase();
+    const phone = (body.phone || '').trim();
+    if (!code || !keys[code]) { sendJson(res, { error: 'not_found' }, 404); return; }
+    if (!phone) { sendJson(res, { error: 'phone obrigatorio' }, 400); return; }
+    const phones = keys[code].phones || [];
+    if (!phones.includes(phone)) { sendJson(res, { error: 'numero nao encontrado' }, 404); return; }
+    keys[code].phones = phones.filter(p => p !== phone);
+    keys[code].uses = keys[code].phones.length;
+    if (keys[code].lastPhone === phone) keys[code].lastPhone = keys[code].phones[keys[code].phones.length-1] || null;
+    saveDb().catch(()=>{});
+    sendJson(res, { ok: true, phones: keys[code].phones }); return;
   }
 
   // ── Portal do cliente: todas as rotas públicas que a extensão abre ──
@@ -1731,10 +2150,11 @@ async function handleRequest(req, res) {
     logs = loaded.logs || [];
     serverReady = true;
     console.log(`✅ ZapVoice Server v7 — porta ${PORT}`);
-    console.log(`🍃 MongoDB: conectado | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}`);
+    console.log(`🍃 MongoDB: conectado | Chaves: ${Object.keys(keys).length} | Logs: ${logsCount}`);
     console.log(`🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ inativo — defina APP_SECRET'}`);
     console.log(`🔑 2FA:  ${TOTP_SECRET ? 'ATIVO' : '⚠ inativo — defina TOTP_SECRET'}`);
     console.log(`🔑 Admin: ${R_ADMIN} | User: ${ADMIN_USER}`);
+    if (MOD_USER) console.log(`👮 Mod:   ${R_MOD}   | User: ${MOD_USER}`);
     console.log(`🌐 Extension: ${R_EXT}/v3/key`);
     console.log(`📊 Webhook: ${WEBHOOK_URL || 'não configurado'} | Expiração: ${EXPIRY_WARN_HOURS}h`);
     const safeHandler = (req, res) => {
