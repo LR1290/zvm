@@ -441,7 +441,7 @@ input:focus{border-color:#00ff87}
     <p style="text-align:left;font-size:11px;color:#6b6b8a;margin-top:8px">Você recebeu esta chave junto com a sua compra.</p>
     <button type="submit" class="btn">Ativar Agora</button>
   </form>
-  <div class="hint">precisa de ajuda?<br>Entre em contato com o vendedor<br><a href="https://dfg.com.br/user/lr1290" target="_blank">dfg.com.br/user/lr1290</a></div>
+  <div class="hint">Precisa de ajuda?<br><a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20referente%20a%20minha%20renova%C3%A7%C3%A3o." target="_blank">💬 Falar com o suporte no WhatsApp</a></div>
 </div>
 </body></html>`;
 }
@@ -537,11 +537,16 @@ input:focus{border-color:#00ff87}
         <span class="row-label">Último uso</span>
         <span class="row-val" id="r-lastused"></span>
       </div>
+      <div id="r-phone-section" style="display:none;margin-top:16px;border-top:1px solid #1e1e2e;padding-top:14px">
+        <div style="font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#6b6b8a;margin-bottom:10px">Dispositivos cadastrados</div>
+        <div id="r-phone-list"></div>
+        <div style="font-size:10px;color:#6b6b8a;margin-top:8px">Remova um numero para liberar o slot e entrar em outro dispositivo.</div>
+      </div>
       <div class="section-links" id="r-links"></div>
       <button class="btn" style="margin-top:16px;background:#1e1e2e;color:#6b6b8a;font-size:12px" onclick="resetPanel()">← Consultar outra chave</button>
     </div>
 
-    <div class="hint">Precisa de ajuda?<br>Entre em contato com o vendedor<br><a href="https://dfg.com.br/user/lr1290" target="_blank">dfg.com.br/user/lr1290</a></div>
+    <div class="hint">Precisa de ajuda?<br><a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20referente%20a%20minha%20renova%C3%A7%C3%A3o." target="_blank">💬 Falar com o suporte no WhatsApp</a></div>
   </div>
 </div>
 <script>
@@ -629,7 +634,30 @@ function showPanel(d, key) {
 
   document.getElementById('r-links').innerHTML=
     '<a class="link-btn" href="https://app.zapvoice.com.br/dashboard/backup-fixer" target="_blank">🔧 Corrija<br>Backups</a>'+
-    '<a class="link-btn" href="https://app.zapvoice.com.br/dashboard/converter" target="_blank">🎵 Converta<br>Áudios</a>';
+    '<a class="link-btn" href="https://app.zapvoice.com.br/dashboard/converter" target="_blank">🎵 Converta<br>Áudios</a>'+
+    '<a class="link-btn" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20referente%20a%20minha%20renova%C3%A7%C3%A3o." target="_blank" style="grid-column:span 2;border-color:#25d366;color:#25d366">💬 Suporte no WhatsApp</a>';
+  var phoneSec = document.getElementById('r-phone-section');
+  var phoneList = document.getElementById('r-phone-list');
+  if (d.phoneList && d.phoneList.length > 0) {
+    phoneSec.style.display = 'block';
+    phoneList.innerHTML = '';
+    d.phoneList.forEach(function(ph) {
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #1e1e2e';
+      var sp = document.createElement('span');
+      sp.style.cssText = 'font-size:13px;font-family:monospace;color:#e2e2f0';
+      sp.textContent = ph;
+      var btn = document.createElement('button');
+      btn.textContent = 'Remover';
+      btn.style.cssText = 'padding:4px 12px;background:#ff4757;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px';
+      btn.addEventListener('click', function(){ clientRemovePhone(key, ph); });
+      row.appendChild(sp);
+      row.appendChild(btn);
+      phoneList.appendChild(row);
+    });
+  } else {
+    phoneSec.style.display = 'none';
+  }
 }
 
 function resetPanel() {
@@ -641,6 +669,21 @@ function resetPanel() {
   btn.disabled=false; btn.textContent='Consultar Minha Chave';
 }
 
+async function clientRemovePhone(key, phone) {
+  if (!confirm('Remover o numero ' + phone + ' desta chave?')) return;
+  try {
+    var r = await fetch(API_BASE+'/client/remove-phone', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({key:key, phone:phone})
+    });
+    var d = await r.json();
+    if (d.ok) {
+      alert('Numero removido! Voce pode fazer login novamente no WhatsApp Web.');
+      checkKeyParam(key);
+    } else alert('Erro: '+(d.error||'?'));
+  } catch(e) { alert('Erro de rede.'); }
+}
 document.getElementById('key-input').addEventListener('keydown', e=>{ if(e.key==='Enter') checkKey(); });
 
 // ── Auto-checagem: lê ?key= da URL (passado pelo botão engrenagem da extensão) ──
@@ -745,6 +788,8 @@ function buildKeysHtml() {
     <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
     <button class="bs bg" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">+ Tempo</button>
     <button class="bs bg" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${k.maxUses!=null?k.maxUses:MAX_USES})">Usos</button>
+    <button class="bs bg" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">Renomear</button>
+    ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Numeros</button>`:''}
     <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
     ${(k.warnCount||0)>0 ? `<button class="bs bwarn" onclick="resetWarn('${escHtml(code)}')">⚠ Avisos</button>` : ''}
   </td>
@@ -1133,6 +1178,32 @@ tr:hover td{background:#ffffff02}
 </div>
 
 <!-- Modal de notas -->
+<div class="modal-bg" id="renameModal">
+  <div class="modal" style="min-width:300px">
+    <h3>Renomear Chave</h3>
+    <input type="hidden" id="renameCode">
+    <div style="margin-bottom:14px">
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Novo nome</div>
+      <input type="text" id="renameValue" maxlength="60" style="width:100%;padding:10px;background:var(--dark);border:1px solid var(--border);border-radius:6px;color:var(--fg);font-family:inherit;font-size:14px">
+    </div>
+    <div class="modal-actions">
+      <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeRename()">Cancelar</button>
+      <button class="btn bp" onclick="saveRename()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="phonesModal">
+  <div class="modal" style="min-width:320px">
+    <h3>Numeros — <span id="phonesLabel"></span></h3>
+    <div id="phonesList" style="margin-bottom:14px;max-height:220px;overflow-y:auto;min-height:40px"></div>
+    <div class="modal-actions">
+      <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closePhones()">Fechar</button>
+      <button class="btn bd" id="removeAllBtn" onclick="removeAllPhones()">Remover Todos</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="noteModal">
   <div class="modal">
     <h3>📝 Nota — <span id="noteKeyLabel"></span></h3>
@@ -1362,6 +1433,85 @@ async function saveNote(){
     if(d.ok){toast('Nota salva!');closeNote();await doRefresh();}
     else toast('Erro ao salvar nota',false);
   }catch(e){toast('Erro de rede',false);}
+}
+
+// ── Renomear ──
+function openRename(code, label) {
+  document.getElementById('renameCode').value = code;
+  document.getElementById('renameValue').value = label;
+  document.getElementById('renameModal').classList.add('open');
+  setTimeout(function(){ var v=document.getElementById('renameValue'); v.focus(); v.select(); }, 50);
+}
+function closeRename() { document.getElementById('renameModal').classList.remove('open'); }
+document.getElementById('renameModal').addEventListener('click', function(e){ if(e.target===this) closeRename(); });
+document.getElementById('renameValue').addEventListener('keydown', function(e){ if(e.key==='Enter') saveRename(); });
+async function saveRename() {
+  var code  = document.getElementById('renameCode').value;
+  var label = document.getElementById('renameValue').value.trim();
+  if (!label) { toast('Nome nao pode ser vazio.', false); return; }
+  try {
+    var r = await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/label', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:label})});
+    if(r.status===401){toast('Sessao expirada',false);setTimeout(function(){location.href=_RA},1500);return;}
+    var d = await r.json();
+    if (d.ok) { toast('Renomeado: '+label); closeRename(); await doRefresh(); }
+    else toast('Erro: '+(d.error||'?'), false);
+  } catch(e) { toast('Erro de rede.', false); }
+}
+
+// ── Numeros ──
+function openPhones(code, label) {
+  var modal = document.getElementById('phonesModal');
+  modal.dataset.code = code;
+  document.getElementById('phonesLabel').textContent = label;
+  var list = document.getElementById('phonesList');
+  list.innerHTML = 'Carregando...';
+  modal.classList.add('open');
+  fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/phones')
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (!d.phones || d.phones.length === 0) {
+        list.innerHTML = '<em style="color:var(--muted);font-size:12px">Nenhum numero cadastrado</em>';
+        document.getElementById('removeAllBtn').style.display = 'none';
+        modal.dataset.phones = '[]';
+        return;
+      }
+      document.getElementById('removeAllBtn').style.display = '';
+      modal.dataset.phones = JSON.stringify(d.phones);
+      var html = '';
+      d.phones.forEach(function(ph, i){
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">';
+        html += '<span style="font-size:13px;font-family:monospace;color:var(--fg)">'+ph+'</span>';
+        html += '<button class="bs bd" style="padding:4px 10px;font-size:11px" data-idx="'+i+'" onclick="removePhone(this)">Remover</button>';
+        html += '</div>';
+      });
+      list.innerHTML = html;
+    })
+    .catch(function(){ list.innerHTML = '<em style="color:var(--red)">Erro ao carregar</em>'; });
+}
+function closePhones() { document.getElementById('phonesModal').classList.remove('open'); }
+document.getElementById('phonesModal').addEventListener('click', function(e){ if(e.target===this) closePhones(); });
+async function removePhone(btn) {
+  var modal  = document.getElementById('phonesModal');
+  var code   = modal.dataset.code;
+  var phones = JSON.parse(modal.dataset.phones||'[]');
+  var phone  = phones[parseInt(btn.dataset.idx)];
+  if (!phone) { toast('Erro: numero nao encontrado.', false); return; }
+  try {
+    var r = await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/phones', {method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:phone})});
+    var d = await r.json();
+    if (d.ok) { toast('Numero removido: '+phone); closePhones(); await doRefresh(); }
+    else toast('Erro: '+(d.error||'?'), false);
+  } catch(e) { toast('Erro de rede.', false); }
+}
+async function removeAllPhones() {
+  var code = document.getElementById('phonesModal').dataset.code;
+  if (!confirm('Remover TODOS os numeros desta chave?')) return;
+  try {
+    var r = await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/phones', {method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({all:true})});
+    var d = await r.json();
+    if (d.ok) { toast('Todos removidos.'); closePhones(); await doRefresh(); }
+    else toast('Erro: '+(d.error||'?'), false);
+  } catch(e) { toast('Erro de rede.', false); }
 }
 
 // ── Exportar CSV ──
@@ -1729,6 +1879,44 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true, expiresAt: keys[code].expiresAt }); return;
   }
 
+  // ── ADMIN API: renomear ──
+  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/api\/keys\/[^/]+\/label$')) && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, {error:'unauthorized'}, 401); return; }
+    const _s=p.split('/'); const code=decodeURIComponent(_s[_s.length-2]);
+    if (!keys[code]) { sendJson(res, {error:'not found'}, 404); return; }
+    const body=await parseBody(req);
+    const label=String(body.label||'').trim().slice(0,60);
+    if (!label) { sendJson(res, {error:'label vazio'}, 400); return; }
+    keys[code].label=label;
+    saveDb().catch(()=>{});
+    sendJson(res, {ok:true, label}); return;
+  }
+
+  // ── ADMIN API: listar numeros ──
+  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/api\/keys\/[^/]+\/phones$')) && req.method === 'GET') {
+    if (!isAdminSession(req)) { sendJson(res, {error:'unauthorized'}, 401); return; }
+    const _s=p.split('/'); const code=decodeURIComponent(_s[_s.length-2]);
+    if (!keys[code]) { sendJson(res, {error:'not found'}, 404); return; }
+    sendJson(res, {ok:true, phones:keys[code].phones||[]}); return;
+  }
+
+  // ── ADMIN API: remover numero(s) ──
+  if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/api\/keys\/[^/]+\/phones$')) && req.method === 'DELETE') {
+    if (!isAdminSession(req)) { sendJson(res, {error:'unauthorized'}, 401); return; }
+    const _s=p.split('/'); const code=decodeURIComponent(_s[_s.length-2]);
+    if (!keys[code]) { sendJson(res, {error:'not found'}, 404); return; }
+    const body=await parseBody(req);
+    if (body.all) {
+      keys[code].phones=[]; keys[code].uses=0; keys[code].lastPhone=null;
+    } else if (body.phone) {
+      keys[code].phones=(keys[code].phones||[]).filter(ph=>ph!==body.phone);
+      keys[code].uses=keys[code].phones.length;
+      if (keys[code].lastPhone===body.phone) keys[code].lastPhone=keys[code].phones[keys[code].phones.length-1]||null;
+    } else { sendJson(res, {error:'informe phone ou all:true'}, 400); return; }
+    saveDb().catch(()=>{});
+    sendJson(res, {ok:true, phones:keys[code].phones}); return;
+  }
+
   // ── ADMIN API: reset-warn ──
   if (p.match(new RegExp('^'+R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\/api\/keys\/[^/]+\/reset-warn$')) && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
@@ -1826,12 +2014,29 @@ async function handleRequest(req, res) {
       activatedAt:  k.activatedAt || null,
       lastUsed:     k.lastUsed || null,
       phones:       (k.phones || []).length,
+      phoneList:    k.phones || [],
       maxUses:      k.maxUses === -1 ? null : (k.maxUses > 0 ? k.maxUses : MAX_USES),
       hoursLeft:    hoursLeft,
       deferred:     !!(k.expireDuration && !k.expiresAt),
       warnCount:    k.warnCount || 0,
     });
     return;
+  }
+
+  // ── Portal do cliente: remover proprio numero ──
+  if (p === '/client/remove-phone' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const keyCode = (body.key||'').trim().toLowerCase();
+    const phone   = (body.phone||'').trim();
+    if (!keyCode || !keys[keyCode]) { sendJson(res, {error:'not_found'}, 404); return; }
+    if (!phone) { sendJson(res, {error:'phone obrigatorio'}, 400); return; }
+    const phones = keys[keyCode].phones || [];
+    if (!phones.includes(phone)) { sendJson(res, {error:'numero nao encontrado'}, 404); return; }
+    keys[keyCode].phones = phones.filter(p => p !== phone);
+    keys[keyCode].uses = keys[keyCode].phones.length;
+    if (keys[keyCode].lastPhone === phone) keys[keyCode].lastPhone = keys[keyCode].phones[keys[keyCode].phones.length-1]||null;
+    saveDb().catch(()=>{});
+    sendJson(res, {ok:true, phones:keys[keyCode].phones}); return;
   }
 
   // ── Portal do cliente: todas as rotas públicas que a extensão abre ──
