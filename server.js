@@ -308,13 +308,14 @@ function generateKey() {
 }
 function generateToken() { return crypto.randomBytes(32).toString('hex'); }
 
-function getAuthData(keyCode) {
+function getAuthData(keyCode, userName) {
   return {
     numberWarning: false, segments: [],
-    isLoggedIn: true, isPremium: true, // raiz — usado pelo refreshPremium no newInterval
+    isLoggedIn: true, isPremium: true,
     data: {
       key: keyCode, keyId: `id-${keyCode}`, ownerId: 'zv-owner', managerId: 'zv-manager',
-      permissions: FULL_PERMISSIONS, username: keys[keyCode]?.label || 'Cliente ZapVoice',
+      permissions: FULL_PERMISSIONS,
+      username: userName || keys[keyCode]?.label || '',
       paymentUrl: null, marketplace: 'premium', email: 'cliente@zapvoice.com.br',
       planName: 'Pro', plan_id: 'ZV_PRO', isLoggedIn: true, isPremium: true, isBasicPlan: false
     }
@@ -365,7 +366,7 @@ function hoursUntilExpiry(k) {
 
 function getIp(req) {
   return req.headers['x-forwarded-for']?.split(',')[0]?.trim()
-    || req.socket.remoteAddress || 'N/A';
+    || req.socket?.remoteAddress || req.connection?.remoteAddress || 'N/A';
 }
 
 function isAdminSession(req) {
@@ -769,6 +770,133 @@ function buildLogsHtml(arr) {
 // ─────────────────────────────────────────────
 // ADMIN: DASHBOARD — renderização completa
 // ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// MOD: DASHBOARD
+// ─────────────────────────────────────────────
+function buildModKeysHtml() {
+  const entries = Object.entries(keys);
+  if (!entries.length) return `<tr><td colspan="8" class="empty">Nenhuma chave ainda</td></tr>`;
+  return entries.map(([code, k]) => {
+    const expired = isKeyExpired(k);
+    return `
+<tr>
+  <td><span class="kc">${escHtml(code)}</span></td>
+  <td>${escHtml(k.label||'')}</td>
+  <td><span class="badge ${k.active?(expired?'off':'on'):'off'}">${k.active?(expired?'EXPIRADA':'ATIVA'):'BLOQUEADA'}</span></td>
+  <td>${(k.phones||[]).length}/${k.maxUses===-1?'∞':(k.maxUses>0?k.maxUses:MAX_USES)}</td>
+  <td>${escHtml(k.lastPhone||'-')}</td>
+  <td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
+  <td>${new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</td>
+  <td>${k.expiresAt?new Date(k.expiresAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
+</tr>`;
+  }).join('');
+}
+
+function renderModDashboard() {
+  const R_M = R_MOD;
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZapVoice Mod</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--border:#1c1c2e;--fg:#e2e2f0;--muted:#5a5a7a;--red:#ff4757;--radius:10px}
+body{background:var(--dark);color:var(--fg);font-family:'Space Mono',monospace;min-height:100vh;padding:24px}
+h1{font-family:'Syne',sans-serif;font-size:22px;color:var(--green);margin-bottom:20px}
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}
+.out{color:var(--muted);font-size:12px;text-decoration:none}
+.out:hover{color:var(--fg)}
+.new-key{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:24px}
+.new-key h2{font-size:13px;color:var(--green);margin-bottom:14px;letter-spacing:1px}
+.fields{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}
+.fields input{background:var(--dark);border:1px solid var(--border);border-radius:6px;color:var(--fg);font-family:inherit;font-size:13px;padding:8px 10px;width:160px}
+.fields input:focus{outline:none;border-color:var(--green)}
+.btn{padding:9px 18px;background:var(--green);color:#000;border:none;border-radius:6px;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;cursor:pointer}
+.btn:hover{opacity:.85}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:10px 8px;border-bottom:1px solid var(--border);color:var(--muted);font-size:10px;letter-spacing:1px;text-transform:uppercase}
+td{padding:10px 8px;border-bottom:1px solid var(--border)}
+.kc{font-size:11px;color:var(--green);letter-spacing:.5px}
+.badge{padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700}
+.on{background:#00ff8720;color:var(--green)}
+.off{background:#ff475720;color:var(--red)}
+.empty{color:var(--muted);text-align:center;padding:30px;font-size:12px}
+.toast{display:none;position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:8px;font-size:13px;z-index:999;font-family:'Syne',sans-serif}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>👮 Painel Moderador</h1>
+  <a href="${R_M}/logout" class="out">↩ Sair</a>
+</div>
+
+<div class="new-key">
+  <h2>+ NOVA CHAVE</h2>
+  <div class="fields">
+    <input id="nlabel"  placeholder="Nome do cliente">
+    <input id="ndays"   placeholder="Dias"  type="number" min="0" style="width:80px">
+    <input id="nhours"  placeholder="Horas" type="number" min="0" style="width:80px">
+    <input id="nmins"   placeholder="Mins"  type="number" min="0" style="width:80px">
+    <input id="nuses"   placeholder="Usos (padrão 3)" type="number" min="-1" style="width:160px">
+  </div>
+  <button class="btn" onclick="generateKey()">Gerar Chave</button>
+</div>
+
+<table>
+  <thead><tr>
+    <th>Código</th><th>Cliente</th><th>Status</th><th>Dispositivos</th>
+    <th>Último Número</th><th>Último Uso</th><th>Criada em</th><th>Expira em</th>
+  </tr></thead>
+  <tbody id="kb">${buildModKeysHtml()}</tbody>
+</table>
+
+<div class="toast" id="toast"></div>
+<script>
+const _RM = '${R_M}';
+function toast(msg, ok=true) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = ok ? 'var(--green)' : 'var(--red)';
+  t.style.color = ok ? '#000' : '#fff';
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3200);
+}
+async function doRefresh() {
+  try {
+    const r = await fetch(_RM+'/api/data');
+    if (r.status === 401) { location.href = _RM; return; }
+    const d = await r.json();
+    if (d.keysHtml) document.getElementById('kb').innerHTML = d.keysHtml;
+  } catch(e) {}
+}
+async function generateKey() {
+  const label   = document.getElementById('nlabel').value.trim();
+  const days    = parseInt(document.getElementById('ndays').value  || 0);
+  const hours   = parseInt(document.getElementById('nhours').value || 0);
+  const mins    = parseInt(document.getElementById('nmins').value  || 0);
+  const _u      = document.getElementById('nuses').value.trim();
+  const maxUses = _u === '' ? 3 : parseInt(_u);
+  try {
+    const r = await fetch(_RM+'/api/keys', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({label, days, hours, mins, maxUses})
+    });
+    if (r.status === 401) { toast('Sessao expirada', false); setTimeout(() => location.href=_RM, 1500); return; }
+    const d = await r.json();
+    if (d.ok) {
+      toast('Chave criada: ' + d.code);
+      ['nlabel','ndays','nhours','nmins','nuses'].forEach(id => document.getElementById(id).value = '');
+      await doRefresh();
+    } else toast('Erro: ' + (d.error||'?'), false);
+  } catch(e) { toast('Erro de rede.', false); }
+}
+setInterval(doRefresh, 30000);
+</script>
+</body></html>`;
+}
+
 function renderAdminDashboard() {
   const expiringSoon  = Object.values(keys).filter(k => k.active && isKeyExpiringSoon(k)).length;
   const warnLimitKeys = Object.values(keys).filter(k => k.active && (k.warnCount||0) > 0).length;
@@ -1433,7 +1561,7 @@ async function handleRequest(req, res) {
     // Gerar token e responder IMEDIATAMENTE — não esperar MongoDB
     const _et = generateToken();
     extSessions[_et] = { keyCode, expiresAt: new Date(Date.now() + 30*24*60*60*1000).toISOString() };
-    const _authData = getAuthData(keyCode);
+    const _authData = getAuthData(keyCode, body.userName || '');
     _authData._zv_et = _et;
     sendJson(res, _authData);
     // Salvar no banco em background — não bloqueia a resposta
@@ -1451,6 +1579,9 @@ async function handleRequest(req, res) {
     const keyCode = (body.authKey || '').toLowerCase();
     // Sem verificação HMAC — check-status é protegido pela chave
     // Se o servidor ainda está inicializando, não deslogar o cliente
+    if (!serverReady) {
+      sendJson(res, { active: true }); return;
+    }
     if (!serverReady) {
       sendJson(res, { active: true }); return;
     }
