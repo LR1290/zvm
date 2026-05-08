@@ -416,9 +416,7 @@ function renderExtensionLogin({ callback, error = '', keyVal = '' }) {
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
-canvas{position:fixed;inset:0;z-index:0;pointer-events:none}
-.card{position:relative;z-index:1}
+body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace}
 .card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:36px 32px;width:100%;max-width:420px;text-align:center}
 .logo{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:#00ff87;margin-bottom:4px}
 .sub{color:#6b6b8a;font-size:11px;letter-spacing:3px;text-transform:uppercase;margin-bottom:28px}
@@ -462,9 +460,7 @@ function renderClientPortal() {
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;padding:20px;overflow:hidden}
-canvas{position:fixed;inset:0;z-index:0;pointer-events:none}
-.card{position:relative;z-index:1}
+body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;padding:20px}
 .wrap{width:100%;max-width:460px}
 .card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:36px 32px;text-align:center}
 .logo{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:#00ff87;margin-bottom:4px}
@@ -707,35 +703,10 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 });
 </script>
-<canvas id="c"></canvas>
-<script>(function(){
-  var c=document.getElementById('c'),ctx=c.getContext('2d');
-  var W=c.width=window.innerWidth,H=c.height=window.innerHeight;
-  var pts=Array.from({length:55},function(){return{x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.35,vy:(Math.random()-.5)*.35,r:Math.random()*1.8+.5};});
-  function draw(){
-    ctx.clearRect(0,0,W,H);
-    pts.forEach(function(p){
-      p.x+=p.vx;p.y+=p.vy;
-      if(p.x<0||p.x>W)p.vx*=-1;if(p.y<0||p.y>H)p.vy*=-1;
-      ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
-      ctx.fillStyle='rgba(124,58,237,0.45)';ctx.fill();
-    });
-    pts.forEach(function(a,i){pts.slice(i+1).forEach(function(b){
-      var d=Math.hypot(a.x-b.x,a.y-b.y);
-      if(d<130){ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);
-        ctx.strokeStyle='rgba(124,58,237,'+(0.13*(1-d/130))+')';ctx.lineWidth=.7;ctx.stroke();}
-    });});
-    requestAnimationFrame(draw);
-  }
-  draw();
-  window.addEventListener('resize',function(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;});
-})();</script>
 </body></html>`;
 }
 
-function renderAdminLogin(error) {
-  error = error || '';
-  const _hasTOTP = !!TOTP_SECRET;
+function renderAdminLogin(error = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZapVoice Admin</title>
@@ -757,33 +728,10 @@ input:focus{border-color:#00ff87}
   <form method="POST" action="${R_ADMIN}/login">
     <label>Usuário</label><input type="text" name="user" autocomplete="off">
     <label>Senha</label><input type="password" name="pass">
-    ${_hasTOTP ? `<label>Código 2FA</label><input type="text" name="totp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" autocomplete="one-time-code" style="letter-spacing:4px;font-size:18px;text-align:center">` : ''}
+    ${TOTP_SECRET ? `<label>Código 2FA</label><input type="text" name="totp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" autocomplete="one-time-code" style="letter-spacing:4px;font-size:18px;text-align:center">` : ''}
     <button type="submit" class="btn">Entrar</button>
   </form>
-</div><canvas id="c"></canvas>
-<script>(function(){
-  var c=document.getElementById('c'),ctx=c.getContext('2d');
-  var W=c.width=window.innerWidth,H=c.height=window.innerHeight;
-  var pts=Array.from({length:55},function(){return{x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.35,vy:(Math.random()-.5)*.35,r:Math.random()*1.8+.5};});
-  function draw(){
-    ctx.clearRect(0,0,W,H);
-    pts.forEach(function(p){
-      p.x+=p.vx;p.y+=p.vy;
-      if(p.x<0||p.x>W)p.vx*=-1;if(p.y<0||p.y>H)p.vy*=-1;
-      ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
-      ctx.fillStyle='rgba(124,58,237,0.45)';ctx.fill();
-    });
-    pts.forEach(function(a,i){pts.slice(i+1).forEach(function(b){
-      var d=Math.hypot(a.x-b.x,a.y-b.y);
-      if(d<130){ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);
-        ctx.strokeStyle='rgba(124,58,237,'+(0.13*(1-d/130))+')';ctx.lineWidth=.7;ctx.stroke();}
-    });});
-    requestAnimationFrame(draw);
-  }
-  draw();
-  window.addEventListener('resize',function(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;});
-})();</script>
-</body></html>`;
+</div></body></html>`;
 }
 
 // ─────────────────────────────────────────────
@@ -872,89 +820,21 @@ function buildLogsHtml(arr) {
 // ─────────────────────────────────────────────
 function buildModKeysHtml() {
   const entries = Object.entries(keys);
-  if (!entries.length) return `<tr><td colspan="8" style="text-align:center;padding:30px;color:#6b6b8a;font-size:12px">Nenhuma chave ainda</td></tr>`;
+  if (!entries.length) return `<tr><td colspan="8" class="empty">Nenhuma chave ainda</td></tr>`;
   return entries.map(([code, k]) => {
     const expired = isKeyExpired(k);
-    const statusClass = k.active && !expired ? 'on' : 'off';
-    const statusText  = !k.active ? 'BLOQUEADA' : (expired ? 'EXPIRADA' : 'ATIVA');
     return `
 <tr>
   <td><span class="kc">${escHtml(code)}</span></td>
   <td>${escHtml(k.label||'')}</td>
-  <td><span class="badge ${statusClass}">${statusText}</span></td>
-  <td>${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</td>
+  <td><span class="badge ${k.active?(expired?'off':'on'):'off'}">${k.active?(expired?'EXPIRADA':'ATIVA'):'BLOQUEADA'}</span></td>
+  <td>${(k.phones||[]).length}/${k.maxUses===-1?'∞':(k.maxUses>0?k.maxUses:MAX_USES)}</td>
   <td>${escHtml(k.lastPhone||'-')}</td>
   <td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
   <td>${new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</td>
   <td>${k.expiresAt?new Date(k.expiresAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
 </tr>`;
   }).join('');
-}
-
-function renderModLogin(error) {
-  error = error || '';
-  const totpHtml = MOD_TOTP
-    ? '<input type="text" name="totp" placeholder="Código 2FA" autocomplete="off" inputmode="numeric" style="width:100%;padding:12px 14px;background:#0a0a0f;border:1.5px solid #1c1c2e;border-radius:10px;color:#00ff87;font-family:\'Space Mono\',monospace;font-size:15px;outline:none;letter-spacing:2px;margin-bottom:12px">'
-    : '';
-  return `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZapVoice Mod</title>
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
-canvas{position:fixed;inset:0;z-index:0;pointer-events:none}
-.card{position:relative;z-index:1;background:#111118;border:1px solid #2a1a4a;border-radius:18px;padding:36px 32px;width:100%;max-width:380px;text-align:center;box-shadow:0 0 40px #7c3aed22}
-h1{font-family:'Syne',sans-serif;font-weight:800;font-size:22px;color:#00ff87;margin-bottom:6px}
-.sub{color:#6b6b8a;font-size:11px;margin-bottom:28px}
-input{width:100%;padding:13px 16px;background:#0a0a0f;border:1.5px solid #1c1c2e;border-radius:10px;color:#00ff87;font-family:'Space Mono',monospace;font-size:15px;outline:none;letter-spacing:2px;transition:border .2s;margin-bottom:12px}
-input:focus{border-color:#7c3aed}
-.err{background:#ff475715;border:1px solid #ff4757;border-radius:8px;color:#ff4757;padding:11px 14px;font-size:12px;margin-bottom:18px;text-align:left}
-.btn{width:100%;padding:14px;background:#7c3aed;border:none;border-radius:10px;color:#fff;font-family:'Syne',sans-serif;font-weight:700;font-size:15px;cursor:pointer;margin-top:8px;transition:opacity .2s}
-.btn:hover{opacity:.85}
-</style>
-</head>
-<body>
-<canvas id="c"></canvas>
-<div class="card">
-  <h1>👮 Moderador</h1>
-  <div class="sub">Painel de criação de chaves</div>
-  ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
-  <form method="POST" action="${R_MOD}/login">
-    <input type="text"     name="user" placeholder="Usuário"  autocomplete="off">
-    <input type="password" name="pass" placeholder="Senha">
-    ${totpHtml}
-    <button type="submit" class="btn">Entrar</button>
-  </form>
-</div>
-<script>
-(function(){
-  var c=document.getElementById('c'),ctx=c.getContext('2d');
-  var W=c.width=window.innerWidth,H=c.height=window.innerHeight;
-  var pts=Array.from({length:60},function(){return{x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.4,vy:(Math.random()-.5)*.4,r:Math.random()*2+1};});
-  function draw(){
-    ctx.clearRect(0,0,W,H);
-    pts.forEach(function(p){
-      p.x+=p.vx; p.y+=p.vy;
-      if(p.x<0||p.x>W)p.vx*=-1;
-      if(p.y<0||p.y>H)p.vy*=-1;
-      ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
-      ctx.fillStyle='rgba(124,58,237,0.5)';ctx.fill();
-    });
-    pts.forEach(function(a,i){pts.slice(i+1).forEach(function(b){
-      var d=Math.hypot(a.x-b.x,a.y-b.y);
-      if(d<120){ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);
-        ctx.strokeStyle='rgba(124,58,237,'+(0.15*(1-d/120))+')';ctx.lineWidth=.8;ctx.stroke();}
-    });});
-    requestAnimationFrame(draw);
-  }
-  draw();
-  window.addEventListener('resize',function(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;});
-})();
-</script>
-</body></html>`;
 }
 
 function renderModDashboard() {
@@ -967,36 +847,31 @@ function renderModDashboard() {
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--green:#00ff87;--purple:#7c3aed;--dark:#080810;--card:#0f0f1a;--border:#1c1c2e;--fg:#e2e2f0;--muted:#5a5a7a;--red:#ff4757;--radius:10px}
-body{background:var(--dark);color:var(--fg);font-family:'Space Mono',monospace;min-height:100vh;padding:24px;position:relative;overflow:hidden}
-canvas{position:fixed;inset:0;z-index:0;pointer-events:none}
-.wrap,.header,.sec,.search-bar,.modal-bg{position:relative;z-index:1}
-canvas{position:fixed;inset:0;z-index:0;pointer-events:none}
-.wrap{position:relative;z-index:1}
+:root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--border:#1c1c2e;--fg:#e2e2f0;--muted:#5a5a7a;--red:#ff4757;--radius:10px}
+body{background:var(--dark);color:var(--fg);font-family:'Space Mono',monospace;min-height:100vh;padding:24px}
 h1{font-family:'Syne',sans-serif;font-size:22px;color:var(--green);margin-bottom:20px}
 .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}
 .out{color:var(--muted);font-size:12px;text-decoration:none}
 .out:hover{color:var(--fg)}
-.new-key{background:var(--card);border:1px solid #2a1a4a;border-radius:var(--radius);padding:18px;margin-bottom:24px;box-shadow:0 0 20px #7c3aed11}
-.new-key h2{font-size:12px;color:var(--purple);margin-bottom:14px;letter-spacing:1.5px}
+.new-key{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:24px}
+.new-key h2{font-size:13px;color:var(--green);margin-bottom:14px;letter-spacing:1px}
 .fields{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}
 .fields input{background:var(--dark);border:1px solid var(--border);border-radius:6px;color:var(--fg);font-family:inherit;font-size:13px;padding:8px 10px;width:160px}
-.fields input:focus{outline:none;border-color:var(--purple)}
-.btn{padding:9px 18px;background:var(--purple);color:#fff;border:none;border-radius:6px;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;cursor:pointer}
+.fields input:focus{outline:none;border-color:var(--green)}
+.btn{padding:9px 18px;background:var(--green);color:#000;border:none;border-radius:6px;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;cursor:pointer}
 .btn:hover{opacity:.85}
-.tbl-wrap{background:var(--card);border:1px solid #2a1a4a;border-radius:var(--radius);overflow:hidden;box-shadow:0 0 20px #7c3aed11}
 table{width:100%;border-collapse:collapse;font-size:12px}
 th{text-align:left;padding:10px 8px;border-bottom:1px solid var(--border);color:var(--muted);font-size:10px;letter-spacing:1px;text-transform:uppercase}
 td{padding:10px 8px;border-bottom:1px solid var(--border)}
 .kc{font-size:11px;color:var(--green);letter-spacing:.5px}
 .badge{padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700}
-.on{background:#00ff8720;color:var(--green)}.off{background:#ff475720;color:var(--red)}
+.on{background:#00ff8720;color:var(--green)}
+.off{background:#ff475720;color:var(--red)}
+.empty{color:var(--muted);text-align:center;padding:30px;font-size:12px}
 .toast{display:none;position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:8px;font-size:13px;z-index:999;font-family:'Syne',sans-serif}
 </style>
 </head>
 <body>
-<canvas id="c"></canvas>
-<div class="wrap">
 <div class="header">
   <h1>👮 Painel Moderador</h1>
   <a href="${R_M}/logout" class="out">↩ Sair</a>
@@ -1009,92 +884,63 @@ td{padding:10px 8px;border-bottom:1px solid var(--border)}
     <input id="ndays"   placeholder="Dias"  type="number" min="0" style="width:80px">
     <input id="nhours"  placeholder="Horas" type="number" min="0" style="width:80px">
     <input id="nmins"   placeholder="Mins"  type="number" min="0" style="width:80px">
-    <input id="nuses"   placeholder="Usos (padrao 3)" type="number" min="-1" style="width:160px">
+    <input id="nuses"   placeholder="Usos (padrão 3)" type="number" min="-1" style="width:160px">
   </div>
   <button class="btn" onclick="generateKey()">Gerar Chave</button>
 </div>
 
-<div class="tbl-wrap">
 <table>
   <thead><tr>
-    <th>Codigo</th><th>Cliente</th><th>Status</th><th>Dispositivos</th>
-    <th>Ultimo Numero</th><th>Ultimo Uso</th><th>Criada em</th><th>Expira em</th>
+    <th>Código</th><th>Cliente</th><th>Status</th><th>Dispositivos</th>
+    <th>Último Número</th><th>Último Uso</th><th>Criada em</th><th>Expira em</th>
   </tr></thead>
   <tbody id="kb">${buildModKeysHtml()}</tbody>
 </table>
-</div>
-</div>
 
 <div class="toast" id="toast"></div>
 <script>
 const _RM = '${R_M}';
-function toast(msg, ok) {
-  ok = ok !== false;
-  var t = document.getElementById('toast');
+function toast(msg, ok=true) {
+  const t = document.getElementById('toast');
   t.textContent = msg;
-  t.style.background = ok ? '#00ff87' : '#ff4757';
+  t.style.background = ok ? 'var(--green)' : 'var(--red)';
   t.style.color = ok ? '#000' : '#fff';
   t.style.display = 'block';
-  setTimeout(function(){ t.style.display='none'; }, 3200);
+  setTimeout(() => t.style.display = 'none', 3200);
 }
 async function doRefresh() {
   try {
-    var r = await fetch(_RM+'/api/data', {credentials:'include'});
+    const r = await fetch(_RM+'/api/data');
     if (r.status === 401) { location.href = _RM; return; }
-    var d = await r.json();
+    const d = await r.json();
     if (d.keysHtml) document.getElementById('kb').innerHTML = d.keysHtml;
   } catch(e) {}
 }
 async function generateKey() {
-  var label   = document.getElementById('nlabel').value.trim();
-  var days    = parseInt(document.getElementById('ndays').value  || 0);
-  var hours   = parseInt(document.getElementById('nhours').value || 0);
-  var mins    = parseInt(document.getElementById('nmins').value  || 0);
-  var usesVal = document.getElementById('nuses').value.trim();
-  var maxUses = usesVal === '' ? 3 : parseInt(usesVal);
+  const label   = document.getElementById('nlabel').value.trim();
+  const days    = parseInt(document.getElementById('ndays').value  || 0);
+  const hours   = parseInt(document.getElementById('nhours').value || 0);
+  const mins    = parseInt(document.getElementById('nmins').value  || 0);
+  const _u      = document.getElementById('nuses').value.trim();
+  const maxUses = _u === '' ? 3 : parseInt(_u);
   try {
-    var r = await fetch(_RM+'/api/keys', {
-      method: 'POST',
-      credentials: 'include',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({label:label, days:days, hours:hours, mins:mins, maxUses:maxUses})
+    const r = await fetch(_RM+'/api/keys', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({label, days, hours, mins, maxUses})
     });
-    if (r.status === 401) { toast('Sessao expirada', false); setTimeout(function(){ location.href=_RM; }, 1500); return; }
-    var d = await r.json();
+    if (r.status === 401) { toast('Sessao expirada', false); setTimeout(() => location.href=_RM, 1500); return; }
+    const d = await r.json();
     if (d.ok) {
       toast('Chave criada: ' + d.code);
-      ['nlabel','ndays','nhours','nmins','nuses'].forEach(function(id){ document.getElementById(id).value = ''; });
+      ['nlabel','ndays','nhours','nmins','nuses'].forEach(id => document.getElementById(id).value = '');
       await doRefresh();
-    } else { toast('Erro: '+(d.error||'?'), false); }
+    } else toast('Erro: ' + (d.error||'?'), false);
   } catch(e) { toast('Erro de rede.', false); }
 }
 setInterval(doRefresh, 30000);
-(function(){
-  var c=document.getElementById('c'),ctx=c.getContext('2d');
-  var W=c.width=window.innerWidth,H=c.height=window.innerHeight;
-  var pts=Array.from({length:50},function(){return{x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.3,vy:(Math.random()-.5)*.3,r:Math.random()*1.5+.5};});
-  function draw(){
-    ctx.clearRect(0,0,W,H);
-    pts.forEach(function(p){
-      p.x+=p.vx; p.y+=p.vy;
-      if(p.x<0||p.x>W)p.vx*=-1; if(p.y<0||p.y>H)p.vy*=-1;
-      ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
-      ctx.fillStyle='rgba(124,58,237,0.4)';ctx.fill();
-    });
-    pts.forEach(function(a,i){pts.slice(i+1).forEach(function(b){
-      var d=Math.hypot(a.x-b.x,a.y-b.y);
-      if(d<130){ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);
-        ctx.strokeStyle='rgba(124,58,237,'+(0.12*(1-d/130))+')';ctx.lineWidth=.7;ctx.stroke();}
-    });});
-    requestAnimationFrame(draw);
-  }
-  draw();
-  window.addEventListener('resize',function(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;});
-})();
 </script>
 </body></html>`;
 }
-
 
 function renderAdminDashboard() {
   const expiringSoon  = Object.values(keys).filter(k => k.active && isKeyExpiringSoon(k)).length;
@@ -1684,29 +1530,6 @@ async function exportCSV(){
 }
 
 </script>
-<canvas id="c"></canvas>
-<script>(function(){
-  var c=document.getElementById('c'),ctx=c.getContext('2d');
-  var W=c.width=window.innerWidth,H=c.height=window.innerHeight;
-  var pts=Array.from({length:55},function(){return{x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.35,vy:(Math.random()-.5)*.35,r:Math.random()*1.8+.5};});
-  function draw(){
-    ctx.clearRect(0,0,W,H);
-    pts.forEach(function(p){
-      p.x+=p.vx;p.y+=p.vy;
-      if(p.x<0||p.x>W)p.vx*=-1;if(p.y<0||p.y>H)p.vy*=-1;
-      ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
-      ctx.fillStyle='rgba(124,58,237,0.45)';ctx.fill();
-    });
-    pts.forEach(function(a,i){pts.slice(i+1).forEach(function(b){
-      var d=Math.hypot(a.x-b.x,a.y-b.y);
-      if(d<130){ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);
-        ctx.strokeStyle='rgba(124,58,237,'+(0.13*(1-d/130))+')';ctx.lineWidth=.7;ctx.stroke();}
-    });});
-    requestAnimationFrame(draw);
-  }
-  draw();
-  window.addEventListener('resize',function(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;});
-})();</script>
 </body></html>`;
 }
 
@@ -1811,7 +1634,7 @@ async function handleRequest(req, res) {
   // ── EXTENSÃO: validação via /v3/key ──
   if (p === R_EXT+'/v3/key' && req.method === 'POST') {
     if (!checkRateLimit(ip, 'api')) {
-      sendJson(res, { authError: 'rateLimited', authErrorMessage: 'Muitas tentativas. Aguarde.', isLoggedIn: false }, 429);
+      sendJson(res, { authError: 'rateLimited', authErrorMessage: 'Muitas tentativas. Aguarde.' }, 429);
       return;
     }
     const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
@@ -1825,20 +1648,20 @@ async function handleRequest(req, res) {
     const deviceId   = body.deviceId    || '';
 
     if (!keyCode || !keys[keyCode]) {
-      sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada. Contate o vendedor.', isLoggedIn: false });
+      sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada. Contate o vendedor.' });
       addLog({ keyCode: keyCode||'?', label: '-', phone, ip, wppVersion, action: 'key_not_found' }).catch(()=>{});
       return;
     }
     if (isKeyExpired(keys[keyCode])) {
       keys[keyCode].active = false;
-      sendJson(res, { authError: 'keyExpired', reason: 'expired', isLoggedIn: false, data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave expirada.', permissions: [] } }, 403);
+      sendJson(res, { authError: 'keyExpired', reason: 'expired', data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave expirada.', permissions: [] } }, 403);
       addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'expired' }).catch(()=>{});
       saveDb().catch(()=>{});
       fireWebhook('key_expired', keyCode, 'Expiração detectada no v3/key');
       return;
     }
     if (!keys[keyCode].active) {
-      sendJson(res, { authError: 'keyBlocked', reason: 'blocked', isLoggedIn: false, data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave bloqueada.', permissions: [] } }, 403);
+      sendJson(res, { authError: 'keyBlocked', reason: 'blocked', data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave bloqueada.', permissions: [] } }, 403);
       addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'login_blocked' }).catch(()=>{});
       return;
     }
@@ -1935,68 +1758,6 @@ async function handleRequest(req, res) {
       expires_at: new Date(Date.now() + 365*24*60*60*1000).toISOString(), isExpired: false
     });
     return;
-  }
-
-  // ── MOD: login ──
-  if (p === R_MOD+'/login' && req.method === 'POST') {
-    if (!MOD_USER || !MOD_PASS) { sendHtml(res, renderModLogin('Painel de moderador nao configurado.')); return; }
-    const form = await parseFormBody(req);
-    const credOk = form.get('user') === MOD_USER && form.get('pass') === MOD_PASS;
-    const totpOk = MOD_TOTP ? verifyTOTP(MOD_TOTP, (form.get('totp')||'').trim()) : true;
-    if (credOk && totpOk) {
-      const token = generateToken();
-      modSessions[token] = { expiresAt: new Date(Date.now()+8*60*60*1000).toISOString() };
-      res.setHeader('Set-Cookie', `zv_mod=${token}; Path=/; HttpOnly; SameSite=Strict`);
-      res.writeHead(302, { Location: R_MOD }); res.end();
-    } else {
-      const msg = credOk && !totpOk ? 'Codigo 2FA invalido ou expirado' : 'Usuario ou senha incorretos';
-      sendHtml(res, renderModLogin(msg));
-    }
-    return;
-  }
-
-  // ── MOD: logout ──
-  if (p === R_MOD+'/logout') {
-    const ck = (req.headers.cookie||'').match(/zv_mod=([a-f0-9]+)/);
-    if (ck) delete modSessions[ck[1]];
-    res.setHeader('Set-Cookie', 'zv_mod=; Path=/; Max-Age=0');
-    res.writeHead(302, { Location: R_MOD }); res.end(); return;
-  }
-
-  // ── MOD: dashboard ──
-  if ((p === R_MOD || p === R_MOD+'/') && req.method === 'GET') {
-    if (!MOD_USER) { res.writeHead(404); res.end('Not found'); return; }
-    if (!isModSession(req)) { sendHtml(res, renderModLogin()); return; }
-    sendHtml(res, renderModDashboard()); return;
-  }
-
-  // ── MOD API: dados ──
-  if (p === R_MOD+'/api/data' && req.method === 'GET') {
-    if (!isModSession(req)) { sendJson(res, {error:'unauthorized'}, 401); return; }
-    sendJson(res, { keysHtml: buildModKeysHtml() }); return;
-  }
-
-  // ── MOD API: gerar chave ──
-  if (p === R_MOD+'/api/keys' && req.method === 'POST') {
-    if (!isModSession(req)) { sendJson(res, {error:'unauthorized'}, 401); return; }
-    const body = await parseBody(req);
-    const label   = String(body.label||'').trim().slice(0,60);
-    const days    = parseInt(body.days  || 0);
-    const hours   = parseInt(body.hours || 0);
-    const mins    = parseInt(body.mins  || 0);
-    const maxUses = typeof body.maxUses==='number' ? body.maxUses : parseInt(body.maxUses ?? MAX_USES);
-    const code = generateCode();
-    const totalMins = days*1440 + hours*60 + (mins||0);
-    const now = new Date();
-    keys[code] = {
-      label, active: true, phones: [], uses: 0,
-      maxUses: isNaN(maxUses) ? MAX_USES : maxUses,
-      expiresAt:     totalMins > 0 ? new Date(now.getTime()+totalMins*60000).toISOString() : null,
-      expireDuration: totalMins > 0 ? totalMins : null,
-      createdAt: now.toISOString(), lastUsed: null, lastIp: null, lastPhone: null, warnCount: 0, note: ''
-    };
-    saveDb().catch(()=>{});
-    sendJson(res, { ok: true, code }); return;
   }
 
   // ── ADMIN: login ──
