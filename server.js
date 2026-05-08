@@ -1634,7 +1634,7 @@ async function handleRequest(req, res) {
   // ── EXTENSÃO: validação via /v3/key ──
   if (p === R_EXT+'/v3/key' && req.method === 'POST') {
     if (!checkRateLimit(ip, 'api')) {
-      sendJson(res, { authError: 'rateLimited', authErrorMessage: 'Muitas tentativas. Aguarde.' }, 429);
+      sendJson(res, { authError: 'rateLimited', authErrorMessage: 'Muitas tentativas. Aguarde.', isLoggedIn: false }, 429);
       return;
     }
     const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
@@ -1648,20 +1648,20 @@ async function handleRequest(req, res) {
     const deviceId   = body.deviceId    || '';
 
     if (!keyCode || !keys[keyCode]) {
-      sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada. Contate o vendedor.' });
+      sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada. Contate o vendedor.', isLoggedIn: false });
       addLog({ keyCode: keyCode||'?', label: '-', phone, ip, wppVersion, action: 'key_not_found' }).catch(()=>{});
       return;
     }
     if (isKeyExpired(keys[keyCode])) {
       keys[keyCode].active = false;
-      sendJson(res, { authError: 'keyExpired', reason: 'expired', data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave expirada.', permissions: [] } }, 403);
+      sendJson(res, { authError: 'keyExpired', reason: 'expired', isLoggedIn: false, data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave expirada.', permissions: [] } }, 403);
       addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'expired' }).catch(()=>{});
       saveDb().catch(()=>{});
       fireWebhook('key_expired', keyCode, 'Expiração detectada no v3/key');
       return;
     }
     if (!keys[keyCode].active) {
-      sendJson(res, { authError: 'keyBlocked', reason: 'blocked', data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave bloqueada.', permissions: [] } }, 403);
+      sendJson(res, { authError: 'keyBlocked', reason: 'blocked', isLoggedIn: false, data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave bloqueada.', permissions: [] } }, 403);
       addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'login_blocked' }).catch(()=>{});
       return;
     }
@@ -1682,6 +1682,7 @@ async function handleRequest(req, res) {
         keys[keyCode].warnCount = (keys[keyCode].warnCount || 0) + 1;
         sendJson(res, {
           warnLimit: true,
+          isLoggedIn: false,
           warnRemaining: keys[keyCode].warnCount,
           data: {
             message: `USUÁRIO NÃO ENCONTRADO. Limite de ativações atingido (${keys[keyCode].phones.length}/${keyMaxUses}). Contate o vendedor.`,
