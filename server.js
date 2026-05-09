@@ -814,7 +814,7 @@ function buildKeysHtml() {
   <td>${escHtml(k.lastIp||'-')}</td>
   <td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
   <td>${new Date(k.createdAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}${expHtml}</td>
-  <td class="note-cell" onclick="openNote('${escHtml(code)}','${noteEsc.replace(/'/g,"\\'")}')"><span class="note-preview">${noteEsc || '<span style=\\"color:var(--muted)\\">—</span>'}</span></td>
+  <td class="note-cell" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${noteEsc || '<span style=\\"color:var(--muted)\\">—</span>'}</span></td>
   <td>
     <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
     <button class="bs bg" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">+ Tempo</button>
@@ -992,9 +992,8 @@ function renderAdminDashboard() {
 }
 body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
 #_cvs{position:fixed;inset:0;z-index:0;pointer-events:none}
-header,main,footer,div:not(#_cvs){position:relative;z-index:1}
 header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;
-  border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:100;
+  border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;
   box-shadow:0 2px 20px #00000040}
 .logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--green);
   display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
@@ -1082,21 +1081,22 @@ tr:hover td{background:#ffffff02}
 .wl{background:#ff8c0018;color:#ff8c00}
 .empty{text-align:center;color:var(--muted);padding:40px!important;font-size:11px;letter-spacing:1px}
 .toast{position:fixed;bottom:20px;right:20px;padding:11px 18px;border-radius:var(--radius);
-  font-family:'Syne',sans-serif;font-weight:700;font-size:12px;display:none;z-index:9999;
+  font-family:'Syne',sans-serif;font-weight:700;font-size:12px;display:none;z-index:999999;
   box-shadow:0 6px 30px #00000070;max-width:380px;line-height:1.4}
 .note-cell{cursor:pointer;max-width:130px}
 .note-cell:hover .note-preview{color:var(--green)}
 .note-preview{color:var(--muted);font-size:10px;white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis;display:block;max-width:120px}
-.modal-bg{display:none;position:fixed;inset:0;background:#00000090;z-index:200;
+.modal-bg{display:none;position:fixed;inset:0;background:#00000090;z-index:99999;
   align-items:center;justify-content:center;backdrop-filter:blur(3px)}
 .modal-bg.open{display:flex}
 .modal{background:var(--card);border:1px solid var(--border2);border-radius:12px;
-  padding:22px;width:340px;max-width:95vw;box-shadow:0 20px 60px #00000090}
+  padding:22px;width:340px;max-width:95vw;box-shadow:0 20px 60px #00000090;
+  max-height:90vh;overflow-y:auto}
 .modal h3{font-family:'Syne',sans-serif;font-size:13px;margin-bottom:11px;color:var(--green)}
 .modal textarea{width:100%;background:var(--dark);border:1px solid var(--border);
   border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;
-  font-size:11px;padding:9px;outline:none;resize:vertical;min-height:80px;transition:border .2s}
+  font-size:11px;padding:9px;outline:none;resize:vertical;min-height:80px;max-height:300px;transition:border .2s}
 .modal textarea:focus{border-color:var(--green)}
 .modal-actions{display:flex;gap:8px;margin-top:11px;justify-content:flex-end}
 @media(max-width:1200px){.stats{grid-template-columns:repeat(3,1fr)}}
@@ -1395,10 +1395,18 @@ function openNote(code, currentNote){
   document.getElementById('noteKeyLabel').textContent=code;
   document.getElementById('noteText').value=currentNote||'';
   document.getElementById('noteModal').classList.add('open');
-  setTimeout(()=>document.getElementById('noteText').focus(),100);
+  setTimeout(function(){document.getElementById('noteText').focus();},100);
 }
 function closeNote(){document.getElementById('noteModal').classList.remove('open');}
 document.getElementById('noteModal').addEventListener('click',function(e){if(e.target===this)closeNote();});
+// Listener delegado para note-cell — evita problemas com notas longas no onclick inline
+document.getElementById('kb').addEventListener('click',function(e){
+  var td=e.target.closest('.note-cell');
+  if(!td)return;
+  var code=td.dataset.code||'';
+  var note=td.dataset.note||'';
+  openNote(code,note);
+});
 
 function openRenew(code, label) {
   document.getElementById('renewKeyCode').value = code;
