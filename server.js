@@ -8,6 +8,11 @@ const { MongoClient } = require('mongodb');
 const PORT       = process.env.PORT       || 3000;
 const ADMIN_USER = process.env.ADMIN_USER;
 const ADMIN_PASS = process.env.ADMIN_PASS;
+// ── Cakto + Resend ──
+const CAKTO_SECRET  = process.env.CAKTO_SECRET  || '';  // segredo do webhook Cakto
+const RESEND_KEY    = process.env.RESEND_KEY    || '';  // API key do Resend
+const EMAIL_FROM    = process.env.EMAIL_FROM    || 'ZapVoice <noreply@seudominio.com>';
+const EMAIL_SUPPORT = process.env.EMAIL_SUPPORT || '';  // email de suporte exibido no email
 if (!ADMIN_USER || !ADMIN_PASS) {
   console.error('❌ ERRO CRÍTICO: Defina as variáveis de ambiente ADMIN_USER e ADMIN_PASS antes de iniciar.');
   console.error('   No Render.com: Settings > Environment Variables');
@@ -327,25 +332,84 @@ function getAuthData(keyCode, userName) {
 // expired/login_blocked: dedup de 5min (evitar spam mas registrar se reocorrer)
 // login_ok: sem dedup — sempre registrar novo número
 const DEDUP_WINDOWS = {
-  'relogin_ok':    8 * 60 * 60 * 1000, // 8 horas
-  'expired':       5 * 60 * 1000,       // 5 minutos
-  'login_blocked': 5 * 60 * 1000,       // 5 minutos
+  'relogin_ok':    24 * 60 * 60 * 1000, // 24 horas — refreshPremium a cada 5min não polui log
+  'expired':        5 * 60 * 1000,
+  'login_blocked':  5 * 60 * 1000,
+  'warn_limit':    10 * 60 * 1000,
 };
+// Map dedicado para dedup — não depende de logs[] (sobrevive a reinicializações em memória)
+const _dedupMap = new Map(); // chave: 'action:keyCode:phone' → timestamp
 
 async function addLog(entry) {
   const dedupMs = DEDUP_WINDOWS[entry.action];
   if (dedupMs) {
-    const cutoff = Date.now() - dedupMs;
-    const isDup = logs.some(l =>
-      l.keyCode === entry.keyCode &&
-      l.action  === entry.action  &&
-      new Date(l.timestamp).getTime() > cutoff
-    );
-    if (isDup) return;
+    // Para relogin_ok inclui o phone na chave para não bloquear números diferentes
+    const dedupKey = entry.action + ':' + (entry.keyCode||'') + ':' + (entry.phone||'');
+    const lastTs = _dedupMap.get(dedupKey) || 0;
+    if (Date.now() - lastTs < dedupMs) return;
+    _dedupMap.set(dedupKey, Date.now());
   }
   logs.unshift({ ...entry, timestamp: new Date().toISOString() });
   if (logs.length > 500) logs = logs.slice(0, 500);
   await saveDb();
+}
+
+// ── Envio de email via Resend ──
+async function sendKeyEmail({ to, name, keyCode, maxUses, expiresAt }) {
+  if (!RESEND_KEY) {
+    console.warn('[EMAIL] RESEND_KEY não configurado — email não enviado para', to);
+    return false;
+  }
+  const usesLabel = maxUses === 1 ? '1 dispositivo' : maxUses === 3 ? '3 dispositivos' : '5 dispositivos';
+  const expLabel  = expiresAt ? new Date(expiresAt).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '31 dias';
+  const supportLine = EMAIL_SUPPORT ? `<p style="margin:0;font-size:13px;color:#888">Suporte: <a href="mailto:${EMAIL_SUPPORT}" style="color:#7c3aed">${EMAIL_SUPPORT}</a></p>` : '';
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#0a0a0f;font-family:monospace">
+<div style="max-width:520px;margin:40px auto;background:#111118;border:1px solid #2a1a4a;border-radius:16px;overflow:hidden">
+  <div style="background:linear-gradient(135deg,#1a0a3a,#0a0a1a);padding:32px 28px;text-align:center">
+    <div style="font-size:28px;margin-bottom:8px">⚡</div>
+    <h1 style="margin:0;font-size:22px;color:#00ff87;font-family:sans-serif">ZapVoice Pro</h1>
+    <p style="margin:8px 0 0;color:#888;font-size:13px">Sua chave de ativação está pronta</p>
+  </div>
+  <div style="padding:28px">
+    <p style="margin:0 0 16px;color:#e2e2f0;font-size:14px">Olá, <strong>${name || 'Cliente'}</strong>! Seu pagamento foi confirmado.</p>
+    <div style="background:#0a0a0f;border:1px solid #2a1a4a;border-radius:10px;padding:20px;text-align:center;margin-bottom:20px">
+      <p style="margin:0 0 8px;font-size:11px;color:#6b6b8a;letter-spacing:2px;text-transform:uppercase">Sua chave de ativação</p>
+      <p style="margin:0;font-size:18px;color:#00ff87;letter-spacing:2px;word-break:break-all"><strong>${keyCode}</strong></p>
+    </div>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
+      <tr><td style="padding:8px 0;border-bottom:1px solid #1e1e2e;color:#888;font-size:12px">Dispositivos</td><td style="padding:8px 0;border-bottom:1px solid #1e1e2e;color:#e2e2f0;font-size:12px;text-align:right">${usesLabel}</td></tr>
+      <tr><td style="padding:8px 0;color:#888;font-size:12px">Validade</td><td style="padding:8px 0;color:#e2e2f0;font-size:12px;text-align:right">${expLabel}</td></tr>
+    </table>
+    <div style="background:#7c3aed15;border:1px solid #7c3aed40;border-radius:8px;padding:14px;margin-bottom:20px">
+      <p style="margin:0;font-size:12px;color:#c4b5fd"><strong>Como ativar:</strong> Abra o WhatsApp Web, clique no ícone ⚡ da extensão ZapVoice e insira a chave acima.</p>
+    </div>
+    ${supportLine}
+  </div>
+  <div style="background:#0a0a0f;padding:16px 28px;text-align:center;border-top:1px solid #1e1e2e">
+    <p style="margin:0;font-size:11px;color:#444">Este email foi gerado automaticamente. Guarde sua chave em local seguro.</p>
+  </div>
+</div>
+</body></html>`;
+
+  try {
+    const resp = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + RESEND_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from:    EMAIL_FROM,
+        to:      [to],
+        subject: '⚡ Sua chave ZapVoice Pro está pronta!',
+        html
+      })
+    });
+    const data = await resp.json();
+    if (!resp.ok) { console.error('[EMAIL] Erro Resend:', JSON.stringify(data)); return false; }
+    console.log('[EMAIL] Enviado para', to, '| id:', data.id);
+    return true;
+  } catch(e) {
+    console.error('[EMAIL] Erro de rede:', e.message);
+    return false;
+  }
 }
 
 function isKeyExpired(k) {
@@ -2106,6 +2170,105 @@ async function handleRequest(req, res) {
       warnCount:    k.warnCount || 0,
     });
     return;
+  }
+
+  // ── Payt: postback de pagamento confirmado ──
+  if (p === '/payt/webhook' && req.method === 'POST') {
+    const rawBody = await new Promise(r => {
+      let b = ''; req.on('data', c => b += c); req.on('end', () => r(b));
+    });
+
+    // Validar token de segurança da Payt (opcional mas recomendado)
+    if (CAKTO_SECRET) {
+      const token = req.headers['x-payt-token'] || req.headers['x-webhook-token'] || '';
+      if (token !== CAKTO_SECRET) {
+        console.warn('[PAYT] Token inválido — ignorado');
+        res.writeHead(401); res.end('Unauthorized'); return;
+      }
+    }
+
+    let payload;
+    try { payload = JSON.parse(rawBody); } catch(e) {
+      // Payt pode enviar form-encoded em alguns casos
+      try {
+        const params = new URLSearchParams(rawBody);
+        payload = Object.fromEntries(params.entries());
+      } catch(e2) { res.writeHead(400); res.end('Bad Request'); return; }
+    }
+
+    // Aceitar apenas pagamentos aprovados/finalizados
+    const status = String(payload.status || payload.transaction_status || '').toLowerCase();
+    const approved = ['approved','finished','paid','completed','finalizada','aprovada','venda_paga']
+      .some(s => status.includes(s));
+    if (!approved) {
+      console.log('[PAYT] Status ignorado:', status);
+      res.writeHead(200); res.end('ignored'); return;
+    }
+
+    // Idempotência — evitar criar chave duas vezes para o mesmo pedido
+    const txId = String(payload.transaction_id || payload.id || '').trim();
+    if (txId) {
+      const alreadyProcessed = Object.values(keys).some(k =>
+        k.note && k.note.includes('payt_tx:' + txId)
+      );
+      if (alreadyProcessed) {
+        console.log('[PAYT] Transação já processada:', txId);
+        res.writeHead(200); res.end('ok'); return;
+      }
+    }
+
+    // Extrair dados do cliente
+    const customer    = payload.customer || payload.buyer || payload.client || {};
+    const clientName  = customer.name  || customer.full_name  || payload.customer_name  || 'Cliente';
+    const clientEmail = customer.email || payload.customer_email || payload.email || '';
+
+    // Extrair nome do produto para determinar maxUses
+    const offer       = payload.offer || payload.product || {};
+    const productName = (offer.name || offer.title || payload.product_name || payload.offer_name || '').toLowerCase();
+
+    // Determinar maxUses pelo nome do produto/oferta
+    let maxUses = 3; // padrão
+    if      (productName.includes('1') || productName.includes('individual') || productName.includes('solo')) maxUses = 1;
+    else if (productName.includes('5') || productName.includes('multi')      || productName.includes('team')) maxUses = 5;
+    else if (productName.includes('3') || productName.includes('trio'))                                       maxUses = 3;
+
+    // Criar a chave
+    const code = generateCode();
+    const now  = new Date();
+    const expires = new Date(now.getTime() + 31 * 24 * 60 * 60 * 1000);
+    keys[code] = {
+      label:          'PAYT - ' + clientName,
+      active:         true,
+      phones:         [],
+      uses:           0,
+      maxUses,
+      expiresAt:      expires.toISOString(),
+      expireDuration: 31 * 1440,
+      createdAt:      now.toISOString(),
+      lastUsed:       null,
+      lastIp:         null,
+      lastPhone:      null,
+      warnCount:      0,
+      note:           'Pedido automatico Payt | Email: ' + clientEmail + (txId ? ' | payt_tx:' + txId : ''),
+    };
+    saveDb().catch(() => {});
+
+    console.log('[PAYT] Chave criada:', code, '| Cliente:', clientName, '| Email:', clientEmail, '| Usos:', maxUses, '| TX:', txId);
+
+    // Enviar email com a chave
+    if (clientEmail) {
+      sendKeyEmail({
+        to:        clientEmail,
+        name:      clientName,
+        keyCode:   code,
+        maxUses,
+        expiresAt: expires.toISOString(),
+      }).catch(e => console.error('[PAYT] Erro email:', e.message));
+    } else {
+      console.warn('[PAYT] Email nao encontrado no payload — chave criada sem envio:', code);
+    }
+
+    res.writeHead(200); res.end('ok'); return;
   }
 
   // ── Portal do cliente: remover proprio numero ──
