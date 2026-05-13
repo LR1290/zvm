@@ -2173,108 +2173,86 @@ async function handleRequest(req, res) {
   }
 
   // ── Payt: postback de pagamento confirmado ──
-  if (p === '/payt/webhook' && req.method === 'POST') {
-    const rawBody = await new Promise(r => {
-      let b = ''; req.on('data', c => b += c); req.on('end', () => r(b));
-    });
+  if (p === '/payt/webhook') {
+    // GET: validação de URL da Payt | POST: postback de pagamento
+    if (req.method === 'GET') { res.writeHead(200); res.end('ok'); return; }
+    // Responder 200 imediatamente — Payt exige resposta rápida
+    res.writeHead(200); res.end('ok');
+    try {
+      const rawBody = await new Promise(r => {
+        let b = ''; req.on('data', c => b += c); req.on('end', () => r(b));
+      });
 
-    // Validar token de segurança da Payt
-    // Aceita: query string (?token=), header x-payt-token, ou sem token (URL já é secreta)
-    if (CAKTO_SECRET) {
-      const url2  = new URL(req.url, 'http://localhost');
-      const qToken = url2.searchParams.get('token') || url2.searchParams.get('secret') || '';
-      const hToken = req.headers['x-payt-token'] || req.headers['x-webhook-token'] || req.headers['authorization'] || '';
-      const received = qToken || hToken;
-      if (received && received !== CAKTO_SECRET && received !== 'Bearer ' + CAKTO_SECRET) {
-        console.warn('[PAYT] Token inválido — ignorado');
-        res.writeHead(401); res.end('Unauthorized'); return;
+      console.log('[PAYT] Payload recebido:', rawBody.substring(0, 500));
+
+      // Parse do payload (JSON ou form-encoded)
+      let payload = {};
+      try { payload = JSON.parse(rawBody); } catch(e) {
+        try {
+          const params = new URLSearchParams(rawBody);
+          payload = Object.fromEntries(params.entries());
+        } catch(e2) { console.warn('[PAYT] Payload inválido'); return; }
       }
-      // Se CAKTO_SECRET definido mas nenhum token veio, aceitar mesmo assim
-      // (Payt pode não enviar token no teste — validar pela URL)
-    }
 
-    let payload;
-    try { payload = JSON.parse(rawBody); } catch(e) {
-      // Payt pode enviar form-encoded em alguns casos
-      try {
-        const params = new URLSearchParams(rawBody);
-        payload = Object.fromEntries(params.entries());
-      } catch(e2) { res.writeHead(400); res.end('Bad Request'); return; }
-    }
-
-    // Aceitar apenas pagamentos aprovados/finalizados
-    const status = String(payload.status || payload.transaction_status || '').toLowerCase();
-    const approved = ['approved','finished','paid','completed','finalizada','aprovada','venda_paga']
-      .some(s => status.includes(s));
-    if (!approved) {
-      console.log('[PAYT] Status ignorado:', status);
-      res.writeHead(200); res.end('ignored'); return;
-    }
-
-    // Idempotência — evitar criar chave duas vezes para o mesmo pedido
-    const txId = String(payload.transaction_id || payload.id || '').trim();
-    if (txId) {
-      const alreadyProcessed = Object.values(keys).some(k =>
-        k.note && k.note.includes('payt_tx:' + txId)
-      );
-      if (alreadyProcessed) {
-        console.log('[PAYT] Transação já processada:', txId);
-        res.writeHead(200); res.end('ok'); return;
+      // Validar token se configurado
+      if (CAKTO_SECRET) {
+        const hToken = req.headers['x-payt-token'] || req.headers['x-webhook-token'] || req.headers['authorization'] || '';
+        const qToken = (rawBody.includes('token=') ? (payload.token || '') : '');
+        const received = hToken || qToken;
+        if (received && received.replace('Bearer ','') !== CAKTO_SECRET) {
+          console.warn('[PAYT] Token inválido — ignorado'); return;
+        }
       }
+
+      // Aceitar apenas pagamentos aprovados/finalizados
+      const status = String(payload.status || payload.transaction_status || payload.event || '').toLowerCase();
+      const approved = ['approved','finished','paid','completed','finalizada','aprovada','venda_paga','sale_approved']
+        .some(s => status.includes(s));
+      if (!approved) {
+        console.log('[PAYT] Status ignorado:', status); return;
+      }
+
+      // Idempotência — evitar duplicatas
+      const txId = String(payload.transaction_id || payload.id || payload.order_id || '').trim();
+      if (txId && Object.values(keys).some(k => k.note && k.note.includes('payt_tx:' + txId))) {
+        console.log('[PAYT] Transacao ja processada:', txId); return;
+      }
+
+      // Extrair dados do cliente
+      const customer    = payload.customer || payload.buyer || payload.client || {};
+      const clientName  = customer.name  || customer.full_name  || payload.customer_name  || payload.name  || 'Cliente';
+      const clientEmail = customer.email || payload.customer_email || payload.email || '';
+
+      // Extrair produto para maxUses
+      const offer       = payload.offer || payload.product || {};
+      const productName = (offer.name || offer.title || payload.product_name || payload.offer_name || payload.plan || '').toLowerCase();
+      let maxUses = 3;
+      if      (productName.includes('1') || productName.includes('individual') || productName.includes('solo')) maxUses = 1;
+      else if (productName.includes('5') || productName.includes('multi')      || productName.includes('team')) maxUses = 5;
+
+      // Criar a chave
+      const code = generateCode();
+      const now  = new Date();
+      const expires = new Date(now.getTime() + 31 * 24 * 60 * 60 * 1000);
+      keys[code] = {
+        label: 'PAYT - ' + clientName, active: true, phones: [], uses: 0, maxUses,
+        expiresAt: expires.toISOString(), expireDuration: 31 * 1440,
+        createdAt: now.toISOString(), lastUsed: null, lastIp: null, lastPhone: null, warnCount: 0,
+        note: 'Pedido automatico Payt | Email: ' + clientEmail + (txId ? ' | payt_tx:' + txId : ''),
+      };
+      saveDb().catch(() => {});
+      console.log('[PAYT] Chave criada:', code, '| Cliente:', clientName, '| Email:', clientEmail, '| Usos:', maxUses);
+
+      if (clientEmail) {
+        sendKeyEmail({ to: clientEmail, name: clientName, keyCode: code, maxUses, expiresAt: expires.toISOString() })
+          .catch(e => console.error('[PAYT] Erro email:', e.message));
+      } else {
+        console.warn('[PAYT] Sem email no payload — chave criada:', code);
+      }
+    } catch(e) {
+      console.error('[PAYT] Erro interno:', e.message);
     }
-
-    // Extrair dados do cliente
-    const customer    = payload.customer || payload.buyer || payload.client || {};
-    const clientName  = customer.name  || customer.full_name  || payload.customer_name  || 'Cliente';
-    const clientEmail = customer.email || payload.customer_email || payload.email || '';
-
-    // Extrair nome do produto para determinar maxUses
-    const offer       = payload.offer || payload.product || {};
-    const productName = (offer.name || offer.title || payload.product_name || payload.offer_name || '').toLowerCase();
-
-    // Determinar maxUses pelo nome do produto/oferta
-    let maxUses = 3; // padrão
-    if      (productName.includes('1') || productName.includes('individual') || productName.includes('solo')) maxUses = 1;
-    else if (productName.includes('5') || productName.includes('multi')      || productName.includes('team')) maxUses = 5;
-    else if (productName.includes('3') || productName.includes('trio'))                                       maxUses = 3;
-
-    // Criar a chave
-    const code = generateCode();
-    const now  = new Date();
-    const expires = new Date(now.getTime() + 31 * 24 * 60 * 60 * 1000);
-    keys[code] = {
-      label:          'PAYT - ' + clientName,
-      active:         true,
-      phones:         [],
-      uses:           0,
-      maxUses,
-      expiresAt:      expires.toISOString(),
-      expireDuration: 31 * 1440,
-      createdAt:      now.toISOString(),
-      lastUsed:       null,
-      lastIp:         null,
-      lastPhone:      null,
-      warnCount:      0,
-      note:           'Pedido automatico Payt | Email: ' + clientEmail + (txId ? ' | payt_tx:' + txId : ''),
-    };
-    saveDb().catch(() => {});
-
-    console.log('[PAYT] Chave criada:', code, '| Cliente:', clientName, '| Email:', clientEmail, '| Usos:', maxUses, '| TX:', txId);
-
-    // Enviar email com a chave
-    if (clientEmail) {
-      sendKeyEmail({
-        to:        clientEmail,
-        name:      clientName,
-        keyCode:   code,
-        maxUses,
-        expiresAt: expires.toISOString(),
-      }).catch(e => console.error('[PAYT] Erro email:', e.message));
-    } else {
-      console.warn('[PAYT] Email nao encontrado no payload — chave criada sem envio:', code);
-    }
-
-    res.writeHead(200); res.end('ok'); return;
+    return;
   }
 
   // ── Portal do cliente: remover proprio numero ──
