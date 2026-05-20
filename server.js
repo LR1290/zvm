@@ -801,7 +801,13 @@ function renderClientPortal() {
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;padding:20px;overflow:hidden}
+body{background:#0a0a0f;min-height:100vh;display:flex;flex-direction:column;font-family:'Space Mono',monospace;overflow:hidden}
+nav{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid #1c1c2e;background:#0f0f1a;position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040;flex-shrink:0}
+.nav-logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#00ff87;text-decoration:none;display:flex;align-items:center;gap:6px}
+.nav-links{display:flex;gap:8px}
+.nav-links a{font-size:11px;color:#5a5a7a;text-decoration:none;padding:6px 12px;border:1px solid #1c1c2e;border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
+.nav-links a:hover{color:#00ff87;border-color:#00ff87}
+.page-body{flex:1;display:flex;align-items:center;justify-content:center;padding:20px}
 .wrap{width:100%;max-width:460px;position:relative;z-index:1}
 .card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:36px 32px;text-align:center}
 .logo{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:#00ff87;margin-bottom:4px}
@@ -837,14 +843,15 @@ input:focus{border-color:#00ff87}
 .privacy-note a{color:#4f8ef7;text-decoration:none}
 </style>
 </head><body>
-<header style="display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid #1c1c2e;background:#0f0f1a;position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040">
-  <a href="/" style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#00ff87;text-decoration:none;display:flex;align-items:center;gap:6px">⚡ ZVM - LR1290</a>
-  <div style="display:flex;gap:8px">
-    <a href="/faq" style="font-size:11px;color:#5a5a7a;text-decoration:none;padding:6px 12px;border:1px solid #1c1c2e;border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700" onmouseover="this.style.color='#00ff87';this.style.borderColor='#00ff87'" onmouseout="this.style.color='#5a5a7a';this.style.borderColor='#1c1c2e'">FAQ</a>
-    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" style="font-size:11px;color:#5a5a7a;text-decoration:none;padding:6px 12px;border:1px solid #1c1c2e;border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700" onmouseover="this.style.color='#00ff87';this.style.borderColor='#00ff87'" onmouseout="this.style.color='#5a5a7a';this.style.borderColor='#1c1c2e'">💬 Suporte</a>
+<nav>
+  <a href="/" class="nav-logo">⚡ ZVM - LR1290</a>
+  <div class="nav-links">
+    <a href="/faq">FAQ</a>
+    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank">💬 Suporte</a>
   </div>
-</header>
+</nav>
 <div id="loading-overlay" class="loading-overlay"><span class="spinner"></span></div>
+<div class="page-body">
 <div class="wrap">
   <div class="card">
     <div class="logo">⚡ ZVM - LR1290</div>
@@ -881,6 +888,7 @@ input:focus{border-color:#00ff87}
     </div>
     <div class="hint">Precisa de ajuda?<br><a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20referente%20a%20minha%20renova%C3%A7%C3%A3o." target="_blank">💬 Falar com o suporte no WhatsApp</a></div>
   </div>
+</div>
 </div>
 <script>
 function fmtDate(iso){if(!iso)return'—';const d=new Date(iso);return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
