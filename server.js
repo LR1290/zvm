@@ -415,7 +415,7 @@ const CANVAS_BG = `<canvas id="_cvs" style="position:fixed;inset:0;z-index:0;poi
 function renderExtensionLogin({ callback, error = '', keyVal = '' }) {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZapVoice — Ativação</title>
+<title>ZVM - LR1290 — Ativação</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -433,7 +433,7 @@ input:focus{border-color:#00ff87}
 </style>
 </head><body>
 <div class="card">
-  <div class="logo">⚡ ZapVoice</div>
+  <div class="logo">⚡ ZVM - LR1290</div>
   <div class="sub">Ativação da Extensão</div>
   ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
   <form method="POST" action="/extension/auth/verify">
@@ -454,7 +454,7 @@ ${CANVAS_BG}</body></html>`;
 function renderAdminLogin(error = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZapVoice Admin</title>
+<title>ZVM - LR1290 Admin</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -468,7 +468,7 @@ input:focus{border-color:#00ff87}
 .err{background:#ff475715;border:1px solid #ff4757;border-radius:6px;color:#ff4757;padding:9px 12px;font-size:12px;margin-bottom:16px}
 </style></head><body>
 <div class="card">
-  <div class="logo">⚡ ZapVoice Admin</div>
+  <div class="logo">⚡ ZVM - LR1290 Admin</div>
   ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
   <form method="POST" action="${R_ADMIN}/login">
     <label>Usuário</label><input type="text" name="user" autocomplete="off">
@@ -486,7 +486,7 @@ ${CANVAS_BG}</body></html>`;
 function renderClientPortal() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZapVoice — Portal do Cliente</title>
+<title>ZVM - LR1290 — Portal do Cliente</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -529,7 +529,7 @@ input:focus{border-color:#00ff87}
 <div id="loading-overlay" class="loading-overlay"><span class="spinner"></span></div>
 <div class="wrap">
   <div class="card">
-    <div class="logo">⚡ ZapVoice</div>
+    <div class="logo">⚡ ZVM - LR1290</div>
     <div class="sub">Portal do Cliente</div>
     <div id="form-area">
       <div id="err-box" class="err" style="display:none"></div>
@@ -538,7 +538,7 @@ input:focus{border-color:#00ff87}
       <p style="text-align:left;font-size:11px;color:#6b6b8a;margin-top:8px">Você recebeu esta chave junto com a sua compra.</p>
       <button class="btn" id="check-btn" onclick="checkKey()">Consultar Minha Chave</button>
       <a class="btn" href="/faq" target="_blank" style="display:block;margin-top:10px;background:#1e1e2e;color:#6b6b8a;font-size:12px;text-decoration:none;text-align:center;padding:12px;border-radius:10px;border:1px solid #2a2a3e;transition:border-color .2s,color .2s" onmouseover="this.style.borderColor='#00ff87';this.style.color='#00ff87'" onmouseout="this.style.borderColor='#2a2a3e';this.style.color='#6b6b8a'">❓ FAQ — Dúvidas Frequentes</a>
-      <div class="privacy-note">🔒 Ao usar este serviço, você concorda com nossa <a href="https://wa.me/5521996771552?text=LR!%20Quero%20a%20Pol%C3%ADtica%20de%20Privacidade." target="_blank">Política de Privacidade</a> e com a coleta de dados de uso para fins de licenciamento (LGPD).</div>
+      <div class="privacy-note">🔒 Ao usar este serviço, você concorda com nossa <a href="/privacidade" target="_blank">Política de Privacidade</a> e com a coleta de dados de uso para fins de licenciamento (LGPD).</div>
     </div>
     <div class="panel" id="result-panel">
       <div class="panel-title" id="panel-name">Minha Conta</div>
@@ -705,7 +705,7 @@ function renderAdminDashboard() {
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZapVoice Admin v8</title>
+<title>ZVM - LR1290 Admin v8</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -799,7 +799,7 @@ tr:hover td{background:#ffffff02}
 </head>
 <body>
 <header>
-  <div class="logo">⚡ ZapVoice <span style="font-size:11px;color:var(--muted);font-weight:400">v8</span></div>
+  <div class="logo">⚡ ZVM - LR1290 <span style="font-size:11px;color:var(--muted);font-weight:400">v8</span></div>
   <div class="hright">
     <button class="btn bcsv" onclick="exportCSV()">⬇ CSV</button>
     <a href="${R_ADMIN}/logout" class="out">↩ Sair</a>
@@ -1155,7 +1155,7 @@ async function exportCSV(){
 function renderFaqPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZapVoice — FAQ</title>
+<title>ZVM - LR1290 — FAQ</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1216,7 +1216,7 @@ footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--gree
 </head>
 <body>
 <header>
-  <a href="/" class="logo">⚡ ZapVoice</a>
+  <a href="/" class="logo">⚡ ZVM - LR1290</a>
   <div class="header-links">
     <a href="/">Portal do Cliente</a>
     <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank">💬 Suporte</a>
@@ -1270,14 +1270,14 @@ footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--gree
     <h2>Ainda tem dúvidas?</h2>
     <p>Enquanto o FAQ não está pronto, nossa equipe está disponível no WhatsApp para te ajudar com qualquer dúvida.</p>
     <div class="support-btns">
-      <a class="btn-wpp" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZapVoice." target="_blank">💬 Falar com o Suporte</a>
+      <a class="btn-wpp" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM%20LR1290." target="_blank">💬 Falar com o Suporte</a>
       <a class="btn-portal" href="/">🔑 Portal do Cliente</a>
     </div>
   </div>
 </main>
 
 <footer>
-  <p>© ${new Date().getFullYear()} ZapVoice — <a href="/">Portal do Cliente</a> · <a href="/faq">FAQ</a></p>
+  <p>© ${new Date().getFullYear()} ZVM - LR1290 — <a href="/">Portal do Cliente</a> · <a href="/faq">FAQ</a></p>
 </footer>
 
 ${CANVAS_BG}
