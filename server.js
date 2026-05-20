@@ -651,10 +651,10 @@ function buildKeysHtml() {
     const suspectBadge = isSuspect ? `<span title="${recentIps.size} IPs nas últimas 24h" style="color:#ff4757;font-size:9px;margin-left:4px">⚠ SUSPEITA</span>` : '';
 
     return `
-<tr data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${k.active?'ativo':'bloqueado'}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}"${rowStyle}>
+<tr data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${k.active?'ativo':'bloqueado'}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-suspect="${isSuspect?'1':''}"`+rowStyle+`>
   <td><span class="kc">${escHtml(code)}</span></td>
   <td>${escHtml(k.label)}${suspectBadge}</td>
-  <td><span class="badge ${k.active?(k.warnCount>0?'wl':'on'):'off'}">${k.active?(k.expireDuration&&!k.expiresAt?'AGUARDANDO':(k.warnCount>0?`AVISO (${k.warnCount}x)`:'ATIVO')):'BLOQUEADO'}</span></td>
+  <td><span class="badge ${k.active?'on':'off'}">${k.active?(k.expireDuration&&!k.expiresAt?'AGUARDANDO':'ATIVO'):'BLOQUEADO'}</span></td>
   <td><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
   <td>${escHtml(k.lastPhone||'-')}</td>
   <td title="${uniqueIps} IPs únicos registrados">${escHtml(k.lastIp||'-')} ${uniqueIps>1?`<span style="color:var(--muted);font-size:9px">(+${uniqueIps-1})</span>`:''}</td>
@@ -669,7 +669,7 @@ function buildKeysHtml() {
     <button class="bs bg" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">Renomear</button>
     ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Números</button>`:''}
     <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
-    ${(k.warnCount||0)>0?`<button class="bs bwarn" onclick="resetWarn('${escHtml(code)}')">⚠ Avisos</button>`:''}
+    ${isSuspect?`<button class="bs bsusp" onclick="clearSuspect('${escHtml(code)}')">🕵️ Suspeita</button>`:''}
   </td>
 </tr>`;
   }).join('');
@@ -695,7 +695,6 @@ function buildLogsHtml(arr) {
 // ─────────────────────────────────────────────
 function renderAdminDashboard() {
   const expiringSoon  = Object.values(keys).filter(k => k.active && isKeyExpiringSoon(k)).length;
-  const warnLimitKeys = Object.values(keys).filter(k => k.active && (k.warnCount||0) > 0).length;
   const suspectKeys   = Object.values(keys).filter(k => {
     const recentLogs = logs.filter(l => l.keyCode === Object.keys(keys).find(c => keys[c] === k) && l.timestamp > new Date(Date.now()-86400000).toISOString());
     return new Set(recentLogs.filter(l=>l.ip).map(l=>l.ip)).size > 3;
@@ -722,7 +721,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
 a.out{color:var(--muted);font-size:11px;text-decoration:none;padding:6px 12px;border:1px solid var(--border2);border-radius:var(--radius-sm);transition:all .2s}
 a.out:hover{color:var(--red);border-color:var(--red)}
 main{padding:22px 24px;max-width:1800px;margin:0 auto}
-.stats{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:20px}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px}
 .sc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;position:relative;overflow:hidden;transition:border-color .2s,transform .15s;cursor:default}
 .sc:hover{border-color:var(--border2);transform:translateY(-1px)}
 .sc.warn-card{border-color:#ff860050;background:#ff860008}
@@ -762,7 +761,7 @@ main{padding:22px 24px;max-width:1800px;margin:0 auto}
 .bg:hover{background:#00ff8722;border-color:#00ff8760}
 .bd{background:#ff475712;color:var(--red);border:1px solid #ff475730}
 .bd:hover{background:#ff475722;border-color:#ff475760}
-.bwarn{background:#ff8c0012;color:#ff8c00;border:1px solid #ff8c0030}
+.bsusp{background:#ff475712;color:var(--red);border:1px solid #ff475730}
 .ov{overflow-x:auto}
 table{width:100%;border-collapse:collapse}
 th{padding:8px 11px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap;background:var(--card2);cursor:pointer;user-select:none}
@@ -793,7 +792,7 @@ tr:hover td{background:#ffffff02}
 .modal textarea{resize:vertical;min-height:80px}
 .modal textarea:focus,.modal input:focus{border-color:var(--green)}
 .modal-actions{display:flex;gap:8px;margin-top:11px;justify-content:flex-end}
-@media(max-width:1400px){.stats{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:1300px){.stats{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:750px){.stats{grid-template-columns:1fr 1fr};main{padding:14px 12px}}
 </style>
 </head>
@@ -810,7 +809,7 @@ tr:hover td{background:#ffffff02}
     <div class="sc"><div class="sc-icon">🔑</div><div class="n" id="s-total">${Object.keys(keys).length}</div><div class="l">Total de Chaves</div></div>
     <div class="sc"><div class="sc-icon">✅</div><div class="n" id="s-active">${Object.values(keys).filter(k=>k.active).length}</div><div class="l">Chaves Ativas</div></div>
     <div class="sc ${expiringSoon>0?'warn-card':''}"><div class="sc-icon">⏰</div><div class="n" id="s-warn" style="${expiringSoon>0?'color:var(--orange)':''}">${expiringSoon}</div><div class="l">Expirando em ${EXPIRY_WARN_HOURS}h</div></div>
-    <div class="sc"><div class="sc-icon">⚠️</div><div class="n" id="s-warnlimit" style="${warnLimitKeys>0?'color:#ff8c00':''}">${warnLimitKeys}</div><div class="l">Aviso de Limite</div></div>
+
     <div class="sc ${suspectKeys>0?'danger-card':''}"><div class="sc-icon">🕵️</div><div class="n" id="s-suspect" style="${suspectKeys>0?'color:var(--red)':''}">${suspectKeys}</div><div class="l">Suspeitas (24h)</div></div>
     <div class="sc"><div class="sc-icon">📋</div><div class="n" id="s-logs">${logs.length}</div><div class="l">Acessos Registrados</div></div>
   </div>
@@ -838,6 +837,7 @@ tr:hover td{background:#ffffff02}
         <option value="">Todos os status</option>
         <option value="ativo">Ativos</option>
         <option value="bloqueado">Bloqueados</option>
+        <option value="suspeita">🕵️ Suspeitas</option>
       </select>
     </div>
     <div class="ov">
@@ -962,10 +962,11 @@ function filterKeys(){
     const label=(row.dataset.label||'').toLowerCase();
     const phone=(row.dataset.phone||'').toLowerCase();
     const status=(row.dataset.status||'').toLowerCase();
+    const suspect=(row.dataset.suspect||'');
     const code=(row.querySelector('.kc')||{}).textContent||'';
     const ip=(row.cells[5]||{}).textContent||'';
     const matchQ=!q||label.includes(q)||phone.includes(q)||code.toLowerCase().includes(q)||ip.toLowerCase().includes(q);
-    const matchSt=!st||status===st;
+    const matchSt=!st||(st==='suspeita'?suspect==='1':status===st);
     row.style.display=(matchQ&&matchSt)?'':'none';
   });
 }
@@ -1027,7 +1028,6 @@ async function doRefresh(){
     document.getElementById('s-active').textContent=d.activeKeys||0;
     document.getElementById('s-logs').textContent=d.totalLogs||0;
     const sw=document.getElementById('s-warn');sw.textContent=d.warnKeys||0;sw.style.color=d.warnKeys>0?'var(--orange)':'var(--green)';sw.closest('.sc').classList.toggle('warn-card',d.warnKeys>0);
-    const swl=document.getElementById('s-warnlimit');if(swl){swl.textContent=d.warnLimitKeys||0;swl.style.color=d.warnLimitKeys>0?'#ff8c00':'';}
     const ssu=document.getElementById('s-suspect');if(ssu){ssu.textContent=d.suspectKeys||0;ssu.style.color=d.suspectKeys>0?'var(--red)':'';ssu.closest('.sc').classList.toggle('danger-card',d.suspectKeys>0);}
     document.getElementById('kb').innerHTML=d.keysHtml||'';
     document.getElementById('lb').innerHTML=d.logsHtml||'';
@@ -1044,8 +1044,14 @@ async function deleteKey(code){
   if(!confirm('Excluir chave '+code+'?'))return;
   try{const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code),{method:'DELETE'});if(r.status===401){toast('Sessão expirada',false);return;}const d=await r.json();if(d.ok){toast('Chave excluída');await doRefresh();}}catch(e){toast('Erro',false);}
 }
-async function resetWarn(code){
-  try{const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/reset-warn',{method:'POST'});const d=await r.json();if(d.ok){toast('Avisos resetados');await doRefresh();}else toast(d.error||'Erro',false);}catch(e){toast('Erro',false);}
+async function clearSuspect(code){
+  if(!confirm('Marcar chave '+code+' como verificada e remover alerta de suspeita?'))return;
+  try{
+    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/clear-suspect',{method:'POST'});
+    const d=await r.json();
+    if(d.ok){toast('✅ Alerta removido — chave marcada como verificada');await doRefresh();}
+    else toast('Erro: '+(d.error||'?'),false);
+  }catch(e){toast('Erro de rede',false);}
 }
 
 // ── Log ──
@@ -1146,6 +1152,152 @@ async function exportCSV(){
   try{const r=await fetch(_RA+'/api/export/csv');if(r.status===401){toast('Sessão expirada',false);return;}const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='zapvoice-chaves-'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(url);toast('CSV exportado!');}catch(e){toast('Erro ao exportar',false);}
 }
 </script>
+</body></html>`;
+}
+
+// ─────────────────────────────────────────────
+// PÁGINA: POLÍTICA DE PRIVACIDADE
+// ─────────────────────────────────────────────
+function renderPrivacyPage() {
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZVM - LR1290 — Política de Privacidade</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--radius:14px}
+body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000060}
+.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:8px}
+.header-links{display:flex;gap:10px}
+.header-links a{font-size:11px;color:var(--muted);text-decoration:none;padding:6px 13px;border:1px solid var(--border);border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
+.header-links a:hover{color:var(--green);border-color:var(--green)}
+main{max-width:720px;margin:0 auto;padding:60px 24px 80px}
+.hero{margin-bottom:48px}
+.hero-badge{display:inline-block;background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-size:10px;letter-spacing:2px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:18px;font-family:'Syne',sans-serif}
+.hero h1{font-family:'Syne',sans-serif;font-size:clamp(24px,4vw,38px);font-weight:800;line-height:1.15;margin-bottom:12px}
+.hero-meta{color:var(--muted);font-size:11px}
+.wip-banner{background:linear-gradient(135deg,#13101f,#0f0f1a);border:1px solid #7c3aed40;border-radius:var(--radius);padding:28px 32px;margin-bottom:40px;display:flex;align-items:flex-start;gap:18px}
+.wip-banner .ic{font-size:32px;flex-shrink:0;animation:float 3s ease-in-out infinite}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+.wip-banner h2{font-family:'Syne',sans-serif;font-size:15px;font-weight:800;color:var(--text);margin-bottom:8px}
+.wip-banner p{color:var(--muted);font-size:12px;line-height:1.8}
+.section{margin-bottom:36px}
+.section h2{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--green);letter-spacing:1px;text-transform:uppercase;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.section p{color:var(--muted);font-size:12px;line-height:1.9;margin-bottom:10px}
+.section ul{color:var(--muted);font-size:12px;line-height:1.9;padding-left:20px}
+.section ul li{margin-bottom:6px}
+.section ul li strong{color:var(--text)}
+.highlight{background:#00ff8708;border:1px solid #00ff8720;border-radius:8px;padding:14px 18px;margin-top:12px}
+.highlight p{margin:0;color:var(--text);font-size:12px;line-height:1.8}
+.support-box{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px;text-align:center;margin-top:48px}
+.support-box h3{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:var(--text);margin-bottom:8px}
+.support-box p{color:var(--muted);font-size:12px;margin-bottom:20px}
+.btn-wpp{display:inline-flex;align-items:center;gap:8px;background:#25d36620;border:1px solid #25d36640;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:11px 22px;border-radius:8px;text-decoration:none;transition:all .2s}
+.btn-wpp:hover{background:#25d36630;border-color:#25d366;transform:translateY(-2px)}
+footer{text-align:center;padding:28px;font-size:10px;color:var(--muted);border-top:1px solid var(--border)}
+footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--green)}
+@media(max-width:520px){main{padding:40px 16px 60px}.wip-banner{flex-direction:column;gap:12px;padding:20px}}
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo">⚡ ZVM - LR1290</a>
+  <div class="header-links">
+    <a href="/">Portal</a>
+    <a href="/faq">FAQ</a>
+    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank">💬 Suporte</a>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <div class="hero-badge">Legal</div>
+    <h1>Política de Privacidade</h1>
+    <p class="hero-meta">Última atualização: ${new Date().toLocaleDateString('pt-BR', { day:'2-digit', month:'long', year:'numeric' })}</p>
+  </div>
+
+  <div class="wip-banner">
+    <span class="ic">🚧</span>
+    <div>
+      <h2>Documento em elaboração</h2>
+      <p>Nossa Política de Privacidade completa está sendo elaborada por nossa equipe. As informações abaixo refletem nossas práticas atuais de coleta e uso de dados. Em breve este documento estará em sua versão final e completa.</p>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>1. Quem somos</h2>
+    <p>A ZVM - LR1290 é responsável pelo sistema de licenciamento da extensão ZapVoice, disponibilizado por meio deste portal e das APIs associadas.</p>
+  </div>
+
+  <div class="section">
+    <h2>2. Dados que coletamos</h2>
+    <p>Para prestar o serviço de licenciamento, coletamos os seguintes dados quando você utiliza sua chave de ativação:</p>
+    <ul>
+      <li><strong>Chave de ativação</strong> — identificador único da sua licença</li>
+      <li><strong>Número de telefone</strong> — vinculado à chave para controle de dispositivos</li>
+      <li><strong>Endereço IP</strong> — registrado a cada acesso para fins de segurança</li>
+      <li><strong>Versão do WhatsApp Web</strong> — para compatibilidade técnica</li>
+      <li><strong>Timestamps de acesso</strong> — data e hora das ativações e usos</li>
+      <li><strong>Identificador de dispositivo</strong> — para controle de múltiplos dispositivos</li>
+    </ul>
+    <div class="highlight">
+      <p>⚠️ <strong>Não coletamos</strong> o conteúdo de suas mensagens, contatos, conversas ou qualquer outro dado do WhatsApp que não esteja listado acima.</p>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>3. Como usamos seus dados</h2>
+    <p>Os dados coletados são utilizados exclusivamente para:</p>
+    <ul>
+      <li>Verificar a validade e autenticidade da sua licença</li>
+      <li>Controlar o número de dispositivos vinculados à chave</li>
+      <li>Detectar uso indevido ou compartilhamento não autorizado</li>
+      <li>Garantir a segurança do serviço</li>
+      <li>Cumprir obrigações legais</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>4. Retenção dos dados</h2>
+    <p>Os registros de acesso (logs) são automaticamente removidos após <strong>90 dias</strong>, em conformidade com o princípio de minimização de dados da LGPD. Os dados da chave (número vinculado, IP, etc.) são mantidos enquanto a licença estiver ativa.</p>
+  </div>
+
+  <div class="section">
+    <h2>5. Compartilhamento</h2>
+    <p>Seus dados são armazenados no <strong>MongoDB Atlas</strong> (com criptografia AES-256 em repouso) e não são vendidos, compartilhados ou transferidos a terceiros, exceto quando exigido por lei.</p>
+  </div>
+
+  <div class="section">
+    <h2>6. Seus direitos (LGPD)</h2>
+    <p>Conforme a Lei Geral de Proteção de Dados (Lei 13.709/2018), você tem direito a:</p>
+    <ul>
+      <li>Confirmar a existência de tratamento dos seus dados</li>
+      <li>Acessar seus dados</li>
+      <li>Solicitar a correção de dados incompletos ou incorretos</li>
+      <li>Solicitar a exclusão dos seus dados</li>
+      <li>Revogar o consentimento a qualquer momento</li>
+    </ul>
+    <p>Para exercer qualquer um desses direitos, entre em contato pelo WhatsApp.</p>
+  </div>
+
+  <div class="section">
+    <h2>7. Consentimento</h2>
+    <p>Ao ativar sua chave e utilizar este serviço, você concorda com a coleta e uso dos dados descritos nesta política, com base legal no <strong>Art. 7º, V da LGPD</strong> (execução de contrato).</p>
+  </div>
+
+  <div class="support-box">
+    <h3>Dúvidas sobre privacidade?</h3>
+    <p>Fale diretamente com nossa equipe pelo WhatsApp.</p>
+    <a class="btn-wpp" href="https://wa.me/5521996771552?text=LR!%20Tenho%20uma%20d%C3%BAvida%20sobre%20privacidade." target="_blank">💬 Falar com o Suporte</a>
+  </div>
+</main>
+
+<footer>
+  <p>© ${new Date().getFullYear()} ZVM - LR1290 — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/privacidade">Privacidade</a></p>
+</footer>
+
+${CANVAS_BG}
 </body></html>`;
 }
 
@@ -1280,6 +1432,120 @@ footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--gree
   <p>© ${new Date().getFullYear()} ZVM - LR1290 — <a href="/">Portal do Cliente</a> · <a href="/faq">FAQ</a></p>
 </footer>
 
+${CANVAS_BG}
+</body></html>`;
+}
+
+// ─────────────────────────────────────────────
+// PÁGINA: PRIVACIDADE
+// ─────────────────────────────────────────────
+function renderPrivacyPage() {
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZVM - LR1290 — Política de Privacidade</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--radius:12px}
+body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000060}
+.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:8px}
+.header-links{display:flex;gap:10px}
+.header-links a{font-size:11px;color:var(--muted);text-decoration:none;padding:6px 13px;border:1px solid var(--border);border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
+.header-links a:hover{color:var(--green);border-color:var(--green)}
+main{max-width:720px;margin:0 auto;padding:56px 24px 80px}
+.hero{margin-bottom:48px}
+.hero-badge{display:inline-block;background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-size:10px;letter-spacing:2px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:18px;font-family:'Syne',sans-serif}
+.hero h1{font-family:'Syne',sans-serif;font-size:clamp(24px,4vw,36px);font-weight:800;margin-bottom:12px}
+.hero-meta{font-size:11px;color:var(--muted);letter-spacing:1px}
+.section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px 32px;margin-bottom:14px}
+.section h2{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--green);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.section p,.section li{font-size:12px;color:#b0b0c8;line-height:1.9;margin-bottom:10px}
+.section ul{padding-left:18px}
+.section li{margin-bottom:6px}
+.section li::marker{color:var(--green)}
+.section p:last-child,.section li:last-child{margin-bottom:0}
+.highlight{background:#00ff8708;border:1px solid #00ff8720;border-radius:8px;padding:14px 18px;margin-top:14px}
+.highlight p{color:var(--text);font-size:11px;margin:0}
+.tag{display:inline-block;background:#1e1e2e;border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:10px;color:var(--muted);margin:2px;vertical-align:middle}
+.contact-btn{display:inline-flex;align-items:center;gap:8px;background:#25d36618;border:1px solid #25d36630;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:11px 22px;border-radius:8px;text-decoration:none;transition:all .2s;margin-top:14px}
+.contact-btn:hover{background:#25d36628;transform:translateY(-2px);box-shadow:0 6px 20px #25d36625}
+footer{text-align:center;padding:28px;font-size:10px;color:var(--muted);border-top:1px solid var(--border)}
+footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--green)}
+@media(max-width:520px){main{padding:32px 16px 60px}.section{padding:20px 18px}.header-links a{padding:5px 9px;font-size:10px}}
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo">⚡ ZVM - LR1290</a>
+  <div class="header-links">
+    <a href="/">Portal</a>
+    <a href="/faq">FAQ</a>
+    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank">💬 Suporte</a>
+  </div>
+</header>
+<main>
+  <div class="hero">
+    <div class="hero-badge">Legal</div>
+    <h1>Política de Privacidade</h1>
+    <p class="hero-meta">Última atualização: ${new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}</p>
+  </div>
+  <div class="section">
+    <h2>📋 Visão Geral</h2>
+    <p>Esta Política descreve como o <strong style="color:var(--text)">ZVM - LR1290</strong> coleta, utiliza e protege seus dados ao usar o serviço de licenciamento da extensão ZapVoice.</p>
+    <p>Ao ativar ou consultar sua chave de acesso, você concorda com estes termos, em conformidade com a <strong style="color:var(--text)">Lei Geral de Proteção de Dados (LGPD — Lei nº 13.709/2018)</strong>.</p>
+  </div>
+  <div class="section">
+    <h2>🗂 Dados que Coletamos</h2>
+    <p>Para fins exclusivos de licenciamento e controle de acesso, coletamos:</p>
+    <ul>
+      <li><strong style="color:var(--text)">Chave de ativação</strong> — identificador único do seu acesso</li>
+      <li><strong style="color:var(--text)">Número de telefone</strong> — vinculado à chave para controle de dispositivos</li>
+      <li><strong style="color:var(--text)">Endereço IP</strong> — para detecção de uso indevido e segurança</li>
+      <li><strong style="color:var(--text)">Versão do WhatsApp Web</strong> — para compatibilidade técnica</li>
+      <li><strong style="color:var(--text)">Timestamps de acesso</strong> — data e hora de cada uso registrado</li>
+      <li><strong style="color:var(--text)">Identificador de dispositivo</strong> — gerado pela extensão para controle de sessão</li>
+    </ul>
+    <div class="highlight">
+      <p>⚠️ <strong>Não coletamos</strong> mensagens, contatos, conversas ou qualquer conteúdo do WhatsApp. Nosso serviço não tem acesso ao conteúdo das suas comunicações.</p>
+    </div>
+  </div>
+  <div class="section">
+    <h2>🎯 Finalidade</h2>
+    <p>Os dados são usados exclusivamente para:</p>
+    <ul>
+      <li>Validar e controlar o acesso à extensão ZapVoice</li>
+      <li>Detectar uso indevido ou compartilhamento não autorizado de chaves</li>
+      <li>Suporte técnico quando solicitado pelo usuário</li>
+      <li>Controle do número de dispositivos vinculados por chave</li>
+    </ul>
+    <p>Base legal: <strong style="color:var(--text)">execução de contrato</strong> (Art. 7º, V, LGPD).</p>
+  </div>
+  <div class="section">
+    <h2>⏱ Retenção</h2>
+    <p>Registros de acesso são removidos automaticamente após <strong style="color:var(--text)">90 dias</strong>. Dados da chave são mantidos enquanto ela estiver ativa. Ao excluir a chave, todos os dados associados são apagados permanentemente.</p>
+  </div>
+  <div class="section">
+    <h2>🔒 Segurança</h2>
+    <p>Dados armazenados no <strong style="color:var(--text)">MongoDB Atlas</strong> com criptografia AES-256 em repouso e TLS em trânsito. O painel administrativo é protegido por senha e autenticação de dois fatores (2FA).</p>
+  </div>
+  <div class="section">
+    <h2>🤝 Compartilhamento</h2>
+    <p>Seus dados <strong style="color:var(--text)">não são vendidos ou compartilhados</strong> com terceiros para fins comerciais. Apenas os provedores de infraestrutura têm acesso técnico:</p>
+    <ul>
+      <li><span class="tag">MongoDB Atlas</span> armazenamento dos dados</li>
+      <li><span class="tag">Render.com</span> hospedagem do servidor</li>
+    </ul>
+  </div>
+  <div class="section">
+    <h2>✅ Seus Direitos (LGPD)</h2>
+    <p>Você tem direito a confirmar, acessar, corrigir, excluir seus dados e revogar o consentimento a qualquer momento. Para exercer qualquer direito, entre em contato:</p>
+    <a class="contact-btn" href="https://wa.me/5521996771552?text=LR!%20Quero%20exercer%20meus%20direitos%20LGPD." target="_blank">💬 Solicitar via WhatsApp</a>
+  </div>
+</main>
+<footer>
+  <p>© ${new Date().getFullYear()} ZVM - LR1290 — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/privacidade">Privacidade</a></p>
+</footer>
 ${CANVAS_BG}
 </body></html>`;
 }
@@ -1521,7 +1787,6 @@ async function handleRequest(req, res) {
       totalKeys:     Object.keys(keys).length,
       activeKeys:    Object.values(keys).filter(k=>k.active).length,
       warnKeys:      Object.values(keys).filter(k=>k.active && isKeyExpiringSoon(k)).length,
-      warnLimitKeys: Object.values(keys).filter(k=>k.active && (k.warnCount||0)>0).length,
       suspectKeys,
       totalLogs:     logs.length,
       keysHtml:      buildKeysHtml(),
@@ -1644,6 +1909,19 @@ async function handleRequest(req, res) {
     if (!keys[codeResetWarn]) { sendJson(res, { error: 'not found' }, 404); return; }
     keys[codeResetWarn].warnCount = 0;
     await saveKey(codeResetWarn);
+    sendJson(res, { ok: true }); return;
+  }
+
+  // ── Admin API: clear-suspect (marca IP histórico como verificado zerando logs suspeitos) ──
+  const codeClearSuspect = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/clear-suspect$`));
+  if (codeClearSuspect && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    if (!keys[codeClearSuspect]) { sendJson(res, { error: 'not found' }, 404); return; }
+    // Remove logs de IP das últimas 24h desta chave para zerar a contagem de suspeita
+    const cutoff = new Date(Date.now() - 86400000).toISOString();
+    logs = logs.filter(l => !(l.keyCode === codeClearSuspect && l.timestamp > cutoff));
+    await saveLogs();
+    await addLog({ keyCode: codeClearSuspect, label: keys[codeClearSuspect].label, phone: '-', ip, wppVersion: '-', action: 'suspect_cleared' });
     sendJson(res, { ok: true }); return;
   }
 
@@ -1809,6 +2087,16 @@ async function handleRequest(req, res) {
   // ── FAQ ──
   if (p === '/faq' && req.method === 'GET') {
     sendHtml(res, renderFaqPage()); return;
+  }
+
+  // ── Privacidade ──
+  if (p === '/privacidade' && req.method === 'GET') {
+    sendHtml(res, renderPrivacyPage()); return;
+  }
+
+  // ── Privacidade ──
+  if (p === '/privacidade' && req.method === 'GET') {
+    sendHtml(res, renderPrivacyPage()); return;
   }
 
   // ── Portal cliente: rotas públicas ──
