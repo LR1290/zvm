@@ -434,6 +434,7 @@ function renderModLogin(error = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM - LR1290 — Moderação</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -479,6 +480,7 @@ function renderModDashboard() {
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM - LR1290 — Moderação</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -722,6 +724,7 @@ function renderExtensionLogin({ callback, error = '', keyVal = '' }) {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM - LR1290 — Ativação</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -761,6 +764,7 @@ function renderAdminLogin(error = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM - LR1290 Admin</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -793,6 +797,7 @@ function renderClientPortal() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM - LR1290 — Portal do Cliente</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -832,6 +837,13 @@ input:focus{border-color:#00ff87}
 .privacy-note a{color:#4f8ef7;text-decoration:none}
 </style>
 </head><body>
+<header style="display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid #1c1c2e;background:#0f0f1a;position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040">
+  <a href="/" style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#00ff87;text-decoration:none;display:flex;align-items:center;gap:6px">⚡ ZVM - LR1290</a>
+  <div style="display:flex;gap:8px">
+    <a href="/faq" style="font-size:11px;color:#5a5a7a;text-decoration:none;padding:6px 12px;border:1px solid #1c1c2e;border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700" onmouseover="this.style.color='#00ff87';this.style.borderColor='#00ff87'" onmouseout="this.style.color='#5a5a7a';this.style.borderColor='#1c1c2e'">FAQ</a>
+    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" style="font-size:11px;color:#5a5a7a;text-decoration:none;padding:6px 12px;border:1px solid #1c1c2e;border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700" onmouseover="this.style.color='#00ff87';this.style.borderColor='#00ff87'" onmouseout="this.style.color='#5a5a7a';this.style.borderColor='#1c1c2e'">💬 Suporte</a>
+  </div>
+</header>
 <div id="loading-overlay" class="loading-overlay"><span class="spinner"></span></div>
 <div class="wrap">
   <div class="card">
@@ -843,8 +855,8 @@ input:focus{border-color:#00ff87}
       <input type="text" id="key-input" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false">
       <p style="text-align:left;font-size:11px;color:#6b6b8a;margin-top:8px">Você recebeu esta chave junto com a sua compra.</p>
       <button class="btn" id="check-btn" onclick="checkKey()">Consultar Minha Chave</button>
-      <a class="btn" href="/faq" target="_blank" style="display:block;margin-top:10px;background:#1e1e2e;color:#6b6b8a;font-size:12px;text-decoration:none;text-align:center;padding:12px;border-radius:10px;border:1px solid #2a2a3e;transition:border-color .2s,color .2s" onmouseover="this.style.borderColor='#00ff87';this.style.color='#00ff87'" onmouseout="this.style.borderColor='#2a2a3e';this.style.color='#6b6b8a'">❓ FAQ — Dúvidas Frequentes</a>
-      <div class="privacy-note">🔒 Ao usar este serviço, você concorda com nossa <a href="/privacidade" target="_blank">Política de Privacidade</a> e com a coleta de dados de uso para fins de licenciamento (LGPD).</div>
+      <a class="btn" href="/faq" style="display:block;margin-top:10px;background:#1e1e2e;color:#6b6b8a;font-size:12px;text-decoration:none;text-align:center;padding:12px;border-radius:10px;border:1px solid #2a2a3e;transition:border-color .2s,color .2s" onmouseover="this.style.borderColor='#00ff87';this.style.color='#00ff87'" onmouseout="this.style.borderColor='#2a2a3e';this.style.color='#6b6b8a'">❓ FAQ — Dúvidas Frequentes</a>
+      <div class="privacy-note">🔒 Ao usar este serviço, você concorda com nossa <a href="/privacidade">Política de Privacidade</a> e com a coleta de dados de uso para fins de licenciamento (LGPD).</div>
     </div>
     <div class="panel" id="result-panel">
       <div class="panel-title" id="panel-name">Minha Conta</div>
@@ -1011,6 +1023,7 @@ function renderAdminDashboard() {
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM - LR1290 Admin v8</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1462,158 +1475,13 @@ async function exportCSV(){
 }
 
 // ─────────────────────────────────────────────
-// PÁGINA: POLÍTICA DE PRIVACIDADE
-// ─────────────────────────────────────────────
-function renderPrivacyPage() {
-  return `<!DOCTYPE html><html lang="pt-BR"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM - LR1290 — Política de Privacidade</title>
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--radius:14px}
-body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
-header{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000060}
-.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:8px}
-.header-links{display:flex;gap:10px}
-.header-links a{font-size:11px;color:var(--muted);text-decoration:none;padding:6px 13px;border:1px solid var(--border);border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
-.header-links a:hover{color:var(--green);border-color:var(--green)}
-main{max-width:720px;margin:0 auto;padding:60px 24px 80px}
-.hero{margin-bottom:48px}
-.hero-badge{display:inline-block;background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-size:10px;letter-spacing:2px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:18px;font-family:'Syne',sans-serif}
-.hero h1{font-family:'Syne',sans-serif;font-size:clamp(24px,4vw,38px);font-weight:800;line-height:1.15;margin-bottom:12px}
-.hero-meta{color:var(--muted);font-size:11px}
-.wip-banner{background:linear-gradient(135deg,#13101f,#0f0f1a);border:1px solid #7c3aed40;border-radius:var(--radius);padding:28px 32px;margin-bottom:40px;display:flex;align-items:flex-start;gap:18px}
-.wip-banner .ic{font-size:32px;flex-shrink:0;animation:float 3s ease-in-out infinite}
-@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
-.wip-banner h2{font-family:'Syne',sans-serif;font-size:15px;font-weight:800;color:var(--text);margin-bottom:8px}
-.wip-banner p{color:var(--muted);font-size:12px;line-height:1.8}
-.section{margin-bottom:36px}
-.section h2{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--green);letter-spacing:1px;text-transform:uppercase;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--border)}
-.section p{color:var(--muted);font-size:12px;line-height:1.9;margin-bottom:10px}
-.section ul{color:var(--muted);font-size:12px;line-height:1.9;padding-left:20px}
-.section ul li{margin-bottom:6px}
-.section ul li strong{color:var(--text)}
-.highlight{background:#00ff8708;border:1px solid #00ff8720;border-radius:8px;padding:14px 18px;margin-top:12px}
-.highlight p{margin:0;color:var(--text);font-size:12px;line-height:1.8}
-.support-box{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px;text-align:center;margin-top:48px}
-.support-box h3{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:var(--text);margin-bottom:8px}
-.support-box p{color:var(--muted);font-size:12px;margin-bottom:20px}
-.btn-wpp{display:inline-flex;align-items:center;gap:8px;background:#25d36620;border:1px solid #25d36640;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:11px 22px;border-radius:8px;text-decoration:none;transition:all .2s}
-.btn-wpp:hover{background:#25d36630;border-color:#25d366;transform:translateY(-2px)}
-footer{text-align:center;padding:28px;font-size:10px;color:var(--muted);border-top:1px solid var(--border)}
-footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--green)}
-@media(max-width:520px){main{padding:40px 16px 60px}.wip-banner{flex-direction:column;gap:12px;padding:20px}}
-</style>
-</head>
-<body>
-<header>
-  <a href="/" class="logo">⚡ ZVM - LR1290</a>
-  <div class="header-links">
-    <a href="/">Portal</a>
-    <a href="/faq">FAQ</a>
-    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank">💬 Suporte</a>
-  </div>
-</header>
-
-<main>
-  <div class="hero">
-    <div class="hero-badge">Legal</div>
-    <h1>Política de Privacidade</h1>
-    <p class="hero-meta">Última atualização: ${new Date().toLocaleDateString('pt-BR', { day:'2-digit', month:'long', year:'numeric' })}</p>
-  </div>
-
-  <div class="wip-banner">
-    <span class="ic">🚧</span>
-    <div>
-      <h2>Documento em elaboração</h2>
-      <p>Nossa Política de Privacidade completa está sendo elaborada por nossa equipe. As informações abaixo refletem nossas práticas atuais de coleta e uso de dados. Em breve este documento estará em sua versão final e completa.</p>
-    </div>
-  </div>
-
-  <div class="section">
-    <h2>1. Quem somos</h2>
-    <p>A ZVM - LR1290 é responsável pelo sistema de licenciamento da extensão ZapVoice, disponibilizado por meio deste portal e das APIs associadas.</p>
-  </div>
-
-  <div class="section">
-    <h2>2. Dados que coletamos</h2>
-    <p>Para prestar o serviço de licenciamento, coletamos os seguintes dados quando você utiliza sua chave de ativação:</p>
-    <ul>
-      <li><strong>Chave de ativação</strong> — identificador único da sua licença</li>
-      <li><strong>Número de telefone</strong> — vinculado à chave para controle de dispositivos</li>
-      <li><strong>Endereço IP</strong> — registrado a cada acesso para fins de segurança</li>
-      <li><strong>Versão do WhatsApp Web</strong> — para compatibilidade técnica</li>
-      <li><strong>Timestamps de acesso</strong> — data e hora das ativações e usos</li>
-      <li><strong>Identificador de dispositivo</strong> — para controle de múltiplos dispositivos</li>
-    </ul>
-    <div class="highlight">
-      <p>⚠️ <strong>Não coletamos</strong> o conteúdo de suas mensagens, contatos, conversas ou qualquer outro dado do WhatsApp que não esteja listado acima.</p>
-    </div>
-  </div>
-
-  <div class="section">
-    <h2>3. Como usamos seus dados</h2>
-    <p>Os dados coletados são utilizados exclusivamente para:</p>
-    <ul>
-      <li>Verificar a validade e autenticidade da sua licença</li>
-      <li>Controlar o número de dispositivos vinculados à chave</li>
-      <li>Detectar uso indevido ou compartilhamento não autorizado</li>
-      <li>Garantir a segurança do serviço</li>
-      <li>Cumprir obrigações legais</li>
-    </ul>
-  </div>
-
-  <div class="section">
-    <h2>4. Retenção dos dados</h2>
-    <p>Os registros de acesso (logs) são automaticamente removidos após <strong>90 dias</strong>, em conformidade com o princípio de minimização de dados da LGPD. Os dados da chave (número vinculado, IP, etc.) são mantidos enquanto a licença estiver ativa.</p>
-  </div>
-
-  <div class="section">
-    <h2>5. Compartilhamento</h2>
-    <p>Seus dados são armazenados no <strong>MongoDB Atlas</strong> (com criptografia AES-256 em repouso) e não são vendidos, compartilhados ou transferidos a terceiros, exceto quando exigido por lei.</p>
-  </div>
-
-  <div class="section">
-    <h2>6. Seus direitos (LGPD)</h2>
-    <p>Conforme a Lei Geral de Proteção de Dados (Lei 13.709/2018), você tem direito a:</p>
-    <ul>
-      <li>Confirmar a existência de tratamento dos seus dados</li>
-      <li>Acessar seus dados</li>
-      <li>Solicitar a correção de dados incompletos ou incorretos</li>
-      <li>Solicitar a exclusão dos seus dados</li>
-      <li>Revogar o consentimento a qualquer momento</li>
-    </ul>
-    <p>Para exercer qualquer um desses direitos, entre em contato pelo WhatsApp.</p>
-  </div>
-
-  <div class="section">
-    <h2>7. Consentimento</h2>
-    <p>Ao ativar sua chave e utilizar este serviço, você concorda com a coleta e uso dos dados descritos nesta política, com base legal no <strong>Art. 7º, V da LGPD</strong> (execução de contrato).</p>
-  </div>
-
-  <div class="support-box">
-    <h3>Dúvidas sobre privacidade?</h3>
-    <p>Fale diretamente com nossa equipe pelo WhatsApp.</p>
-    <a class="btn-wpp" href="https://wa.me/5521996771552?text=LR!%20Tenho%20uma%20d%C3%BAvida%20sobre%20privacidade." target="_blank">💬 Falar com o Suporte</a>
-  </div>
-</main>
-
-<footer>
-  <p>© ${new Date().getFullYear()} ZVM - LR1290 — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/privacidade">Privacidade</a></p>
-</footer>
-
-${CANVAS_BG}
-</body></html>`;
-}
-
-// ─────────────────────────────────────────────
 // PÁGINA: FAQ
 // ─────────────────────────────────────────────
 function renderFaqPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM - LR1290 — FAQ</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1625,15 +1493,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:14p
 .header-links a{font-size:11px;color:var(--muted);text-decoration:none;padding:6px 13px;border:1px solid var(--border);border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
 .header-links a:hover{color:var(--green);border-color:var(--green)}
 main{max-width:760px;margin:0 auto;padding:60px 24px 80px}
-
-/* Hero */
-.hero{text-align:center;margin-bottom:64px;position:relative}
+.hero{text-align:center;margin-bottom:64px}
 .hero-badge{display:inline-block;background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-size:10px;letter-spacing:2px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:22px;font-family:'Syne',sans-serif}
 .hero h1{font-family:'Syne',sans-serif;font-size:clamp(28px,5vw,48px);font-weight:800;line-height:1.1;margin-bottom:18px}
 .hero h1 span{color:var(--green)}
 .hero-sub{color:var(--muted);font-size:13px;line-height:1.8;max-width:500px;margin:0 auto 36px}
-
-/* WIP Card */
 .wip-card{background:linear-gradient(135deg,#0f0f1a,#13101f);border:1px solid #7c3aed40;border-radius:var(--radius);padding:40px 36px;text-align:center;margin-bottom:56px;position:relative;overflow:hidden}
 .wip-card::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,#7c3aed18,transparent 70%);pointer-events:none}
 .wip-icon{font-size:52px;margin-bottom:18px;display:block;animation:float 3s ease-in-out infinite}
@@ -1642,11 +1506,9 @@ main{max-width:760px;margin:0 auto;padding:60px 24px 80px}
 .wip-title span{color:var(--green)}
 .wip-desc{color:var(--muted);font-size:13px;line-height:1.9;max-width:480px;margin:0 auto 28px}
 .progress-wrap{background:#1e1e2e;border-radius:8px;height:6px;overflow:hidden;max-width:320px;margin:0 auto 10px}
-.progress-bar{height:6px;background:linear-gradient(90deg,#7c3aed,var(--green));border-radius:8px;width:35%;animation:progress 2.5s ease-in-out infinite alternate}
+.progress-bar{height:6px;background:linear-gradient(90deg,#7c3aed,var(--green));border-radius:8px;animation:progress 2.5s ease-in-out infinite alternate}
 @keyframes progress{from{width:30%}to{width:45%}}
 .progress-label{font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase}
-
-/* Features coming */
 .coming-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--muted);letter-spacing:2px;text-transform:uppercase;text-align:center;margin-bottom:20px}
 .coming-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:52px}
 .coming-item{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 18px;display:flex;align-items:flex-start;gap:12px;transition:border-color .2s}
@@ -1654,21 +1516,16 @@ main{max-width:760px;margin:0 auto;padding:60px 24px 80px}
 .coming-item .ic{font-size:20px;flex-shrink:0;margin-top:1px}
 .coming-item h3{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px}
 .coming-item p{font-size:10px;color:var(--muted);line-height:1.6}
-
-/* Suporte */
 .support-section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:32px;text-align:center}
 .support-section h2{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:var(--text);margin-bottom:8px}
 .support-section p{color:var(--muted);font-size:12px;line-height:1.8;margin-bottom:24px}
 .support-btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
 .btn-wpp{display:inline-flex;align-items:center;gap:8px;background:#25d36620;border:1px solid #25d36640;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:11px 22px;border-radius:8px;text-decoration:none;transition:all .2s}
-.btn-wpp:hover{background:#25d36630;border-color:#25d366;transform:translateY(-2px);box-shadow:0 6px 20px #25d36630}
+.btn-wpp:hover{background:#25d36630;border-color:#25d366;transform:translateY(-2px)}
 .btn-portal{display:inline-flex;align-items:center;gap:8px;background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:11px 22px;border-radius:8px;text-decoration:none;transition:all .2s}
-.btn-portal:hover{background:#00ff8722;border-color:var(--green);transform:translateY(-2px);box-shadow:0 6px 20px #00ff8730}
-
-/* Footer */
+.btn-portal:hover{background:#00ff8722;border-color:var(--green);transform:translateY(-2px)}
 footer{text-align:center;padding:28px;font-size:10px;color:var(--muted);border-top:1px solid var(--border)}
 footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--green)}
-
 @media(max-width:520px){.coming-grid{grid-template-columns:1fr}.wip-card{padding:28px 20px}.header-links a{padding:5px 9px;font-size:10px}main{padding:40px 16px 60px}}
 </style>
 </head>
@@ -1676,18 +1533,16 @@ footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--gree
 <header>
   <a href="/" class="logo">⚡ ZVM - LR1290</a>
   <div class="header-links">
-    <a href="/">Portal do Cliente</a>
-    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank">💬 Suporte</a>
+    <a href="/">Portal</a>
+    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM%20LR1290." target="_blank">💬 Suporte</a>
   </div>
 </header>
-
 <main>
   <div class="hero">
     <div class="hero-badge">Central de Ajuda</div>
     <h1>Perguntas <span>Frequentes</span></h1>
     <p class="hero-sub">Estamos construindo uma base de conhecimento completa para você. Em breve tudo estará aqui.</p>
   </div>
-
   <div class="wip-card">
     <span class="wip-icon">🚧</span>
     <div class="wip-title">Estamos <span>trabalhando nisso!</span></div>
@@ -1695,35 +1550,15 @@ footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--gree
     <div class="progress-wrap"><div class="progress-bar"></div></div>
     <p class="progress-label">Em desenvolvimento</p>
   </div>
-
   <p class="coming-title">O que vem por aí</p>
   <div class="coming-grid">
-    <div class="coming-item">
-      <span class="ic">🔑</span>
-      <div><h3>Ativação da Chave</h3><p>Como inserir e ativar sua chave no WhatsApp Web.</p></div>
-    </div>
-    <div class="coming-item">
-      <span class="ic">📱</span>
-      <div><h3>Gerenciar Dispositivos</h3><p>Como adicionar, remover e trocar números vinculados.</p></div>
-    </div>
-    <div class="coming-item">
-      <span class="ic">⏱</span>
-      <div><h3>Renovação e Validade</h3><p>Entenda como funciona a expiração e como renovar.</p></div>
-    </div>
-    <div class="coming-item">
-      <span class="ic">💳</span>
-      <div><h3>Pagamentos</h3><p>Dúvidas sobre cobrança, planos e confirmação de compra.</p></div>
-    </div>
-    <div class="coming-item">
-      <span class="ic">⚡</span>
-      <div><h3>Recursos da Extensão</h3><p>Como usar fluxos, funis, agendamentos e disparos.</p></div>
-    </div>
-    <div class="coming-item">
-      <span class="ic">🔒</span>
-      <div><h3>Privacidade e LGPD</h3><p>Quais dados coletamos e como protegemos suas informações.</p></div>
-    </div>
+    <div class="coming-item"><span class="ic">🔑</span><div><h3>Ativação da Chave</h3><p>Como inserir e ativar sua chave no WhatsApp Web.</p></div></div>
+    <div class="coming-item"><span class="ic">📱</span><div><h3>Gerenciar Dispositivos</h3><p>Como adicionar, remover e trocar números vinculados.</p></div></div>
+    <div class="coming-item"><span class="ic">⏱</span><div><h3>Renovação e Validade</h3><p>Entenda como funciona a expiração e como renovar.</p></div></div>
+    <div class="coming-item"><span class="ic">💳</span><div><h3>Pagamentos</h3><p>Dúvidas sobre cobrança, planos e confirmação de compra.</p></div></div>
+    <div class="coming-item"><span class="ic">⚡</span><div><h3>Recursos da Extensão</h3><p>Como usar fluxos, funis, agendamentos e disparos.</p></div></div>
+    <div class="coming-item"><span class="ic">🔒</span><div><h3>Privacidade e LGPD</h3><p>Quais dados coletamos e como protegemos suas informações.</p></div></div>
   </div>
-
   <div class="support-section">
     <h2>Ainda tem dúvidas?</h2>
     <p>Enquanto o FAQ não está pronto, nossa equipe está disponível no WhatsApp para te ajudar com qualquer dúvida.</p>
@@ -1733,22 +1568,21 @@ footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--gree
     </div>
   </div>
 </main>
-
 <footer>
-  <p>© ${new Date().getFullYear()} ZVM - LR1290 — <a href="/">Portal do Cliente</a> · <a href="/faq">FAQ</a></p>
+  <p>© ${new Date().getFullYear()} ZVM - LR1290 — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/privacidade">Privacidade</a></p>
 </footer>
-
 ${CANVAS_BG}
 </body></html>`;
 }
 
 // ─────────────────────────────────────────────
-// PÁGINA: PRIVACIDADE
+// PÁGINA: POLÍTICA DE PRIVACIDADE
 // ─────────────────────────────────────────────
 function renderPrivacyPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM - LR1290 — Política de Privacidade</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
