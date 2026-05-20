@@ -496,6 +496,7 @@ function renderModDashboard(modName = 'Moderador') {
 body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
 header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040}
 .logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--blue);display:flex;align-items:center;gap:8px}
+main{position:relative;z-index:1}
 .badge-mod{background:#4f8ef712;border:1px solid #4f8ef730;color:var(--blue);font-size:9px;letter-spacing:1.5px;text-transform:uppercase;padding:3px 10px;border-radius:20px;font-family:'Syne',sans-serif}
 .hright{display:flex;align-items:center;gap:10px}
 a.out{color:var(--muted);font-size:11px;text-decoration:none;padding:6px 12px;border:1px solid var(--border2);border-radius:var(--radius-sm);transition:all .2s}
@@ -710,7 +711,7 @@ function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt
 // Carregar histórico ao entrar
 loadHistory();
 </script>
-</body></html>`;
+${CANVAS_BG}</body></html>`;
 }
 
 // ─────────────────────────────────────────────
@@ -1040,6 +1041,7 @@ function renderAdminDashboard() {
 body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
 header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040}
 .logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--green);display:flex;align-items:center;gap:8px}
+main{position:relative;z-index:1}
 .hright{display:flex;align-items:center;gap:10px}
 a.out{color:var(--muted);font-size:11px;text-decoration:none;padding:6px 12px;border:1px solid var(--border2);border-radius:var(--radius-sm);transition:all .2s}
 a.out:hover{color:var(--red);border-color:var(--red)}
@@ -1475,7 +1477,7 @@ async function exportCSV(){
   try{const r=await fetch(_RA+'/api/export/csv');if(r.status===401){toast('Sessão expirada',false);return;}const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='zapvoice-chaves-'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(url);toast('CSV exportado!');}catch(e){toast('Erro ao exportar',false);}
 }
 </script>
-</body></html>`;
+${CANVAS_BG}</body></html>`;
 }
 
 // ─────────────────────────────────────────────
