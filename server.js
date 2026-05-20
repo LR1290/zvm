@@ -9,9 +9,19 @@ const { MongoClient } = require('mongodb');
 const PORT         = process.env.PORT         || 3000;
 const ADMIN_USER   = process.env.ADMIN_USER;
 const ADMIN_PASS   = process.env.ADMIN_PASS;
-const MOD_USER     = process.env.MOD_USER     || '';   // usuário do painel de moderação
-const MOD_PASS     = process.env.MOD_PASS     || '';   // senha do painel de moderação
-const MOD_TOTP     = process.env.MOD_TOTP     || '';   // 2FA do painel de moderação (opcional)
+// ── Moderadores (5 slots independentes) ──
+const MODS = [
+  { user: process.env.MOD_USER  || '', pass: process.env.MOD_PASS  || '', totp: process.env.MOD_TOTP  || '', name: 'Moderador'   },
+  { user: process.env.MOD2_USER || '', pass: process.env.MOD2_PASS || '', totp: process.env.MOD2_TOTP || '', name: 'Simplifique' },
+  { user: process.env.MOD3_USER || '', pass: process.env.MOD3_PASS || '', totp: process.env.MOD3_TOTP || '', name: 'BS'          },
+  { user: process.env.MOD4_USER || '', pass: process.env.MOD4_PASS || '', totp: process.env.MOD4_TOTP || '', name: 'Acaraí'      },
+  { user: process.env.MOD5_USER || '', pass: process.env.MOD5_PASS || '', totp: process.env.MOD5_TOTP || '', name: 'Darley'      },
+  { user: process.env.MOD6_USER || '', pass: process.env.MOD6_PASS || '', totp: process.env.MOD6_TOTP || '', name: 'Letícia'     },
+].filter(m => m.user && m.pass);
+// Compatibilidade retroativa — MOD_USER/PASS ainda funciona como slot 1
+const MOD_USER = process.env.MOD_USER || '';
+const MOD_PASS = process.env.MOD_PASS || '';
+const MOD_TOTP = process.env.MOD_TOTP || '';
 const PAYT_SECRET  = process.env.PAYT_SECRET  || '';   // renomeado de CAKTO_SECRET
 const MONGODB_URI  = process.env.MONGODB_URI  || '';
 const APP_SECRET   = process.env.APP_SECRET   || '';
@@ -468,13 +478,7 @@ ${CANVAS_BG}</body></html>`;
 // ─────────────────────────────────────────────
 // PAINEL: MODERADOR
 // ─────────────────────────────────────────────
-function renderModDashboard() {
-  // Moderador vê apenas: total de chaves, chaves ativas e total de logs
-  // Sem acesso a dados de clientes, IPs, telefones ou conteúdo de logs
-  const totalKeys  = Object.keys(keys).length;
-  const activeKeys = Object.values(keys).filter(k => k.active && !isKeyExpired(k)).length;
-  const totalLogs  = logs.length;
-
+function renderModDashboard(modName = 'Moderador') {
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -556,19 +560,13 @@ main{padding:28px 24px;max-width:900px;margin:0 auto}
 </head>
 <body>
 <header>
-  <div class="logo">⚡ ZVM - LR1290 <span class="badge-mod">Moderador</span></div>
+  <div class="logo">⚡ ZVM - LR1290 <span class="badge-mod">${modName}</span></div>
   <div class="hright">
     <a href="${R_MOD}/logout" class="out">↩ Sair</a>
   </div>
 </header>
 
 <main>
-  <div class="stats">
-    <div class="sc"><div class="sc-icon">🔑</div><div class="n">${totalKeys}</div><div class="l">Total de Chaves</div></div>
-    <div class="sc"><div class="sc-icon">✅</div><div class="n">${activeKeys}</div><div class="l">Chaves Ativas</div></div>
-    <div class="sc"><div class="sc-icon">📋</div><div class="n">${totalLogs}</div><div class="l">Acessos Registrados</div></div>
-  </div>
-
   <div class="notice">
     <span style="font-size:16px;flex-shrink:0">🔒</span>
     <span><strong>Acesso restrito.</strong> Este painel permite apenas a criação de novas chaves. Dados de clientes, telefones, IPs e logs de acesso não estão disponíveis para moderadores.</span>
@@ -597,7 +595,7 @@ main{padding:28px 24px;max-width:900px;margin:0 auto}
           <input type="number" id="nuses" placeholder="3" min="1" title="Máx. de dispositivos simultâneos">
         </div>
         <div class="fi" style="align-self:end">
-          <label style="white-space:nowrap"><input type="checkbox" id="ndeferred" style="margin-right:4px">⏱ Ativar ao 1º uso</label>
+          <label style="white-space:nowrap"><input type="checkbox" id="ndeferred" checked style="margin-right:4px">⏱ Ativar ao 1º uso</label>
         </div>
         <button class="btn" onclick="createKey()">+ Gerar</button>
       </div>
@@ -987,7 +985,7 @@ function buildKeysHtml() {
   <td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
   <td>${new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}${expHtml}</td>
   <td>${escHtml(k.wppVersion||'-')}</td>
-  <td class="note-cell" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${escHtml(k.note||'') || '<span style=\\"color:var(--muted)\\">—</span>'}</span></td>
+  <td class="note-cell" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${k.note&&k.note.startsWith('[Mod:')?'<span style=\"color:#4f8ef7;font-size:9px\">'+escHtml(k.note)+'</span>':escHtml(k.note||'') || '<span style=\\"color:var(--muted)\\">—</span>'}</span></td>
   <td>
     <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')}">${k.active?'Bloquear':'Liberar'}</button>
     <button class="bs bg" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">+ Tempo</button>
@@ -1921,21 +1919,24 @@ async function handleRequest(req, res) {
   // MOD: login / logout / painel
   // ─────────────────────────────────────────────
   if (p === R_MOD+'/login' && req.method === 'POST') {
-    if (!MOD_USER || !MOD_PASS) { res.writeHead(404); res.end('Not found'); return; }
+    if (MODS.length === 0) { res.writeHead(404); res.end('Not found'); return; }
     if (!checkRateLimit(ip, 'login')) {
       const mins = getRateLimitWait(ip, 'login');
       sendHtml(res, renderModLogin(`⏳ Muitas tentativas. Aguarde ${mins} minuto(s).`), 429); return;
     }
-    const form   = await parseFormBody(req);
-    const credOk = form.get('user') === MOD_USER && form.get('pass') === MOD_PASS;
-    const totpOk = verifyTOTP(MOD_TOTP, (form.get('totp') || '').trim());
-    if (credOk && totpOk) {
+    const form        = await parseFormBody(req);
+    const inputUser   = form.get('user') || '';
+    const inputPass   = form.get('pass') || '';
+    const inputTotp   = (form.get('totp') || '').trim();
+    const matchedMod  = MODS.find(m => m.user === inputUser && m.pass === inputPass);
+    const totpOk      = matchedMod ? verifyTOTP(matchedMod.totp, inputTotp) : false;
+    if (matchedMod && totpOk) {
       const token = generateToken();
-      modSessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString() };
+      modSessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString(), modName: matchedMod.name };
       res.setHeader('Set-Cookie', `zv_mod=${token}; Path=/; HttpOnly; SameSite=Strict`);
       res.writeHead(302, { Location: R_MOD }); res.end();
     } else {
-      const msg = credOk && !totpOk ? 'Código 2FA inválido ou expirado' : 'Usuário ou senha incorretos';
+      const msg = matchedMod && !totpOk ? 'Código 2FA inválido ou expirado' : 'Usuário ou senha incorretos';
       sendHtml(res, renderModLogin(msg));
     }
     return;
@@ -1947,14 +1948,19 @@ async function handleRequest(req, res) {
   }
 
   if (p === R_MOD || p === R_MOD+'/') {
-    if (!MOD_USER || !MOD_PASS) { res.writeHead(404); res.end('Not found'); return; }
+    if (MODS.length === 0) { res.writeHead(404); res.end('Not found'); return; }
     if (!isModSession(req)) { sendHtml(res, renderModLogin()); return; }
-    sendHtml(res, renderModDashboard()); return;
+    const _mc2 = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+    const _ms2 = _mc2 ? modSessions[_mc2[1]] : null;
+    sendHtml(res, renderModDashboard(_ms2 ? _ms2.modName : 'Moderador')); return;
   }
 
   // ── Mod API: criar chave ──
   if (p === R_MOD+'/api/keys' && req.method === 'POST') {
     if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const _modCookie = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+    const _modSess   = _modCookie ? modSessions[_modCookie[1]] : null;
+    const modName    = _modSess ? _modSess.modName : 'Moderador';
     const body = await parseBody(req);
     if (!body.label || !String(body.label).trim()) { sendJson(res, { error: 'label obrigatório' }, 400); return; }
     const code = generateCode();
@@ -1971,7 +1977,7 @@ async function handleRequest(req, res) {
       label: String(body.label).trim().slice(0, 60),
       active: true, createdAt: new Date().toISOString(),
       uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null,
-      deviceId: null, wppVersion: null, note: '[Criada por moderador]',
+      deviceId: null, wppVersion: null, note: '[Mod: '+modName+']',
       expiresAt, expireDuration: expireDuration || null,
       maxUses, warnCount: 0,
     };
@@ -1984,7 +1990,13 @@ async function handleRequest(req, res) {
     if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     // Retorna apenas chaves com nota de moderador — sem dados sensíveis
     const myKeys = Object.entries(keys)
-      .filter(([, k]) => k.note && k.note.includes('[Criada por moderador]'))
+      .filter(([, k]) => {
+        const _modCookie2 = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+        const _modSess2   = _modCookie2 ? modSessions[_modCookie2[1]] : null;
+        const _myName     = _modSess2 ? _modSess2.modName : null;
+        if (!_myName) return k.note && k.note.startsWith('[Mod:');
+        return k.note && k.note.includes('[Mod: '+_myName+']');
+      })
       .map(([code, k]) => ({
         code,
         label:     k.label,
@@ -2353,7 +2365,7 @@ async function handleRequest(req, res) {
     console.log(`🔑 2FA:  ${TOTP_SECRET ? 'ATIVO' : '⚠ inativo — defina TOTP_SECRET'}`);
     console.log(`💳 Payt: ${PAYT_SECRET ? 'ATIVO' : '⚠ inativo — defina PAYT_SECRET'}`);
     console.log(`🔑 Admin: ${R_ADMIN} | User: ${ADMIN_USER}`);
-    console.log(`👮 Mod:   ${MOD_USER ? R_MOD+' | User: '+MOD_USER : '⚠ inativo — defina MOD_USER e MOD_PASS'}`);
+    console.log(`👮 Mod:   ${MODS.length > 0 ? R_MOD+' | '+MODS.length+' moderador(es): '+MODS.map(m=>m.name).join(', ') : '⚠ inativo — defina MOD_USER e MOD_PASS'}`);
     console.log(`🌐 Extension: ${R_EXT}/v3/key`);
     console.log(`📊 Webhook: ${WEBHOOK_URL || 'não configurado'}`);
     console.log(`🗂  Retenção de logs: ${LOG_RETENTION_DAYS} dias (LGPD) | Máx em memória: ${LOG_MAX}`);
