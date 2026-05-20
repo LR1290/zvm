@@ -594,9 +594,7 @@ main{padding:28px 24px;max-width:900px;margin:0 auto}
           <label>Usos</label>
           <input type="number" id="nuses" placeholder="3" min="1" title="Máx. de dispositivos simultâneos">
         </div>
-        <div class="fi" style="align-self:end">
-          <label style="white-space:nowrap"><input type="checkbox" id="ndeferred" checked style="margin-right:4px">⏱ Ativar ao 1º uso</label>
-        </div>
+        <input type="hidden" id="ndeferred" value="1">
         <button class="btn" onclick="createKey()">+ Gerar</button>
       </div>
 
@@ -648,7 +646,7 @@ async function createKey(){
   const hours=parseInt(document.getElementById('nhours').value||0);
   const _u=document.getElementById('nuses').value.trim();
   const maxUses=_u===''?3:parseInt(_u);
-  const deferred=document.getElementById('ndeferred').checked;
+  const deferred=document.getElementById('ndeferred').value==='1';
 
   if(!label){toast('Informe o nome do cliente.',false);return;}
   if(isNaN(maxUses)||maxUses<1){toast('Informe um número de usos válido (mínimo 1).',false);return;}
