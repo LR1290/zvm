@@ -1474,7 +1474,7 @@ async function saveNote(){
 
 // ── Exportar CSV ──
 async function exportCSV(){
-  try{const r=await fetch(_RA+'/api/export/csv');if(r.status===401){toast('Sessão expirada',false);return;}const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='zapvoice-chaves-'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(url);toast('CSV exportado!');}catch(e){toast('Erro ao exportar',false);}
+  try{const r=await fetch(_RA+'/api/export/csv');if(r.status===401){toast('Sessão expirada',false);return;}const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='zvm-chaves-'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(url);toast('CSV exportado!');}catch(e){toast('Erro ao exportar',false);}
 }
 </script>
 ${CANVAS_BG}</body></html>`;
@@ -1638,7 +1638,7 @@ footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--gree
   </div>
   <div class="section">
     <h2>📋 Visão Geral</h2>
-    <p>Esta Política descreve como o <strong style="color:var(--text)">ZVM - LR1290</strong> coleta, utiliza e protege seus dados ao usar o serviço de licenciamento da extensão ZapVoice.</p>
+    <p>Esta Política descreve como o <strong style="color:var(--text)">ZVM - LR1290</strong> coleta, utiliza e protege seus dados ao usar o serviço de licenciamento da extensão ZVM - LR1290.</p>
     <p>Ao ativar ou consultar sua chave de acesso, você concorda com estes termos, em conformidade com a <strong style="color:var(--text)">Lei Geral de Proteção de Dados (LGPD — Lei nº 13.709/2018)</strong>.</p>
   </div>
   <div class="section">
@@ -1660,7 +1660,7 @@ footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--gree
     <h2>🎯 Finalidade</h2>
     <p>Os dados são usados exclusivamente para:</p>
     <ul>
-      <li>Validar e controlar o acesso à extensão ZapVoice</li>
+      <li>Validar e controlar o acesso à extensão ZVM - LR1290</li>
       <li>Detectar uso indevido ou compartilhamento não autorizado de chaves</li>
       <li>Suporte técnico quando solicitado pelo usuário</li>
       <li>Controle do número de dispositivos vinculados por chave</li>
@@ -2229,7 +2229,7 @@ async function handleRequest(req, res) {
     });
     const csv = [header, ...rows].join('\r\n');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="zapvoice-${new Date().toISOString().slice(0,10)}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="zvm-chaves-${new Date().toISOString().slice(0,10)}.csv"`);
     res.writeHead(200); res.end('\uFEFF' + csv); return;
   }
 
