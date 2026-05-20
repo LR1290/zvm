@@ -537,7 +537,8 @@ input:focus{border-color:#00ff87}
       <input type="text" id="key-input" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false">
       <p style="text-align:left;font-size:11px;color:#6b6b8a;margin-top:8px">Você recebeu esta chave junto com a sua compra.</p>
       <button class="btn" id="check-btn" onclick="checkKey()">Consultar Minha Chave</button>
-      <div class="privacy-note">🔒 Ao consultar sua chave, coletamos dados de uso para fins de licenciamento conforme nossa <a href="#" onclick="alert('Entre em contato com o suporte para mais informações sobre nossa Política de Privacidade.')">Política de Privacidade</a> (LGPD).</div>
+      <a class="btn" href="/faq" target="_blank" style="display:block;margin-top:10px;background:#1e1e2e;color:#6b6b8a;font-size:12px;text-decoration:none;text-align:center;padding:12px;border-radius:10px;border:1px solid #2a2a3e;transition:border-color .2s,color .2s" onmouseover="this.style.borderColor='#00ff87';this.style.color='#00ff87'" onmouseout="this.style.borderColor='#2a2a3e';this.style.color='#6b6b8a'">❓ FAQ — Dúvidas Frequentes</a>
+      <div class="privacy-note">🔒 Ao usar este serviço, você concorda com nossa <a href="https://wa.me/5521996771552?text=LR!%20Quero%20a%20Pol%C3%ADtica%20de%20Privacidade." target="_blank">Política de Privacidade</a> e com a coleta de dados de uso para fins de licenciamento (LGPD).</div>
     </div>
     <div class="panel" id="result-panel">
       <div class="panel-title" id="panel-name">Minha Conta</div>
@@ -1149,7 +1150,140 @@ async function exportCSV(){
 }
 
 // ─────────────────────────────────────────────
-// ROTEADOR PRINCIPAL
+// PÁGINA: FAQ
+// ─────────────────────────────────────────────
+function renderFaqPage() {
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZapVoice — FAQ</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--radius:14px}
+body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000060}
+.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:8px}
+.header-links{display:flex;gap:10px}
+.header-links a{font-size:11px;color:var(--muted);text-decoration:none;padding:6px 13px;border:1px solid var(--border);border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
+.header-links a:hover{color:var(--green);border-color:var(--green)}
+main{max-width:760px;margin:0 auto;padding:60px 24px 80px}
+
+/* Hero */
+.hero{text-align:center;margin-bottom:64px;position:relative}
+.hero-badge{display:inline-block;background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-size:10px;letter-spacing:2px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:22px;font-family:'Syne',sans-serif}
+.hero h1{font-family:'Syne',sans-serif;font-size:clamp(28px,5vw,48px);font-weight:800;line-height:1.1;margin-bottom:18px}
+.hero h1 span{color:var(--green)}
+.hero-sub{color:var(--muted);font-size:13px;line-height:1.8;max-width:500px;margin:0 auto 36px}
+
+/* WIP Card */
+.wip-card{background:linear-gradient(135deg,#0f0f1a,#13101f);border:1px solid #7c3aed40;border-radius:var(--radius);padding:40px 36px;text-align:center;margin-bottom:56px;position:relative;overflow:hidden}
+.wip-card::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,#7c3aed18,transparent 70%);pointer-events:none}
+.wip-icon{font-size:52px;margin-bottom:18px;display:block;animation:float 3s ease-in-out infinite}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.wip-title{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--text);margin-bottom:12px}
+.wip-title span{color:var(--green)}
+.wip-desc{color:var(--muted);font-size:13px;line-height:1.9;max-width:480px;margin:0 auto 28px}
+.progress-wrap{background:#1e1e2e;border-radius:8px;height:6px;overflow:hidden;max-width:320px;margin:0 auto 10px}
+.progress-bar{height:6px;background:linear-gradient(90deg,#7c3aed,var(--green));border-radius:8px;width:35%;animation:progress 2.5s ease-in-out infinite alternate}
+@keyframes progress{from{width:30%}to{width:45%}}
+.progress-label{font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase}
+
+/* Features coming */
+.coming-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--muted);letter-spacing:2px;text-transform:uppercase;text-align:center;margin-bottom:20px}
+.coming-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:52px}
+.coming-item{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 18px;display:flex;align-items:flex-start;gap:12px;transition:border-color .2s}
+.coming-item:hover{border-color:#7c3aed40}
+.coming-item .ic{font-size:20px;flex-shrink:0;margin-top:1px}
+.coming-item h3{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px}
+.coming-item p{font-size:10px;color:var(--muted);line-height:1.6}
+
+/* Suporte */
+.support-section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:32px;text-align:center}
+.support-section h2{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:var(--text);margin-bottom:8px}
+.support-section p{color:var(--muted);font-size:12px;line-height:1.8;margin-bottom:24px}
+.support-btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.btn-wpp{display:inline-flex;align-items:center;gap:8px;background:#25d36620;border:1px solid #25d36640;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:11px 22px;border-radius:8px;text-decoration:none;transition:all .2s}
+.btn-wpp:hover{background:#25d36630;border-color:#25d366;transform:translateY(-2px);box-shadow:0 6px 20px #25d36630}
+.btn-portal{display:inline-flex;align-items:center;gap:8px;background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:11px 22px;border-radius:8px;text-decoration:none;transition:all .2s}
+.btn-portal:hover{background:#00ff8722;border-color:var(--green);transform:translateY(-2px);box-shadow:0 6px 20px #00ff8730}
+
+/* Footer */
+footer{text-align:center;padding:28px;font-size:10px;color:var(--muted);border-top:1px solid var(--border)}
+footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--green)}
+
+@media(max-width:520px){.coming-grid{grid-template-columns:1fr}.wip-card{padding:28px 20px}.header-links a{padding:5px 9px;font-size:10px}main{padding:40px 16px 60px}}
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo">⚡ ZapVoice</a>
+  <div class="header-links">
+    <a href="/">Portal do Cliente</a>
+    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank">💬 Suporte</a>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <div class="hero-badge">Central de Ajuda</div>
+    <h1>Perguntas <span>Frequentes</span></h1>
+    <p class="hero-sub">Estamos construindo uma base de conhecimento completa para você. Em breve tudo estará aqui.</p>
+  </div>
+
+  <div class="wip-card">
+    <span class="wip-icon">🚧</span>
+    <div class="wip-title">Estamos <span>trabalhando nisso!</span></div>
+    <p class="wip-desc">Nossa central de FAQ está sendo desenvolvida com muito cuidado. Em breve você encontrará aqui respostas para todas as suas dúvidas sobre ativação, dispositivos, renovação, pagamentos e muito mais.</p>
+    <div class="progress-wrap"><div class="progress-bar"></div></div>
+    <p class="progress-label">Em desenvolvimento</p>
+  </div>
+
+  <p class="coming-title">O que vem por aí</p>
+  <div class="coming-grid">
+    <div class="coming-item">
+      <span class="ic">🔑</span>
+      <div><h3>Ativação da Chave</h3><p>Como inserir e ativar sua chave no WhatsApp Web.</p></div>
+    </div>
+    <div class="coming-item">
+      <span class="ic">📱</span>
+      <div><h3>Gerenciar Dispositivos</h3><p>Como adicionar, remover e trocar números vinculados.</p></div>
+    </div>
+    <div class="coming-item">
+      <span class="ic">⏱</span>
+      <div><h3>Renovação e Validade</h3><p>Entenda como funciona a expiração e como renovar.</p></div>
+    </div>
+    <div class="coming-item">
+      <span class="ic">💳</span>
+      <div><h3>Pagamentos</h3><p>Dúvidas sobre cobrança, planos e confirmação de compra.</p></div>
+    </div>
+    <div class="coming-item">
+      <span class="ic">⚡</span>
+      <div><h3>Recursos da Extensão</h3><p>Como usar fluxos, funis, agendamentos e disparos.</p></div>
+    </div>
+    <div class="coming-item">
+      <span class="ic">🔒</span>
+      <div><h3>Privacidade e LGPD</h3><p>Quais dados coletamos e como protegemos suas informações.</p></div>
+    </div>
+  </div>
+
+  <div class="support-section">
+    <h2>Ainda tem dúvidas?</h2>
+    <p>Enquanto o FAQ não está pronto, nossa equipe está disponível no WhatsApp para te ajudar com qualquer dúvida.</p>
+    <div class="support-btns">
+      <a class="btn-wpp" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZapVoice." target="_blank">💬 Falar com o Suporte</a>
+      <a class="btn-portal" href="/">🔑 Portal do Cliente</a>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <p>© ${new Date().getFullYear()} ZapVoice — <a href="/">Portal do Cliente</a> · <a href="/faq">FAQ</a></p>
+</footer>
+
+${CANVAS_BG}
+</body></html>`;
+}
+
 // ─────────────────────────────────────────────
 async function handleRequest(req, res) {
   const _corsH = {
@@ -1670,6 +1804,11 @@ async function handleRequest(req, res) {
   // ── Redirects ──
   if (req.method === 'GET' && (p === '/dashboard/backup-fixer' || p === '/dashboard/converter')) {
     res.writeHead(302, { Location: 'https://app.zapvoice.com.br' + p }); res.end(); return;
+  }
+
+  // ── FAQ ──
+  if (p === '/faq' && req.method === 'GET') {
+    sendHtml(res, renderFaqPage()); return;
   }
 
   // ── Portal cliente: rotas públicas ──
