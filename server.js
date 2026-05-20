@@ -9,6 +9,9 @@ const { MongoClient } = require('mongodb');
 const PORT         = process.env.PORT         || 3000;
 const ADMIN_USER   = process.env.ADMIN_USER;
 const ADMIN_PASS   = process.env.ADMIN_PASS;
+const MOD_USER     = process.env.MOD_USER     || '';   // usuário do painel de moderação
+const MOD_PASS     = process.env.MOD_PASS     || '';   // senha do painel de moderação
+const MOD_TOTP     = process.env.MOD_TOTP     || '';   // 2FA do painel de moderação (opcional)
 const PAYT_SECRET  = process.env.PAYT_SECRET  || '';   // renomeado de CAKTO_SECRET
 const MONGODB_URI  = process.env.MONGODB_URI  || '';
 const APP_SECRET   = process.env.APP_SECRET   || '';
@@ -133,6 +136,7 @@ async function saveLogs() {
 let keys        = {};
 let logs        = [];
 let sessions    = {};
+let modSessions = {};   // sessões de moderação separadas do admin
 let extSessions = {};
 let serverReady = false;
 
@@ -213,7 +217,9 @@ function deriveSlug(seed) {
   return crypto.createHmac('sha256', APP_SECRET).update(seed).digest('hex').slice(0, 14);
 }
 const _slugAdmin = deriveSlug('admin-panel');
+const _slugMod   = deriveSlug('mod-panel');
 const R_ADMIN    = _slugAdmin ? '/' + _slugAdmin : '/admin';
+const R_MOD      = _slugMod  ? '/' + _slugMod   : '/mod';
 const R_EXT      = '/extension';
 
 // ─────────────────────────────────────────────
@@ -258,11 +264,13 @@ setInterval(() => {
     if (now > e.blockedUntil && now > e.resetAt) rateLimitMap.delete(k);
 }, 15 * 60000);
 
-// Limpeza periódica de sessões admin e ext expiradas
+// Limpeza periódica de sessões admin, mod e ext expiradas
 setInterval(() => {
   const now = new Date();
   for (const [k, s] of Object.entries(sessions))
     if (now > new Date(s.expiresAt)) delete sessions[k];
+  for (const [k, s] of Object.entries(modSessions))
+    if (now > new Date(s.expiresAt)) delete modSessions[k];
   for (const [k, s] of Object.entries(extSessions))
     if (now > new Date(s.expiresAt)) delete extSessions[k];
 }, 30 * 60000);
@@ -348,6 +356,16 @@ function isAdminSession(req) {
   return true;
 }
 
+function isModSession(req) {
+  const cookie = req.headers.cookie || '';
+  const match  = cookie.match(/zv_mod=([a-f0-9]+)/);
+  if (!match) return false;
+  const s = modSessions[match[1]];
+  if (!s) return false;
+  if (new Date() > new Date(s.expiresAt)) { delete modSessions[match[1]]; return false; }
+  return true;
+}
+
 function parseBody(req) {
   return new Promise(resolve => {
     let b = '';
@@ -408,6 +426,294 @@ async function addLog(entry) {
 // ─────────────────────────────────────────────
 const CANVAS_BG = `<canvas id="_cvs" style="position:fixed;inset:0;z-index:0;pointer-events:none"></canvas>
 <script>(function(){var c=document.getElementById('_cvs'),ctx=c.getContext('2d');function resize(){c.width=window.innerWidth;c.height=window.innerHeight;}resize();window.addEventListener('resize',resize);var pts=Array.from({length:60},function(){return{x:Math.random()*c.width,y:Math.random()*c.height,vx:(Math.random()-.5)*.4,vy:(Math.random()-.5)*.4,r:Math.random()*2+.5};});function draw(){ctx.clearRect(0,0,c.width,c.height);pts.forEach(function(p){p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>c.width)p.vx*=-1;if(p.y<0||p.y>c.height)p.vy*=-1;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle='rgba(124,58,237,0.5)';ctx.fill();});for(var i=0;i<pts.length;i++){for(var j=i+1;j<pts.length;j++){var dx=pts[i].x-pts[j].x,dy=pts[i].y-pts[j].y,d=Math.sqrt(dx*dx+dy*dy);if(d<130){ctx.beginPath();ctx.moveTo(pts[i].x,pts[i].y);ctx.lineTo(pts[j].x,pts[j].y);ctx.strokeStyle='rgba(124,58,237,'+(0.12*(1-d/130))+')';ctx.lineWidth=.7;ctx.stroke();}}}requestAnimationFrame(draw);}draw();})();</script>`;
+
+// ─────────────────────────────────────────────
+// PÁGINA: LOGIN DO MODERADOR
+// ─────────────────────────────────────────────
+function renderModLogin(error = '') {
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZVM - LR1290 — Moderação</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
+.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:40px 36px;width:360px;position:relative;z-index:1;box-shadow:0 0 40px rgba(79,142,247,0.12)}
+.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#4f8ef7;margin-bottom:4px;text-align:center}
+.sub{color:#6b6b8a;font-size:10px;letter-spacing:3px;text-transform:uppercase;margin-bottom:24px;text-align:center}
+.badge{display:inline-block;background:#4f8ef712;border:1px solid #4f8ef730;color:#4f8ef7;font-size:9px;letter-spacing:2px;text-transform:uppercase;padding:3px 10px;border-radius:20px;margin-bottom:20px;font-family:'Syne',sans-serif;display:block;text-align:center}
+label{display:block;font-size:10px;letter-spacing:2px;color:#6b6b8a;text-transform:uppercase;margin-bottom:7px}
+input{width:100%;padding:11px 14px;background:#0a0a0f;border:1px solid #1e1e2e;border-radius:8px;color:#e2e2f0;font-family:'Space Mono',monospace;font-size:13px;outline:none;margin-bottom:16px;transition:border .2s}
+input:focus{border-color:#4f8ef7}
+.btn{width:100%;padding:12px;background:#4f8ef7;border:none;border-radius:8px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:opacity .2s}
+.btn:hover{opacity:.85}
+.err{background:#ff475715;border:1px solid #ff4757;border-radius:6px;color:#ff4757;padding:9px 12px;font-size:12px;margin-bottom:16px}
+</style></head><body>
+<div class="card">
+  <div class="logo">⚡ ZVM - LR1290</div>
+  <div class="sub">Painel de Moderação</div>
+  <div class="badge">👮 Acesso Moderador</div>
+  ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
+  <form method="POST" action="${R_MOD}/login">
+    <label>Usuário</label><input type="text" name="user" autocomplete="off">
+    <label>Senha</label><input type="password" name="pass">
+    ${MOD_TOTP ? `<label>Código 2FA</label><input type="text" name="totp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" autocomplete="one-time-code" style="letter-spacing:4px;font-size:18px;text-align:center">` : ''}
+    <button type="submit" class="btn">Entrar</button>
+  </form>
+</div>
+${CANVAS_BG}</body></html>`;
+}
+
+// ─────────────────────────────────────────────
+// PAINEL: MODERADOR
+// ─────────────────────────────────────────────
+function renderModDashboard() {
+  // Moderador vê apenas: total de chaves, chaves ativas e total de logs
+  // Sem acesso a dados de clientes, IPs, telefones ou conteúdo de logs
+  const totalKeys  = Object.keys(keys).length;
+  const activeKeys = Object.values(keys).filter(k => k.active && !isKeyExpired(k)).length;
+  const totalLogs  = logs.length;
+
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZVM - LR1290 — Moderação</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --blue:#4f8ef7;--dark:#080810;--card:#0f0f1a;--card2:#13131f;
+  --border:#1c1c2e;--border2:#252538;--text:#e2e2f0;--muted:#5a5a7a;
+  --red:#ff4757;--green:#00ff87;--radius:10px;--radius-sm:6px;
+}
+body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040}
+.logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--blue);display:flex;align-items:center;gap:8px}
+.badge-mod{background:#4f8ef712;border:1px solid #4f8ef730;color:var(--blue);font-size:9px;letter-spacing:1.5px;text-transform:uppercase;padding:3px 10px;border-radius:20px;font-family:'Syne',sans-serif}
+.hright{display:flex;align-items:center;gap:10px}
+a.out{color:var(--muted);font-size:11px;text-decoration:none;padding:6px 12px;border:1px solid var(--border2);border-radius:var(--radius-sm);transition:all .2s}
+a.out:hover{color:var(--red);border-color:var(--red)}
+main{padding:28px 24px;max-width:900px;margin:0 auto}
+
+/* Stats */
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:32px}
+.sc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px 22px;position:relative;overflow:hidden;transition:border-color .2s}
+.sc:hover{border-color:var(--border2)}
+.sc-icon{position:absolute;right:14px;top:14px;font-size:22px;opacity:.12}
+.sc .n{font-family:'Syne',sans-serif;font-size:34px;font-weight:800;color:var(--blue);line-height:1}
+.sc .l{color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:1.5px;margin-top:6px}
+
+/* Notice */
+.notice{background:#4f8ef708;border:1px solid #4f8ef720;border-radius:var(--radius);padding:14px 18px;margin-bottom:28px;display:flex;align-items:flex-start;gap:12px;font-size:11px;color:var(--muted);line-height:1.7}
+.notice strong{color:var(--blue)}
+
+/* Form */
+.sec{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:20px}
+.sh{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border);background:var(--card2);flex-wrap:wrap;gap:10px}
+.st{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:var(--blue);display:flex;align-items:center;gap:6px}
+.form-body{padding:20px 18px}
+.form-grid{display:grid;grid-template-columns:1fr auto auto auto auto auto;gap:8px;align-items:end;flex-wrap:wrap}
+.fi{display:flex;flex-direction:column;gap:4px}
+.fi label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+.fi input{padding:8px 11px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:12px;outline:none;transition:border .18s}
+.fi input:focus{border-color:var(--blue)}
+.fi input::placeholder{color:var(--muted)}
+.fi-wide{grid-column:1}
+.fi-num input{width:70px;text-align:center}
+.btn{padding:9px 18px;background:var(--blue);color:#000;border:none;border-radius:var(--radius-sm);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;cursor:pointer;transition:all .18s;white-space:nowrap;align-self:end}
+.btn:hover{opacity:.85;transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+
+/* Resultado */
+.result-box{display:none;margin-top:18px;background:var(--dark);border:1px solid #4f8ef730;border-radius:var(--radius);padding:18px 20px}
+.result-box.show{display:block}
+.result-label{font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px}
+.result-key{font-family:'Space Mono',monospace;font-size:18px;color:var(--blue);letter-spacing:2px;word-break:break-all;margin-bottom:14px}
+.result-meta{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.result-tag{background:#4f8ef712;border:1px solid #4f8ef720;color:var(--blue);font-size:10px;padding:3px 10px;border-radius:20px}
+.copy-btn{padding:8px 16px;background:#4f8ef718;color:var(--blue);border:1px solid #4f8ef730;border-radius:var(--radius-sm);font-family:'Syne',sans-serif;font-weight:700;font-size:11px;cursor:pointer;transition:all .2s}
+.copy-btn:hover{background:#4f8ef728;border-color:var(--blue)}
+
+/* Histórico */
+.hist-table{width:100%;border-collapse:collapse;font-size:11px}
+.hist-table th{padding:8px 12px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);border-bottom:1px solid var(--border);background:var(--card2);font-weight:400}
+.hist-table td{padding:10px 12px;border-bottom:1px solid #14141f;vertical-align:middle}
+.hist-table tr:last-child td{border-bottom:none}
+.hist-table tr:hover td{background:#ffffff02}
+.kc{color:var(--blue);font-size:11px;letter-spacing:.3px}
+.badge{padding:2px 7px;border-radius:3px;font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase}
+.bon{background:#00ff8718;color:var(--green);border:1px solid #00ff8730}
+.bdef{background:#4f8ef718;color:var(--blue);border:1px solid #4f8ef730}
+.empty{text-align:center;color:var(--muted);padding:30px;font-size:11px}
+
+.toast{position:fixed;bottom:20px;right:20px;padding:11px 18px;border-radius:var(--radius);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;display:none;z-index:999999;box-shadow:0 6px 30px #00000070}
+
+@media(max-width:700px){.form-grid{grid-template-columns:1fr 1fr};.stats{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">⚡ ZVM - LR1290 <span class="badge-mod">Moderador</span></div>
+  <div class="hright">
+    <a href="${R_MOD}/logout" class="out">↩ Sair</a>
+  </div>
+</header>
+
+<main>
+  <div class="stats">
+    <div class="sc"><div class="sc-icon">🔑</div><div class="n">${totalKeys}</div><div class="l">Total de Chaves</div></div>
+    <div class="sc"><div class="sc-icon">✅</div><div class="n">${activeKeys}</div><div class="l">Chaves Ativas</div></div>
+    <div class="sc"><div class="sc-icon">📋</div><div class="n">${totalLogs}</div><div class="l">Acessos Registrados</div></div>
+  </div>
+
+  <div class="notice">
+    <span style="font-size:16px;flex-shrink:0">🔒</span>
+    <span><strong>Acesso restrito.</strong> Este painel permite apenas a criação de novas chaves. Dados de clientes, telefones, IPs e logs de acesso não estão disponíveis para moderadores.</span>
+  </div>
+
+  <div class="sec">
+    <div class="sh">
+      <div class="st">🔑 Criar Nova Chave</div>
+    </div>
+    <div class="form-body">
+      <div class="form-grid">
+        <div class="fi fi-wide">
+          <label>Nome do Cliente</label>
+          <input type="text" id="nlabel" placeholder="Ex: João Silva" autocomplete="off">
+        </div>
+        <div class="fi fi-num">
+          <label>Dias</label>
+          <input type="number" id="ndays" placeholder="0" min="0">
+        </div>
+        <div class="fi fi-num">
+          <label>Horas</label>
+          <input type="number" id="nhours" placeholder="0" min="0">
+        </div>
+        <div class="fi fi-num">
+          <label>Usos</label>
+          <input type="number" id="nuses" placeholder="3" min="1" title="Máx. de dispositivos simultâneos">
+        </div>
+        <div class="fi" style="align-self:end">
+          <label style="white-space:nowrap"><input type="checkbox" id="ndeferred" style="margin-right:4px">⏱ Ativar ao 1º uso</label>
+        </div>
+        <button class="btn" onclick="createKey()">+ Gerar</button>
+      </div>
+
+      <div class="result-box" id="result-box">
+        <div class="result-label">Chave criada com sucesso</div>
+        <div class="result-key" id="result-key"></div>
+        <div class="result-meta" id="result-meta"></div>
+        <button class="copy-btn" onclick="copyKey()">📋 Copiar Chave</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sh">
+      <div class="st">📋 Chaves Criadas por Mim</div>
+      <button class="btn" style="background:#4f8ef718;color:var(--blue);border:1px solid #4f8ef730;font-size:11px;padding:6px 12px" onclick="loadHistory()">↻ Atualizar</button>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="hist-table">
+        <thead><tr>
+          <th>Chave</th>
+          <th>Cliente</th>
+          <th>Usos</th>
+          <th>Validade</th>
+          <th>Criada em</th>
+          <th>Status</th>
+        </tr></thead>
+        <tbody id="hist-body"><tr><td colspan="6" class="empty">Clique em Atualizar para carregar</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const _RM = '${R_MOD}';
+
+function toast(msg, ok=true){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.style.background=ok?'var(--blue)':'var(--red)';
+  t.style.color='#fff';t.style.display='block';
+  setTimeout(()=>t.style.display='none',3200);
+}
+
+async function createKey(){
+  const label=document.getElementById('nlabel').value.trim();
+  const days=parseInt(document.getElementById('ndays').value||0);
+  const hours=parseInt(document.getElementById('nhours').value||0);
+  const _u=document.getElementById('nuses').value.trim();
+  const maxUses=_u===''?3:parseInt(_u);
+  const deferred=document.getElementById('ndeferred').checked;
+
+  if(!label){toast('Informe o nome do cliente.',false);return;}
+  if(isNaN(maxUses)||maxUses<1){toast('Informe um número de usos válido (mínimo 1).',false);return;}
+
+  try{
+    const body={label,maxUses};
+    if(days>0)body.expireDays=days;
+    if(hours>0)body.expireHours=hours;
+    if(deferred)body.deferred=true;
+
+    const r=await fetch(_RM+'/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(r.status===401){toast('Sessão expirada.',false);setTimeout(()=>location.href=_RM,1500);return;}
+    const d=await r.json();
+    if(!d.ok){toast('Erro: '+(d.error||'desconhecido'),false);return;}
+
+    // Exibir resultado
+    document.getElementById('result-key').textContent=d.key;
+    const meta=[];
+    const exp=[];if(days>0)exp.push(days+'d');if(hours>0)exp.push(hours+'h');
+    meta.push(exp.length?exp.join(' ')+' de validade':'Sem expiração');
+    meta.push(maxUses+' dispositivo(s)');
+    if(deferred)meta.push('Ativa ao 1º uso');
+    document.getElementById('result-meta').innerHTML=meta.map(m=>'<span class="result-tag">'+m+'</span>').join('');
+    document.getElementById('result-box').classList.add('show');
+
+    // Limpar campos
+    ['nlabel','ndays','nhours','nuses'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('ndeferred').checked=false;
+
+    toast('✅ Chave criada: '+d.key);
+    await loadHistory();
+  }catch(e){toast('Erro de rede.',false);}
+}
+
+function copyKey(){
+  const key=document.getElementById('result-key').textContent;
+  navigator.clipboard.writeText(key).then(()=>toast('Chave copiada!')).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=key;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);toast('Chave copiada!');
+  });
+}
+
+function fmtDate(iso){if(!iso)return'—';const d=new Date(iso);return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
+
+async function loadHistory(){
+  try{
+    const r=await fetch(_RM+'/api/my-keys');
+    if(r.status===401){toast('Sessão expirada.',false);setTimeout(()=>location.href=_RM,1500);return;}
+    const d=await r.json();
+    const tbody=document.getElementById('hist-body');
+    if(!d.keys||d.keys.length===0){tbody.innerHTML='<tr><td colspan="6" class="empty">Nenhuma chave criada ainda</td></tr>';return;}
+    tbody.innerHTML=d.keys.map(k=>{
+      const exp=k.expiresAt?fmtDate(k.expiresAt):(k.deferred?'Ativa ao 1º uso':'Sem expiração');
+      const st=k.active?'<span class="badge bon">ATIVA</span>':'<span class="badge" style="background:#ff475718;color:#ff4757;border:1px solid #ff475730">INATIVA</span>';
+      return '<tr><td><span class="kc">'+k.code+'</span></td><td>'+escHtml(k.label)+'</td><td>'+k.maxUses+'</td><td>'+exp+'</td><td>'+fmtDate(k.createdAt)+'</td><td>'+st+'</td></tr>';
+    }).join('');
+  }catch(e){toast('Erro ao carregar histórico.',false);}
+}
+
+function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// Carregar histórico ao entrar
+loadHistory();
+</script>
+</body></html>`;
+}
 
 // ─────────────────────────────────────────────
 // PÁGINA: LOGIN DA EXTENSÃO
@@ -1769,6 +2075,87 @@ async function handleRequest(req, res) {
     sendHtml(res, renderAdminDashboard()); return;
   }
 
+  // ─────────────────────────────────────────────
+  // MOD: login / logout / painel
+  // ─────────────────────────────────────────────
+  if (p === R_MOD+'/login' && req.method === 'POST') {
+    if (!MOD_USER || !MOD_PASS) { res.writeHead(404); res.end('Not found'); return; }
+    if (!checkRateLimit(ip, 'login')) {
+      const mins = getRateLimitWait(ip, 'login');
+      sendHtml(res, renderModLogin(`⏳ Muitas tentativas. Aguarde ${mins} minuto(s).`), 429); return;
+    }
+    const form   = await parseFormBody(req);
+    const credOk = form.get('user') === MOD_USER && form.get('pass') === MOD_PASS;
+    const totpOk = verifyTOTP(MOD_TOTP, (form.get('totp') || '').trim());
+    if (credOk && totpOk) {
+      const token = generateToken();
+      modSessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString() };
+      res.setHeader('Set-Cookie', `zv_mod=${token}; Path=/; HttpOnly; SameSite=Strict`);
+      res.writeHead(302, { Location: R_MOD }); res.end();
+    } else {
+      const msg = credOk && !totpOk ? 'Código 2FA inválido ou expirado' : 'Usuário ou senha incorretos';
+      sendHtml(res, renderModLogin(msg));
+    }
+    return;
+  }
+
+  if (p === R_MOD+'/logout') {
+    res.setHeader('Set-Cookie', 'zv_mod=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT');
+    res.writeHead(302, { Location: R_MOD }); res.end(); return;
+  }
+
+  if (p === R_MOD || p === R_MOD+'/') {
+    if (!MOD_USER || !MOD_PASS) { res.writeHead(404); res.end('Not found'); return; }
+    if (!isModSession(req)) { sendHtml(res, renderModLogin()); return; }
+    sendHtml(res, renderModDashboard()); return;
+  }
+
+  // ── Mod API: criar chave ──
+  if (p === R_MOD+'/api/keys' && req.method === 'POST') {
+    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const body = await parseBody(req);
+    if (!body.label || !String(body.label).trim()) { sendJson(res, { error: 'label obrigatório' }, 400); return; }
+    const code = generateCode();
+    let expiresAt = null, expireDuration = null;
+    const days    = parseInt(body.expireDays  || 0);
+    const hours   = parseInt(body.expireHours || 0);
+    if (days > 0 || hours > 0) {
+      const durationMs = ((days * 1440) + (hours * 60)) * 60000;
+      if (body.deferred) { expireDuration = durationMs; }
+      else { expiresAt = new Date(Date.now() + durationMs).toISOString(); }
+    }
+    const maxUses = Math.max(1, parseInt(body.maxUses) || MAX_USES);
+    keys[code] = {
+      label: String(body.label).trim().slice(0, 60),
+      active: true, createdAt: new Date().toISOString(),
+      uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null,
+      deviceId: null, wppVersion: null, note: '[Criada por moderador]',
+      expiresAt, expireDuration: expireDuration || null,
+      maxUses, warnCount: 0,
+    };
+    await saveKey(code);
+    sendJson(res, { ok: true, key: code }); return;
+  }
+
+  // ── Mod API: listar apenas as chaves criadas pelo moderador ──
+  if (p === R_MOD+'/api/my-keys' && req.method === 'GET') {
+    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    // Retorna apenas chaves com nota de moderador — sem dados sensíveis
+    const myKeys = Object.entries(keys)
+      .filter(([, k]) => k.note && k.note.includes('[Criada por moderador]'))
+      .map(([code, k]) => ({
+        code,
+        label:     k.label,
+        maxUses:   k.maxUses,
+        active:    k.active && !isKeyExpired(k),
+        expiresAt: k.expiresAt || null,
+        deferred:  !!(k.expireDuration && !k.expiresAt),
+        createdAt: k.createdAt,
+      }))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    sendJson(res, { ok: true, keys: myKeys }); return;
+  }
+
   // Helper para extrair código das rotas /api/keys/:code/...
   function extractCode(pattern) {
     const match = p.match(pattern);
@@ -2124,6 +2511,7 @@ async function handleRequest(req, res) {
     console.log(`🔑 2FA:  ${TOTP_SECRET ? 'ATIVO' : '⚠ inativo — defina TOTP_SECRET'}`);
     console.log(`💳 Payt: ${PAYT_SECRET ? 'ATIVO' : '⚠ inativo — defina PAYT_SECRET'}`);
     console.log(`🔑 Admin: ${R_ADMIN} | User: ${ADMIN_USER}`);
+    console.log(`👮 Mod:   ${MOD_USER ? R_MOD+' | User: '+MOD_USER : '⚠ inativo — defina MOD_USER e MOD_PASS'}`);
     console.log(`🌐 Extension: ${R_EXT}/v3/key`);
     console.log(`📊 Webhook: ${WEBHOOK_URL || 'não configurado'}`);
     console.log(`🗂  Retenção de logs: ${LOG_RETENTION_DAYS} dias (LGPD) | Máx em memória: ${LOG_MAX}`);
