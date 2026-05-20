@@ -497,7 +497,7 @@ body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace
 header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040}
 .logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--blue);display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
 main{position:relative;z-index:1}
-.badge-mod{background:#4f8ef712;border:1px solid #4f8ef730;color:var(--blue);font-size:9px;letter-spacing:1.5px;text-transform:uppercase;padding:3px 10px;border-radius:20px;font-family:'Syne',sans-serif}
+.badge-mod{background:#4f8ef712;border:1px solid #4f8ef730;color:var(--blue);font-size:12px;letter-spacing:0;text-transform:uppercase;padding:4px 12px;border-radius:20px;font-family:'Syne',sans-serif;font-weight:700}
 .hright{display:flex;align-items:center;gap:10px}
 a.out{color:var(--muted);font-size:11px;text-decoration:none;padding:6px 12px;border:1px solid var(--border2);border-radius:var(--radius-sm);transition:all .2s}
 a.out:hover{color:var(--red);border-color:var(--red)}
@@ -1576,6 +1576,7 @@ footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--gree
 </main>
 <footer>
   <p>© ${new Date().getFullYear()} ZVM - LR1290 — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/privacidade">Privacidade</a></p>
+  <p style="margin-top:6px;font-size:9px;letter-spacing:2px;text-transform:uppercase;opacity:.5">Todos os direitos reservados</p>
 </footer>
 ${CANVAS_BG}
 </body></html>`;
@@ -1683,14 +1684,10 @@ footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--gree
       <li><span class="tag">Render.com</span> hospedagem do servidor</li>
     </ul>
   </div>
-  <div class="section">
-    <h2>✅ Seus Direitos (LGPD)</h2>
-    <p>Você tem direito a confirmar, acessar, corrigir, excluir seus dados e revogar o consentimento a qualquer momento. Para exercer qualquer direito, entre em contato:</p>
-    <a class="contact-btn" href="https://wa.me/5521996771552?text=LR!%20Quero%20exercer%20meus%20direitos%20LGPD." target="_blank">💬 Solicitar via WhatsApp</a>
-  </div>
 </main>
 <footer>
   <p>© ${new Date().getFullYear()} ZVM - LR1290 — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/privacidade">Privacidade</a></p>
+  <p style="margin-top:6px;font-size:9px;letter-spacing:2px;text-transform:uppercase;opacity:.5">Todos os direitos reservados</p>
 </footer>
 ${CANVAS_BG}
 </body></html>`;
