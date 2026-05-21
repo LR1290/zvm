@@ -424,35 +424,93 @@ async function getPaymentStats() {
     const d7  = new Date(now - 7  * 86400000);
     const d30 = new Date(now - 30 * 86400000);
 
-    const [total, last7, last30, byProduct, byDay] = await Promise.all([
-      db.collection('payments').countDocuments(),
-      db.collection('payments').countDocuments({ paidAt: { $gte: d7.toISOString() } }),
-      db.collection('payments').countDocuments({ paidAt: { $gte: d30.toISOString() } }),
+    const [total, last7, last30, byProduct, byDay, byHour, byMethod] = await Promise.all([
+      db.collection('payments').countDocuments({ approved: true }),
+      db.collection('payments').countDocuments({ approved: true, paidAt: { $gte: d7.toISOString() } }),
+      db.collection('payments').countDocuments({ approved: true, paidAt: { $gte: d30.toISOString() } }),
       db.collection('payments').aggregate([
+        { $match: { approved: true } },
         { $group: { _id: '$productName', count: { $sum: 1 }, revenue: { $sum: '$amount' } } },
         { $sort: { count: -1 } }
       ]).toArray(),
       db.collection('payments').aggregate([
-        { $match: { paidAt: { $gte: d30.toISOString() } } },
+        { $match: { approved: true, paidAt: { $gte: d30.toISOString() } } },
         { $group: {
           _id: { $substr: ['$paidAt', 0, 10] },
-          count: { $sum: 1 },
-          revenue: { $sum: '$amount' }
+          count: { $sum: 1 }, revenue: { $sum: '$amount' }
         }},
         { $sort: { _id: 1 } }
       ]).toArray(),
+      // Horários de pico — hora do dia com mais pagamentos
+      db.collection('payments').aggregate([
+        { $match: { approved: true } },
+        { $addFields: { hour: { $substr: ['$paidAt', 11, 2] } } },
+        { $group: { _id: '$hour', count: { $sum: 1 } } },
+        { $sort: { _id: 1 } }
+      ]).toArray(),
+      // Métodos de pagamento
+      db.collection('payments').aggregate([
+        { $match: { approved: true } },
+        { $group: { _id: '$paymentMethod', count: { $sum: 1 }, revenue: { $sum: '$amount' } } },
+        { $sort: { count: -1 } }
+      ]).toArray(),
     ]);
 
-    const revenueTotal = (await db.collection('payments').aggregate([
-      { $group: { _id: null, total: { $sum: '$amount' } } }
-    ]).toArray())[0]?.total || 0;
+    const [revTotalArr, revLast30Arr, revLast7Arr] = await Promise.all([
+      db.collection('payments').aggregate([{ $match: { approved: true } },{ $group: { _id: null, total: { $sum: '$amount' } } }]).toArray(),
+      db.collection('payments').aggregate([{ $match: { approved: true, paidAt: { $gte: d30.toISOString() } } },{ $group: { _id: null, total: { $sum: '$amount' } } }]).toArray(),
+      db.collection('payments').aggregate([{ $match: { approved: true, paidAt: { $gte: d7.toISOString() } } },{ $group: { _id: null, total: { $sum: '$amount' } } }]).toArray(),
+    ]);
+    const revenueTotal   = revTotalArr[0]?.total  || 0;
+    const revenueLast30  = revLast30Arr[0]?.total  || 0;
+    const revenueLast7   = revLast7Arr[0]?.total   || 0;
 
-    const revenueLast30 = (await db.collection('payments').aggregate([
-      { $match: { paidAt: { $gte: d30.toISOString() } } },
-      { $group: { _id: null, total: { $sum: '$amount' } } }
-    ]).toArray())[0]?.total || 0;
+    // ── Retenção: clientes que compraram mais de uma vez ──
+    const retentionArr = await db.collection('payments').aggregate([
+      { $match: { approved: true, clientEmail: { $exists: true, $ne: '' } } },
+      { $group: { _id: '$clientEmail', count: { $sum: 1 }, total: { $sum: '$amount' } } },
+      { $sort: { count: -1 } }
+    ]).toArray();
+    const uniqueClients  = retentionArr.length;
+    const returningClients = retentionArr.filter(c => c.count > 1).length;
+    const retentionRate  = uniqueClients ? Math.round((returningClients / uniqueClients) * 100) : 0;
+    const topClients     = retentionArr.slice(0, 5);
 
-    return { total, last7, last30, revenueTotal, revenueLast30, byProduct, byDay };
+    // ── Churn: chaves expiradas nos últimos 30d que NÃO renovaram ──
+    const expiredKeys = Object.values(keys).filter(k => {
+      if (!k.expiresAt) return false;
+      const exp = new Date(k.expiresAt);
+      return exp > d30 && exp <= now;
+    });
+    const renewedEmails = new Set(
+      (await db.collection('payments').find({ approved: true, paidAt: { $gte: d30.toISOString() } }).toArray())
+        .map(p => p.clientEmail).filter(Boolean)
+    );
+    const churnedKeys = expiredKeys.filter(k => {
+      const email = (k.note||'').match(/Email: ([^\s|]+)/)?.[1] || '';
+      return email && !renewedEmails.has(email);
+    }).length;
+    const churnRate = expiredKeys.length ? Math.round((churnedKeys / expiredKeys.length) * 100) : 0;
+
+    // ── Moderadores mais produtivos ──
+    const modStats = {};
+    Object.values(keys).forEach(k => {
+      const match = (k.note||'').match(/\[Mod: ([^\]]+)\]/);
+      if (match) {
+        const name = match[1];
+        if (!modStats[name]) modStats[name] = 0;
+        modStats[name]++;
+      }
+    });
+    const byMod = Object.entries(modStats).map(([name, count]) => ({ name, count })).sort((a,b) => b.count - a.count);
+
+    return {
+      total, last7, last30, revenueTotal, revenueLast30, revenueLast7,
+      byProduct, byDay, byHour, byMethod,
+      uniqueClients, returningClients, retentionRate, topClients,
+      churnedKeys, churnRate, expiredKeys: expiredKeys.length,
+      byMod,
+    };
   } catch (e) { console.error('[DB] Erro nas stats:', e.message); return null; }
 }
 
@@ -1822,9 +1880,11 @@ async function renderAnalyticsDashboard() {
   const payments = await getPayments({ limit: 200 });
   const fmtBRL   = v => 'R$\u00a0' + (v||0).toFixed(2).replace('.',',');
   const fmtDate  = iso => iso ? new Date(iso).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
-  const byDayJson     = JSON.stringify(stats?.byDay     || []);
-  const byProductJson = JSON.stringify(stats?.byProduct || []);
-  const escH = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const escH     = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const byDayJson    = JSON.stringify(stats?.byDay     || []);
+  const byProdJson   = JSON.stringify(stats?.byProduct || []);
+  const byHourJson   = JSON.stringify(stats?.byHour    || []);
+  const byMethodJson = JSON.stringify(stats?.byMethod  || []);
 
   const paymentsRows = payments.length ? payments.map(p => {
     const rowSearch = [p.clientName,p.clientEmail,p.productName,p.keyCode,p.paymentMethod].join('|').toLowerCase();
@@ -1838,6 +1898,14 @@ async function renderAnalyticsDashboard() {
   <td style="color:#4f8ef7;font-size:10px">${escH(p.keyCode||'-')}</td>
 </tr>`;
   }).join('') : '<tr><td colspan="7" class="empty">Nenhum pagamento registrado ainda.<br>Configure o webhook da Payt apontando para /payt/webhook</td></tr>';
+
+  const topClientsRows = (stats?.topClients||[]).map(c =>
+    `<tr><td>${escH(c._id)}</td><td style="text-align:center;color:#ffd32a">${c.count}</td><td style="text-align:right;color:#00ff87">${fmtBRL(c.total)}</td></tr>`
+  ).join('') || '<tr><td colspan="3" class="empty">Sem dados</td></tr>';
+
+  const modRows = (stats?.byMod||[]).map((m,i) =>
+    `<tr><td>${i===0?'🥇':i===1?'🥈':i===2?'🥉':'  '} ${escH(m.name)}</td><td style="text-align:right;color:#4f8ef7;font-weight:700">${m.count} chaves</td></tr>`
+  ).join('') || '<tr><td colspan="2" class="empty">Sem dados</td></tr>';
 
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1854,17 +1922,25 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
 a.out{color:var(--muted);font-size:11px;text-decoration:none;padding:6px 12px;border:1px solid var(--border);border-radius:6px;transition:all .2s}
 a.out:hover{color:var(--red);border-color:var(--red)}
 main{padding:22px 24px;max-width:1600px;margin:0 auto;position:relative;z-index:1}
-.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px}
-.sc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;position:relative;overflow:hidden;transition:border-color .2s}
+/* Stats grid */
+.stats{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px}
+.stats2{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
+.sc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;position:relative;overflow:hidden;transition:border-color .2s}
 .sc:hover{border-color:#ffd32a30}
-.sc-icon{position:absolute;right:14px;top:14px;font-size:22px;opacity:.12}
-.sc .n{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:var(--gold);line-height:1.1}
-.sc .l{color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:1.5px;margin-top:5px}
-.sc .sub-n{font-size:10px;color:var(--muted);margin-top:4px}
-.charts{display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:20px}
+.sc-icon{position:absolute;right:12px;top:12px;font-size:20px;opacity:.12}
+.sc .n{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:var(--gold);line-height:1.1}
+.sc .n.green{color:var(--green)}
+.sc .n.red{color:var(--red)}
+.sc .n.blue{color:var(--blue)}
+.sc .l{color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:1.5px;margin-top:4px}
+.sc .sub-n{font-size:10px;color:var(--muted);margin-top:3px}
+/* Charts */
+.charts{display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:16px}
+.charts3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:16px}
 .chart-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px}
-.chart-title{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--gold);margin-bottom:14px}
-.sec{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:16px}
+.chart-title{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--gold);margin-bottom:14px;display:flex;align-items:center;gap:6px}
+/* Sections */
+.sec{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:14px}
 .sh{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--card2);flex-wrap:wrap;gap:8px}
 .st{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:var(--gold)}
 .sh input{padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Space Mono',monospace;font-size:11px;outline:none;width:200px}
@@ -1884,37 +1960,98 @@ tr:hover td{background:#ffffff02}
 .badge{padding:2px 7px;border-radius:3px;font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase}
 .bon{background:#00ff8718;color:var(--green);border:1px solid #00ff8730}
 .boff{background:#ff475718;color:var(--red);border:1px solid #ff475730}
-.empty{text-align:center;color:var(--muted);padding:40px;font-size:11px;line-height:2}
-@media(max-width:1100px){.stats{grid-template-columns:repeat(3,1fr)}.charts{grid-template-columns:1fr}}
-@media(max-width:700px){.stats{grid-template-columns:1fr 1fr};main{padding:14px 12px}}
+.empty{text-align:center;color:var(--muted);padding:30px;font-size:11px;line-height:2}
+/* Retention bar */
+.ret-bar-wrap{background:#1c1c2e;border-radius:6px;height:8px;overflow:hidden;margin-top:8px}
+.ret-bar{height:8px;border-radius:6px;background:linear-gradient(90deg,var(--gold),var(--green));transition:width .8s}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+@media(max-width:1200px){.stats{grid-template-columns:repeat(3,1fr)}.stats2{grid-template-columns:repeat(2,1fr)}.charts{grid-template-columns:1fr}.charts3{grid-template-columns:1fr 1fr}}
+@media(max-width:700px){.stats{grid-template-columns:1fr 1fr}.stats2{grid-template-columns:1fr 1fr}.two-col{grid-template-columns:1fr}.charts3{grid-template-columns:1fr};main{padding:14px 12px}}
 </style></head><body>
 <header>
   <div class="logo">⚡ ZVM - LR1290 <span class="badge-an">Analytics</span></div>
   <div style="display:flex;gap:10px;align-items:center">
-    <a href="${R_ANALYTICS}/export/csv" class="btn bcsv">⬇ Exportar CSV</a>
+    <a href="${R_ANALYTICS}/export/csv" class="btn bcsv">⬇ CSV</a>
     <a href="${R_ANALYTICS}/logout" class="out">↩ Sair</a>
   </div>
 </header>
 <main>
+
+  <!-- KPIs principais -->
   <div class="stats">
-    <div class="sc"><div class="sc-icon">💰</div><div class="n">${fmtBRL(stats?.revenueTotal||0)}</div><div class="l">Receita Total</div><div class="sub-n">${fmtBRL(stats?.revenueLast30||0)} nos últimos 30d</div></div>
-    <div class="sc"><div class="sc-icon">🛒</div><div class="n">${stats?.total||0}</div><div class="l">Total de Vendas</div><div class="sub-n">${stats?.last30||0} nos últimos 30d</div></div>
-    <div class="sc"><div class="sc-icon">📈</div><div class="n">${stats?.last7||0}</div><div class="l">Vendas 7 dias</div></div>
+    <div class="sc"><div class="sc-icon">💰</div><div class="n">${fmtBRL(stats?.revenueTotal||0)}</div><div class="l">Receita Total</div><div class="sub-n">${fmtBRL(stats?.revenueLast30||0)} últimos 30d</div></div>
+    <div class="sc"><div class="sc-icon">🛒</div><div class="n">${stats?.total||0}</div><div class="l">Total de Vendas</div><div class="sub-n">${stats?.last30||0} últimos 30d</div></div>
+    <div class="sc"><div class="sc-icon">📈</div><div class="n">${stats?.last7||0}</div><div class="l">Vendas 7 dias</div><div class="sub-n">${fmtBRL(stats?.revenueLast7||0)}</div></div>
     <div class="sc"><div class="sc-icon">🎯</div><div class="n">${stats?.total ? fmtBRL((stats.revenueTotal||0)/stats.total) : 'R$\u00a00,00'}</div><div class="l">Ticket Médio</div></div>
-    <div class="sc"><div class="sc-icon">📦</div><div class="n">${stats?.byProduct?.length||0}</div><div class="l">Produtos</div><div class="sub-n">${(stats?.byProduct||[]).slice(0,2).map(p=>escH(p._id||'?')+'('+p.count+')').join(', ')||'-'}</div></div>
+    <div class="sc"><div class="sc-icon">👥</div><div class="n blue">${stats?.uniqueClients||0}</div><div class="l">Clientes Únicos</div><div class="sub-n">${stats?.returningClients||0} recorrentes</div></div>
+    <div class="sc"><div class="sc-icon">🔄</div><div class="n ${(stats?.retentionRate||0)>=30?'green':'red'}">${stats?.retentionRate||0}%</div><div class="l">Taxa Retenção</div><div class="sub-n">${stats?.returningClients||0} de ${stats?.uniqueClients||0} clientes</div></div>
   </div>
 
+  <!-- KPIs secundários -->
+  <div class="stats2">
+    <div class="sc"><div class="sc-icon">📦</div><div class="n blue">${stats?.byProduct?.length||0}</div><div class="l">Produtos Ativos</div><div class="sub-n">${(stats?.byProduct||[]).slice(0,2).map(p=>escH(p._id||'?')+'('+p.count+')').join(', ')||'—'}</div></div>
+    <div class="sc"><div class="sc-icon">💳</div><div class="n blue">${(stats?.byMethod||[])[0]?._id||'—'}</div><div class="l">Método + Usado</div><div class="sub-n">${(stats?.byMethod||[])[0]?.count||0} transações</div></div>
+    <div class="sc"><div class="sc-icon">📉</div><div class="n ${(stats?.churnRate||0)>50?'red':(stats?.churnRate||0)>25?'gold':''}">${stats?.churnRate||0}%</div><div class="l">Taxa de Churn (30d)</div><div class="sub-n">${stats?.churnedKeys||0} de ${stats?.expiredKeys||0} expiradas</div></div>
+    <div class="sc"><div class="sc-icon">⏰</div><div class="n blue">${(stats?.byHour||[]).sort((a,b)=>b.count-a.count)[0]?._id||'—'}h</div><div class="l">Horário de Pico</div><div class="sub-n">${(stats?.byHour||[]).sort((a,b)=>b.count-a.count)[0]?.count||0} vendas neste horário</div></div>
+  </div>
+
+  <!-- Gráficos principais -->
   <div class="charts">
     <div class="chart-card">
       <div class="chart-title">📊 Vendas e Receita — últimos 30 dias</div>
-      <canvas id="chartVendas" height="200"></canvas>
+      <canvas id="chartVendas" height="180"></canvas>
     </div>
     <div class="chart-card">
       <div class="chart-title">🥧 Receita por Produto</div>
-      <canvas id="chartProdutos" height="200"></canvas>
+      <canvas id="chartProdutos" height="180"></canvas>
     </div>
   </div>
 
+  <!-- Gráficos secundários -->
+  <div class="charts3">
+    <div class="chart-card">
+      <div class="chart-title">⏰ Horários de Pico</div>
+      <canvas id="chartHoras" height="160"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">💳 Métodos de Pagamento</div>
+      <canvas id="chartMetodos" height="160"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">🔄 Retenção de Clientes</div>
+      <div style="padding-top:20px">
+        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px"><span style="color:var(--muted)">Novos clientes</span><span style="color:var(--text)">${(stats?.uniqueClients||0)-(stats?.returningClients||0)}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px"><span style="color:var(--muted)">Clientes recorrentes</span><span style="color:var(--gold)">${stats?.returningClients||0}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:10px"><span style="color:var(--muted)">Taxa de retenção</span><span style="color:${(stats?.retentionRate||0)>=30?'var(--green)':'var(--red)'};font-weight:700">${stats?.retentionRate||0}%</span></div>
+        <div class="ret-bar-wrap"><div class="ret-bar" style="width:${stats?.retentionRate||0}%"></div></div>
+        <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:14px">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Churn (30 dias)</div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px"><span style="color:var(--muted)">Expiradas no período</span><span>${stats?.expiredKeys||0}</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--muted)">Não renovaram</span><span style="color:var(--red)">${stats?.churnedKeys||0} (${stats?.churnRate||0}%)</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabelas lado a lado -->
+  <div class="two-col">
+    <div class="sec">
+      <div class="sh"><div class="st">🏆 Top Clientes</div></div>
+      <div class="ov"><table>
+        <thead><tr><th>Email</th><th style="text-align:center">Compras</th><th style="text-align:right">Total Gasto</th></tr></thead>
+        <tbody>${topClientsRows}</tbody>
+      </table></div>
+    </div>
+    <div class="sec">
+      <div class="sh"><div class="st">👮 Moderadores</div></div>
+      <div class="ov"><table>
+        <thead><tr><th>Moderador</th><th style="text-align:right">Chaves Criadas</th></tr></thead>
+        <tbody>${modRows}</tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- Histórico de pagamentos -->
   <div class="sec">
     <div class="sh">
       <div class="st">💳 Histórico de Pagamentos</div>
@@ -1938,14 +2075,19 @@ tr:hover td{background:#ffffff02}
 </main>
 
 <script>
-const _byDay=${byDayJson},_byProduct=${byProductJson};
+const _byDay=${byDayJson},_byProduct=${byProdJson},_byHour=${byHourJson},_byMethod=${byMethodJson};
 const _days=[];
 for(let i=29;i>=0;i--){const d=new Date(Date.now()-i*86400000),k=d.toISOString().slice(0,10),f=_byDay.find(x=>x._id===k);_days.push({date:k,count:f?.count||0,revenue:f?.revenue||0});}
+
+// Montar array de horas 0–23
+const _hours=Array.from({length:24},(_,i)=>{const h=String(i).padStart(2,'0'),f=_byHour.find(x=>x._id===h);return{h:h+'h',count:f?.count||0};});
 
 function loadChart(cb){if(window.Chart){cb();return;}const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js';s.onload=cb;document.head.appendChild(s);}
 
 loadChart(()=>{
   Chart.defaults.color='#5a5a7a';Chart.defaults.borderColor='#1c1c2e';
+
+  // Vendas e receita
   new Chart(document.getElementById('chartVendas'),{type:'bar',data:{
     labels:_days.map(d=>d.date.slice(5)),
     datasets:[
@@ -1953,8 +2095,19 @@ loadChart(()=>{
       {label:'Receita (R$)',data:_days.map(d=>d.revenue),type:'line',borderColor:'#00ff87',backgroundColor:'#00ff8715',borderWidth:2,pointRadius:2,tension:0.4,yAxisID:'y2'}
     ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{family:'Space Mono',size:10},boxWidth:12}}},scales:{y:{position:'left',grid:{color:'#1c1c2e'},ticks:{precision:0}},y2:{position:'right',grid:{drawOnChartArea:false},ticks:{callback:v=>'R$'+v.toFixed(0)}},x:{grid:{color:'#1c1c2e'},ticks:{font:{size:9},maxRotation:45}}}}});
 
+  // Produtos
   if(_byProduct.length){const colors=['#ffd32a','#00ff87','#4f8ef7','#ff4757','#9b59b6','#ff8600'];
-  new Chart(document.getElementById('chartProdutos'),{type:'doughnut',data:{labels:_byProduct.map(p=>p._id||'?'),datasets:[{data:_byProduct.map(p=>p.revenue||p.count),backgroundColor:colors,borderColor:'#0f0f1a',borderWidth:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{family:'Space Mono',size:10},boxWidth:12,padding:10}},tooltip:{callbacks:{label:ctx=>' R$'+ctx.parsed.toFixed(2).replace('.',',')}}}}}});}
+  new Chart(document.getElementById('chartProdutos'),{type:'doughnut',data:{labels:_byProduct.map(p=>p._id||'?'),datasets:[{data:_byProduct.map(p=>p.revenue||p.count),backgroundColor:colors,borderColor:'#0f0f1a',borderWidth:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{family:'Space Mono',size:10},boxWidth:10,padding:8}},tooltip:{callbacks:{label:ctx=>' R$ '+ctx.parsed.toFixed(2).replace('.',',')}}}}}});}
+
+  // Horários de pico
+  new Chart(document.getElementById('chartHoras'),{type:'bar',data:{
+    labels:_hours.map(h=>h.h),
+    datasets:[{label:'Vendas',data:_hours.map(h=>h.count),backgroundColor:_hours.map(h=>{const max=Math.max(..._hours.map(x=>x.count));return h.count===max?'#ffd32a':'#ffd32a33';}),borderColor:'#ffd32a60',borderWidth:1,borderRadius:3}]
+  },options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{grid:{color:'#1c1c2e'},ticks:{precision:0,font:{size:8}}},x:{grid:{color:'#1c1c2e'},ticks:{font:{size:8}}}}}});
+
+  // Métodos de pagamento
+  if(_byMethod.length){const mc=['#4f8ef7','#ffd32a','#00ff87','#ff4757','#9b59b6'];
+  new Chart(document.getElementById('chartMetodos'),{type:'pie',data:{labels:_byMethod.map(m=>m._id||'?'),datasets:[{data:_byMethod.map(m=>m.count),backgroundColor:mc,borderColor:'#0f0f1a',borderWidth:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{family:'Space Mono',size:10},boxWidth:10,padding:8}}}}});}
 });
 
 function filterTable(){const q=(document.getElementById('search').value||'').toLowerCase();document.querySelectorAll('#payments-body tr[data-row]').forEach(r=>{r.style.display=!q||r.dataset.row.includes(q)?'':'none';});}
