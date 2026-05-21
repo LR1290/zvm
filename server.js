@@ -18,10 +18,7 @@ const MODS = [
   { user: process.env.MOD5_USER || '', pass: process.env.MOD5_PASS || '', totp: process.env.MOD5_TOTP || '', name: 'Darley'      },
   { user: process.env.MOD6_USER || '', pass: process.env.MOD6_PASS || '', totp: process.env.MOD6_TOTP || '', name: 'Letícia'     },
 ].filter(m => m.user && m.pass);
-// Compatibilidade retroativa — MOD_USER/PASS ainda funciona como slot 1
-const MOD_USER = process.env.MOD_USER || '';
-const MOD_PASS = process.env.MOD_PASS || '';
-const MOD_TOTP = process.env.MOD_TOTP || '';
+// MOD_USER/PASS/TOTP incluídos no array MODS acima (slot 1)
 const PAYT_SECRET  = process.env.PAYT_SECRET  || '';   // renomeado de CAKTO_SECRET
 const ANALYTICS_PASS = process.env.ANALYTICS_PASS || ''; // senha do painel de analytics
 const MONGODB_URI  = process.env.MONGODB_URI  || '';
@@ -606,7 +603,7 @@ input:focus{border-color:#4f8ef7}
   <form method="POST" action="${R_MOD}/login">
     <label>Usuário</label><input type="text" name="user" autocomplete="off">
     <label>Senha</label><input type="password" name="pass">
-    ${MOD_TOTP ? `<label>Código 2FA</label><input type="text" name="totp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" autocomplete="one-time-code" style="letter-spacing:4px;font-size:18px;text-align:center">` : ''}
+    ${MODS.some(m=>m.totp) ? `<label>Código 2FA (se configurado)</label><input type="text" name="totp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" autocomplete="one-time-code" style="letter-spacing:4px;font-size:18px;text-align:center">` : ''}
     <button type="submit" class="btn">Entrar</button>
   </form>
 </div>
@@ -2136,8 +2133,10 @@ async function handleRequest(req, res) {
   const ip  = getIp(req);
 
   // Ocultar /admin quando slug está ativo
-  if (APP_SECRET && (p === '/admin' || p.startsWith('/admin/'))) {
-    res.writeHead(404); res.end('Not found'); return;
+  if (APP_SECRET) {
+    if (p === '/admin' || p.startsWith('/admin/')) { res.writeHead(404); res.end('Not found'); return; }
+    if (p === '/mod'  || p.startsWith('/mod/'))   { res.writeHead(404); res.end('Not found'); return; }
+    if (p === '/analytics' || p.startsWith('/analytics/')) { res.writeHead(404); res.end('Not found'); return; }
   }
 
   console.log(`[${new Date().toISOString()}] ${req.method} ${p} — ${ip}`);
@@ -2716,81 +2715,119 @@ async function handleRequest(req, res) {
 
   if (p === '/payt/webhook' && req.method === 'POST') {
     const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
-    if (PAYT_SECRET) {
-      const token = req.headers['x-payt-token'] || req.headers['x-webhook-token'] || '';
-      if (token !== PAYT_SECRET) {
-        console.warn('[PAYT] Token inválido — ignorado');
-        res.writeHead(401); res.end('Unauthorized'); return;
-      }
-    }
+
     let payload;
     try { payload = JSON.parse(rawBody); }
     catch { try { payload = Object.fromEntries(new URLSearchParams(rawBody).entries()); } catch { res.writeHead(400); res.end('Bad Request'); return; } }
 
-    const status   = String(payload.status || payload.transaction_status || payload.sale_status || '').toLowerCase();
-    const approved = ['approved','finished','paid','completed','finalizada','aprovada','venda_paga','active','confirmed'].some(s => status.includes(s));
-
-    // Registrar mesmo pagamentos não aprovados para histórico
-    const txId        = String(payload.transaction_id || payload.sale_id || payload.id || '').trim();
-    const customer    = payload.customer || payload.buyer || payload.client || {};
-    const clientName  = customer.name || customer.full_name || payload.customer_name || payload.buyer_name || 'Cliente';
-    const clientEmail = customer.email || payload.customer_email || payload.buyer_email || payload.email || '';
-    const clientPhone = customer.phone || customer.phone_number || payload.customer_phone || '';
-    const offer       = payload.offer || payload.product || {};
-    const productNameRaw = offer.name || offer.title || payload.product_name || payload.offer_name || payload.plan_name || '-';
-    const productName = productNameRaw.toLowerCase();
-    const amountRaw   = payload.amount || payload.value || payload.price || offer.price || payload.sale_amount || 0;
-    const amount      = parseFloat(String(amountRaw).replace(',','.')) || 0;
-    const paymentMethod = payload.payment_method || payload.method || payload.charge_type || '-';
-
-    if (!approved) {
-      console.log('[PAYT] Status ignorado:', status);
-      // Salvar tentativas/cancelamentos também para análise
-      if (txId) {
-        savePayment({
-          txId, status: status || 'unknown', approved: false,
-          clientName, clientEmail, clientPhone,
-          productName: productNameRaw, amount, paymentMethod,
-          keyCode: null, paidAt: new Date().toISOString(),
-          rawStatus: status,
-        }).catch(()=>{});
+    // Validar token — Payt V1 envia integration_key no body; também suportamos header
+    if (PAYT_SECRET) {
+      const headerToken = req.headers['x-payt-token'] || req.headers['x-webhook-token'] || '';
+      const bodyKey     = payload.integration_key || '';
+      const validHeader = !headerToken || headerToken === PAYT_SECRET;
+      const validBody   = !bodyKey     || bodyKey   === PAYT_SECRET;
+      if (!validHeader || !validBody) {
+        console.warn('[PAYT] Token/integration_key inválido — ignorado');
+        res.writeHead(401); res.end('Unauthorized'); return;
       }
+    }
+
+    // Ignorar postbacks de homologação
+    if (payload.test === true) {
+      console.log('[PAYT] Postback de teste — ignorado');
+      res.writeHead(200); res.end('test_ignored'); return;
+    }
+
+    // Status — Payt V1 usa campo "status"
+    const status   = String(payload.status || payload.payment_status || payload.sale_status || '').toLowerCase();
+    const APPROVED = ['venda_paga','approved','paid','completed','finished','aprovada','finalizada','active','confirmed'];
+    const approved = APPROVED.some(s => status === s || status.includes(s));
+
+    // IDs
+    const txId = String(payload.transaction_id || payload.sale_id || payload.cart_id || payload.id || '').trim();
+
+    // Cliente — Payt V1 usa payload.customer
+    const customer    = payload.customer || payload.buyer || payload.client || {};
+    const clientName  = customer.name        || customer.full_name     || payload.customer_name  || payload.buyer_name || 'Cliente';
+    const clientEmail = customer.email       || payload.customer_email || payload.buyer_email    || payload.email      || '';
+    const clientPhone = customer.phone       || customer.cellphone     || customer.phone_number  || payload.customer_phone || '';
+
+    // Produto — Payt V1 pode enviar payload.products (array) ou campos avulsos
+    let productNameRaw = '-';
+    let amount = 0;
+    if (Array.isArray(payload.products) && payload.products.length > 0) {
+      productNameRaw = payload.products.map(pr => pr.name || pr.title || '').filter(Boolean).join(' + ') || '-';
+      amount = payload.products.reduce((s, pr) => s + (parseFloat(String(pr.price||pr.value||0).replace(',','.')) || 0), 0);
+    }
+    if (productNameRaw === '-') {
+      const offer = payload.offer || payload.product || {};
+      productNameRaw = offer.name || offer.title || payload.product_name || payload.offer_name || payload.plan_name || '-';
+    }
+    if (!amount) {
+      const raw = payload.amount || payload.value || payload.price || payload.sale_amount || payload.total || 0;
+      amount = parseFloat(String(raw).replace(',','.')) || 0;
+    }
+    const paymentMethod  = payload.payment_method || payload.charge_type || payload.method || payload.payment_type || '-';
+    const productNameLow = productNameRaw.toLowerCase();
+
+    // Registrar não-aprovados para analytics
+    if (!approved) {
+      console.log('[PAYT] Status nao aprovado:', status, '| TX:', txId);
+      if (txId) savePayment({ txId, status: status||'unknown', approved: false, clientName, clientEmail, clientPhone, productName: productNameRaw, amount, paymentMethod, keyCode: null, paidAt: new Date().toISOString(), rawStatus: status }).catch(()=>{});
       res.writeHead(200); res.end('ignored'); return;
     }
 
-    // Idempotência — verificar duplicata
-    if (txId && Object.values(keys).some(k => k.note && k.note.includes('payt_tx:'+txId))) {
-      console.log('[PAYT] Transação já processada:', txId);
+    // Idempotência — memoria + MongoDB
+    if (txId) {
+      if (Object.values(keys).some(k => k.note && (k.note.includes('payt_tx:'+txId) || k.note.includes('renovado_payt_tx:'+txId)))) {
+        console.log('[PAYT] Transacao ja processada (memoria):', txId);
+        res.writeHead(200); res.end('ok'); return;
+      }
+      try {
+        const _db = await getMongoDb();
+        const _ex = await _db.collection('payments').findOne({ txId, approved: true });
+        if (_ex) { console.log('[PAYT] Transacao ja no banco:', txId); res.writeHead(200); res.end('ok'); return; }
+      } catch(e) { console.warn('[PAYT] Erro idempotencia:', e.message); }
+    }
+
+    // Determinar maxUses pelo produto
+    let maxUses = 3;
+    if      (productNameLow.match(/\b1\b|individual|solo|basico|starter/)) maxUses = 1;
+    else if (productNameLow.match(/\b5\b|multi|team|equipe|avancado/))     maxUses = 5;
+    else if (productNameLow.match(/\b3\b|trio|standard|padrao/))           maxUses = 3;
+
+    // Verificar renovacao — cliente com mesmo email ja tem chave?
+    let existingCode = null;
+    if (clientEmail) {
+      existingCode = Object.keys(keys).find(c => {
+        const emailMatch = (keys[c].note||'').match(/Email: ([^\s|]+)/);
+        return emailMatch && emailMatch[1].toLowerCase() === clientEmail.toLowerCase() && keys[c].active;
+      });
+    }
+
+    const now        = new Date();
+    const durationMs = 31 * 24 * 60 * 60 * 1000;
+
+    if (existingCode) {
+      // Renovar chave existente
+      const k    = keys[existingCode];
+      const base = (k.expiresAt && new Date(k.expiresAt) > now) ? new Date(k.expiresAt) : now;
+      k.expiresAt = new Date(base.getTime() + durationMs).toISOString();
+      k.active    = true;
+      k.note      = k.note + (txId ? ' | renovado_payt_tx:'+txId : ' | renovado');
+      await saveKey(existingCode);
+      await savePayment({ txId: txId||existingCode, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, keyCode:existingCode, maxUses, renewed:true, paidAt:now.toISOString(), rawStatus:status });
+      console.log('[PAYT] Chave renovada:', existingCode, '| Nova exp:', k.expiresAt);
       res.writeHead(200); res.end('ok'); return;
     }
 
-    let maxUses = 3;
-    if      (productName.includes('1') || productName.includes('individual') || productName.includes('solo')) maxUses = 1;
-    else if (productName.includes('5') || productName.includes('multi')      || productName.includes('team')) maxUses = 5;
-    else if (productName.includes('3') || productName.includes('trio'))                                       maxUses = 3;
-
+    // Criar nova chave
     const code    = generateCode();
-    const now     = new Date();
-    const expires = new Date(now.getTime() + 31 * 24 * 60 * 60 * 1000);
-    keys[code] = {
-      label: 'PAYT - '+clientName, active: true, phones: [], uses: 0, maxUses,
-      expiresAt: expires.toISOString(), expireDuration: 31*1440*60000,
-      createdAt: now.toISOString(), lastUsed: null, lastIp: null, lastPhone: null,
-      deviceId: null, wppVersion: null, warnCount: 0,
-      note: 'Pedido automatico Payt | Email: '+clientEmail+(txId?' | payt_tx:'+txId:'')
-    };
+    const expires = new Date(now.getTime() + durationMs);
+    keys[code] = { label:'PAYT - '+clientName, active:true, phones:[], uses:0, maxUses, expiresAt:expires.toISOString(), expireDuration:durationMs, createdAt:now.toISOString(), lastUsed:null, lastIp:null, lastPhone:null, deviceId:null, wppVersion:null, warnCount:0, note:'Pedido automatico Payt | Email: '+clientEmail+(txId?' | payt_tx:'+txId:'') };
     await saveKey(code);
-
-    // Persistir pagamento no MongoDB para analytics
-    await savePayment({
-      txId: txId || code, status: 'approved', approved: true,
-      clientName, clientEmail, clientPhone,
-      productName: productNameRaw, amount, paymentMethod,
-      keyCode: code, maxUses,
-      paidAt: now.toISOString(), rawStatus: status,
-    });
-
-    console.log('[PAYT] Chave criada:', code, '| Cliente:', clientName, '| Email:', clientEmail, '| Usos:', maxUses, '| Valor: R$', amount);
+    await savePayment({ txId:txId||code, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, keyCode:code, maxUses, renewed:false, paidAt:now.toISOString(), rawStatus:status });
+    console.log('[PAYT] Chave criada:', code, '| Cliente:', clientName, '| Usos:', maxUses, '| Valor: R$', amount.toFixed(2));
     res.writeHead(200); res.end('ok'); return;
   }
 
@@ -2840,11 +2877,6 @@ async function handleRequest(req, res) {
   // ── FAQ ──
   if (p === '/faq' && req.method === 'GET') {
     sendHtml(res, renderFaqPage()); return;
-  }
-
-  // ── Privacidade ──
-  if (p === '/privacidade' && req.method === 'GET') {
-    sendHtml(res, renderPrivacyPage()); return;
   }
 
   // ── Privacidade ──
