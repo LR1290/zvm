@@ -23,6 +23,7 @@ const MOD_USER = process.env.MOD_USER || '';
 const MOD_PASS = process.env.MOD_PASS || '';
 const MOD_TOTP = process.env.MOD_TOTP || '';
 const PAYT_SECRET  = process.env.PAYT_SECRET  || '';   // renomeado de CAKTO_SECRET
+const ANALYTICS_PASS = process.env.ANALYTICS_PASS || ''; // senha do painel de analytics
 const MONGODB_URI  = process.env.MONGODB_URI  || '';
 const APP_SECRET   = process.env.APP_SECRET   || '';
 const TOTP_SECRET  = process.env.TOTP_SECRET  || '';
@@ -143,12 +144,13 @@ async function saveLogs() {
 // ─────────────────────────────────────────────
 // ESTADO GLOBAL
 // ─────────────────────────────────────────────
-let keys        = {};
-let logs        = [];
-let sessions    = {};
-let modSessions = {};   // sessões de moderação separadas do admin
-let extSessions = {};
-let serverReady = false;
+let keys             = {};
+let logs             = [];
+let sessions         = {};
+let modSessions      = {};
+let analyticsSessions= {};
+let extSessions      = {};
+let serverReady      = false;
 
 // ─────────────────────────────────────────────
 // SEGURANÇA — HMAC
@@ -226,11 +228,13 @@ function deriveSlug(seed) {
   if (!APP_SECRET) return null;
   return crypto.createHmac('sha256', APP_SECRET).update(seed).digest('hex').slice(0, 14);
 }
-const _slugAdmin = deriveSlug('admin-panel');
-const _slugMod   = deriveSlug('mod-panel');
-const R_ADMIN    = _slugAdmin ? '/' + _slugAdmin : '/admin';
-const R_MOD      = _slugMod  ? '/' + _slugMod   : '/mod';
-const R_EXT      = '/extension';
+const _slugAdmin     = deriveSlug('admin-panel');
+const _slugMod       = deriveSlug('mod-panel');
+const _slugAnalytics = deriveSlug('analytics-panel');
+const R_ADMIN        = _slugAdmin     ? '/' + _slugAdmin     : '/admin';
+const R_MOD          = _slugMod       ? '/' + _slugMod       : '/mod';
+const R_ANALYTICS    = _slugAnalytics ? '/' + _slugAnalytics : '/analytics';
+const R_EXT          = '/extension';
 
 // ─────────────────────────────────────────────
 // RATE LIMITING
@@ -281,8 +285,8 @@ setInterval(() => {
     if (now > new Date(s.expiresAt)) delete sessions[k];
   for (const [k, s] of Object.entries(modSessions))
     if (now > new Date(s.expiresAt)) delete modSessions[k];
-  for (const [k, s] of Object.entries(extSessions))
-    if (now > new Date(s.expiresAt)) delete extSessions[k];
+  for (const [k, s] of Object.entries(analyticsSessions))
+    if (now > new Date(s.expiresAt)) delete analyticsSessions[k];
 }, 30 * 60000);
 
 // ─────────────────────────────────────────────
@@ -374,6 +378,82 @@ function isModSession(req) {
   if (!s) return false;
   if (new Date() > new Date(s.expiresAt)) { delete modSessions[match[1]]; return false; }
   return true;
+}
+
+function isAnalyticsSession(req) {
+  const cookie = req.headers.cookie || '';
+  const match  = cookie.match(/zv_an=([a-f0-9]+)/);
+  if (!match) return false;
+  const s = analyticsSessions[match[1]];
+  if (!s) return false;
+  if (new Date() > new Date(s.expiresAt)) { delete analyticsSessions[match[1]]; return false; }
+  return true;
+}
+
+// ─────────────────────────────────────────────
+// PERSISTÊNCIA DE PAGAMENTOS
+// ─────────────────────────────────────────────
+async function savePayment(payment) {
+  try {
+    const db = await getMongoDb();
+    await db.collection('payments').insertOne({ ...payment, savedAt: new Date() });
+  } catch (e) { console.error('[DB] Erro ao salvar pagamento:', e.message); }
+}
+
+async function getPayments({ startDate, endDate, limit = 500 } = {}) {
+  try {
+    const db     = await getMongoDb();
+    const filter = {};
+    if (startDate || endDate) {
+      filter.paidAt = {};
+      if (startDate) filter.paidAt.$gte = startDate;
+      if (endDate)   filter.paidAt.$lte = endDate;
+    }
+    return await db.collection('payments')
+      .find(filter)
+      .sort({ paidAt: -1 })
+      .limit(limit)
+      .toArray();
+  } catch (e) { console.error('[DB] Erro ao buscar pagamentos:', e.message); return []; }
+}
+
+async function getPaymentStats() {
+  try {
+    const db  = await getMongoDb();
+    const now = new Date();
+    const d7  = new Date(now - 7  * 86400000);
+    const d30 = new Date(now - 30 * 86400000);
+
+    const [total, last7, last30, byProduct, byDay] = await Promise.all([
+      db.collection('payments').countDocuments(),
+      db.collection('payments').countDocuments({ paidAt: { $gte: d7.toISOString() } }),
+      db.collection('payments').countDocuments({ paidAt: { $gte: d30.toISOString() } }),
+      db.collection('payments').aggregate([
+        { $group: { _id: '$productName', count: { $sum: 1 }, revenue: { $sum: '$amount' } } },
+        { $sort: { count: -1 } }
+      ]).toArray(),
+      db.collection('payments').aggregate([
+        { $match: { paidAt: { $gte: d30.toISOString() } } },
+        { $group: {
+          _id: { $substr: ['$paidAt', 0, 10] },
+          count: { $sum: 1 },
+          revenue: { $sum: '$amount' }
+        }},
+        { $sort: { _id: 1 } }
+      ]).toArray(),
+    ]);
+
+    const revenueTotal = (await db.collection('payments').aggregate([
+      { $group: { _id: null, total: { $sum: '$amount' } } }
+    ]).toArray())[0]?.total || 0;
+
+    const revenueLast30 = (await db.collection('payments').aggregate([
+      { $match: { paidAt: { $gte: d30.toISOString() } } },
+      { $group: { _id: null, total: { $sum: '$amount' } } }
+    ]).toArray())[0]?.total || 0;
+
+    return { total, last7, last30, revenueTotal, revenueLast30, byProduct, byDay };
+  } catch (e) { console.error('[DB] Erro nas stats:', e.message); return null; }
 }
 
 function parseBody(req) {
@@ -958,7 +1038,8 @@ function buildKeysHtml() {
     // Detecta chave suspeita: mais de 3 IPs distintos nas últimas 24h
     const recentLogs = logs.filter(l => l.keyCode === code && l.timestamp > new Date(Date.now() - 86400000).toISOString());
     const recentIps  = new Set(recentLogs.filter(l => l.ip).map(l => l.ip));
-    const isSuspect  = recentIps.size > 3;
+    const clearedAt  = k.suspectClearedAt ? new Date(k.suspectClearedAt) : null;
+    const isSuspect  = recentIps.size > 3 && !(clearedAt && (Date.now() - clearedAt.getTime()) < 172800000);
 
     const expHtml = (!k.expiresAt && k.expireDuration) ? (() => {
       const d=Math.floor(k.expireDuration/86400000),h=Math.floor((k.expireDuration%86400000)/3600000),m=Math.floor((k.expireDuration%3600000)/60000);
@@ -986,7 +1067,7 @@ function buildKeysHtml() {
   <td>${escHtml(k.wppVersion||'-')}</td>
   <td class="note-cell" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${k.note&&k.note.startsWith('[Mod:')?'<span style=\"color:#4f8ef7;font-size:9px\">'+escHtml(k.note)+'</span>':escHtml(k.note||'') || '<span style=\\"color:var(--muted)\\">—</span>'}</span></td>
   <td>
-    <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')}">${k.active?'Bloquear':'Liberar'}</button>
+    <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
     <button class="bs bg" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">+ Tempo</button>
     <button class="bs bg" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${k.maxUses!=null?k.maxUses:MAX_USES})">Usos</button>
     <button class="bs bg" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">Renomear</button>
@@ -1018,9 +1099,11 @@ function buildLogsHtml(arr) {
 // ─────────────────────────────────────────────
 function renderAdminDashboard() {
   const expiringSoon  = Object.values(keys).filter(k => k.active && isKeyExpiringSoon(k)).length;
-  const suspectKeys   = Object.values(keys).filter(k => {
-    const recentLogs = logs.filter(l => l.keyCode === Object.keys(keys).find(c => keys[c] === k) && l.timestamp > new Date(Date.now()-86400000).toISOString());
-    return new Set(recentLogs.filter(l=>l.ip).map(l=>l.ip)).size > 3;
+  const suspectKeys   = Object.entries(keys).filter(([code, k]) => {
+    const cl = k.suspectClearedAt ? new Date(k.suspectClearedAt) : null;
+    if (cl && (Date.now() - cl.getTime()) < 172800000) return false;
+    const rl = logs.filter(l => l.keyCode === code && l.timestamp > new Date(Date.now()-86400000).toISOString());
+    return new Set(rl.filter(l=>l.ip).map(l=>l.ip)).size > 3;
   }).length;
 
   return `<!DOCTYPE html>
@@ -1540,6 +1623,7 @@ footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--gree
   <a href="/" class="logo">⚡ ZVM - LR1290</a>
   <div class="header-links">
     <a href="/">Portal</a>
+    <a href="/privacidade">Privacidade</a>
     <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM%20LR1290." target="_blank">💬 Suporte</a>
   </div>
 </header>
@@ -1691,6 +1775,192 @@ footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--gree
 </footer>
 ${CANVAS_BG}
 </body></html>`;
+}
+
+// ─────────────────────────────────────────────
+// PÁGINA: LOGIN ANALYTICS
+// ─────────────────────────────────────────────
+function renderAnalyticsLogin(error = '') {
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZVM - LR1290 — Analytics</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#080810;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
+.card{background:#0f0f1a;border:1px solid #1c1c2e;border-radius:18px;padding:40px 36px;width:360px;position:relative;z-index:1;box-shadow:0 0 40px rgba(255,215,0,0.08)}
+.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#ffd32a;margin-bottom:4px;text-align:center;letter-spacing:-0.5px}
+.sub{color:#5a5a7a;font-size:10px;letter-spacing:3px;text-transform:uppercase;margin-bottom:24px;text-align:center}
+.badge{display:block;background:#ffd32a12;border:1px solid #ffd32a30;color:#ffd32a;font-size:9px;letter-spacing:2px;text-transform:uppercase;padding:3px 10px;border-radius:20px;margin-bottom:20px;text-align:center;font-family:'Syne',sans-serif}
+label{display:block;font-size:10px;letter-spacing:2px;color:#5a5a7a;text-transform:uppercase;margin-bottom:7px}
+input{width:100%;padding:11px 14px;background:#080810;border:1px solid #1c1c2e;border-radius:8px;color:#e2e2f0;font-family:'Space Mono',monospace;font-size:13px;outline:none;margin-bottom:16px;transition:border .2s}
+input:focus{border-color:#ffd32a}
+.btn{width:100%;padding:12px;background:#ffd32a;border:none;border-radius:8px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:opacity .2s}
+.btn:hover{opacity:.85}
+.err{background:#ff475715;border:1px solid #ff4757;border-radius:6px;color:#ff4757;padding:9px 12px;font-size:12px;margin-bottom:16px}
+</style></head><body>
+<div class="card">
+  <div class="logo">⚡ ZVM - LR1290</div>
+  <div class="sub">Painel de Analytics</div>
+  <div class="badge">📊 Acesso Privado</div>
+  ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
+  <form method="POST" action="${R_ANALYTICS}/login">
+    <label>Senha de Acesso</label>
+    <input type="password" name="pass" autofocus>
+    <button type="submit" class="btn">Entrar</button>
+  </form>
+</div>
+${CANVAS_BG}</body></html>`;
+}
+
+// ─────────────────────────────────────────────
+// PAINEL: ANALYTICS (async — busca dados do MongoDB)
+// ─────────────────────────────────────────────
+async function renderAnalyticsDashboard() {
+  const stats    = await getPaymentStats();
+  const payments = await getPayments({ limit: 200 });
+  const fmtBRL   = v => 'R$\u00a0' + (v||0).toFixed(2).replace('.',',');
+  const fmtDate  = iso => iso ? new Date(iso).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
+  const byDayJson     = JSON.stringify(stats?.byDay     || []);
+  const byProductJson = JSON.stringify(stats?.byProduct || []);
+  const escH = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  const paymentsRows = payments.length ? payments.map(p => {
+    const rowSearch = [p.clientName,p.clientEmail,p.productName,p.keyCode,p.paymentMethod].join('|').toLowerCase();
+    return `<tr data-row="${escH(rowSearch)}" data-paid="${escH(p.paidAt||'')}">
+  <td>${fmtDate(p.paidAt)}</td>
+  <td>${escH(p.clientName)}</td>
+  <td style="color:#6b6b8a;font-size:10px">${escH(p.clientEmail)}</td>
+  <td>${escH(p.productName)}</td>
+  <td style="color:${p.approved?'#00ff87':'#ff4757'};font-weight:700">${fmtBRL(p.amount)}</td>
+  <td><span class="badge ${p.approved?'bon':'boff'}">${p.approved?'APROVADO':'REJEITADO'}</span></td>
+  <td style="color:#4f8ef7;font-size:10px">${escH(p.keyCode||'-')}</td>
+</tr>`;
+  }).join('') : '<tr><td colspan="7" class="empty">Nenhum pagamento registrado ainda.<br>Configure o webhook da Payt apontando para /payt/webhook</td></tr>';
+
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZVM - LR1290 — Analytics</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--gold:#ffd32a;--dark:#080810;--card:#0f0f1a;--card2:#13131f;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--green:#00ff87;--red:#ff4757;--blue:#4f8ef7;--radius:10px}
+body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040}
+.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--gold);display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
+.badge-an{background:#ffd32a12;border:1px solid #ffd32a30;color:var(--gold);font-size:10px;text-transform:uppercase;padding:4px 12px;border-radius:20px;font-family:'Syne',sans-serif;font-weight:700}
+a.out{color:var(--muted);font-size:11px;text-decoration:none;padding:6px 12px;border:1px solid var(--border);border-radius:6px;transition:all .2s}
+a.out:hover{color:var(--red);border-color:var(--red)}
+main{padding:22px 24px;max-width:1600px;margin:0 auto;position:relative;z-index:1}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px}
+.sc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;position:relative;overflow:hidden;transition:border-color .2s}
+.sc:hover{border-color:#ffd32a30}
+.sc-icon{position:absolute;right:14px;top:14px;font-size:22px;opacity:.12}
+.sc .n{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:var(--gold);line-height:1.1}
+.sc .l{color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:1.5px;margin-top:5px}
+.sc .sub-n{font-size:10px;color:var(--muted);margin-top:4px}
+.charts{display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:20px}
+.chart-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px}
+.chart-title{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--gold);margin-bottom:14px}
+.sec{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:16px}
+.sh{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--card2);flex-wrap:wrap;gap:8px}
+.st{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:var(--gold)}
+.sh input{padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Space Mono',monospace;font-size:11px;outline:none;width:200px}
+.sh input:focus{border-color:var(--gold)}
+.btn{padding:7px 14px;border:none;border-radius:6px;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:11px;transition:all .18s}
+.bcsv{background:#ffd32a12;color:var(--gold);border:1px solid #ffd32a30}
+.bcsv:hover{background:#ffd32a22;border-color:var(--gold)}
+.pb{padding:5px 12px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-family:'Syne',sans-serif;font-weight:700;font-size:10px;cursor:pointer;transition:all .18s}
+.pb.active,.pb:hover{background:#ffd32a18;border-color:#ffd32a40;color:var(--gold)}
+.period-btns{display:flex;gap:6px}
+.ov{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th{padding:8px 12px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);border-bottom:1px solid var(--border);background:var(--card2);white-space:nowrap}
+td{padding:10px 12px;font-size:11px;border-bottom:1px solid #14141f;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#ffffff02}
+.badge{padding:2px 7px;border-radius:3px;font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase}
+.bon{background:#00ff8718;color:var(--green);border:1px solid #00ff8730}
+.boff{background:#ff475718;color:var(--red);border:1px solid #ff475730}
+.empty{text-align:center;color:var(--muted);padding:40px;font-size:11px;line-height:2}
+@media(max-width:1100px){.stats{grid-template-columns:repeat(3,1fr)}.charts{grid-template-columns:1fr}}
+@media(max-width:700px){.stats{grid-template-columns:1fr 1fr};main{padding:14px 12px}}
+</style></head><body>
+<header>
+  <div class="logo">⚡ ZVM - LR1290 <span class="badge-an">Analytics</span></div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <a href="${R_ANALYTICS}/export/csv" class="btn bcsv">⬇ Exportar CSV</a>
+    <a href="${R_ANALYTICS}/logout" class="out">↩ Sair</a>
+  </div>
+</header>
+<main>
+  <div class="stats">
+    <div class="sc"><div class="sc-icon">💰</div><div class="n">${fmtBRL(stats?.revenueTotal||0)}</div><div class="l">Receita Total</div><div class="sub-n">${fmtBRL(stats?.revenueLast30||0)} nos últimos 30d</div></div>
+    <div class="sc"><div class="sc-icon">🛒</div><div class="n">${stats?.total||0}</div><div class="l">Total de Vendas</div><div class="sub-n">${stats?.last30||0} nos últimos 30d</div></div>
+    <div class="sc"><div class="sc-icon">📈</div><div class="n">${stats?.last7||0}</div><div class="l">Vendas 7 dias</div></div>
+    <div class="sc"><div class="sc-icon">🎯</div><div class="n">${stats?.total ? fmtBRL((stats.revenueTotal||0)/stats.total) : 'R$\u00a00,00'}</div><div class="l">Ticket Médio</div></div>
+    <div class="sc"><div class="sc-icon">📦</div><div class="n">${stats?.byProduct?.length||0}</div><div class="l">Produtos</div><div class="sub-n">${(stats?.byProduct||[]).slice(0,2).map(p=>escH(p._id||'?')+'('+p.count+')').join(', ')||'-'}</div></div>
+  </div>
+
+  <div class="charts">
+    <div class="chart-card">
+      <div class="chart-title">📊 Vendas e Receita — últimos 30 dias</div>
+      <canvas id="chartVendas" height="200"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">🥧 Receita por Produto</div>
+      <canvas id="chartProdutos" height="200"></canvas>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sh">
+      <div class="st">💳 Histórico de Pagamentos</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="text" id="search" placeholder="🔍 Cliente, email, produto..." oninput="filterTable()">
+        <div class="period-btns">
+          <button class="pb active" onclick="setPeriod(7,this)">7d</button>
+          <button class="pb" onclick="setPeriod(30,this)">30d</button>
+          <button class="pb" onclick="setPeriod(90,this)">90d</button>
+          <button class="pb" onclick="setPeriod(0,this)">Todos</button>
+        </div>
+      </div>
+    </div>
+    <div class="ov">
+      <table>
+        <thead><tr><th>Data</th><th>Cliente</th><th>Email</th><th>Produto</th><th>Valor</th><th>Status</th><th>Chave</th></tr></thead>
+        <tbody id="payments-body">${paymentsRows}</tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script>
+const _byDay=${byDayJson},_byProduct=${byProductJson};
+const _days=[];
+for(let i=29;i>=0;i--){const d=new Date(Date.now()-i*86400000),k=d.toISOString().slice(0,10),f=_byDay.find(x=>x._id===k);_days.push({date:k,count:f?.count||0,revenue:f?.revenue||0});}
+
+function loadChart(cb){if(window.Chart){cb();return;}const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js';s.onload=cb;document.head.appendChild(s);}
+
+loadChart(()=>{
+  Chart.defaults.color='#5a5a7a';Chart.defaults.borderColor='#1c1c2e';
+  new Chart(document.getElementById('chartVendas'),{type:'bar',data:{
+    labels:_days.map(d=>d.date.slice(5)),
+    datasets:[
+      {label:'Vendas',data:_days.map(d=>d.count),backgroundColor:'#ffd32a33',borderColor:'#ffd32a',borderWidth:1.5,borderRadius:4,yAxisID:'y'},
+      {label:'Receita (R$)',data:_days.map(d=>d.revenue),type:'line',borderColor:'#00ff87',backgroundColor:'#00ff8715',borderWidth:2,pointRadius:2,tension:0.4,yAxisID:'y2'}
+    ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{family:'Space Mono',size:10},boxWidth:12}}},scales:{y:{position:'left',grid:{color:'#1c1c2e'},ticks:{precision:0}},y2:{position:'right',grid:{drawOnChartArea:false},ticks:{callback:v=>'R$'+v.toFixed(0)}},x:{grid:{color:'#1c1c2e'},ticks:{font:{size:9},maxRotation:45}}}}});
+
+  if(_byProduct.length){const colors=['#ffd32a','#00ff87','#4f8ef7','#ff4757','#9b59b6','#ff8600'];
+  new Chart(document.getElementById('chartProdutos'),{type:'doughnut',data:{labels:_byProduct.map(p=>p._id||'?'),datasets:[{data:_byProduct.map(p=>p.revenue||p.count),backgroundColor:colors,borderColor:'#0f0f1a',borderWidth:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{family:'Space Mono',size:10},boxWidth:12,padding:10}},tooltip:{callbacks:{label:ctx=>' R$'+ctx.parsed.toFixed(2).replace('.',',')}}}}}});}
+});
+
+function filterTable(){const q=(document.getElementById('search').value||'').toLowerCase();document.querySelectorAll('#payments-body tr[data-row]').forEach(r=>{r.style.display=!q||r.dataset.row.includes(q)?'':'none';});}
+function setPeriod(days,btn){document.querySelectorAll('.pb').forEach(b=>b.classList.remove('active'));btn.classList.add('active');const cutoff=days?new Date(Date.now()-days*86400000).toISOString():null;document.querySelectorAll('#payments-body tr[data-paid]').forEach(r=>{r.style.display=(!cutoff||r.dataset.paid>=cutoff)?'':'none';});}
+</script>
+${CANVAS_BG}</body></html>`;
 }
 
 // ─────────────────────────────────────────────
@@ -2018,6 +2288,9 @@ async function handleRequest(req, res) {
   if (p === R_ADMIN+'/api/data' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const suspectKeys = Object.keys(keys).filter(code => {
+      const k2 = keys[code];
+      const cl2 = k2.suspectClearedAt ? new Date(k2.suspectClearedAt) : null;
+      if (cl2 && (Date.now() - cl2.getTime()) < 172800000) return false;
       const recentLogs = logs.filter(l => l.keyCode === code && l.timestamp > new Date(Date.now()-86400000).toISOString());
       return new Set(recentLogs.filter(l=>l.ip).map(l=>l.ip)).size > 3;
     }).length;
@@ -2155,11 +2428,9 @@ async function handleRequest(req, res) {
   if (codeClearSuspect && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!keys[codeClearSuspect]) { sendJson(res, { error: 'not found' }, 404); return; }
-    // Remove logs de IP das últimas 24h desta chave para zerar a contagem de suspeita
-    const cutoff = new Date(Date.now() - 86400000).toISOString();
-    logs = logs.filter(l => !(l.keyCode === codeClearSuspect && l.timestamp > cutoff));
-    await saveLogs();
-    await addLog({ keyCode: codeClearSuspect, label: keys[codeClearSuspect].label, phone: '-', ip, wppVersion: '-', action: 'suspect_cleared' });
+    // Marca como verificada — ignora suspeita por 48h
+    keys[codeClearSuspect].suspectClearedAt = new Date().toISOString();
+    await saveKey(codeClearSuspect);
     sendJson(res, { ok: true }); return;
   }
 
@@ -2231,6 +2502,65 @@ async function handleRequest(req, res) {
   }
 
   // ── Payt webhook ──
+  // ─────────────────────────────────────────────
+  // ANALYTICS: login / logout / painel / export
+  // ─────────────────────────────────────────────
+  if (p === R_ANALYTICS+'/login' && req.method === 'POST') {
+    if (!ANALYTICS_PASS) { res.writeHead(404); res.end('Not found'); return; }
+    if (!checkRateLimit(ip, 'login')) {
+      const mins = getRateLimitWait(ip, 'login');
+      sendHtml(res, renderAnalyticsLogin(`⏳ Muitas tentativas. Aguarde ${mins} minuto(s).`), 429); return;
+    }
+    const form = await parseFormBody(req);
+    if (form.get('pass') === ANALYTICS_PASS) {
+      const token = generateToken();
+      analyticsSessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString() };
+      res.setHeader('Set-Cookie', `zv_an=${token}; Path=/; HttpOnly; SameSite=Strict`);
+      res.writeHead(302, { Location: R_ANALYTICS }); res.end();
+    } else {
+      sendHtml(res, renderAnalyticsLogin('Senha incorreta.'));
+    }
+    return;
+  }
+
+  if (p === R_ANALYTICS+'/logout') {
+    res.setHeader('Set-Cookie', 'zv_an=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT');
+    res.writeHead(302, { Location: R_ANALYTICS }); res.end(); return;
+  }
+
+  if ((p === R_ANALYTICS || p === R_ANALYTICS+'/') && req.method === 'GET') {
+    if (!ANALYTICS_PASS) { res.writeHead(404); res.end('Not found'); return; }
+    if (!isAnalyticsSession(req)) { sendHtml(res, renderAnalyticsLogin()); return; }
+    sendHtml(res, await renderAnalyticsDashboard()); return;
+  }
+
+  // ── Analytics: export CSV ──
+  if (p === R_ANALYTICS+'/export/csv' && req.method === 'GET') {
+    if (!isAnalyticsSession(req)) { res.writeHead(302, { Location: R_ANALYTICS }); res.end(); return; }
+    const payments = await getPayments({ limit: 10000 });
+    const header = 'Data,Cliente,Email,Telefone,Produto,Valor,Status,Chave,Método';
+    const rows = payments.map(p => {
+      const fmtDate = iso => iso ? new Date(iso).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}) : '';
+      return [
+        fmtDate(p.paidAt), p.clientName, p.clientEmail, p.clientPhone,
+        p.productName, (p.amount||0).toFixed(2).replace('.',','),
+        p.approved ? 'APROVADO' : 'REJEITADO',
+        p.keyCode || '', p.paymentMethod || ''
+      ].map(v => `"${String(v||'').replace(/"/g,'""')}"`).join(',');
+    });
+    const csv = [header, ...rows].join('\r\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="zvm-pagamentos-${new Date().toISOString().slice(0,10)}.csv"`);
+    res.writeHead(200); res.end('\uFEFF' + csv); return;
+  }
+
+  // ── Analytics: API stats (para refresh futuro) ──
+  if (p === R_ANALYTICS+'/api/stats' && req.method === 'GET') {
+    if (!isAnalyticsSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const stats = await getPaymentStats();
+    sendJson(res, stats || {}); return;
+  }
+
   if (p === '/payt/webhook' && req.method === 'POST') {
     const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
     if (PAYT_SECRET) {
@@ -2244,21 +2574,43 @@ async function handleRequest(req, res) {
     try { payload = JSON.parse(rawBody); }
     catch { try { payload = Object.fromEntries(new URLSearchParams(rawBody).entries()); } catch { res.writeHead(400); res.end('Bad Request'); return; } }
 
-    const status   = String(payload.status || payload.transaction_status || '').toLowerCase();
-    const approved = ['approved','finished','paid','completed','finalizada','aprovada','venda_paga'].some(s => status.includes(s));
-    if (!approved) { console.log('[PAYT] Status ignorado:', status); res.writeHead(200); res.end('ignored'); return; }
+    const status   = String(payload.status || payload.transaction_status || payload.sale_status || '').toLowerCase();
+    const approved = ['approved','finished','paid','completed','finalizada','aprovada','venda_paga','active','confirmed'].some(s => status.includes(s));
 
-    const txId = String(payload.transaction_id || payload.id || '').trim();
+    // Registrar mesmo pagamentos não aprovados para histórico
+    const txId        = String(payload.transaction_id || payload.sale_id || payload.id || '').trim();
+    const customer    = payload.customer || payload.buyer || payload.client || {};
+    const clientName  = customer.name || customer.full_name || payload.customer_name || payload.buyer_name || 'Cliente';
+    const clientEmail = customer.email || payload.customer_email || payload.buyer_email || payload.email || '';
+    const clientPhone = customer.phone || customer.phone_number || payload.customer_phone || '';
+    const offer       = payload.offer || payload.product || {};
+    const productNameRaw = offer.name || offer.title || payload.product_name || payload.offer_name || payload.plan_name || '-';
+    const productName = productNameRaw.toLowerCase();
+    const amountRaw   = payload.amount || payload.value || payload.price || offer.price || payload.sale_amount || 0;
+    const amount      = parseFloat(String(amountRaw).replace(',','.')) || 0;
+    const paymentMethod = payload.payment_method || payload.method || payload.charge_type || '-';
+
+    if (!approved) {
+      console.log('[PAYT] Status ignorado:', status);
+      // Salvar tentativas/cancelamentos também para análise
+      if (txId) {
+        savePayment({
+          txId, status: status || 'unknown', approved: false,
+          clientName, clientEmail, clientPhone,
+          productName: productNameRaw, amount, paymentMethod,
+          keyCode: null, paidAt: new Date().toISOString(),
+          rawStatus: status,
+        }).catch(()=>{});
+      }
+      res.writeHead(200); res.end('ignored'); return;
+    }
+
+    // Idempotência — verificar duplicata
     if (txId && Object.values(keys).some(k => k.note && k.note.includes('payt_tx:'+txId))) {
       console.log('[PAYT] Transação já processada:', txId);
       res.writeHead(200); res.end('ok'); return;
     }
 
-    const customer    = payload.customer || payload.buyer || payload.client || {};
-    const clientName  = customer.name || customer.full_name || payload.customer_name || 'Cliente';
-    const clientEmail = customer.email || payload.customer_email || payload.email || '';
-    const offer       = payload.offer || payload.product || {};
-    const productName = (offer.name || offer.title || payload.product_name || payload.offer_name || '').toLowerCase();
     let maxUses = 3;
     if      (productName.includes('1') || productName.includes('individual') || productName.includes('solo')) maxUses = 1;
     else if (productName.includes('5') || productName.includes('multi')      || productName.includes('team')) maxUses = 5;
@@ -2275,7 +2627,17 @@ async function handleRequest(req, res) {
       note: 'Pedido automatico Payt | Email: '+clientEmail+(txId?' | payt_tx:'+txId:'')
     };
     await saveKey(code);
-    console.log('[PAYT] Chave criada:', code, '| Cliente:', clientName, '| Email:', clientEmail, '| Usos:', maxUses);
+
+    // Persistir pagamento no MongoDB para analytics
+    await savePayment({
+      txId: txId || code, status: 'approved', approved: true,
+      clientName, clientEmail, clientPhone,
+      productName: productNameRaw, amount, paymentMethod,
+      keyCode: code, maxUses,
+      paidAt: now.toISOString(), rawStatus: status,
+    });
+
+    console.log('[PAYT] Chave criada:', code, '| Cliente:', clientName, '| Email:', clientEmail, '| Usos:', maxUses, '| Valor: R$', amount);
     res.writeHead(200); res.end('ok'); return;
   }
 
@@ -2363,6 +2725,7 @@ async function handleRequest(req, res) {
     console.log(`💳 Payt: ${PAYT_SECRET ? 'ATIVO' : '⚠ inativo — defina PAYT_SECRET'}`);
     console.log(`🔑 Admin: ${R_ADMIN} | User: ${ADMIN_USER}`);
     console.log(`👮 Mod:   ${MODS.length > 0 ? R_MOD+' | '+MODS.length+' moderador(es): '+MODS.map(m=>m.name).join(', ') : '⚠ inativo — defina MOD_USER e MOD_PASS'}`);
+    console.log(`📊 Analytics: ${ANALYTICS_PASS ? R_ANALYTICS : '⚠ inativo — defina ANALYTICS_PASS'}`);
     console.log(`🌐 Extension: ${R_EXT}/v3/key`);
     console.log(`📊 Webhook: ${WEBHOOK_URL || 'não configurado'}`);
     console.log(`🗂  Retenção de logs: ${LOG_RETENTION_DAYS} dias (LGPD) | Máx em memória: ${LOG_MAX}`);
