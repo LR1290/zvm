@@ -1631,163 +1631,235 @@ ${CANVAS_BG}</body></html>`;
 // PÁGINA: PLANOS / CHECKOUT
 // ─────────────────────────────────────────────
 function renderPlanosPage() {
-  // Links placeholder — substituir quando tiver os links da Payt
   const PLANOS = [
-    { id: 1,  devices: 1,  label: 'Solo',        price: '34,99', desc: 'Ideal para uso pessoal', icon: '👤', link: '#', highlight: false },
-    { id: 3,  devices: 3,  label: 'Padrão',       price: '39,99', desc: 'O mais popular',         icon: '⚡', link: '#', highlight: true  },
-    { id: 5,  devices: 5,  label: 'Profissional', price: '49,99', desc: 'Para equipes pequenas',  icon: '🚀', link: '#', highlight: false },
-    { id: 10, devices: 10, label: 'Empresarial',  price: '69,99', desc: 'Para grandes equipes',   icon: '🏢', link: '#', highlight: false },
+    { devices:1,  label:'Solo',        price:'34,99', oldPrice:null,    desc:'Para uso pessoal',    icon:'👤', perDevice:'34,99', link:'#', highlight:false },
+    { devices:3,  label:'Padrão',      price:'39,99', oldPrice:'59,99', desc:'O mais escolhido',    icon:'⚡', perDevice:'13,33', link:'#', highlight:true  },
+    { devices:5,  label:'Pro',         price:'49,99', oldPrice:'99,99', desc:'Para equipes',        icon:'🚀', perDevice:'10,00', link:'#', highlight:false },
+    { devices:10, label:'Empresarial', price:'69,99', oldPrice:'199,99',desc:'Escala total',        icon:'🏢', perDevice:'7,00',  link:'#', highlight:false },
   ];
 
-  const cards = PLANOS.map(p => `
-<div class="plan-card${p.highlight ? ' highlight' : ''}">
-  ${p.highlight ? '<div class="popular-badge">⚡ Mais popular</div>' : ''}
-  <div class="plan-icon">${p.icon}</div>
-  <div class="plan-label">${p.label}</div>
-  <div class="plan-devices">${p.devices} número${p.devices > 1 ? 's' : ''} de WhatsApp</div>
-  <div class="plan-price">
-    <span class="price-currency">R$</span>
-    <span class="price-value">${p.price}</span>
-    <span class="price-period">/mês</span>
+  const cards = PLANOS.map(p => {
+    const comingSoon = p.link === '#';
+    return `<div class="plan-card${p.highlight?' hl':''}">
+  ${p.highlight?'<div class="pop-badge">⚡ Mais popular</div>':''}
+  <div class="plan-top">
+    <div class="plan-icon">${p.icon}</div>
+    <div class="plan-name">${p.label}</div>
+    <div class="plan-sub">${p.devices} número${p.devices>1?'s':''} de WhatsApp</div>
   </div>
-  <div class="plan-desc">${p.desc}</div>
-  <a href="${p.link}" class="plan-btn${p.highlight ? ' btn-highlight' : ''}" ${p.link === '#' ? 'onclick="return false;" title="Link em breve"' : `target="_blank"`}>
-    ${p.link === '#' ? '🔒 Em breve' : '💳 Assinar agora'}
+  <div class="plan-pricing">
+    ${p.oldPrice?`<div class="old-price">R$ ${p.oldPrice}</div>`:''}
+    <div class="plan-price"><span class="cur">R$</span><span class="val">${p.price}</span><span class="per">/mês</span></div>
+    <div class="per-device">R$ ${p.perDevice} por número</div>
+  </div>
+  <div class="plan-divider"></div>
+  <ul class="plan-features">
+    <li>✅ Até ${p.devices} número(s) de WhatsApp</li>
+    <li>✅ 30 dias de acesso</li>
+    <li>✅ Todos os recursos inclusos</li>
+    <li>✅ Renovação automática pelo portal</li>
+  </ul>
+  <a href="${p.link}" class="plan-btn${p.highlight?' btn-hl':''}" ${comingSoon?'onclick="return false;"':'target="_blank"'}>
+    ${comingSoon?'🔒 Em breve':'💳 Assinar agora'}
   </a>
-</div>`).join('');
+</div>`;
+  }).join('');
 
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Planos</title>
+<title>ZVM — Planos e Preços</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--radius:14px}
+:root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--card2:#13131f;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--radius:14px}
 body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
 header{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000060}
 .logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
-.header-links{display:flex;gap:10px}
-.header-links a{font-size:11px;color:var(--muted);text-decoration:none;padding:6px 13px;border:1px solid var(--border);border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
-.header-links a:hover{color:var(--green);border-color:var(--green)}
-main{max-width:900px;margin:0 auto;padding:60px 24px 80px}
+.hlinks{display:flex;gap:10px}
+.hlinks a{font-size:11px;color:var(--muted);text-decoration:none;padding:6px 13px;border:1px solid var(--border);border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
+.hlinks a:hover{color:var(--green);border-color:var(--green)}
+main{max-width:1060px;margin:0 auto;padding:56px 24px 80px}
+
 /* Hero */
-.hero{text-align:center;margin-bottom:56px}
-.hero-badge{display:inline-block;background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-size:10px;letter-spacing:2px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:18px;font-family:'Syne',sans-serif}
-.hero h1{font-family:'Syne',sans-serif;font-size:clamp(26px,4vw,42px);font-weight:800;line-height:1.1;margin-bottom:12px}
-.hero h1 span{color:var(--green)}
-.hero-sub{color:var(--muted);font-size:13px;line-height:1.8;max-width:480px;margin:0 auto}
+.hero{text-align:center;margin-bottom:48px}
+.hero-badge{display:inline-flex;align-items:center;gap:6px;background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-size:10px;letter-spacing:2px;text-transform:uppercase;padding:5px 16px;border-radius:20px;margin-bottom:20px;font-family:'Syne',sans-serif}
+.hero h1{font-family:'Syne',sans-serif;font-size:clamp(28px,4vw,46px);font-weight:800;line-height:1.1;margin-bottom:14px}
+.hero h1 em{color:var(--green);font-style:normal}
+.hero-sub{color:var(--muted);font-size:13px;line-height:1.8;max-width:460px;margin:0 auto 28px}
+.guarantee{display:inline-flex;align-items:center;gap:20px;background:var(--card);border:1px solid var(--border);border-radius:30px;padding:10px 24px;font-size:11px;color:var(--muted)}
+.guarantee span{display:flex;align-items:center;gap:6px}
+
 /* WIP banner */
-.wip-banner{background:#ffd32a08;border:1px solid #ffd32a30;border-radius:10px;padding:14px 20px;margin-bottom:40px;display:flex;align-items:center;gap:12px;font-size:12px;color:#ffd32a;line-height:1.7}
-.wip-banner strong{font-family:'Syne',sans-serif}
-/* Plans grid */
-.plans-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:48px}
-.plan-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px 20px;text-align:center;position:relative;transition:border-color .25s,transform .2s}
-.plan-card:hover{border-color:#00ff8740;transform:translateY(-3px)}
-.plan-card.highlight{border-color:#00ff8760;background:linear-gradient(160deg,#0f1a14,#0f0f1a)}
-.popular-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--green);color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:10px;padding:4px 14px;border-radius:20px;white-space:nowrap;letter-spacing:.5px}
-.plan-icon{font-size:32px;margin-bottom:12px}
-.plan-label{font-family:'Syne',sans-serif;font-size:15px;font-weight:800;color:var(--text);margin-bottom:4px}
-.plan-devices{font-size:11px;color:var(--muted);margin-bottom:18px;letter-spacing:.5px}
-.plan-price{margin-bottom:8px;display:flex;align-items:baseline;justify-content:center;gap:3px}
-.price-currency{font-size:14px;color:var(--green);font-weight:700}
-.price-value{font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:var(--green);line-height:1}
-.price-period{font-size:11px;color:var(--muted)}
-.plan-desc{font-size:10px;color:var(--muted);margin-bottom:22px;min-height:20px}
-.plan-btn{display:block;padding:12px;border-radius:8px;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;text-decoration:none;text-align:center;transition:all .2s;background:#1e1e2e;color:var(--muted);border:1px solid var(--border);cursor:not-allowed;opacity:.7}
-.plan-btn.btn-highlight{background:var(--green);color:#000;border:none;cursor:not-allowed;opacity:.7}
+.wip-banner{background:#ffd32a08;border:1px solid #ffd32a25;border-radius:10px;padding:13px 20px;margin-bottom:36px;display:flex;align-items:center;gap:12px;font-size:11px;color:#c9a800;line-height:1.7}
+
+/* Plans */
+.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:48px;justify-items:center}
+.plan-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px 20px 22px;text-align:center;position:relative;transition:border-color .25s,transform .2s,box-shadow .2s;display:flex;flex-direction:column;width:100%}
+.plan-card:hover{border-color:#00ff8740;transform:translateY(-4px);box-shadow:0 16px 40px #00000050}
+.plan-card.hl{border-color:#00ff8760;background:linear-gradient(165deg,#0d1a12,#0f0f1a);box-shadow:0 0 30px #00ff8715}
+.plan-card.hl:hover{box-shadow:0 16px 50px #00ff8725}
+.pop-badge{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:var(--green);color:#000;font-family:'Syne',sans-serif;font-weight:800;font-size:10px;padding:4px 16px;border-radius:20px;white-space:nowrap;letter-spacing:.5px}
+.plan-top{margin-bottom:20px}
+.plan-icon{font-size:36px;margin-bottom:10px}
+.plan-name{font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:var(--text);margin-bottom:4px}
+.plan-sub{font-size:10px;color:var(--muted);letter-spacing:.5px}
+.plan-pricing{margin-bottom:18px}
+.old-price{font-size:11px;color:var(--muted);text-decoration:line-through;margin-bottom:2px}
+.plan-price{display:flex;align-items:baseline;justify-content:center;gap:3px;margin-bottom:4px}
+.cur{font-size:14px;color:var(--green);font-weight:700}
+.val{font-family:'Syne',sans-serif;font-size:34px;font-weight:800;color:var(--green);line-height:1}
+.per{font-size:11px;color:var(--muted)}
+.per-device{font-size:10px;color:var(--muted)}
+.plan-divider{height:1px;background:var(--border);margin:16px 0}
+.plan-features{list-style:none;text-align:left;font-size:10px;color:var(--muted);line-height:1;display:flex;flex-direction:column;gap:9px;margin-bottom:20px;flex:1}
+.plan-features li{display:flex;align-items:center;gap:6px}
+.plan-btn{display:block;padding:12px;border-radius:8px;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;text-decoration:none;text-align:center;transition:all .2s;background:#1c1c2e;color:var(--muted);border:1px solid var(--border);cursor:not-allowed;opacity:.65;margin-top:auto}
+.plan-btn.btn-hl{background:var(--green);color:#000;border:none;cursor:not-allowed;opacity:.7}
+
+/* Compare */
+.compare{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:32px}
+.compare-title{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:1px;padding:16px 22px;border-bottom:1px solid var(--border);background:var(--card2)}
+.compare table{width:100%;border-collapse:collapse;font-size:11px}
+.compare th{padding:10px 16px;text-align:center;color:var(--muted);border-bottom:1px solid var(--border);font-weight:400;font-size:10px;background:var(--card2)}
+.compare th:first-child{text-align:left}
+.compare td{padding:11px 16px;text-align:center;border-bottom:1px solid #14141f;color:var(--text)}
+.compare td:first-child{text-align:left;color:var(--muted);font-size:10px}
+.compare tr:last-child td{border-bottom:none}
+.compare tr:hover td{background:#ffffff02}
+.ck{color:var(--green)}
+.cx{color:#ff475760}
+
 /* Incluso */
-.includes{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px 32px;margin-bottom:40px}
-.includes h3{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--green);margin-bottom:18px;text-transform:uppercase;letter-spacing:1px}
-.includes-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.includes{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:26px 28px;margin-bottom:32px}
+.inc-title{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:1px;margin-bottom:18px}
+.inc-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .inc-item{display:flex;align-items:flex-start;gap:10px;font-size:11px;color:var(--muted);line-height:1.6}
-.inc-item span:first-child{flex-shrink:0;font-size:14px}
+.inc-item .ic{flex-shrink:0;font-size:14px;margin-top:1px}
+
 /* FAQ */
-.faq-section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px 32px;margin-bottom:40px}
-.faq-section h3{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--green);margin-bottom:18px;text-transform:uppercase;letter-spacing:1px}
-.faq-item{border-bottom:1px solid var(--border);padding:14px 0}
-.faq-item:last-child{border-bottom:none}
-.faq-q{font-size:12px;color:var(--text);font-weight:700;margin-bottom:6px;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
-.faq-a{font-size:11px;color:var(--muted);line-height:1.8}
-/* Support */
-.support-box{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px;text-align:center}
-.support-box h3{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:var(--text);margin-bottom:8px}
-.support-box p{color:var(--muted);font-size:12px;margin-bottom:20px}
-.btn-wpp{display:inline-flex;align-items:center;gap:8px;background:#25d36620;border:1px solid #25d36640;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:11px 22px;border-radius:8px;text-decoration:none;transition:all .2s}
+.faq{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:26px 28px;margin-bottom:32px}
+.faq-title{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:1px;margin-bottom:18px}
+.faq-item{border-bottom:1px solid var(--border);padding:13px 0}
+.faq-item:last-child{border-bottom:none;padding-bottom:0}
+.faq-q{font-size:12px;color:var(--text);font-weight:700;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px;user-select:none}
+.faq-q .arr{color:var(--muted);transition:transform .2s;flex-shrink:0}
+.faq-a{font-size:11px;color:var(--muted);line-height:1.9;padding-top:10px;display:none}
+.faq-item.open .faq-a{display:block}
+.faq-item.open .arr{transform:rotate(90deg)}
+
+/* CTA */
+.cta{background:linear-gradient(135deg,#0d1a12,#0f0f1a);border:1px solid #00ff8730;border-radius:var(--radius);padding:36px 28px;text-align:center}
+.cta h3{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--text);margin-bottom:8px}
+.cta p{color:var(--muted);font-size:12px;margin-bottom:22px;line-height:1.8}
+.btn-wpp{display:inline-flex;align-items:center;gap:8px;background:#25d36620;border:1px solid #25d36640;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:12px 24px;border-radius:8px;text-decoration:none;transition:all .2s}
 .btn-wpp:hover{background:#25d36630;border-color:#25d366;transform:translateY(-2px)}
 footer{text-align:center;padding:28px;font-size:10px;color:var(--muted);border-top:1px solid var(--border)}
 footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--green)}
-@media(max-width:720px){.plans-grid{grid-template-columns:1fr 1fr}.includes-grid{grid-template-columns:1fr}}
-@media(max-width:480px){.plans-grid{grid-template-columns:1fr}}
-</style>
-</head>
-<body>
+@media(max-width:800px){.plans{grid-template-columns:1fr 1fr}.inc-grid{grid-template-columns:1fr}}
+@media(max-width:480px){.plans{grid-template-columns:1fr}.guarantee{flex-direction:column;gap:10px}}
+</style></head><body>
 <header>
   <a href="/" class="logo">⚡ ZVM</a>
-  <div class="header-links">
+  <div class="hlinks">
     <a href="/">Portal</a>
     <a href="/faq">FAQ</a>
     <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank">💬 Suporte</a>
   </div>
 </header>
 <main>
+
   <div class="hero">
-    <div class="hero-badge">Planos e Preços</div>
-    <h1>Escolha seu <span>plano</span></h1>
-    <p class="hero-sub">Acesso completo à extensão ZVM para WhatsApp Web. Sem fidelidade, cancele quando quiser.</p>
+    <div class="hero-badge">💳 Planos e Preços</div>
+    <h1>Simples, <em>transparente</em><br>e sem surpresas</h1>
+    <p class="hero-sub">Escolha o plano ideal para o seu uso. Todos incluem acesso completo à extensão ZVM por 30 dias.</p>
+    <div class="guarantee">
+      <span>✅ Sem fidelidade</span>
+      <span>⚡ Ativação imediata</span>
+      <span>💬 Suporte incluso</span>
+    </div>
   </div>
 
   <div class="wip-banner">
-    <span style="font-size:20px;flex-shrink:0">🚧</span>
-    <div><strong>Links de pagamento em breve!</strong><br>Os planos abaixo estão configurados e prontos. Assim que os links da Payt forem adicionados, você já poderá assinar direto por aqui.</div>
+    <span style="font-size:18px;flex-shrink:0">🚧</span>
+    <span><strong>Links de pagamento em breve!</strong> Os planos já estão configurados — assim que os links da Payt forem adicionados você poderá assinar direto por aqui.</span>
   </div>
 
-  <div class="plans-grid">${cards}</div>
+  <div class="plans">${cards}</div>
+
+  <div class="compare">
+    <div class="compare-title">📊 Comparativo dos planos</div>
+    <table>
+      <thead><tr>
+        <th style="text-align:left">Recurso</th>
+        <th>Solo</th><th>Padrão</th><th>Pro</th><th>Empresarial</th>
+      </tr></thead>
+      <tbody>
+        <tr><td>Números de WhatsApp</td><td>1</td><td>3</td><td>5</td><td>10</td></tr>
+        <tr><td>Preço mensal</td><td>R$ 34,99</td><td>R$ 39,99</td><td>R$ 49,99</td><td>R$ 69,99</td></tr>
+        <tr><td>Preço por número</td><td>R$ 34,99</td><td style="color:var(--green)">R$ 13,33</td><td style="color:var(--green)">R$ 10,00</td><td style="color:var(--green)">R$ 7,00</td></tr>
+        <tr><td>Todos os recursos</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
+        <tr><td>Portal do cliente</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
+        <tr><td>Suporte WhatsApp</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
+        <tr><td>Renovação automática</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
+      </tbody>
+    </table>
+  </div>
 
   <div class="includes">
-    <h3>✅ O que está incluso em todos os planos</h3>
-    <div class="includes-grid">
-      <div class="inc-item"><span>⚡</span><span>Acesso completo à extensão ZVM</span></div>
-      <div class="inc-item"><span>🔄</span><span>Atualizações automáticas durante a vigência</span></div>
-      <div class="inc-item"><span>📱</span><span>Controle de dispositivos pelo portal do cliente</span></div>
-      <div class="inc-item"><span>⏰</span><span>30 dias de acesso a partir da primeira ativação</span></div>
-      <div class="inc-item"><span>💬</span><span>Suporte via WhatsApp com a equipe</span></div>
-      <div class="inc-item"><span>🔒</span><span>Chave exclusiva e intransferível</span></div>
-      <div class="inc-item"><span>🎯</span><span>Todos os recursos: fluxos, funis, agendamentos</span></div>
-      <div class="inc-item"><span>🔑</span><span>Portal do cliente para consultar e gerenciar a chave</span></div>
+    <div class="inc-title">✅ Incluso em todos os planos</div>
+    <div class="inc-grid">
+      <div class="inc-item"><span class="ic">⚡</span><span>Acesso completo à extensão ZVM para WhatsApp Web</span></div>
+      <div class="inc-item"><span class="ic">🔄</span><span>Atualizações automáticas durante a vigência</span></div>
+      <div class="inc-item"><span class="ic">📱</span><span>Portal do cliente para gerenciar sua chave</span></div>
+      <div class="inc-item"><span class="ic">⏰</span><span>30 dias a partir da primeira ativação</span></div>
+      <div class="inc-item"><span class="ic">💬</span><span>Suporte via WhatsApp com a equipe</span></div>
+      <div class="inc-item"><span class="ic">🎯</span><span>Fluxos, funis, agendamentos e disparos</span></div>
+      <div class="inc-item"><span class="ic">🔁</span><span>Renovação soma ao tempo restante</span></div>
+      <div class="inc-item"><span class="ic">🔒</span><span>Chave exclusiva e intransferível</span></div>
     </div>
   </div>
 
-  <div class="faq-section">
-    <h3>💬 Dúvidas frequentes sobre os planos</h3>
+  <div class="faq">
+    <div class="faq-title">💬 Dúvidas frequentes</div>
     <div class="faq-item">
-      <div class="faq-q">Como funciona o limite de dispositivos? <span>+</span></div>
-      <div class="faq-a">Cada dispositivo corresponde a um número de WhatsApp. No plano de 3 dispositivos, por exemplo, você pode usar a extensão em até 3 números diferentes simultaneamente. Você pode remover e adicionar números pelo portal do cliente.</div>
+      <div class="faq-q">O que é um "número de WhatsApp" no plano? <span class="arr">▶</span></div>
+      <div class="faq-a">Cada número corresponde a um WhatsApp diferente que pode usar a extensão simultaneamente. No plano Padrão (3 números), por exemplo, três números distintos podem usar ao mesmo tempo. Você gerencia quais números estão ativos pelo portal do cliente.</div>
     </div>
     <div class="faq-item">
-      <div class="faq-q">A chave é ativada logo após o pagamento? <span>+</span></div>
-      <div class="faq-a">Sim. Assim que o pagamento for confirmado pela Payt, a chave é gerada automaticamente e você receberá as instruções de acesso. O processo é instantâneo para pagamentos via PIX.</div>
+      <div class="faq-q">Quando minha chave é ativada após o pagamento? <span class="arr">▶</span></div>
+      <div class="faq-a">Imediatamente após a confirmação do pagamento pela Payt. Para PIX é instantâneo. A chave já estará disponível no portal do cliente antes mesmo de você fechar a janela de confirmação.</div>
     </div>
     <div class="faq-item">
-      <div class="faq-q">Posso mudar de plano? <span>+</span></div>
-      <div class="faq-a">Sim. Entre em contato com o suporte via WhatsApp e faremos o upgrade ou downgrade para você.</div>
+      <div class="faq-q">Se eu já tenho uma chave e compro de novo, o que acontece? <span class="arr">▶</span></div>
+      <div class="faq-a">Sua chave existente é renovada automaticamente — os 30 dias são somados ao tempo que ainda resta. Você não perde nenhum dia e não precisa de uma chave nova.</div>
     </div>
     <div class="faq-item">
-      <div class="faq-q">O que acontece quando minha chave expira? <span>+</span></div>
-      <div class="faq-a">A extensão para de funcionar. Você pode renovar a qualquer momento escolhendo um plano aqui nesta página. Se renovar antes de expirar, o tempo é somado.</div>
+      <div class="faq-q">Posso mudar de plano (upgrade ou downgrade)? <span class="arr">▶</span></div>
+      <div class="faq-a">Sim. Entre em contato com o suporte via WhatsApp e ajustamos o seu plano sem complicações.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">O que acontece quando minha chave expira? <span class="arr">▶</span></div>
+      <div class="faq-a">A extensão para de funcionar até que você renove. Seu histórico e configurações são mantidos — basta renovar e tudo volta exatamente como estava.</div>
     </div>
   </div>
 
-  <div class="support-box">
-    <h3>Ficou com dúvidas?</h3>
-    <p>Nossa equipe está disponível no WhatsApp para te ajudar a escolher o melhor plano.</p>
-    <a class="btn-wpp" href="https://wa.me/5521996771552?text=LR!%20Quero%20saber%20mais%20sobre%20os%20planos." target="_blank">💬 Falar com o Suporte</a>
+  <div class="cta">
+    <h3>Ainda tem dúvidas?</h3>
+    <p>Nossa equipe está disponível para te ajudar a escolher o melhor plano<br>ou esclarecer qualquer questão antes de assinar.</p>
+    <a class="btn-wpp" href="https://wa.me/5521996771552?text=LR!%20Quero%20saber%20mais%20sobre%20os%20planos%20do%20ZVM." target="_blank">💬 Falar com o Suporte no WhatsApp</a>
   </div>
+
 </main>
 <footer>
   <p>© ${new Date().getFullYear()} ZVM — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/privacidade">Privacidade</a></p>
   <p style="margin-top:6px;font-size:9px;letter-spacing:2px;text-transform:uppercase;opacity:.5">Todos os direitos reservados</p>
 </footer>
+<script>
+document.querySelectorAll('.faq-item').forEach(item=>{
+  item.querySelector('.faq-q').addEventListener('click',()=>item.classList.toggle('open'));
+});
+</script>
 ${CANVAS_BG}
 </body></html>`;
 }
