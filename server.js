@@ -1710,7 +1710,7 @@ main{max-width:1060px;margin:0 auto;padding:56px 24px 80px}
 .cur{font-size:14px;color:var(--green);font-weight:700}
 .val{font-family:'Syne',sans-serif;font-size:34px;font-weight:800;color:var(--green);line-height:1}
 .per{font-size:11px;color:var(--muted)}
-.per-device{font-size:11px;color:#8a8aaa;font-family:'Syne',sans-serif}
+.per-device{font-size:13px;color:#a0a0c0;font-family:'Syne',sans-serif;font-weight:600;margin-top:2px}
 .plan-divider{height:1px;background:var(--border);margin:16px 0}
 .plan-features{list-style:none;text-align:left;font-size:11px;color:#8a8aaa;line-height:1.5;display:flex;flex-direction:column;gap:9px;margin-bottom:20px;flex:1;font-family:'Syne',sans-serif;letter-spacing:0}
 .plan-features li{display:flex;align-items:center;gap:6px}
