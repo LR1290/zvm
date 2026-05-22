@@ -578,7 +578,7 @@ const CANVAS_BG = `<canvas id="_cvs" style="position:fixed;inset:0;z-index:0;poi
 function renderModLogin(error = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM - LR1290 — Moderação</title>
+<title>ZVM — Moderação</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
 <style>
@@ -596,7 +596,7 @@ input:focus{border-color:#4f8ef7}
 .err{background:#ff475715;border:1px solid #ff4757;border-radius:6px;color:#ff4757;padding:9px 12px;font-size:12px;margin-bottom:16px}
 </style></head><body>
 <div class="card">
-  <div class="logo">⚡ ZVM - LR1290</div>
+  <div class="logo">⚡ ZVM</div>
   <div class="sub">Painel de Moderação</div>
   <div class="badge">👮 Acesso Moderador</div>
   ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
@@ -618,7 +618,7 @@ function renderModDashboard(modName = 'Moderador') {
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM - LR1290 — Moderação</title>
+<title>ZVM — Moderação</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
@@ -696,7 +696,7 @@ main{padding:28px 24px;max-width:900px;margin:0 auto}
 </head>
 <body>
 <header>
-  <div class="logo">⚡ ZVM - LR1290 <span class="badge-mod">${modName}</span></div>
+  <div class="logo">⚡ ZVM <span class="badge-mod">${modName}</span></div>
   <div class="hright">
     <a href="${R_MOD}/logout" class="out">↩ Sair</a>
   </div>
@@ -855,7 +855,7 @@ ${CANVAS_BG}</body></html>`;
 function renderExtensionLogin({ callback, error = '', keyVal = '' }) {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM - LR1290 — Ativação</title>
+<title>ZVM — Ativação</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
 <style>
@@ -874,7 +874,7 @@ input:focus{border-color:#00ff87}
 </style>
 </head><body>
 <div class="card">
-  <div class="logo">⚡ ZVM - LR1290</div>
+  <div class="logo">⚡ ZVM</div>
   <div class="sub">Ativação da Extensão</div>
   ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
   <form method="POST" action="/extension/auth/verify">
@@ -884,7 +884,7 @@ input:focus{border-color:#00ff87}
     <p style="text-align:left;font-size:11px;color:#6b6b8a;margin-top:8px">Você recebeu esta chave junto com a sua compra.</p>
     <button type="submit" class="btn">Ativar Agora</button>
   </form>
-  <div class="hint">Precisa de ajuda?<br><a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20referente%20a%20minha%20renova%C3%A7%C3%A3o." target="_blank">💬 Falar com o suporte no WhatsApp</a></div>
+  <div class="hint">Precisa de ajuda ou quer renovar?<br><a href="/planos">💳 Ver Planos</a> · <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20referente%20a%20minha%20renova%C3%A7%C3%A3o." target="_blank">💬 Suporte no WhatsApp</a></div>
 </div>
 ${CANVAS_BG}</body></html>`;
 }
@@ -895,7 +895,7 @@ ${CANVAS_BG}</body></html>`;
 function renderAdminLogin(error = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM - LR1290 Admin</title>
+<title>ZVM Admin</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
 <style>
@@ -910,7 +910,7 @@ input:focus{border-color:#00ff87}
 .err{background:#ff475715;border:1px solid #ff4757;border-radius:6px;color:#ff4757;padding:9px 12px;font-size:12px;margin-bottom:16px}
 </style></head><body>
 <div class="card">
-  <div class="logo">⚡ ZVM - LR1290 Admin</div>
+  <div class="logo">⚡ ZVM Admin</div>
   ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
   <form method="POST" action="${R_ADMIN}/login">
     <label>Usuário</label><input type="text" name="user" autocomplete="off">
@@ -928,7 +928,7 @@ ${CANVAS_BG}</body></html>`;
 function renderClientPortal() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM - LR1290 — Portal do Cliente</title>
+<title>ZVM — Portal do Cliente</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
 <style>
@@ -976,7 +976,7 @@ input:focus{border-color:#00ff87}
 </style>
 </head><body>
 <nav>
-  <a href="/" class="nav-logo">⚡ ZVM - LR1290</a>
+  <a href="/" class="nav-logo">⚡ ZVM</a>
   <div class="nav-links">
     <a href="/faq">FAQ</a>
     <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank">💬 Suporte</a>
@@ -986,7 +986,7 @@ input:focus{border-color:#00ff87}
 <div class="page-body">
 <div class="wrap">
   <div class="card">
-    <div class="logo">⚡ ZVM - LR1290</div>
+    <div class="logo">⚡ ZVM</div>
     <div class="sub">Portal do Cliente</div>
     <div id="form-area">
       <div id="err-box" class="err" style="display:none"></div>
@@ -995,6 +995,7 @@ input:focus{border-color:#00ff87}
       <p style="text-align:left;font-size:11px;color:#6b6b8a;margin-top:8px">Você recebeu esta chave junto com a sua compra.</p>
       <button class="btn" id="check-btn" onclick="checkKey()">Consultar Minha Chave</button>
       <a class="btn" href="/faq" style="display:block;margin-top:10px;background:#1e1e2e;color:#6b6b8a;font-size:12px;text-decoration:none;text-align:center;padding:12px;border-radius:10px;border:1px solid #2a2a3e;transition:border-color .2s,color .2s" onmouseover="this.style.borderColor='#00ff87';this.style.color='#00ff87'" onmouseout="this.style.borderColor='#2a2a3e';this.style.color='#6b6b8a'">❓ FAQ — Dúvidas Frequentes</a>
+      <a class="btn" href="/planos" style="display:block;margin-top:8px;background:#00ff8710;color:#00ff87;font-size:12px;text-decoration:none;text-align:center;padding:12px;border-radius:10px;border:1px solid #00ff8730;transition:all .2s" onmouseover="this.style.background='#00ff8720';this.style.borderColor='#00ff87'" onmouseout="this.style.background='#00ff8710';this.style.borderColor='#00ff8730'">💳 Ver Planos e Preços</a>
       <div class="privacy-note">🔒 Ao usar este serviço, você concorda com nossa <a href="/privacidade">Política de Privacidade</a> e com a coleta de dados de uso para fins de licenciamento (LGPD).</div>
     </div>
     <div class="panel" id="result-panel">
@@ -1016,6 +1017,11 @@ input:focus{border-color:#00ff87}
         <div style="font-size:10px;color:#6b6b8a;margin-top:8px">Remova um número para liberar o slot e entrar em outro dispositivo.</div>
       </div>
       <div class="section-links" id="r-links"></div>
+      <div id="r-renew-banner" style="display:none;margin-top:14px;background:#00ff8710;border:1px solid #00ff8730;border-radius:10px;padding:14px;text-align:center">
+        <div style="font-size:12px;color:#00ff87;font-family:'Syne',sans-serif;font-weight:700;margin-bottom:8px">🔄 Hora de renovar!</div>
+        <div style="font-size:10px;color:#6b6b8a;margin-bottom:12px">Não perca seu acesso — renove agora e o tempo é somado.</div>
+        <a href="/planos" style="display:inline-block;padding:10px 22px;background:#00ff87;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;border-radius:8px;text-decoration:none;transition:opacity .2s" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">💳 Ver Planos</a>
+      </div>
       <button class="btn" style="margin-top:16px;background:#1e1e2e;color:#6b6b8a;font-size:12px" onclick="resetPanel()">← Consultar outra chave</button>
     </div>
     <div class="hint">Precisa de ajuda?<br><a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20referente%20a%20minha%20renova%C3%A7%C3%A3o." target="_blank">💬 Falar com o suporte no WhatsApp</a></div>
@@ -1059,6 +1065,9 @@ function showPanel(d,key){
   if(d.activatedAt){document.getElementById('r-act-row').style.display='flex';document.getElementById('r-activated').textContent=fmtDate(d.activatedAt);}
   if(d.lastUsed){document.getElementById('r-last-row').style.display='flex';document.getElementById('r-lastused').textContent=fmtDate(d.lastUsed);}
   document.getElementById('r-links').innerHTML='<a class="link-btn" href="https://app.zapvoice.com.br/dashboard/backup-fixer" target="_blank">🔧 Corrija<br>Backups</a><a class="link-btn" href="https://app.zapvoice.com.br/dashboard/converter" target="_blank">🎵 Converta<br>Áudios</a><a class="link-btn" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20referente%20a%20minha%20renova%C3%A7%C3%A3o." target="_blank" style="grid-column:span 2;border-color:#25d366;color:#25d366">💬 Suporte no WhatsApp</a>';
+  // Mostrar banner de renovação se expirada ou expirando em menos de 7 dias
+  const renewBanner=document.getElementById('r-renew-banner');
+  if(renewBanner){const showRenew=d.expired||(d.hoursLeft!==null&&d.hoursLeft<168);renewBanner.style.display=showRenew?'block':'none';if(d.expired)renewBanner.querySelector('div').textContent='⏰ Chave expirada!';}
   var phoneSec=document.getElementById('r-phone-section'),phoneList=document.getElementById('r-phone-list');
   if(d.phoneList&&d.phoneList.length>0){phoneSec.style.display='block';phoneList.innerHTML='';d.phoneList.forEach(function(ph){var row=document.createElement('div');row.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #1e1e2e';var sp=document.createElement('span');sp.style.cssText='font-size:13px;font-family:monospace;color:#e2e2f0';sp.textContent=ph;var btn=document.createElement('button');btn.textContent='Remover';btn.style.cssText='padding:4px 12px;background:#ff4757;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px';btn.addEventListener('click',function(){clientRemovePhone(key,ph);});row.appendChild(sp);row.appendChild(btn);phoneList.appendChild(row);});}
   else phoneSec.style.display='none';
@@ -1165,7 +1174,7 @@ function renderAdminDashboard() {
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM - LR1290 Admin v8</title>
+<title>ZVM Admin v8</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
@@ -1261,7 +1270,7 @@ tr:hover td{background:#ffffff02}
 </head>
 <body>
 <header>
-  <div class="logo">⚡ ZVM - LR1290 <span style="font-size:11px;color:var(--muted);font-weight:400">v8</span></div>
+  <div class="logo">⚡ ZVM <span style="font-size:11px;color:var(--muted);font-weight:400">v8</span></div>
   <div class="hright">
     <button class="btn bcsv" onclick="exportCSV()">⬇ CSV</button>
     <a href="${R_ADMIN}/logout" class="out">↩ Sair</a>
@@ -1619,12 +1628,177 @@ ${CANVAS_BG}</body></html>`;
 }
 
 // ─────────────────────────────────────────────
+// PÁGINA: PLANOS / CHECKOUT
+// ─────────────────────────────────────────────
+function renderPlanosPage() {
+  // Links placeholder — substituir quando tiver os links da Payt
+  const PLANOS = [
+    { id: 1,  devices: 1,  label: 'Solo',        price: '34,99', desc: 'Ideal para uso pessoal', icon: '👤', link: '#', highlight: false },
+    { id: 3,  devices: 3,  label: 'Padrão',       price: '39,99', desc: 'O mais popular',         icon: '⚡', link: '#', highlight: true  },
+    { id: 5,  devices: 5,  label: 'Profissional', price: '49,99', desc: 'Para equipes pequenas',  icon: '🚀', link: '#', highlight: false },
+    { id: 10, devices: 10, label: 'Empresarial',  price: '69,99', desc: 'Para grandes equipes',   icon: '🏢', link: '#', highlight: false },
+  ];
+
+  const cards = PLANOS.map(p => `
+<div class="plan-card${p.highlight ? ' highlight' : ''}">
+  ${p.highlight ? '<div class="popular-badge">⚡ Mais popular</div>' : ''}
+  <div class="plan-icon">${p.icon}</div>
+  <div class="plan-label">${p.label}</div>
+  <div class="plan-devices">${p.devices} número${p.devices > 1 ? 's' : ''} de WhatsApp</div>
+  <div class="plan-price">
+    <span class="price-currency">R$</span>
+    <span class="price-value">${p.price}</span>
+    <span class="price-period">/mês</span>
+  </div>
+  <div class="plan-desc">${p.desc}</div>
+  <a href="${p.link}" class="plan-btn${p.highlight ? ' btn-highlight' : ''}" ${p.link === '#' ? 'onclick="return false;" title="Link em breve"' : `target="_blank"`}>
+    ${p.link === '#' ? '🔒 Em breve' : '💳 Assinar agora'}
+  </a>
+</div>`).join('');
+
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZVM — Planos</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--radius:14px}
+body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000060}
+.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
+.header-links{display:flex;gap:10px}
+.header-links a{font-size:11px;color:var(--muted);text-decoration:none;padding:6px 13px;border:1px solid var(--border);border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
+.header-links a:hover{color:var(--green);border-color:var(--green)}
+main{max-width:900px;margin:0 auto;padding:60px 24px 80px}
+/* Hero */
+.hero{text-align:center;margin-bottom:56px}
+.hero-badge{display:inline-block;background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-size:10px;letter-spacing:2px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:18px;font-family:'Syne',sans-serif}
+.hero h1{font-family:'Syne',sans-serif;font-size:clamp(26px,4vw,42px);font-weight:800;line-height:1.1;margin-bottom:12px}
+.hero h1 span{color:var(--green)}
+.hero-sub{color:var(--muted);font-size:13px;line-height:1.8;max-width:480px;margin:0 auto}
+/* WIP banner */
+.wip-banner{background:#ffd32a08;border:1px solid #ffd32a30;border-radius:10px;padding:14px 20px;margin-bottom:40px;display:flex;align-items:center;gap:12px;font-size:12px;color:#ffd32a;line-height:1.7}
+.wip-banner strong{font-family:'Syne',sans-serif}
+/* Plans grid */
+.plans-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:48px}
+.plan-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px 20px;text-align:center;position:relative;transition:border-color .25s,transform .2s}
+.plan-card:hover{border-color:#00ff8740;transform:translateY(-3px)}
+.plan-card.highlight{border-color:#00ff8760;background:linear-gradient(160deg,#0f1a14,#0f0f1a)}
+.popular-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--green);color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:10px;padding:4px 14px;border-radius:20px;white-space:nowrap;letter-spacing:.5px}
+.plan-icon{font-size:32px;margin-bottom:12px}
+.plan-label{font-family:'Syne',sans-serif;font-size:15px;font-weight:800;color:var(--text);margin-bottom:4px}
+.plan-devices{font-size:11px;color:var(--muted);margin-bottom:18px;letter-spacing:.5px}
+.plan-price{margin-bottom:8px;display:flex;align-items:baseline;justify-content:center;gap:3px}
+.price-currency{font-size:14px;color:var(--green);font-weight:700}
+.price-value{font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:var(--green);line-height:1}
+.price-period{font-size:11px;color:var(--muted)}
+.plan-desc{font-size:10px;color:var(--muted);margin-bottom:22px;min-height:20px}
+.plan-btn{display:block;padding:12px;border-radius:8px;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;text-decoration:none;text-align:center;transition:all .2s;background:#1e1e2e;color:var(--muted);border:1px solid var(--border);cursor:not-allowed;opacity:.7}
+.plan-btn.btn-highlight{background:var(--green);color:#000;border:none;cursor:not-allowed;opacity:.7}
+/* Incluso */
+.includes{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px 32px;margin-bottom:40px}
+.includes h3{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--green);margin-bottom:18px;text-transform:uppercase;letter-spacing:1px}
+.includes-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.inc-item{display:flex;align-items:flex-start;gap:10px;font-size:11px;color:var(--muted);line-height:1.6}
+.inc-item span:first-child{flex-shrink:0;font-size:14px}
+/* FAQ */
+.faq-section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px 32px;margin-bottom:40px}
+.faq-section h3{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--green);margin-bottom:18px;text-transform:uppercase;letter-spacing:1px}
+.faq-item{border-bottom:1px solid var(--border);padding:14px 0}
+.faq-item:last-child{border-bottom:none}
+.faq-q{font-size:12px;color:var(--text);font-weight:700;margin-bottom:6px;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.faq-a{font-size:11px;color:var(--muted);line-height:1.8}
+/* Support */
+.support-box{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px;text-align:center}
+.support-box h3{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:var(--text);margin-bottom:8px}
+.support-box p{color:var(--muted);font-size:12px;margin-bottom:20px}
+.btn-wpp{display:inline-flex;align-items:center;gap:8px;background:#25d36620;border:1px solid #25d36640;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:11px 22px;border-radius:8px;text-decoration:none;transition:all .2s}
+.btn-wpp:hover{background:#25d36630;border-color:#25d366;transform:translateY(-2px)}
+footer{text-align:center;padding:28px;font-size:10px;color:var(--muted);border-top:1px solid var(--border)}
+footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--green)}
+@media(max-width:720px){.plans-grid{grid-template-columns:1fr 1fr}.includes-grid{grid-template-columns:1fr}}
+@media(max-width:480px){.plans-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo">⚡ ZVM</a>
+  <div class="header-links">
+    <a href="/">Portal</a>
+    <a href="/faq">FAQ</a>
+    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank">💬 Suporte</a>
+  </div>
+</header>
+<main>
+  <div class="hero">
+    <div class="hero-badge">Planos e Preços</div>
+    <h1>Escolha seu <span>plano</span></h1>
+    <p class="hero-sub">Acesso completo à extensão ZVM para WhatsApp Web. Sem fidelidade, cancele quando quiser.</p>
+  </div>
+
+  <div class="wip-banner">
+    <span style="font-size:20px;flex-shrink:0">🚧</span>
+    <div><strong>Links de pagamento em breve!</strong><br>Os planos abaixo estão configurados e prontos. Assim que os links da Payt forem adicionados, você já poderá assinar direto por aqui.</div>
+  </div>
+
+  <div class="plans-grid">${cards}</div>
+
+  <div class="includes">
+    <h3>✅ O que está incluso em todos os planos</h3>
+    <div class="includes-grid">
+      <div class="inc-item"><span>⚡</span><span>Acesso completo à extensão ZVM</span></div>
+      <div class="inc-item"><span>🔄</span><span>Atualizações automáticas durante a vigência</span></div>
+      <div class="inc-item"><span>📱</span><span>Controle de dispositivos pelo portal do cliente</span></div>
+      <div class="inc-item"><span>⏰</span><span>30 dias de acesso a partir da primeira ativação</span></div>
+      <div class="inc-item"><span>💬</span><span>Suporte via WhatsApp com a equipe</span></div>
+      <div class="inc-item"><span>🔒</span><span>Chave exclusiva e intransferível</span></div>
+      <div class="inc-item"><span>🎯</span><span>Todos os recursos: fluxos, funis, agendamentos</span></div>
+      <div class="inc-item"><span>🔑</span><span>Portal do cliente para consultar e gerenciar a chave</span></div>
+    </div>
+  </div>
+
+  <div class="faq-section">
+    <h3>💬 Dúvidas frequentes sobre os planos</h3>
+    <div class="faq-item">
+      <div class="faq-q">Como funciona o limite de dispositivos? <span>+</span></div>
+      <div class="faq-a">Cada dispositivo corresponde a um número de WhatsApp. No plano de 3 dispositivos, por exemplo, você pode usar a extensão em até 3 números diferentes simultaneamente. Você pode remover e adicionar números pelo portal do cliente.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">A chave é ativada logo após o pagamento? <span>+</span></div>
+      <div class="faq-a">Sim. Assim que o pagamento for confirmado pela Payt, a chave é gerada automaticamente e você receberá as instruções de acesso. O processo é instantâneo para pagamentos via PIX.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">Posso mudar de plano? <span>+</span></div>
+      <div class="faq-a">Sim. Entre em contato com o suporte via WhatsApp e faremos o upgrade ou downgrade para você.</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">O que acontece quando minha chave expira? <span>+</span></div>
+      <div class="faq-a">A extensão para de funcionar. Você pode renovar a qualquer momento escolhendo um plano aqui nesta página. Se renovar antes de expirar, o tempo é somado.</div>
+    </div>
+  </div>
+
+  <div class="support-box">
+    <h3>Ficou com dúvidas?</h3>
+    <p>Nossa equipe está disponível no WhatsApp para te ajudar a escolher o melhor plano.</p>
+    <a class="btn-wpp" href="https://wa.me/5521996771552?text=LR!%20Quero%20saber%20mais%20sobre%20os%20planos." target="_blank">💬 Falar com o Suporte</a>
+  </div>
+</main>
+<footer>
+  <p>© ${new Date().getFullYear()} ZVM — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/privacidade">Privacidade</a></p>
+  <p style="margin-top:6px;font-size:9px;letter-spacing:2px;text-transform:uppercase;opacity:.5">Todos os direitos reservados</p>
+</footer>
+${CANVAS_BG}
+</body></html>`;
+}
+
+// ─────────────────────────────────────────────
 // PÁGINA: FAQ
 // ─────────────────────────────────────────────
 function renderFaqPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM - LR1290 — FAQ</title>
+<title>ZVM — FAQ</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
@@ -1675,7 +1849,7 @@ footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--gree
 </head>
 <body>
 <header>
-  <a href="/" class="logo">⚡ ZVM - LR1290</a>
+  <a href="/" class="logo">⚡ ZVM</a>
   <div class="header-links">
     <a href="/">Portal</a>
     <a href="/privacidade">Privacidade</a>
@@ -1714,7 +1888,7 @@ footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--gree
   </div>
 </main>
 <footer>
-  <p>© ${new Date().getFullYear()} ZVM - LR1290 — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/privacidade">Privacidade</a></p>
+  <p>© ${new Date().getFullYear()} ZVM — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/privacidade">Privacidade</a></p>
   <p style="margin-top:6px;font-size:9px;letter-spacing:2px;text-transform:uppercase;opacity:.5">Todos os direitos reservados</p>
 </footer>
 ${CANVAS_BG}
@@ -1727,7 +1901,7 @@ ${CANVAS_BG}
 function renderPrivacyPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM - LR1290 — Política de Privacidade</title>
+<title>ZVM — Política de Privacidade</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
@@ -1763,7 +1937,7 @@ footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--gree
 </head>
 <body>
 <header>
-  <a href="/" class="logo">⚡ ZVM - LR1290</a>
+  <a href="/" class="logo">⚡ ZVM</a>
   <div class="header-links">
     <a href="/">Portal</a>
     <a href="/faq">FAQ</a>
@@ -1778,7 +1952,7 @@ footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--gree
   </div>
   <div class="section">
     <h2>📋 Visão Geral</h2>
-    <p>Esta Política descreve como o <strong style="color:var(--text)">ZVM - LR1290</strong> coleta, utiliza e protege seus dados ao usar o serviço de licenciamento da extensão ZVM - LR1290.</p>
+    <p>Esta Política descreve como o <strong style="color:var(--text)">ZVM</strong> coleta, utiliza e protege seus dados ao usar o serviço de licenciamento da extensão ZVM.</p>
     <p>Ao ativar ou consultar sua chave de acesso, você concorda com estes termos, em conformidade com a <strong style="color:var(--text)">Lei Geral de Proteção de Dados (LGPD — Lei nº 13.709/2018)</strong>.</p>
   </div>
   <div class="section">
@@ -1790,7 +1964,6 @@ footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--gree
       <li><strong style="color:var(--text)">Endereço IP</strong> — para detecção de uso indevido e segurança</li>
       <li><strong style="color:var(--text)">Versão do WhatsApp Web</strong> — para compatibilidade técnica</li>
       <li><strong style="color:var(--text)">Timestamps de acesso</strong> — data e hora de cada uso registrado</li>
-      <li><strong style="color:var(--text)">Identificador de dispositivo</strong> — gerado pela extensão para controle de sessão</li>
     </ul>
     <div class="highlight">
       <p>⚠️ <strong>Não coletamos</strong> mensagens, contatos, conversas ou qualquer conteúdo do WhatsApp. Nosso serviço não tem acesso ao conteúdo das suas comunicações.</p>
@@ -1800,7 +1973,7 @@ footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--gree
     <h2>🎯 Finalidade</h2>
     <p>Os dados são usados exclusivamente para:</p>
     <ul>
-      <li>Validar e controlar o acesso à extensão ZVM - LR1290</li>
+      <li>Validar e controlar o acesso à extensão ZVM</li>
       <li>Detectar uso indevido ou compartilhamento não autorizado de chaves</li>
       <li>Suporte técnico quando solicitado pelo usuário</li>
       <li>Controle do número de dispositivos vinculados por chave</li>
@@ -1825,7 +1998,7 @@ footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--gree
   </div>
 </main>
 <footer>
-  <p>© ${new Date().getFullYear()} ZVM - LR1290 — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/privacidade">Privacidade</a></p>
+  <p>© ${new Date().getFullYear()} ZVM — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/privacidade">Privacidade</a></p>
   <p style="margin-top:6px;font-size:9px;letter-spacing:2px;text-transform:uppercase;opacity:.5">Todos os direitos reservados</p>
 </footer>
 ${CANVAS_BG}
@@ -1838,7 +2011,7 @@ ${CANVAS_BG}
 function renderAnalyticsLogin(error = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM - LR1290 — Analytics</title>
+<title>ZVM — Analytics</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
 <style>
@@ -1856,7 +2029,7 @@ input:focus{border-color:#ffd32a}
 .err{background:#ff475715;border:1px solid #ff4757;border-radius:6px;color:#ff4757;padding:9px 12px;font-size:12px;margin-bottom:16px}
 </style></head><body>
 <div class="card">
-  <div class="logo">⚡ ZVM - LR1290</div>
+  <div class="logo">⚡ ZVM</div>
   <div class="sub">Painel de Analytics</div>
   <div class="badge">📊 Acesso Privado</div>
   ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
@@ -1906,7 +2079,7 @@ async function renderAnalyticsDashboard() {
 
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM - LR1290 — Analytics</title>
+<title>ZVM — Analytics</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
@@ -1966,7 +2139,7 @@ tr:hover td{background:#ffffff02}
 @media(max-width:700px){.stats{grid-template-columns:1fr 1fr}.stats2{grid-template-columns:1fr 1fr}.two-col{grid-template-columns:1fr}.charts3{grid-template-columns:1fr};main{padding:14px 12px}}
 </style></head><body>
 <header>
-  <div class="logo">⚡ ZVM - LR1290 <span class="badge-an">Analytics</span></div>
+  <div class="logo">⚡ ZVM <span class="badge-an">Analytics</span></div>
   <div style="display:flex;gap:10px;align-items:center">
     <a href="${R_ANALYTICS}/export/csv" class="btn bcsv">⬇ CSV</a>
     <a href="${R_ANALYTICS}/logout" class="out">↩ Sair</a>
@@ -2877,6 +3050,11 @@ async function handleRequest(req, res) {
   // ── FAQ ──
   if (p === '/faq' && req.method === 'GET') {
     sendHtml(res, renderFaqPage()); return;
+  }
+
+  // ── Planos ──
+  if (p === '/planos' && req.method === 'GET') {
+    sendHtml(res, renderPlanosPage()); return;
   }
 
   // ── Privacidade ──
