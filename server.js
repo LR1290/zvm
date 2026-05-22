@@ -1632,10 +1632,10 @@ ${CANVAS_BG}</body></html>`;
 // ─────────────────────────────────────────────
 function renderPlanosPage() {
   const PLANOS = [
-    { devices:1,  label:'Solo',        price:'34,99', oldPrice:null,    desc:'Para uso pessoal',    icon:'👤', perDevice:'34,99', link:'#', highlight:false },
-    { devices:3,  label:'Padrão',      price:'39,99', oldPrice:'59,99', desc:'O mais escolhido',    icon:'⚡', perDevice:'13,33', link:'#', highlight:true  },
-    { devices:5,  label:'Pro',         price:'49,99', oldPrice:'99,99', desc:'Para equipes',        icon:'🚀', perDevice:'10,00', link:'#', highlight:false },
-    { devices:10, label:'Empresarial', price:'69,99', oldPrice:'199,99',desc:'Escala total',        icon:'🏢', perDevice:'7,00',  link:'#', highlight:false },
+    { devices:1,  label:'Solo',        price:'24,99', oldPrice:null,    desc:'Para uso pessoal',    icon:'👤', perDevice:'24,99', link:'#', highlight:false },
+    { devices:3,  label:'Padrão',      price:'29,99', oldPrice:'44,99', desc:'O mais escolhido',    icon:'⚡', perDevice:'10,00', link:'#', highlight:true  },
+    { devices:5,  label:'Pro',         price:'39,99', oldPrice:'79,99', desc:'Para equipes',        icon:'🚀', perDevice:'8,00',  link:'#', highlight:false },
+    { devices:10, label:'Empresarial', price:'59,99', oldPrice:'149,99',desc:'Escala total',        icon:'🏢', perDevice:'6,00',  link:'#', highlight:false },
   ];
 
   const cards = PLANOS.map(p => {
@@ -1796,8 +1796,8 @@ footer a{color:var(--muted);text-decoration:none}footer a:hover{color:var(--gree
       </tr></thead>
       <tbody>
         <tr><td>Números de WhatsApp</td><td>1</td><td>3</td><td>5</td><td>10</td></tr>
-        <tr><td>Preço mensal</td><td>R$ 34,99</td><td>R$ 39,99</td><td>R$ 49,99</td><td>R$ 69,99</td></tr>
-        <tr><td>Preço por número</td><td>R$ 34,99</td><td style="color:var(--green)">R$ 13,33</td><td style="color:var(--green)">R$ 10,00</td><td style="color:var(--green)">R$ 7,00</td></tr>
+        <tr><td>Preço mensal</td><td>R$ 24,99</td><td>R$ 29,99</td><td>R$ 39,99</td><td>R$ 59,99</td></tr>
+        <tr><td>Preço por número</td><td>R$ 24,99</td><td style="color:var(--green)">R$ 10,00</td><td style="color:var(--green)">R$ 8,00</td><td style="color:var(--green)">R$ 6,00</td></tr>
         <tr><td>Todos os recursos</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
         <tr><td>Portal do cliente</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
         <tr><td>Suporte WhatsApp</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
