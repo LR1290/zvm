@@ -1731,11 +1731,11 @@ main{max-width:1060px;margin:0 auto;padding:56px 24px 80px}
 .cx{color:#ff475760}
 
 /* Incluso */
-.includes{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:26px 28px;margin-bottom:32px}
-.inc-title{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:1px;margin-bottom:18px}
-.inc-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.inc-item{display:flex;align-items:flex-start;gap:10px;font-size:12px;color:#8a8aaa;line-height:1.6;font-family:'Syne',sans-serif;letter-spacing:0}
-.inc-item .ic{flex-shrink:0;font-size:14px;margin-top:1px}
+.includes{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:22px 26px;margin-bottom:32px}
+.inc-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:800;color:var(--green);text-transform:uppercase;letter-spacing:1px;margin-bottom:16px}
+.inc-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.inc-item{display:flex;align-items:center;gap:12px;font-size:14px;color:#c4c4d8;line-height:1.5;font-family:'Syne',sans-serif;letter-spacing:0;font-weight:500}
+.inc-item .ic{flex-shrink:0;font-size:20px}
 
 /* FAQ */
 .faq{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:26px 28px;margin-bottom:32px}
