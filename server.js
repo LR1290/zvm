@@ -1686,8 +1686,8 @@ main{max-width:1060px;margin:0 auto;padding:56px 24px 80px}
 .hero-badge{display:inline-flex;align-items:center;gap:6px;background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-size:10px;letter-spacing:2px;text-transform:uppercase;padding:5px 16px;border-radius:20px;margin-bottom:20px;font-family:'Syne',sans-serif}
 .hero h1{font-family:'Syne',sans-serif;font-size:clamp(28px,4vw,46px);font-weight:800;line-height:1.1;margin-bottom:14px}
 .hero h1 em{color:var(--green);font-style:normal}
-.hero-sub{color:var(--muted);font-size:13px;line-height:1.8;max-width:460px;margin:0 auto 28px}
-.guarantee{display:inline-flex;align-items:center;gap:20px;background:var(--card);border:1px solid var(--border);border-radius:30px;padding:10px 24px;font-size:11px;color:var(--muted)}
+.hero-sub{color:#8a8aaa;font-size:13px;line-height:1.8;max-width:460px;margin:0 auto 28px;font-family:'Syne',sans-serif;letter-spacing:0}
+.guarantee{display:inline-flex;align-items:center;gap:20px;background:var(--card);border:1px solid var(--border);border-radius:30px;padding:10px 24px;font-size:12px;color:#8a8aaa;font-family:'Syne',sans-serif;letter-spacing:0}
 .guarantee span{display:flex;align-items:center;gap:6px}
 
 /* WIP banner */
@@ -1703,16 +1703,16 @@ main{max-width:1060px;margin:0 auto;padding:56px 24px 80px}
 .plan-top{margin-bottom:20px}
 .plan-icon{font-size:36px;margin-bottom:10px}
 .plan-name{font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:var(--text);margin-bottom:4px}
-.plan-sub{font-size:10px;color:var(--muted);letter-spacing:.5px}
+.plan-sub{font-size:11px;color:#8a8aaa;font-family:'Syne',sans-serif;letter-spacing:0}
 .plan-pricing{margin-bottom:18px}
 .old-price{font-size:11px;color:var(--muted);text-decoration:line-through;margin-bottom:2px}
 .plan-price{display:flex;align-items:baseline;justify-content:center;gap:3px;margin-bottom:4px}
 .cur{font-size:14px;color:var(--green);font-weight:700}
 .val{font-family:'Syne',sans-serif;font-size:34px;font-weight:800;color:var(--green);line-height:1}
 .per{font-size:11px;color:var(--muted)}
-.per-device{font-size:10px;color:var(--muted)}
+.per-device{font-size:11px;color:#8a8aaa;font-family:'Syne',sans-serif}
 .plan-divider{height:1px;background:var(--border);margin:16px 0}
-.plan-features{list-style:none;text-align:left;font-size:10px;color:var(--muted);line-height:1;display:flex;flex-direction:column;gap:9px;margin-bottom:20px;flex:1}
+.plan-features{list-style:none;text-align:left;font-size:11px;color:#8a8aaa;line-height:1.5;display:flex;flex-direction:column;gap:9px;margin-bottom:20px;flex:1;font-family:'Syne',sans-serif;letter-spacing:0}
 .plan-features li{display:flex;align-items:center;gap:6px}
 .plan-btn{display:block;padding:12px;border-radius:8px;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;text-decoration:none;text-align:center;transition:all .2s;background:#1c1c2e;color:var(--muted);border:1px solid var(--border);cursor:not-allowed;opacity:.65;margin-top:auto}
 .plan-btn.btn-hl{background:var(--green);color:#000;border:none;cursor:not-allowed;opacity:.7}
@@ -1724,7 +1724,7 @@ main{max-width:1060px;margin:0 auto;padding:56px 24px 80px}
 .compare th{padding:10px 16px;text-align:center;color:var(--muted);border-bottom:1px solid var(--border);font-weight:400;font-size:10px;background:var(--card2)}
 .compare th:first-child{text-align:left}
 .compare td{padding:11px 16px;text-align:center;border-bottom:1px solid #14141f;color:var(--text)}
-.compare td:first-child{text-align:left;color:var(--muted);font-size:10px}
+.compare td:first-child{text-align:left;color:#8a8aaa;font-size:11px;font-family:'Syne',sans-serif;letter-spacing:0}
 .compare tr:last-child td{border-bottom:none}
 .compare tr:hover td{background:#ffffff02}
 .ck{color:var(--green)}
@@ -1734,7 +1734,7 @@ main{max-width:1060px;margin:0 auto;padding:56px 24px 80px}
 .includes{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:26px 28px;margin-bottom:32px}
 .inc-title{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:1px;margin-bottom:18px}
 .inc-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.inc-item{display:flex;align-items:flex-start;gap:10px;font-size:11px;color:var(--muted);line-height:1.6}
+.inc-item{display:flex;align-items:flex-start;gap:10px;font-size:12px;color:#8a8aaa;line-height:1.6;font-family:'Syne',sans-serif;letter-spacing:0}
 .inc-item .ic{flex-shrink:0;font-size:14px;margin-top:1px}
 
 /* FAQ */
@@ -1742,16 +1742,16 @@ main{max-width:1060px;margin:0 auto;padding:56px 24px 80px}
 .faq-title{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:1px;margin-bottom:18px}
 .faq-item{border-bottom:1px solid var(--border);padding:13px 0}
 .faq-item:last-child{border-bottom:none;padding-bottom:0}
-.faq-q{font-size:12px;color:var(--text);font-weight:700;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px;user-select:none}
+.faq-q{font-size:13px;color:#e2e2f0;font-weight:700;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px;user-select:none;font-family:'Syne',sans-serif;letter-spacing:-0.2px}
 .faq-q .arr{color:var(--muted);transition:transform .2s;flex-shrink:0}
-.faq-a{font-size:11px;color:var(--muted);line-height:1.9;padding-top:10px;display:none}
+.faq-a{font-size:12px;color:#8a8aaa;line-height:1.9;padding-top:10px;display:none;font-family:'Syne',sans-serif;letter-spacing:0;font-weight:400}
 .faq-item.open .faq-a{display:block}
 .faq-item.open .arr{transform:rotate(90deg)}
 
 /* CTA */
 .cta{background:linear-gradient(135deg,#0d1a12,#0f0f1a);border:1px solid #00ff8730;border-radius:var(--radius);padding:36px 28px;text-align:center}
 .cta h3{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--text);margin-bottom:8px}
-.cta p{color:var(--muted);font-size:12px;margin-bottom:22px;line-height:1.8}
+.cta p{color:#8a8aaa;font-size:13px;margin-bottom:22px;line-height:1.8;font-family:'Syne',sans-serif;letter-spacing:0}
 .btn-wpp{display:inline-flex;align-items:center;gap:8px;background:#25d36620;border:1px solid #25d36640;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:12px 24px;border-radius:8px;text-decoration:none;transition:all .2s}
 .btn-wpp:hover{background:#25d36630;border-color:#25d366;transform:translateY(-2px)}
 footer{text-align:center;padding:28px;font-size:10px;color:var(--muted);border-top:1px solid var(--border)}
