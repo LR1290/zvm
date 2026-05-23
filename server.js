@@ -511,18 +511,28 @@ async function getPaymentStats() {
   } catch (e) { console.error('[DB] Erro nas stats:', e.message); return null; }
 }
 
+const MAX_BODY_SIZE = 64 * 1024; // 64KB — proteção contra DoS
+
 function parseBody(req) {
-  return new Promise(resolve => {
-    let b = '';
-    req.on('data', c => b += c);
+  return new Promise((resolve, reject) => {
+    let b = '', size = 0;
+    req.on('data', c => {
+      size += c.length;
+      if (size > MAX_BODY_SIZE) { req.destroy(); resolve({}); return; }
+      b += c;
+    });
     req.on('end', () => { try { resolve(JSON.parse(b)); } catch { resolve({}); } });
   });
 }
 
 function parseFormBody(req) {
-  return new Promise(resolve => {
-    let b = '';
-    req.on('data', c => b += c);
+  return new Promise((resolve) => {
+    let b = '', size = 0;
+    req.on('data', c => {
+      size += c.length;
+      if (size > MAX_BODY_SIZE) { req.destroy(); resolve(new URLSearchParams()); return; }
+      b += c;
+    });
     req.on('end', () => resolve(new URLSearchParams(b)));
   });
 }
@@ -2360,22 +2370,29 @@ ${CANVAS_BG}</body></html>`;
 
 // ─────────────────────────────────────────────
 async function handleRequest(req, res) {
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const p   = url.pathname;
+  const ip  = getIp(req);
+
   const _corsH = {
-    'Access-Control-Allow-Origin':  req.headers.origin || '*',
+    'Access-Control-Allow-Origin':  (()=>{
+      const o=req.headers.origin||'';
+      if(p.startsWith(R_ADMIN)||p.startsWith(R_MOD)||(R_ANALYTICS&&p.startsWith(R_ANALYTICS))){return 'null';}
+      return o||'*';
+    })(),
     'Access-Control-Allow-Methods': 'POST,GET,OPTIONS,DELETE',
     'Access-Control-Allow-Headers': 'Content-Type,x-app-date,x-app-sig,x-app-ts',
     'Access-Control-Max-Age':       '86400',
     'Vary':                         'Origin',
     'X-Content-Type-Options':       'nosniff',
     'X-Frame-Options':              'DENY',
+    'Referrer-Policy':              'no-referrer',
+    'Permissions-Policy':           'geolocation=(), microphone=(), camera=()',
+    'Content-Security-Policy':      "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'",
     'X-Powered-By':                 'PHP/7.4.3',
   };
   Object.entries(_corsH).forEach(([k, v]) => res.setHeader(k, v));
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
-
-  const url = new URL(req.url, `http://localhost:${PORT}`);
-  const p   = url.pathname;
-  const ip  = getIp(req);
 
   // Ocultar /admin quando slug está ativo
   if (APP_SECRET) {
@@ -2388,7 +2405,7 @@ async function handleRequest(req, res) {
 
   // ── Health ──
   if (p === '/health' && req.method === 'GET') {
-    sendJson(res, { ok: true, ts: Date.now(), keys: Object.keys(keys).length }); return;
+    sendJson(res, { ok: true }); return;
   }
 
   // ── Extensão: login page ──
@@ -2553,12 +2570,16 @@ async function handleRequest(req, res) {
   // ── Admin: login ──
   if (p === R_ADMIN+'/login' && req.method === 'POST') {
     const form   = await parseFormBody(req);
-    const credOk = form.get('user') === ADMIN_USER && form.get('pass') === ADMIN_PASS;
+    const _u=Buffer.from(form.get('user')||''), _p=Buffer.from(form.get('pass')||'');
+    const _au=Buffer.from(ADMIN_USER||''), _ap=Buffer.from(ADMIN_PASS||'');
+    const credOk = _u.length===_au.length && _p.length===_ap.length &&
+      crypto.timingSafeEqual(_u.length?_u:Buffer.alloc(1),_au.length?_au:Buffer.alloc(1)) &&
+      crypto.timingSafeEqual(_p.length?_p:Buffer.alloc(1),_ap.length?_ap:Buffer.alloc(1));
     const totpOk = verifyTOTP(TOTP_SECRET, (form.get('totp') || '').trim());
     if (credOk && totpOk) {
       const token = generateToken();
       sessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString() };
-      res.setHeader('Set-Cookie', `zv_admin=${token}; Path=/; HttpOnly; SameSite=Strict`);
+      res.setHeader('Set-Cookie', `zv_admin=${token}; Path=/; HttpOnly; SameSite=Strict; Secure`);
       res.writeHead(302, { Location: R_ADMIN }); res.end();
     } else {
       const msg = credOk && !totpOk ? 'Código 2FA inválido ou expirado' : 'Usuário ou senha incorretos';
@@ -2569,7 +2590,7 @@ async function handleRequest(req, res) {
 
   // ── Admin: logout ──
   if (p === R_ADMIN+'/logout') {
-    res.setHeader('Set-Cookie', 'zv_admin=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT');
+    res.setHeader('Set-Cookie', 'zv_admin=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict; Secure');
     res.writeHead(302, { Location: R_ADMIN }); res.end(); return;
   }
 
@@ -2597,7 +2618,7 @@ async function handleRequest(req, res) {
     if (matchedMod && totpOk) {
       const token = generateToken();
       modSessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString(), modName: matchedMod.name };
-      res.setHeader('Set-Cookie', `zv_mod=${token}; Path=/; HttpOnly; SameSite=Strict`);
+      res.setHeader('Set-Cookie', `zv_mod=${token}; Path=/; HttpOnly; SameSite=Strict; Secure`);
       res.writeHead(302, { Location: R_MOD }); res.end();
     } else {
       const msg = matchedMod && !totpOk ? 'Código 2FA inválido ou expirado' : 'Usuário ou senha incorretos';
@@ -2607,7 +2628,7 @@ async function handleRequest(req, res) {
   }
 
   if (p === R_MOD+'/logout') {
-    res.setHeader('Set-Cookie', 'zv_mod=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT');
+    res.setHeader('Set-Cookie', 'zv_mod=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict; Secure');
     res.writeHead(302, { Location: R_MOD }); res.end(); return;
   }
 
@@ -2909,10 +2930,11 @@ async function handleRequest(req, res) {
       sendHtml(res, renderAnalyticsLogin(`⏳ Muitas tentativas. Aguarde ${mins} minuto(s).`), 429); return;
     }
     const form = await parseFormBody(req);
-    if (form.get('pass') === ANALYTICS_PASS) {
+    const _anp=Buffer.from(form.get('pass')||''), _anap=Buffer.from(ANALYTICS_PASS||'');
+    if (_anp.length===_anap.length && crypto.timingSafeEqual(_anp.length?_anp:Buffer.alloc(1),_anap.length?_anap:Buffer.alloc(1)) && ANALYTICS_PASS) {
       const token = generateToken();
       analyticsSessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString() };
-      res.setHeader('Set-Cookie', `zv_an=${token}; Path=/; HttpOnly; SameSite=Strict`);
+      res.setHeader('Set-Cookie', `zv_an=${token}; Path=/; HttpOnly; SameSite=Strict; Secure`);
       res.writeHead(302, { Location: R_ANALYTICS }); res.end();
     } else {
       sendHtml(res, renderAnalyticsLogin('Senha incorreta.'));
@@ -2921,7 +2943,7 @@ async function handleRequest(req, res) {
   }
 
   if (p === R_ANALYTICS+'/logout') {
-    res.setHeader('Set-Cookie', 'zv_an=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT');
+    res.setHeader('Set-Cookie', 'zv_an=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict; Secure');
     res.writeHead(302, { Location: R_ANALYTICS }); res.end(); return;
   }
 
@@ -3090,7 +3112,8 @@ async function handleRequest(req, res) {
       activatedAt: k.activatedAt || null,
       lastUsed:    k.lastUsed || null,
       phones:      (k.phones || []).length,
-      phoneList:   k.phones || [],
+      // phoneList mascarado — mostra apenas os últimos 4 dígitos de cada número
+      phoneList:   (k.phones || []).map(ph => ph.replace(/(\d+)(\d{4})$/, '••••$2')),
       maxUses:     k.maxUses === -1 ? null : (k.maxUses > 0 ? k.maxUses : MAX_USES),
       hoursLeft:   hoursUntilExpiry(k),
       deferred:    !!(k.expireDuration && !k.expiresAt),
@@ -3159,7 +3182,7 @@ async function handleRequest(req, res) {
     console.log(`🔑 2FA:  ${TOTP_SECRET ? 'ATIVO' : '⚠ inativo — defina TOTP_SECRET'}`);
     console.log(`💳 Payt: ${PAYT_SECRET ? 'ATIVO' : '⚠ inativo — defina PAYT_SECRET'}`);
     console.log(`🔑 Admin: ${R_ADMIN} | User: ${ADMIN_USER}`);
-    console.log(`👮 Mod:   ${MODS.length > 0 ? R_MOD+' | '+MODS.length+' moderador(es): '+MODS.map(m=>m.name).join(', ') : '⚠ inativo — defina MOD_USER e MOD_PASS'}`);
+    console.log(`👮 Mod:   ${MODS.length > 0 ? R_MOD+' | '+MODS.length+' mod(s): '+MODS.map(m=>m.name).join(', ') : '⚠ inativo — defina MOD_USER e MOD_PASS'}`);
     console.log(`📊 Analytics: ${ANALYTICS_PASS ? R_ANALYTICS : '⚠ inativo — defina ANALYTICS_PASS'}`);
     console.log(`🌐 Extension: ${R_EXT}/v3/key`);
     console.log(`📊 Webhook: ${WEBHOOK_URL || 'não configurado'}`);
@@ -3167,7 +3190,7 @@ async function handleRequest(req, res) {
 
     const safeHandler = (req, res) => {
       handleRequest(req, res).catch(err => {
-        console.error(`[ERRO] ${req.method} ${req.url}:`, err);
+        console.error(`[ERRO] ${req.method} ${p||req.url.split('?')[0]}:`, err.message||err);
         if (!res.headersSent) { res.writeHead(500); res.end('Internal Server Error'); }
       });
     };
