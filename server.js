@@ -721,6 +721,11 @@ main{padding:28px 32px;max-width:1200px;margin:0 auto}
     <span><strong>Acesso restrito.</strong> Este painel permite apenas a criação de novas chaves. Dados de clientes, telefones, IPs e logs de acesso não estão disponíveis para moderadores.</span>
   </div>
 
+  <div class="alert-card" id="alert-expiring">
+    <span style="font-size:18px;flex-shrink:0">⚠️</span>
+    <span id="alert-expiring-text"></span>
+  </div>
+
   <div class="sec">
     <div class="sh">
       <div class="st">🔑 Criar Nova Chave</div>
@@ -769,6 +774,7 @@ main{padding:28px 32px;max-width:1200px;margin:0 auto}
           <th>Usos</th>
           <th>Validade</th>
           <th>Criada em</th>
+          <th>Nota</th>
           <th>Status</th>
         </tr></thead>
         <tbody id="hist-body"><tr><td colspan="6" class="empty">Clique em Atualizar para carregar</td></tr></tbody>
@@ -776,6 +782,16 @@ main{padding:28px 32px;max-width:1200px;margin:0 auto}
     </div>
   </div>
 </main>
+
+<div class="modal-bg" id="modNoteModal"><div class="modal">
+  <h3>📝 Nota — <span id="modNoteLabel"></span></h3>
+  <input type="hidden" id="modNoteCode">
+  <textarea id="modNoteText" placeholder="Ex: Cliente preferencial, renovação pendente..."></textarea>
+  <div class="modal-actions">
+    <button style="padding:7px 14px;background:#1e1e2e;color:var(--muted);border:1px solid var(--border);border-radius:6px;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;cursor:pointer" onclick="closeModNote()">Cancelar</button>
+    <button style="padding:7px 14px;background:var(--blue);color:#fff;border:none;border-radius:6px;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;cursor:pointer" onclick="saveModNote()">Salvar</button>
+  </div>
+</div></div>
 
 <div class="toast" id="toast"></div>
 
@@ -845,13 +861,82 @@ async function loadHistory(){
     if(r.status===401){toast('Sessão expirada.',false);setTimeout(()=>location.href=_RM,1500);return;}
     const d=await r.json();
     const tbody=document.getElementById('hist-body');
-    if(!d.keys||d.keys.length===0){tbody.innerHTML='<tr><td colspan="6" class="empty">Nenhuma chave criada ainda</td></tr>';return;}
+    if(!d.keys||d.keys.length===0){tbody.innerHTML='<tr><td colspan="7" class="empty">Nenhuma chave criada ainda</td></tr>';return;}
+    
+    const now=Date.now();
+    let expiringSoon=0,expired=0;
+    
     tbody.innerHTML=d.keys.map(k=>{
-      const exp=k.expiresAt?fmtDate(k.expiresAt):(k.deferred?'Ativa ao 1º uso':'Sem expiração');
-      const st=k.active?'<span class="badge bon">ATIVA</span>':'<span class="badge" style="background:#ff475718;color:#ff4757;border:1px solid #ff475730">INATIVA</span>';
-      return '<tr><td><span class="kc">'+k.code+'</span></td><td>'+escHtml(k.label)+'</td><td>'+k.maxUses+'</td><td>'+exp+'</td><td>'+fmtDate(k.createdAt)+'</td><td>'+st+'</td></tr>';
+      let expHtml='',expClass='';
+      if(k.deferred){
+        expHtml='<span style="color:var(--muted);font-size:12px">Ativa ao 1º uso</span>';
+      } else if(k.expiresAt){
+        const expTs=new Date(k.expiresAt).getTime();
+        const diffH=Math.floor((expTs-now)/3600000);
+        const diffD=Math.floor(diffH/24);
+        const expDate=fmtDate(k.expiresAt);
+        if(expTs<now){
+          expired++;
+          expHtml=expDate+'<br><span class="badge-expired">EXPIRADA</span>';
+          expClass=' style="background:#ff000008"';
+        } else if(diffH<48){
+          expiringSoon++;
+          const label=diffH<1?'menos de 1h':diffH<24?diffH+'h restantes':diffD+'d restantes';
+          expHtml=expDate+'<br><span class="badge-exp">⚠ '+label+'</span>';
+          expClass=' style="background:#ff860008"';
+        } else {
+          expHtml=expDate+'<br><span style="color:var(--muted);font-size:11px">'+diffD+' dias restantes</span>';
+        }
+      } else {
+        expHtml='<span style="color:var(--muted)">Sem expiração</span>';
+      }
+      
+      const st=k.active?'<span class="badge bon">ATIVA</span>':'<span class="badge-expired">INATIVA</span>';
+      // Nota — remove prefixo [Mod:...] pois é interno
+      const noteClean=(k.note||'').replace(/\[Mod:[^\]]+\]\s*/g,'').trim();
+      const noteHtml=noteClean
+        ?'<span style="font-size:12px;color:var(--muted);font-family:Syne,sans-serif">'+escHtml(noteClean)+'</span><br>'
+        :'';
+      const noteBtn='<button class="note-btn" onclick="openModNote(''+k.code+'',''+escHtml(k.label)+'',''+escHtml(noteClean)+'')">✏️</button>';
+      
+      return '<tr'+expClass+'><td><span class="kc">'+k.code+'</span></td><td>'+escHtml(k.label)+'</td><td>'+k.maxUses+'</td><td>'+expHtml+'</td><td>'+fmtDate(k.createdAt)+'</td><td>'+noteHtml+noteBtn+'</td><td>'+st+'</td></tr>';
     }).join('');
+    
+    // Exibir alerta se há chaves expirando
+    const alertCard=document.getElementById('alert-expiring');
+    const alertText=document.getElementById('alert-expiring-text');
+    if(expired>0||expiringSoon>0){
+      alertCard.style.display='flex';
+      const parts=[];
+      if(expired>0)parts.push('<strong>'+expired+' chave(s) expirada(s)</strong>');
+      if(expiringSoon>0)parts.push('<strong>'+expiringSoon+' chave(s) expirando em menos de 48h</strong>');
+      alertText.innerHTML='⚠️ Atenção: '+parts.join(' e ')+'. Entre em contato com o administrador para renovação.';
+    } else {
+      alertCard.style.display='none';
+    }
   }catch(e){toast('Erro ao carregar histórico.',false);}
+}
+
+// ── Modal de nota do mod ──
+function openModNote(code,label,currentNote){
+  document.getElementById('modNoteCode').value=code;
+  document.getElementById('modNoteLabel').textContent=label;
+  document.getElementById('modNoteText').value=currentNote||'';
+  document.getElementById('modNoteModal').classList.add('open');
+  setTimeout(()=>document.getElementById('modNoteText').focus(),100);
+}
+function closeModNote(){document.getElementById('modNoteModal').classList.remove('open');}
+document.getElementById('modNoteModal').addEventListener('click',function(e){if(e.target===this)closeModNote();});
+async function saveModNote(){
+  const code=document.getElementById('modNoteCode').value;
+  const note=document.getElementById('modNoteText').value.trim();
+  try{
+    const r=await fetch(_RM+'/api/keys/'+encodeURIComponent(code)+'/note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note})});
+    if(r.status===401){toast('Sessão expirada.',false);return;}
+    const d=await r.json();
+    if(d.ok){toast('✅ Nota salva!');closeModNote();await loadHistory();}
+    else toast('Erro: '+(d.error||'?'),false);
+  }catch(e){toast('Erro de rede.',false);}
 }
 
 function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -1291,6 +1376,18 @@ tr:hover td{background:#ffffff02}
 .wl{background:#ff8c0018;color:#ff8c00}
 .empty{text-align:center;color:var(--muted);padding:40px!important;font-size:14px;font-family:'Syne',sans-serif}
 .toast{position:fixed;bottom:20px;right:20px;padding:11px 18px;border-radius:var(--radius);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;display:none;z-index:999999;box-shadow:0 6px 30px #00000070;max-width:380px;line-height:1.4}
+.alert-card{background:#ff860008;border:1px solid #ff860040;border-radius:var(--radius);padding:12px 18px;margin-bottom:20px;display:flex;align-items:center;gap:12px;font-size:13px;color:#ff8600;font-family:'Syne',sans-serif;display:none}
+.badge-exp{background:#ff860018;color:#ff8600;border:1px solid #ff860040;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:700;font-family:'Syne',sans-serif}
+.badge-expired{background:#ff475718;color:#ff4757;border:1px solid #ff475740;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:700;font-family:'Syne',sans-serif}
+.note-btn{padding:3px 8px;background:#4f8ef710;color:var(--blue);border:1px solid #4f8ef730;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;transition:all .15s}
+.note-btn:hover{background:#4f8ef722;border-color:var(--blue)}
+.modal-bg{display:none;position:fixed;inset:0;background:#00000090;z-index:99999;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
+.modal-bg.open{display:flex}
+.modal{background:var(--card);border:1px solid #252538;border-radius:12px;padding:22px;width:380px;max-width:95vw;box-shadow:0 20px 60px #00000090}
+.modal h3{font-family:'Syne',sans-serif;font-size:14px;margin-bottom:12px;color:var(--blue)}
+.modal textarea{width:100%;background:var(--dark);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Syne',sans-serif;font-size:13px;padding:10px;outline:none;resize:vertical;min-height:80px;transition:border .2s}
+.modal textarea:focus{border-color:var(--blue)}
+.modal-actions{display:flex;gap:8px;margin-top:12px;justify-content:flex-end}
 .note-cell{cursor:pointer;max-width:130px}
 .note-cell:hover .note-preview{color:var(--green)}
 .note-preview{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:120px;font-family:'Syne',sans-serif}
@@ -2758,7 +2855,6 @@ async function handleRequest(req, res) {
   // ── Mod API: listar apenas as chaves criadas pelo moderador ──
   if (p === R_MOD+'/api/my-keys' && req.method === 'GET') {
     if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    // Retorna apenas chaves com nota de moderador — sem dados sensíveis
     const myKeys = Object.entries(keys)
       .filter(([, k]) => {
         const _modCookie2 = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
@@ -2775,9 +2871,32 @@ async function handleRequest(req, res) {
         expiresAt: k.expiresAt || null,
         deferred:  !!(k.expireDuration && !k.expiresAt),
         createdAt: k.createdAt,
+        note:      k.note || '',   // inclui nota para o mod editar
       }))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     sendJson(res, { ok: true, keys: myKeys }); return;
+  }
+
+  // ── Mod API: adicionar/editar nota ──
+  if (p.startsWith(R_MOD+'/api/keys/') && p.endsWith('/note') && req.method === 'POST') {
+    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    // Extrair código da URL
+    const codeFromUrl = decodeURIComponent(p.slice((R_MOD+'/api/keys/').length, -'/note'.length));
+    if (!codeFromUrl || !keys[codeFromUrl]) { sendJson(res, { error: 'not found' }, 404); return; }
+    // Verificar que a chave pertence a este moderador
+    const _mc3 = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+    const _ms3 = _mc3 ? modSessions[_mc3[1]] : null;
+    const _myName3 = _ms3 ? _ms3.modName : null;
+    if (_myName3 && !((keys[codeFromUrl].note||'').includes('[Mod: '+_myName3+']'))) {
+      sendJson(res, { error: 'acesso negado' }, 403); return;
+    }
+    const body = await parseBody(req);
+    const newNote = String(body.note||'').slice(0, 400);
+    // Preservar o prefixo [Mod:...] e substituir o restante
+    const modPrefix = ((keys[codeFromUrl].note||'').match(/^\[Mod: [^\]]+\]/) || [''])[0];
+    keys[codeFromUrl].note = (modPrefix + (newNote ? ' ' + newNote : '')).trim().slice(0, 500);
+    await saveKey(codeFromUrl);
+    sendJson(res, { ok: true }); return;
   }
 
   // Helper para extrair código das rotas /api/keys/:code/...
