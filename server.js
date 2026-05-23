@@ -1175,6 +1175,7 @@ function buildKeysHtml() {
     ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Números</button>`:''}
     <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
     ${isSuspect?`<button class="bs bsusp" onclick="clearSuspect('${escHtml(code)}')">🕵️ Suspeita</button>`:''}
+    <button class="bs" style="background:#7c3aed18;color:#9b59b6;border:1px solid #7c3aed30" onclick="openAssignMod('${escHtml(code)}','${escHtml(k.label||'')}','${escHtml((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1]||'')}')">👮 Mod</button>
   </td>
 </tr>`;
   }).join('');
@@ -1451,16 +1452,61 @@ tr:hover td{background:#ffffff02}
   </div>
 </div></div>
 
+<div class="modal-bg" id="assignModModal"><div class="modal" style="width:400px">
+  <h3>👮 Atribuir ao Moderador</h3>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:16px">Selecione o moderador responsável por esta chave. Ela aparecerá no painel do moderador escolhido.</p>
+  <input type="hidden" id="assignModCode">
+  <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;font-family:'Syne',sans-serif">Chave: <span id="assignModLabel" style="color:var(--text)"></span></div>
+  <div id="modListBtns" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px"></div>
+  <div style="display:flex;gap:8px;margin-top:4px">
+    <button class="btn" style="background:#ff475718;color:var(--red);border:1px solid #ff475730;flex:1" onclick="assignMod(document.getElementById('assignModCode').value,'')">🗑 Remover atribuição</button>
+    <button class="btn" style="background:#1e1e2e;color:var(--muted);flex:0 0 auto" onclick="closeAssignMod()">Cancelar</button>
+  </div>
+</div></div>
+
 <div class="toast" id="toast"></div>
 
 <script>
 const _RA='${R_ADMIN}';
+const _MODS=${JSON.stringify(MODS.map(m => m.name))};
 
 function toast(msg,ok=true){
   const t=document.getElementById('toast');
   t.textContent=msg;t.style.background=ok?'var(--green)':'var(--red)';
   t.style.color=ok?'#000':'#fff';t.style.display='block';
   setTimeout(()=>t.style.display='none',3200);
+}
+
+// ── Atribuir Moderador ──
+function openAssignMod(code,label,currentMod){
+  document.getElementById('assignModCode').value=code;
+  document.getElementById('assignModLabel').textContent=label;
+  const container=document.getElementById('modListBtns');
+  container.innerHTML='';
+  _MODS.forEach(name=>{
+    const btn=document.createElement('button');
+    const isActive=currentMod===name;
+    btn.className='btn';
+    btn.style.cssText='font-size:13px;padding:10px 16px;text-align:left;display:flex;align-items:center;gap:10px;'+(isActive?'background:#7c3aed30;color:#c4b5fd;border:1px solid #7c3aed60':'background:#1e1e2e;color:var(--text);border:1px solid var(--border)');
+    btn.innerHTML=(isActive?'✅ ':'👤 ')+name+(isActive?' <span style="font-size:11px;color:#9b59b6;margin-left:auto">Atual</span>':'');
+    btn.onclick=()=>assignMod(code,name);
+    container.appendChild(btn);
+  });
+  if(_MODS.length===0){container.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px;text-align:center">Nenhum moderador configurado.<br>Defina MOD_USER/PASS no Render.</div>';}
+  document.getElementById('assignModModal').classList.add('open');
+}
+function closeAssignMod(){document.getElementById('assignModModal').classList.remove('open');}
+document.getElementById('assignModModal').addEventListener('click',function(e){if(e.target===this)closeAssignMod();});
+async function assignMod(code,modName){
+  try{
+    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/assign-mod',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({modName})});
+    const d=await r.json();
+    if(d.ok){
+      toast(modName?'✅ Atribuída a: '+modName:'Atribuição removida');
+      closeAssignMod();
+      await doRefresh();
+    }else toast('Erro: '+(d.error||'?'),false);
+  }catch(e){toast('Erro de rede',false);}
 }
 
 // ── Busca e filtro de chaves ──
@@ -2900,6 +2946,23 @@ async function handleRequest(req, res) {
     keys[codeNote].note = String(body.note||'').slice(0, 500);
     await saveKey(codeNote);
     sendJson(res, { ok: true }); return;
+  }
+
+  // ── Admin API: atribuir chave a moderador ──
+  const codeAssignMod = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/assign-mod$`));
+  if (codeAssignMod && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    if (!keys[codeAssignMod]) { sendJson(res, { error: 'not found' }, 404); return; }
+    const body    = await parseBody(req);
+    const modName = String(body.modName || '').trim().slice(0, 60);
+    const k       = keys[codeAssignMod];
+    // Remover atribuição anterior de mod da nota
+    let note = (k.note || '').replace(/\[Mod: [^\]]+\]\s*/g, '').trim();
+    // Adicionar nova atribuição se informada
+    if (modName) note = '[Mod: ' + modName + ']' + (note ? ' ' + note : '');
+    k.note = note.slice(0, 500);
+    await saveKey(codeAssignMod);
+    sendJson(res, { ok: true, modName, note: k.note }); return;
   }
 
   // ── Admin API: deletar chave ──
