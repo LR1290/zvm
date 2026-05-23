@@ -382,9 +382,12 @@ function isAnalyticsSession(req) {
   const match  = cookie.match(/zv_an=([a-f0-9]+)/);
   if (!match) return false;
   const s = analyticsSessions[match[1]];
-  if (!s) return false;
+  if (!s) return false; // sessão não encontrada (servidor reiniciado) — cookie inválido
   if (new Date() > new Date(s.expiresAt)) { delete analyticsSessions[match[1]]; return false; }
   return true;
+}
+function clearAnalyticsCookie(res) {
+  res.setHeader('Set-Cookie', 'zv_an=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict; Secure');
 }
 
 // ─────────────────────────────────────────────
@@ -950,9 +953,8 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:14px 3
 .nav-links{display:flex;gap:10px}
 .nav-links a{font-size:14px;color:var(--muted);text-decoration:none;padding:8px 16px;border:1px solid var(--border);border-radius:8px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
 .nav-links a:hover{color:var(--green);border-color:var(--green)}
-.page-body{flex:1;display:grid;grid-template-columns:420px 1fr;gap:0;min-height:calc(100vh - 57px)}
-/* Coluna esquerda — formulário */
-.col-left{padding:40px 36px;border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:center;background:var(--card)}
+.page-body{flex:1;display:flex;align-items:center;justify-content:center;padding:20px;min-height:calc(100vh - 57px);flex-direction:column}
+.form-wrap{width:100%;max-width:480px;position:relative;z-index:1;display:flex;flex-direction:column;align-items:stretch}
 .logo{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--green);margin-bottom:4px;letter-spacing:-0.5px}
 .sub{color:var(--muted);font-size:13px;letter-spacing:2px;text-transform:uppercase;margin-bottom:32px;font-family:'Syne',sans-serif}
 label{display:block;text-align:left;font-size:13px;letter-spacing:.5px;color:var(--muted);text-transform:uppercase;margin-bottom:10px;font-family:'Syne',sans-serif;font-weight:600}
@@ -962,8 +964,7 @@ input:focus{border-color:var(--green)}
 .btn:hover{opacity:.9;transform:translateY(-2px);box-shadow:0 8px 24px #00ff8750}
 .btn:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
 .err{background:#ff475715;border:1px solid #ff4757;border-radius:8px;color:#ff4757;padding:13px 16px;font-size:14px;margin-bottom:18px;text-align:left;font-family:'Inter',sans-serif}
-/* Coluna direita — painel da chave */
-.col-right{padding:40px 48px;overflow-y:auto;display:flex;flex-direction:column;justify-content:center}
+.result-wrap{width:100%;max-width:1100px;margin:0 auto;padding:40px 32px;position:relative;z-index:1;display:none}
 .panel{display:none}
 .panel.active{display:block}
 .panel-title{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--text);margin-bottom:24px;display:flex;align-items:center;gap:10px}
@@ -1003,7 +1004,8 @@ input:focus{border-color:var(--green)}
 </nav>
 <div id="loading-overlay" class="loading-overlay"><span class="spinner"></span></div>
 <div class="page-body">
-  <div class="col-left">
+  <div class="form-wrap" id="main-form-wrap">
+    <div style="background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:36px 32px;text-align:center">
     <div class="logo">⚡ ZVM</div>
     <div class="sub">Portal do Cliente</div>
     <div id="form-area">
@@ -1016,17 +1018,13 @@ input:focus{border-color:var(--green)}
       <a class="btn" href="/planos" style="display:block;margin-top:8px;background:#00ff8710;color:#00ff87;font-size:12px;text-decoration:none;text-align:center;padding:12px;border-radius:10px;border:1px solid #00ff8730;transition:all .2s" onmouseover="this.style.background='#00ff8720';this.style.borderColor='#00ff87'" onmouseout="this.style.background='#00ff8710';this.style.borderColor='#00ff8730'">💳 Ver Planos e Preços</a>
       <div class="privacy-note">🔒 Ao usar este serviço, você concorda com nossa <a href="/privacidade">Política de Privacidade</a> e com a coleta de dados de uso para fins de licenciamento (LGPD).</div>
     </div>
-    <div class="hint" style="margin-top:24px;color:var(--muted);font-size:14px;font-family:'Syne',sans-serif">
+    <div class="hint" style="margin-top:20px;color:var(--muted);font-size:13px;font-family:'Syne',sans-serif;text-align:center">
       Precisa de ajuda? <a href="/planos" style="color:var(--green)">💳 Planos</a> · <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" style="color:var(--green)">💬 Suporte</a>
     </div>
-  </div>
-  <div class="col-right">
-    <div id="empty-state" style="text-align:center;color:var(--muted);opacity:.35;padding:60px 20px">
-      <div style="font-size:64px;margin-bottom:20px">🔑</div>
-      <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700">Consulte sua chave para ver os detalhes</div>
-      <div style="font-size:14px;margin-top:8px">Digite sua chave de ativação ao lado</div>
-    </div>
-    <div id="result-panel" style="display:none">
+    </div><!-- fecha card -->
+  </div><!-- fecha form-wrap -->
+  <div class="result-wrap" id="result-wrap">
+    <div id="result-panel" style="display:block">
       <div class="panel-title" id="panel-name">Minha Conta</div>
       <div class="info-grid">
         <div class="info-card"><div class="lbl">Status</div><div class="val" id="r-status">—</div></div>
@@ -1050,7 +1048,6 @@ input:focus{border-color:var(--green)}
       <div class="section-links" id="r-links" style="margin-bottom:20px"></div>
       <button onclick="resetPanel()" style="padding:12px 24px;background:#1e1e2e;color:var(--muted);border:1px solid var(--border);border-radius:8px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#00ff87';this.style.color='#00ff87'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">← Consultar outra chave</button>
     </div>
-  </div>
 </div>
 <script>
 function fmtDate(iso){if(!iso)return'—';const d=new Date(iso);return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
@@ -1069,9 +1066,8 @@ async function doCheck(key){
 }
 function checkKey(){doCheck(document.getElementById('key-input').value.trim().toLowerCase());}
 function showPanel(d,key){
-  document.getElementById('form-area').style.display='none';
-  document.getElementById('empty-state').style.display='none';
-  document.getElementById('result-panel').style.display='block';
+  document.getElementById('main-form-wrap').style.display='none';
+  document.getElementById('result-wrap').style.display='block';
   document.getElementById('panel-name').textContent='👤 '+d.label;
   let badge;
   if(d.deferred)badge='<span class="badge badge-def">Aguardando 1º uso</span>';
@@ -1107,12 +1103,12 @@ function showPanel(d,key){
   } else phoneSec.style.display='none';
 }
 function resetPanel(){
-  document.getElementById('form-area').style.display='block';
-  document.getElementById('result-panel').style.display='none';
-  document.getElementById('empty-state').style.display='block';
+  document.getElementById('main-form-wrap').style.display='flex';
+  document.getElementById('result-wrap').style.display='none';
   const actCard=document.getElementById('r-act-card'),lastCard=document.getElementById('r-last-card');
   if(actCard)actCard.style.display='none';if(lastCard)lastCard.style.display='none';
   const btn=document.getElementById('check-btn');btn.disabled=false;btn.textContent='Consultar Minha Chave';
+  document.getElementById('form-area').style.display='block';
 }
 async function clientRemovePhone(key,phone){
   if(!confirm('Remover o número '+phone+' desta chave?'))return;
@@ -1281,7 +1277,7 @@ th{padding:9px 11px;text-align:left;font-size:12px;text-transform:uppercase;lett
 th:hover{color:var(--text)}
 th.asc::after{content:' ▲';color:var(--green);font-size:12px}
 th.desc::after{content:' ▼';color:var(--green);font-size:12px}
-td{padding:10px 11px;font-size:12px;border-bottom:1px solid #14141f;vertical-align:middle}
+td{padding:9px 11px;font-size:12px;border-bottom:1px solid #14141f;vertical-align:middle}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:#ffffff02}
 .kc{color:var(--green);font-size:12px;letter-spacing:.3px}
@@ -2980,7 +2976,10 @@ async function handleRequest(req, res) {
 
   if ((p === R_ANALYTICS || p === R_ANALYTICS+'/') && req.method === 'GET') {
     if (!ANALYTICS_PASS) { res.writeHead(404); res.end('Not found'); return; }
-    if (!isAnalyticsSession(req)) { sendHtml(res, renderAnalyticsLogin()); return; }
+    if (!isAnalyticsSession(req)) {
+      clearAnalyticsCookie(res); // limpa cookie inválido (ex: após reinício do servidor)
+      sendHtml(res, renderAnalyticsLogin()); return;
+    }
     sendHtml(res, await renderAnalyticsDashboard()); return;
   }
 
