@@ -606,7 +606,7 @@ input{width:100%;padding:11px 14px;background:#0a0a0f;border:1px solid #1e1e2e;b
 input:focus{border-color:#4f8ef7}
 .btn{width:100%;padding:12px;background:#4f8ef7;border:none;border-radius:8px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:opacity .2s}
 .btn:hover{opacity:.85}
-.err{background:#ff475715;border:1px solid #ff4757;border-radius:6px;color:#ff4757;padding:9px 12px;font-size:12px;margin-bottom:16px}
+.err{background:#ff475715;border:1px solid #ff4757;border-radius:6px;color:#ff4757;padding:11px 14px;font-size:14px;margin-bottom:16px;font-family:'Syne',sans-serif}
 </style></head><body>
 <div class="card">
   <div class="logo">⚡ ZVM</div>
@@ -876,11 +876,11 @@ function renderExtensionLogin({ callback, error = '', keyVal = '' }) {
 body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
 .card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:36px 32px;width:100%;max-width:420px;text-align:center;position:relative;z-index:1;box-shadow:0 0 40px rgba(124,58,237,0.15)}
 .logo{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:#00ff87;margin-bottom:4px;letter-spacing:-0.5px}
-.sub{color:#8a8aaa;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-bottom:28px;font-family:'Syne',sans-serif}
-label{display:block;text-align:left;font-size:12px;letter-spacing:1px;color:#8a8aaa;text-transform:uppercase;margin-bottom:8px;font-family:'Syne',sans-serif}
+.sub{color:#8a8aaa;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:28px;font-family:'Syne',sans-serif}
+label{display:block;text-align:left;font-size:14px;letter-spacing:.5px;color:#8a8aaa;text-transform:uppercase;margin-bottom:10px;font-family:'Syne',sans-serif;font-weight:600}
 input{width:100%;padding:13px 16px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:10px;color:#00ff87;font-family:'Space Mono',monospace;font-size:15px;outline:none;letter-spacing:2px;transition:border .2s}
 input:focus{border-color:#00ff87}
-.err{background:#ff475715;border:1px solid #ff4757;border-radius:8px;color:#ff4757;padding:11px 14px;font-size:12px;margin-bottom:18px;text-align:left}
+.err{background:#ff475715;border:1px solid #ff4757;border-radius:8px;color:#ff4757;padding:13px 16px;font-size:14px;margin-bottom:18px;text-align:left;font-family:'Syne',sans-serif}
 .btn{width:100%;padding:14px;background:#00ff87;border:none;border-radius:10px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:15px;cursor:pointer;margin-top:20px;transition:opacity .2s}
 .btn:hover{opacity:.85}
 .hint{margin-top:20px;color:#8a8aaa;font-size:13px;font-family:'Syne',sans-serif}.hint a{color:#00ff87;text-decoration:none}
@@ -920,7 +920,7 @@ label{display:block;font-size:12px;letter-spacing:1px;color:#8a8aaa;text-transfo
 input{width:100%;padding:11px 14px;background:#0a0a0f;border:1px solid #1e1e2e;border-radius:8px;color:#e2e2f0;font-family:'Space Mono',monospace;font-size:13px;outline:none;margin-bottom:16px}
 input:focus{border-color:#00ff87}
 .btn{width:100%;padding:12px;background:#00ff87;border:none;border-radius:8px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer}
-.err{background:#ff475715;border:1px solid #ff4757;border-radius:6px;color:#ff4757;padding:9px 12px;font-size:12px;margin-bottom:16px}
+.err{background:#ff475715;border:1px solid #ff4757;border-radius:6px;color:#ff4757;padding:11px 14px;font-size:14px;margin-bottom:16px;font-family:'Syne',sans-serif}
 </style></head><body>
 <div class="card">
   <div class="logo">⚡ ZVM Admin</div>
@@ -970,9 +970,9 @@ input:focus{border-color:var(--green)}
 .panel-title{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--text);margin-bottom:24px;display:flex;align-items:center;gap:10px}
 .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:28px}
 .info-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px 22px}
-.info-card .lbl{font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;font-family:'Syne',sans-serif}
-.info-card .val{font-size:16px;color:var(--text);font-family:'Syne',sans-serif;font-weight:700}
-.badge{display:inline-block;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;font-family:'Syne',sans-serif}
+.info-card .lbl{font-size:13px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;font-family:'Syne',sans-serif;font-weight:600}
+.info-card .val{font-size:18px;color:var(--text);font-family:'Syne',sans-serif;font-weight:700}
+.badge{display:inline-block;padding:5px 14px;border-radius:20px;font-size:14px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;font-family:'Syne',sans-serif}
 .row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #1e1e2e30}
 .row:last-child{border-bottom:none}
 .row-label{font-size:14px;letter-spacing:.3px;text-transform:uppercase;color:var(--muted);font-family:'Syne',sans-serif}
@@ -991,7 +991,7 @@ input:focus{border-color:var(--green)}
 .spinner{display:inline-block;width:15px;height:15px;border:2px solid #00ff8730;border-top-color:#00ff87;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px}
 @keyframes spin{to{transform:rotate(360deg)}}
 .loading-overlay{position:fixed;inset:0;background:#0a0a0f;display:flex;align-items:center;justify-content:center;z-index:99}
-.privacy-note{margin-top:16px;padding:10px 14px;background:#1e1e2e30;border-radius:8px;font-size:12px;color:#8a8aaa;text-align:left;line-height:1.6;font-family:'Syne',sans-serif}
+.privacy-note{margin-top:16px;padding:12px 16px;background:#1e1e2e30;border-radius:8px;font-size:14px;color:#a0a0c0;text-align:left;line-height:1.7;font-family:'Syne',sans-serif}
 .privacy-note a{color:#4f8ef7;text-decoration:none}
 </style>
 </head><body>
@@ -1014,11 +1014,11 @@ input:focus{border-color:var(--green)}
       <input type="text" id="key-input" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="20">
       <p style="text-align:left;font-size:13px;color:#8a8aaa;margin-top:8px;font-family:'Syne',sans-serif">Você recebeu esta chave junto com a sua compra.</p>
       <button class="btn" id="check-btn" onclick="checkKey()">Consultar Minha Chave</button>
-      <a class="btn" href="/faq" style="display:block;margin-top:10px;background:#1e1e2e;color:#6b6b8a;font-size:12px;text-decoration:none;text-align:center;padding:12px;border-radius:10px;border:1px solid #2a2a3e;transition:border-color .2s,color .2s" onmouseover="this.style.borderColor='#00ff87';this.style.color='#00ff87'" onmouseout="this.style.borderColor='#2a2a3e';this.style.color='#6b6b8a'">❓ FAQ — Dúvidas Frequentes</a>
-      <a class="btn" href="/planos" style="display:block;margin-top:8px;background:#00ff8710;color:#00ff87;font-size:12px;text-decoration:none;text-align:center;padding:12px;border-radius:10px;border:1px solid #00ff8730;transition:all .2s" onmouseover="this.style.background='#00ff8720';this.style.borderColor='#00ff87'" onmouseout="this.style.background='#00ff8710';this.style.borderColor='#00ff8730'">💳 Ver Planos e Preços</a>
+      <a class="btn" href="/faq" style="display:block;margin-top:10px;background:#1e1e2e;color:#8a8aaa;font-size:14px;text-decoration:none;text-align:center;padding:13px;border-radius:10px;border:1px solid #2a2a3e;transition:border-color .2s,color .2s;font-family:'Syne',sans-serif;font-weight:700" onmouseover="this.style.borderColor='#00ff87';this.style.color='#00ff87'" onmouseout="this.style.borderColor='#2a2a3e';this.style.color='#6b6b8a'">❓ FAQ — Dúvidas Frequentes</a>
+      <a class="btn" href="/planos" style="display:block;margin-top:8px;background:#00ff8710;color:#00ff87;font-size:14px;text-decoration:none;text-align:center;padding:13px;border-radius:10px;border:1px solid #00ff8730;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700" onmouseover="this.style.background='#00ff8720';this.style.borderColor='#00ff87'" onmouseout="this.style.background='#00ff8710';this.style.borderColor='#00ff8730'">💳 Ver Planos e Preços</a>
       <div class="privacy-note">🔒 Ao usar este serviço, você concorda com nossa <a href="/privacidade">Política de Privacidade</a> e com a coleta de dados de uso para fins de licenciamento (LGPD).</div>
     </div>
-    <div class="hint" style="margin-top:20px;color:var(--muted);font-size:13px;font-family:'Syne',sans-serif;text-align:center">
+    <div class="hint" style="margin-top:20px;color:#a0a0c0;font-size:14px;font-family:'Syne',sans-serif;text-align:center">
       Precisa de ajuda? <a href="/planos" style="color:var(--green)">💳 Planos</a> · <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" style="color:var(--green)">💬 Suporte</a>
     </div>
     </div><!-- fecha card -->
@@ -2135,7 +2135,7 @@ input{width:100%;padding:11px 14px;background:#080810;border:1px solid #1c1c2e;b
 input:focus{border-color:#00ff87}
 .btn{width:100%;padding:12px;background:#00ff87;border:none;border-radius:8px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:opacity .2s}
 .btn:hover{opacity:.85}
-.err{background:#ff475715;border:1px solid #ff4757;border-radius:6px;color:#ff4757;padding:9px 12px;font-size:12px;margin-bottom:16px}
+.err{background:#ff475715;border:1px solid #ff4757;border-radius:6px;color:#ff4757;padding:11px 14px;font-size:14px;margin-bottom:16px;font-family:'Syne',sans-serif}
 </style></head><body>
 <div class="card">
   <div class="logo">⚡ ZVM</div>
@@ -2506,6 +2506,18 @@ async function handleRequest(req, res) {
     const wppVersion = body.wppVersion  || '-';
     const deviceId   = body.deviceId    || '';
 
+    if (!keyCode || !keys[keyCode]) {
+      // Tentar buscar no banco — resolve dessincronização entre servidores
+      if (keyCode) {
+        try {
+          const db = await getMongoDb();
+          const doc = await db.collection('store').findOne({ _id: 'keys' });
+          if (doc && doc.data && doc.data[keyCode]) {
+            keys[keyCode] = doc.data[keyCode];
+          }
+        } catch(e) { console.error('[DB] Erro ao buscar chave v3:', e.message); }
+      }
+    }
     if (!keyCode || !keys[keyCode]) {
       sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada. Contate o vendedor.', isLoggedIn: false });
       addLog({ keyCode: keyCode||'?', label: '-', phone, ip, wppVersion, action: 'key_not_found' }).catch(()=>{});
@@ -3132,8 +3144,22 @@ async function handleRequest(req, res) {
   if (p === '/client/status' && req.method === 'POST') {
     const body = await parseBody(req);
     const code = (body.key || '').trim().toLowerCase().slice(0, 20);
-    if (!code || !keys[code]) { sendJson(res, { error: 'not_found' }, 404); return; }
-    const k = keys[code];
+    if (!code) { sendJson(res, { error: 'not_found' }, 404); return; }
+
+    // Buscar em memória primeiro; se não encontrar, buscar no banco (sincroniza servidores)
+    let k = keys[code];
+    if (!k) {
+      try {
+        const db = await getMongoDb();
+        const doc = await db.collection('store').findOne({ _id: 'keys' });
+        if (doc && doc.data && doc.data[code]) {
+          k = doc.data[code];
+          keys[code] = k; // atualizar memória local
+        }
+      } catch(e) { console.error('[DB] Erro ao buscar chave:', e.message); }
+    }
+    if (!k) { sendJson(res, { error: 'not_found' }, 404); return; }
+
     sendJson(res, {
       label:       k.label || 'Cliente',
       active:      k.active && !isKeyExpired(k),
@@ -3142,7 +3168,6 @@ async function handleRequest(req, res) {
       activatedAt: k.activatedAt || null,
       lastUsed:    k.lastUsed || null,
       phones:      (k.phones || []).length,
-      // phoneList mascarado — mostra apenas os últimos 4 dígitos de cada número
       phoneList:   (k.phones || []).map(ph => ph.replace(/(\d+)(\d{4})$/, '••••$2')),
       maxUses:     k.maxUses === -1 ? null : (k.maxUses > 0 ? k.maxUses : MAX_USES),
       hoursLeft:   hoursUntilExpiry(k),
