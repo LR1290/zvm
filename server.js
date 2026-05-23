@@ -590,14 +590,14 @@ function renderModLogin(error = '') {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Moderação</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
 .card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:40px 36px;width:360px;position:relative;z-index:1;box-shadow:0 0 40px rgba(79,142,247,0.12)}
 .logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#4f8ef7;margin-bottom:4px;text-align:center;letter-spacing:-0.5px}
 .sub{color:#8a8aaa;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-bottom:24px;text-align:center;font-family:'Syne',sans-serif}
-.badge{display:inline-block;background:#4f8ef712;border:1px solid #4f8ef730;color:#4f8ef7;font-size:11px;letter-spacing:2px;text-transform:uppercase;padding:3px 10px;border-radius:20px;margin-bottom:20px;font-family:'Syne',sans-serif;display:block;text-align:center}
+.badge{display:inline-block;background:#4f8ef712;border:1px solid #4f8ef730;color:#4f8ef7;font-size:13px;letter-spacing:1px;text-transform:uppercase;padding:4px 12px;border-radius:20px;margin-bottom:20px;font-family:'Syne',sans-serif;display:block;text-align:center}
 label{display:block;font-size:12px;letter-spacing:1px;color:#8a8aaa;text-transform:uppercase;margin-bottom:7px;font-family:'Syne',sans-serif}
 input{width:100%;padding:11px 14px;background:#0a0a0f;border:1px solid #1e1e2e;border-radius:8px;color:#e2e2f0;font-family:'Space Mono',monospace;font-size:13px;outline:none;margin-bottom:16px;transition:border .2s}
 input:focus{border-color:#4f8ef7}
@@ -630,7 +630,7 @@ function renderModDashboard(modName = 'Moderador') {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Moderação</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -644,7 +644,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
 main{position:relative;z-index:1}
 .badge-mod{background:#4f8ef712;border:1px solid #4f8ef730;color:var(--blue);font-size:12px;letter-spacing:0;text-transform:uppercase;padding:4px 12px;border-radius:20px;font-family:'Syne',sans-serif;font-weight:700}
 .hright{display:flex;align-items:center;gap:10px}
-a.out{color:var(--muted);font-size:11px;text-decoration:none;padding:6px 12px;border:1px solid var(--border2);border-radius:var(--radius-sm);transition:all .2s}
+a.out{color:var(--muted);font-size:13px;text-decoration:none;padding:6px 14px;border:1px solid var(--border2);border-radius:var(--radius-sm);transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
 a.out:hover{color:var(--red);border-color:var(--red)}
 main{padding:28px 24px;max-width:900px;margin:0 auto}
 
@@ -654,7 +654,7 @@ main{padding:28px 24px;max-width:900px;margin:0 auto}
 .sc:hover{border-color:var(--border2)}
 .sc-icon{position:absolute;right:14px;top:14px;font-size:22px;opacity:.12}
 .sc .n{font-family:'Syne',sans-serif;font-size:34px;font-weight:800;color:var(--blue);line-height:1}
-.sc .l{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-top:6px}
+.sc .l{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.5px;margin-top:6px;font-family:'Syne',sans-serif}
 
 /* Notice */
 .notice{background:#4f8ef708;border:1px solid #4f8ef720;border-radius:var(--radius);padding:14px 18px;margin-bottom:28px;display:flex;align-items:flex-start;gap:12px;font-size:13px;color:#8a8aaa;line-height:1.7;font-family:'Syne',sans-serif}
@@ -667,7 +667,7 @@ main{padding:28px 24px;max-width:900px;margin:0 auto}
 .form-body{padding:20px 18px}
 .form-grid{display:grid;grid-template-columns:1fr auto auto auto auto auto;gap:8px;align-items:end;flex-wrap:wrap}
 .fi{display:flex;flex-direction:column;gap:4px}
-.fi label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.fi label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;font-family:'Syne',sans-serif}
 .fi input{padding:8px 11px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:12px;outline:none;transition:border .18s}
 .fi input:focus{border-color:var(--blue)}
 .fi input::placeholder{color:var(--muted)}
@@ -684,20 +684,20 @@ main{padding:28px 24px;max-width:900px;margin:0 auto}
 .result-key{font-family:'Space Mono',monospace;font-size:18px;color:var(--blue);letter-spacing:2px;word-break:break-all;margin-bottom:14px}
 .result-meta{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
 .result-tag{background:#4f8ef712;border:1px solid #4f8ef720;color:var(--blue);font-size:12px;padding:3px 10px;border-radius:20px}
-.copy-btn{padding:8px 16px;background:#4f8ef718;color:var(--blue);border:1px solid #4f8ef730;border-radius:var(--radius-sm);font-family:'Syne',sans-serif;font-weight:700;font-size:11px;cursor:pointer;transition:all .2s}
+.copy-btn{padding:8px 16px;background:#4f8ef718;color:var(--blue);border:1px solid #4f8ef730;border-radius:var(--radius-sm);font-family:'Syne',sans-serif;font-weight:700;font-size:13px;cursor:pointer;transition:all .2s}
 .copy-btn:hover{background:#4f8ef728;border-color:var(--blue)}
 
 /* Histórico */
-.hist-table{width:100%;border-collapse:collapse;font-size:12px}
-.hist-table th{padding:8px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:1px solid var(--border);background:var(--card2);font-weight:400}
+.hist-table{width:100%;border-collapse:collapse;font-size:13px;font-family:'Syne',sans-serif}
+.hist-table th{padding:9px 12px;text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--border);background:var(--card2);font-weight:600;font-family:'Syne',sans-serif}
 .hist-table td{padding:10px 12px;border-bottom:1px solid #14141f;vertical-align:middle}
 .hist-table tr:last-child td{border-bottom:none}
 .hist-table tr:hover td{background:#ffffff02}
-.kc{color:var(--blue);font-size:11px;letter-spacing:.3px}
-.badge{padding:2px 7px;border-radius:3px;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+.kc{color:var(--blue);font-size:13px;letter-spacing:.2px;font-family:'Space Mono',monospace}
+.badge{padding:3px 8px;border-radius:3px;font-size:12px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;font-family:'Syne',sans-serif}
 .bon{background:#00ff8718;color:var(--green);border:1px solid #00ff8730}
 .bdef{background:#4f8ef718;color:var(--blue);border:1px solid #4f8ef730}
-.empty{text-align:center;color:var(--muted);padding:30px;font-size:11px}
+.empty{text-align:center;color:var(--muted);padding:30px;font-size:13px;font-family:'Syne',sans-serif}
 
 .toast{position:fixed;bottom:20px;right:20px;padding:11px 18px;border-radius:var(--radius);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;display:none;z-index:999999;box-shadow:0 6px 30px #00000070}
 
@@ -756,7 +756,7 @@ main{padding:28px 24px;max-width:900px;margin:0 auto}
   <div class="sec">
     <div class="sh">
       <div class="st">📋 Chaves Criadas por Mim</div>
-      <button class="btn" style="background:#4f8ef718;color:var(--blue);border:1px solid #4f8ef730;font-size:11px;padding:6px 12px" onclick="loadHistory()">↻ Atualizar</button>
+      <button class="btn" style="background:#4f8ef718;color:var(--blue);border:1px solid #4f8ef730;font-size:13px;padding:6px 12px" onclick="loadHistory()">↻ Atualizar</button>
     </div>
     <div style="overflow-x:auto">
       <table class="hist-table">
@@ -867,7 +867,7 @@ function renderExtensionLogin({ callback, error = '', keyVal = '' }) {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Ativação</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
@@ -890,8 +890,8 @@ input:focus{border-color:#00ff87}
   <form method="POST" action="/extension/auth/verify">
     <input type="hidden" name="callback" value="${escHtml(callback)}">
     <label>Sua Chave de Ativação</label>
-    <input type="text" name="key" value="${escHtml(keyVal)}" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false">
-    <p style="text-align:left;font-size:11px;color:#6b6b8a;margin-top:8px">Você recebeu esta chave junto com a sua compra.</p>
+    <input type="text" name="key" value="${escHtml(keyVal)}" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="20">
+    <p style="text-align:left;font-size:13px;color:#8a8aaa;margin-top:8px;font-family:'Syne',sans-serif">Você recebeu esta chave junto com a sua compra.</p>
     <button type="submit" class="btn">Ativar Agora</button>
   </form>
   <div class="hint">Precisa de ajuda ou quer renovar?<br><a href="/planos">💳 Ver Planos</a> · <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20referente%20a%20minha%20renova%C3%A7%C3%A3o." target="_blank">💬 Suporte no WhatsApp</a></div>
@@ -907,7 +907,7 @@ function renderAdminLogin(error = '') {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM Admin</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
@@ -940,14 +940,14 @@ function renderClientPortal() {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Portal do Cliente</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#0a0a0f;min-height:100vh;display:flex;flex-direction:column;font-family:'Space Mono',monospace;overflow:hidden}
+body{background:#0a0a0f;min-height:100vh;display:flex;flex-direction:column;font-family:'Space Mono',monospace;overflow-x:hidden}
 nav{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid #1c1c2e;background:#0f0f1a;position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040;flex-shrink:0}
 .nav-logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#00ff87;text-decoration:none;display:flex;align-items:center;gap:6px;letter-spacing:-0.5px}
 .nav-links{display:flex;gap:8px}
-.nav-links a{font-size:11px;color:#5a5a7a;text-decoration:none;padding:6px 12px;border:1px solid #1c1c2e;border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
+.nav-links a{font-size:13px;color:#5a5a7a;text-decoration:none;padding:6px 14px;border:1px solid #1c1c2e;border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
 .nav-links a:hover{color:#00ff87;border-color:#00ff87}
 .page-body{flex:1;display:flex;align-items:center;justify-content:center;padding:20px}
 .wrap{width:100%;max-width:460px;position:relative;z-index:1}
@@ -1001,8 +1001,8 @@ input:focus{border-color:#00ff87}
     <div id="form-area">
       <div id="err-box" class="err" style="display:none"></div>
       <label>Sua Chave de Ativação</label>
-      <input type="text" id="key-input" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false">
-      <p style="text-align:left;font-size:11px;color:#6b6b8a;margin-top:8px">Você recebeu esta chave junto com a sua compra.</p>
+      <input type="text" id="key-input" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="20">
+      <p style="text-align:left;font-size:13px;color:#8a8aaa;margin-top:8px;font-family:'Syne',sans-serif">Você recebeu esta chave junto com a sua compra.</p>
       <button class="btn" id="check-btn" onclick="checkKey()">Consultar Minha Chave</button>
       <a class="btn" href="/faq" style="display:block;margin-top:10px;background:#1e1e2e;color:#6b6b8a;font-size:12px;text-decoration:none;text-align:center;padding:12px;border-radius:10px;border:1px solid #2a2a3e;transition:border-color .2s,color .2s" onmouseover="this.style.borderColor='#00ff87';this.style.color='#00ff87'" onmouseout="this.style.borderColor='#2a2a3e';this.style.color='#6b6b8a'">❓ FAQ — Dúvidas Frequentes</a>
       <a class="btn" href="/planos" style="display:block;margin-top:8px;background:#00ff8710;color:#00ff87;font-size:12px;text-decoration:none;text-align:center;padding:12px;border-radius:10px;border:1px solid #00ff8730;transition:all .2s" onmouseover="this.style.background='#00ff8720';this.style.borderColor='#00ff87'" onmouseout="this.style.background='#00ff8710';this.style.borderColor='#00ff8730'">💳 Ver Planos e Preços</a>
@@ -1126,7 +1126,7 @@ function buildKeysHtml() {
     })() : '';
 
     const rowStyle = isSuspect ? ' style="background:#ff000008;outline:1px solid #ff475720"' : warnSoon && !expired ? ' style="background:#ff860010"' : '';
-    const suspectBadge = isSuspect ? `<span title="${recentIps.size} IPs nas últimas 24h" style="color:#ff4757;font-size:11px;margin-left:4px">⚠ SUSPEITA</span>` : '';
+    const suspectBadge = isSuspect ? `<span title="${recentIps.size} IPs nas últimas 24h" style="color:#ff4757;font-size:13px;margin-left:4px">⚠ SUSPEITA</span>` : '';
 
     return `
 <tr data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${k.active?'ativo':'bloqueado'}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-suspect="${isSuspect?'1':''}"`+rowStyle+`>
@@ -1135,11 +1135,11 @@ function buildKeysHtml() {
   <td><span class="badge ${k.active?'on':'off'}">${k.active?(k.expireDuration&&!k.expiresAt?'AGUARDANDO':'ATIVO'):'BLOQUEADO'}</span></td>
   <td><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
   <td>${escHtml(k.lastPhone||'-')}</td>
-  <td title="${uniqueIps} IPs únicos registrados">${escHtml(k.lastIp||'-')} ${uniqueIps>1?`<span style="color:var(--muted);font-size:11px">(+${uniqueIps-1})</span>`:''}</td>
+  <td title="${uniqueIps} IPs únicos registrados">${escHtml(k.lastIp||'-')} ${uniqueIps>1?`<span style="color:var(--muted);font-size:13px">(+${uniqueIps-1})</span>`:''}</td>
   <td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
   <td>${new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}${expHtml}</td>
   <td>${escHtml(k.wppVersion||'-')}</td>
-  <td class="note-cell" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${k.note&&k.note.startsWith('[Mod:')?'<span style=\"color:#4f8ef7;font-size:11px\">'+escHtml(k.note)+'</span>':escHtml(k.note||'') || '<span style=\\"color:var(--muted)\\">—</span>'}</span></td>
+  <td class="note-cell" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${k.note&&k.note.startsWith('[Mod:')?'<span style=\"color:#4f8ef7;font-size:13px;font-family:Syne,sans-serif\">'+escHtml(k.note)+'</span>':escHtml(k.note||'') || '<span style=\\"color:var(--muted)\\">—</span>'}</span></td>
   <td>
     <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
     <button class="bs bg" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">+ Tempo</button>
@@ -1159,7 +1159,7 @@ function buildLogsHtml(arr) {
   return src.slice(0, 200).map(l => `
 <tr>
   <td>${new Date(l.timestamp).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</td>
-  <td><span class="kc" style="font-size:11px">${escHtml(l.keyCode||'-')}</span></td>
+  <td><span class="kc" style="font-size:13px">${escHtml(l.keyCode||'-')}</span></td>
   <td>${escHtml(l.label||'-')}</td>
   <td>${escHtml(l.phone||'-')}</td>
   <td>${escHtml(l.ip||'-')}</td>
@@ -1186,7 +1186,7 @@ function renderAdminDashboard() {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM Admin v8</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -1200,7 +1200,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
 .logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
 main{position:relative;z-index:1}
 .hright{display:flex;align-items:center;gap:10px}
-a.out{color:var(--muted);font-size:11px;text-decoration:none;padding:6px 12px;border:1px solid var(--border2);border-radius:var(--radius-sm);transition:all .2s}
+a.out{color:var(--muted);font-size:13px;text-decoration:none;padding:6px 14px;border:1px solid var(--border2);border-radius:var(--radius-sm);transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
 a.out:hover{color:var(--red);border-color:var(--red)}
 main{padding:22px 24px;max-width:1800px;margin:0 auto}
 .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px}
@@ -1212,23 +1212,23 @@ main{padding:22px 24px;max-width:1800px;margin:0 auto}
 .sc .n{font-family:'Syne',sans-serif;font-size:30px;font-weight:800;color:var(--green);line-height:1.1}
 .sc.warn-card .n{color:var(--orange)}
 .sc.danger-card .n{color:var(--red)}
-.sc .l{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-top:5px}
+.sc .l{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.3px;margin-top:5px;font-family:'Syne',sans-serif}
 /* Search */
 .search-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 16px;background:var(--card2);border-bottom:1px solid var(--border)}
 .search-bar input{padding:7px 12px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:12px;outline:none;flex:1;min-width:160px;transition:border .18s}
 .search-bar input:focus{border-color:var(--green)}
-.search-bar select{padding:7px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:11px;outline:none;cursor:pointer}
+.search-bar select{padding:7px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Syne',sans-serif;font-size:13px;outline:none;cursor:pointer}
 .sec{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:16px;overflow:hidden}
 .sh{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--card2);flex-wrap:wrap;gap:10px}
 .st{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:var(--green);display:flex;align-items:center;gap:6px}
 .gen-form{display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap}
-.gen-form input{padding:7px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:11px;outline:none;transition:border .18s}
+.gen-form input{padding:7px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Syne',sans-serif;font-size:13px;outline:none;transition:border .18s}
 .gen-form input:focus{border-color:var(--green);background:#0a0a14}
 .gen-form input::placeholder{color:var(--muted)}
 .fi-name{flex:1;min-width:130px;max-width:170px}
 .fi-group{display:flex;gap:5px;align-items:flex-end}
 .fi-col{display:flex;flex-direction:column;gap:3px}
-.fi-lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;padding-left:2px}
+.fi-lbl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;padding-left:2px;font-family:'Syne',sans-serif}
 .fi-num{width:56px;text-align:center}
 .fi-sep{width:1px;height:28px;background:var(--border2);margin:0 3px;flex-shrink:0;align-self:flex-end;margin-bottom:2px}
 .btn{padding:8px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;transition:all .18s;white-space:nowrap;letter-spacing:.3px}
@@ -1237,7 +1237,7 @@ main{padding:22px 24px;max-width:1800px;margin:0 auto}
 .bw{background:#ffd32a12;color:var(--yellow);border:1px solid #ffd32a35}
 .br{background:#ff475712;color:var(--red);border:1px solid #ff475735}
 .bcsv{background:#4f8ef712;color:var(--blue);border:1px solid #4f8ef735}
-.bs{padding:4px 9px;border:none;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;margin-right:2px;transition:all .15s;white-space:nowrap}
+.bs{padding:5px 10px;border:none;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:12px;font-weight:700;margin-right:2px;transition:all .15s;white-space:nowrap}
 .bs:hover{opacity:1;transform:translateY(-1px)}
 .bg{background:#00ff8712;color:var(--green);border:1px solid #00ff8730}
 .bg:hover{background:#00ff8722;border-color:#00ff8760}
@@ -1246,22 +1246,22 @@ main{padding:22px 24px;max-width:1800px;margin:0 auto}
 .bsusp{background:#ff475712;color:var(--red);border:1px solid #ff475730}
 .ov{overflow-x:auto}
 table{width:100%;border-collapse:collapse}
-th{padding:8px 11px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap;background:var(--card2);cursor:pointer;user-select:none}
+th{padding:9px 11px;text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap;background:var(--card2);cursor:pointer;user-select:none;font-family:'Syne',sans-serif}
 th:hover{color:var(--text)}
-th.asc::after{content:' ▲';color:var(--green);font-size:11px}
-th.desc::after{content:' ▼';color:var(--green);font-size:11px}
+th.asc::after{content:' ▲';color:var(--green);font-size:12px}
+th.desc::after{content:' ▼';color:var(--green);font-size:12px}
 td{padding:10px 11px;font-size:12px;border-bottom:1px solid #14141f;vertical-align:middle}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:#ffffff02}
 .kc{color:var(--green);font-size:12px;letter-spacing:.3px}
-.badge{padding:2px 7px;border-radius:3px;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+.badge{padding:3px 8px;border-radius:3px;font-size:12px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;font-family:'Syne',sans-serif}
 .on{background:#00ff8718;color:var(--green);border:1px solid #00ff8730}
 .off{background:#ff475718;color:var(--red);border:1px solid #ff475730}
 .re{background:#4f8ef718;color:var(--blue)}
 .vr{background:#9b59b618;color:var(--purple)}
 .warn{background:#ffd32a18;color:var(--yellow)}
 .wl{background:#ff8c0018;color:#ff8c00}
-.empty{text-align:center;color:var(--muted);padding:40px!important;font-size:13px;font-family:'Syne',sans-serif}
+.empty{text-align:center;color:var(--muted);padding:40px!important;font-size:14px;font-family:'Syne',sans-serif}
 .toast{position:fixed;bottom:20px;right:20px;padding:11px 18px;border-radius:var(--radius);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;display:none;z-index:999999;box-shadow:0 6px 30px #00000070;max-width:380px;line-height:1.4}
 .note-cell{cursor:pointer;max-width:130px}
 .note-cell:hover .note-preview{color:var(--green)}
@@ -1270,7 +1270,7 @@ tr:hover td{background:#ffffff02}
 .modal-bg.open{display:flex}
 .modal{background:var(--card);border:1px solid var(--border2);border-radius:12px;padding:22px;width:340px;max-width:95vw;box-shadow:0 20px 60px #00000090;max-height:90vh;overflow-y:auto}
 .modal h3{font-family:'Syne',sans-serif;font-size:13px;margin-bottom:11px;color:var(--green)}
-.modal textarea,.modal input[type=text],.modal input[type=number]{width:100%;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:11px;padding:9px;outline:none;transition:border .2s}
+.modal textarea,.modal input[type=text],.modal input[type=number]{width:100%;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Syne',sans-serif;font-size:13px;padding:9px;outline:none;transition:border .2s}
 .modal textarea{resize:vertical;min-height:80px}
 .modal textarea:focus,.modal input:focus{border-color:var(--green)}
 .modal-actions{display:flex;gap:8px;margin-top:11px;justify-content:flex-end}
@@ -1280,7 +1280,7 @@ tr:hover td{background:#ffffff02}
 </head>
 <body>
 <header>
-  <div class="logo">⚡ ZVM <span style="font-size:11px;color:var(--muted);font-weight:400">v8</span></div>
+  <div class="logo">⚡ ZVM <span style="font-size:13px;color:var(--muted);font-weight:400">v8</span></div>
   <div class="hright">
     <button class="btn bcsv" onclick="exportCSV()">⬇ CSV</button>
     <a href="${R_ADMIN}/logout" class="out">↩ Sair</a>
@@ -1344,10 +1344,10 @@ tr:hover td{background:#ffffff02}
 
   <div class="sec">
     <div class="sh">
-      <div class="st">📋 Log de Acessos <span style="font-size:11px;color:var(--muted);font-weight:400">retidos por ${LOG_RETENTION_DAYS} dias (LGPD)</span></div>
+      <div class="st">📋 Log de Acessos <span style="font-size:13px;color:var(--muted);font-weight:400">retidos por ${LOG_RETENTION_DAYS} dias (LGPD)</span></div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <input type="date" id="logDate" style="padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:11px;outline:none" onchange="filterLog()">
-        <input type="text" id="logSearch" placeholder="Filtrar por chave/IP..." style="padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:11px;outline:none;width:180px" oninput="filterLog()">
+        <input type="date" id="logDate" style="padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:13px;outline:none" onchange="filterLog()">
+        <input type="text" id="logSearch" placeholder="Filtrar por chave/IP..." style="padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:13px;outline:none;width:180px" oninput="filterLog()">
         <button class="btn bw" onclick="clearFilters()">✕ Limpar</button>
         <button class="btn bw" onclick="doRefresh()">↻ Atualizar</button>
         <button class="btn br" onclick="clearLog()">🗑 Limpar Log</button>
@@ -1371,7 +1371,7 @@ tr:hover td{background:#ffffff02}
     <div style="flex:1;text-align:center"><div style="font-size:12px;color:var(--muted);text-transform:uppercase;margin-bottom:5px">Horas</div><input type="number" id="renewHours" placeholder="0" min="0" style="width:100%;padding:8px;text-align:center"></div>
     <div style="flex:1;text-align:center"><div style="font-size:12px;color:var(--muted);text-transform:uppercase;margin-bottom:5px">Min</div><input type="number" id="renewMins" placeholder="0" min="0" style="width:100%;padding:8px;text-align:center"></div>
   </div>
-  <div style="font-size:11px;color:var(--muted);margin-bottom:12px" id="renewCurrentExpiry"></div>
+  <div style="font-size:13px;color:var(--muted);margin-bottom:12px;font-family:'Syne',sans-serif" id="renewCurrentExpiry"></div>
   <div class="modal-actions">
     <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeRenew()">Cancelar</button>
     <button class="btn bp" onclick="saveRenew()">Adicionar Tempo</button>
@@ -1384,7 +1384,7 @@ tr:hover td{background:#ffffff02}
   <div style="margin-bottom:14px">
     <div style="font-size:12px;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Máx. números simultâneos</div>
     <input type="number" id="editUsesValue" min="-1" style="width:100%;padding:10px;font-size:16px;text-align:center">
-    <div style="font-size:11px;color:var(--muted);margin-top:8px">Use <strong style="color:var(--green)">-1</strong> para ilimitado</div>
+    <div style="font-size:13px;color:var(--muted);margin-top:8px;font-family:'Syne',sans-serif">Use <strong style="color:var(--green)">-1</strong> para ilimitado</div>
   </div>
   <div class="modal-actions">
     <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeEditUses()">Cancelar</button>
@@ -1679,7 +1679,7 @@ function renderPlanosPage() {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Planos e Preços</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--card2:#13131f;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--radius:14px}
@@ -1687,7 +1687,7 @@ body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace
 header{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000060}
 .logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
 .hlinks{display:flex;gap:10px}
-.hlinks a{font-size:11px;color:var(--muted);text-decoration:none;padding:6px 13px;border:1px solid var(--border);border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
+.hlinks a{font-size:13px;color:var(--muted);text-decoration:none;padding:6px 14px;border:1px solid var(--border);border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
 .hlinks a:hover{color:var(--green);border-color:var(--green)}
 main{max-width:1060px;margin:0 auto;padding:56px 24px 80px}
 
@@ -1730,7 +1730,7 @@ main{max-width:1060px;margin:0 auto;padding:56px 24px 80px}
 /* Compare */
 .compare{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:32px}
 .compare-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.5px;padding:16px 22px;border-bottom:1px solid var(--border);background:var(--card2)}
-.compare table{width:100%;border-collapse:collapse;font-size:11px}
+.compare table{width:100%;border-collapse:collapse;font-size:13px;font-family:'Syne',sans-serif}
 .compare th{padding:11px 16px;text-align:center;color:#a0a0c0;border-bottom:1px solid var(--border);font-weight:600;font-size:13px;background:var(--card2);font-family:'Syne',sans-serif}
 .compare th:first-child{text-align:left}
 .compare td{padding:11px 16px;text-align:center;border-bottom:1px solid #14141f;color:var(--text)}
@@ -1863,7 +1863,7 @@ footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
 </main>
 <footer>
   <p>© ${new Date().getFullYear()} ZVM — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/privacidade">Privacidade</a></p>
-  <p style="margin-top:6px;font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:.5">Todos os direitos reservados</p>
+  <p style="margin-top:6px;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:.5">Todos os direitos reservados</p>
 </footer>
 <script>
 document.querySelectorAll('.faq-item').forEach(item=>{
@@ -1882,7 +1882,7 @@ function renderFaqPage() {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — FAQ</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--radius:14px}
@@ -1890,7 +1890,7 @@ body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace
 header{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000060}
 .logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
 .header-links{display:flex;gap:10px}
-.header-links a{font-size:11px;color:var(--muted);text-decoration:none;padding:6px 13px;border:1px solid var(--border);border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
+.header-links a{font-size:13px;color:var(--muted);text-decoration:none;padding:6px 14px;border:1px solid var(--border);border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
 .header-links a:hover{color:var(--green);border-color:var(--green)}
 main{max-width:760px;margin:0 auto;padding:60px 24px 80px}
 .hero{text-align:center;margin-bottom:64px}
@@ -1971,7 +1971,7 @@ footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
 </main>
 <footer>
   <p>© ${new Date().getFullYear()} ZVM — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/privacidade">Privacidade</a></p>
-  <p style="margin-top:6px;font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:.5">Todos os direitos reservados</p>
+  <p style="margin-top:6px;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:.5">Todos os direitos reservados</p>
 </footer>
 ${CANVAS_BG}
 </body></html>`;
@@ -1985,7 +1985,7 @@ function renderPrivacyPage() {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Política de Privacidade</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--radius:12px}
@@ -1993,13 +1993,13 @@ body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace
 header{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000060}
 .logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
 .header-links{display:flex;gap:10px}
-.header-links a{font-size:11px;color:var(--muted);text-decoration:none;padding:6px 13px;border:1px solid var(--border);border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
+.header-links a{font-size:13px;color:var(--muted);text-decoration:none;padding:6px 14px;border:1px solid var(--border);border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
 .header-links a:hover{color:var(--green);border-color:var(--green)}
 main{max-width:720px;margin:0 auto;padding:56px 24px 80px}
 .hero{margin-bottom:48px}
 .hero-badge{display:inline-block;background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-size:12px;letter-spacing:2px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:18px;font-family:'Syne',sans-serif}
 .hero h1{font-family:'Syne',sans-serif;font-size:clamp(24px,4vw,36px);font-weight:800;margin-bottom:12px}
-.hero-meta{font-size:11px;color:var(--muted);letter-spacing:1px}
+.hero-meta{font-size:13px;color:var(--muted);font-family:'Syne',sans-serif}
 .section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px 32px;margin-bottom:14px}
 .section h2{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--green);margin-bottom:14px;display:flex;align-items:center;gap:8px}
 .section p,.section li{font-size:12px;color:#b0b0c8;line-height:1.9;margin-bottom:10px}
@@ -2008,7 +2008,7 @@ main{max-width:720px;margin:0 auto;padding:56px 24px 80px}
 .section li::marker{color:var(--green)}
 .section p:last-child,.section li:last-child{margin-bottom:0}
 .highlight{background:#00ff8708;border:1px solid #00ff8720;border-radius:8px;padding:14px 18px;margin-top:14px}
-.highlight p{color:var(--text);font-size:11px;margin:0}
+.highlight p{color:var(--text);font-size:13px;margin:0;font-family:'Syne',sans-serif;line-height:1.7}
 .tag{display:inline-block;background:#1e1e2e;border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:12px;color:var(--muted);margin:2px;vertical-align:middle}
 .contact-btn{display:inline-flex;align-items:center;gap:8px;background:#25d36618;border:1px solid #25d36630;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:11px 22px;border-radius:8px;text-decoration:none;transition:all .2s;margin-top:14px}
 .contact-btn:hover{background:#25d36628;transform:translateY(-2px);box-shadow:0 6px 20px #25d36625}
@@ -2081,7 +2081,7 @@ footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
 </main>
 <footer>
   <p>© ${new Date().getFullYear()} ZVM — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/privacidade">Privacidade</a></p>
-  <p style="margin-top:6px;font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:.5">Todos os direitos reservados</p>
+  <p style="margin-top:6px;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:.5">Todos os direitos reservados</p>
 </footer>
 ${CANVAS_BG}
 </body></html>`;
@@ -2095,14 +2095,14 @@ function renderAnalyticsLogin(error = '') {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Analytics</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#080810;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
 .card{background:#0f0f1a;border:1px solid #1c1c2e;border-radius:18px;padding:40px 36px;width:360px;position:relative;z-index:1;box-shadow:0 0 40px rgba(255,215,0,0.08)}
 .logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#ffd32a;margin-bottom:4px;text-align:center;letter-spacing:-0.5px}
 .sub{color:#5a5a7a;font-size:12px;letter-spacing:3px;text-transform:uppercase;margin-bottom:24px;text-align:center}
-.badge{display:block;background:#ffd32a12;border:1px solid #ffd32a30;color:#ffd32a;font-size:11px;letter-spacing:2px;text-transform:uppercase;padding:3px 10px;border-radius:20px;margin-bottom:20px;text-align:center;font-family:'Syne',sans-serif}
+.badge{display:block;background:#ffd32a12;border:1px solid #ffd32a30;color:#ffd32a;font-size:13px;letter-spacing:1px;text-transform:uppercase;padding:4px 14px;border-radius:20px;margin-bottom:20px;text-align:center;font-family:'Syne',sans-serif;font-weight:700}
 label{display:block;font-size:12px;letter-spacing:2px;color:#5a5a7a;text-transform:uppercase;margin-bottom:7px}
 input{width:100%;padding:11px 14px;background:#080810;border:1px solid #1c1c2e;border-radius:8px;color:#e2e2f0;font-family:'Space Mono',monospace;font-size:13px;outline:none;margin-bottom:16px;transition:border .2s}
 input:focus{border-color:#ffd32a}
@@ -2163,7 +2163,7 @@ async function renderAnalyticsDashboard() {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Analytics</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--gold:#ffd32a;--dark:#080810;--card:#0f0f1a;--card2:#13131f;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--green:#00ff87;--red:#ff4757;--blue:#4f8ef7;--radius:10px}
@@ -2171,7 +2171,7 @@ body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace
 header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040}
 .logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--gold);display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
 .badge-an{background:#ffd32a12;border:1px solid #ffd32a30;color:var(--gold);font-size:12px;text-transform:uppercase;padding:4px 12px;border-radius:20px;font-family:'Syne',sans-serif;font-weight:700}
-a.out{color:var(--muted);font-size:11px;text-decoration:none;padding:6px 12px;border:1px solid var(--border);border-radius:6px;transition:all .2s}
+a.out{color:var(--muted);font-size:13px;text-decoration:none;padding:6px 14px;border:1px solid var(--border);border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
 a.out:hover{color:var(--red);border-color:var(--red)}
 main{padding:22px 24px;max-width:1600px;margin:0 auto;position:relative;z-index:1}
 /* Stats grid */
@@ -2184,7 +2184,7 @@ main{padding:22px 24px;max-width:1600px;margin:0 auto;position:relative;z-index:
 .sc .n.green{color:var(--green)}
 .sc .n.red{color:var(--red)}
 .sc .n.blue{color:var(--blue)}
-.sc .l{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-top:4px}
+.sc .l{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.3px;margin-top:4px;font-family:'Syne',sans-serif}
 .sc .sub-n{font-size:12px;color:var(--muted);margin-top:3px}
 /* Charts */
 .charts{display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:16px}
@@ -2195,9 +2195,9 @@ main{padding:22px 24px;max-width:1600px;margin:0 auto;position:relative;z-index:
 .sec{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:14px}
 .sh{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--card2);flex-wrap:wrap;gap:8px}
 .st{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:var(--gold)}
-.sh input{padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Space Mono',monospace;font-size:11px;outline:none;width:200px}
+.sh input{padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Syne',sans-serif;font-size:13px;outline:none;width:200px}
 .sh input:focus{border-color:var(--gold)}
-.btn{padding:7px 14px;border:none;border-radius:6px;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:11px;transition:all .18s}
+.btn{padding:8px 14px;border:none;border-radius:6px;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;transition:all .18s}
 .bcsv{background:#ffd32a12;color:var(--gold);border:1px solid #ffd32a30}
 .bcsv:hover{background:#ffd32a22;border-color:var(--gold)}
 .pb{padding:5px 12px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;cursor:pointer;transition:all .18s}
@@ -2205,14 +2205,14 @@ main{padding:22px 24px;max-width:1600px;margin:0 auto;position:relative;z-index:
 .period-btns{display:flex;gap:6px}
 .ov{overflow-x:auto}
 table{width:100%;border-collapse:collapse}
-th{padding:8px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:1px solid var(--border);background:var(--card2);white-space:nowrap}
-td{padding:10px 12px;font-size:11px;border-bottom:1px solid #14141f;vertical-align:middle}
+th{padding:9px 12px;text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--border);background:var(--card2);white-space:nowrap;font-family:'Syne',sans-serif}
+td{padding:10px 12px;font-size:13px;border-bottom:1px solid #14141f;vertical-align:middle;font-family:'Syne',sans-serif}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:#ffffff02}
-.badge{padding:2px 7px;border-radius:3px;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+.badge{padding:3px 8px;border-radius:3px;font-size:12px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;font-family:'Syne',sans-serif}
 .bon{background:#00ff8718;color:var(--green);border:1px solid #00ff8730}
 .boff{background:#ff475718;color:var(--red);border:1px solid #ff475730}
-.empty{text-align:center;color:var(--muted);padding:30px;font-size:11px;line-height:2}
+.empty{text-align:center;color:var(--muted);padding:30px;font-size:13px;line-height:2;font-family:'Syne',sans-serif}
 /* Retention bar */
 .ret-bar-wrap{background:#1c1c2e;border-radius:6px;height:8px;overflow:hidden;margin-top:8px}
 .ret-bar{height:8px;border-radius:6px;background:linear-gradient(90deg,var(--gold),var(--green));transition:width .8s}
@@ -2272,14 +2272,14 @@ tr:hover td{background:#ffffff02}
     <div class="chart-card">
       <div class="chart-title">🔄 Retenção de Clientes</div>
       <div style="padding-top:20px">
-        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px"><span style="color:var(--muted)">Novos clientes</span><span style="color:var(--text)">${(stats?.uniqueClients||0)-(stats?.returningClients||0)}</span></div>
-        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px"><span style="color:var(--muted)">Clientes recorrentes</span><span style="color:var(--gold)">${stats?.returningClients||0}</span></div>
-        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:10px"><span style="color:var(--muted)">Taxa de retenção</span><span style="color:${(stats?.retentionRate||0)>=30?'var(--green)':'var(--red)'};font-weight:700">${stats?.retentionRate||0}%</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;font-family:'Syne',sans-serif"><span style="color:var(--muted)">Novos clientes</span><span style="color:var(--text)">${(stats?.uniqueClients||0)-(stats?.returningClients||0)}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;font-family:'Syne',sans-serif"><span style="color:var(--muted)">Clientes recorrentes</span><span style="color:var(--gold)">${stats?.returningClients||0}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:10px;font-family:'Syne',sans-serif"><span style="color:var(--muted)">Taxa de retenção</span><span style="color:${(stats?.retentionRate||0)>=30?'var(--green)':'var(--red)'};font-weight:700">${stats?.retentionRate||0}%</span></div>
         <div class="ret-bar-wrap"><div class="ret-bar" style="width:${stats?.retentionRate||0}%"></div></div>
         <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:14px">
           <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Churn (30 dias)</div>
-          <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px"><span style="color:var(--muted)">Expiradas no período</span><span>${stats?.expiredKeys||0}</span></div>
-          <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--muted)">Não renovaram</span><span style="color:var(--red)">${stats?.churnedKeys||0} (${stats?.churnRate||0}%)</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;font-family:'Syne',sans-serif"><span style="color:var(--muted)">Expiradas no período</span><span>${stats?.expiredKeys||0}</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;font-family:'Syne',sans-serif"><span style="color:var(--muted)">Não renovaram</span><span style="color:var(--red)">${stats?.churnedKeys||0} (${stats?.churnRate||0}%)</span></div>
         </div>
       </div>
     </div>
@@ -2474,7 +2474,7 @@ async function handleRequest(req, res) {
     }
     const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
     let body; try { body = JSON.parse(rawBody); } catch { body = {}; }
-    const keyCode    = (body.authKey || '').toLowerCase();
+    const keyCode    = (body.authKey || '').toLowerCase().slice(0, 20);
     const phone      = body.phoneNumber || '-';
     const wppVersion = body.wppVersion  || '-';
     const deviceId   = body.deviceId    || '';
@@ -3101,7 +3101,7 @@ async function handleRequest(req, res) {
   // ── Portal cliente: status ──
   if (p === '/client/status' && req.method === 'POST') {
     const body = await parseBody(req);
-    const code = (body.key || '').trim().toLowerCase();
+    const code = (body.key || '').trim().toLowerCase().slice(0, 20);
     if (!code || !keys[code]) { sendJson(res, { error: 'not_found' }, 404); return; }
     const k = keys[code];
     sendJson(res, {
