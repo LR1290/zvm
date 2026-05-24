@@ -146,7 +146,6 @@ let logs             = [];
 let sessions         = {};
 let modSessions      = {};
 let analyticsSessions= {};
-let extSessions      = {};
 let serverReady      = false;
 
 // ─────────────────────────────────────────────
@@ -171,15 +170,6 @@ function verifyHmac(rawBody, sig, ts) {
     .update(ts + '.' + rawBody).digest('hex');
   try { return crypto.timingSafeEqual(Buffer.from(sig,'hex'), Buffer.from(expected,'hex')); }
   catch { return false; }
-}
-
-function verifyExtToken(token, keyCode) {
-  if (!token) return false;
-  const s = extSessions[token];
-  if (!s) return false;
-  if (new Date() > new Date(s.expiresAt)) { delete extSessions[token]; return false; }
-  if (keyCode && s.keyCode !== keyCode) return false;
-  return true;
 }
 
 // ─────────────────────────────────────────────
@@ -275,7 +265,7 @@ setInterval(() => {
     if (now > e.blockedUntil && now > e.resetAt) rateLimitMap.delete(k);
 }, 15 * 60000);
 
-// Limpeza periódica de sessões admin, mod e ext expiradas
+// Limpeza periódica de sessões expiradas
 setInterval(() => {
   const now = new Date();
   for (const [k, s] of Object.entries(sessions))
@@ -2657,21 +2647,21 @@ async function handleRequest(req, res) {
     const wppVersion = body.wppVersion  || '-';
     const deviceId   = body.deviceId    || '';
 
-    if (!keyCode || !keys[keyCode]) {
-      // Tentar buscar no banco — resolve dessincronização entre servidores
-      if (keyCode) {
-        try {
-          const db = await getMongoDb();
-          const doc = await db.collection('store').findOne({ _id: 'keys' });
-          if (doc && doc.data && doc.data[keyCode]) {
-            keys[keyCode] = doc.data[keyCode];
-          }
-        } catch(e) { console.error('[DB] Erro ao buscar chave v3:', e.message); }
-      }
+    if (!keyCode) {
+      sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada.', isLoggedIn: false });
+      return;
     }
-    if (!keyCode || !keys[keyCode]) {
+    if (!keys[keyCode]) {
+      // Buscar no banco — resolve dessincronização entre múltiplos servidores
+      try {
+        const db = await getMongoDb();
+        const doc = await db.collection('store').findOne({ _id: 'keys' });
+        if (doc && doc.data && doc.data[keyCode]) keys[keyCode] = doc.data[keyCode];
+      } catch(e) { /* continua */ }
+    }
+    if (!keys[keyCode]) {
       sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada. Contate o vendedor.', isLoggedIn: false });
-      addLog({ keyCode: keyCode||'?', label: '-', phone, ip, wppVersion, action: 'key_not_found' }).catch(()=>{});
+      addLog({ keyCode, label: '-', phone, ip, wppVersion, action: 'key_not_found' }).catch(()=>{});
       return;
     }
     if (isKeyExpired(keys[keyCode])) {
@@ -2726,11 +2716,7 @@ async function handleRequest(req, res) {
     if (hasPhone) keys[keyCode].lastPhone = phone;
     if (deviceId) keys[keyCode].deviceId  = deviceId;
 
-    const _et = generateToken();
-    extSessions[_et] = { keyCode, expiresAt: new Date(Date.now() + 30*24*60*60*1000).toISOString() };
-    const _authData  = getAuthData(keyCode, body.userName || '');
-    _authData._zv_et = _et;
-    sendJson(res, _authData);
+    sendJson(res, getAuthData(keyCode, body.userName || ''));
 
     const _action = isNewPhone ? 'login_ok' : 'relogin_ok';
     addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: _action }).catch(()=>{});
@@ -2863,46 +2849,30 @@ async function handleRequest(req, res) {
   // ── Mod API: listar apenas as chaves criadas pelo moderador ──
   if (p === R_MOD+'/api/my-keys' && req.method === 'GET') {
     if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-
-    // Extrair nome do moderador da sessão
-    const _modCookieOnce = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
-    const _modSessOnce   = _modCookieOnce ? modSessions[_modCookieOnce[1]] : null;
-    const myModName      = _modSessOnce ? _modSessOnce.modName : null;
-
-    // Buscar SEMPRE do banco — garante sincronização entre servidores
-    let allKeys = keys; // fallback para memória
+    const _mc = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+    const myModName = (_mc && modSessions[_mc[1]]) ? modSessions[_mc[1]].modName : null;
+    if (!myModName) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    // Fonte de verdade: banco MongoDB — ignora memória local do processo
     try {
       const db  = await getMongoDb();
       const doc = await db.collection('store').findOne({ _id: 'keys' });
-      if (doc && doc.data) {
-        // Mesclar banco com memória local (memória tem precedência — mais atualizada)
-        allKeys = Object.assign({}, doc.data, keys);
-        // Atualizar memória local com o que veio do banco
-        Object.assign(keys, doc.data);
-      }
+      const dbKeys = (doc && doc.data) ? doc.data : {};
+      const search = '[Mod: ' + myModName + ']';
+      const myKeys = Object.entries(dbKeys)
+        .filter(([, k]) => k.note && k.note.includes(search))
+        .map(([code, k]) => ({
+          code, label: k.label, maxUses: k.maxUses,
+          active: k.active && !isKeyExpired(k),
+          expiresAt: k.expiresAt || null,
+          deferred: !!(k.expireDuration && !k.expiresAt),
+          createdAt: k.createdAt || '', note: k.note || '',
+        }))
+        .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      sendJson(res, { ok: true, keys: myKeys, modName: myModName }); return;
     } catch(e) {
-      console.error('[DB] Erro ao buscar chaves do mod:', e.message);
+      console.error('[DB] my-keys:', e.message);
+      sendJson(res, { error: 'db_error' }, 500); return;
     }
-
-    const myKeys = Object.entries(allKeys)
-      .filter(([, k]) => {
-        if (!k.note) return false;
-        if (!myModName) return k.note.startsWith('[Mod:');
-        return k.note.includes('[Mod: ' + myModName + ']');
-      })
-      .map(([code, k]) => ({
-        code,
-        label:     k.label,
-        maxUses:   k.maxUses,
-        active:    k.active && !isKeyExpired(k),
-        expiresAt: k.expiresAt || null,
-        deferred:  !!(k.expireDuration && !k.expiresAt),
-        createdAt: k.createdAt,
-        note:      k.note || '',
-      }))
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-
-    sendJson(res, { ok: true, keys: myKeys, modName: myModName }); return;
   }
 
   // ── Mod API: adicionar/editar nota ──
@@ -2910,7 +2880,16 @@ async function handleRequest(req, res) {
     if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     // Extrair código da URL
     const codeFromUrl = decodeURIComponent(p.slice((R_MOD+'/api/keys/').length, -'/note'.length));
-    if (!codeFromUrl || !keys[codeFromUrl]) { sendJson(res, { error: 'not found' }, 404); return; }
+    if (!codeFromUrl) { sendJson(res, { error: 'not found' }, 404); return; }
+    // Garantir que a chave está em memória (pode ter sido criada em outro servidor)
+    if (!keys[codeFromUrl]) {
+      try {
+        const _db2 = await getMongoDb();
+        const _doc2 = await _db2.collection('store').findOne({ _id: 'keys' });
+        if (_doc2 && _doc2.data && _doc2.data[codeFromUrl]) keys[codeFromUrl] = _doc2.data[codeFromUrl];
+      } catch(e) { /* continua */ }
+    }
+    if (!keys[codeFromUrl]) { sendJson(res, { error: 'not found' }, 404); return; }
     // Verificar que a chave pertence a este moderador
     const _mc3 = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
     const _ms3 = _mc3 ? modSessions[_mc3[1]] : null;
@@ -3447,7 +3426,7 @@ async function handleRequest(req, res) {
     console.log(`🔑 2FA:  ${TOTP_SECRET ? 'ATIVO' : '⚠ inativo — defina TOTP_SECRET'}`);
     console.log(`💳 Payt: ${PAYT_SECRET ? 'ATIVO' : '⚠ inativo — defina PAYT_SECRET'}`);
     console.log(`🔑 Admin: ${R_ADMIN} | User: ${ADMIN_USER}`);
-    console.log(`👮 Mod:   ${MODS.length > 0 ? R_MOD+' | '+MODS.length+' mod(s): '+MODS.map(m=>m.name).join(', ') : '⚠ inativo — defina MOD_USER e MOD_PASS'}`); // rota só visível nos logs privados do Render
+    console.log(`👮 Mod:   ${MODS.length > 0 ? R_MOD+' | '+MODS.length+' mod(s): '+MODS.map(m=>m.name).join(', ') : '⚠ inativo — defina MOD_USER e MOD_PASS'}`);
     console.log(`📊 Analytics: ${ANALYTICS_PASS ? R_ANALYTICS : '⚠ inativo — defina ANALYTICS_PASS'}`);
     console.log(`🌐 Extension: ${R_EXT}/v3/key`);
     console.log(`📊 Webhook: ${WEBHOOK_URL || 'não configurado'}`);
