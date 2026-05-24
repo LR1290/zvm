@@ -868,7 +868,12 @@ async function loadHistory(){
     if(r.status===401){toast('Sessão expirada.',false);setTimeout(()=>location.href=_RM,1500);return;}
     const d=await r.json();
     const tbody=document.getElementById('hist-body');
-    if(!d.keys||d.keys.length===0){tbody.innerHTML='<tr><td colspan="7" class="empty">Nenhuma chave criada ainda</td></tr>';return;}
+    if(!d.keys||d.keys.length===0){
+      const emptyMsg=d.modName
+        ?'Nenhuma chave atribuída a <strong>'+escHtml(d.modName)+'</strong>.<br><span style="font-size:12px;color:var(--muted)">Se você tem chaves mas não aparecem, faça logout e login novamente.</span>'
+        :'Nenhuma chave encontrada';
+      tbody.innerHTML='<tr><td colspan="7" class="empty">'+emptyMsg+'</td></tr>';return;
+    }
     
     const now=Date.now();
     let expiringSoon=0,expired=0;
@@ -2858,13 +2863,27 @@ async function handleRequest(req, res) {
   // ── Mod API: listar apenas as chaves criadas pelo moderador ──
   if (p === R_MOD+'/api/my-keys' && req.method === 'GET') {
     if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+
+    // Extrair nome do moderador UMA vez, fora do loop
+    const _modCookieOnce = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+    const _modSessOnce   = _modCookieOnce ? modSessions[_modCookieOnce[1]] : null;
+    const myModName      = _modSessOnce ? _modSessOnce.modName : null;
+
+    // Se memória estiver vazia (restart do servidor), recarregar do banco
+    if (Object.keys(keys).length === 0) {
+      try {
+        const db = await getMongoDb();
+        const doc = await db.collection('store').findOne({ _id: 'keys' });
+        if (doc && doc.data) Object.assign(keys, doc.data);
+      } catch(e) { console.error('[DB] Erro ao recarregar chaves:', e.message); }
+    }
+
     const myKeys = Object.entries(keys)
       .filter(([, k]) => {
-        const _modCookie2 = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
-        const _modSess2   = _modCookie2 ? modSessions[_modCookie2[1]] : null;
-        const _myName     = _modSess2 ? _modSess2.modName : null;
-        if (!_myName) return k.note && k.note.startsWith('[Mod:');
-        return k.note && k.note.includes('[Mod: '+_myName+']');
+        if (!k.note) return false;
+        if (!myModName) return k.note.startsWith('[Mod:');
+        // Match exato do nome do moderador entre [Mod: ...] 
+        return k.note.includes('[Mod: ' + myModName + ']');
       })
       .map(([code, k]) => ({
         code,
@@ -2874,10 +2893,10 @@ async function handleRequest(req, res) {
         expiresAt: k.expiresAt || null,
         deferred:  !!(k.expireDuration && !k.expiresAt),
         createdAt: k.createdAt,
-        note:      k.note || '',   // inclui nota para o mod editar
+        note:      k.note || '',
       }))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    sendJson(res, { ok: true, keys: myKeys }); return;
+    sendJson(res, { ok: true, keys: myKeys, modName: myModName }); return;
   }
 
   // ── Mod API: adicionar/editar nota ──
