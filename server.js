@@ -3078,16 +3078,26 @@ async function handleRequest(req, res) {
   const codeAssignMod = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/assign-mod$`));
   if (codeAssignMod && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    // Buscar do banco se não está em memória (chave criada em outro servidor)
+    if (!keys[codeAssignMod]) {
+      try {
+        const _dbA = await getMongoDb();
+        const _docA = await _dbA.collection('store').findOne({ _id: 'keys' });
+        if (_docA && _docA.data && _docA.data[codeAssignMod]) {
+          keys[codeAssignMod] = _docA.data[codeAssignMod];
+        }
+      } catch(e) { console.error('[DB] assign-mod lookup:', e.message); }
+    }
     if (!keys[codeAssignMod]) { sendJson(res, { error: 'not found' }, 404); return; }
     const body    = await parseBody(req);
     const modName = String(body.modName || '').trim().slice(0, 60);
     const k       = keys[codeAssignMod];
-    // Remover atribuição anterior de mod da nota
+    // Remover atribuição anterior e adicionar nova
     let note = (k.note || '').replace(/\[Mod: [^\]]+\]\s*/g, '').trim();
-    // Adicionar nova atribuição se informada
     if (modName) note = '[Mod: ' + modName + ']' + (note ? ' ' + note : '');
     k.note = note.slice(0, 500);
     await saveKey(codeAssignMod);
+    console.log('[ADMIN] assign-mod: ' + codeAssignMod + ' → ' + (modName || 'removido') + ' | nota: ' + k.note);
     sendJson(res, { ok: true, modName, note: k.note }); return;
   }
 
@@ -3434,7 +3444,7 @@ async function handleRequest(req, res) {
 
     const safeHandler = (req, res) => {
       handleRequest(req, res).catch(err => {
-        console.error(`[ERRO] ${req.method} ${p||req.url.split('?')[0]}:`, err.message||err);
+        console.error(`[ERRO] ${req.method} ${req.url.split('?')[0]}:`, err.message||err);
         if (!res.headersSent) { res.writeHead(500); res.end('Internal Server Error'); }
       });
     };
