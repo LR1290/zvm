@@ -362,7 +362,7 @@ function isModSession(req) {
   const match  = cookie.match(/zv_mod=([a-f0-9]+)/);
   if (!match) return false;
   const s = modSessions[match[1]];
-  if (!s) return false;
+  if (!s) return false; // sessão perdida (restart) — cookie inválido
   if (new Date() > new Date(s.expiresAt)) { delete modSessions[match[1]]; return false; }
   return true;
 }
@@ -774,7 +774,7 @@ main{padding:28px 32px;max-width:1200px;margin:0 auto}
           <th>Nota</th>
           <th>Status</th>
         </tr></thead>
-        <tbody id="hist-body"><tr><td colspan="6" class="empty">Clique em Atualizar para carregar</td></tr></tbody>
+        <tbody id="hist-body"><tr><td colspan="7" class="empty">Clique em Atualizar para carregar</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -855,8 +855,12 @@ function fmtDate(iso){if(!iso)return'—';const d=new Date(iso);return d.toLocal
 async function loadHistory(){
   try{
     const r=await fetch(_RM+'/api/my-keys');
-    if(r.status===401){toast('Sessão expirada.',false);setTimeout(()=>location.href=_RM,1500);return;}
+    if(r.status===401){
+      toast('Sessão expirada. Redirecionando...',false);
+      setTimeout(()=>location.href=_RM+'/logout',1500);return;
+    }
     const d=await r.json();
+    if(d.error==='db_error'){toast('Erro de conexão com banco. Tente novamente.',false);return;}
     const tbody=document.getElementById('hist-body');
     if(!d.keys||d.keys.length===0){
       const emptyMsg=d.modName
@@ -899,7 +903,7 @@ async function loadHistory(){
       const noteHtml=noteClean
         ?'<span style="font-size:12px;color:var(--muted);font-family:Syne,sans-serif">'+escHtml(noteClean)+'</span><br>'
         :'';
-      const noteBtn='<button class="note-btn" onclick="openModNote(''+k.code+'',''+escHtml(k.label)+'',''+escHtml(noteClean)+'')">✏️</button>';
+      const noteBtn='<button class="note-btn" data-code="'+escHtml(k.code)+'" data-label="'+escHtml(k.label)+'" data-note="'+escHtml(noteClean)+'" onclick="openModNoteEl(this)">✏️</button>';
       
       return '<tr'+expClass+'><td><span class="kc">'+k.code+'</span></td><td>'+escHtml(k.label)+'</td><td>'+k.maxUses+'</td><td>'+expHtml+'</td><td>'+fmtDate(k.createdAt)+'</td><td>'+noteHtml+noteBtn+'</td><td>'+st+'</td></tr>';
     }).join('');
@@ -920,6 +924,7 @@ async function loadHistory(){
 }
 
 // ── Modal de nota do mod ──
+function openModNoteEl(el){openModNote(el.dataset.code,el.dataset.label,el.dataset.note);}
 function openModNote(code,label,currentNote){
   document.getElementById('modNoteCode').value=code;
   document.getElementById('modNoteLabel').textContent=label;
@@ -943,8 +948,8 @@ async function saveModNote(){
 
 function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
-// Carregar histórico ao entrar
-loadHistory();
+// Carregar histórico ao entrar (com pequeno delay para garantir sessão pronta)
+setTimeout(loadHistory, 300);
 </script>
 ${CANVAS_BG}</body></html>`;
 }
@@ -1378,7 +1383,7 @@ tr:hover td{background:#ffffff02}
 .wl{background:#ff8c0018;color:#ff8c00}
 .empty{text-align:center;color:var(--muted);padding:40px!important;font-size:14px;font-family:'Syne',sans-serif}
 .toast{position:fixed;bottom:20px;right:20px;padding:11px 18px;border-radius:var(--radius);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;display:none;z-index:999999;box-shadow:0 6px 30px #00000070;max-width:380px;line-height:1.4}
-.alert-card{background:#ff860008;border:1px solid #ff860040;border-radius:var(--radius);padding:12px 18px;margin-bottom:20px;display:flex;align-items:center;gap:12px;font-size:13px;color:#ff8600;font-family:'Syne',sans-serif;display:none}
+.alert-card{background:#ff860008;border:1px solid #ff860040;border-radius:var(--radius);padding:12px 18px;margin-bottom:20px;display:none;align-items:center;gap:12px;font-size:13px;color:#ff8600;font-family:'Syne',sans-serif}
 .badge-exp{background:#ff860018;color:#ff8600;border:1px solid #ff860040;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:700;font-family:'Syne',sans-serif}
 .badge-expired{background:#ff475718;color:#ff4757;border:1px solid #ff475740;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:700;font-family:'Syne',sans-serif}
 .note-btn{padding:3px 8px;background:#4f8ef710;color:var(--blue);border:1px solid #4f8ef730;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;transition:all .15s}
@@ -3097,7 +3102,6 @@ async function handleRequest(req, res) {
     if (modName) note = '[Mod: ' + modName + ']' + (note ? ' ' + note : '');
     k.note = note.slice(0, 500);
     await saveKey(codeAssignMod);
-    console.log('[ADMIN] assign-mod: ' + codeAssignMod + ' → ' + (modName || 'removido') + ' | nota: ' + k.note);
     sendJson(res, { ok: true, modName, note: k.note }); return;
   }
 
