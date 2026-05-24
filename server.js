@@ -2864,25 +2864,30 @@ async function handleRequest(req, res) {
   if (p === R_MOD+'/api/my-keys' && req.method === 'GET') {
     if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
 
-    // Extrair nome do moderador UMA vez, fora do loop
+    // Extrair nome do moderador da sessão
     const _modCookieOnce = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
     const _modSessOnce   = _modCookieOnce ? modSessions[_modCookieOnce[1]] : null;
     const myModName      = _modSessOnce ? _modSessOnce.modName : null;
 
-    // Se memória estiver vazia (restart do servidor), recarregar do banco
-    if (Object.keys(keys).length === 0) {
-      try {
-        const db = await getMongoDb();
-        const doc = await db.collection('store').findOne({ _id: 'keys' });
-        if (doc && doc.data) Object.assign(keys, doc.data);
-      } catch(e) { console.error('[DB] Erro ao recarregar chaves:', e.message); }
+    // Buscar SEMPRE do banco — garante sincronização entre servidores
+    let allKeys = keys; // fallback para memória
+    try {
+      const db  = await getMongoDb();
+      const doc = await db.collection('store').findOne({ _id: 'keys' });
+      if (doc && doc.data) {
+        // Mesclar banco com memória local (memória tem precedência — mais atualizada)
+        allKeys = Object.assign({}, doc.data, keys);
+        // Atualizar memória local com o que veio do banco
+        Object.assign(keys, doc.data);
+      }
+    } catch(e) {
+      console.error('[DB] Erro ao buscar chaves do mod:', e.message);
     }
 
-    const myKeys = Object.entries(keys)
+    const myKeys = Object.entries(allKeys)
       .filter(([, k]) => {
         if (!k.note) return false;
         if (!myModName) return k.note.startsWith('[Mod:');
-        // Match exato do nome do moderador entre [Mod: ...] 
         return k.note.includes('[Mod: ' + myModName + ']');
       })
       .map(([code, k]) => ({
@@ -2896,6 +2901,7 @@ async function handleRequest(req, res) {
         note:      k.note || '',
       }))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
     sendJson(res, { ok: true, keys: myKeys, modName: myModName }); return;
   }
 
