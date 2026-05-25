@@ -701,10 +701,84 @@ main{padding:28px 32px;max-width:1200px;margin:0 auto}
 .modal textarea{width:100%;background:var(--dark);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Syne',sans-serif;font-size:13px;padding:10px;outline:none;resize:vertical;min-height:90px;transition:border .2s}
 .modal textarea:focus{border-color:var(--blue)}
 .modal-actions{display:flex;gap:8px;margin-top:12px;justify-content:flex-end}
-@media(max-width:700px){.form-grid{grid-template-columns:1fr 1fr};.stats{grid-template-columns:1fr}}
+/* Achievements */
+.ach-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;padding:18px}
+.ach{background:var(--dark);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;transition:all .2s;position:relative;overflow:hidden}
+.ach.unlocked{border-color:#4f8ef740;background:#4f8ef708}
+.ach.unlocked .ach-icon{opacity:1;filter:none}
+.ach.locked{opacity:.45;filter:grayscale(.8)}
+.ach-icon{font-size:28px;flex-shrink:0;transition:all .3s}
+.ach-info{flex:1;min-width:0}
+.ach-name{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--text);margin-bottom:2px}
+.ach-desc{font-size:11px;color:var(--muted);line-height:1.4}
+.ach-badge{position:absolute;top:8px;right:8px;font-size:9px;font-weight:700;font-family:'Syne',sans-serif;padding:2px 6px;border-radius:10px;text-transform:uppercase;letter-spacing:.5px}
+.ach.unlocked .ach-badge{background:#4f8ef720;color:var(--blue);border:1px solid #4f8ef740}
+.ach.locked .ach-badge{background:#ffffff08;color:var(--muted);border:1px solid var(--border)}
+.ach-progress{height:3px;background:var(--border);border-radius:2px;margin-top:6px;overflow:hidden}
+.ach-progress-bar{height:3px;background:var(--blue);border-radius:2px;transition:width .6s}
+/* Ranking */
+.rank-grid{padding:18px;display:flex;flex-direction:column;gap:8px}
+.rank-row{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;background:var(--dark);border:1px solid var(--border);transition:all .2s}
+.rank-row.me{border-color:#4f8ef760;background:#4f8ef710}
+.rank-pos{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:var(--muted);width:28px;flex-shrink:0;text-align:center}
+.rank-row:nth-child(1) .rank-pos{color:#ffd32a}
+.rank-row:nth-child(2) .rank-pos{color:#a0a0b0}
+.rank-row:nth-child(3) .rank-pos{color:#cd7f32}
+.rank-name{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;flex:1;color:var(--text)}
+.rank-count{font-family:'Space Mono',monospace;font-size:13px;color:var(--blue);font-weight:700}
+.rank-me-badge{font-size:10px;background:#4f8ef718;color:var(--blue);border:1px solid #4f8ef730;padding:2px 8px;border-radius:10px;font-family:'Syne',sans-serif;font-weight:700}
+/* Stats grid 4 colunas */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}
+@media(max-width:900px){.stats{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:700px){.form-grid{grid-template-columns:1fr 1fr};.stats{grid-template-columns:1fr 1fr};.ach-grid{grid-template-columns:1fr}}
+
+/* ── Notificação estilo PS5 ── */
+#trophy-notif{
+  position:fixed;bottom:28px;right:-420px;z-index:9999999;
+  width:360px;
+  background:linear-gradient(135deg,#0d0d1a,#141428);
+  border:1px solid #4f8ef750;
+  border-radius:14px;
+  padding:0;
+  box-shadow:0 8px 40px #00000080, 0 0 0 1px #4f8ef720;
+  transition:right .5s cubic-bezier(.34,1.56,.64,1);
+  overflow:hidden;
+  backdrop-filter:blur(20px);
+}
+#trophy-notif.show{right:28px}
+#trophy-notif.hide{right:-420px;transition:right .4s ease-in}
+.tn-top{display:flex;align-items:center;gap:0;padding:10px 14px 8px;border-bottom:1px solid #ffffff08}
+.tn-trophy-icon{font-size:11px;color:#ffd32a;font-family:'Syne',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;display:flex;align-items:center;gap:5px}
+.tn-trophy-icon::before{content:'🏆';font-size:13px}
+.tn-body{display:flex;align-items:center;gap:14px;padding:14px}
+.tn-icon{font-size:42px;flex-shrink:0;line-height:1;filter:drop-shadow(0 0 8px #4f8ef750)}
+.tn-text{flex:1;min-width:0}
+.tn-label{font-size:10px;color:#4f8ef7;font-family:'Syne',sans-serif;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:3px}
+.tn-name{font-size:16px;font-weight:800;color:#fff;font-family:'Syne',sans-serif;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tn-desc{font-size:12px;color:#8a8aaa;font-family:'Syne',sans-serif;line-height:1.4}
+.tn-bar-wrap{height:3px;background:#ffffff10;margin:0 14px 14px;border-radius:2px;overflow:hidden}
+.tn-bar{height:3px;background:linear-gradient(90deg,#4f8ef7,#00ff87);border-radius:2px;width:0;transition:width 2.8s linear}
+.tn-shimmer{position:absolute;inset:0;background:linear-gradient(105deg,transparent 40%,#ffffff06 50%,transparent 60%);animation:shimmer 2s ease-in-out;pointer-events:none}
+@keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(200%)}}
 </style>
 </head>
 <body>
+<!-- Notificação PS5 -->
+<div id="trophy-notif">
+  <div class="tn-top">
+    <div class="tn-trophy-icon">Conquista Desbloqueada</div>
+  </div>
+  <div class="tn-body">
+    <div class="tn-icon" id="tn-icon">🏆</div>
+    <div class="tn-text">
+      <div class="tn-label">ZVM — Moderação</div>
+      <div class="tn-name" id="tn-name">—</div>
+      <div class="tn-desc" id="tn-desc">—</div>
+    </div>
+  </div>
+  <div class="tn-bar-wrap"><div class="tn-bar" id="tn-bar"></div></div>
+  <div class="tn-shimmer"></div>
+</div>
 <header>
   <div class="logo">⚡ ZVM <span class="badge-mod">${modName}</span></div>
   <div class="hright">
@@ -716,6 +790,26 @@ main{padding:28px 32px;max-width:1200px;margin:0 auto}
   <div class="notice">
     <span style="font-size:16px;flex-shrink:0">🔒</span>
     <span><strong>Acesso restrito.</strong> Este painel permite apenas a criação de novas chaves. Dados de clientes, telefones, IPs e logs de acesso não estão disponíveis para moderadores.</span>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="sc"><div class="sc-icon">🔑</div><div class="n" id="stat-total">—</div><div class="l">Total de Chaves</div></div>
+    <div class="sc"><div class="sc-icon">✅</div><div class="n" id="stat-active">—</div><div class="l">Chaves Ativas</div></div>
+    <div class="sc"><div class="sc-icon">📅</div><div class="n" id="stat-today">—</div><div class="l">Criadas Hoje</div></div>
+    <div class="sc"><div class="sc-icon">⚠️</div><div class="n" id="stat-expiring" style="color:#ff8600">—</div><div class="l">Expirando em 48h</div></div>
+  </div>
+
+  <!-- Conquistas + Ranking lado a lado -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+    <div class="sec">
+      <div class="sh"><div class="st">🏆 Conquistas</div><span id="ach-count" style="font-size:11px;color:var(--muted);font-family:'Syne',sans-serif"></span></div>
+      <div class="ach-grid" id="ach-grid"></div>
+    </div>
+    <div class="sec">
+      <div class="sh"><div class="st">📊 Ranking de Moderadores</div></div>
+      <div class="rank-grid" id="rank-grid"></div>
+    </div>
   </div>
 
   <div class="alert-card" id="alert-expiring">
@@ -852,6 +946,115 @@ function copyKey(){
 
 function fmtDate(iso){if(!iso)return'—';const d=new Date(iso);return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
 
+// ── Definição das conquistas ──
+const ACHIEVEMENTS = [
+  { id:'first_key',    icon:'🔑', name:'Primeira Chave',    desc:'Crie sua primeira chave',              req: k => k.total >= 1    },
+  { id:'keys_5',       icon:'🎯', name:'5 Chaves',          desc:'Crie 5 chaves no total',               req: k => k.total >= 5    },
+  { id:'keys_10',      icon:'💪', name:'10 Chaves',         desc:'Crie 10 chaves no total',              req: k => k.total >= 10   },
+  { id:'keys_25',      icon:'🚀', name:'25 Chaves',         desc:'Crie 25 chaves no total',              req: k => k.total >= 25   },
+  { id:'keys_50',      icon:'⭐', name:'50 Chaves',         desc:'Crie 50 chaves no total',              req: k => k.total >= 50   },
+  { id:'keys_100',     icon:'💎', name:'100 Chaves',        desc:'Crie 100 chaves no total',             req: k => k.total >= 100  },
+  { id:'today_3',      icon:'⚡', name:'Sprint do Dia',     desc:'Crie 3 chaves em um único dia',        req: k => k.today >= 3    },
+  { id:'today_5',      icon:'🔥', name:'Em Chamas',         desc:'Crie 5 chaves em um único dia',        req: k => k.today >= 5    },
+  { id:'today_10',     icon:'🌋', name:'Imparável',         desc:'Crie 10 chaves em um único dia',       req: k => k.today >= 10   },
+  { id:'active_10',    icon:'✅', name:'10 Ativas',         desc:'Tenha 10 chaves ativas ao mesmo tempo', req: k => k.active >= 10  },
+  { id:'active_25',    icon:'🏅', name:'25 Ativas',         desc:'Tenha 25 chaves ativas ao mesmo tempo', req: k => k.active >= 25  },
+  { id:'rank_1',       icon:'🥇', name:'Número 1',          desc:'Seja o moderador com mais chaves',     req: k => k.rank === 1    },
+  { id:'no_expired',   icon:'🛡️', name:'Zero Expiradas',    desc:'Nenhuma chave expirada (min. 5 ativas)', req: k => k.expired === 0 && k.active >= 5 },
+];
+
+// ── Notificação estilo PS5 ──
+let _prevUnlocked=null,_trophyQueue=[],_trophyBusy=false;
+function showTrophy(a){
+  document.getElementById('tn-icon').textContent=a.icon;
+  document.getElementById('tn-name').textContent=a.name;
+  document.getElementById('tn-desc').textContent=a.desc;
+  const bar=document.getElementById('tn-bar'),notif=document.getElementById('trophy-notif');
+  bar.style.transition='none';bar.style.width='0%';
+  notif.classList.remove('hide');
+  requestAnimationFrame(()=>{
+    notif.classList.add('show');
+    setTimeout(()=>{bar.style.transition='width 3s linear';bar.style.width='100%';},150);
+    setTimeout(()=>{
+      notif.classList.remove('show');notif.classList.add('hide');
+      setTimeout(()=>{
+        notif.classList.remove('hide');_trophyBusy=false;
+        if(_trophyQueue.length>0)setTimeout(()=>showTrophy(_trophyQueue.shift()),400);
+      },450);
+    },3600);
+  });
+}
+function queueTrophy(a){if(_trophyBusy){_trophyQueue.push(a);return;}_trophyBusy=true;showTrophy(a);}
+function checkNewAchievements(stats){
+  const now=new Set(ACHIEVEMENTS.filter(a=>a.req(stats)).map(a=>a.id));
+  if(_prevUnlocked===null){_prevUnlocked=now;return;}
+  for(const a of ACHIEVEMENTS){if(!_prevUnlocked.has(a.id)&&now.has(a.id))queueTrophy(a);}
+  _prevUnlocked=now;
+}
+
+function renderAchievements(stats){
+  checkNewAchievements(stats);
+  const grid = document.getElementById('ach-grid');
+  const count_el = document.getElementById('ach-count');
+  if(!grid) return;
+  const unlocked = ACHIEVEMENTS.filter(a => a.req(stats));
+  count_el.textContent = unlocked.length + '/' + ACHIEVEMENTS.length + ' conquistadas';
+  grid.innerHTML = ACHIEVEMENTS.map(a => {
+    const ok = a.req(stats);
+    return '<div class="ach '+(ok?'unlocked':'locked')+'">' +
+      '<div class="ach-icon">'+a.icon+'</div>' +
+      '<div class="ach-info">' +
+        '<div class="ach-name">'+a.name+'</div>' +
+        '<div class="ach-desc">'+a.desc+'</div>' +
+      '</div>' +
+      '<div class="ach-badge">'+(ok?'✓ Conquistada':'Bloqueada')+'</div>' +
+    '</div>';
+  }).join('');
+}
+
+function renderRanking(ranking, myName){
+  const grid = document.getElementById('rank-grid');
+  if(!grid || !ranking.length){ if(grid) grid.innerHTML='<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Sem dados de ranking</div>'; return; }
+  const medals = ['🥇','🥈','🥉'];
+  grid.innerHTML = ranking.map((r,i) => {
+    const isMe = r.name === myName;
+    return '<div class="rank-row'+(isMe?' me':'')+'">' +
+      '<div class="rank-pos">'+(medals[i]||('#'+(i+1)))+'</div>' +
+      '<div class="rank-name">'+escHtml(r.name)+(isMe?' <span class="rank-me-badge">Você</span>':'')+'</div>' +
+      '<div class="rank-count">'+r.count+' chaves</div>' +
+    '</div>';
+  }).join('');
+}
+
+async function loadStats(keys, myName, allMods){
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0,10);
+  const total   = keys.length;
+  const active  = keys.filter(k => k.active).length;
+  const expired = keys.filter(k => !k.active && k.expiresAt && new Date(k.expiresAt) < now).length;
+  const today   = keys.filter(k => (k.createdAt||'').startsWith(todayStr)).length;
+  const expiring= keys.filter(k => { if(!k.expiresAt||!k.active) return false; const h=(new Date(k.expiresAt)-now)/3600000; return h>0&&h<48; }).length;
+
+  // Atualizar stat cards
+  document.getElementById('stat-total').textContent    = total;
+  document.getElementById('stat-active').textContent   = active;
+  document.getElementById('stat-today').textContent    = today;
+  document.getElementById('stat-expiring').textContent = expiring;
+
+  // Ranking entre todos os mods (usando dados locais)
+  const rankMap = {};
+  if(allMods) allMods.forEach(m => rankMap[m] = 0);
+  keys.forEach(k => { const m=(k.note||'').match(/\[Mod: ([^\]]+)\]/); if(m) rankMap[m[1]]=(rankMap[m[1]]||0)+1; });
+  // Adicionar mod atual se não tiver nenhuma chave ainda
+  if(myName && !(myName in rankMap)) rankMap[myName] = total;
+  else if(myName) rankMap[myName] = total;
+  const ranking = Object.entries(rankMap).map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count);
+  const myRank  = ranking.findIndex(r => r.name === myName) + 1;
+
+  renderRanking(ranking, myName);
+  renderAchievements({ total, active, expired, today, rank: myRank });
+}
+
 async function loadHistory(){
   try{
     const r=await fetch(_RM+'/api/my-keys');
@@ -920,6 +1123,8 @@ async function loadHistory(){
     } else {
       alertCard.style.display='none';
     }
+    // Atualizar stats e achievements
+    await loadStats(d.keys || [], d.modName, ${JSON.stringify(MODS.map(m => m.name))});
   }catch(e){toast('Erro ao carregar histórico.',false);}
 }
 
@@ -1143,6 +1348,115 @@ input:focus{border-color:var(--green)}
 </div>
 <script>
 function fmtDate(iso){if(!iso)return'—';const d=new Date(iso);return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
+
+// ── Definição das conquistas ──
+const ACHIEVEMENTS = [
+  { id:'first_key',    icon:'🔑', name:'Primeira Chave',    desc:'Crie sua primeira chave',              req: k => k.total >= 1    },
+  { id:'keys_5',       icon:'🎯', name:'5 Chaves',          desc:'Crie 5 chaves no total',               req: k => k.total >= 5    },
+  { id:'keys_10',      icon:'💪', name:'10 Chaves',         desc:'Crie 10 chaves no total',              req: k => k.total >= 10   },
+  { id:'keys_25',      icon:'🚀', name:'25 Chaves',         desc:'Crie 25 chaves no total',              req: k => k.total >= 25   },
+  { id:'keys_50',      icon:'⭐', name:'50 Chaves',         desc:'Crie 50 chaves no total',              req: k => k.total >= 50   },
+  { id:'keys_100',     icon:'💎', name:'100 Chaves',        desc:'Crie 100 chaves no total',             req: k => k.total >= 100  },
+  { id:'today_3',      icon:'⚡', name:'Sprint do Dia',     desc:'Crie 3 chaves em um único dia',        req: k => k.today >= 3    },
+  { id:'today_5',      icon:'🔥', name:'Em Chamas',         desc:'Crie 5 chaves em um único dia',        req: k => k.today >= 5    },
+  { id:'today_10',     icon:'🌋', name:'Imparável',         desc:'Crie 10 chaves em um único dia',       req: k => k.today >= 10   },
+  { id:'active_10',    icon:'✅', name:'10 Ativas',         desc:'Tenha 10 chaves ativas ao mesmo tempo', req: k => k.active >= 10  },
+  { id:'active_25',    icon:'🏅', name:'25 Ativas',         desc:'Tenha 25 chaves ativas ao mesmo tempo', req: k => k.active >= 25  },
+  { id:'rank_1',       icon:'🥇', name:'Número 1',          desc:'Seja o moderador com mais chaves',     req: k => k.rank === 1    },
+  { id:'no_expired',   icon:'🛡️', name:'Zero Expiradas',    desc:'Nenhuma chave expirada (min. 5 ativas)', req: k => k.expired === 0 && k.active >= 5 },
+];
+
+// ── Notificação estilo PS5 ──
+let _prevUnlocked=null,_trophyQueue=[],_trophyBusy=false;
+function showTrophy(a){
+  document.getElementById('tn-icon').textContent=a.icon;
+  document.getElementById('tn-name').textContent=a.name;
+  document.getElementById('tn-desc').textContent=a.desc;
+  const bar=document.getElementById('tn-bar'),notif=document.getElementById('trophy-notif');
+  bar.style.transition='none';bar.style.width='0%';
+  notif.classList.remove('hide');
+  requestAnimationFrame(()=>{
+    notif.classList.add('show');
+    setTimeout(()=>{bar.style.transition='width 3s linear';bar.style.width='100%';},150);
+    setTimeout(()=>{
+      notif.classList.remove('show');notif.classList.add('hide');
+      setTimeout(()=>{
+        notif.classList.remove('hide');_trophyBusy=false;
+        if(_trophyQueue.length>0)setTimeout(()=>showTrophy(_trophyQueue.shift()),400);
+      },450);
+    },3600);
+  });
+}
+function queueTrophy(a){if(_trophyBusy){_trophyQueue.push(a);return;}_trophyBusy=true;showTrophy(a);}
+function checkNewAchievements(stats){
+  const now=new Set(ACHIEVEMENTS.filter(a=>a.req(stats)).map(a=>a.id));
+  if(_prevUnlocked===null){_prevUnlocked=now;return;}
+  for(const a of ACHIEVEMENTS){if(!_prevUnlocked.has(a.id)&&now.has(a.id))queueTrophy(a);}
+  _prevUnlocked=now;
+}
+
+function renderAchievements(stats){
+  checkNewAchievements(stats);
+  const grid = document.getElementById('ach-grid');
+  const count_el = document.getElementById('ach-count');
+  if(!grid) return;
+  const unlocked = ACHIEVEMENTS.filter(a => a.req(stats));
+  count_el.textContent = unlocked.length + '/' + ACHIEVEMENTS.length + ' conquistadas';
+  grid.innerHTML = ACHIEVEMENTS.map(a => {
+    const ok = a.req(stats);
+    return '<div class="ach '+(ok?'unlocked':'locked')+'">' +
+      '<div class="ach-icon">'+a.icon+'</div>' +
+      '<div class="ach-info">' +
+        '<div class="ach-name">'+a.name+'</div>' +
+        '<div class="ach-desc">'+a.desc+'</div>' +
+      '</div>' +
+      '<div class="ach-badge">'+(ok?'✓ Conquistada':'Bloqueada')+'</div>' +
+    '</div>';
+  }).join('');
+}
+
+function renderRanking(ranking, myName){
+  const grid = document.getElementById('rank-grid');
+  if(!grid || !ranking.length){ if(grid) grid.innerHTML='<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Sem dados de ranking</div>'; return; }
+  const medals = ['🥇','🥈','🥉'];
+  grid.innerHTML = ranking.map((r,i) => {
+    const isMe = r.name === myName;
+    return '<div class="rank-row'+(isMe?' me':'')+'">' +
+      '<div class="rank-pos">'+(medals[i]||('#'+(i+1)))+'</div>' +
+      '<div class="rank-name">'+escHtml(r.name)+(isMe?' <span class="rank-me-badge">Você</span>':'')+'</div>' +
+      '<div class="rank-count">'+r.count+' chaves</div>' +
+    '</div>';
+  }).join('');
+}
+
+async function loadStats(keys, myName, allMods){
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0,10);
+  const total   = keys.length;
+  const active  = keys.filter(k => k.active).length;
+  const expired = keys.filter(k => !k.active && k.expiresAt && new Date(k.expiresAt) < now).length;
+  const today   = keys.filter(k => (k.createdAt||'').startsWith(todayStr)).length;
+  const expiring= keys.filter(k => { if(!k.expiresAt||!k.active) return false; const h=(new Date(k.expiresAt)-now)/3600000; return h>0&&h<48; }).length;
+
+  // Atualizar stat cards
+  document.getElementById('stat-total').textContent    = total;
+  document.getElementById('stat-active').textContent   = active;
+  document.getElementById('stat-today').textContent    = today;
+  document.getElementById('stat-expiring').textContent = expiring;
+
+  // Ranking entre todos os mods (usando dados locais)
+  const rankMap = {};
+  if(allMods) allMods.forEach(m => rankMap[m] = 0);
+  keys.forEach(k => { const m=(k.note||'').match(/\[Mod: ([^\]]+)\]/); if(m) rankMap[m[1]]=(rankMap[m[1]]||0)+1; });
+  // Adicionar mod atual se não tiver nenhuma chave ainda
+  if(myName && !(myName in rankMap)) rankMap[myName] = total;
+  else if(myName) rankMap[myName] = total;
+  const ranking = Object.entries(rankMap).map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count);
+  const myRank  = ranking.findIndex(r => r.name === myName) + 1;
+
+  renderRanking(ranking, myName);
+  renderAchievements({ total, active, expired, today, rank: myRank });
+}
 function fmtHours(h){if(h===null||h===undefined)return null;if(h>=48)return Math.floor(h/24)+' dias';if(h>=1)return h+'h';return'menos de 1h';}
 async function doCheck(key){
   const errBox=document.getElementById('err-box'),btn=document.getElementById('check-btn');
