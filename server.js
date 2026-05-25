@@ -730,6 +730,7 @@ main{padding:28px 32px;max-width:1200px;margin:0 auto}
 .tn-desc{font-size:12px;color:#8a8aaa;font-family:'Syne',sans-serif}
 .tn-bar-wrap{height:3px;background:#ffffff10;margin:0 14px 14px;border-radius:2px;overflow:hidden}
 .tn-bar{height:3px;background:linear-gradient(90deg,#4f8ef7,#00ff87);border-radius:2px;width:0;transition:width 3s linear}
+@media(max-width:1100px){.main-grid{grid-template-columns:1fr}}
 @media(max-width:900px){.stats{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:700px){.form-grid{grid-template-columns:1fr 1fr};.stats{grid-template-columns:1fr 1fr};.ach-grid{grid-template-columns:1fr}}
 </style>
@@ -768,23 +769,15 @@ main{padding:28px 32px;max-width:1200px;margin:0 auto}
     <div class="sc"><div class="sc-icon">⚠️</div><div class="n" id="stat-expiring" style="color:#ff8600">—</div><div class="l">Expirando em 48h</div></div>
   </div>
 
-  <!-- Conquistas + Ranking -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
-    <div class="sec">
-      <div class="sh"><div class="st">🏆 Conquistas</div><span id="ach-count" style="font-size:11px;color:var(--muted);font-family:'Syne',sans-serif"></span></div>
-      <div class="ach-grid" id="ach-grid"><div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Clique em Atualizar para carregar</div></div>
-    </div>
-    <div class="sec">
-      <div class="sh"><div class="st">📊 Ranking de Moderadores</div></div>
-      <div class="rank-grid" id="rank-grid"><div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Clique em Atualizar para carregar</div></div>
-    </div>
-  </div>
+  <!-- Conquistas + Ranking — movidos para sidebar direita junto com tabela -->
 
   <div class="alert-card" id="alert-expiring">
     <span style="font-size:18px;flex-shrink:0">⚠️</span>
     <span id="alert-expiring-text"></span>
   </div>
 
+  <div style="display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start">
+  <div><!-- coluna esquerda: formulário + tabela -->
   <div class="sec">
     <div class="sh"><div class="st">🔑 Criar Nova Chave</div></div>
     <div class="form-body">
@@ -822,6 +815,18 @@ main{padding:28px 32px;max-width:1200px;margin:0 auto}
       </table>
     </div>
   </div>
+  </div><!-- fim coluna esquerda -->
+  <div><!-- coluna direita: conquistas + ranking -->
+    <div class="sec" style="margin-bottom:20px">
+      <div class="sh"><div class="st">🏆 Conquistas</div><span id="ach-count" style="font-size:11px;color:var(--muted);font-family:'Syne',sans-serif"></span></div>
+      <div class="ach-grid" id="ach-grid"><div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Clique em Atualizar para carregar</div></div>
+    </div>
+    <div class="sec">
+      <div class="sh"><div class="st">📊 Ranking</div></div>
+      <div class="rank-grid" id="rank-grid"><div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Clique em Atualizar para carregar</div></div>
+    </div>
+  </div><!-- fim coluna direita -->
+  </div><!-- fim grid principal -->
 </main>
 
 <div class="modal-bg" id="modNoteModal"><div class="modal">
@@ -966,14 +971,14 @@ async function loadHistory(){
       else if(k.expiresAt){
         const expTs=new Date(k.expiresAt).getTime(),diffH=Math.floor((expTs-now)/3600000),diffD=Math.floor(diffH/24),expDate=fmtDate(k.expiresAt);
         if(expTs<now){expired++;expHtml=expDate+'<br><span class="badge-expired">EXPIRADA</span>';expClass=' style="background:#ff000008"';}
-        else if(diffH<48){expiringSoon++;const lbl=diffH<1?'menos de 1h':diffH<24?diffH+'h restantes':diffD+'d restantes';expHtml=expDate+'<br><span class="badge-exp">⚠ '+lbl+'</span>';expClass=' style="background:#ff860008"';}
-        else{const lbl=diffD>0?diffD+'d '+(diffH%24>0?(diffH%24)+'h':''):diffH+'h';expHtml=expDate+'<br><span style="color:var(--green);font-size:11px">'+lbl.trim()+' restantes</span>';}
+        else if(diffH<48){expiringSoon++;const lbl=diffH<1?'menos de 1h':diffH<24?diffH+'h restantes':diffD+'d restantes';expHtml=expDate+'<br><span class="badge-exp" style="font-size:13px">⚠ '+lbl+'</span>';expClass=' style="background:#ff860008"';}
+        else{const lbl=diffD>0?diffD+'d '+(diffH%24>0?(diffH%24)+'h':''):diffH+'h';expHtml=expDate+'<br><span style="color:var(--green);font-size:13px;font-family:Syne,sans-serif;font-weight:600">'+lbl.trim()+' restantes</span>';}
       }else{expHtml='<span style="color:var(--muted)">Sem expiração</span>';}
       const st=k.active?'<span class="badge bon">ATIVA</span>':'<span class="badge-expired">INATIVA</span>';
       const noteClean=(k.note||'').replace(/\[Mod:[^\]]+\]\s*/g,'').trim();
-      const noteHtml=noteClean?'<span style="font-size:12px;color:var(--muted);font-family:Syne,sans-serif">'+escHtml(noteClean)+'</span><br>':'';
-      const noteBtn='<button class="note-btn" data-code="'+escHtml(k.code)+'" data-label="'+escHtml(k.label)+'" data-note="'+escHtml(noteClean)+'" onclick="openModNoteEl(this)">✏️</button>';
-      return '<tr'+expClass+'><td><span class="kc">'+k.code+'</span></td><td>'+escHtml(k.label)+'</td><td>'+k.maxUses+'</td><td>'+expHtml+'</td><td>'+fmtDate(k.createdAt)+'</td><td>'+noteHtml+noteBtn+'</td><td>'+st+'</td></tr>';
+      const noteBtn='<button class="note-btn" data-code="'+escHtml(k.code)+'" data-label="'+escHtml(k.label)+'" data-note="'+escHtml(noteClean)+'" onclick="openModNoteEl(this)" style="float:right;margin-left:6px">✏️</button>';
+      const noteHtml=noteClean?'<span style="font-size:12px;color:var(--muted);font-family:Syne,sans-serif;display:block;clear:both">'+escHtml(noteClean)+'</span>':'';
+      return '<tr'+expClass+'><td><span class="kc">'+k.code+'</span></td><td>'+escHtml(k.label)+'</td><td>'+k.maxUses+'</td><td>'+expHtml+'</td><td>'+fmtDate(k.createdAt)+'</td><td>'+noteBtn+noteHtml+'</td><td>'+st+'</td></tr>';
     }).join('');
     const alertCard=document.getElementById('alert-expiring');
     if(expired>0||expiringSoon>0){
@@ -1546,6 +1551,7 @@ tr:hover td{background:#ffffff02}
         <tbody id="lb">${buildLogsHtml()}</tbody>
       </table>
     </div>
+  </div>
   </div>
 </main>
 
@@ -2203,6 +2209,7 @@ footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
       <a class="btn-portal" href="/">🔑 Portal do Cliente</a>
     </div>
   </div>
+  </div>
 </main>
 <footer>
   <p>© ${new Date().getFullYear()} ZVM — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/privacidade">Privacidade</a></p>
@@ -2312,6 +2319,7 @@ footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
       <li><span class="tag">MongoDB Atlas</span> armazenamento dos dados</li>
       <li><span class="tag">Render.com</span> hospedagem do servidor</li>
     </ul>
+  </div>
   </div>
 </main>
 <footer>
@@ -2558,6 +2566,7 @@ tr:hover td{background:#ffffff02}
         <tbody id="payments-body">${paymentsRows}</tbody>
       </table>
     </div>
+  </div>
   </div>
 </main>
 
