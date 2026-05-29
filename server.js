@@ -202,7 +202,7 @@ function generateTOTP(secret, window = 0) {
 function verifyTOTP(secret, token) {
   if (!secret) return true;
   if (!token || token.length !== 6) return false;
-  for (const w of [-1, 0, 1]) {
+  for (const w of [-2, -1, 0, 1, 2]) {  // drift window ampliado
     if (generateTOTP(secret, w) === token) return true;
   }
   return false;
@@ -230,15 +230,16 @@ const rateLimitMap = new Map();
 const RL_CONFIG = {
   login: { max: 5,  windowMs: 60000,     blockMs: 10 * 60000 },
   api:   { max: 30, windowMs: 60000,     blockMs:  2 * 60000 },
+  check_status: { max: 60, window: 60 * 1000 },
 };
 
-function checkRateLimit(ip, type = 'api') {
+function checkRateLimit(ip, type = 'api', maxReq = 0, windowMs = 0) {
   const now = Date.now();
   const key = ip + ':' + type;
-  const cfg = RL_CONFIG[type] || RL_CONFIG.api;
+  const cfg = maxReq > 0 ? { max: maxReq, window: windowMs || 60000 } : (RL_CONFIG[type] || RL_CONFIG.api);
   let e = rateLimitMap.get(key);
   if (!e) {
-    e = { count: 0, resetAt: now + cfg.windowMs, blockedUntil: 0 };
+    e = { count: 0, resetAt: now + cfg.windowMs, blockedUntil: 0};
     rateLimitMap.set(key, e);
   }
   if (now < e.blockedUntil) return false;
@@ -2766,6 +2767,12 @@ async function handleRequest(req, res) {
     if (isNewPhone) {
       if (keyMaxUses > 0 && keys[keyCode].phones.length >= keyMaxUses) {
         keys[keyCode].warnCount = (keys[keyCode].warnCount || 0) + 1;
+        // Reset automático após 24h para evitar acúmulo infinito
+        const warnTs = keys[keyCode].warnCountTs;
+        if (warnTs && (Date.now() - new Date(warnTs).getTime()) > 24*3600*1000) {
+          keys[keyCode].warnCount = 1;
+        }
+        keys[keyCode].warnCountTs = new Date().toISOString();
         sendJson(res, {
           warnLimit: true, isLoggedIn: false, warnRemaining: keys[keyCode].warnCount,
           data: { message: `USUÁRIO NÃO ENCONTRADO. Limite de ativações atingido (${keys[keyCode].phones.length}/${keyMaxUses}).`, permissions: [] }
@@ -2783,7 +2790,7 @@ async function handleRequest(req, res) {
       const exp = new Date(Date.now() + keys[keyCode].expireDuration);
       keys[keyCode].expiresAt   = exp.toISOString();
       keys[keyCode].activatedAt = new Date().toISOString();
-      console.log(`[DEFERRED] ${keyCode} ativada — expira: ${keys[keyCode].expiresAt}`);
+      // Ativação diferida registrada no log
     }
 
     keys[keyCode].lastUsed   = new Date().toISOString();
@@ -2802,14 +2809,42 @@ async function handleRequest(req, res) {
 
   // ── Extensão: check-status ──
   if (p === R_EXT+'/v3/check-status' && req.method === 'POST') {
-    const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
+    // Rate limit: máx 60 req/min por IP
+    if (!checkRateLimit(ip, 'check_status', 60, 60000)) {
+      sendJson(res, { active: true }); return; // silencioso — não deslogar por rate limit
+    }
+    // Body limit
+    if (parseInt(req.headers['content-length'] || 0) > MAX_BODY_SIZE) {
+      sendJson(res, { active: true }); return;
+    }
+    const rawBody = await new Promise(r=>{let b='';req.on('data',c=>{b+=c;});req.on('end',()=>r(b));});
     let body; try { body = JSON.parse(rawBody); } catch { body = {}; }
-    const keyCode = (body.authKey || '').toLowerCase();
+    const keyCode = (body.authKey || '').toLowerCase().slice(0, 20);
+    // Se servidor não está pronto, nunca deslogar
     if (!serverReady) { sendJson(res, { active: true }); return; }
-    if (!keyCode || !keys[keyCode]) { sendJson(res, { active: false, reason: 'not_found' }); return; }
+    if (!keyCode)     { sendJson(res, { active: true }); return; }
+    // FIX CRÍTICO: se chave não está em memória, buscar no banco
+    // Isso resolve o deslogamento após reinício do Render
+    if (!keys[keyCode]) {
+      try {
+        const db  = await getMongoDb();
+        const doc = await db.collection('store').findOne({ _id: 'keys' });
+        if (doc && doc.data && doc.data[keyCode]) keys[keyCode] = doc.data[keyCode];
+      } catch(e) {
+        // Erro de banco: manter ativo para não deslogar o cliente
+        sendJson(res, { active: true }); return;
+      }
+    }
+    // Após busca no banco, se ainda não existe → not_found real
+    if (!keys[keyCode]) { sendJson(res, { active: false, reason: 'not_found' }); return; }
     if (isKeyExpired(keys[keyCode]))   { sendJson(res, { active: false, reason: 'expired' }); return; }
     if (!keys[keyCode].active)         { sendJson(res, { active: false, reason: 'blocked' }); return; }
-    sendJson(res, { active: true, expiringSoon: isKeyExpiringSoon(keys[keyCode]), hoursLeft: hoursUntilExpiry(keys[keyCode]) });
+    sendJson(res, {
+      active:       true,
+      expiringSoon: isKeyExpiringSoon(keys[keyCode]),
+      hoursLeft:    hoursUntilExpiry(keys[keyCode]),
+      deferred:     !!(keys[keyCode].expireDuration && !keys[keyCode].expiresAt)
+    });
     return;
   }
 
