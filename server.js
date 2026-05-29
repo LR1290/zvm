@@ -323,7 +323,8 @@ function getAuthData(keyCode, userName) {
       permissions: FULL_PERMISSIONS,
       username: userName || keys[keyCode]?.label || '',
       paymentUrl: null, marketplace: 'premium', email: 'cliente@zapvoice.com.br',
-      planName: 'Pro', plan_id: 'ZV_PRO', isLoggedIn: true, isPremium: true, isBasicPlan: false
+      planName: 'Pro', plan_id: 'ZV_PRO', isLoggedIn: true, isPremium: true, isBasicPlan: false,
+      message: '', warnLimit: false
     }
   };
 }
@@ -2837,13 +2838,23 @@ async function handleRequest(req, res) {
     }
     // Após busca no banco, se ainda não existe → not_found real
     if (!keys[keyCode]) { sendJson(res, { active: false, reason: 'not_found' }); return; }
-    if (isKeyExpired(keys[keyCode]))   { sendJson(res, { active: false, reason: 'expired' }); return; }
-    if (!keys[keyCode].active)         { sendJson(res, { active: false, reason: 'blocked' }); return; }
+    if (isKeyExpired(keys[keyCode]))   {
+      keys[keyCode].active = false;
+      saveKey(keyCode).catch(()=>{});
+      sendJson(res, { active: false, reason: 'expired' }); return;
+    }
+    if (!keys[keyCode].active)         {
+      addLog({ keyCode, label: keys[keyCode].label||'-', phone: '-', ip, wppVersion: '-', action: 'check_blocked' }).catch(()=>{});
+      sendJson(res, { active: false, reason: 'blocked' }); return;
+    }
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     sendJson(res, {
       active:       true,
       expiringSoon: isKeyExpiringSoon(keys[keyCode]),
       hoursLeft:    hoursUntilExpiry(keys[keyCode]),
-      deferred:     !!(keys[keyCode].expireDuration && !keys[keyCode].expiresAt)
+      deferred:     !!(keys[keyCode].expireDuration && !keys[keyCode].expiresAt),
+      ts:           Date.now()
     });
     return;
   }
