@@ -1260,12 +1260,13 @@ function showPanel(d,key){
   var phoneSec=document.getElementById('r-phone-section'),phoneList=document.getElementById('r-phone-list');
   if(d.phoneList&&d.phoneList.length>0){
     phoneSec.style.display='block';phoneList.innerHTML='';
-    d.phoneList.forEach(function(ph){
+    d.phoneList.forEach(function(item){
+      var ph=item.display||item,pidx=item.idx!=null?item.idx:-1;
       var card=document.createElement('div');
       card.style.cssText='background:#0f0f1a;border:1px solid #1c1c2e;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px';
       var sp=document.createElement('span');sp.style.cssText='font-size:13px;font-family:monospace;color:#e2e2f0;font-weight:700';sp.textContent=ph;
       var btn=document.createElement('button');btn.textContent='Remover';btn.style.cssText='padding:4px 10px;background:#ff4757;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-family:Syne,sans-serif;font-weight:700;flex-shrink:0';
-      btn.addEventListener('click',function(){clientRemovePhone(key,ph);});
+      btn.addEventListener('click',function(){clientRemovePhone(key,pidx);});
       card.appendChild(sp);card.appendChild(btn);phoneList.appendChild(card);
     });
   } else phoneSec.style.display='none';
@@ -1278,9 +1279,9 @@ function resetPanel(){
   const btn=document.getElementById('check-btn');btn.disabled=false;btn.textContent='Consultar Minha Chave';
   document.getElementById('form-area').style.display='block';
 }
-async function clientRemovePhone(key,phone){
-  if(!confirm('Remover o número '+phone+' desta chave?'))return;
-  try{var r=await fetch('/client/remove-phone',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,phone})});var d=await r.json();if(d.ok){alert('Número removido! Você pode fazer login novamente.');doCheck(key);}else alert('Erro: '+(d.error||'?'));}catch(e){alert('Erro de rede.');}
+async async function clientRemovePhone(key,phoneIdx){
+  if(!confirm('Remover este número desta chave?'))return;
+  try{var r=await fetch('/client/remove-phone',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,phoneIdx})});var d=await r.json();if(d.ok){alert('Número removido! Você pode fazer login novamente.');doCheck(key);}else alert('Erro: '+(d.error||'?'));}catch(e){alert('Erro de rede.');}
 }
 document.getElementById('key-input').addEventListener('keydown',e=>{if(e.key==='Enter')checkKey();});
 window.addEventListener('DOMContentLoaded',()=>{
@@ -3496,7 +3497,7 @@ async function handleRequest(req, res) {
       activatedAt: k.activatedAt || null,
       lastUsed:    k.lastUsed || null,
       phones:      (k.phones || []).length,
-      phoneList:   (k.phones || []).map(ph => ph.replace(/(\d+)(\d{4})$/, '••••$2')),
+      phoneList:   (k.phones || []).map((ph, i) => ({ idx: i, display: ph.replace(/(\d+)(\d{4})$/, '••••$2') })),
       maxUses:     k.maxUses === -1 ? null : (k.maxUses > 0 ? k.maxUses : MAX_USES),
       hoursLeft:   hoursUntilExpiry(k),
       deferred:    !!(k.expireDuration && !k.expiresAt),
@@ -3508,9 +3509,10 @@ async function handleRequest(req, res) {
   if (p === '/client/remove-phone' && req.method === 'POST') {
     const body    = await parseBody(req);
     const keyCode = (body.key||'').trim().toLowerCase().slice(0, 20);
-    const phone   = (body.phone||'').trim();
+    const phoneIdx = body.phoneIdx != null ? parseInt(body.phoneIdx) : -1;
+    const phoneTxt = (body.phone||'').trim();
     if (!keyCode) { sendJson(res, { error: 'not_found' }, 404); return; }
-    if (!phone)   { sendJson(res, { error: 'phone obrigatorio' }, 400); return; }
+    if (phoneIdx < 0 && !phoneTxt) { sendJson(res, { error: 'phone obrigatorio' }, 400); return; }
     // Buscar no banco se não estiver em memória (ex: Render reiniciou)
     if (!keys[keyCode]) {
       try {
@@ -3525,7 +3527,14 @@ async function handleRequest(req, res) {
     }
     if (!keys[keyCode]) { sendJson(res, { error: 'not_found' }, 404); return; }
     const phones = keys[keyCode].phones || [];
-    if (!phones.includes(phone)) { sendJson(res, { error: 'numero nao encontrado' }, 404); return; }
+    // Aceitar por índice (portal cliente) ou por número exato (admin/legacy)
+    let phone;
+    if (phoneIdx >= 0 && phoneIdx < phones.length) {
+      phone = phones[phoneIdx];
+    } else if (phoneTxt) {
+      phone = phones.find(p => p === phoneTxt || p.endsWith(phoneTxt.replace(/[^0-9]/g,'')));
+    }
+    if (!phone) { sendJson(res, { error: 'numero nao encontrado' }, 404); return; }
     keys[keyCode].phones  = phones.filter(p => p !== phone);
     keys[keyCode].uses    = keys[keyCode].phones.length;
     if (keys[keyCode].lastPhone === phone) keys[keyCode].lastPhone = keys[keyCode].phones.at(-1) || null;
