@@ -106,20 +106,23 @@ async function loadDb() {
 const _saveDebounce = new Map();
 function saveKey(code) {
   if (_saveDebounce.has(code)) clearTimeout(_saveDebounce.get(code));
-  const tid = setTimeout(async () => {
-    _saveDebounce.delete(code);
-    try {
-      const db = await getMongoDb();
-      await db.collection('store').updateOne(
-        { _id: 'keys' },
-        { $set: { [`data.${code}`]: keys[code], updatedAt: new Date() } },
-        { upsert: true }
-      );
-    } catch (e) {
+  return new Promise(resolve => {
+    const tid = setTimeout(async () => {
+      _saveDebounce.delete(code);
+      try {
+        const db = await getMongoDb();
+        await db.collection('store').updateOne(
+          { _id: 'keys' },
+          { $set: { [`data.${code}`]: keys[code], updatedAt: new Date() } },
+          { upsert: true }
+        );
+      } catch (e) {
         console.error('[DB] Erro ao salvar chave:', e.message);
-    }
-  }, 2000);
-  _saveDebounce.set(code, tid);
+      }
+      resolve();
+    }, 200);
+    _saveDebounce.set(code, tid);
+  });
 }
 
 // Remove uma chave do banco
@@ -1291,7 +1294,7 @@ function resetPanel(){
   const btn=document.getElementById('check-btn');btn.disabled=false;btn.textContent='Consultar Minha Chave';
   document.getElementById('form-area').style.display='block';
 }
-async async async function clientRemovePhone(key,phoneIdx){
+async function clientRemovePhone(key,phoneIdx){
   if(!confirm('Remover este número desta chave?'))return;
   try{var r=await fetch('/client/remove-phone',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,phoneIdx})});var d=await r.json();if(d.ok){alert('Número removido! Você pode fazer login novamente.');doCheck(key);}else alert('Erro: '+(d.error||'?'));}catch(e){alert('Erro de rede.');}
 }
