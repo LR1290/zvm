@@ -1279,7 +1279,7 @@ function resetPanel(){
   const btn=document.getElementById('check-btn');btn.disabled=false;btn.textContent='Consultar Minha Chave';
   document.getElementById('form-area').style.display='block';
 }
-async async function clientRemovePhone(key,phoneIdx){
+async async async function clientRemovePhone(key,phoneIdx){
   if(!confirm('Remover este número desta chave?'))return;
   try{var r=await fetch('/client/remove-phone',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,phoneIdx})});var d=await r.json();if(d.ok){alert('Número removido! Você pode fazer login novamente.');doCheck(key);}else alert('Erro: '+(d.error||'?'));}catch(e){alert('Erro de rede.');}
 }
