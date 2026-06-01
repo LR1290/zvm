@@ -102,17 +102,24 @@ async function loadDb() {
 }
 
 // Salva UMA chave específica — granular, não reescreve tudo
-async function saveKey(code) {
-  try {
-    const db = await getMongoDb();
-    await db.collection('store').updateOne(
-      { _id: 'keys' },
-      { $set: { [`data.${code}`]: keys[code], updatedAt: new Date() } },
-      { upsert: true }
-    );
-  } catch (e) {
-    console.error('[DB] Erro ao salvar chave:', e.message);
-  }
+// Debounce: agrupa múltiplas saves da mesma chave em 2s → 1 write MongoDB
+const _saveDebounce = new Map();
+function saveKey(code) {
+  if (_saveDebounce.has(code)) clearTimeout(_saveDebounce.get(code));
+  const tid = setTimeout(async () => {
+    _saveDebounce.delete(code);
+    try {
+      const db = await getMongoDb();
+      await db.collection('store').updateOne(
+        { _id: 'keys' },
+        { $set: { [`data.${code}`]: keys[code], updatedAt: new Date() } },
+        { upsert: true }
+      );
+    } catch (e) {
+        console.error('[DB] Erro ao salvar chave:', e.message);
+    }
+  }, 2000);
+  _saveDebounce.set(code, tid);
 }
 
 // Remove uma chave do banco
@@ -271,18 +278,22 @@ setInterval(() => {
   const now = Date.now();
   for (const [k, e] of rateLimitMap.entries())
     if (now > e.blockedUntil && now > e.resetAt) rateLimitMap.delete(k);
-}, 15 * 60000);
+  // Limpar _dedupMap de entradas expiradas (> 1h)
+  const dedupTTL = 60 * 60 * 1000;
+  for (const [k, ts] of _dedupMap.entries())
+    if (now - ts > dedupTTL) _dedupMap.delete(k);
+}, 30 * 60 * 1000); // 30 min — recursos mínimos
 
 // Limpeza periódica de sessões expiradas
 setInterval(() => {
-  const now = new Date();
+  const now = Date.now();
   for (const [k, s] of Object.entries(sessions))
-    if (now > new Date(s.expiresAt)) delete sessions[k];
+    if (now > new Date(s.expiresAt).getTime()) delete sessions[k];
   for (const [k, s] of Object.entries(modSessions))
-    if (now > new Date(s.expiresAt)) delete modSessions[k];
+    if (now > new Date(s.expiresAt).getTime()) delete modSessions[k];
   for (const [k, s] of Object.entries(analyticsSessions))
-    if (now > new Date(s.expiresAt)) delete analyticsSessions[k];
-}, 30 * 60000);
+    if (now > new Date(s.expiresAt).getTime()) delete analyticsSessions[k];
+}, 60 * 60 * 1000); // 1h — sessões duram horas, limpeza não precisa ser frequente
 
 // ─────────────────────────────────────────────
 // WEBHOOK
@@ -541,6 +552,7 @@ function parseFormBody(req) {
 
 function sendJson(res, data, status = 200) {
   res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Connection', 'keep-alive');
   res.writeHead(status); res.end(JSON.stringify(data));
 }
 
@@ -1767,7 +1779,7 @@ async function doRefresh(){
     filterKeys();
   }catch(e){console.error('Refresh error',e);}
 }
-setInterval(doRefresh,30000);
+setInterval(doRefresh,120000); // 2 min — reduz requisições ao servidor
 
 // ── Ações de chave ──
 async function toggleKey(code){
@@ -2660,7 +2672,8 @@ async function handleRequest(req, res) {
 
   // ── Health ──
   if (p === '/health' && req.method === 'GET') {
-    sendJson(res, { ok: true }); return;
+    res.writeHead(200,{'Content-Type':'text/plain','Cache-Control':'no-store'});
+    res.end('ok'); return;
   }
 
   // ── Extensão: login page ──
@@ -3576,8 +3589,7 @@ async function handleRequest(req, res) {
 async function gracefulShutdown(signal) {
   console.log(`[${signal}] Encerrando servidor graciosamente...`);
   try {
-    if (mongoClient) await mongoClient.close();
-    console.log('[SHUTDOWN] MongoDB desconectado');
+    if (_mongoClient) { await _mongoClient.close(); console.log('[SHUTDOWN] MongoDB desconectado'); }
   } catch(e) { console.error('[SHUTDOWN] Erro ao fechar MongoDB:', e.message); }
   process.exit(0);
 }
@@ -3615,15 +3627,20 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     process.on('uncaughtException',  err => console.error('[uncaughtException]', err));
     process.on('unhandledRejection', err => console.error('[unhandledRejection]', err));
 
-    http.createServer(safeHandler).listen(PORT, () => {
+    const server = http.createServer(safeHandler);
+    server.keepAliveTimeout = 65000; // acima dos 60s do LB do Render
+    server.headersTimeout   = 66000;
+    server.listen(PORT, () => {
       console.log(`🚀 Servidor ouvindo na porta ${PORT}`);
-      // Keep-alive para Render free tier
+      // Self-ping a cada 10 min — mantém Render free tier acordado
       setInterval(() => {
-        http.get({ hostname: 'localhost', port: PORT, path: '/health' }, res => {
-          res.resume();
-          console.log('[keep-alive] ping OK ' + res.statusCode);
-        }).on('error', err => console.warn('[keep-alive] erro: ' + err.message));
-      }, 4 * 60 * 1000);
+        const req = http.request(
+          { hostname: 'localhost', port: PORT, path: '/health', method: 'GET' },
+          res => { res.resume(); }
+        );
+        req.on('error', () => {});
+        req.end();
+      }, 10 * 60 * 1000); // 600 000 ms = 10 min
     });
   } catch (e) {
     console.error('❌ Falha ao iniciar:', e.message);
