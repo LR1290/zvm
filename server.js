@@ -43,7 +43,7 @@ if (!MONGODB_URI) {
 // ─────────────────────────────────────────────
 const FULL_PERMISSIONS = [
   'create_flow','massive_dispatching','schedule_item',
-  'send_flow','send_funnel','send_trigger'
+  'send_flow','send_funnel','send_trigger','zapsaver'
 ];
 const USAGE_LIMITS = {
   audio:        { sent:0, max:-1 }, bulkMessages: { sent:0, max:-1 },
