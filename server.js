@@ -19,8 +19,6 @@ const MODS = [
   { user: process.env.MOD6_USER || '', pass: process.env.MOD6_PASS || '', totp: process.env.MOD6_TOTP || '', name: 'Letícia'     },
 ].filter(m => m.user && m.pass);
 // MOD_USER/PASS/TOTP incluídos no array MODS acima (slot 1)
-const PAYT_SECRET  = process.env.PAYT_SECRET  || '';   // renomeado de CAKTO_SECRET
-const ANALYTICS_PASS = process.env.ANALYTICS_PASS || ''; // senha do painel de analytics
 const MONGODB_URI  = process.env.MONGODB_URI  || '';
 const APP_SECRET   = process.env.APP_SECRET   || '';
 const TOTP_SECRET  = process.env.TOTP_SECRET  || '';
@@ -54,6 +52,12 @@ const USAGE_LIMITS = {
   message:      { sent:0, max:-1 }, scheduleItem: { sent:0, max:-1 }
 };
 const MAX_USES = 3;
+
+// ─────────────────────────────────────────────
+// MÓDULOS REMOTOS
+// ─────────────────────────────────────────────
+const AVAILABLE_MODULES = ['zapSaver'];
+const DEFAULT_MODULES   = Object.fromEntries(AVAILABLE_MODULES.map(m => [m, false]));
 
 // ─────────────────────────────────────────────
 // MONGODB
@@ -162,7 +166,6 @@ let keys             = {};
 let logs             = [];
 let sessions         = {};
 let modSessions      = {};
-let analyticsSessions= {};
 let serverReady      = false;
 
 // ─────────────────────────────────────────────
@@ -234,10 +237,8 @@ function deriveSlug(seed) {
 }
 const _slugAdmin     = deriveSlug('admin-panel');
 const _slugMod       = deriveSlug('mod-panel');
-const _slugAnalytics = deriveSlug('analytics-panel');
 const R_ADMIN        = _slugAdmin     ? '/' + _slugAdmin     : '/admin';
 const R_MOD          = _slugMod       ? '/' + _slugMod       : '/mod';
-const R_ANALYTICS    = _slugAnalytics ? '/' + _slugAnalytics : '/analytics';
 const R_EXT          = '/extension';
 
 // ─────────────────────────────────────────────
@@ -294,8 +295,6 @@ setInterval(() => {
     if (now > new Date(s.expiresAt).getTime()) delete sessions[k];
   for (const [k, s] of Object.entries(modSessions))
     if (now > new Date(s.expiresAt).getTime()) delete modSessions[k];
-  for (const [k, s] of Object.entries(analyticsSessions))
-    if (now > new Date(s.expiresAt).getTime()) delete analyticsSessions[k];
 }, 60 * 60 * 1000); // 1h — sessões duram horas, limpeza não precisa ser frequente
 
 // ─────────────────────────────────────────────
@@ -336,13 +335,15 @@ function generateCode() {
 function generateToken() { return crypto.randomBytes(32).toString('hex'); }
 
 function getAuthData(keyCode, userName) {
+  const k = keys[keyCode] || {};
   return {
     numberWarning: false, segments: [],
     isLoggedIn: true, isPremium: true,
+    modules: { ...DEFAULT_MODULES, ...(k.modules || {}) },
     data: {
       key: keyCode, keyId: `id-${keyCode}`, ownerId: 'zv-owner', managerId: 'zv-manager',
       permissions: FULL_PERMISSIONS,
-      username: userName || keys[keyCode]?.label || '',
+      username: userName || k.label || '',
       paymentUrl: null, marketplace: 'premium', email: 'cliente@zapvoice.com.br',
       planName: 'Pro', plan_id: 'ZV_PRO', isLoggedIn: true, isPremium: true, isBasicPlan: false,
       message: '', warnLimit: false
@@ -390,142 +391,6 @@ function isModSession(req) {
   return true;
 }
 
-function isAnalyticsSession(req) {
-  const cookie = req.headers.cookie || '';
-  const match  = cookie.match(/zv_an=([a-f0-9]+)/);
-  if (!match) return false;
-  const s = analyticsSessions[match[1]];
-  if (!s) return false; // sessão não encontrada (servidor reiniciado) — cookie inválido
-  if (new Date() > new Date(s.expiresAt)) { delete analyticsSessions[match[1]]; return false; }
-  return true;
-}
-function clearAnalyticsCookie(res) {
-  res.setHeader('Set-Cookie', 'zv_an=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict; Secure');
-}
-
-// ─────────────────────────────────────────────
-// PERSISTÊNCIA DE PAGAMENTOS
-// ─────────────────────────────────────────────
-async function savePayment(payment) {
-  try {
-    const db = await getMongoDb();
-    await db.collection('payments').insertOne({ ...payment, savedAt: new Date() });
-  } catch (e) { console.error('[DB] Erro ao salvar pagamento:', e.message); }
-}
-
-async function getPayments({ startDate, endDate, limit = 500 } = {}) {
-  try {
-    const db     = await getMongoDb();
-    const filter = {};
-    if (startDate || endDate) {
-      filter.paidAt = {};
-      if (startDate) filter.paidAt.$gte = startDate;
-      if (endDate)   filter.paidAt.$lte = endDate;
-    }
-    return await db.collection('payments')
-      .find(filter)
-      .sort({ paidAt: -1 })
-      .limit(limit)
-      .toArray();
-  } catch (e) { console.error('[DB] Erro ao buscar pagamentos:', e.message); return []; }
-}
-
-async function getPaymentStats() {
-  try {
-    const db  = await getMongoDb();
-    const now = new Date();
-    const d7  = new Date(now - 7  * 86400000);
-    const d30 = new Date(now - 30 * 86400000);
-
-    const [total, last7, last30, byProduct, byDay, byHour, byMethod] = await Promise.all([
-      db.collection('payments').countDocuments({ approved: true }),
-      db.collection('payments').countDocuments({ approved: true, paidAt: { $gte: d7.toISOString() } }),
-      db.collection('payments').countDocuments({ approved: true, paidAt: { $gte: d30.toISOString() } }),
-      db.collection('payments').aggregate([
-        { $match: { approved: true } },
-        { $group: { _id: '$productName', count: { $sum: 1 }, revenue: { $sum: '$amount' } } },
-        { $sort: { count: -1 } }
-      ]).toArray(),
-      db.collection('payments').aggregate([
-        { $match: { approved: true, paidAt: { $gte: d30.toISOString() } } },
-        { $group: {
-          _id: { $substr: ['$paidAt', 0, 10] },
-          count: { $sum: 1 }, revenue: { $sum: '$amount' }
-        }},
-        { $sort: { _id: 1 } }
-      ]).toArray(),
-      // Horários de pico — hora do dia com mais pagamentos
-      db.collection('payments').aggregate([
-        { $match: { approved: true } },
-        { $addFields: { hour: { $substr: ['$paidAt', 11, 2] } } },
-        { $group: { _id: '$hour', count: { $sum: 1 } } },
-        { $sort: { _id: 1 } }
-      ]).toArray(),
-      // Métodos de pagamento
-      db.collection('payments').aggregate([
-        { $match: { approved: true } },
-        { $group: { _id: '$paymentMethod', count: { $sum: 1 }, revenue: { $sum: '$amount' } } },
-        { $sort: { count: -1 } }
-      ]).toArray(),
-    ]);
-
-    const [revTotalArr, revLast30Arr, revLast7Arr] = await Promise.all([
-      db.collection('payments').aggregate([{ $match: { approved: true } },{ $group: { _id: null, total: { $sum: '$amount' } } }]).toArray(),
-      db.collection('payments').aggregate([{ $match: { approved: true, paidAt: { $gte: d30.toISOString() } } },{ $group: { _id: null, total: { $sum: '$amount' } } }]).toArray(),
-      db.collection('payments').aggregate([{ $match: { approved: true, paidAt: { $gte: d7.toISOString() } } },{ $group: { _id: null, total: { $sum: '$amount' } } }]).toArray(),
-    ]);
-    const revenueTotal   = revTotalArr[0]?.total  || 0;
-    const revenueLast30  = revLast30Arr[0]?.total  || 0;
-    const revenueLast7   = revLast7Arr[0]?.total   || 0;
-
-    // ── Retenção: clientes que compraram mais de uma vez ──
-    const retentionArr = await db.collection('payments').aggregate([
-      { $match: { approved: true, clientEmail: { $exists: true, $ne: '' } } },
-      { $group: { _id: '$clientEmail', count: { $sum: 1 }, total: { $sum: '$amount' } } },
-      { $sort: { count: -1 } }
-    ]).toArray();
-    const uniqueClients  = retentionArr.length;
-    const returningClients = retentionArr.filter(c => c.count > 1).length;
-    const retentionRate  = uniqueClients ? Math.round((returningClients / uniqueClients) * 100) : 0;
-    const topClients     = retentionArr.slice(0, 5);
-
-    // ── Churn: chaves expiradas nos últimos 30d que NÃO renovaram ──
-    const expiredKeys = Object.values(keys).filter(k => {
-      if (!k.expiresAt) return false;
-      const exp = new Date(k.expiresAt);
-      return exp > d30 && exp <= now;
-    });
-    const renewedEmails = new Set(
-      (await db.collection('payments').find({ approved: true, paidAt: { $gte: d30.toISOString() } }).toArray())
-        .map(p => p.clientEmail).filter(Boolean)
-    );
-    const churnedKeys = expiredKeys.filter(k => {
-      const email = (k.note||'').match(/Email: ([^\s|]+)/)?.[1] || '';
-      return email && !renewedEmails.has(email);
-    }).length;
-    const churnRate = expiredKeys.length ? Math.round((churnedKeys / expiredKeys.length) * 100) : 0;
-
-    // ── Moderadores mais produtivos ──
-    const modStats = {};
-    Object.values(keys).forEach(k => {
-      const match = (k.note||'').match(/\[Mod: ([^\]]+)\]/);
-      if (match) {
-        const name = match[1];
-        if (!modStats[name]) modStats[name] = 0;
-        modStats[name]++;
-      }
-    });
-    const byMod = Object.entries(modStats).map(([name, count]) => ({ name, count })).sort((a,b) => b.count - a.count);
-
-    return {
-      total, last7, last30, revenueTotal, revenueLast30, revenueLast7,
-      byProduct, byDay, byHour, byMethod,
-      uniqueClients, returningClients, retentionRate, topClients,
-      churnedKeys, churnRate, expiredKeys: expiredKeys.length,
-      byMod,
-    };
-  } catch (e) { console.error('[DB] Erro nas stats:', e.message); return null; }
-}
 
 const MAX_BODY_SIZE = 64 * 1024; // 64KB — proteção contra DoS
 
@@ -1357,6 +1222,7 @@ function buildKeysHtml() {
     <button class="bs bg" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${Number.isFinite(k.maxUses)?k.maxUses:MAX_USES})">Usos</button>
     <button class="bs bg" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">Renomear</button>
     ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Números</button>`:''}
+    <button class="bs" style="background:#7c3aed18;color:#b57bee;border:1px solid #7c3aed30" onclick="openModules('${escHtml(code)}','${escHtml(k.label||'')}','${escHtml(JSON.stringify({...DEFAULT_MODULES,...(k.modules||{})}))}')">🧩 Módulos</button>
     <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
     ${isSuspect?`<button class="bs bsusp" onclick="clearSuspect('${escHtml(code)}')">🕵️ Suspeita</button>`:''}
     <button class="bs" style="background:#7c3aed18;color:#9b59b6;border:1px solid #7c3aed30" data-code="${escHtml(code)}" data-label="${escHtml(k.label||'')}" data-modnote="${escHtml((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1]||'')}" onclick="openAssignModFromEl(this)">👮 Mod</button>
@@ -1654,17 +1520,62 @@ tr:hover td{background:#ffffff02}
   </div>
 </div></div>
 
+<div class="modal-bg" id="modulesModal"><div class="modal" style="width:380px">
+  <h3>🧩 Módulos Remotos — <span id="modulesLabel"></span></h3>
+  <input type="hidden" id="modulesCode">
+  <div id="modulesList" style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px"></div>
+  <div class="modal-actions">
+    <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeModules()">Fechar</button>
+  </div>
+</div></div>
+
 <div class="toast" id="toast"></div>
 
 <script>
 const _RA='${R_ADMIN}';
 const _MODS=${JSON.stringify(MODS.map(m => m.name))};
+const _MODULES=${JSON.stringify(AVAILABLE_MODULES)};
 
 function toast(msg,ok=true){
   const t=document.getElementById('toast');
   t.textContent=msg;t.style.background=ok?'var(--green)':'var(--red)';
   t.style.color=ok?'#000':'#fff';t.style.display='block';
   setTimeout(()=>t.style.display='none',3200);
+}
+
+// ── Módulos Remotos ──
+function openModules(code,label,modulesJson){
+  document.getElementById('modulesCode').value=code;
+  document.getElementById('modulesLabel').textContent=label;
+  let mods={};try{mods=JSON.parse(modulesJson);}catch{}
+  const list=document.getElementById('modulesList');
+  list.innerHTML=_MODULES.map(m=>{
+    const on=!!mods[m];
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--dark);border:1px solid var(--border);border-radius:8px">'
+      +'<span style="font-family:Syne,sans-serif;font-size:13px;font-weight:700">'+m+'</span>'
+      +'<label style="display:flex;align-items:center;gap:8px;cursor:pointer">'
+      +'<input type="checkbox" data-mod="'+m+'" '+(on?'checked':'')
+      +' style="width:16px;height:16px;accent-color:var(--green);cursor:pointer" onchange="toggleModule(\''+code+'\',this)">'
+      +'<span style="font-size:12px;color:'+(on?'var(--green)':'var(--muted)')+';">'+(on?'ATIVO':'INATIVO')+'</span>'
+      +'</label></div>';
+  }).join('');
+  document.getElementById('modulesModal').classList.add('open');
+}
+function closeModules(){document.getElementById('modulesModal').classList.remove('open');}
+document.getElementById('modulesModal').addEventListener('click',function(e){if(e.target===this)closeModules();});
+async function toggleModule(code,checkbox){
+  const moduleName=checkbox.dataset.mod;
+  const enabled=checkbox.checked;
+  try{
+    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/modules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({module:moduleName,enabled})});
+    const d=await r.json();
+    if(d.ok){
+      toast((enabled?'✅ ':'🔴 ')+moduleName+' '+(enabled?'ativado':'desativado'));
+      const label=checkbox.nextElementSibling;
+      if(label){label.textContent=enabled?'ATIVO':'INATIVO';label.style.color=enabled?'var(--green)':'var(--muted)';}
+      await doRefresh();
+    }else{toast('Erro: '+(d.error||'?'),false);checkbox.checked=!enabled;}
+  }catch(e){toast('Erro de rede',false);checkbox.checked=!enabled;}
 }
 
 // ── Atribuir Moderador ──
@@ -2058,7 +1969,7 @@ footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
 
   <div class="wip-banner">
     <span style="font-size:18px;flex-shrink:0">🚧</span>
-    <span><strong>Links de pagamento em breve!</strong> Os planos já estão configurados — assim que os links da Payt forem adicionados você poderá assinar direto por aqui.</span>
+    <span><strong>Links de pagamento em breve!</strong> Os planos já estão configurados — em breve você poderá assinar direto por aqui.</span>
   </div>
 
   <div class="plans">${cards}</div>
@@ -2104,7 +2015,7 @@ footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
     </div>
     <div class="faq-item">
       <div class="faq-q">Quando minha chave é ativada após o pagamento? <span class="arr">▶</span></div>
-      <div class="faq-a">Imediatamente após a confirmação do pagamento pela Payt. Para PIX é instantâneo. A chave já estará disponível no portal do cliente antes mesmo de você fechar a janela de confirmação.</div>
+      <div class="faq-a">Imediatamente após a confirmação do pagamento. Para PIX é instantâneo. A chave já estará disponível no portal do cliente antes mesmo de você fechar a janela de confirmação.</div>
     </div>
     <div class="faq-item">
       <div class="faq-q">Se eu já tenho uma chave e compro de novo, o que acontece? <span class="arr">▶</span></div>
@@ -2355,287 +2266,6 @@ ${CANVAS_BG}
 </body></html>`;
 }
 
-// ─────────────────────────────────────────────
-// PÁGINA: LOGIN ANALYTICS
-// ─────────────────────────────────────────────
-function renderAnalyticsLogin(error = '') {
-  return `<!DOCTYPE html><html lang="pt-BR"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Analytics</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:#080810;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
-.card{background:#0f0f1a;border:1px solid #1c1c2e;border-radius:18px;padding:40px 36px;width:360px;position:relative;z-index:1;box-shadow:0 0 40px rgba(0,255,135,0.08)}
-.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#00ff87;margin-bottom:4px;text-align:center;letter-spacing:-0.5px}
-.sub{color:#5a5a7a;font-size:12px;letter-spacing:3px;text-transform:uppercase;margin-bottom:24px;text-align:center}
-.badge{display:block;background:#00ff8712;border:1px solid #00ff8730;color:#00ff87;font-size:13px;letter-spacing:1px;text-transform:uppercase;padding:4px 14px;border-radius:20px;margin-bottom:20px;text-align:center;font-family:'Syne',sans-serif;font-weight:700}
-label{display:block;font-size:12px;letter-spacing:2px;color:#5a5a7a;text-transform:uppercase;margin-bottom:7px}
-input{width:100%;padding:11px 14px;background:#080810;border:1px solid #1c1c2e;border-radius:8px;color:#e2e2f0;font-family:'Space Mono',monospace;font-size:13px;outline:none;margin-bottom:16px;transition:border .2s}
-input:focus{border-color:#00ff87}
-.btn{width:100%;padding:12px;background:#00ff87;border:none;border-radius:8px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:opacity .2s}
-.btn:hover{opacity:.85}
-.err{background:#ff475715;border:1px solid #ff4757;border-radius:6px;color:#ff4757;padding:11px 14px;font-size:14px;margin-bottom:16px;font-family:'Syne',sans-serif}
-</style></head><body>
-<div class="card">
-  <div class="logo">⚡ ZVM</div>
-  <div class="sub">Painel de Analytics</div>
-  <div class="badge">📊 Acesso Privado</div>
-  ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
-  <form method="POST" action="${R_ANALYTICS}/login">
-    <label>Senha de Acesso</label>
-    <input type="password" name="pass" autofocus>
-    <button type="submit" class="btn">Entrar</button>
-  </form>
-</div>
-${CANVAS_BG}</body></html>`;
-}
-
-// ─────────────────────────────────────────────
-// PAINEL: ANALYTICS (async — busca dados do MongoDB)
-// ─────────────────────────────────────────────
-async function renderAnalyticsDashboard() {
-  const stats    = await getPaymentStats();
-  const payments = await getPayments({ limit: 200 });
-  const fmtBRL   = v => 'R$\u00a0' + (v||0).toFixed(2).replace('.',',');
-  const fmtDate  = iso => iso ? new Date(iso).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
-  const escH     = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const byDayJson    = JSON.stringify(stats?.byDay     || []);
-  const byProdJson   = JSON.stringify(stats?.byProduct || []);
-  const byHourJson   = JSON.stringify(stats?.byHour    || []);
-  const byMethodJson = JSON.stringify(stats?.byMethod  || []);
-
-  const paymentsRows = payments.length ? payments.map(p => {
-    const rowSearch = [p.clientName,p.clientEmail,p.productName,p.keyCode,p.paymentMethod].join('|').toLowerCase();
-    return `<tr data-row="${escH(rowSearch)}" data-paid="${escH(p.paidAt||'')}">
-  <td>${fmtDate(p.paidAt)}</td>
-  <td>${escH(p.clientName)}</td>
-  <td style="color:#6b6b8a;font-size:12px">${escH(p.clientEmail)}</td>
-  <td>${escH(p.productName)}</td>
-  <td style="color:${p.approved?'#00ff87':'#ff4757'};font-weight:700">${fmtBRL(p.amount)}</td>
-  <td><span class="badge ${p.approved?'bon':'boff'}">${p.approved?'APROVADO':'REJEITADO'}</span></td>
-  <td style="color:#4f8ef7;font-size:12px">${escH(p.keyCode||'-')}</td>
-</tr>`;
-  }).join('') : '<tr><td colspan="7" class="empty">Nenhum pagamento registrado ainda.<br>Configure o webhook da Payt apontando para /payt/webhook</td></tr>';
-
-  const topClientsRows = (stats?.topClients||[]).map(c =>
-    `<tr><td>${escH(c._id)}</td><td style="text-align:center;color:#00ff87;font-weight:700">${c.count}</td><td style="text-align:right;color:#00ff87">${fmtBRL(c.total)}</td></tr>`
-  ).join('') || '<tr><td colspan="3" class="empty">Sem dados</td></tr>';
-
-  const modRows = (stats?.byMod||[]).map((m,i) =>
-    `<tr><td>${i===0?'🥇':i===1?'🥈':i===2?'🥉':'  '} ${escH(m.name)}</td><td style="text-align:right;color:#4f8ef7;font-weight:700">${m.count} chaves</td></tr>`
-  ).join('') || '<tr><td colspan="2" class="empty">Sem dados</td></tr>';
-
-  return `<!DOCTYPE html><html lang="pt-BR"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Analytics</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--gold:#00ff87;--dark:#080810;--card:#0f0f1a;--card2:#13131f;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--green:#00ff87;--red:#ff4757;--blue:#4f8ef7;--radius:10px}
-body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh}
-header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040}
-.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
-.badge-an{background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-size:12px;text-transform:uppercase;padding:4px 12px;border-radius:20px;font-family:'Syne',sans-serif;font-weight:700}
-a.out{color:var(--muted);font-size:13px;text-decoration:none;padding:6px 14px;border:1px solid var(--border);border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
-a.out:hover{color:var(--red);border-color:var(--red)}
-main{padding:22px 24px;max-width:1600px;margin:0 auto;position:relative;z-index:1}
-/* Stats grid */
-.stats{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px}
-.stats2{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
-.sc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;position:relative;overflow:hidden;transition:border-color .2s}
-.sc:hover{border-color:#00ff8730}
-.sc-icon{position:absolute;right:12px;top:12px;font-size:20px;opacity:.12}
-.sc .n{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:var(--green);line-height:1.1}
-.sc .n.green{color:var(--green)}
-.sc .n.red{color:var(--red)}
-.sc .n.blue{color:var(--blue)}
-.sc .l{color:var(--muted);font-size:13px;text-transform:uppercase;letter-spacing:.3px;margin-top:6px;font-family:'Syne',sans-serif}
-.sc .sub-n{font-size:13px;color:var(--muted);margin-top:4px;font-family:'Syne',sans-serif}
-/* Charts */
-.charts{display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:16px}
-.charts3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:16px}
-.chart-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px}
-.chart-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--green);margin-bottom:14px;display:flex;align-items:center;gap:6px}
-/* Sections */
-.sec{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:14px}
-.sh{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--card2);flex-wrap:wrap;gap:8px}
-.st{font-family:'Syne',sans-serif;font-weight:700;font-size:14px;color:var(--green)}
-.sh input{padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Syne',sans-serif;font-size:13px;outline:none;width:200px}
-.sh input:focus{border-color:var(--green)}
-.btn{padding:8px 14px;border:none;border-radius:6px;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;transition:all .18s}
-.bcsv{background:#00ff8712;color:var(--green);border:1px solid #00ff8730}
-.bcsv:hover{background:#00ff8722;border-color:var(--green)}
-.pb{padding:5px 12px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;cursor:pointer;transition:all .18s}
-.pb.active,.pb:hover{background:#00ff8718;border-color:#00ff8740;color:var(--green)}
-.period-btns{display:flex;gap:6px}
-.ov{overflow-x:auto}
-table{width:100%;border-collapse:collapse}
-th{padding:11px 14px;text-align:left;font-size:13px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--border);background:var(--card2);white-space:nowrap;font-family:'Syne',sans-serif}
-td{padding:12px 14px;font-size:14px;border-bottom:1px solid #14141f;vertical-align:middle;font-family:'Syne',sans-serif}
-tr:last-child td{border-bottom:none}
-tr:hover td{background:#ffffff02}
-.badge{padding:2px 7px;border-radius:3px;font-size:11px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;font-family:'Syne',sans-serif}
-.bon{background:#00ff8718;color:var(--green);border:1px solid #00ff8730}
-.boff{background:#ff475718;color:var(--red);border:1px solid #ff475730}
-.empty{text-align:center;color:var(--muted);padding:30px;font-size:13px;line-height:2;font-family:'Syne',sans-serif}
-/* Retention bar */
-.ret-bar-wrap{background:#1c1c2e;border-radius:6px;height:8px;overflow:hidden;margin-top:8px}
-.ret-bar{height:8px;border-radius:6px;background:linear-gradient(90deg,#00cc6a,var(--green));transition:width .8s}
-.two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
-@media(max-width:1200px){.stats{grid-template-columns:repeat(3,1fr)}.stats2{grid-template-columns:repeat(2,1fr)}.charts{grid-template-columns:1fr}.charts3{grid-template-columns:1fr 1fr}}
-@media(max-width:700px){.stats{grid-template-columns:1fr 1fr}.stats2{grid-template-columns:1fr 1fr}.two-col{grid-template-columns:1fr}.charts3{grid-template-columns:1fr};main{padding:14px 12px}}
-</style></head><body>
-<header>
-  <div class="logo">⚡ ZVM <span class="badge-an">Analytics</span></div>
-  <div style="display:flex;gap:10px;align-items:center">
-    <a href="${R_ANALYTICS}/export/csv" class="btn bcsv">⬇ CSV</a>
-    <a href="${R_ANALYTICS}/logout" class="out">↩ Sair</a>
-  </div>
-</header>
-<main>
-
-  <!-- KPIs principais -->
-  <div class="stats">
-    <div class="sc"><div class="sc-icon">💰</div><div class="n">${fmtBRL(stats?.revenueTotal||0)}</div><div class="l">Receita Total</div><div class="sub-n">${fmtBRL(stats?.revenueLast30||0)} últimos 30d</div></div>
-    <div class="sc"><div class="sc-icon">🛒</div><div class="n">${stats?.total||0}</div><div class="l">Total de Vendas</div><div class="sub-n">${stats?.last30||0} últimos 30d</div></div>
-    <div class="sc"><div class="sc-icon">📈</div><div class="n">${stats?.last7||0}</div><div class="l">Vendas 7 dias</div><div class="sub-n">${fmtBRL(stats?.revenueLast7||0)}</div></div>
-    <div class="sc"><div class="sc-icon">🎯</div><div class="n">${stats?.total ? fmtBRL((stats.revenueTotal||0)/stats.total) : 'R$\u00a00,00'}</div><div class="l">Ticket Médio</div></div>
-    <div class="sc"><div class="sc-icon">👥</div><div class="n blue">${stats?.uniqueClients||0}</div><div class="l">Clientes Únicos</div><div class="sub-n">${stats?.returningClients||0} recorrentes</div></div>
-    <div class="sc"><div class="sc-icon">🔄</div><div class="n ${(stats?.retentionRate||0)>=30?'green':'red'}">${stats?.retentionRate||0}%</div><div class="l">Taxa Retenção</div><div class="sub-n">${stats?.returningClients||0} de ${stats?.uniqueClients||0} clientes</div></div>
-  </div>
-
-  <!-- KPIs secundários -->
-  <div class="stats2">
-    <div class="sc"><div class="sc-icon">📦</div><div class="n blue">${stats?.byProduct?.length||0}</div><div class="l">Produtos Ativos</div><div class="sub-n">${(stats?.byProduct||[]).slice(0,2).map(p=>escH(p._id||'?')+'('+p.count+')').join(', ')||'—'}</div></div>
-    <div class="sc"><div class="sc-icon">💳</div><div class="n blue">${(stats?.byMethod||[])[0]?._id||'—'}</div><div class="l">Método + Usado</div><div class="sub-n">${(stats?.byMethod||[])[0]?.count||0} transações</div></div>
-    <div class="sc"><div class="sc-icon">📉</div><div class="n ${(stats?.churnRate||0)>50?'red':(stats?.churnRate||0)>25?'gold':''}">${stats?.churnRate||0}%</div><div class="l">Taxa de Churn (30d)</div><div class="sub-n">${stats?.churnedKeys||0} de ${stats?.expiredKeys||0} expiradas</div></div>
-    <div class="sc"><div class="sc-icon">⏰</div><div class="n blue">${(stats?.byHour||[]).sort((a,b)=>b.count-a.count)[0]?._id||'—'}h</div><div class="l">Horário de Pico</div><div class="sub-n">${(stats?.byHour||[]).sort((a,b)=>b.count-a.count)[0]?.count||0} vendas neste horário</div></div>
-  </div>
-
-  <!-- Gráficos principais -->
-  <div class="charts">
-    <div class="chart-card">
-      <div class="chart-title">📊 Vendas e Receita — últimos 30 dias</div>
-      <canvas id="chartVendas" height="180"></canvas>
-    </div>
-    <div class="chart-card">
-      <div class="chart-title">🥧 Receita por Produto</div>
-      <canvas id="chartProdutos" height="180"></canvas>
-    </div>
-  </div>
-
-  <!-- Gráficos secundários -->
-  <div class="charts3">
-    <div class="chart-card">
-      <div class="chart-title">⏰ Horários de Pico</div>
-      <canvas id="chartHoras" height="160"></canvas>
-    </div>
-    <div class="chart-card">
-      <div class="chart-title">💳 Métodos de Pagamento</div>
-      <canvas id="chartMetodos" height="160"></canvas>
-    </div>
-    <div class="chart-card">
-      <div class="chart-title">🔄 Retenção de Clientes</div>
-      <div style="padding-top:20px">
-        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;font-family:'Syne',sans-serif"><span style="color:var(--muted)">Novos clientes</span><span style="color:var(--text)">${(stats?.uniqueClients||0)-(stats?.returningClients||0)}</span></div>
-        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;font-family:'Syne',sans-serif"><span style="color:var(--muted)">Clientes recorrentes</span><span style="color:var(--green)">${stats?.returningClients||0}</span></div>
-        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:10px;font-family:'Syne',sans-serif"><span style="color:var(--muted)">Taxa de retenção</span><span style="color:${(stats?.retentionRate||0)>=30?'var(--green)':'var(--red)'};font-weight:700">${stats?.retentionRate||0}%</span></div>
-        <div class="ret-bar-wrap"><div class="ret-bar" style="width:${stats?.retentionRate||0}%"></div></div>
-        <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:14px">
-          <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Churn (30 dias)</div>
-          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;font-family:'Syne',sans-serif"><span style="color:var(--muted)">Expiradas no período</span><span>${stats?.expiredKeys||0}</span></div>
-          <div style="display:flex;justify-content:space-between;font-size:13px;font-family:'Syne',sans-serif"><span style="color:var(--muted)">Não renovaram</span><span style="color:var(--red)">${stats?.churnedKeys||0} (${stats?.churnRate||0}%)</span></div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Tabelas lado a lado -->
-  <div class="two-col">
-    <div class="sec">
-      <div class="sh"><div class="st">🏆 Top Clientes</div></div>
-      <div class="ov"><table>
-        <thead><tr><th>Email</th><th style="text-align:center">Compras</th><th style="text-align:right">Total Gasto</th></tr></thead>
-        <tbody>${topClientsRows}</tbody>
-      </table></div>
-    </div>
-    <div class="sec">
-      <div class="sh"><div class="st">👮 Moderadores</div></div>
-      <div class="ov"><table>
-        <thead><tr><th>Moderador</th><th style="text-align:right">Chaves Criadas</th></tr></thead>
-        <tbody>${modRows}</tbody>
-      </table></div>
-    </div>
-  </div>
-
-  <!-- Histórico de pagamentos -->
-  <div class="sec">
-    <div class="sh">
-      <div class="st">💳 Histórico de Pagamentos</div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <input type="text" id="search" placeholder="🔍 Cliente, email, produto..." oninput="filterTable()">
-        <div class="period-btns">
-          <button class="pb active" onclick="setPeriod(7,this)">7d</button>
-          <button class="pb" onclick="setPeriod(30,this)">30d</button>
-          <button class="pb" onclick="setPeriod(90,this)">90d</button>
-          <button class="pb" onclick="setPeriod(0,this)">Todos</button>
-        </div>
-      </div>
-    </div>
-    <div class="ov">
-      <table>
-        <thead><tr><th>Data</th><th>Cliente</th><th>Email</th><th>Produto</th><th>Valor</th><th>Status</th><th>Chave</th></tr></thead>
-        <tbody id="payments-body">${paymentsRows}</tbody>
-      </table>
-    </div>
-  </div>
-  </div>
-</main>
-
-<script>
-const _byDay=${byDayJson},_byProduct=${byProdJson},_byHour=${byHourJson},_byMethod=${byMethodJson};
-const _days=[];
-for(let i=29;i>=0;i--){const d=new Date(Date.now()-i*86400000),k=d.toISOString().slice(0,10),f=_byDay.find(x=>x._id===k);_days.push({date:k,count:f?.count||0,revenue:f?.revenue||0});}
-
-// Montar array de horas 0–23
-const _hours=Array.from({length:24},(_,i)=>{const h=String(i).padStart(2,'0'),f=_byHour.find(x=>x._id===h);return{h:h+'h',count:f?.count||0};});
-
-function loadChart(cb){if(window.Chart){cb();return;}const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js';s.onload=cb;document.head.appendChild(s);}
-
-loadChart(()=>{
-  Chart.defaults.color='#5a5a7a';Chart.defaults.borderColor='#1c1c2e';
-
-  // Vendas e receita
-  new Chart(document.getElementById('chartVendas'),{type:'bar',data:{
-    labels:_days.map(d=>d.date.slice(5)),
-    datasets:[
-      {label:'Vendas',data:_days.map(d=>d.count),backgroundColor:'#00ff8722',borderColor:'#00ff87',borderWidth:1.5,borderRadius:4,yAxisID:'y'},
-      {label:'Receita (R$)',data:_days.map(d=>d.revenue),type:'line',borderColor:'#00ff87',backgroundColor:'#00ff8715',borderWidth:2,pointRadius:2,tension:0.4,yAxisID:'y2'}
-    ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{family:'Space Mono',size:10},boxWidth:12}}},scales:{y:{position:'left',grid:{color:'#1c1c2e'},ticks:{precision:0}},y2:{position:'right',grid:{drawOnChartArea:false},ticks:{callback:v=>'R$'+v.toFixed(0)}},x:{grid:{color:'#1c1c2e'},ticks:{font:{size:9},maxRotation:45}}}}});
-
-  // Produtos
-  if(_byProduct.length){const colors=['#ffd32a','#00ff87','#4f8ef7','#ff4757','#9b59b6','#ff8600'];
-  new Chart(document.getElementById('chartProdutos'),{type:'doughnut',data:{labels:_byProduct.map(p=>p._id||'?'),datasets:[{data:_byProduct.map(p=>p.revenue||p.count),backgroundColor:colors,borderColor:'#0f0f1a',borderWidth:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{family:'Space Mono',size:10},boxWidth:10,padding:8}},tooltip:{callbacks:{label:ctx=>' R$ '+ctx.parsed.toFixed(2).replace('.',',')}}}}}});}
-
-  // Horários de pico
-  new Chart(document.getElementById('chartHoras'),{type:'bar',data:{
-    labels:_hours.map(h=>h.h),
-    datasets:[{label:'Vendas',data:_hours.map(h=>h.count),backgroundColor:_hours.map(h=>{const max=Math.max(..._hours.map(x=>x.count));return h.count===max?'#00ff87':'#00ff8722';}),borderColor:'#00ff8760',borderWidth:1,borderRadius:3}]
-  },options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{grid:{color:'#1c1c2e'},ticks:{precision:0,font:{size:8}}},x:{grid:{color:'#1c1c2e'},ticks:{font:{size:8}}}}}});
-
-  // Métodos de pagamento
-  if(_byMethod.length){const mc=['#4f8ef7','#ffd32a','#00ff87','#ff4757','#9b59b6'];
-  new Chart(document.getElementById('chartMetodos'),{type:'pie',data:{labels:_byMethod.map(m=>m._id||'?'),datasets:[{data:_byMethod.map(m=>m.count),backgroundColor:mc,borderColor:'#0f0f1a',borderWidth:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{family:'Space Mono',size:10},boxWidth:10,padding:8}}}}});}
-});
-
-function filterTable(){const q=(document.getElementById('search').value||'').toLowerCase();document.querySelectorAll('#payments-body tr[data-row]').forEach(r=>{r.style.display=!q||r.dataset.row.includes(q)?'':'none';});}
-function setPeriod(days,btn){document.querySelectorAll('.pb').forEach(b=>b.classList.remove('active'));btn.classList.add('active');const cutoff=days?new Date(Date.now()-days*86400000).toISOString():null;document.querySelectorAll('#payments-body tr[data-paid]').forEach(r=>{r.style.display=(!cutoff||r.dataset.paid>=cutoff)?'':'none';});}
-</script>
-${CANVAS_BG}</body></html>`;
-}
 
 // ─────────────────────────────────────────────
 async function handleRequest(req, res) {
@@ -2646,7 +2276,7 @@ async function handleRequest(req, res) {
   const _corsH = {
     'Access-Control-Allow-Origin':  (()=>{
       const o=req.headers.origin||'';
-      if(p.startsWith(R_ADMIN)||p.startsWith(R_MOD)||(R_ANALYTICS&&p.startsWith(R_ANALYTICS))){return 'null';}
+      if(p.startsWith(R_ADMIN)||p.startsWith(R_MOD)){return 'null';}
       return o||'*';
     })(),
     'Access-Control-Allow-Methods': 'POST,GET,OPTIONS,DELETE',
@@ -2668,7 +2298,6 @@ async function handleRequest(req, res) {
   if (APP_SECRET) {
     if (p === '/admin' || p.startsWith('/admin/')) { res.writeHead(404); res.end('Not found'); return; }
     if (p === '/mod'  || p.startsWith('/mod/'))   { res.writeHead(404); res.end('Not found'); return; }
-    if (p === '/analytics' || p.startsWith('/analytics/')) { res.writeHead(404); res.end('Not found'); return; }
   }
 
   console.log(`[${new Date().toISOString()}] ${req.method} ${p} — ${ip}`);
@@ -2879,6 +2508,7 @@ async function handleRequest(req, res) {
       expiringSoon: isKeyExpiringSoon(keys[keyCode]),
       hoursLeft:    hoursUntilExpiry(keys[keyCode]),
       deferred:     !!(keys[keyCode].expireDuration && !keys[keyCode].expiresAt),
+      modules:      { ...DEFAULT_MODULES, ...(keys[keyCode].modules || {}) },
       ts:           Date.now()
     });
     return;
@@ -2988,6 +2618,7 @@ async function handleRequest(req, res) {
       deviceId: null, wppVersion: null, note: '[Mod: '+modName+']',
       expiresAt, expireDuration: expireDuration || null,
       maxUses, warnCount: 0,
+      modules: { ...DEFAULT_MODULES },
     };
     await saveKey(code);
     sendJson(res, { ok: true, key: code }); return;
@@ -3103,7 +2734,8 @@ async function handleRequest(req, res) {
       uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null,
       deviceId: null, wppVersion: null, note: '',
       expiresAt, expireDuration: expireDuration || null,
-      maxUses: isNaN(maxUses) ? MAX_USES : maxUses, warnCount: 0
+      maxUses: isNaN(maxUses) ? MAX_USES : maxUses, warnCount: 0,
+      modules: { ...DEFAULT_MODULES },
     };
     await saveKey(code);
     sendJson(res, { ok: true, key: code }); return;
@@ -3221,6 +2853,23 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true }); return;
   }
 
+  // ── Admin API: toggle módulo remoto ──
+  const codeModules = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/modules$`));
+  if (codeModules && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    if (!keys[codeModules]) { sendJson(res, { error: 'not found' }, 404); return; }
+    const body = await parseBody(req);
+    const moduleName = String(body.module || '').trim();
+    const enabled    = !!body.enabled;
+    if (!AVAILABLE_MODULES.includes(moduleName)) {
+      sendJson(res, { error: 'módulo desconhecido: ' + moduleName }, 400); return;
+    }
+    if (!keys[codeModules].modules) keys[codeModules].modules = { ...DEFAULT_MODULES };
+    keys[codeModules].modules[moduleName] = enabled;
+    await saveKey(codeModules);
+    sendJson(res, { ok: true, module: moduleName, enabled, modules: keys[codeModules].modules }); return;
+  }
+
   // ── Admin API: atribuir chave a moderador ──
   const codeAssignMod = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/assign-mod$`));
   if (codeAssignMod && req.method === 'POST') {
@@ -3303,187 +2952,6 @@ async function handleRequest(req, res) {
     res.writeHead(200); res.end('\uFEFF' + csv); return;
   }
 
-  // ── Payt webhook ──
-  // ─────────────────────────────────────────────
-  // ANALYTICS: login / logout / painel / export
-  // ─────────────────────────────────────────────
-  if (p === R_ANALYTICS+'/login' && req.method === 'POST') {
-    if (!ANALYTICS_PASS) { res.writeHead(404); res.end('Not found'); return; }
-    if (!checkRateLimit(ip, 'login')) {
-      const mins = getRateLimitWait(ip, 'login');
-      sendHtml(res, renderAnalyticsLogin(`⏳ Muitas tentativas. Aguarde ${mins} minuto(s).`), 429); return;
-    }
-    const form = await parseFormBody(req);
-    const _anp=Buffer.from(form.get('pass')||''), _anap=Buffer.from(ANALYTICS_PASS||'');
-    if (_anp.length===_anap.length && crypto.timingSafeEqual(_anp.length?_anp:Buffer.alloc(1),_anap.length?_anap:Buffer.alloc(1)) && ANALYTICS_PASS) {
-      const token = generateToken();
-      analyticsSessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString() };
-      res.setHeader('Set-Cookie', `zv_an=${token}; Path=/; HttpOnly; SameSite=Strict; Secure`);
-      res.writeHead(302, { Location: R_ANALYTICS }); res.end();
-    } else {
-      sendHtml(res, renderAnalyticsLogin('Senha incorreta.'));
-    }
-    return;
-  }
-
-  if (p === R_ANALYTICS+'/logout') {
-    res.setHeader('Set-Cookie', 'zv_an=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict; Secure');
-    res.writeHead(302, { Location: R_ANALYTICS }); res.end(); return;
-  }
-
-  if ((p === R_ANALYTICS || p === R_ANALYTICS+'/') && req.method === 'GET') {
-    if (!ANALYTICS_PASS) { res.writeHead(404); res.end('Not found'); return; }
-    if (!isAnalyticsSession(req)) {
-      clearAnalyticsCookie(res); // limpa cookie inválido (ex: após reinício do servidor)
-      sendHtml(res, renderAnalyticsLogin()); return;
-    }
-    sendHtml(res, await renderAnalyticsDashboard()); return;
-  }
-
-  // ── Analytics: export CSV ──
-  if (p === R_ANALYTICS+'/export/csv' && req.method === 'GET') {
-    if (!isAnalyticsSession(req)) { res.writeHead(302, { Location: R_ANALYTICS }); res.end(); return; }
-    const payments = await getPayments({ limit: 10000 });
-    const header = 'Data,Cliente,Email,Telefone,Produto,Valor,Status,Chave,Método';
-    const rows = payments.map(p => {
-      const fmtDate = iso => iso ? new Date(iso).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}) : '';
-      return [
-        fmtDate(p.paidAt), p.clientName, p.clientEmail, p.clientPhone,
-        p.productName, (p.amount||0).toFixed(2).replace('.',','),
-        p.approved ? 'APROVADO' : 'REJEITADO',
-        p.keyCode || '', p.paymentMethod || ''
-      ].map(v => `"${String(v||'').replace(/"/g,'""')}"`).join(',');
-    });
-    const csv = [header, ...rows].join('\r\n');
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="zvm-pagamentos-${new Date().toISOString().slice(0,10)}.csv"`);
-    res.writeHead(200); res.end('\uFEFF' + csv); return;
-  }
-
-  // ── Analytics: API stats (para refresh futuro) ──
-  if (p === R_ANALYTICS+'/api/stats' && req.method === 'GET') {
-    if (!isAnalyticsSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const stats = await getPaymentStats();
-    sendJson(res, stats || {}); return;
-  }
-
-  if (p === '/payt/webhook' && req.method === 'POST') {
-    const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
-
-    let payload;
-    try { payload = JSON.parse(rawBody); }
-    catch { try { payload = Object.fromEntries(new URLSearchParams(rawBody).entries()); } catch { res.writeHead(400); res.end('Bad Request'); return; } }
-
-    // Validar token — Payt V1 envia integration_key no body; também suportamos header
-    if (PAYT_SECRET) {
-      const headerToken = req.headers['x-payt-token'] || req.headers['x-webhook-token'] || '';
-      const bodyKey     = payload.integration_key || '';
-      const validHeader = !headerToken || headerToken === PAYT_SECRET;
-      const validBody   = !bodyKey     || bodyKey   === PAYT_SECRET;
-      if (!validHeader || !validBody) {
-        console.warn('[PAYT] Token/integration_key inválido — ignorado');
-        res.writeHead(401); res.end('Unauthorized'); return;
-      }
-    }
-
-    // Ignorar postbacks de homologação
-    if (payload.test === true) {
-      console.log('[PAYT] Postback de teste — ignorado');
-      res.writeHead(200); res.end('test_ignored'); return;
-    }
-
-    // Status — Payt V1 usa campo "status"
-    const status   = String(payload.status || payload.payment_status || payload.sale_status || '').toLowerCase();
-    const APPROVED = ['venda_paga','approved','paid','completed','finished','aprovada','finalizada','active','confirmed'];
-    const approved = APPROVED.some(s => status === s || status.includes(s));
-
-    // IDs
-    const txId = String(payload.transaction_id || payload.sale_id || payload.cart_id || payload.id || '').trim();
-
-    // Cliente — Payt V1 usa payload.customer
-    const customer    = payload.customer || payload.buyer || payload.client || {};
-    const clientName  = customer.name        || customer.full_name     || payload.customer_name  || payload.buyer_name || 'Cliente';
-    const clientEmail = customer.email       || payload.customer_email || payload.buyer_email    || payload.email      || '';
-    const clientPhone = customer.phone       || customer.cellphone     || customer.phone_number  || payload.customer_phone || '';
-
-    // Produto — Payt V1 pode enviar payload.products (array) ou campos avulsos
-    let productNameRaw = '-';
-    let amount = 0;
-    if (Array.isArray(payload.products) && payload.products.length > 0) {
-      productNameRaw = payload.products.map(pr => pr.name || pr.title || '').filter(Boolean).join(' + ') || '-';
-      amount = payload.products.reduce((s, pr) => s + (parseFloat(String(pr.price||pr.value||0).replace(',','.')) || 0), 0);
-    }
-    if (productNameRaw === '-') {
-      const offer = payload.offer || payload.product || {};
-      productNameRaw = offer.name || offer.title || payload.product_name || payload.offer_name || payload.plan_name || '-';
-    }
-    if (!amount) {
-      const raw = payload.amount || payload.value || payload.price || payload.sale_amount || payload.total || 0;
-      amount = parseFloat(String(raw).replace(',','.')) || 0;
-    }
-    const paymentMethod  = payload.payment_method || payload.charge_type || payload.method || payload.payment_type || '-';
-    const productNameLow = productNameRaw.toLowerCase();
-
-    // Registrar não-aprovados para analytics
-    if (!approved) {
-      console.log('[PAYT] Status nao aprovado:', status, '| TX:', txId);
-      if (txId) savePayment({ txId, status: status||'unknown', approved: false, clientName, clientEmail, clientPhone, productName: productNameRaw, amount, paymentMethod, keyCode: null, paidAt: new Date().toISOString(), rawStatus: status }).catch(()=>{});
-      res.writeHead(200); res.end('ignored'); return;
-    }
-
-    // Idempotência — memoria + MongoDB
-    if (txId) {
-      if (Object.values(keys).some(k => k.note && (k.note.includes('payt_tx:'+txId) || k.note.includes('renovado_payt_tx:'+txId)))) {
-        console.log('[PAYT] Transacao ja processada (memoria):', txId);
-        res.writeHead(200); res.end('ok'); return;
-      }
-      try {
-        const _db = await getMongoDb();
-        const _ex = await _db.collection('payments').findOne({ txId, approved: true });
-        if (_ex) { console.log('[PAYT] Transacao ja no banco:', txId); res.writeHead(200); res.end('ok'); return; }
-      } catch(e) { console.warn('[PAYT] Erro idempotencia:', e.message); }
-    }
-
-    // Determinar maxUses pelo produto
-    let maxUses = 3;
-    if      (productNameLow.match(/\b1\b|individual|solo|basico|starter/)) maxUses = 1;
-    else if (productNameLow.match(/\b5\b|multi|team|equipe|avancado/))     maxUses = 5;
-    else if (productNameLow.match(/\b3\b|trio|standard|padrao/))           maxUses = 3;
-
-    // Verificar renovacao — cliente com mesmo email ja tem chave?
-    let existingCode = null;
-    if (clientEmail) {
-      existingCode = Object.keys(keys).find(c => {
-        const emailMatch = (keys[c].note||'').match(/Email: ([^\s|]+)/);
-        return emailMatch && emailMatch[1].toLowerCase() === clientEmail.toLowerCase() && keys[c].active;
-      });
-    }
-
-    const now        = new Date();
-    const durationMs = 31 * 24 * 60 * 60 * 1000;
-
-    if (existingCode) {
-      // Renovar chave existente
-      const k    = keys[existingCode];
-      const base = (k.expiresAt && new Date(k.expiresAt) > now) ? new Date(k.expiresAt) : now;
-      k.expiresAt = new Date(base.getTime() + durationMs).toISOString();
-      k.active    = true;
-      k.note      = k.note + (txId ? ' | renovado_payt_tx:'+txId : ' | renovado');
-      await saveKey(existingCode);
-      await savePayment({ txId: txId||existingCode, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, keyCode:existingCode, maxUses, renewed:true, paidAt:now.toISOString(), rawStatus:status });
-      console.log('[PAYT] Chave renovada:', existingCode, '| Nova exp:', k.expiresAt);
-      res.writeHead(200); res.end('ok'); return;
-    }
-
-    // Criar nova chave
-    const code    = generateCode();
-    const expires = new Date(now.getTime() + durationMs);
-    keys[code] = { label:'PAYT - '+clientName, active:true, phones:[], uses:0, maxUses, expiresAt:expires.toISOString(), expireDuration:durationMs, createdAt:now.toISOString(), lastUsed:null, lastIp:null, lastPhone:null, deviceId:null, wppVersion:null, warnCount:0, note:'Pedido automatico Payt | Email: '+clientEmail+(txId?' | payt_tx:'+txId:'') };
-    await saveKey(code);
-    await savePayment({ txId:txId||code, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, keyCode:code, maxUses, renewed:false, paidAt:now.toISOString(), rawStatus:status });
-    console.log('[PAYT] Chave criada:', code, '| Cliente:', clientName, '| Usos:', maxUses, '| Valor: R$', amount.toFixed(2));
-    res.writeHead(200); res.end('ok'); return;
-  }
 
   // ── Portal cliente: status ──
   if (p === '/client/status' && req.method === 'POST') {
@@ -3612,10 +3080,8 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     console.log(`🍃 MongoDB: conectado | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}`);
     console.log(`🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
     console.log(`🔑 2FA:  ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
-    console.log(`💳 Payt: ${PAYT_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
     console.log(`🔑 Admin: ${R_ADMIN} | User: ${ADMIN_USER}`);
     console.log(`👮 Mod:   ${MODS.length > 0 ? R_MOD+' | '+MODS.length+' mod(s): '+MODS.map(m=>m.name).join(', ') : '⚠ inativo — defina MOD_USER e MOD_PASS'}`);
-    console.log(`📊 Analytics: ${ANALYTICS_PASS ? 'ATIVO' : '⚠ INATIVO'}`);
     console.log(`🌐 Extension: ${R_EXT}/v3/key`);
     console.log(`📊 Webhook: ${WEBHOOK_URL || 'não configurado'}`);
     console.log(`🗂  Retenção de logs: ${LOG_RETENTION_DAYS} dias (LGPD) | Máx em memória: ${LOG_MAX}`);
