@@ -2288,7 +2288,7 @@ async function handleRequest(req, res) {
     'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
     'Referrer-Policy':              'no-referrer',
     'Permissions-Policy':           'geolocation=(), microphone=(), camera=()',
-    'Content-Security-Policy':      "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
+    'Content-Security-Policy':      "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
     'X-Powered-By':                 'PHP/7.4.3',
   };
   Object.entries(_corsH).forEach(([k, v]) => res.setHeader(k, v));
@@ -2687,7 +2687,11 @@ async function handleRequest(req, res) {
   // Helper para extrair código das rotas /api/keys/:code/...
   function extractCode(pattern) {
     const match = p.match(pattern);
-    return match ? decodeURIComponent(match[1]) : null;
+    if (!match) return null;
+    const code = decodeURIComponent(match[1]);
+    // Sanitize: only allow chars used by generateCode() + safe chars
+    if (!/^[a-z0-9_\-]{1,30}$/.test(code)) return null;
+    return code;
   }
   const RA = R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -2955,6 +2959,7 @@ async function handleRequest(req, res) {
 
   // ── Portal cliente: status ──
   if (p === '/client/status' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
     const body = await parseBody(req);
     const code = (body.key || '').trim().toLowerCase().slice(0, 20);
     if (!code) { sendJson(res, { error: 'not_found' }, 404); return; }
@@ -2991,6 +2996,7 @@ async function handleRequest(req, res) {
 
   // ── Portal cliente: remover número ──
   if (p === '/client/remove-phone' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
     const body    = await parseBody(req);
     const keyCode = (body.key||'').trim().toLowerCase().slice(0, 20);
     const phoneIdx = body.phoneIdx != null ? parseInt(body.phoneIdx) : -1;
@@ -3081,8 +3087,8 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     console.log(`🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
     console.log(`🔑 2FA:  ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
     console.log(`🔑 Admin: ${R_ADMIN} | User: ${ADMIN_USER}`);
-    console.log(`👮 Mod:   ${MODS.length > 0 ? R_MOD+' | '+MODS.length+' mod(s): '+MODS.map(m=>m.name).join(', ') : '⚠ inativo — defina MOD_USER e MOD_PASS'}`);
-    console.log(`🌐 Extension: ${R_EXT}/v3/key`);
+    console.log(`👮 Mod:   ${MODS.length > 0 ? MODS.length+' mod(s) configurado(s)' : '⚠ inativo — defina MOD_USER e MOD_PASS'}`);
+    console.log(`🌐 Extension: /extension/v3/key`);
     console.log(`📊 Webhook: ${WEBHOOK_URL || 'não configurado'}`);
     console.log(`🗂  Retenção de logs: ${LOG_RETENTION_DAYS} dias (LGPD) | Máx em memória: ${LOG_MAX}`);
 
