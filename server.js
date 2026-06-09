@@ -2368,7 +2368,7 @@ async function handleRequest(req, res) {
 
   // ── Extensão: /v3/key ──
   if (p === R_EXT+'/v3/key' && req.method === 'POST') {
-    if (!checkRateLimit(ip, 'api')) {
+    if (!checkRateLimit(ip, 'ext_key', 20, 60000)) {
       sendJson(res, { authError: 'rateLimited', authErrorMessage: 'Muitas tentativas. Aguarde.', isLoggedIn: false }, 429);
       return;
     }
