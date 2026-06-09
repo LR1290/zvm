@@ -43,7 +43,7 @@ if (!MONGODB_URI) {
 // ─────────────────────────────────────────────
 const FULL_PERMISSIONS = [
   'create_flow','massive_dispatching','schedule_item',
-  'send_flow','send_funnel','send_trigger'
+  'send_flow','send_funnel','send_trigger','zapsaver'
 ];
 const USAGE_LIMITS = {
   audio:        { sent:0, max:-1 }, bulkMessages: { sent:0, max:-1 },
@@ -492,6 +492,7 @@ input:focus{border-color:#4f8ef7}
   <div class="sub">Painel de Moderação</div>
   <div class="badge">👮 Acesso Moderador</div>
   ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
+  ${success ? `<div style="background:#00ff8715;border:1px solid #00ff87;border-radius:8px;color:#00ff87;padding:13px 16px;font-size:14px;margin-bottom:18px;text-align:left">${escHtml(success)}</div>` : ''}
   <form method="POST" action="${R_MOD}/login">
     <label>Usuário</label><input type="text" name="user" autocomplete="off">
     <label>Senha</label><input type="password" name="pass">
@@ -912,7 +913,7 @@ ${CANVAS_BG}</body></html>`;
 // ─────────────────────────────────────────────
 // PÁGINA: LOGIN DA EXTENSÃO
 // ─────────────────────────────────────────────
-function renderExtensionLogin({ callback, error = '', keyVal = '' }) {
+function renderExtensionLogin({ callback, error = '', keyVal = '', success = '' }) {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Ativação</title>
@@ -937,6 +938,7 @@ input:focus{border-color:#00ff87}
   <div class="logo">⚡ ZVM</div>
   <div class="sub">Ativação da Extensão</div>
   ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
+  ${success ? `<div style="background:#00ff8715;border:1px solid #00ff87;border-radius:8px;color:#00ff87;padding:13px 16px;font-size:14px;margin-bottom:18px;text-align:left">${escHtml(success)}</div>` : ''}
   <form method="POST" action="/extension/auth/verify">
     <input type="hidden" name="callback" value="${escHtml(callback)}">
     <label>Sua Chave de Ativação</label>
@@ -972,6 +974,7 @@ input:focus{border-color:#00ff87}
 <div class="card">
   <div class="logo">⚡ ZVM Admin</div>
   ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
+  ${success ? `<div style="background:#00ff8715;border:1px solid #00ff87;border-radius:8px;color:#00ff87;padding:13px 16px;font-size:14px;margin-bottom:18px;text-align:left">${escHtml(success)}</div>` : ''}
   <form method="POST" action="${R_ADMIN}/login">
     <label>Usuário</label><input type="text" name="user" autocomplete="off">
     <label>Senha</label><input type="password" name="pass">
@@ -2288,7 +2291,7 @@ async function handleRequest(req, res) {
     'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
     'Referrer-Policy':              'no-referrer',
     'Permissions-Policy':           'geolocation=(), microphone=(), camera=()',
-    'Content-Security-Policy':      "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
+    'Content-Security-Policy':      "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
     'X-Powered-By':                 'PHP/7.4.3',
   };
   Object.entries(_corsH).forEach(([k, v]) => res.setHeader(k, v));
@@ -2345,30 +2348,49 @@ async function handleRequest(req, res) {
     keys[keyCode].lastUsed = new Date().toISOString();
     keys[keyCode].lastIp   = ip;
     await saveKey(keyCode);
+    // Validate callback before using
+    const allowedSchemes = ['chrome-extension:', 'https:', 'http:'];
+    let cbValid = false;
+    let cbUrl = null;
+    if (callback) {
+      try { cbUrl = new URL(callback); cbValid = allowedSchemes.includes(cbUrl.protocol); } catch {}
+    }
+    if (!cbValid) {
+      // Callback ausente ou inválido: retorna dados via HTML para a extensão ler
+      const authPayload = {
+        key: keyCode, keyId: `id-${keyCode}`, ownerId: 'zv-owner', managerId: 'zv-manager',
+        isPremium: true, isLoggedIn: true, planName: 'Pro', marketplace: 'premium',
+        username: keys[keyCode].label, email: 'cliente@zapvoice.com.br',
+        plan_id: 'ZV_PRO', permissions: FULL_PERMISSIONS.join(',')
+      };
+      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode,
+        success: '✅ Chave ativada! Feche esta página e reabra o WhatsApp.',
+        authPayload: JSON.stringify(authPayload)
+      })); return;
+    }
     try {
-      const cb = new URL(callback);
-      cb.searchParams.set('key',         keyCode);
-      cb.searchParams.set('keyId',       `id-${keyCode}`);
-      cb.searchParams.set('ownerId',     'zv-owner');
-      cb.searchParams.set('managerId',   'zv-manager');
-      cb.searchParams.set('isPremium',   'true');
-      cb.searchParams.set('isLoggedIn',  'true');
-      cb.searchParams.set('planName',    'Pro');
-      cb.searchParams.set('marketplace', 'premium');
-      cb.searchParams.set('username',    keys[keyCode].label);
-      cb.searchParams.set('email',       'cliente@zapvoice.com.br');
-      cb.searchParams.set('plan_id',     'ZV_PRO');
-      cb.searchParams.set('permissions', FULL_PERMISSIONS.join(','));
-      res.writeHead(302, { Location: cb.toString() }); res.end();
-    } catch {
-      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: 'Callback inválido. Tente novamente.' }));
+      cbUrl.searchParams.set('key',         keyCode);
+      cbUrl.searchParams.set('keyId',       `id-${keyCode}`);
+      cbUrl.searchParams.set('ownerId',     'zv-owner');
+      cbUrl.searchParams.set('managerId',   'zv-manager');
+      cbUrl.searchParams.set('isPremium',   'true');
+      cbUrl.searchParams.set('isLoggedIn',  'true');
+      cbUrl.searchParams.set('planName',    'Pro');
+      cbUrl.searchParams.set('marketplace', 'premium');
+      cbUrl.searchParams.set('username',    keys[keyCode].label);
+      cbUrl.searchParams.set('email',       'cliente@zapvoice.com.br');
+      cbUrl.searchParams.set('plan_id',     'ZV_PRO');
+      cbUrl.searchParams.set('permissions', FULL_PERMISSIONS.join(','));
+      res.writeHead(302, { Location: cbUrl.toString() }); res.end();
+    } catch (e) {
+      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: 'Erro ao redirecionar: ' + e.message }));
     }
     return;
   }
 
   // ── Extensão: /v3/key ──
   if (p === R_EXT+'/v3/key' && req.method === 'POST') {
-    if (!checkRateLimit(ip, 'api')) {
+    if (!checkRateLimit(ip, 'ext_key', 20, 60000)) {
       sendJson(res, { authError: 'rateLimited', authErrorMessage: 'Muitas tentativas. Aguarde.', isLoggedIn: false }, 429);
       return;
     }
@@ -2687,7 +2709,11 @@ async function handleRequest(req, res) {
   // Helper para extrair código das rotas /api/keys/:code/...
   function extractCode(pattern) {
     const match = p.match(pattern);
-    return match ? decodeURIComponent(match[1]) : null;
+    if (!match) return null;
+    const code = decodeURIComponent(match[1]);
+    // Sanitize: only allow chars used by generateCode() + safe chars
+    if (!/^[a-z0-9_\-]{1,30}$/.test(code)) return null;
+    return code;
   }
   const RA = R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -2955,6 +2981,7 @@ async function handleRequest(req, res) {
 
   // ── Portal cliente: status ──
   if (p === '/client/status' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
     const body = await parseBody(req);
     const code = (body.key || '').trim().toLowerCase().slice(0, 20);
     if (!code) { sendJson(res, { error: 'not_found' }, 404); return; }
@@ -2991,6 +3018,7 @@ async function handleRequest(req, res) {
 
   // ── Portal cliente: remover número ──
   if (p === '/client/remove-phone' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
     const body    = await parseBody(req);
     const keyCode = (body.key||'').trim().toLowerCase().slice(0, 20);
     const phoneIdx = body.phoneIdx != null ? parseInt(body.phoneIdx) : -1;
@@ -3081,8 +3109,8 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     console.log(`🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
     console.log(`🔑 2FA:  ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
     console.log(`🔑 Admin: ${R_ADMIN} | User: ${ADMIN_USER}`);
-    console.log(`👮 Mod:   ${MODS.length > 0 ? R_MOD+' | '+MODS.length+' mod(s): '+MODS.map(m=>m.name).join(', ') : '⚠ inativo — defina MOD_USER e MOD_PASS'}`);
-    console.log(`🌐 Extension: ${R_EXT}/v3/key`);
+    console.log(`👮 Mod:   ${MODS.length > 0 ? MODS.length+' mod(s) configurado(s)' : '⚠ inativo — defina MOD_USER e MOD_PASS'}`);
+    console.log(`🌐 Extension: /extension/v3/key`);
     console.log(`📊 Webhook: ${WEBHOOK_URL || 'não configurado'}`);
     console.log(`🗂  Retenção de logs: ${LOG_RETENTION_DAYS} dias (LGPD) | Máx em memória: ${LOG_MAX}`);
 
