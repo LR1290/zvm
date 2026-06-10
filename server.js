@@ -3,10 +3,13 @@ const http   = require('http');
 const crypto = require('crypto');
 const { MongoClient } = require('mongodb');
 
+// ─────────────────────────────────────────────
+// VARIÁVEIS DE AMBIENTE
+// ─────────────────────────────────────────────
 const PORT         = process.env.PORT         || 3000;
 const ADMIN_USER   = process.env.ADMIN_USER;
 const ADMIN_PASS   = process.env.ADMIN_PASS;
-
+// ── Moderadores (5 slots independentes) ──
 const MODS = [
   { user: process.env.MOD_USER  || '', pass: process.env.MOD_PASS  || '', totp: process.env.MOD_TOTP  || '', name: 'Moderador'   },
   { user: process.env.MOD2_USER || '', pass: process.env.MOD2_PASS || '', totp: process.env.MOD2_TOTP || '', name: 'Simplifique' },
@@ -15,15 +18,15 @@ const MODS = [
   { user: process.env.MOD5_USER || '', pass: process.env.MOD5_PASS || '', totp: process.env.MOD5_TOTP || '', name: 'Darley'      },
   { user: process.env.MOD6_USER || '', pass: process.env.MOD6_PASS || '', totp: process.env.MOD6_TOTP || '', name: 'Letícia'     },
 ].filter(m => m.user && m.pass);
-
+// MOD_USER/PASS/TOTP incluídos no array MODS acima (slot 1)
 const MONGODB_URI  = process.env.MONGODB_URI  || '';
 const APP_SECRET   = process.env.APP_SECRET   || '';
 const TOTP_SECRET  = process.env.TOTP_SECRET  || '';
 const WEBHOOK_URL  = process.env.WEBHOOK_URL  || '';
 const EXPIRY_WARN_HOURS = Math.max(1, Math.min(720, parseInt(process.env.EXPIRY_WARN_HOURS || '48') || 48));
-
+// LGPD: retenção de logs em dias (padrão 90)
 const LOG_RETENTION_DAYS = Math.max(1, parseInt(process.env.LOG_RETENTION_DAYS || '90') || 90);
-
+// Máximo de logs em memória
 const LOG_MAX = Math.min(parseInt(process.env.LOG_MAX || '500'), 2000);
 
 if (!ADMIN_USER || !ADMIN_PASS) {
@@ -35,6 +38,9 @@ if (!MONGODB_URI) {
   process.exit(1);
 }
 
+// ─────────────────────────────────────────────
+// CONSTANTES
+// ─────────────────────────────────────────────
 const FULL_PERMISSIONS = [
   'create_flow','massive_dispatching','schedule_item',
   'send_flow','send_funnel','send_trigger','zapsaver'
@@ -47,9 +53,15 @@ const USAGE_LIMITS = {
 };
 const MAX_USES = 3;
 
+// ─────────────────────────────────────────────
+// MÓDULOS REMOTOS
+// ─────────────────────────────────────────────
 const AVAILABLE_MODULES = ['zapSaver'];
 const DEFAULT_MODULES   = Object.fromEntries(AVAILABLE_MODULES.map(m => [m, false]));
 
+// ─────────────────────────────────────────────
+// MONGODB
+// ─────────────────────────────────────────────
 let _mongoClient = null;
 let _mongoDb     = null;
 
@@ -71,7 +83,7 @@ async function getMongoDb() {
     _mongoDb = _mongoClient.db('zapvoice');
     return _mongoDb;
   } catch(e) {
-
+    // Reset em erro — permite reconexão automática na próxima chamada
     _mongoDb = null;
     _mongoClient = null;
     throw e;
@@ -93,29 +105,29 @@ async function loadDb() {
   }
 }
 
+// Salva UMA chave específica — granular, não reescreve tudo
+// Debounce: agrupa múltiplas saves da mesma chave em 2s → 1 write MongoDB
 const _saveDebounce = new Map();
 function saveKey(code) {
   if (_saveDebounce.has(code)) clearTimeout(_saveDebounce.get(code));
-  return new Promise(resolve => {
-    const tid = setTimeout(async () => {
-      _saveDebounce.delete(code);
-      if (keys[code] === undefined) { resolve(); return; }
-      try {
-        const db = await getMongoDb();
-        await db.collection('store').updateOne(
-          { _id: 'keys' },
-          { $set: { [`data.${code}`]: keys[code], updatedAt: new Date() } },
-          { upsert: true }
-        );
-      } catch (e) {
-        console.error('[DB] Erro ao salvar chave:', e.message);
-      }
-      resolve();
-    }, 200);
-    _saveDebounce.set(code, tid);
-  });
+  const tid = setTimeout(async () => {
+    _saveDebounce.delete(code);
+    if (keys[code] === undefined) return;
+    try {
+      const db = await getMongoDb();
+      await db.collection('store').updateOne(
+        { _id: 'keys' },
+        { $set: { [`data.${code}`]: keys[code], updatedAt: new Date() } },
+        { upsert: true }
+      );
+    } catch (e) {
+      console.error('[DB] Erro ao salvar chave:', e.message);
+    }
+  }, 2000);
+  _saveDebounce.set(code, tid);
 }
 
+// Remove uma chave do banco
 async function deleteKeyFromDb(code) {
   try {
     const db = await getMongoDb();
@@ -128,6 +140,7 @@ async function deleteKeyFromDb(code) {
   }
 }
 
+// Salva apenas os logs — com LGPD (remove entradas mais antigas que LOG_RETENTION_DAYS)
 async function saveLogs() {
   try {
     const db = await getMongoDb();
@@ -144,12 +157,18 @@ async function saveLogs() {
   }
 }
 
+// ─────────────────────────────────────────────
+// ESTADO GLOBAL
+// ─────────────────────────────────────────────
 let keys             = {};
 let logs             = [];
 let sessions         = {};
 let modSessions      = {};
 let serverReady      = false;
 
+// ─────────────────────────────────────────────
+// SEGURANÇA — HMAC
+// ─────────────────────────────────────────────
 const APP_SECRET_KEY = (() => {
   if (!APP_SECRET) return '';
   if (/^[0-9a-fA-F]+$/.test(APP_SECRET) && APP_SECRET.length % 2 === 0) {
@@ -171,6 +190,9 @@ function verifyHmac(rawBody, sig, ts) {
   catch { return false; }
 }
 
+// ─────────────────────────────────────────────
+// 2FA TOTP
+// ─────────────────────────────────────────────
 function base32Decode(b32) {
   const alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
   let bits = 0, val = 0;
@@ -198,12 +220,15 @@ function generateTOTP(secret, window = 0) {
 function verifyTOTP(secret, token) {
   if (!secret) return true;
   if (!token || token.length !== 6) return false;
-  for (const w of [-2, -1, 0, 1, 2]) {
+  for (const w of [-2, -1, 0, 1, 2]) {  // drift window ampliado
     if (generateTOTP(secret, w) === token) return true;
   }
   return false;
 }
 
+// ─────────────────────────────────────────────
+// ROTAS DERIVADAS DO APP_SECRET
+// ─────────────────────────────────────────────
 function deriveSlug(seed) {
   if (!APP_SECRET) return null;
   return crypto.createHmac('sha256', APP_SECRET).update(seed).digest('hex').slice(0, 14);
@@ -214,6 +239,9 @@ const R_ADMIN        = _slugAdmin     ? '/' + _slugAdmin     : '/admin';
 const R_MOD          = _slugMod       ? '/' + _slugMod       : '/mod';
 const R_EXT          = '/extension';
 
+// ─────────────────────────────────────────────
+// RATE LIMITING
+// ─────────────────────────────────────────────
 const rateLimitMap = new Map();
 const RL_CONFIG = {
   login:        { max: 5,  windowMs: 60000, blockMs: 10 * 60000 },
@@ -225,7 +253,7 @@ const RL_CONFIG = {
 function checkRateLimit(ip, type = 'api', maxReq = 0, windowMs = 0) {
   const now = Date.now();
   const key = ip + ':' + type;
-  const cfg = maxReq > 0 ? { max: maxReq, windowMs: windowMs || 60000, blockMs: 2*60000 } : (RL_CONFIG[type] || RL_CONFIG.api);
+  const cfg = maxReq > 0 ? { max: maxReq, windowMs: windowMs || 60000, blockMs: 2 * 60000 } : (RL_CONFIG[type] || RL_CONFIG.api);
   let e = rateLimitMap.get(key);
   if (!e) {
     e = { count: 0, resetAt: now + cfg.windowMs, blockedUntil: 0};
@@ -248,23 +276,29 @@ function getRateLimitWait(ip, type = 'login') {
   return Math.ceil((e.blockedUntil - Date.now()) / 60000);
 }
 
+// Limpeza periódica do rate limit map
 setInterval(() => {
   const now = Date.now();
   for (const [k, e] of rateLimitMap.entries())
     if (now > e.blockedUntil && now > e.resetAt) rateLimitMap.delete(k);
+  // Limpar _dedupMap de entradas expiradas (> 1h)
   const dedupTTL = 60 * 60 * 1000;
   for (const [k, ts] of _dedupMap.entries())
     if (now - ts > dedupTTL) _dedupMap.delete(k);
-}, 30 * 60 * 1000);
+}, 30 * 60 * 1000); // 30 min — recursos mínimos
 
+// Limpeza periódica de sessões expiradas
 setInterval(() => {
   const now = Date.now();
   for (const [k, s] of Object.entries(sessions))
     if (now > new Date(s.expiresAt).getTime()) delete sessions[k];
   for (const [k, s] of Object.entries(modSessions))
     if (now > new Date(s.expiresAt).getTime()) delete modSessions[k];
-}, 60 * 60 * 1000);
+}, 60 * 60 * 1000); // 1h — sessões duram horas, limpeza não precisa ser frequente
 
+// ─────────────────────────────────────────────
+// WEBHOOK
+// ─────────────────────────────────────────────
 async function fireWebhook(event, keyCode, reason) {
   if (!WEBHOOK_URL) return;
   const k = keys[keyCode];
@@ -289,6 +323,9 @@ async function fireWebhook(event, keyCode, reason) {
   } catch (e) { console.warn('[WEBHOOK] Falha:', e.message); }
 }
 
+// ─────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────
 function generateCode() {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
   const seg = () => Array.from({length:5}, () => chars[Math.floor(Math.random()*chars.length)]).join('');
@@ -348,12 +385,13 @@ function isModSession(req) {
   const match  = cookie.match(/zv_mod=([a-f0-9]+)/);
   if (!match) return false;
   const s = modSessions[match[1]];
-  if (!s) return false;
+  if (!s) return false; // sessão perdida (restart) — cookie inválido
   if (new Date() > new Date(s.expiresAt)) { delete modSessions[match[1]]; return false; }
   return true;
 }
 
-const MAX_BODY_SIZE = 64 * 1024;
+
+const MAX_BODY_SIZE = 64 * 1024; // 64KB — proteção contra DoS
 
 function _safeParse(raw) {
   try {
@@ -371,7 +409,7 @@ function parseBody(req) {
     let b = '', size = 0;
     req.on('data', c => {
       size += c.length;
-      if (size > MAX_BODY_SIZE) { req.destroy(); resolve(Object.create(null)); return; }
+      if (size > MAX_BODY_SIZE) { req.destroy(); resolve({}); return; }
       b += c;
     });
     req.on('end', () => resolve(_safeParse(b)));
@@ -405,6 +443,9 @@ function escHtml(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/`/g,'&#96;');
 }
 
+// ─────────────────────────────────────────────
+// LOG COM DEDUP + LGPD
+// ─────────────────────────────────────────────
 const DEDUP_WINDOWS = {
   'relogin_ok':   24 * 60 * 60 * 1000,
   'expired':       5 * 60 * 1000,
@@ -422,13 +463,20 @@ async function addLog(entry) {
     _dedupMap.set(dedupKey, Date.now());
   }
   logs.unshift({ ...entry, timestamp: new Date().toISOString() });
+  // Limite em memória + LGPD
   if (logs.length > LOG_MAX) logs = logs.slice(0, LOG_MAX);
   await saveLogs();
 }
 
+// ─────────────────────────────────────────────
+// CANVAS BACKGROUND (shared)
+// ─────────────────────────────────────────────
 const CANVAS_BG = `<canvas id="_cvs" style="position:fixed;inset:0;z-index:0;pointer-events:none"></canvas>
 <script>(function(){var c=document.getElementById('_cvs'),ctx=c.getContext('2d');function resize(){c.width=window.innerWidth;c.height=window.innerHeight;}resize();window.addEventListener('resize',resize);var pts=Array.from({length:60},function(){return{x:Math.random()*c.width,y:Math.random()*c.height,vx:(Math.random()-.5)*.4,vy:(Math.random()-.5)*.4,r:Math.random()*2+.5};});function draw(){ctx.clearRect(0,0,c.width,c.height);pts.forEach(function(p){p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>c.width)p.vx*=-1;if(p.y<0||p.y>c.height)p.vy*=-1;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle='rgba(124,58,237,0.5)';ctx.fill();});for(var i=0;i<pts.length;i++){for(var j=i+1;j<pts.length;j++){var dx=pts[i].x-pts[j].x,dy=pts[i].y-pts[j].y,d=Math.sqrt(dx*dx+dy*dy);if(d<130){ctx.beginPath();ctx.moveTo(pts[i].x,pts[i].y);ctx.lineTo(pts[j].x,pts[j].y);ctx.strokeStyle='rgba(124,58,237,'+(0.12*(1-d/130))+')';ctx.lineWidth=.7;ctx.stroke();}}}requestAnimationFrame(draw);}draw();})();</script>`;
 
+// ─────────────────────────────────────────────
+// PÁGINA: LOGIN DO MODERADOR
+// ─────────────────────────────────────────────
 function renderModLogin(error = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -464,6 +512,9 @@ input:focus{border-color:#4f8ef7}
 ${CANVAS_BG}</body></html>`;
 }
 
+// ─────────────────────────────────────────────
+// PAINEL: MODERADOR
+// ─────────────────────────────────────────────
 function renderModDashboard(modName = 'Moderador') {
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -531,7 +582,7 @@ main{padding:28px 32px;max-width:1200px;margin:0 auto}
 .empty{text-align:center;color:var(--muted);padding:30px;font-size:13px;font-family:'Syne',sans-serif}
 .note-btn{padding:3px 8px;background:#4f8ef710;color:var(--blue);border:1px solid #4f8ef730;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;transition:all .15s}
 .note-btn:hover{background:#4f8ef722;border-color:var(--blue)}
-
+/* Conquistas */
 .ach-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;padding:18px}
 .ach{background:var(--dark);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;transition:all .2s;position:relative;overflow:hidden}
 .ach.unlocked{border-color:#4f8ef740;background:#4f8ef708}
@@ -543,7 +594,7 @@ main{padding:28px 32px;max-width:1200px;margin:0 auto}
 .ach-badge{position:absolute;top:8px;right:8px;font-size:9px;font-weight:700;font-family:'Syne',sans-serif;padding:2px 6px;border-radius:10px;text-transform:uppercase;letter-spacing:.5px}
 .ach.unlocked .ach-badge{background:#4f8ef720;color:var(--blue);border:1px solid #4f8ef740}
 .ach.locked .ach-badge{background:#ffffff08;color:var(--muted);border:1px solid var(--border)}
-
+/* Ranking */
 .rank-grid{padding:18px;display:flex;flex-direction:column;gap:8px}
 .rank-row{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;background:var(--dark);border:1px solid var(--border);transition:all .2s}
 .rank-row.me{border-color:#4f8ef760;background:#4f8ef710}
@@ -555,7 +606,7 @@ main{padding:28px 32px;max-width:1200px;margin:0 auto}
 .rank-count{font-family:'Space Mono',monospace;font-size:13px;color:var(--blue);font-weight:700}
 .rank-me-badge{font-size:10px;background:#4f8ef718;color:var(--blue);border:1px solid #4f8ef730;padding:2px 8px;border-radius:10px;font-family:'Syne',sans-serif;font-weight:700}
 .toast{position:fixed;bottom:20px;right:20px;padding:11px 18px;border-radius:var(--radius);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;display:none;z-index:999999;box-shadow:0 6px 30px #00000070}
-
+/* Modal */
 .modal-bg{display:none;position:fixed;inset:0;background:#00000090;z-index:99999;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
 .modal-bg.open{display:flex}
 .modal{background:var(--card);border:1px solid var(--border2);border-radius:12px;padding:22px;width:380px;max-width:95vw;box-shadow:0 20px 60px #00000090}
@@ -563,7 +614,7 @@ main{padding:28px 32px;max-width:1200px;margin:0 auto}
 .modal textarea{width:100%;background:var(--dark);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Syne',sans-serif;font-size:13px;padding:10px;outline:none;resize:vertical;min-height:90px;transition:border .2s}
 .modal textarea:focus{border-color:var(--blue)}
 .modal-actions{display:flex;gap:8px;margin-top:12px;justify-content:flex-end}
-
+/* PS5 Trophy */
 #trophy-notif{position:fixed;bottom:28px;right:-420px;z-index:9999999;width:360px;background:linear-gradient(135deg,#0d0d1a,#141428);border:1px solid #4f8ef750;border-radius:14px;overflow:hidden;box-shadow:0 8px 40px #00000080;transition:right .5s cubic-bezier(.34,1.56,.64,1)}
 #trophy-notif.show{right:28px}
 #trophy-notif.hide{right:-420px;transition:right .4s ease-in}
@@ -728,6 +779,7 @@ function copyKey(){const key=document.getElementById('result-key').textContent;n
 function fmtDate(iso){if(!iso)return'—';const d=new Date(iso);return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
 function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
+// ── Conquistas ──
 const ACHIEVEMENTS=[
   {id:'first_key',icon:'🔑',name:'Primeira Chave',desc:'Crie sua primeira chave',req:k=>k.total>=1},
   {id:'keys_5',icon:'🎯',name:'5 Chaves',desc:'Crie 5 chaves no total',req:k=>k.total>=5},
@@ -866,6 +918,10 @@ setTimeout(loadHistory,300);
 ${CANVAS_BG}</body></html>`;
 }
 
+
+// ─────────────────────────────────────────────
+// PÁGINA: LOGIN DA EXTENSÃO
+// ─────────────────────────────────────────────
 function renderExtensionLogin({ callback, error = '', keyVal = '' }) {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -903,6 +959,9 @@ input:focus{border-color:#00ff87}
 ${CANVAS_BG}</body></html>`;
 }
 
+// ─────────────────────────────────────────────
+// PÁGINA: LOGIN DO ADMIN
+// ─────────────────────────────────────────────
 function renderAdminLogin(error = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -933,6 +992,9 @@ input:focus{border-color:#00ff87}
 ${CANVAS_BG}</body></html>`;
 }
 
+// ─────────────────────────────────────────────
+// PORTAL DO CLIENTE
+// ─────────────────────────────────────────────
 function renderClientPortal() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1122,13 +1184,18 @@ window.addEventListener('DOMContentLoaded',()=>{
 ${CANVAS_BG}</body></html>`;
 }
 
+// ─────────────────────────────────────────────
+// ADMIN: BUILDERS HTML
+// ─────────────────────────────────────────────
 function buildKeysHtml() {
   const entries = Object.entries(keys);
   if (!entries.length) return `<tr><td colspan="11" class="empty">Nenhuma chave cadastrada</td></tr>`;
   return entries.map(([code, k]) => {
     const expired  = isKeyExpired(k);
     const warnSoon = isKeyExpiringSoon(k);
+    // Calcula acessos únicos (IPs distintos nos logs dessa chave)
     const uniqueIps = new Set(logs.filter(l => l.keyCode === code && l.ip).map(l => l.ip)).size;
+    // Detecta chave suspeita: mais de 3 IPs distintos nas últimas 24h
     const recentLogs = logs.filter(l => l.keyCode === code && l.timestamp > new Date(Date.now() - 86400000).toISOString());
     const recentIps  = new Set(recentLogs.filter(l => l.ip).map(l => l.ip));
     const clearedAt  = k.suspectClearedAt ? new Date(k.suspectClearedAt) : null;
@@ -1189,6 +1256,9 @@ function buildLogsHtml(arr) {
 </tr>`).join('');
 }
 
+// ─────────────────────────────────────────────
+// ADMIN: DASHBOARD COMPLETO
+// ─────────────────────────────────────────────
 function renderAdminDashboard() {
   const expiringSoon  = Object.values(keys).filter(k => k.active && isKeyExpiringSoon(k)).length;
   const suspectKeys   = Object.entries(keys).filter(([code, k]) => {
@@ -1483,10 +1553,11 @@ function toast(msg,ok=true){
   setTimeout(()=>t.style.display='none',3200);
 }
 
+// ── Módulos Remotos ──
 function openModules(code,label,modulesJson){
   document.getElementById('modulesCode').value=code;
   document.getElementById('modulesLabel').textContent=label;
-  let mods={};try{mods=JSON.parse(modulesJson.replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>'));}catch{}
+  let mods={};try{mods=JSON.parse(modulesJson.replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&#96;/g,'\x60').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>'));}catch{}
   const list=document.getElementById('modulesList');
   list.innerHTML=_MODULES.map(m=>{
     const on=!!mods[m];
@@ -1517,6 +1588,7 @@ async function toggleModule(code,checkbox){
   }catch(e){toast('Erro de rede',false);checkbox.checked=!enabled;}
 }
 
+// ── Atribuir Moderador ──
 function openAssignModFromEl(el){
   openAssignMod(el.dataset.code||'', el.dataset.label||'', el.dataset.modnote||'');
 }
@@ -1551,6 +1623,7 @@ async function assignMod(code,modName){
   }catch(e){toast('Erro de rede',false);}
 }
 
+// ── Busca e filtro de chaves ──
 function filterKeys(){
   const q=(document.getElementById('search-input').value||'').toLowerCase();
   const st=document.getElementById('filter-status').value;
@@ -1567,6 +1640,7 @@ function filterKeys(){
   });
 }
 
+// ── Ordenação ──
 let _sortCol=null,_sortDir=1;
 function sortKeys(col){
   const tbody=document.getElementById('kb');
@@ -1586,6 +1660,7 @@ function sortKeys(col){
   rows.forEach(r=>tbody.appendChild(r));
 }
 
+// ── Gerar chave ──
 async function generateKey(){
   const label=document.getElementById('nlabel').value.trim();
   const days=parseInt(document.getElementById('ndays').value||0);
@@ -1612,6 +1687,7 @@ async function generateKey(){
   }catch(e){toast('❌ Erro de rede',false);}
 }
 
+// ── Refresh ──
 async function doRefresh(){
   try{
     const r=await fetch(_RA+'/api/data');
@@ -1627,8 +1703,9 @@ async function doRefresh(){
     filterKeys();
   }catch(e){console.error('Refresh error',e);}
 }
-setInterval(doRefresh,120000);
+setInterval(doRefresh,120000); // 2 min — reduz requisições ao servidor
 
+// ── Ações de chave ──
 async function toggleKey(code){
   try{const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/toggle',{method:'POST'});if(r.status===401){toast('Sessão expirada',false);return;}const d=await r.json();if(d.ok){toast(d.active?'Chave liberada!':'Chave bloqueada!');await doRefresh();}}catch(e){toast('Erro',false);}
 }
@@ -1646,6 +1723,7 @@ async function clearSuspect(code){
   }catch(e){toast('Erro de rede',false);}
 }
 
+// ── Log ──
 async function filterLog(){
   const date=document.getElementById('logDate').value;
   const q=(document.getElementById('logSearch').value||'').toLowerCase();
@@ -1665,6 +1743,7 @@ async function clearLog(){
   try{const body=date?{date}:{};const r=await fetch(_RA+'/api/logs',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(d.ok){toast(date?'Log do dia limpo!':'Log completo apagado!');clearFilters();}}catch(e){toast('Erro ao limpar',false);}
 }
 
+// ── Modais ──
 function openRenew(code,label){document.getElementById('renewKeyCode').value=code;document.getElementById('renewKeyLabel').textContent=label;['renewDays','renewHours','renewMins'].forEach(id=>document.getElementById(id).value='');document.getElementById('renewModal').classList.add('open');document.getElementById('renewDays').focus();}
 function closeRenew(){document.getElementById('renewModal').classList.remove('open');}
 document.getElementById('renewModal').addEventListener('click',function(e){if(e.target===this)closeRenew();});
@@ -1737,6 +1816,7 @@ async function saveNote(){
   const d=await r.json();if(d.ok){toast('Nota salva!');closeNote();await doRefresh();}else toast('Erro ao salvar nota',false);
 }
 
+// ── Exportar CSV ──
 async function exportCSV(){
   try{const r=await fetch(_RA+'/api/export/csv');if(r.status===401){toast('Sessão expirada',false);return;}const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='zvm-chaves-'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(url);toast('CSV exportado!');}catch(e){toast('Erro ao exportar',false);}
 }
@@ -1744,6 +1824,9 @@ async function exportCSV(){
 ${CANVAS_BG}</body></html>`;
 }
 
+// ─────────────────────────────────────────────
+// PÁGINA: PLANOS / CHECKOUT
+// ─────────────────────────────────────────────
 function renderPlanosPage() {
   const PLANOS = [
     { devices:1,  label:'Solo',        price:'24,99', oldPrice:null,    desc:'Para uso pessoal',    icon:'👤', perDevice:'24,99', link:'#', highlight:false },
@@ -1978,6 +2061,9 @@ ${CANVAS_BG}
 </body></html>`;
 }
 
+// ─────────────────────────────────────────────
+// PÁGINA: FAQ
+// ─────────────────────────────────────────────
 function renderFaqPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -2079,6 +2165,9 @@ ${CANVAS_BG}
 </body></html>`;
 }
 
+// ─────────────────────────────────────────────
+// PÁGINA: POLÍTICA DE PRIVACIDADE
+// ─────────────────────────────────────────────
 function renderPrivacyPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -2187,6 +2276,8 @@ ${CANVAS_BG}
 </body></html>`;
 }
 
+
+// ─────────────────────────────────────────────
 async function handleRequest(req, res) {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const p   = url.pathname;
@@ -2213,6 +2304,7 @@ async function handleRequest(req, res) {
   Object.entries(_corsH).forEach(([k, v]) => res.setHeader(k, v));
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
+  // Ocultar /admin quando slug está ativo
   if (APP_SECRET) {
     if (p === '/admin' || p.startsWith('/admin/')) { res.writeHead(404); res.end('Not found'); return; }
     if (p === '/mod'  || p.startsWith('/mod/'))   { res.writeHead(404); res.end('Not found'); return; }
@@ -2220,16 +2312,19 @@ async function handleRequest(req, res) {
 
   console.log(`[${new Date().toISOString()}] ${req.method} ${p} — ${ip}`);
 
+  // ── Health ──
   if (p === '/health' && req.method === 'GET') {
     res.writeHead(200,{'Content-Type':'text/plain','Cache-Control':'no-store'});
     res.end('ok'); return;
   }
 
+  // ── Extensão: login page ──
   if ((p === R_EXT+'/auth/' || p === R_EXT+'/auth') && req.method === 'GET') {
     const callback = url.searchParams.get('callback') || '';
     sendHtml(res, renderExtensionLogin({ callback })); return;
   }
 
+  // ── Extensão: verifica chave e faz callback ──
   if (p === R_EXT+'/auth/verify' && req.method === 'POST') {
     if (!checkRateLimit(ip, 'login')) {
       const mins = getRateLimitWait(ip, 'login');
@@ -2260,9 +2355,9 @@ async function handleRequest(req, res) {
     keys[keyCode].lastUsed = new Date().toISOString();
     keys[keyCode].lastIp   = ip;
     await saveKey(keyCode);
-    const _cbAllowed = ['chrome-extension:','https:','http:'];
+    const _cbSchemes = ['chrome-extension:','https:','http:'];
     let _cbUrl = null;
-    if (callback) { try { _cbUrl = new URL(callback); if (!_cbAllowed.includes(_cbUrl.protocol)) _cbUrl = null; } catch {} }
+    if (callback) { try { _cbUrl = new URL(callback); if (!_cbSchemes.includes(_cbUrl.protocol)) _cbUrl = null; } catch {} }
     if (_cbUrl) {
       _cbUrl.searchParams.set('key',         keyCode);
       _cbUrl.searchParams.set('keyId',       `id-${keyCode}`);
@@ -2278,26 +2373,14 @@ async function handleRequest(req, res) {
       _cbUrl.searchParams.set('permissions', FULL_PERMISSIONS.join(','));
       res.writeHead(302, { Location: _cbUrl.toString() }); res.end();
     } else {
-      const _noCallbackHtml = `<!DOCTYPE html><html lang="pt-BR"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Ativado!</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
-<style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace}
-.card{background:#111118;border:1px solid #00ff8740;border-radius:18px;padding:40px 36px;width:100%;max-width:420px;text-align:center;box-shadow:0 0 40px rgba(0,255,135,0.12)}
-.icon{font-size:48px;margin-bottom:8px}.title{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#00ff87;margin-bottom:8px}
-.sub{color:#8a8aaa;font-size:13px;line-height:1.6;margin-bottom:20px}.key{background:#0a0a0f;border:1px solid #00ff8730;border-radius:8px;padding:10px 16px;color:#00ff87;font-size:14px;letter-spacing:2px;margin-bottom:20px}
-.bar{width:100%;height:3px;background:#1a1a2e;border-radius:2px;margin-top:12px}.fill{height:100%;background:#00ff87;width:100%;animation:drain 3s linear forwards;border-radius:2px}
-@keyframes drain{from{width:100%}to{width:0%}}</style></head><body>
-<div class="card"><div class="icon">⚡</div><div class="title">Chave Ativada!</div>
-<div class="sub">Sua chave foi validada. Volte para o WhatsApp Web e atualize a página.</div>
-<div class="key">${keyCode}</div><div class="bar"><div class="fill"></div></div></div>
-<script>setTimeout(()=>window.close(),3100);</script></body></html>`;
+      const _html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>ZVM — Ativado</title><link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Space+Mono:wght@400&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace}.card{background:#111118;border:1px solid #00ff8740;border-radius:18px;padding:40px 36px;width:100%;max-width:420px;text-align:center;box-shadow:0 0 40px rgba(0,255,135,0.12)}.icon{font-size:48px;margin-bottom:8px}.title{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#00ff87;margin-bottom:8px}.sub{color:#8a8aaa;font-size:13px;line-height:1.6;margin-bottom:20px}.key{background:#0a0a0f;border:1px solid #00ff8730;border-radius:8px;padding:10px 16px;color:#00ff87;font-size:14px;letter-spacing:2px;margin-bottom:20px}.bar{width:100%;height:3px;background:#1a1a2e;border-radius:2px;margin-top:12px}.fill{height:100%;background:#00ff87;width:100%;animation:drain 3s linear forwards;border-radius:2px}@keyframes drain{from{width:100%}to{width:0%}}</style></head><body><div class="card"><div class="icon">⚡</div><div class="title">Chave Ativada!</div><div class="sub">Sua chave foi validada. Volte para o WhatsApp Web e atualize a página.</div><div class="key">${keyCode}</div><div class="bar"><div class="fill"></div></div></div><script>setTimeout(()=>window.close(),3100);</script></body></html>`;
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(_noCallbackHtml);
+      res.end(_html);
     }
     return;
   }
 
+  // ── Extensão: /v3/key ──
   if (p === R_EXT+'/v3/key' && req.method === 'POST') {
     if (!checkRateLimit(ip, 'ext_key')) {
       sendJson(res, { authError: 'rateLimited', authErrorMessage: 'Muitas tentativas. Aguarde.', isLoggedIn: false }, 429);
@@ -2315,6 +2398,7 @@ async function handleRequest(req, res) {
       return;
     }
     if (!keys[keyCode]) {
+      // Buscar no banco — resolve dessincronização entre múltiplos servidores
       try {
         const db = await getMongoDb();
         const doc = await db.collection('store').findOne({ _id: 'keys' });
@@ -2352,6 +2436,7 @@ async function handleRequest(req, res) {
     if (isNewPhone) {
       if (keyMaxUses > 0 && keys[keyCode].phones.length >= keyMaxUses) {
         keys[keyCode].warnCount = (keys[keyCode].warnCount || 0) + 1;
+        // Reset automático após 24h para evitar acúmulo infinito
         const warnTs = keys[keyCode].warnCountTs;
         if (warnTs && (Date.now() - new Date(warnTs).getTime()) > 24*3600*1000) {
           keys[keyCode].warnCount = 1;
@@ -2369,10 +2454,12 @@ async function handleRequest(req, res) {
       keys[keyCode].uses = keys[keyCode].phones.length;
     }
 
+    // Ativação diferida
     if (keys[keyCode].expireDuration && !keys[keyCode].expiresAt && keys[keyCode].phones.length >= 1) {
       const exp = new Date(Date.now() + keys[keyCode].expireDuration);
       keys[keyCode].expiresAt   = exp.toISOString();
       keys[keyCode].activatedAt = new Date().toISOString();
+      // Ativação diferida registrada no log
     }
 
     keys[keyCode].lastUsed   = new Date().toISOString();
@@ -2389,27 +2476,35 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // ── Extensão: check-status ──
   if (p === R_EXT+'/v3/check-status' && req.method === 'POST') {
+    // Rate limit: máx 60 req/min por IP
     if (!checkRateLimit(ip, 'check_status', 60, 60000)) {
-      sendJson(res, { active: true }); return;
+      sendJson(res, { active: true }); return; // silencioso — não deslogar por rate limit
     }
+    // Body limit
     if (parseInt(req.headers['content-length'] || 0) > MAX_BODY_SIZE) {
       sendJson(res, { active: true }); return;
     }
     const rawBody = await new Promise(r=>{let b='';req.on('data',c=>{b+=c;});req.on('end',()=>r(b));});
     let body; try { body = JSON.parse(rawBody); } catch { body = {}; }
     const keyCode = (body.authKey || '').toLowerCase().slice(0, 20);
+    // Se servidor não está pronto, nunca deslogar
     if (!serverReady) { sendJson(res, { active: true }); return; }
     if (!keyCode)     { sendJson(res, { active: true }); return; }
+    // FIX CRÍTICO: se chave não está em memória, buscar no banco
+    // Isso resolve o deslogamento após reinício do Render
     if (!keys[keyCode]) {
       try {
         const db  = await getMongoDb();
         const doc = await db.collection('store').findOne({ _id: 'keys' });
         if (doc && doc.data && doc.data[keyCode]) keys[keyCode] = doc.data[keyCode];
       } catch(e) {
+        // Erro de banco: manter ativo para não deslogar o cliente
         sendJson(res, { active: true }); return;
       }
     }
+    // Após busca no banco, se ainda não existe → not_found real
     if (!keys[keyCode]) { sendJson(res, { active: false, reason: 'not_found' }); return; }
     if (isKeyExpired(keys[keyCode]))   {
       keys[keyCode].active = false;
@@ -2433,11 +2528,13 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // ── Extensão: usage ──
   if ([R_EXT+'/v3/usage', R_EXT+'/v3/get-usage', R_EXT+'/v3/sync-usage'].includes(p)) {
     sendJson(res, { ok: true, status: true, limits: USAGE_LIMITS, expires_at: new Date(Date.now()+365*24*60*60*1000).toISOString(), isExpired: false });
     return;
   }
 
+  // ── Admin: login ──
   if (p === R_ADMIN+'/login' && req.method === 'POST') {
     const form   = await parseFormBody(req);
     const _u=Buffer.from(form.get('user')||''), _p=Buffer.from(form.get('pass')||'');
@@ -2458,16 +2555,21 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // ── Admin: logout ──
   if (p === R_ADMIN+'/logout') {
     res.setHeader('Set-Cookie', 'zv_admin=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict; Secure');
     res.writeHead(302, { Location: R_ADMIN }); res.end(); return;
   }
 
+  // ── Admin: painel ──
   if (p === R_ADMIN || p === R_ADMIN+'/') {
     if (!isAdminSession(req)) { sendHtml(res, renderAdminLogin()); return; }
     sendHtml(res, renderAdminDashboard()); return;
   }
 
+  // ─────────────────────────────────────────────
+  // MOD: login / logout / painel
+  // ─────────────────────────────────────────────
   if (p === R_MOD+'/login' && req.method === 'POST') {
     if (MODS.length === 0) { res.writeHead(404); res.end('Not found'); return; }
     if (!checkRateLimit(ip, 'login')) {
@@ -2512,6 +2614,7 @@ async function handleRequest(req, res) {
     sendHtml(res, renderModDashboard(_ms2 ? _ms2.modName : 'Moderador')); return;
   }
 
+  // ── Mod API: criar chave ──
   if (p === R_MOD+'/api/keys' && req.method === 'POST') {
     if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const _modCookie = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
@@ -2542,11 +2645,13 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true, key: code }); return;
   }
 
+  // ── Mod API: listar apenas as chaves criadas pelo moderador ──
   if (p === R_MOD+'/api/my-keys' && req.method === 'GET') {
     if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const _mc = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
     const myModName = (_mc && modSessions[_mc[1]]) ? modSessions[_mc[1]].modName : null;
     if (!myModName) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    // Fonte de verdade: banco MongoDB — ignora memória local do processo
     try {
       const db  = await getMongoDb();
       const doc = await db.collection('store').findOne({ _id: 'keys' });
@@ -2569,10 +2674,13 @@ async function handleRequest(req, res) {
     }
   }
 
+  // ── Mod API: adicionar/editar nota ──
   if (p.startsWith(R_MOD+'/api/keys/') && p.endsWith('/note') && req.method === 'POST') {
     if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    // Extrair código da URL
     const codeFromUrl = decodeURIComponent(p.slice((R_MOD+'/api/keys/').length, -'/note'.length));
     if (!codeFromUrl) { sendJson(res, { error: 'not found' }, 404); return; }
+    // Garantir que a chave está em memória (pode ter sido criada em outro servidor)
     if (!keys[codeFromUrl]) {
       try {
         const _db2 = await getMongoDb();
@@ -2581,6 +2689,7 @@ async function handleRequest(req, res) {
       } catch(e) { /* continua */ }
     }
     if (!keys[codeFromUrl]) { sendJson(res, { error: 'not found' }, 404); return; }
+    // Verificar que a chave pertence a este moderador
     const _mc3 = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
     const _ms3 = _mc3 ? modSessions[_mc3[1]] : null;
     const _myName3 = _ms3 ? _ms3.modName : null;
@@ -2589,21 +2698,24 @@ async function handleRequest(req, res) {
     }
     const body = await parseBody(req);
     const newNote = String(body.note||'').slice(0, 400);
+    // Preservar o prefixo [Mod:...] e substituir o restante
     const modPrefix = ((keys[codeFromUrl].note||'').match(/^\[Mod: [^\]]+\]/) || [''])[0];
     keys[codeFromUrl].note = (modPrefix + (newNote ? ' ' + newNote : '')).trim().slice(0, 500);
     await saveKey(codeFromUrl);
     sendJson(res, { ok: true }); return;
   }
 
+  // Helper para extrair código das rotas /api/keys/:code/...
   function extractCode(pattern) {
     const match = p.match(pattern);
     if (!match) return null;
     const code = decodeURIComponent(match[1]);
-      if (!/^[a-z0-9_\-]{1,30}$/.test(code)) return null;
+    if (!/^[a-z0-9_\-]{1,30}$/.test(code)) return null;
     return code;
   }
   const RA = R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+  // ── Admin API: dados ──
   if (p === R_ADMIN+'/api/data' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const suspectKeys = Object.keys(keys).filter(code => {
@@ -2624,6 +2736,7 @@ async function handleRequest(req, res) {
     }); return;
   }
 
+  // ── Admin API: gerar chave ──
   if (p === R_ADMIN+'/api/keys' && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const body = await parseBody(req);
@@ -2652,6 +2765,7 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true, key: code }); return;
   }
 
+  // ── Admin API: toggle ──
   const codeToggle = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/toggle$`));
   if (codeToggle && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
@@ -2662,6 +2776,7 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true, active: keys[codeToggle].active }); return;
   }
 
+  // ── Admin API: renew ──
   const codeRenew = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/renew$`));
   if (codeRenew && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
@@ -2679,6 +2794,7 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true, expiresAt: keys[codeRenew].expiresAt }); return;
   }
 
+  // ── Admin API: max-uses ──
   const codeMaxUses = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/max-uses$`));
   if (codeMaxUses && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
@@ -2691,6 +2807,7 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true, maxUses }); return;
   }
 
+  // ── Admin API: label ──
   const codeLabel = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/label$`));
   if (codeLabel && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
@@ -2703,6 +2820,7 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true, label }); return;
   }
 
+  // ── Admin API: phones GET ──
   const codePhonesGet = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/phones$`));
   if (codePhonesGet && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
@@ -2710,6 +2828,7 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true, phones: keys[codePhonesGet].phones || [] }); return;
   }
 
+  // ── Admin API: phones DELETE ──
   const codePhonesDelete = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/phones$`));
   if (codePhonesDelete && req.method === 'DELETE') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
@@ -2726,6 +2845,7 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true, phones: keys[codePhonesDelete].phones }); return;
   }
 
+  // ── Admin API: reset-warn ──
   const codeResetWarn = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/reset-warn$`));
   if (codeResetWarn && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
@@ -2735,15 +2855,18 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true }); return;
   }
 
+  // ── Admin API: clear-suspect (marca IP histórico como verificado zerando logs suspeitos) ──
   const codeClearSuspect = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/clear-suspect$`));
   if (codeClearSuspect && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!keys[codeClearSuspect]) { sendJson(res, { error: 'not found' }, 404); return; }
+    // Marca como verificada — ignora suspeita por 48h
     keys[codeClearSuspect].suspectClearedAt = new Date().toISOString();
     await saveKey(codeClearSuspect);
     sendJson(res, { ok: true }); return;
   }
 
+  // ── Admin API: nota ──
   const codeNote = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/note$`));
   if (codeNote && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
@@ -2754,6 +2877,7 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true }); return;
   }
 
+  // ── Admin API: toggle módulo remoto ──
   const codeModules = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/modules$`));
   if (codeModules && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
@@ -2770,9 +2894,11 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true, module: moduleName, enabled, modules: keys[codeModules].modules }); return;
   }
 
+  // ── Admin API: atribuir chave a moderador ──
   const codeAssignMod = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/assign-mod$`));
   if (codeAssignMod && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    // Buscar do banco se não está em memória (chave criada em outro servidor)
     if (!keys[codeAssignMod]) {
       try {
         const _dbA = await getMongoDb();
@@ -2786,6 +2912,7 @@ async function handleRequest(req, res) {
     const body    = await parseBody(req);
     const modName = String(body.modName || '').trim().slice(0, 60);
     const k       = keys[codeAssignMod];
+    // Remover atribuição anterior e adicionar nova
     let note = (k.note || '').replace(/\[Mod: [^\]]+\]\s*/g, '').trim();
     if (modName) note = '[Mod: ' + modName + ']' + (note ? ' ' + note : '');
     k.note = note.slice(0, 500);
@@ -2793,6 +2920,7 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true, modName, note: k.note }); return;
   }
 
+  // ── Admin API: deletar chave ──
   const codeDelete = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)$`));
   if (codeDelete && req.method === 'DELETE') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
@@ -2801,6 +2929,7 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true }); return;
   }
 
+  // ── Admin API: logs DELETE ──
   if (p === R_ADMIN+'/api/logs' && req.method === 'DELETE') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const body = await parseBody(req);
@@ -2810,6 +2939,7 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true, remaining: logs.length }); return;
   }
 
+  // ── Admin API: logs GET (com filtro de texto) ──
   if (p === R_ADMIN+'/api/logs' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const date = url.searchParams.get('date');
@@ -2824,6 +2954,7 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true, logsHtml: buildLogsHtml(filtered) }); return;
   }
 
+  // ── Admin API: exportar CSV ──
   if (p === R_ADMIN+'/api/export/csv' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const header = 'Chave,Cliente,Status,Usos,Telefone,Último IP,WPP Version,Último Acesso,Criada em,Expira em,Nota';
@@ -2845,12 +2976,15 @@ async function handleRequest(req, res) {
     res.writeHead(200); res.end('\uFEFF' + csv); return;
   }
 
+
+  // ── Portal cliente: status ──
   if (p === '/client/status' && req.method === 'POST') {
     if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
     const body = await parseBody(req);
     const code = (body.key || '').trim().toLowerCase().slice(0, 20);
     if (!code) { sendJson(res, { error: 'not_found' }, 404); return; }
 
+    // Buscar em memória primeiro; se não encontrar, buscar no banco (sincroniza servidores)
     let k = keys[code];
     if (!k) {
       try {
@@ -2858,7 +2992,7 @@ async function handleRequest(req, res) {
         const doc = await db.collection('store').findOne({ _id: 'keys' });
         if (doc && doc.data && doc.data[code]) {
           k = doc.data[code];
-          keys[code] = k;
+          keys[code] = k; // atualizar memória local
         }
       } catch(e) { console.error('[DB] Erro ao buscar chave:', e.message); }
     }
@@ -2880,6 +3014,7 @@ async function handleRequest(req, res) {
     }); return;
   }
 
+  // ── Portal cliente: remover número ──
   if (p === '/client/remove-phone' && req.method === 'POST') {
     if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
     const body    = await parseBody(req);
@@ -2888,6 +3023,7 @@ async function handleRequest(req, res) {
     const phoneTxt = (body.phone||'').trim();
     if (!keyCode) { sendJson(res, { error: 'not_found' }, 404); return; }
     if (phoneIdx < 0 && !phoneTxt) { sendJson(res, { error: 'phone obrigatorio' }, 400); return; }
+    // Buscar no banco se não estiver em memória (ex: Render reiniciou)
     if (!keys[keyCode]) {
       try {
         const db  = await getMongoDb();
@@ -2901,6 +3037,7 @@ async function handleRequest(req, res) {
     }
     if (!keys[keyCode]) { sendJson(res, { error: 'not_found' }, 404); return; }
     const phones = keys[keyCode].phones || [];
+    // Aceitar por índice (portal cliente) ou por número exato (admin/legacy)
     let phone;
     if (phoneIdx >= 0 && phoneIdx < phones.length) {
       phone = phones[phoneIdx];
@@ -2915,22 +3052,27 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true, phones: keys[keyCode].phones }); return;
   }
 
+  // ── Redirects ──
   if (req.method === 'GET' && (p === '/dashboard/backup-fixer' || p === '/dashboard/converter')) {
     res.writeHead(302, { Location: 'https://app.zapvoice.com.br' + p }); res.end(); return;
   }
 
+  // ── FAQ ──
   if (p === '/faq' && req.method === 'GET') {
     sendHtml(res, renderFaqPage()); return;
   }
 
+  // ── Planos ──
   if (p === '/planos' && req.method === 'GET') {
     sendHtml(res, renderPlanosPage()); return;
   }
 
+  // ── Privacidade ──
   if (p === '/privacidade' && req.method === 'GET') {
     sendHtml(res, renderPrivacyPage()); return;
   }
 
+  // ── Portal cliente: rotas públicas ──
   const CLIENT_PATHS = ['/', '/plans/manage', '/plans/new', '/dashboard/chaves'];
   if (req.method === 'GET' && (CLIENT_PATHS.includes(p) || p.startsWith('/unauthorized') || p.startsWith('/funnels') || p.startsWith('/labels'))) {
     sendHtml(res, renderClientPortal()); return;
@@ -2939,6 +3081,8 @@ async function handleRequest(req, res) {
   sendJson(res, { ok: true });
 }
 
+
+// ─── Graceful Shutdown ─────────────────────────────────────────
 async function gracefulShutdown(signal) {
   console.log(`[${signal}] Encerrando servidor graciosamente...`);
   try {
@@ -2948,6 +3092,9 @@ async function gracefulShutdown(signal) {
 }
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
+// ─────────────────────────────────────────────
+// INICIALIZAÇÃO
+// ─────────────────────────────────────────────
 (async () => {
   try {
     const loaded = await loadDb();
@@ -2976,10 +3123,11 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     process.on('unhandledRejection', err => console.error('[unhandledRejection]', err));
 
     const server = http.createServer(safeHandler);
-    server.keepAliveTimeout = 65000;
+    server.keepAliveTimeout = 65000; // acima dos 60s do LB do Render
     server.headersTimeout   = 66000;
     server.listen(PORT, () => {
       console.log(`🚀 Servidor ouvindo na porta ${PORT}`);
+      // Self-ping a cada 10 min — mantém Render free tier acordado
       setInterval(() => {
         const req = http.request(
           { hostname: 'localhost', port: PORT, path: '/health', method: 'GET' },
@@ -2987,7 +3135,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
         );
         req.on('error', () => {});
         req.end();
-      }, 10 * 60 * 1000);
+      }, 10 * 60 * 1000); // 600 000 ms = 10 min
     });
   } catch (e) {
     console.error('❌ Falha ao iniciar:', e.message);
