@@ -430,7 +430,7 @@ function sendHtml(res, html, status = 200) {
 }
 
 function escHtml(s) {
-  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 // ─────────────────────────────────────────────
@@ -1550,7 +1550,7 @@ function toast(msg,ok=true){
 function openModules(code,label,modulesJson){
   document.getElementById('modulesCode').value=code;
   document.getElementById('modulesLabel').textContent=label;
-  let mods={};try{mods=JSON.parse(modulesJson);}catch{}
+  let mods={};try{mods=JSON.parse(modulesJson.replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>'));}catch{}
   const list=document.getElementById('modulesList');
   list.innerHTML=_MODULES.map(m=>{
     const on=!!mods[m];
@@ -2348,49 +2348,64 @@ async function handleRequest(req, res) {
     keys[keyCode].lastUsed = new Date().toISOString();
     keys[keyCode].lastIp   = ip;
     await saveKey(keyCode);
-    // Validate callback before using
-    const allowedSchemes = ['chrome-extension:', 'https:', 'http:'];
-    let cbValid = false;
-    let cbUrl = null;
-    if (callback) {
-      try { cbUrl = new URL(callback); cbValid = allowedSchemes.includes(cbUrl.protocol); } catch {}
-    }
-    if (!cbValid) {
-      // Callback ausente ou inválido: retorna dados via HTML para a extensão ler
-      const authPayload = {
-        key: keyCode, keyId: `id-${keyCode}`, ownerId: 'zv-owner', managerId: 'zv-manager',
-        isPremium: true, isLoggedIn: true, planName: 'Pro', marketplace: 'premium',
-        username: keys[keyCode].label, email: 'cliente@zapvoice.com.br',
-        plan_id: 'ZV_PRO', permissions: FULL_PERMISSIONS.join(',')
-      };
-      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode,
-        success: '✅ Chave ativada! Feche esta página e reabra o WhatsApp.',
-        authPayload: JSON.stringify(authPayload)
-      })); return;
-    }
-    try {
-      cbUrl.searchParams.set('key',         keyCode);
-      cbUrl.searchParams.set('keyId',       `id-${keyCode}`);
-      cbUrl.searchParams.set('ownerId',     'zv-owner');
-      cbUrl.searchParams.set('managerId',   'zv-manager');
-      cbUrl.searchParams.set('isPremium',   'true');
-      cbUrl.searchParams.set('isLoggedIn',  'true');
-      cbUrl.searchParams.set('planName',    'Pro');
-      cbUrl.searchParams.set('marketplace', 'premium');
-      cbUrl.searchParams.set('username',    keys[keyCode].label);
-      cbUrl.searchParams.set('email',       'cliente@zapvoice.com.br');
-      cbUrl.searchParams.set('plan_id',     'ZV_PRO');
-      cbUrl.searchParams.set('permissions', FULL_PERMISSIONS.join(','));
-      res.writeHead(302, { Location: cbUrl.toString() }); res.end();
-    } catch (e) {
-      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: 'Erro ao redirecionar: ' + e.message }));
+    const _allowed = ['chrome-extension:', 'https:', 'http:'];
+    let _cbUrl = null;
+    if (callback) { try { _cbUrl = new URL(callback); if (!_allowed.includes(_cbUrl.protocol)) _cbUrl = null; } catch {} }
+    if (_cbUrl) {
+      _cbUrl.searchParams.set('key',         keyCode);
+      _cbUrl.searchParams.set('keyId',       `id-${keyCode}`);
+      _cbUrl.searchParams.set('ownerId',     'zv-owner');
+      _cbUrl.searchParams.set('managerId',   'zv-manager');
+      _cbUrl.searchParams.set('isPremium',   'true');
+      _cbUrl.searchParams.set('isLoggedIn',  'true');
+      _cbUrl.searchParams.set('planName',    'Pro');
+      _cbUrl.searchParams.set('marketplace', 'premium');
+      _cbUrl.searchParams.set('username',    keys[keyCode].label);
+      _cbUrl.searchParams.set('email',       'cliente@zapvoice.com.br');
+      _cbUrl.searchParams.set('plan_id',     'ZV_PRO');
+      _cbUrl.searchParams.set('permissions', FULL_PERMISSIONS.join(','));
+      res.writeHead(302, { Location: _cbUrl.toString() }); res.end();
+    } else {
+      const _activatedHtml = `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZVM — Ativado!</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;flex-direction:column;gap:24px}
+.card{background:#111118;border:1px solid #00ff8740;border-radius:18px;padding:40px 36px;width:100%;max-width:420px;text-align:center;box-shadow:0 0 40px rgba(0,255,135,0.12)}
+.icon{font-size:48px;margin-bottom:8px}
+.title{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#00ff87;margin-bottom:8px}
+.sub{color:#8a8aaa;font-size:13px;line-height:1.6;margin-bottom:20px}
+.key{background:#0a0a0f;border:1px solid #00ff8730;border-radius:8px;padding:10px 16px;color:#00ff87;font-size:14px;letter-spacing:2px;margin-bottom:20px;font-family:'Space Mono',monospace}
+.countdown{color:#4a4a6a;font-size:12px}
+.bar{width:100%;height:3px;background:#1a1a2e;border-radius:2px;margin-top:12px;overflow:hidden}
+.fill{height:100%;background:#00ff87;width:100%;animation:drain 3s linear forwards;border-radius:2px}
+@keyframes drain{from{width:100%}to{width:0%}}
+</style></head><body>
+<div class="card">
+  <div class="icon">⚡</div>
+  <div class="title">Chave Ativada!</div>
+  <div class="sub">Sua chave foi validada com sucesso.<br>Volte para a aba do WhatsApp Web e atualize a página.</div>
+  <div class="key">${keyCode}</div>
+  <div class="countdown" id="cd">Fechando em <b id="n">3</b>s...</div>
+  <div class="bar"><div class="fill"></div></div>
+</div>
+<script>
+let n=3;
+const el=document.getElementById('n');
+const iv=setInterval(()=>{n--;el.textContent=n;if(n<=0){clearInterval(iv);window.close();}},1000);
+</script>
+</body></html>`;
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(_activatedHtml);
     }
     return;
   }
 
   // ── Extensão: /v3/key ──
   if (p === R_EXT+'/v3/key' && req.method === 'POST') {
-    if (!checkRateLimit(ip, 'ext_key', 20, 60000)) {
+    if (!checkRateLimit(ip, 'api')) {
       sendJson(res, { authError: 'rateLimited', authErrorMessage: 'Muitas tentativas. Aguarde.', isLoggedIn: false }, 429);
       return;
     }
