@@ -63,27 +63,20 @@ let _mongoDb     = null;
 
 async function getMongoDb() {
   if (_mongoDb) return _mongoDb;
-  try {
-    if (!_mongoClient) {
-      _mongoClient = new MongoClient(MONGODB_URI, {
-        serverSelectionTimeoutMS: 5000,
-        connectTimeoutMS: 5000,
-        socketTimeoutMS: 5000,
-        tls: true,
-        tlsAllowInvalidCertificates: false,
-        tlsAllowInvalidHostnames: false,
-      });
-      await _mongoClient.connect();
-      console.log('✅ MongoDB conectado');
-    }
-    _mongoDb = _mongoClient.db('zapvoice');
-    return _mongoDb;
-  } catch(e) {
-    // Reset em erro — permite reconexão automática na próxima chamada
-    _mongoDb = null;
-    _mongoClient = null;
-    throw e;
+  if (!_mongoClient) {
+    _mongoClient = new MongoClient(MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 5000,
+      socketTimeoutMS: 5000,
+      tls: true,
+      tlsAllowInvalidCertificates: false,
+      tlsAllowInvalidHostnames: false,
+    });
+    await _mongoClient.connect();
+    console.log('✅ MongoDB conectado');
   }
+  _mongoDb = _mongoClient.db('zapvoice');
+  return _mongoDb;
 }
 
 async function loadDb() {
@@ -102,24 +95,17 @@ async function loadDb() {
 }
 
 // Salva UMA chave específica — granular, não reescreve tudo
-// Debounce: agrupa múltiplas saves da mesma chave em 2s → 1 write MongoDB
-const _saveDebounce = new Map();
-function saveKey(code) {
-  if (_saveDebounce.has(code)) clearTimeout(_saveDebounce.get(code));
-  const tid = setTimeout(async () => {
-    _saveDebounce.delete(code);
-    try {
-      const db = await getMongoDb();
-      await db.collection('store').updateOne(
-        { _id: 'keys' },
-        { $set: { [`data.${code}`]: keys[code], updatedAt: new Date() } },
-        { upsert: true }
-      );
-    } catch (e) {
-        console.error('[DB] Erro ao salvar chave:', e.message);
-    }
-  }, 2000);
-  _saveDebounce.set(code, tid);
+async function saveKey(code) {
+  try {
+    const db = await getMongoDb();
+    await db.collection('store').updateOne(
+      { _id: 'keys' },
+      { $set: { [`data.${code}`]: keys[code], updatedAt: new Date() } },
+      { upsert: true }
+    );
+  } catch (e) {
+    console.error('[DB] Erro ao salvar chave:', e.message);
+  }
 }
 
 // Remove uma chave do banco
@@ -278,22 +264,18 @@ setInterval(() => {
   const now = Date.now();
   for (const [k, e] of rateLimitMap.entries())
     if (now > e.blockedUntil && now > e.resetAt) rateLimitMap.delete(k);
-  // Limpar _dedupMap de entradas expiradas (> 1h)
-  const dedupTTL = 60 * 60 * 1000;
-  for (const [k, ts] of _dedupMap.entries())
-    if (now - ts > dedupTTL) _dedupMap.delete(k);
-}, 30 * 60 * 1000); // 30 min — recursos mínimos
+}, 15 * 60000);
 
 // Limpeza periódica de sessões expiradas
 setInterval(() => {
-  const now = Date.now();
+  const now = new Date();
   for (const [k, s] of Object.entries(sessions))
-    if (now > new Date(s.expiresAt).getTime()) delete sessions[k];
+    if (now > new Date(s.expiresAt)) delete sessions[k];
   for (const [k, s] of Object.entries(modSessions))
-    if (now > new Date(s.expiresAt).getTime()) delete modSessions[k];
+    if (now > new Date(s.expiresAt)) delete modSessions[k];
   for (const [k, s] of Object.entries(analyticsSessions))
-    if (now > new Date(s.expiresAt).getTime()) delete analyticsSessions[k];
-}, 60 * 60 * 1000); // 1h — sessões duram horas, limpeza não precisa ser frequente
+    if (now > new Date(s.expiresAt)) delete analyticsSessions[k];
+}, 30 * 60000);
 
 // ─────────────────────────────────────────────
 // WEBHOOK
@@ -552,7 +534,6 @@ function parseFormBody(req) {
 
 function sendJson(res, data, status = 200) {
   res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Connection', 'keep-alive');
   res.writeHead(status); res.end(JSON.stringify(data));
 }
 
@@ -1272,13 +1253,12 @@ function showPanel(d,key){
   var phoneSec=document.getElementById('r-phone-section'),phoneList=document.getElementById('r-phone-list');
   if(d.phoneList&&d.phoneList.length>0){
     phoneSec.style.display='block';phoneList.innerHTML='';
-    d.phoneList.forEach(function(item){
-      var ph=item.display||item,pidx=item.idx!=null?item.idx:-1;
+    d.phoneList.forEach(function(ph){
       var card=document.createElement('div');
       card.style.cssText='background:#0f0f1a;border:1px solid #1c1c2e;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px';
       var sp=document.createElement('span');sp.style.cssText='font-size:13px;font-family:monospace;color:#e2e2f0;font-weight:700';sp.textContent=ph;
       var btn=document.createElement('button');btn.textContent='Remover';btn.style.cssText='padding:4px 10px;background:#ff4757;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-family:Syne,sans-serif;font-weight:700;flex-shrink:0';
-      btn.addEventListener('click',function(){clientRemovePhone(key,pidx);});
+      btn.addEventListener('click',function(){clientRemovePhone(key,ph);});
       card.appendChild(sp);card.appendChild(btn);phoneList.appendChild(card);
     });
   } else phoneSec.style.display='none';
@@ -1291,9 +1271,9 @@ function resetPanel(){
   const btn=document.getElementById('check-btn');btn.disabled=false;btn.textContent='Consultar Minha Chave';
   document.getElementById('form-area').style.display='block';
 }
-async async async function clientRemovePhone(key,phoneIdx){
-  if(!confirm('Remover este número desta chave?'))return;
-  try{var r=await fetch('/client/remove-phone',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,phoneIdx})});var d=await r.json();if(d.ok){alert('Número removido! Você pode fazer login novamente.');doCheck(key);}else alert('Erro: '+(d.error||'?'));}catch(e){alert('Erro de rede.');}
+async function clientRemovePhone(key,phone){
+  if(!confirm('Remover o número '+phone+' desta chave?'))return;
+  try{var r=await fetch('/client/remove-phone',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,phone})});var d=await r.json();if(d.ok){alert('Número removido! Você pode fazer login novamente.');doCheck(key);}else alert('Erro: '+(d.error||'?'));}catch(e){alert('Erro de rede.');}
 }
 document.getElementById('key-input').addEventListener('keydown',e=>{if(e.key==='Enter')checkKey();});
 window.addEventListener('DOMContentLoaded',()=>{
@@ -1779,7 +1759,7 @@ async function doRefresh(){
     filterKeys();
   }catch(e){console.error('Refresh error',e);}
 }
-setInterval(doRefresh,120000); // 2 min — reduz requisições ao servidor
+setInterval(doRefresh,30000);
 
 // ── Ações de chave ──
 async function toggleKey(code){
@@ -1864,7 +1844,7 @@ function openPhones(code,label){
   fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/phones').then(r=>r.json()).then(d=>{
     if(!d.phones||d.phones.length===0){list.innerHTML='<em style="color:var(--muted);font-size:12px">Nenhum número cadastrado</em>';document.getElementById('removeAllBtn').style.display='none';modal.dataset.phones='[]';return;}
     document.getElementById('removeAllBtn').style.display='';modal.dataset.phones=JSON.stringify(d.phones);
-    list.innerHTML=d.phones.map((ph,i)=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)"><span style="font-size:13px;font-family:monospace;color:var(--text)">'+ph.replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]))+'</span><button class="bs bd" data-idx="'+i+'" onclick="removePhone(this)">Remover</button></div>').join('');
+    list.innerHTML=d.phones.map((ph,i)=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)"><span style="font-size:13px;font-family:monospace;color:var(--text)">'+ph+'</span><button class="bs bd" data-idx="'+i+'" onclick="removePhone(this)">Remover</button></div>').join('');
   }).catch(()=>{list.innerHTML='<em style="color:var(--red)">Erro ao carregar</em>';});
 }
 function closePhones(){document.getElementById('phonesModal').classList.remove('open');}
@@ -2652,10 +2632,9 @@ async function handleRequest(req, res) {
     'Vary':                         'Origin',
     'X-Content-Type-Options':       'nosniff',
     'X-Frame-Options':              'DENY',
-    'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
     'Referrer-Policy':              'no-referrer',
     'Permissions-Policy':           'geolocation=(), microphone=(), camera=()',
-    'Content-Security-Policy':      "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
+    'Content-Security-Policy':      "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'",
     'X-Powered-By':                 'PHP/7.4.3',
   };
   Object.entries(_corsH).forEach(([k, v]) => res.setHeader(k, v));
@@ -2672,8 +2651,7 @@ async function handleRequest(req, res) {
 
   // ── Health ──
   if (p === '/health' && req.method === 'GET') {
-    res.writeHead(200,{'Content-Type':'text/plain','Cache-Control':'no-store'});
-    res.end('ok'); return;
+    sendJson(res, { ok: true }); return;
   }
 
   // ── Extensão: login page ──
@@ -3510,7 +3488,7 @@ async function handleRequest(req, res) {
       activatedAt: k.activatedAt || null,
       lastUsed:    k.lastUsed || null,
       phones:      (k.phones || []).length,
-      phoneList:   (k.phones || []).map((ph, i) => ({ idx: i, display: ph.replace(/(\d+)(\d{4})$/, '••••$2') })),
+      phoneList:   (k.phones || []).map(ph => ph.replace(/(\d+)(\d{4})$/, '••••$2')),
       maxUses:     k.maxUses === -1 ? null : (k.maxUses > 0 ? k.maxUses : MAX_USES),
       hoursLeft:   hoursUntilExpiry(k),
       deferred:    !!(k.expireDuration && !k.expiresAt),
@@ -3521,33 +3499,12 @@ async function handleRequest(req, res) {
   // ── Portal cliente: remover número ──
   if (p === '/client/remove-phone' && req.method === 'POST') {
     const body    = await parseBody(req);
-    const keyCode = (body.key||'').trim().toLowerCase().slice(0, 20);
-    const phoneIdx = body.phoneIdx != null ? parseInt(body.phoneIdx) : -1;
-    const phoneTxt = (body.phone||'').trim();
-    if (!keyCode) { sendJson(res, { error: 'not_found' }, 404); return; }
-    if (phoneIdx < 0 && !phoneTxt) { sendJson(res, { error: 'phone obrigatorio' }, 400); return; }
-    // Buscar no banco se não estiver em memória (ex: Render reiniciou)
-    if (!keys[keyCode]) {
-      try {
-        const db  = await getMongoDb();
-        const doc = await db.collection('store').findOne({ _id: 'keys' });
-        if (doc && doc.data && doc.data[keyCode]) {
-          keys[keyCode] = doc.data[keyCode];
-        }
-      } catch(e) {
-        sendJson(res, { error: 'db_error' }, 503); return;
-      }
-    }
-    if (!keys[keyCode]) { sendJson(res, { error: 'not_found' }, 404); return; }
+    const keyCode = (body.key||'').trim().toLowerCase();
+    const phone   = (body.phone||'').trim();
+    if (!keyCode || !keys[keyCode]) { sendJson(res, { error: 'not_found' }, 404); return; }
+    if (!phone) { sendJson(res, { error: 'phone obrigatorio' }, 400); return; }
     const phones = keys[keyCode].phones || [];
-    // Aceitar por índice (portal cliente) ou por número exato (admin/legacy)
-    let phone;
-    if (phoneIdx >= 0 && phoneIdx < phones.length) {
-      phone = phones[phoneIdx];
-    } else if (phoneTxt) {
-      phone = phones.find(p => p === phoneTxt || p.endsWith(phoneTxt.replace(/[^0-9]/g,'')));
-    }
-    if (!phone) { sendJson(res, { error: 'numero nao encontrado' }, 404); return; }
+    if (!phones.includes(phone)) { sendJson(res, { error: 'numero nao encontrado' }, 404); return; }
     keys[keyCode].phones  = phones.filter(p => p !== phone);
     keys[keyCode].uses    = keys[keyCode].phones.length;
     if (keys[keyCode].lastPhone === phone) keys[keyCode].lastPhone = keys[keyCode].phones.at(-1) || null;
@@ -3584,17 +3541,6 @@ async function handleRequest(req, res) {
   sendJson(res, { ok: true });
 }
 
-
-// ─── Graceful Shutdown ─────────────────────────────────────────
-async function gracefulShutdown(signal) {
-  console.log(`[${signal}] Encerrando servidor graciosamente...`);
-  try {
-    if (_mongoClient) { await _mongoClient.close(); console.log('[SHUTDOWN] MongoDB desconectado'); }
-  } catch(e) { console.error('[SHUTDOWN] Erro ao fechar MongoDB:', e.message); }
-  process.exit(0);
-}
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
 // ─────────────────────────────────────────────
 // INICIALIZAÇÃO
 // ─────────────────────────────────────────────
@@ -3607,12 +3553,12 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
 
     console.log(`✅ zvm-lr1290 v8 — porta ${PORT}`);
     console.log(`🍃 MongoDB: conectado | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}`);
-    console.log(`🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
-    console.log(`🔑 2FA:  ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
-    console.log(`💳 Payt: ${PAYT_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
+    console.log(`🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ inativo — defina APP_SECRET'}`);
+    console.log(`🔑 2FA:  ${TOTP_SECRET ? 'ATIVO' : '⚠ inativo — defina TOTP_SECRET'}`);
+    console.log(`💳 Payt: ${PAYT_SECRET ? 'ATIVO' : '⚠ inativo — defina PAYT_SECRET'}`);
     console.log(`🔑 Admin: ${R_ADMIN} | User: ${ADMIN_USER}`);
     console.log(`👮 Mod:   ${MODS.length > 0 ? R_MOD+' | '+MODS.length+' mod(s): '+MODS.map(m=>m.name).join(', ') : '⚠ inativo — defina MOD_USER e MOD_PASS'}`);
-    console.log(`📊 Analytics: ${ANALYTICS_PASS ? 'ATIVO' : '⚠ INATIVO'}`);
+    console.log(`📊 Analytics: ${ANALYTICS_PASS ? R_ANALYTICS : '⚠ inativo — defina ANALYTICS_PASS'}`);
     console.log(`🌐 Extension: ${R_EXT}/v3/key`);
     console.log(`📊 Webhook: ${WEBHOOK_URL || 'não configurado'}`);
     console.log(`🗂  Retenção de logs: ${LOG_RETENTION_DAYS} dias (LGPD) | Máx em memória: ${LOG_MAX}`);
@@ -3627,20 +3573,15 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     process.on('uncaughtException',  err => console.error('[uncaughtException]', err));
     process.on('unhandledRejection', err => console.error('[unhandledRejection]', err));
 
-    const server = http.createServer(safeHandler);
-    server.keepAliveTimeout = 65000; // acima dos 60s do LB do Render
-    server.headersTimeout   = 66000;
-    server.listen(PORT, () => {
+    http.createServer(safeHandler).listen(PORT, () => {
       console.log(`🚀 Servidor ouvindo na porta ${PORT}`);
-      // Self-ping a cada 10 min — mantém Render free tier acordado
+      // Keep-alive para Render free tier
       setInterval(() => {
-        const req = http.request(
-          { hostname: 'localhost', port: PORT, path: '/health', method: 'GET' },
-          res => { res.resume(); }
-        );
-        req.on('error', () => {});
-        req.end();
-      }, 10 * 60 * 1000); // 600 000 ms = 10 min
+        http.get({ hostname: 'localhost', port: PORT, path: '/health' }, res => {
+          res.resume();
+          console.log('[keep-alive] ping OK ' + res.statusCode);
+        }).on('error', err => console.warn('[keep-alive] erro: ' + err.message));
+      }, 4 * 60 * 1000);
     });
   } catch (e) {
     console.error('❌ Falha ao iniciar:', e.message);
