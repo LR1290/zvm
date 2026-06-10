@@ -6,7 +6,6 @@ const { MongoClient } = require('mongodb');
 const PORT         = process.env.PORT         || 3000;
 const ADMIN_USER   = process.env.ADMIN_USER;
 const ADMIN_PASS   = process.env.ADMIN_PASS;
-
 const MODS = [
   { user: process.env.MOD_USER  || '', pass: process.env.MOD_PASS  || '', totp: process.env.MOD_TOTP  || '', name: 'Moderador'   },
   { user: process.env.MOD2_USER || '', pass: process.env.MOD2_PASS || '', totp: process.env.MOD2_TOTP || '', name: 'Simplifique' },
@@ -15,17 +14,14 @@ const MODS = [
   { user: process.env.MOD5_USER || '', pass: process.env.MOD5_PASS || '', totp: process.env.MOD5_TOTP || '', name: 'Darley'      },
   { user: process.env.MOD6_USER || '', pass: process.env.MOD6_PASS || '', totp: process.env.MOD6_TOTP || '', name: 'Letícia'     },
 ].filter(m => m.user && m.pass);
-
-const PAYT_SECRET  = process.env.PAYT_SECRET  || '';
-const ANALYTICS_PASS = process.env.ANALYTICS_PASS || '';
+const PAYT_SECRET  = process.env.PAYT_SECRET  || '';   // renomeado de CAKTO_SECRET
+const ANALYTICS_PASS = process.env.ANALYTICS_PASS || ''; // senha do painel de analytics
 const MONGODB_URI  = process.env.MONGODB_URI  || '';
 const APP_SECRET   = process.env.APP_SECRET   || '';
 const TOTP_SECRET  = process.env.TOTP_SECRET  || '';
 const WEBHOOK_URL  = process.env.WEBHOOK_URL  || '';
 const EXPIRY_WARN_HOURS = Math.max(1, Math.min(720, parseInt(process.env.EXPIRY_WARN_HOURS || '48') || 48));
-
 const LOG_RETENTION_DAYS = Math.max(1, parseInt(process.env.LOG_RETENTION_DAYS || '90') || 90);
-
 const LOG_MAX = Math.min(parseInt(process.env.LOG_MAX || '500'), 2000);
 
 if (!ADMIN_USER || !ADMIN_PASS) {
@@ -72,7 +68,6 @@ async function getMongoDb() {
     _mongoDb = _mongoClient.db('zapvoice');
     return _mongoDb;
   } catch(e) {
-
     _mongoDb = null;
     _mongoClient = null;
     throw e;
@@ -108,7 +103,7 @@ function saveKey(code) {
         { upsert: true }
       );
     } catch (e) {
-        console.error('[DB] Erro ao salvar chave:', e.message);
+      console.error('[DB] Erro ao salvar chave:', e.message);
     }
   }, 2000);
   _saveDebounce.set(code, tid);
@@ -554,7 +549,6 @@ async function addLog(entry) {
     _dedupMap.set(dedupKey, Date.now());
   }
   logs.unshift({ ...entry, timestamp: new Date().toISOString() });
-
   if (logs.length > LOG_MAX) logs = logs.slice(0, LOG_MAX);
   await saveLogs();
 }
@@ -664,7 +658,7 @@ main{padding:28px 32px;max-width:1200px;margin:0 auto}
 .empty{text-align:center;color:var(--muted);padding:30px;font-size:13px;font-family:'Syne',sans-serif}
 .note-btn{padding:3px 8px;background:#4f8ef710;color:var(--blue);border:1px solid #4f8ef730;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;transition:all .15s}
 .note-btn:hover{background:#4f8ef722;border-color:var(--blue)}
-
+/* Conquistas */
 .ach-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;padding:18px}
 .ach{background:var(--dark);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;transition:all .2s;position:relative;overflow:hidden}
 .ach.unlocked{border-color:#4f8ef740;background:#4f8ef708}
@@ -676,7 +670,7 @@ main{padding:28px 32px;max-width:1200px;margin:0 auto}
 .ach-badge{position:absolute;top:8px;right:8px;font-size:9px;font-weight:700;font-family:'Syne',sans-serif;padding:2px 6px;border-radius:10px;text-transform:uppercase;letter-spacing:.5px}
 .ach.unlocked .ach-badge{background:#4f8ef720;color:var(--blue);border:1px solid #4f8ef740}
 .ach.locked .ach-badge{background:#ffffff08;color:var(--muted);border:1px solid var(--border)}
-
+/* Ranking */
 .rank-grid{padding:18px;display:flex;flex-direction:column;gap:8px}
 .rank-row{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;background:var(--dark);border:1px solid var(--border);transition:all .2s}
 .rank-row.me{border-color:#4f8ef760;background:#4f8ef710}
@@ -688,7 +682,7 @@ main{padding:28px 32px;max-width:1200px;margin:0 auto}
 .rank-count{font-family:'Space Mono',monospace;font-size:13px;color:var(--blue);font-weight:700}
 .rank-me-badge{font-size:10px;background:#4f8ef718;color:var(--blue);border:1px solid #4f8ef730;padding:2px 8px;border-radius:10px;font-family:'Syne',sans-serif;font-weight:700}
 .toast{position:fixed;bottom:20px;right:20px;padding:11px 18px;border-radius:var(--radius);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;display:none;z-index:999999;box-shadow:0 6px 30px #00000070}
-
+/* Modal */
 .modal-bg{display:none;position:fixed;inset:0;background:#00000090;z-index:99999;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
 .modal-bg.open{display:flex}
 .modal{background:var(--card);border:1px solid var(--border2);border-radius:12px;padding:22px;width:380px;max-width:95vw;box-shadow:0 20px 60px #00000090}
@@ -696,7 +690,7 @@ main{padding:28px 32px;max-width:1200px;margin:0 auto}
 .modal textarea{width:100%;background:var(--dark);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Syne',sans-serif;font-size:13px;padding:10px;outline:none;resize:vertical;min-height:90px;transition:border .2s}
 .modal textarea:focus{border-color:var(--blue)}
 .modal-actions{display:flex;gap:8px;margin-top:12px;justify-content:flex-end}
-
+/* PS5 Trophy */
 #trophy-notif{position:fixed;bottom:28px;right:-420px;z-index:9999999;width:360px;background:linear-gradient(135deg,#0d0d1a,#141428);border:1px solid #4f8ef750;border-radius:14px;overflow:hidden;box-shadow:0 8px 40px #00000080;transition:right .5s cubic-bezier(.34,1.56,.64,1)}
 #trophy-notif.show{right:28px}
 #trophy-notif.hide{right:-420px;transition:right .4s ease-in}
@@ -1039,31 +1033,43 @@ ${CANVAS_BG}</body></html>`;
 function renderAdminLogin(error = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM Admin</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<title>ZVM — Admin</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d1a'/%3E%3Ctext x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='900' font-size='15' fill='%2300e5ff'%3EZV%3C/text%3E%3C/svg%3E">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
-.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:40px 36px;width:360px;position:relative;z-index:1;box-shadow:0 0 40px rgba(124,58,237,0.15)}
-.logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#00ff87;margin-bottom:20px;text-align:center;letter-spacing:-0.5px}
-label{display:block;font-size:12px;letter-spacing:1px;color:#8a8aaa;text-transform:uppercase;margin-bottom:7px;font-family:'Syne',sans-serif}
-input{width:100%;padding:11px 14px;background:#0a0a0f;border:1px solid #1e1e2e;border-radius:8px;color:#e2e2f0;font-family:'Space Mono',monospace;font-size:13px;outline:none;margin-bottom:16px}
-input:focus{border-color:#00ff87}
-.btn{width:100%;padding:12px;background:#00ff87;border:none;border-radius:8px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer}
-.err{background:#ff475715;border:1px solid #ff4757;border-radius:6px;color:#ff4757;padding:11px 14px;font-size:14px;margin-bottom:16px;font-family:'Syne',sans-serif}
+:root{--c:#00e5ff;--bg:#070711;--s:#0d0d1f;--b:#161628;--t:#e8eaf6;--m:#7986cb;--r:12px}
+body{background:var(--bg);min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;overflow:hidden;position:relative}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 80% 60% at 50% 0%,#00e5ff0d 0%,transparent 70%),radial-gradient(ellipse 40% 40% at 80% 80%,#7c3aed0a 0%,transparent 60%);pointer-events:none}
+.grid-bg{position:fixed;inset:0;background-image:linear-gradient(rgba(0,229,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,.04) 1px,transparent 1px);background-size:40px 40px;pointer-events:none}
+.card{background:var(--s);border:1px solid #1e1e3a;border-radius:20px;padding:44px 40px;width:100%;max-width:420px;position:relative;z-index:1;box-shadow:0 0 0 1px #00e5ff08,0 24px 64px #00000080,inset 0 1px 0 #ffffff08}
+.card::before{content:'';position:absolute;inset:0;border-radius:20px;background:linear-gradient(135deg,#00e5ff06 0%,transparent 50%);pointer-events:none}
+.logo{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:8px}
+.logo-mark{width:40px;height:40px;background:linear-gradient(135deg,#00e5ff,#7c3aed);border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:16px;color:#070711;letter-spacing:-1px;flex-shrink:0}
+.logo-text{font-size:24px;font-weight:800;color:var(--t);letter-spacing:-1px}
+.logo-badge{font-size:11px;color:var(--m);letter-spacing:3px;text-transform:uppercase;text-align:center;margin-bottom:32px}
+.field{margin-bottom:18px}
+label{display:block;font-size:12px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--m);margin-bottom:8px}
+input[type=text],input[type=password]{width:100%;padding:13px 16px;background:var(--bg);border:1px solid #1e1e3a;border-radius:var(--r);color:var(--t);font-size:14px;outline:none;transition:border-color .2s,box-shadow .2s;font-family:inherit}
+input[type=text]:focus,input[type=password]:focus{border-color:var(--c);box-shadow:0 0 0 3px #00e5ff14}
+input[style*="letter-spacing"]{font-size:20px;text-align:center;font-family:'JetBrains Mono','Fira Code','Courier New',monospace;letter-spacing:8px!important}
+.btn-login{width:100%;padding:14px;background:linear-gradient(135deg,#00e5ff,#0891b2);border:none;border-radius:var(--r);color:#070711;font-weight:800;font-size:15px;cursor:pointer;transition:opacity .2s,transform .15s;margin-top:8px;letter-spacing:.3px}
+.btn-login:hover{opacity:.9;transform:translateY(-1px)}
+.btn-login:active{transform:translateY(0)}
+.err{background:#ff475710;border:1px solid #ff475740;border-radius:var(--r);color:#ff6b7a;padding:12px 16px;font-size:13px;margin-bottom:20px;display:flex;align-items:center;gap:8px}
 </style></head><body>
+<div class="grid-bg"></div>
 <div class="card">
-  <div class="logo">⚡ ZVM Admin</div>
-  ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
+  <div class="logo"><div class="logo-mark">ZV</div><div class="logo-text">ZVM Admin</div></div>
+  <div class="logo-badge">Painel de Controle</div>
+  ${error ? `<div class="err"><span>⚠</span>${escHtml(error)}</div>` : ''}
   <form method="POST" action="${R_ADMIN}/login">
-    <label>Usuário</label><input type="text" name="user" autocomplete="off">
-    <label>Senha</label><input type="password" name="pass">
-    ${TOTP_SECRET ? `<label>Código 2FA</label><input type="text" name="totp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" autocomplete="one-time-code" style="letter-spacing:4px;font-size:18px;text-align:center">` : ''}
-    <button type="submit" class="btn">Entrar</button>
+    <div class="field"><label>Usuário</label><input type="text" name="user" autocomplete="off" autofocus></div>
+    <div class="field"><label>Senha</label><input type="password" name="pass"></div>
+    ${TOTP_SECRET ? `<div class="field"><label>Código 2FA</label><input type="text" name="totp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" autocomplete="one-time-code" style="letter-spacing:8px;font-size:20px;text-align:center"></div>` : ''}
+    <button type="submit" class="btn-login">Entrar no Painel</button>
   </form>
 </div>
-${CANVAS_BG}</body></html>`;
+</body></html>`;
 }
 
 function renderClientPortal() {
@@ -1257,50 +1263,50 @@ ${CANVAS_BG}</body></html>`;
 
 function buildKeysHtml() {
   const entries = Object.entries(keys);
-  if (!entries.length) return `<tr><td colspan="11" class="empty">Nenhuma chave cadastrada</td></tr>`;
+  if (!entries.length) return `<tr><td colspan="11" class="empty">Nenhuma chave cadastrada ainda</td></tr>`;
   return entries.map(([code, k]) => {
     const expired  = isKeyExpired(k);
     const warnSoon = isKeyExpiringSoon(k);
     const uniqueIps = new Set(logs.filter(l => l.keyCode === code && l.ip).map(l => l.ip)).size;
-    const recentLogs = logs.filter(l => l.keyCode === code && l.timestamp > new Date(Date.now() - 86400000).toISOString());
+    const recentLogs = logs.filter(l => l.keyCode === code && l.timestamp > new Date(Date.now()-86400000).toISOString());
     const recentIps  = new Set(recentLogs.filter(l => l.ip).map(l => l.ip));
     const clearedAt  = k.suspectClearedAt ? new Date(k.suspectClearedAt) : null;
-    const isSuspect  = recentIps.size > 3 && !(clearedAt && (Date.now() - clearedAt.getTime()) < 172800000);
-
+    const isSuspect  = recentIps.size > 3 && !(clearedAt && (Date.now()-clearedAt.getTime()) < 172800000);
     const expHtml = (!k.expiresAt && k.expireDuration) ? (() => {
       const d=Math.floor(k.expireDuration/86400000),h=Math.floor((k.expireDuration%86400000)/3600000),m=Math.floor((k.expireDuration%3600000)/60000);
       const parts=[];if(d>0)parts.push(d+'d');if(h>0)parts.push(h+'h');if(m>0)parts.push(m+'m');
-      return `<br><span style="color:var(--blue);font-size:12px">⏱ Ao ativar: ${parts.join(' ')}</span>`;
+      return `<br><span class="exp-tag cyan">⏱ ${parts.join(' ')}</span>`;
     })() : k.expiresAt ? (() => {
       const exp=new Date(k.expiresAt),diffMs=exp-new Date(),diffH=Math.floor(diffMs/36e5),diffD=Math.floor(diffMs/864e5);
-      let label=expired?'expirado':diffH<1?`exp: ${Math.floor((diffMs%36e5)/60000)}min`:diffH<24?`exp: ${diffH}h`:` exp: ${diffD}d — ${exp.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}`;
-      return `<br><span style="font-size:12px;color:${expired?'var(--red)':warnSoon?'var(--orange)':'var(--yellow)'}">${label}</span>`;
+      let label=expired?'expirado':diffH<1?`${Math.floor((diffMs%36e5)/60000)}min`:diffH<24?`${diffH}h`:` ${diffD}d — ${exp.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}`;
+      return `<br><span class="exp-tag ${expired?'red':warnSoon?'orange':'yellow'}">${label}</span>`;
     })() : '';
-
-    const rowStyle = isSuspect ? ' style="background:#ff000008;outline:1px solid #ff475720"' : warnSoon && !expired ? ' style="background:#ff860010"' : '';
-    const suspectBadge = isSuspect ? `<span title="${recentIps.size} IPs nas últimas 24h" style="color:#ff4757;font-size:13px;margin-left:4px">⚠ SUSPEITA</span>` : '';
-
+    const rowStyle = isSuspect?' data-suspect="1" style="background:#ff000008;outline:1px solid #ff475720"':(warnSoon&&!expired)?' style="background:#ff86000a"':'';
+    const suspBadge = isSuspect?`<span class="susp-badge">⚠ SUSPEITA</span>`:'';
+    const maxU = k.maxUses===-1?'∞':(k.maxUses>0?k.maxUses:MAX_USES);
+    const phoneFull = (k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0;
     return `
-<tr data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${k.active?'ativo':'bloqueado'}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-suspect="${isSuspect?'1':''}"`+rowStyle+`>
+<tr data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${k.active?'ativo':'bloqueado'}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-suspect="${isSuspect?'1':''}"${rowStyle}>
   <td><span class="kc">${escHtml(code)}</span></td>
-  <td>${escHtml(k.label)}${suspectBadge}</td>
-  <td><span class="badge ${k.active?'on':'off'}">${k.active?(k.expireDuration&&!k.expiresAt?'AGUARDANDO':'ATIVO'):'BLOQUEADO'}</span></td>
-  <td><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
-  <td>${escHtml(k.lastPhone||'-')}</td>
-  <td title="${uniqueIps} IPs únicos registrados">${escHtml(k.lastIp||'-')} ${uniqueIps>1?`<span style="color:var(--muted);font-size:13px">(+${uniqueIps-1})</span>`:''}</td>
-  <td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
-  <td>${new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}${expHtml}</td>
-  <td>${escHtml(k.wppVersion||'-')}</td>
-  <td class="note-cell" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${k.note&&k.note.startsWith('[Mod:')?'<span style=\"color:#4f8ef7;font-size:13px;font-family:Syne,sans-serif\">'+escHtml(k.note)+'</span>':escHtml(k.note||'') || '<span style=\\"color:var(--muted)\\">—</span>'}</span></td>
-  <td>
-    <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
-    <button class="bs bg" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">+ Tempo</button>
-    <button class="bs bg" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${Number.isFinite(k.maxUses)?k.maxUses:MAX_USES})">Usos</button>
-    <button class="bs bg" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">Renomear</button>
-    ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Números</button>`:''}
-    <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
-    ${isSuspect?`<button class="bs bsusp" onclick="clearSuspect('${escHtml(code)}')">🕵️ Suspeita</button>`:''}
-    <button class="bs" style="background:#7c3aed18;color:#9b59b6;border:1px solid #7c3aed30" data-code="${escHtml(code)}" data-label="${escHtml(k.label||'')}" data-modnote="${escHtml((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1]||'')}" onclick="openAssignModFromEl(this)">👮 Mod</button>
+  <td class="td-label">${escHtml(k.label)}${suspBadge}</td>
+  <td><span class="pill ${k.active?(k.expireDuration&&!k.expiresAt?'pill-wait':'pill-on'):'pill-off'}">${k.active?(k.expireDuration&&!k.expiresAt?'AGUARDANDO':'ATIVO'):'BLOQUEADO'}</span></td>
+  <td><span class="${phoneFull?'text-warn':'text-dim'}">${(k.phones||[]).length}/${maxU}</span></td>
+  <td class="text-dim">${escHtml(k.lastPhone||'—')}</td>
+  <td class="text-dim" title="${uniqueIps} IPs únicos">${escHtml(k.lastIp||'—')}${uniqueIps>1?` <span class="ip-extra">+${uniqueIps-1}</span>`:''}</td>
+  <td class="text-dim">${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
+  <td class="text-dim">${new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}${expHtml}</td>
+  <td class="text-dim">${escHtml(k.wppVersion||'—')}</td>
+  <td class="note-cell" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${k.note&&k.note.startsWith('[Mod:')?`<span class="note-mod">${escHtml(k.note)}</span>`:escHtml(k.note||'')||'<span class="text-dim">—</span>'}</span></td>
+  <td class="td-actions">
+    <button class="ab ${k.active?'ab-red':'ab-green'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
+    <button class="ab ab-blue" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">+ Tempo</button>
+    <button class="ab ab-blue" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${Number.isFinite(k.maxUses)?k.maxUses:MAX_USES})">Usos</button>
+    <button class="ab ab-blue" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">Renomear</button>
+    ${(k.phones||[]).length>0?`<button class="ab ab-red" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Números</button>`:''}
+    <button class="ab ab-purple" onclick="openModules('${escHtml(code)}','${escHtml(k.label||'')}','${escHtml(JSON.stringify({...DEFAULT_MODULES,...(k.modules||{})}))}')">🧩 Módulos</button>
+    <button class="ab ab-red" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
+    ${isSuspect?`<button class="ab ab-orange" onclick="clearSuspect('${escHtml(code)}')">🕵️ Verificar</button>`:''}
+    <button class="ab ab-purple" data-code="${escHtml(code)}" data-label="${escHtml(k.label||'')}" data-modnote="${escHtml((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1]||'')}" onclick="openAssignModFromEl(this)">👮 Mod</button>
   </td>
 </tr>`;
   }).join('');
@@ -1308,168 +1314,270 @@ function buildKeysHtml() {
 
 function buildLogsHtml(arr) {
   const src = arr ?? logs;
-  if (!src.length) return `<tr><td colspan="7" class="empty">Nenhum log ainda</td></tr>`;
-  return src.slice(0, 200).map(l => `
+  if (!src.length) return `<tr><td colspan="7" class="empty">Nenhum acesso registrado</td></tr>`;
+  const actionClass = a => a==='login_ok'?'pill-on':a==='relogin_ok'?'pill-re':a==='verify_ok'?'pill-vr':a==='login_blocked'?'pill-off':a==='warn_limit'?'pill-warn':'pill-info';
+  return src.slice(0,200).map(l => `
 <tr>
-  <td>${new Date(l.timestamp).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</td>
-  <td><span class="kc" style="font-size:13px">${escHtml(l.keyCode||'-')}</span></td>
-  <td>${escHtml(l.label||'-')}</td>
-  <td>${escHtml(l.phone||'-')}</td>
-  <td>${escHtml(l.ip||'-')}</td>
-  <td>${escHtml(l.wppVersion||'-')}</td>
-  <td><span class="badge ${l.action==='login_ok'?'on':l.action==='relogin_ok'?'re':l.action==='verify_ok'?'vr':l.action==='login_blocked'?'off':l.action==='warn_limit'?'wl':'warn'}">${escHtml(l.action)}</span></td>
+  <td class="text-dim td-ts">${new Date(l.timestamp).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</td>
+  <td><span class="kc" style="font-size:12px">${escHtml(l.keyCode||'—')}</span></td>
+  <td class="text-dim">${escHtml(l.label||'—')}</td>
+  <td class="text-dim">${escHtml(l.phone||'—')}</td>
+  <td class="text-dim">${escHtml(l.ip||'—')}</td>
+  <td class="text-dim">${escHtml(l.wppVersion||'—')}</td>
+  <td><span class="pill ${actionClass(l.action)}">${escHtml(l.action)}</span></td>
 </tr>`).join('');
 }
 
 function renderAdminDashboard() {
-  const expiringSoon  = Object.values(keys).filter(k => k.active && isKeyExpiringSoon(k)).length;
-  const suspectKeys   = Object.entries(keys).filter(([code, k]) => {
-    const cl = k.suspectClearedAt ? new Date(k.suspectClearedAt) : null;
-    if (cl && (Date.now() - cl.getTime()) < 172800000) return false;
-    const rl = logs.filter(l => l.keyCode === code && l.timestamp > new Date(Date.now()-86400000).toISOString());
-    return new Set(rl.filter(l=>l.ip).map(l=>l.ip)).size > 3;
+  const expiringSoon = Object.values(keys).filter(k=>k.active&&isKeyExpiringSoon(k)).length;
+  const suspectKeys  = Object.entries(keys).filter(([code,k])=>{
+    const cl=k.suspectClearedAt?new Date(k.suspectClearedAt):null;
+    if(cl&&(Date.now()-cl.getTime())<172800000)return false;
+    const rl=logs.filter(l=>l.keyCode===code&&l.timestamp>new Date(Date.now()-86400000).toISOString());
+    return new Set(rl.filter(l=>l.ip).map(l=>l.ip)).size>3;
   }).length;
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM Admin v8</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<title>ZVM Admin</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d1a'/%3E%3Ctext x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='900' font-size='15' fill='%2300e5ff'%3EZV%3C/text%3E%3C/svg%3E">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --green:#00ff87;--dark:#080810;--card:#0f0f1a;--card2:#13131f;
-  --border:#1c1c2e;--border2:#252538;--text:#e2e2f0;--muted:#5a5a7a;
-  --red:#ff4757;--yellow:#ffd32a;--orange:#ff8600;--blue:#4f8ef7;--purple:#9b59b6;
-  --radius:10px;--radius-sm:6px;
+  --c:#00e5ff;--ca:#00e5ff18;--cb:#00e5ff30;
+  --p:#7c3aed;--pa:#7c3aed18;--pb:#7c3aed40;
+  --g:#00ff87;--ga:#00ff8718;--gb:#00ff8730;
+  --r:#ff4757;--ra:#ff475718;--rb:#ff475740;
+  --o:#ff8600;--oa:#ff860018;--ob:#ff860040;
+  --y:#ffd32a;--ya:#ffd32a18;--yb:#ffd32a40;
+  --bg:#070711;--s0:#0b0b18;--s1:#0f0f20;--s2:#141428;--s3:#1a1a32;
+  --t0:#e8eaf6;--t1:#9fa8da;--t2:#5c6bc0;--t3:#3949ab;
+  --radius:10px;--radius-sm:7px;--radius-lg:16px;
 }
-body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
-header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040}
-.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
-main{position:relative;z-index:1}
-.hright{display:flex;align-items:center;gap:10px}
-a.out{color:var(--muted);font-size:13px;text-decoration:none;padding:6px 14px;border:1px solid var(--border2);border-radius:var(--radius-sm);transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
-a.out:hover{color:var(--red);border-color:var(--red)}
-main{padding:22px 24px;max-width:1800px;margin:0 auto}
-.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px}
-.sc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;position:relative;overflow:hidden;transition:border-color .2s,transform .15s;cursor:default}
-.sc:hover{border-color:var(--border2);transform:translateY(-1px)}
-.sc.warn-card{border-color:#ff860050;background:#ff860008}
-.sc.danger-card{border-color:#ff475750;background:#ff475708}
-.sc-icon{position:absolute;right:14px;top:14px;font-size:22px;opacity:.15}
-.sc .n{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:var(--green);line-height:1.1}
-.sc.warn-card .n{color:var(--orange)}
-.sc.danger-card .n{color:var(--red)}
-.sc .l{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.3px;margin-top:5px;font-family:'Syne',sans-serif}
-/* Search */
-.search-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 16px;background:var(--card2);border-bottom:1px solid var(--border)}
-.search-bar input{padding:7px 12px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:12px;outline:none;flex:1;min-width:160px;transition:border .18s}
-.search-bar input:focus{border-color:var(--green)}
-.search-bar select{padding:6px 9px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Syne',sans-serif;font-size:12px;outline:none;cursor:pointer}
-.sec{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:16px;overflow:hidden}
-.sh{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--card2);flex-wrap:wrap;gap:10px}
-.st{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:var(--green);display:flex;align-items:center;gap:6px}
-.gen-form{display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap}
-.gen-form input{padding:6px 9px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Syne',sans-serif;font-size:12px;outline:none;transition:border .18s}
-.gen-form input:focus{border-color:var(--green);background:#0a0a14}
-.gen-form input::placeholder{color:var(--muted)}
-.fi-name{flex:1;min-width:130px;max-width:170px}
-.fi-group{display:flex;gap:5px;align-items:flex-end}
-.fi-col{display:flex;flex-direction:column;gap:3px}
-.fi-lbl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;padding-left:2px;font-family:'Syne',sans-serif}
-.fi-num{width:56px;text-align:center}
-.fi-sep{width:1px;height:28px;background:var(--border2);margin:0 3px;flex-shrink:0;align-self:flex-end;margin-bottom:2px}
-.btn{padding:7px 12px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;transition:all .18s;white-space:nowrap;letter-spacing:.3px}
-.bp{background:var(--green);color:#000;box-shadow:0 0 12px #00ff8740}
-.bp:hover{box-shadow:0 4px 20px #00ff8760;opacity:.9}
-.bw{background:#ffd32a12;color:var(--yellow);border:1px solid #ffd32a35}
-.br{background:#ff475712;color:var(--red);border:1px solid #ff475735}
-.bcsv{background:#4f8ef712;color:var(--blue);border:1px solid #4f8ef735}
-.bs{padding:3px 8px;border:none;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;margin-right:2px;transition:all .15s;white-space:nowrap}
-.bs:hover{opacity:1;transform:translateY(-1px)}
-.bg{background:#00ff8712;color:var(--green);border:1px solid #00ff8730}
-.bg:hover{background:#00ff8722;border-color:#00ff8760}
-.bd{background:#ff475712;color:var(--red);border:1px solid #ff475730}
-.bd:hover{background:#ff475722;border-color:#ff475760}
-.bsusp{background:#ff475712;color:var(--red);border:1px solid #ff475730}
-.ov{overflow-x:auto}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--t0);font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;min-height:100vh;overflow-x:hidden;font-size:14px}
+
+/* ── Ambient background ── */
+.ambient{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+.ambient::before{content:'';position:absolute;width:800px;height:800px;background:radial-gradient(circle,#00e5ff07 0%,transparent 70%);top:-200px;left:-200px;animation:drift1 20s ease-in-out infinite}
+.ambient::after{content:'';position:absolute;width:600px;height:600px;background:radial-gradient(circle,#7c3aed06 0%,transparent 70%);bottom:-100px;right:-100px;animation:drift2 25s ease-in-out infinite}
+@keyframes drift1{0%,100%{transform:translate(0,0)}50%{transform:translate(60px,40px)}}
+@keyframes drift2{0%,100%{transform:translate(0,0)}50%{transform:translate(-50px,-30px)}}
+.grid-lines{position:fixed;inset:0;background-image:linear-gradient(rgba(0,229,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,.025) 1px,transparent 1px);background-size:48px 48px;pointer-events:none;z-index:0}
+
+/* ── Layout ── */
+#app{position:relative;z-index:1;min-height:100vh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;justify-content:space-between;padding:0 28px;height:58px;background:rgba(11,11,24,.85);backdrop-filter:blur(12px);border-bottom:1px solid #1a1a32;position:sticky;top:0;z-index:100}
+.hlogo{display:flex;align-items:center;gap:10px}
+.hlogo-mark{width:32px;height:32px;background:linear-gradient(135deg,var(--c),var(--p));border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;color:#070711;flex-shrink:0}
+.hlogo-name{font-size:16px;font-weight:800;color:var(--t0);letter-spacing:-.5px}
+.hlogo-ver{font-size:11px;color:var(--t2);margin-left:6px;font-weight:500}
+.hright{display:flex;align-items:center;gap:8px}
+.hbtn{display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--s3);background:transparent;color:var(--t1);font-size:13px;font-weight:600;cursor:pointer;transition:all .18s;text-decoration:none}
+.hbtn:hover{border-color:var(--cb);color:var(--c);background:var(--ca)}
+.hbtn-danger:hover{border-color:var(--rb);color:var(--r);background:var(--ra)}
+main{flex:1;padding:24px 28px;max-width:1900px;margin:0 auto;width:100%}
+
+/* ── Stat cards ── */
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:24px}
+.sc{background:var(--s1);border:1px solid var(--s3);border-radius:var(--radius-lg);padding:20px 22px;position:relative;overflow:hidden;cursor:default;transition:border-color .2s,transform .15s}
+.sc:hover{transform:translateY(-2px);border-color:var(--s3)}
+.sc.sc-cyan{border-color:var(--cb);background:linear-gradient(135deg,var(--ca),var(--s1))}
+.sc.sc-warn{border-color:var(--ob);background:linear-gradient(135deg,var(--oa),var(--s1))}
+.sc.sc-danger{border-color:var(--rb);background:linear-gradient(135deg,var(--ra),var(--s1))}
+.sc-glow{position:absolute;inset:0;opacity:0;transition:opacity .3s;background:radial-gradient(ellipse at 50% 0%,var(--c) 0%,transparent 70%);pointer-events:none;mix-blend-mode:screen}
+.sc:hover .sc-glow{opacity:.04}
+.sc-icon{position:absolute;right:16px;top:16px;font-size:20px;opacity:.2}
+.sc-n{font-size:32px;font-weight:800;color:var(--t0);line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-1px}
+.sc.sc-cyan .sc-n{color:var(--c)}
+.sc.sc-warn .sc-n{color:var(--o)}
+.sc.sc-danger .sc-n{color:var(--r)}
+.sc-l{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--t2);margin-top:6px}
+
+/* ── Section containers ── */
+.section{background:var(--s1);border:1px solid var(--s3);border-radius:var(--radius-lg);margin-bottom:18px;overflow:hidden}
+.section-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:var(--s0);border-bottom:1px solid var(--s3);gap:10px;flex-wrap:wrap}
+.section-title{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--c);display:flex;align-items:center;gap:7px}
+
+/* ── Key generator form ── */
+.gen-bar{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
+.fi{display:flex;flex-direction:column;gap:4px}
+.fi-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--t2)}
+.fi input[type=text],.fi input[type=number]{padding:8px 12px;background:var(--bg);border:1px solid var(--s3);border-radius:var(--radius-sm);color:var(--t0);font-size:13px;font-family:inherit;outline:none;transition:border-color .18s}
+.fi input:focus{border-color:var(--c)}
+.fi-name{min-width:150px;flex:1}
+.fi-num input{width:62px;text-align:center}
+.fi-sep{width:1px;height:36px;background:var(--s3);align-self:flex-end;flex-shrink:0}
+.fi-check{display:flex;flex-direction:column;gap:4px;align-self:flex-end}
+.fi-check label{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--t1);cursor:pointer;padding:9px 0}
+.fi-check input[type=checkbox]{accent-color:var(--c);width:14px;height:14px;cursor:pointer}
+
+/* ── Search bar ── */
+.search-bar{display:flex;gap:8px;align-items:center;padding:12px 18px;background:var(--s0);border-bottom:1px solid var(--s3);flex-wrap:wrap}
+.search-bar input[type=text]{flex:1;min-width:200px;padding:8px 14px;background:var(--bg);border:1px solid var(--s3);border-radius:var(--radius-sm);color:var(--t0);font-size:13px;outline:none;transition:border-color .18s}
+.search-bar input:focus{border-color:var(--c)}
+.search-bar select{padding:8px 10px;background:var(--bg);border:1px solid var(--s3);border-radius:var(--radius-sm);color:var(--t1);font-size:13px;outline:none;cursor:pointer}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:13px;font-weight:700;font-family:inherit;transition:all .18s;white-space:nowrap;letter-spacing:.2px}
+.btn:hover{opacity:.88;transform:translateY(-1px)}
+.btn:active{transform:none}
+.btn-primary{background:linear-gradient(135deg,var(--c),#0891b2);color:#070711}
+.btn-ghost{background:transparent;border:1px solid var(--s3);color:var(--t1)}
+.btn-ghost:hover{border-color:var(--cb);color:var(--c);background:var(--ca)}
+.btn-danger{background:var(--ra);border:1px solid var(--rb);color:var(--r)}
+.btn-warn{background:var(--ya);border:1px solid var(--yb);color:var(--y)}
+.btn-cyan{background:var(--ca);border:1px solid var(--cb);color:var(--c)}
+
+/* ── Action buttons (table) ── */
+.ab{padding:4px 9px;border-radius:5px;border:none;cursor:pointer;font-size:11px;font-weight:700;font-family:inherit;transition:all .15s;white-space:nowrap}
+.ab:hover{opacity:1;transform:translateY(-1px)}
+.ab-green{background:var(--ga);color:var(--g);border:1px solid var(--gb)}
+.ab-red{background:var(--ra);color:var(--r);border:1px solid var(--rb)}
+.ab-blue{background:var(--ca);color:var(--c);border:1px solid var(--cb)}
+.ab-purple{background:var(--pa);color:#b57bee;border:1px solid var(--pb)}
+.ab-orange{background:var(--oa);color:var(--o);border:1px solid var(--ob)}
+
+/* ── Table ── */
+.tbl-wrap{overflow-x:auto}
 table{width:100%;border-collapse:collapse}
-th{padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap;background:var(--card2);cursor:pointer;user-select:none;font-family:'Syne',sans-serif}
-th:hover{color:var(--text)}
-th.asc::after{content:' ▲';color:var(--green);font-size:12px}
-th.desc::after{content:' ▼';color:var(--green);font-size:12px}
-td{padding:7px 10px;font-size:11px;border-bottom:1px solid #14141f;vertical-align:middle}
+thead th{padding:9px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--t2);border-bottom:1px solid var(--s3);background:var(--s0);white-space:nowrap;cursor:pointer;user-select:none;transition:color .15s}
+thead th:hover{color:var(--t0)}
+thead th.asc::after{content:' ▲';color:var(--c)}
+thead th.desc::after{content:' ▼';color:var(--c)}
+td{padding:9px 12px;border-bottom:1px solid #12122014;vertical-align:middle;font-size:12px}
 tr:last-child td{border-bottom:none}
-tr:hover td{background:#ffffff02}
-.kc{color:var(--green);font-size:12px;letter-spacing:.3px}
-.badge{padding:2px 7px;border-radius:3px;font-size:11px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;font-family:'Syne',sans-serif}
-.on{background:#00ff8718;color:var(--green);border:1px solid #00ff8730}
-.off{background:#ff475718;color:var(--red);border:1px solid #ff475730}
-.re{background:#4f8ef718;color:var(--blue)}
-.vr{background:#9b59b618;color:var(--purple)}
-.warn{background:#ffd32a18;color:var(--yellow)}
-.wl{background:#ff8c0018;color:#ff8c00}
-.empty{text-align:center;color:var(--muted);padding:40px!important;font-size:14px;font-family:'Syne',sans-serif}
-.toast{position:fixed;bottom:20px;right:20px;padding:11px 18px;border-radius:var(--radius);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;display:none;z-index:999999;box-shadow:0 6px 30px #00000070;max-width:380px;line-height:1.4}
-.alert-card{background:#ff860008;border:1px solid #ff860040;border-radius:var(--radius);padding:12px 18px;margin-bottom:20px;display:none;align-items:center;gap:12px;font-size:13px;color:#ff8600;font-family:'Syne',sans-serif}
-.badge-exp{background:#ff860018;color:#ff8600;border:1px solid #ff860040;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:700;font-family:'Syne',sans-serif}
-.badge-expired{background:#ff475718;color:#ff4757;border:1px solid #ff475740;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:700;font-family:'Syne',sans-serif}
-.note-btn{padding:3px 8px;background:#4f8ef710;color:var(--blue);border:1px solid #4f8ef730;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;transition:all .15s}
-.note-btn:hover{background:#4f8ef722;border-color:var(--blue)}
-.note-cell{cursor:pointer;max-width:130px}
-.note-cell:hover .note-preview{color:var(--green)}
-.note-preview{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:120px;font-family:'Syne',sans-serif}
-.modal-bg{display:none;position:fixed;inset:0;background:#00000090;z-index:99999;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
-.modal-bg.open{display:flex}
-.modal{background:var(--card);border:1px solid var(--border2);border-radius:12px;padding:22px;width:340px;max-width:95vw;box-shadow:0 20px 60px #00000090;max-height:90vh;overflow-y:auto}
-.modal h3{font-family:'Syne',sans-serif;font-size:13px;margin-bottom:11px;color:var(--green)}
-.modal textarea,.modal input[type=text],.modal input[type=number]{width:100%;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Syne',sans-serif;font-size:13px;padding:9px;outline:none;transition:border .2s}
-.modal textarea{resize:vertical;min-height:80px}
-.modal textarea:focus,.modal input:focus{border-color:var(--green)}
-.modal-actions{display:flex;gap:8px;margin-top:11px;justify-content:flex-end}
-@media(max-width:1300px){.stats{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:750px){.stats{grid-template-columns:1fr 1fr};main{padding:14px 12px}}
+tr:hover td{background:#00e5ff03}
+.kc{font-family:'JetBrains Mono','Fira Code','Courier New',monospace;color:var(--c);font-size:12px;letter-spacing:.2px}
+.text-dim{color:var(--t2)}
+.text-warn{color:var(--o)}
+.empty{text-align:center;color:var(--t2);padding:40px;font-size:14px}
+.td-actions{display:flex;flex-wrap:wrap;gap:4px;min-width:340px}
+.td-label{font-weight:600;color:var(--t0);max-width:160px;word-break:break-word}
+.td-ts{font-family:'JetBrains Mono','Fira Code','Courier New',monospace;font-size:11px;white-space:nowrap}
+.ip-extra{color:var(--t3);font-size:11px}
+.note-cell{cursor:pointer;max-width:120px}
+.note-cell:hover .note-preview{color:var(--c)}
+.note-preview{color:var(--t2);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:110px;transition:color .15s}
+.note-mod{color:var(--p);font-size:12px}
+.susp-badge{display:inline-block;background:var(--ra);color:var(--r);border:1px solid var(--rb);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:5px;vertical-align:middle}
+
+/* ── Pills / badges ── */
+.pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase}
+.pill-on{background:var(--ga);color:var(--g);border:1px solid var(--gb)}
+.pill-off{background:var(--ra);color:var(--r);border:1px solid var(--rb)}
+.pill-wait{background:var(--ya);color:var(--y);border:1px solid var(--yb)}
+.pill-re{background:var(--ca);color:var(--c);border:1px solid var(--cb)}
+.pill-vr{background:var(--pa);color:#b57bee;border:1px solid var(--pb)}
+.pill-warn{background:var(--oa);color:var(--o);border:1px solid var(--ob)}
+.pill-info{background:var(--s3);color:var(--t1);border:1px solid var(--s3)}
+.exp-tag{display:inline-block;font-size:11px;font-weight:600;padding:1px 5px;border-radius:3px}
+.exp-tag.cyan{color:var(--c)}.exp-tag.red{color:var(--r)}.exp-tag.orange{color:var(--o)}.exp-tag.yellow{color:var(--y)}
+
+/* ── Toast ── */
+.toast{position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:var(--radius);font-weight:700;font-size:13px;display:none;z-index:99999;max-width:400px;line-height:1.4;backdrop-filter:blur(8px);border:1px solid transparent}
+.toast.t-ok{background:var(--ga);border-color:var(--gb);color:var(--g)}
+.toast.t-err{background:var(--ra);border-color:var(--rb);color:var(--r)}
+
+/* ── Alert ── */
+.alert-bar{background:var(--oa);border:1px solid var(--ob);border-radius:var(--radius);padding:12px 18px;margin-bottom:18px;display:none;align-items:center;gap:12px;font-size:13px;color:var(--o);font-weight:600}
+.alert-bar.show{display:flex}
+
+/* ── Modals ── */
+.overlay{display:none;position:fixed;inset:0;background:#00000088;z-index:9999;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.overlay.open{display:flex}
+.modal{background:var(--s1);border:1px solid var(--s3);border-radius:var(--radius-lg);padding:24px;width:360px;max-width:95vw;max-height:92vh;overflow-y:auto;box-shadow:0 24px 64px #00000090,0 0 0 1px #ffffff06}
+.modal.modal-wide{width:420px}
+.modal-title{font-size:14px;font-weight:700;color:var(--c);margin-bottom:14px;display:flex;align-items:center;gap:7px}
+.modal-row{margin-bottom:14px}
+.modal-row label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--t2);margin-bottom:6px}
+.modal-row input[type=text],.modal-row input[type=number],.modal-row textarea{width:100%;padding:9px 12px;background:var(--bg);border:1px solid var(--s3);border-radius:var(--radius-sm);color:var(--t0);font-size:13px;font-family:inherit;outline:none;transition:border-color .18s}
+.modal-row input:focus,.modal-row textarea:focus{border-color:var(--c)}
+.modal-row textarea{resize:vertical;min-height:80px}
+.modal-hint{font-size:12px;color:var(--t2);margin-top:6px}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+.time-row{display:flex;gap:10px}
+.time-row .modal-row{flex:1;text-align:center}
+.time-row input{text-align:center;font-size:16px!important}
+.phone-item{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--s3)}
+.phone-item:last-child{border-bottom:none}
+.phone-num{font-family:'JetBrains Mono','Fira Code','Courier New',monospace;font-size:13px;color:var(--t0)}
+.mod-btn-row{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+.mod-btn{display:flex;align-items:center;gap:10px;padding:11px 16px;background:var(--bg);border:1px solid var(--s3);border-radius:var(--radius-sm);cursor:pointer;color:var(--t0);font-size:13px;font-weight:600;font-family:inherit;transition:all .15s}
+.mod-btn:hover{border-color:var(--cb);color:var(--c)}
+.mod-btn.active{background:var(--pa);border-color:var(--pb);color:#c4b5fd}
+.module-item{display:flex;justify-content:space-between;align-items:center;padding:11px 14px;background:var(--bg);border:1px solid var(--s3);border-radius:var(--radius-sm);margin-bottom:8px}
+.module-name{font-size:13px;font-weight:700;color:var(--t0)}
+.module-toggle{display:flex;align-items:center;gap:8px;cursor:pointer}
+.module-toggle input[type=checkbox]{accent-color:var(--c);width:16px;height:16px;cursor:pointer}
+.module-status{font-size:12px}
+.module-status.on{color:var(--c)}
+.module-status.off{color:var(--t2)}
+
+/* ── Log filters ── */
+.log-filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.log-filters input[type=date],.log-filters input[type=text]{padding:7px 11px;background:var(--bg);border:1px solid var(--s3);border-radius:var(--radius-sm);color:var(--t0);font-size:12px;font-family:inherit;outline:none;transition:border-color .15s}
+.log-filters input:focus{border-color:var(--c)}
+
+/* ── Responsive ── */
+@media(max-width:1400px){.stats{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:900px){.stats{grid-template-columns:1fr 1fr};main{padding:16px};.td-actions{min-width:auto}}
+@media(max-width:600px){.stats{grid-template-columns:1fr};.gen-bar{flex-direction:column}}
 </style>
 </head>
 <body>
+<div class="ambient"></div>
+<div class="grid-lines"></div>
+<div id="app">
+
 <header>
-  <div class="logo">⚡ ZVM <span style="font-size:13px;color:var(--muted);font-weight:400">v8</span></div>
+  <div class="hlogo">
+    <div class="hlogo-mark">ZV</div>
+    <div class="hlogo-name">ZVM<span class="hlogo-ver">v8</span></div>
+  </div>
   <div class="hright">
-    <button class="btn bcsv" onclick="exportCSV()">⬇ CSV</button>
-    <a href="${R_ADMIN}/logout" class="out">↩ Sair</a>
+    <button class="btn btn-ghost" onclick="exportCSV()">⬇ Exportar CSV</button>
+    <a href="${R_ADMIN}/logout" class="hbtn hbtn-danger">↩ Sair</a>
   </div>
 </header>
-<main>
-  <div class="stats">
-    <div class="sc"><div class="sc-icon">🔑</div><div class="n" id="s-total">${Object.keys(keys).length}</div><div class="l">Total de Chaves</div></div>
-    <div class="sc"><div class="sc-icon">✅</div><div class="n" id="s-active">${Object.values(keys).filter(k=>k.active).length}</div><div class="l">Chaves Ativas</div></div>
-    <div class="sc ${expiringSoon>0?'warn-card':''}"><div class="sc-icon">⏰</div><div class="n" id="s-warn" style="${expiringSoon>0?'color:var(--orange)':''}">${expiringSoon}</div><div class="l">Expirando em ${EXPIRY_WARN_HOURS}h</div></div>
 
-    <div class="sc ${suspectKeys>0?'danger-card':''}"><div class="sc-icon">🕵️</div><div class="n" id="s-suspect" style="${suspectKeys>0?'color:var(--red)':''}">${suspectKeys}</div><div class="l">Suspeitas (24h)</div></div>
-    <div class="sc"><div class="sc-icon">📋</div><div class="n" id="s-logs">${logs.length}</div><div class="l">Acessos Registrados</div></div>
+<main>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="sc sc-cyan"><div class="sc-glow"></div><div class="sc-icon">🔑</div><div class="sc-n" id="s-total">${Object.keys(keys).length}</div><div class="sc-l">Total de Chaves</div></div>
+    <div class="sc"><div class="sc-glow"></div><div class="sc-icon">✅</div><div class="sc-n" id="s-active">${Object.values(keys).filter(k=>k.active).length}</div><div class="sc-l">Chaves Ativas</div></div>
+    <div class="sc ${expiringSoon>0?'sc-warn':''}"><div class="sc-glow"></div><div class="sc-icon">⏰</div><div class="sc-n" id="s-warn">${expiringSoon}</div><div class="sc-l">Expirando em ${EXPIRY_WARN_HOURS}h</div></div>
+    <div class="sc ${suspectKeys>0?'sc-danger':''}"><div class="sc-glow"></div><div class="sc-icon">🕵️</div><div class="sc-n" id="s-suspect">${suspectKeys}</div><div class="sc-l">Suspeitas (24h)</div></div>
+    <div class="sc"><div class="sc-glow"></div><div class="sc-icon">📋</div><div class="sc-n" id="s-logs">${logs.length}</div><div class="sc-l">Acessos no Log</div></div>
   </div>
 
-  <div class="sec">
-    <div class="sh">
-      <div class="st">🔑 Chaves de Acesso</div>
-      <div class="gen-form">
-        <div class="fi-name"><input type="text" id="nlabel" placeholder="Nome do cliente"></div>
+  <!-- Alert expiring -->
+  <div class="alert-bar ${expiringSoon>0?'show':''}" id="alert-bar">
+    <span>⚠</span>
+    <span>${expiringSoon} chave(s) expirando nas próximas ${EXPIRY_WARN_HOURS}h</span>
+  </div>
+
+  <!-- Keys section -->
+  <div class="section">
+    <div class="section-head">
+      <div class="section-title">🔑 Chaves de Acesso</div>
+      <div class="gen-bar">
+        <div class="fi fi-name"><div class="fi-label">Cliente</div><input type="text" id="nlabel" placeholder="Nome do cliente"></div>
         <div class="fi-sep"></div>
-        <div class="fi-group">
-          <div class="fi-col"><span class="fi-lbl">Dias</span><input type="number" id="ndays" class="fi-num" placeholder="0" min="0"></div>
-          <div class="fi-col"><span class="fi-lbl">Horas</span><input type="number" id="nhours" class="fi-num" placeholder="0" min="0"></div>
-          <div class="fi-col"><span class="fi-lbl">Min</span><input type="number" id="nmins" class="fi-num" placeholder="0" min="0"></div>
-        </div>
+        <div class="fi"><div class="fi-label">Dias</div><div class="fi-num"><input type="number" id="ndays" placeholder="0" min="0"></div></div>
+        <div class="fi"><div class="fi-label">Horas</div><div class="fi-num"><input type="number" id="nhours" placeholder="0" min="0"></div></div>
+        <div class="fi"><div class="fi-label">Min</div><div class="fi-num"><input type="number" id="nmins" placeholder="0" min="0"></div></div>
         <div class="fi-sep"></div>
-        <div class="fi-col"><span class="fi-lbl">Usos</span><input type="number" id="nuses" class="fi-num" placeholder="3" min="-1" style="width:60px"></div>
-        <div class="fi-col" style="align-items:center;gap:4px"><label style="font-size:12px;color:var(--muted);white-space:nowrap"><input type="checkbox" id="ndeferred" style="margin-right:4px">⏱ Ativar ao 1º uso</label></div>
-        <button class="btn bp" onclick="generateKey()">+ Gerar Chave</button>
+        <div class="fi"><div class="fi-label">Usos</div><div class="fi-num"><input type="number" id="nuses" placeholder="3" min="-1" style="width:62px"></div></div>
+        <div class="fi-check"><label><input type="checkbox" id="ndeferred"> ⏱ 1º uso</label></div>
+        <button class="btn btn-primary" onclick="generateKey()">+ Gerar Chave</button>
       </div>
     </div>
     <div class="search-bar">
-      <input type="text" id="search-input" placeholder="🔍 Buscar por nome, chave, telefone ou IP..." oninput="filterKeys()">
+      <input type="text" id="search-input" placeholder="🔍 Buscar por nome, chave, telefone, IP..." oninput="filterKeys()" style="flex:1;min-width:240px">
       <select id="filter-status" onchange="filterKeys()">
         <option value="">Todos os status</option>
         <option value="ativo">Ativos</option>
@@ -1477,7 +1585,7 @@ tr:hover td{background:#ffffff02}
         <option value="suspeita">🕵️ Suspeitas</option>
       </select>
     </div>
-    <div class="ov">
+    <div class="tbl-wrap">
       <table>
         <thead><tr>
           <th onclick="sortKeys('code')">Chave</th>
@@ -1497,112 +1605,168 @@ tr:hover td{background:#ffffff02}
     </div>
   </div>
 
-  <div class="sec">
-    <div class="sh">
-      <div class="st">📋 Log de Acessos <span style="font-size:13px;color:var(--muted);font-weight:400">retidos por ${LOG_RETENTION_DAYS} dias (LGPD)</span></div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <input type="date" id="logDate" style="padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:13px;outline:none" onchange="filterLog()">
-        <input type="text" id="logSearch" placeholder="Filtrar por chave/IP..." style="padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:13px;outline:none;width:180px" oninput="filterLog()">
-        <button class="btn bw" onclick="clearFilters()">✕ Limpar</button>
-        <button class="btn bw" onclick="doRefresh()">↻ Atualizar</button>
-        <button class="btn br" onclick="clearLog()">🗑 Limpar Log</button>
+  <!-- Logs section -->
+  <div class="section">
+    <div class="section-head">
+      <div class="section-title">📋 Log de Acessos <span style="font-size:11px;color:var(--t2);font-weight:500;text-transform:none;letter-spacing:0">LGPD · ${LOG_RETENTION_DAYS} dias</span></div>
+      <div class="log-filters">
+        <input type="date" id="logDate" onchange="filterLog()">
+        <input type="text" id="logSearch" placeholder="Chave ou IP..." style="width:160px" oninput="filterLog()">
+        <button class="btn btn-ghost" onclick="clearFilters()">✕ Limpar</button>
+        <button class="btn btn-ghost" onclick="doRefresh()">↻ Atualizar</button>
+        <button class="btn btn-danger" onclick="clearLog()">🗑 Limpar Log</button>
       </div>
     </div>
-    <div class="ov">
+    <div class="tbl-wrap">
       <table>
         <thead><tr><th>Horário</th><th>Chave</th><th>Cliente</th><th>Telefone</th><th>IP</th><th>WPP Version</th><th>Ação</th></tr></thead>
         <tbody id="lb">${buildLogsHtml()}</tbody>
       </table>
     </div>
   </div>
-  </div>
+
 </main>
+</div>
 
 <!-- Modals -->
-<div class="modal-bg" id="renewModal"><div class="modal">
-  <h3>⏱ Adicionar Tempo — <span id="renewKeyLabel"></span></h3>
-  <input type="hidden" id="renewKeyCode">
-  <div style="display:flex;gap:10px;margin-bottom:12px">
-    <div style="flex:1;text-align:center"><div style="font-size:12px;color:var(--muted);text-transform:uppercase;margin-bottom:5px">Dias</div><input type="number" id="renewDays" placeholder="0" min="0" style="width:100%;padding:8px;text-align:center"></div>
-    <div style="flex:1;text-align:center"><div style="font-size:12px;color:var(--muted);text-transform:uppercase;margin-bottom:5px">Horas</div><input type="number" id="renewHours" placeholder="0" min="0" style="width:100%;padding:8px;text-align:center"></div>
-    <div style="flex:1;text-align:center"><div style="font-size:12px;color:var(--muted);text-transform:uppercase;margin-bottom:5px">Min</div><input type="number" id="renewMins" placeholder="0" min="0" style="width:100%;padding:8px;text-align:center"></div>
+<div class="overlay" id="renewModal">
+  <div class="modal">
+    <div class="modal-title">⏱ Adicionar Tempo — <span id="renewKeyLabel"></span></div>
+    <input type="hidden" id="renewKeyCode">
+    <div class="time-row">
+      <div class="modal-row"><label>Dias</label><input type="number" id="renewDays" placeholder="0" min="0"></div>
+      <div class="modal-row"><label>Horas</label><input type="number" id="renewHours" placeholder="0" min="0"></div>
+      <div class="modal-row"><label>Min</label><input type="number" id="renewMins" placeholder="0" min="0"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeRenew()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveRenew()">Adicionar Tempo</button>
+    </div>
   </div>
-  <div style="font-size:13px;color:var(--muted);margin-bottom:12px;font-family:'Syne',sans-serif" id="renewCurrentExpiry"></div>
-  <div class="modal-actions">
-    <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeRenew()">Cancelar</button>
-    <button class="btn bp" onclick="saveRenew()">Adicionar Tempo</button>
-  </div>
-</div></div>
+</div>
 
-<div class="modal-bg" id="editUsesModal"><div class="modal">
-  <h3>👥 Limite de Dispositivos — <span id="editUsesLabel"></span></h3>
-  <input type="hidden" id="editUsesCode">
-  <div style="margin-bottom:14px">
-    <div style="font-size:12px;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Máx. números simultâneos</div>
-    <input type="number" id="editUsesValue" min="-1" style="width:100%;padding:10px;font-size:16px;text-align:center">
-    <div style="font-size:13px;color:var(--muted);margin-top:8px;font-family:'Syne',sans-serif">Use <strong style="color:var(--green)">-1</strong> para ilimitado</div>
+<div class="overlay" id="editUsesModal">
+  <div class="modal">
+    <div class="modal-title">👥 Limite de Dispositivos — <span id="editUsesLabel"></span></div>
+    <input type="hidden" id="editUsesCode">
+    <div class="modal-row"><label>Máx. números simultâneos</label><input type="number" id="editUsesValue" min="-1" style="font-size:18px;text-align:center"><div class="modal-hint">Use <strong style="color:var(--c)">-1</strong> para ilimitado</div></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeEditUses()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveEditUses()">Salvar</button>
+    </div>
   </div>
-  <div class="modal-actions">
-    <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeEditUses()">Cancelar</button>
-    <button class="btn bp" onclick="saveEditUses()">Salvar</button>
-  </div>
-</div></div>
+</div>
 
-<div class="modal-bg" id="renameModal"><div class="modal">
-  <h3>Renomear Chave</h3>
-  <input type="hidden" id="renameCode">
-  <div style="margin-bottom:14px">
-    <div style="font-size:12px;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Novo nome</div>
-    <input type="text" id="renameValue" maxlength="60" style="width:100%;padding:10px;font-size:14px">
+<div class="overlay" id="renameModal">
+  <div class="modal">
+    <div class="modal-title">✏️ Renomear Chave</div>
+    <input type="hidden" id="renameCode">
+    <div class="modal-row"><label>Novo nome</label><input type="text" id="renameValue" maxlength="60"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeRename()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveRename()">Salvar</button>
+    </div>
   </div>
-  <div class="modal-actions">
-    <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeRename()">Cancelar</button>
-    <button class="btn bp" onclick="saveRename()">Salvar</button>
-  </div>
-</div></div>
+</div>
 
-<div class="modal-bg" id="phonesModal"><div class="modal">
-  <h3>Números — <span id="phonesLabel"></span></h3>
-  <div id="phonesList" style="margin-bottom:14px;max-height:220px;overflow-y:auto;min-height:40px"></div>
-  <div class="modal-actions">
-    <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closePhones()">Fechar</button>
-    <button class="btn bd" id="removeAllBtn" onclick="removeAllPhones()">Remover Todos</button>
+<div class="overlay" id="phonesModal">
+  <div class="modal">
+    <div class="modal-title">📱 Números — <span id="phonesLabel"></span></div>
+    <div id="phonesList" style="max-height:220px;overflow-y:auto;margin-bottom:14px;min-height:40px"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closePhones()">Fechar</button>
+      <button class="btn btn-danger" id="removeAllBtn" onclick="removeAllPhones()">Remover Todos</button>
+    </div>
   </div>
-</div></div>
+</div>
 
-<div class="modal-bg" id="noteModal"><div class="modal">
-  <h3>📝 Nota — <span id="noteKeyLabel"></span></h3>
-  <input type="hidden" id="noteKeyCode">
-  <textarea id="noteText" placeholder="Ex: Pagou até março, trial gratuito, cliente VIP..."></textarea>
-  <div class="modal-actions">
-    <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeNote()">Cancelar</button>
-    <button class="btn bp" onclick="saveNote()">Salvar Nota</button>
+<div class="overlay" id="noteModal">
+  <div class="modal">
+    <div class="modal-title">📝 Nota — <span id="noteKeyLabel"></span></div>
+    <input type="hidden" id="noteKeyCode">
+    <div class="modal-row"><label>Anotação</label><textarea id="noteText" placeholder="Pagou até março, trial, cliente VIP..."></textarea></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeNote()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveNote()">Salvar Nota</button>
+    </div>
   </div>
-</div></div>
+</div>
 
-<div class="modal-bg" id="assignModModal"><div class="modal" style="width:400px">
-  <h3>👮 Atribuir ao Moderador</h3>
-  <p style="font-size:12px;color:var(--muted);margin-bottom:16px">Selecione o moderador responsável por esta chave. Ela aparecerá no painel do moderador escolhido.</p>
-  <input type="hidden" id="assignModCode">
-  <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;font-family:'Syne',sans-serif">Chave: <span id="assignModLabel" style="color:var(--text)"></span></div>
-  <div id="modListBtns" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px"></div>
-  <div style="display:flex;gap:8px;margin-top:4px">
-    <button class="btn" style="background:#ff475718;color:var(--red);border:1px solid #ff475730;flex:1" onclick="assignMod(document.getElementById('assignModCode').value,'')">🗑 Remover atribuição</button>
-    <button class="btn" style="background:#1e1e2e;color:var(--muted);flex:0 0 auto" onclick="closeAssignMod()">Cancelar</button>
+<div class="overlay" id="assignModModal">
+  <div class="modal modal-wide">
+    <div class="modal-title">👮 Atribuir ao Moderador</div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:14px">Chave: <span id="assignModLabel" style="color:var(--t0);font-weight:600"></span></div>
+    <input type="hidden" id="assignModCode">
+    <div class="mod-btn-row" id="modListBtns"></div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" onclick="assignMod(document.getElementById('assignModCode').value,'')">🗑 Remover atribuição</button>
+      <button class="btn btn-ghost" onclick="closeAssignMod()">Cancelar</button>
+    </div>
   </div>
-</div></div>
+</div>
+
+<div class="overlay" id="modulesModal">
+  <div class="modal modal-wide">
+    <div class="modal-title">🧩 Módulos — <span id="modulesLabel"></span></div>
+    <input type="hidden" id="modulesCode">
+    <div id="modulesList"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModules()">Fechar</button>
+    </div>
+  </div>
+</div>
 
 <div class="toast" id="toast"></div>
 
 <script>
 const _RA='${R_ADMIN}';
+const _MODS=${JSON.stringify(MODS.map(m=>m.name))};
+const _MODULES=${JSON.stringify(AVAILABLE_MODULES)};
+
+const _RA='${R_ADMIN}';
 const _MODS=${JSON.stringify(MODS.map(m => m.name))};
+const _MODULES=${JSON.stringify(AVAILABLE_MODULES)};
 
 function toast(msg,ok=true){
   const t=document.getElementById('toast');
-  t.textContent=msg;t.style.background=ok?'var(--green)':'var(--red)';
-  t.style.color=ok?'#000':'#fff';t.style.display='block';
+  t.textContent=msg;
+  t.className='toast '+(ok?'t-ok':'t-err');
+  t.style.display='block';
   setTimeout(()=>t.style.display='none',3200);
+}
+
+function openModules(code,label,modulesJson){
+  document.getElementById('modulesCode').value=code;
+  document.getElementById('modulesLabel').textContent=label;
+  let mods={};try{mods=JSON.parse(modulesJson);}catch{}
+  const list=document.getElementById('modulesList');
+  list.innerHTML=_MODULES.map(m=>{
+    const on=!!mods[m];
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--dark);border:1px solid var(--border);border-radius:8px">'
+      +'<span style="font-family:Syne,sans-serif;font-size:13px;font-weight:700">'+m+'</span>'
+      +'<label style="display:flex;align-items:center;gap:8px;cursor:pointer">'
+      +'<input type="checkbox" data-mod="'+m+'" '+(on?'checked':'')
+      +' style="width:16px;height:16px;accent-color:var(--green);cursor:pointer" onchange="toggleModule(\''+code+'\',this)">'
+      +'<span style="font-size:12px;color:'+(on?'var(--green)':'var(--muted)')+';">'+(on?'ATIVO':'INATIVO')+'</span>'
+      +'</label></div>';
+  }).join('');
+  document.getElementById('modulesModal').classList.add('open');
+}
+function closeModules(){document.getElementById('modulesModal').classList.remove('open');}
+document.getElementById('modulesModal').addEventListener('click',function(e){if(e.target===this)closeModules();});
+async function toggleModule(code,checkbox){
+  const moduleName=checkbox.dataset.mod;
+  const enabled=checkbox.checked;
+  try{
+    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/modules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({module:moduleName,enabled})});
+    const d=await r.json();
+    if(d.ok){
+      toast((enabled?'✅ ':'🔴 ')+moduleName+' '+(enabled?'ativado':'desativado'));
+      const label=checkbox.nextElementSibling;
+      if(label){label.textContent=enabled?'ATIVO':'INATIVO';label.style.color=enabled?'var(--green)':'var(--muted)';}
+      await doRefresh();
+    }else{toast('Erro: '+(d.error||'?'),false);checkbox.checked=!enabled;}
+  }catch(e){toast('Erro de rede',false);checkbox.checked=!enabled;}
 }
 
 function openAssignModFromEl(el){
@@ -1616,13 +1780,12 @@ function openAssignMod(code,label,currentMod){
   _MODS.forEach(name=>{
     const btn=document.createElement('button');
     const isActive=currentMod===name;
-    btn.className='btn';
-    btn.style.cssText='font-size:13px;padding:10px 16px;text-align:left;display:flex;align-items:center;gap:10px;'+(isActive?'background:#7c3aed30;color:#c4b5fd;border:1px solid #7c3aed60':'background:#1e1e2e;color:var(--text);border:1px solid var(--border)');
-    btn.innerHTML=(isActive?'✅ ':'👤 ')+name+(isActive?' <span style="font-size:11px;color:#9b59b6;margin-left:auto">Atual</span>':'');
+    btn.className='mod-btn'+(isActive?' active':'');
+    btn.innerHTML=(isActive?'✅ ':'👤 ')+name+(isActive?' <span style="font-size:11px;margin-left:auto;opacity:.7">Atual</span>':'');
     btn.onclick=()=>assignMod(code,name);
     container.appendChild(btn);
   });
-  if(_MODS.length===0){container.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px;text-align:center">Nenhum moderador configurado.<br>Defina MOD_USER/PASS no Render.</div>';}
+  if(_MODS.length===0){container.innerHTML='<div style="color:var(--t2);font-size:13px;padding:12px;text-align:center">Nenhum moderador configurado.</div>';}
   document.getElementById('assignModModal').classList.add('open');
 }
 function closeAssignMod(){document.getElementById('assignModModal').classList.remove('open');}
@@ -1708,8 +1871,8 @@ async function doRefresh(){
     document.getElementById('s-total').textContent=d.totalKeys||0;
     document.getElementById('s-active').textContent=d.activeKeys||0;
     document.getElementById('s-logs').textContent=d.totalLogs||0;
-    const sw=document.getElementById('s-warn');sw.textContent=d.warnKeys||0;sw.style.color=d.warnKeys>0?'var(--orange)':'var(--green)';sw.closest('.sc').classList.toggle('warn-card',d.warnKeys>0);
-    const ssu=document.getElementById('s-suspect');if(ssu){ssu.textContent=d.suspectKeys||0;ssu.style.color=d.suspectKeys>0?'var(--red)':'';ssu.closest('.sc').classList.toggle('danger-card',d.suspectKeys>0);}
+    const sw=document.getElementById('s-warn');sw.textContent=d.warnKeys||0;sw.style.color=d.warnKeys>0?'var(--o)':'var(--g)';sw.closest('.sc').classList.toggle('warn-card',d.warnKeys>0);
+    const ssu=document.getElementById('s-suspect');if(ssu){ssu.textContent=d.suspectKeys||0;ssu.style.color=d.suspectKeys>0?'var(--r)':'';ssu.closest('.sc').classList.toggle('danger-card',d.suspectKeys>0);}
     document.getElementById('kb').innerHTML=d.keysHtml||'';
     document.getElementById('lb').innerHTML=d.logsHtml||'';
     filterKeys();
@@ -1797,7 +1960,7 @@ function openPhones(code,label){
   fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/phones').then(r=>r.json()).then(d=>{
     if(!d.phones||d.phones.length===0){list.innerHTML='<em style="color:var(--muted);font-size:12px">Nenhum número cadastrado</em>';document.getElementById('removeAllBtn').style.display='none';modal.dataset.phones='[]';return;}
     document.getElementById('removeAllBtn').style.display='';modal.dataset.phones=JSON.stringify(d.phones);
-    list.innerHTML=d.phones.map((ph,i)=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)"><span style="font-size:13px;font-family:monospace;color:var(--text)">'+ph.replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]))+'</span><button class="bs bd" data-idx="'+i+'" onclick="removePhone(this)">Remover</button></div>').join('');
+    list.innerHTML=d.phones.map((ph,i)=>'<div class="phone-item"><span class="phone-num">'+ph.replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]))+'</span><button class="ab ab-red" data-idx="'+i+'" onclick="removePhone(this)">Remover</button></div>').join('');
   }).catch(()=>{list.innerHTML='<em style="color:var(--red)">Erro ao carregar</em>';});
 }
 function closePhones(){document.getElementById('phonesModal').classList.remove('open');}
@@ -1828,8 +1991,9 @@ async function saveNote(){
 async function exportCSV(){
   try{const r=await fetch(_RA+'/api/export/csv');if(r.status===401){toast('Sessão expirada',false);return;}const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='zvm-chaves-'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(url);toast('CSV exportado!');}catch(e){toast('Erro ao exportar',false);}
 }
+
 </script>
-${CANVAS_BG}</body></html>`;
+</body></html>`;
 }
 
 function renderPlanosPage() {
@@ -2638,9 +2802,8 @@ async function handleRequest(req, res) {
       _cbUrl.searchParams.set('permissions', FULL_PERMISSIONS.join(','));
       res.writeHead(302, { Location: _cbUrl.toString() }); res.end();
     } else {
-      const _noCallbackPage = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>ZVM - Ativado</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace}.card{background:#111118;border:1px solid #00ff8740;border-radius:18px;padding:40px 36px;width:100%;max-width:420px;text-align:center}.icon{font-size:48px;margin-bottom:8px}.title{font-size:22px;font-weight:800;color:#00ff87;margin-bottom:8px}.sub{color:#8a8aaa;font-size:13px;line-height:1.6;margin-bottom:20px}.key{background:#0a0a0f;border:1px solid #00ff8730;border-radius:8px;padding:10px 16px;color:#00ff87;font-size:14px;letter-spacing:2px;margin-bottom:20px}.bar{width:100%;height:3px;background:#1a1a2e;border-radius:2px}.fill{height:100%;background:#00ff87;animation:drain 3s linear forwards;border-radius:2px}@keyframes drain{from{width:100%}to{width:0%}}</style></head><body><div class="card"><div class="icon">&#x26A1;</div><div class="title">Chave Ativada!</div><div class="sub">Volte ao WhatsApp Web e atualize a p&aacute;gina.</div><div class="key">${keyCode}</div><div class="bar"><div class="fill"></div></div></div><script>setTimeout(function(){window.close();},3100);</script></body></html>`;
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(_noCallbackPage);
+      res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});
+      res.end('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Ativado</title><style>body{background:#070711;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:monospace;margin:0}.c{background:#0f0f20;border:1px solid #00e5ff40;border-radius:18px;padding:40px;max-width:420px;text-align:center}.t{color:#00e5ff;font-size:22px;font-weight:800;margin:12px 0 8px}.s{color:#9fa8da;font-size:13px}.k{color:#00e5ff;letter-spacing:2px;background:#070711;border:1px solid #00e5ff30;border-radius:8px;padding:10px 16px;margin:16px 0}.b{height:3px;background:#1a1a32;border-radius:2px}.f{height:3px;background:#00e5ff;animation:d 3s linear forwards;border-radius:2px}@keyframes d{from{width:100%}to{width:0%}}</style></head><body><div class="c"><div style="font-size:48px">&#x26A1;</div><div class="t">Chave Ativada!</div><div class="s">Volte ao WhatsApp Web e atualize a p&aacute;gina.</div><div class="k">' + keyCode + '</div><div class="b"><div class="f"></div></div></div><script>setTimeout(function(){window.close();},3100);</script></body></html>');
     }
     return;
   }
@@ -2677,7 +2840,7 @@ async function handleRequest(req, res) {
       keys[keyCode].active = false;
       sendJson(res, { authError: 'keyExpired', reason: 'expired', isLoggedIn: false, data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave expirada.', permissions: [] } }, 403);
       addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'expired' }).catch(()=>{});
-      saveKey(keyCode).catch(()=>{});
+      saveKey(keyCode);
       fireWebhook('key_expired', keyCode, 'Expiração detectada no v3/key');
       return;
     }
@@ -2709,7 +2872,7 @@ async function handleRequest(req, res) {
           data: { message: `USUÁRIO NÃO ENCONTRADO. Limite de ativações atingido (${keys[keyCode].phones.length}/${keyMaxUses}).`, permissions: [] }
         }, 403);
         addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'warn_limit' }).catch(()=>{});
-        saveKey(keyCode).catch(()=>{});
+        saveKey(keyCode);
         return;
       }
       keys[keyCode].phones.push(phone);
@@ -2732,7 +2895,7 @@ async function handleRequest(req, res) {
 
     const _action = isNewPhone ? 'login_ok' : 'relogin_ok';
     addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: _action }).catch(()=>{});
-    saveKey(keyCode).catch(()=>{});
+    saveKey(keyCode);
     return;
   }
 
@@ -2760,7 +2923,7 @@ async function handleRequest(req, res) {
     if (!keys[keyCode]) { sendJson(res, { active: false, reason: 'not_found' }); return; }
     if (isKeyExpired(keys[keyCode]))   {
       keys[keyCode].active = false;
-      saveKey(keyCode).catch(()=>{});
+      saveKey(keyCode);
       sendJson(res, { active: false, reason: 'expired' }); return;
     }
     if (!keys[keyCode].active)         {
@@ -2883,6 +3046,7 @@ async function handleRequest(req, res) {
       deviceId: null, wppVersion: null, note: '[Mod: '+modName+']',
       expiresAt, expireDuration: expireDuration || null,
       maxUses, warnCount: 0,
+      modules: { ...DEFAULT_MODULES },
     };
     saveKey(code);
     sendJson(res, { ok: true, key: code }); return;
@@ -3045,7 +3209,7 @@ async function handleRequest(req, res) {
     const label = String(body.label||'').trim().slice(0, 60);
     if (!label) { sendJson(res, { error: 'label vazio' }, 400); return; }
     keys[codeLabel].label = label;
-    saveKey(codeLabel).catch(()=>{});
+    saveKey(codeLabel);
     sendJson(res, { ok: true, label }); return;
   }
 
@@ -3068,7 +3232,7 @@ async function handleRequest(req, res) {
       keys[codePhonesDelete].uses=keys[codePhonesDelete].phones.length;
       if (keys[codePhonesDelete].lastPhone===body.phone) keys[codePhonesDelete].lastPhone=keys[codePhonesDelete].phones.at(-1)||null;
     } else { sendJson(res, { error: 'informe phone ou all:true' }, 400); return; }
-    saveKey(codePhonesDelete).catch(()=>{});
+    saveKey(codePhonesDelete);
     sendJson(res, { ok: true, phones: keys[codePhonesDelete].phones }); return;
   }
 
@@ -3114,7 +3278,7 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true, module: moduleName, enabled, modules: keys[codeModules].modules }); return;
   }
 
-  const codeAssignMod = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/assign-mod$`));
+    const codeAssignMod = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/assign-mod$`));
   if (codeAssignMod && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!keys[codeAssignMod]) {
@@ -3419,7 +3583,7 @@ async function handleRequest(req, res) {
     keys[keyCode].phones  = phones.filter(p => p !== phone);
     keys[keyCode].uses    = keys[keyCode].phones.length;
     if (keys[keyCode].lastPhone === phone) keys[keyCode].lastPhone = keys[keyCode].phones.at(-1) || null;
-    saveKey(keyCode).catch(()=>{});
+    saveKey(keyCode);
     sendJson(res, { ok: true, phones: keys[keyCode].phones }); return;
   }
 
