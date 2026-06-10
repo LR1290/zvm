@@ -216,15 +216,16 @@ const R_EXT          = '/extension';
 
 const rateLimitMap = new Map();
 const RL_CONFIG = {
-  login: { max: 5,  windowMs: 60000,     blockMs: 10 * 60000 },
-  api:   { max: 30, windowMs: 60000,     blockMs:  2 * 60000 },
+  login:        { max: 5,  windowMs: 60000, blockMs: 10 * 60000 },
+  api:          { max: 30, windowMs: 60000, blockMs:  2 * 60000 },
+  ext_key:      { max: 20, windowMs: 60000, blockMs:  5 * 60000 },
   check_status: { max: 60, windowMs: 60000, blockMs: 60000 },
 };
 
 function checkRateLimit(ip, type = 'api', maxReq = 0, windowMs = 0) {
   const now = Date.now();
   const key = ip + ':' + type;
-  const cfg = maxReq > 0 ? { max: maxReq, window: windowMs || 60000 } : (RL_CONFIG[type] || RL_CONFIG.api);
+  const cfg = maxReq > 0 ? { max: maxReq, windowMs: windowMs || 60000, blockMs: 2*60000 } : (RL_CONFIG[type] || RL_CONFIG.api);
   let e = rateLimitMap.get(key);
   if (!e) {
     e = { count: 0, resetAt: now + cfg.windowMs, blockedUntil: 0};
@@ -401,7 +402,7 @@ function sendHtml(res, html, status = 200) {
 }
 
 function escHtml(s) {
-  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/`/g,'&#96;');
 }
 
 const DEDUP_WINDOWS = {
@@ -2298,7 +2299,7 @@ async function handleRequest(req, res) {
   }
 
   if (p === R_EXT+'/v3/key' && req.method === 'POST') {
-    if (!checkRateLimit(ip, 'ext_key', 20, 60000)) {
+    if (!checkRateLimit(ip, 'ext_key')) {
       sendJson(res, { authError: 'rateLimited', authErrorMessage: 'Muitas tentativas. Aguarde.', isLoggedIn: false }, 429);
       return;
     }
