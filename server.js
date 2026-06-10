@@ -99,6 +99,7 @@ function saveKey(code) {
   return new Promise(resolve => {
     const tid = setTimeout(async () => {
       _saveDebounce.delete(code);
+      if (keys[code] === undefined) { resolve(); return; }
       try {
         const db = await getMongoDb();
         await db.collection('store').updateOne(
@@ -197,7 +198,7 @@ function generateTOTP(secret, window = 0) {
 function verifyTOTP(secret, token) {
   if (!secret) return true;
   if (!token || token.length !== 6) return false;
-  for (const w of [-2, -1, 0, 1, 2]) {  // drift window ampliado
+  for (const w of [-2, -1, 0, 1, 2]) {
     if (generateTOTP(secret, w) === token) return true;
   }
   return false;
@@ -217,7 +218,7 @@ const rateLimitMap = new Map();
 const RL_CONFIG = {
   login: { max: 5,  windowMs: 60000,     blockMs: 10 * 60000 },
   api:   { max: 30, windowMs: 60000,     blockMs:  2 * 60000 },
-  check_status: { max: 60, window: 60 * 1000 },
+  check_status: { max: 60, windowMs: 60000, blockMs: 60000 },
 };
 
 function checkRateLimit(ip, type = 'api', maxReq = 0, windowMs = 0) {
@@ -253,7 +254,7 @@ setInterval(() => {
   const dedupTTL = 60 * 60 * 1000;
   for (const [k, ts] of _dedupMap.entries())
     if (now - ts > dedupTTL) _dedupMap.delete(k);
-}, 30 * 60 * 1000); // 30 min — recursos mínimos
+}, 30 * 60 * 1000);
 
 setInterval(() => {
   const now = Date.now();
@@ -261,7 +262,7 @@ setInterval(() => {
     if (now > new Date(s.expiresAt).getTime()) delete sessions[k];
   for (const [k, s] of Object.entries(modSessions))
     if (now > new Date(s.expiresAt).getTime()) delete modSessions[k];
-}, 60 * 60 * 1000); // 1h — sessões duram horas, limpeza não precisa ser frequente
+}, 60 * 60 * 1000);
 
 async function fireWebhook(event, keyCode, reason) {
   if (!WEBHOOK_URL) return;
@@ -346,12 +347,12 @@ function isModSession(req) {
   const match  = cookie.match(/zv_mod=([a-f0-9]+)/);
   if (!match) return false;
   const s = modSessions[match[1]];
-  if (!s) return false; // sessão perdida (restart) — cookie inválido
+  if (!s) return false;
   if (new Date() > new Date(s.expiresAt)) { delete modSessions[match[1]]; return false; }
   return true;
 }
 
-const MAX_BODY_SIZE = 64 * 1024; // 64KB — proteção contra DoS
+const MAX_BODY_SIZE = 64 * 1024;
 
 function _safeParse(raw) {
   try {
@@ -1625,7 +1626,7 @@ async function doRefresh(){
     filterKeys();
   }catch(e){console.error('Refresh error',e);}
 }
-setInterval(doRefresh,120000); // 2 min — reduz requisições ao servidor
+setInterval(doRefresh,120000);
 
 async function toggleKey(code){
   try{const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/toggle',{method:'POST'});if(r.status===401){toast('Sessão expirada',false);return;}const d=await r.json();if(d.ok){toast(d.active?'Chave liberada!':'Chave bloqueada!');await doRefresh();}}catch(e){toast('Erro',false);}
@@ -2389,7 +2390,7 @@ async function handleRequest(req, res) {
 
   if (p === R_EXT+'/v3/check-status' && req.method === 'POST') {
     if (!checkRateLimit(ip, 'check_status', 60, 60000)) {
-      sendJson(res, { active: true }); return; // silencioso — não deslogar por rate limit
+      sendJson(res, { active: true }); return;
     }
     if (parseInt(req.headers['content-length'] || 0) > MAX_BODY_SIZE) {
       sendJson(res, { active: true }); return;
@@ -2476,8 +2477,15 @@ async function handleRequest(req, res) {
     const inputUser   = form.get('user') || '';
     const inputPass   = form.get('pass') || '';
     const inputTotp   = (form.get('totp') || '').trim();
-    const matchedMod  = MODS.find(m => m.user === inputUser && m.pass === inputPass);
-    const totpOk      = matchedMod ? verifyTOTP(matchedMod.totp, inputTotp) : false;
+    const matchedMod = MODS.find(m => {
+      try {
+        const bu = Buffer.from(m.user), bi = Buffer.from(inputUser);
+        const bp = Buffer.from(m.pass), bip = Buffer.from(inputPass);
+        return bu.length === bi.length && bp.length === bip.length &&
+          crypto.timingSafeEqual(bu, bi) && crypto.timingSafeEqual(bp, bip);
+      } catch { return false; }
+    });
+    const totpOk = matchedMod ? verifyTOTP(matchedMod.totp, inputTotp) : false;
     if (matchedMod && totpOk) {
       const token = generateToken();
       modSessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString(), modName: matchedMod.name };
@@ -2849,7 +2857,7 @@ async function handleRequest(req, res) {
         const doc = await db.collection('store').findOne({ _id: 'keys' });
         if (doc && doc.data && doc.data[code]) {
           k = doc.data[code];
-          keys[code] = k; // atualizar memória local
+          keys[code] = k;
         }
       } catch(e) { console.error('[DB] Erro ao buscar chave:', e.message); }
     }
@@ -2967,7 +2975,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     process.on('unhandledRejection', err => console.error('[unhandledRejection]', err));
 
     const server = http.createServer(safeHandler);
-    server.keepAliveTimeout = 65000; // acima dos 60s do LB do Render
+    server.keepAliveTimeout = 65000;
     server.headersTimeout   = 66000;
     server.listen(PORT, () => {
       console.log(`🚀 Servidor ouvindo na porta ${PORT}`);
@@ -2978,7 +2986,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
         );
         req.on('error', () => {});
         req.end();
-      }, 10 * 60 * 1000); // 600 000 ms = 10 min
+      }, 10 * 60 * 1000);
     });
   } catch (e) {
     console.error('❌ Falha ao iniciar:', e.message);
