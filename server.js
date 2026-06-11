@@ -1678,10 +1678,6 @@ tr:hover td{background:#00ff0003}
 const _RA='${R_ADMIN}';
 const _MODS=${JSON.stringify(MODS.map(m => m.name))};
 
-
-const _RA='${R_ADMIN}';
-const _MODS=${JSON.stringify(MODS.map(m => m.name))};
-
 function toast(msg,ok=true){
   const t=document.getElementById('toast');
   t.textContent=msg;t.className='toast '+(ok?'tok':'terr');
