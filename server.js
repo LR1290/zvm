@@ -1530,7 +1530,7 @@ tr:hover td{background:#ffffff02}
   <div style="font-size:13px;color:var(--muted);margin-bottom:12px;font-family:'Syne',sans-serif" id="renewCurrentExpiry"></div>
   <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);font-family:'Syne',sans-serif;cursor:pointer;margin-bottom:14px;padding:10px 12px;background:#00ff8710;border:1px solid #00ff8730;border-radius:6px">
     <input type="checkbox" id="renewDeferred" style="accent-color:var(--green);width:15px;height:15px;cursor:pointer">
-    <span>⏱ <strong style="color:var(--green)">Ativar ao 1º uso</strong> — limpa números cadastrados e reinicia como nova chave</span>
+    <span>⏱ <strong style="color:var(--green)">Ativar ao 1º uso</strong> — o prazo começa a contar somente no primeiro acesso</span>
   </label>
   <div class="modal-actions">
     <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeRenew()">Cancelar</button>
@@ -3031,9 +3031,6 @@ async function handleRequest(req, res) {
       keys[codeRenew].expiresAt      = null;
       keys[codeRenew].expireDuration = addMs;
       keys[codeRenew].activatedAt    = null;
-      keys[codeRenew].phones         = [];
-      keys[codeRenew].uses           = 0;
-      keys[codeRenew].lastPhone      = null;
       keys[codeRenew].active         = true;
       saveKey(codeRenew);
       await addLog({ keyCode: codeRenew, label: keys[codeRenew].label, phone: '-', ip, wppVersion: '-', action: 'renewed_deferred' });
