@@ -1289,7 +1289,7 @@ function buildKeysHtml() {
 
     return `
 <tr data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${k.active?'ativo':'bloqueado'}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-expired="${expired?'1':''}"${rowStyle}>
-  <td style="padding:7px 6px 7px 12px"><input type="checkbox" class="row-chk" data-code="${escHtml(code)}" style="accent-color:var(--green);width:14px;height:14px;cursor:pointer" onchange="onRowCheck()"></td>
+  <td style="padding:7px 6px 7px 14px"><input type="checkbox" class="row-chk" data-code="${escHtml(code)}" style="accent-color:var(--green);width:16px;height:16px;cursor:pointer;opacity:1;filter:brightness(1.4)" onchange="onRowCheck()"></td>
   <td><span class="kc">${escHtml(code)}</span></td>
   <td class="td-name">${escHtml(k.label)}</td>
   <td><span class="st-badge ${k.active?(k.expireDuration&&!k.expiresAt?'st-wait':'st-on'):'st-off'}">${k.active?(k.expireDuration&&!k.expiresAt?'AGUARDANDO':'ATIVO'):'BLOQUEADO'}</span></td>
@@ -1496,6 +1496,7 @@ tr:hover td{background:#00ff0003}
 .log-filters{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
 .log-filters input[type=date],.log-filters input[type=text]{padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;font-family:inherit;outline:none;transition:border-color .14s}
 .log-filters input:focus{border-color:var(--green)}
+input[type=checkbox].row-chk,input#chk-all{accent-color:var(--green);outline:1px solid #00ff0040;border-radius:2px}
 
 @media(max-width:1400px){.stats{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:900px){.stats{grid-template-columns:1fr 1fr};main{padding:14px};.td-actions{min-width:auto}}
@@ -1555,7 +1556,7 @@ tr:hover td{background:#00ff0003}
     <div class="tov">
       <table>
         <thead><tr>
-          <th style="width:32px;padding:8px 6px 8px 12px"><input type="checkbox" id="chk-all" title="Selecionar todas visíveis" style="accent-color:var(--green);width:14px;height:14px;cursor:pointer" onchange="toggleSelectAll(this)"></th>
+          <th style="width:36px;padding:8px 6px 8px 14px"><input type="checkbox" id="chk-all" title="Selecionar todas visíveis" style="accent-color:var(--green);width:16px;height:16px;cursor:pointer;opacity:1;filter:brightness(1.4)" onchange="toggleSelectAll(this)"></th>
           <th onclick="sortKeys('code')">Chave</th>
           <th onclick="sortKeys('label')" id="th-label">Cliente</th>
           <th onclick="sortKeys('status')" id="th-status">Status</th>
@@ -2798,7 +2799,7 @@ async function handleRequest(req, res) {
       keys[keyCode].active = false;
       sendJson(res, { authError: 'keyExpired', reason: 'expired', isLoggedIn: false, data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave expirada.', permissions: [] } }, 403);
       addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'expired' }).catch(()=>{});
-      saveKey(keyCode).catch(()=>{});
+      saveKey(keyCode);
       fireWebhook('key_expired', keyCode, 'Expiração detectada no v3/key');
       return;
     }
@@ -2830,7 +2831,7 @@ async function handleRequest(req, res) {
           data: { message: `USUÁRIO NÃO ENCONTRADO. Limite de ativações atingido (${keys[keyCode].phones.length}/${keyMaxUses}).`, permissions: [] }
         }, 403);
         addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'warn_limit' }).catch(()=>{});
-        saveKey(keyCode).catch(()=>{});
+        saveKey(keyCode);
         return;
       }
       keys[keyCode].phones.push(phone);
@@ -2853,7 +2854,7 @@ async function handleRequest(req, res) {
 
     const _action = isNewPhone ? 'login_ok' : 'relogin_ok';
     addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: _action }).catch(()=>{});
-    saveKey(keyCode).catch(()=>{});
+    saveKey(keyCode);
     return;
   }
 
@@ -2881,7 +2882,7 @@ async function handleRequest(req, res) {
     if (!keys[keyCode]) { sendJson(res, { active: false, reason: 'not_found' }); return; }
     if (isKeyExpired(keys[keyCode]))   {
       keys[keyCode].active = false;
-      saveKey(keyCode).catch(()=>{});
+      saveKey(keyCode);
       sendJson(res, { active: false, reason: 'expired' }); return;
     }
     if (!keys[keyCode].active)         {
@@ -3169,7 +3170,7 @@ async function handleRequest(req, res) {
     const label = String(body.label||'').trim().slice(0, 60);
     if (!label) { sendJson(res, { error: 'label vazio' }, 400); return; }
     keys[codeLabel].label = label;
-    saveKey(codeLabel).catch(()=>{});
+    saveKey(codeLabel);
     sendJson(res, { ok: true, label }); return;
   }
 
@@ -3192,7 +3193,7 @@ async function handleRequest(req, res) {
       keys[codePhonesDelete].uses=keys[codePhonesDelete].phones.length;
       if (keys[codePhonesDelete].lastPhone===body.phone) keys[codePhonesDelete].lastPhone=keys[codePhonesDelete].phones.at(-1)||null;
     } else { sendJson(res, { error: 'informe phone ou all:true' }, 400); return; }
-    saveKey(codePhonesDelete).catch(()=>{});
+    saveKey(codePhonesDelete);
     sendJson(res, { ok: true, phones: keys[codePhonesDelete].phones }); return;
   }
 
@@ -3535,7 +3536,7 @@ async function handleRequest(req, res) {
     keys[keyCode].phones  = phones.filter(p => p !== phone);
     keys[keyCode].uses    = keys[keyCode].phones.length;
     if (keys[keyCode].lastPhone === phone) keys[keyCode].lastPhone = keys[keyCode].phones.at(-1) || null;
-    saveKey(keyCode).catch(()=>{});
+    saveKey(keyCode);
     sendJson(res, { ok: true, phones: keys[keyCode].phones }); return;
   }
 
