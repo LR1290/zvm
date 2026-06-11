@@ -1040,31 +1040,43 @@ function renderAdminLogin(error = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM Admin</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='900' font-size='15' fill='%2300ff00'%3EZV%3C/text%3E%3C/svg%3E">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
-.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:40px 36px;width:360px;position:relative;z-index:1;box-shadow:0 0 40px rgba(124,58,237,0.15)}
-.logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#00ff87;margin-bottom:20px;text-align:center;letter-spacing:-0.5px}
-label{display:block;font-size:12px;letter-spacing:1px;color:#8a8aaa;text-transform:uppercase;margin-bottom:7px;font-family:'Syne',sans-serif}
-input{width:100%;padding:11px 14px;background:#0a0a0f;border:1px solid #1e1e2e;border-radius:8px;color:#e2e2f0;font-family:'Space Mono',monospace;font-size:13px;outline:none;margin-bottom:16px}
-input:focus{border-color:#00ff87}
-.btn{width:100%;padding:12px;background:#00ff87;border:none;border-radius:8px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer}
-.err{background:#ff475715;border:1px solid #ff4757;border-radius:6px;color:#ff4757;padding:11px 14px;font-size:14px;margin-bottom:16px;font-family:'Syne',sans-serif}
+:root{--g:#00ff00;--bg:#080810;--card:#0d0d18;--border:#1a1a2e;--t:#e2e2f0;--m:#5a5a8a}
+body{background:var(--bg);min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden;position:relative}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 80% 60% at 50% -10%,#00ff0010 0%,transparent 65%);pointer-events:none}
+.grid{position:fixed;inset:0;background-image:linear-gradient(rgba(0,255,0,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,0,.03) 1px,transparent 1px);background-size:44px 44px;pointer-events:none}
+.card{background:var(--card);border:1px solid #1e1e30;border-radius:16px;padding:40px 36px;width:100%;max-width:400px;position:relative;z-index:1;box-shadow:0 0 0 1px #00ff0008,0 20px 60px #00000090,inset 0 1px 0 #ffffff06}
+.logo{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:6px}
+.logo-badge{width:38px;height:38px;background:linear-gradient(135deg,#00ff00,#00cc00);border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;color:#080810;flex-shrink:0}
+.logo-name{font-size:20px;font-weight:800;color:var(--t);letter-spacing:-.5px}
+.logo-sub{text-align:center;font-size:11px;color:var(--m);letter-spacing:2.5px;text-transform:uppercase;margin-bottom:28px}
+.field{margin-bottom:15px}
+.field label{display:block;font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--m);margin-bottom:6px}
+.field input{width:100%;padding:11px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--t);font-size:13px;outline:none;transition:border-color .18s,box-shadow .18s;font-family:inherit}
+.field input:focus{border-color:var(--g);box-shadow:0 0 0 3px #00ff0012}
+.field .totp-input{font-size:20px;text-align:center;font-family:'Courier New',monospace;letter-spacing:7px}
+.btn{width:100%;padding:12px;background:linear-gradient(135deg,#00ff00,#00cc00);border:none;border-radius:8px;color:#080810;font-weight:800;font-size:14px;cursor:pointer;transition:opacity .18s,transform .12s;margin-top:6px;letter-spacing:.2px;font-family:inherit}
+.btn:hover{opacity:.88;transform:translateY(-1px)}
+.btn:active{transform:none}
+.err{background:#ff475712;border:1px solid #ff475740;border-radius:8px;color:#ff6b7a;padding:11px 14px;font-size:13px;margin-bottom:18px;display:flex;align-items:center;gap:7px}
 </style></head><body>
+<div class="grid"></div>
 <div class="card">
-  <div class="logo">⚡ ZVM Admin</div>
-  ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
+  <div class="logo"><div class="logo-badge">ZV</div><div class="logo-name">ZVM Admin</div></div>
+  <div class="logo-sub">Painel Administrativo</div>
+  ${error ? `<div class="err"><span>⚠</span>${escHtml(error)}</div>` : ''}
   <form method="POST" action="${R_ADMIN}/login">
-    <label>Usuário</label><input type="text" name="user" autocomplete="off">
-    <label>Senha</label><input type="password" name="pass">
-    ${TOTP_SECRET ? `<label>Código 2FA</label><input type="text" name="totp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" autocomplete="one-time-code" style="letter-spacing:4px;font-size:18px;text-align:center">` : ''}
-    <button type="submit" class="btn">Entrar</button>
+    <div class="field"><label>Usuário</label><input type="text" name="user" autocomplete="off" autofocus></div>
+    <div class="field"><label>Senha</label><input type="password" name="pass"></div>
+    ${TOTP_SECRET ? `<div class="field"><label>Código 2FA</label><input class="totp-input" type="text" name="totp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000 000" autocomplete="one-time-code"></div>` : ''}
+    <button type="submit" class="btn">Entrar no Painel</button>
   </form>
 </div>
 ${CANVAS_BG}</body></html>`;
 }
+
 
 function renderClientPortal() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
@@ -1257,75 +1269,78 @@ ${CANVAS_BG}</body></html>`;
 
 function buildKeysHtml() {
   const entries = Object.entries(keys);
-  if (!entries.length) return `<tr><td colspan="11" class="empty">Nenhuma chave cadastrada</td></tr>`;
+  if (!entries.length) return `<tr><td colspan="11" class="empty">Nenhuma chave cadastrada ainda</td></tr>`;
   return entries.map(([code, k]) => {
     const expired  = isKeyExpired(k);
     const warnSoon = isKeyExpiringSoon(k);
     const uniqueIps = new Set(logs.filter(l => l.keyCode === code && l.ip).map(l => l.ip)).size;
-    const recentLogs = logs.filter(l => l.keyCode === code && l.timestamp > new Date(Date.now() - 86400000).toISOString());
+    const recentLogs = logs.filter(l => l.keyCode === code && l.timestamp > new Date(Date.now()-86400000).toISOString());
     const recentIps  = new Set(recentLogs.filter(l => l.ip).map(l => l.ip));
     const clearedAt  = k.suspectClearedAt ? new Date(k.suspectClearedAt) : null;
-    const isSuspect  = recentIps.size > 3 && !(clearedAt && (Date.now() - clearedAt.getTime()) < 172800000);
+    const isSuspect  = recentIps.size > 3 && !(clearedAt && (Date.now()-clearedAt.getTime()) < 172800000);
 
     const expHtml = (!k.expiresAt && k.expireDuration) ? (() => {
       const d=Math.floor(k.expireDuration/86400000),h=Math.floor((k.expireDuration%86400000)/3600000),m=Math.floor((k.expireDuration%3600000)/60000);
       const parts=[];if(d>0)parts.push(d+'d');if(h>0)parts.push(h+'h');if(m>0)parts.push(m+'m');
-      return `<br><span style="color:var(--blue);font-size:12px">⏱ Ao ativar: ${parts.join(' ')}</span>`;
+      return `<br><span style="color:var(--green);font-size:11px">⏱ Ao ativar: ${parts.join(' ')}</span>`;
     })() : k.expiresAt ? (() => {
       const exp=new Date(k.expiresAt),diffMs=exp-new Date(),diffH=Math.floor(diffMs/36e5),diffD=Math.floor(diffMs/864e5);
       let label=expired?'expirado':diffH<1?`exp: ${Math.floor((diffMs%36e5)/60000)}min`:diffH<24?`exp: ${diffH}h`:` exp: ${diffD}d — ${exp.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}`;
-      return `<br><span style="font-size:12px;color:${expired?'var(--red)':warnSoon?'var(--orange)':'var(--yellow)'}">${label}</span>`;
+      return `<br><span style="font-size:11px;color:${expired?'var(--red)':warnSoon?'var(--orange)':'var(--yellow)'};">${label}</span>`;
     })() : '';
 
-    const rowStyle = isSuspect ? ' style="background:#ff000008;outline:1px solid #ff475720"' : warnSoon && !expired ? ' style="background:#ff860010"' : '';
-    const suspectBadge = isSuspect ? `<span title="${recentIps.size} IPs nas últimas 24h" style="color:#ff4757;font-size:13px;margin-left:4px">⚠ SUSPEITA</span>` : '';
+    const rowStyle = isSuspect ? ' style="background:#ff000008;outline:1px solid #ff475718"' : warnSoon && !expired ? ' style="background:#ff860008"' : '';
+    const suspectBadge = isSuspect ? `<span title="${recentIps.size} IPs nas últimas 24h" style="color:#ff4757;font-size:11px;margin-left:4px">⚠</span>` : '';
 
     return `
-<tr data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${k.active?'ativo':'bloqueado'}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-suspect="${isSuspect?'1':''}"`+rowStyle+`>
+<tr data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${k.active?'ativo':'bloqueado'}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-suspect="${isSuspect?'1':''}"${rowStyle}>
   <td><span class="kc">${escHtml(code)}</span></td>
-  <td>${escHtml(k.label)}${suspectBadge}</td>
-  <td><span class="badge ${k.active?'on':'off'}">${k.active?(k.expireDuration&&!k.expiresAt?'AGUARDANDO':'ATIVO'):'BLOQUEADO'}</span></td>
-  <td><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
-  <td>${escHtml(k.lastPhone||'-')}</td>
-  <td title="${uniqueIps} IPs únicos registrados">${escHtml(k.lastIp||'-')} ${uniqueIps>1?`<span style="color:var(--muted);font-size:13px">(+${uniqueIps-1})</span>`:''}</td>
-  <td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
-  <td>${new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}${expHtml}</td>
-  <td>${escHtml(k.wppVersion||'-')}</td>
-  <td class="note-cell" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${k.note&&k.note.startsWith('[Mod:')?'<span style=\"color:#4f8ef7;font-size:13px;font-family:Syne,sans-serif\">'+escHtml(k.note)+'</span>':escHtml(k.note||'') || '<span style=\\"color:var(--muted)\\">—</span>'}</span></td>
-  <td>
-    <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
-    <button class="bs bg" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">+ Tempo</button>
-    <button class="bs bg" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${Number.isFinite(k.maxUses)?k.maxUses:MAX_USES})">Usos</button>
-    <button class="bs bg" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">Renomear</button>
-    ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Números</button>`:''}
-    <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
-    ${isSuspect?`<button class="bs bsusp" onclick="clearSuspect('${escHtml(code)}')">🕵️ Suspeita</button>`:''}
-    <button class="bs" style="background:#7c3aed18;color:#9b59b6;border:1px solid #7c3aed30" data-code="${escHtml(code)}" data-label="${escHtml(k.label||'')}" data-modnote="${escHtml((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1]||'')}" onclick="openAssignModFromEl(this)">👮 Mod</button>
+  <td class="td-name">${escHtml(k.label)}${suspectBadge}</td>
+  <td><span class="st-badge ${k.active?(k.expireDuration&&!k.expiresAt?'st-wait':'st-on'):'st-off'}">${k.active?(k.expireDuration&&!k.expiresAt?'AGUARDANDO':'ATIVO'):'BLOQUEADO'}</span></td>
+  <td><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'var(--muted)'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
+  <td style="color:var(--muted)">${escHtml(k.lastPhone||'—')}</td>
+  <td style="color:var(--muted)" title="${uniqueIps} IPs únicos">${escHtml(k.lastIp||'—')}${uniqueIps>1?` <span style="color:#3a3a5a;font-size:11px">(+${uniqueIps-1})</span>`:''}</td>
+  <td style="color:var(--muted)">${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
+  <td style="color:var(--muted)">${new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}${expHtml}</td>
+  <td style="color:var(--muted)">${escHtml(k.wppVersion||'—')}</td>
+  <td class="note-cell" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${k.note&&k.note.startsWith('[Mod:')?'<span style="color:#4f8ef7;font-size:12px">'+escHtml(k.note)+'</span>':escHtml(k.note||'')||'<span style="color:#2a2a4a">—</span>'}</span></td>
+  <td class="td-actions">
+    <button class="ab ${k.active?'ab-r':'ab-g'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
+    <button class="ab ab-g" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">+Tempo</button>
+    <button class="ab ab-g" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${Number.isFinite(k.maxUses)?k.maxUses:MAX_USES})">Usos</button>
+    <button class="ab ab-g" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">Renomear</button>
+    ${(k.phones||[]).length>0?`<button class="ab ab-r" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Números</button>`:''}
+    <button class="ab ab-r" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
+    ${isSuspect?`<button class="ab ab-y" onclick="clearSuspect('${escHtml(code)}')">🕵️</button>`:''}
+    <button class="ab ab-p" data-code="${escHtml(code)}" data-label="${escHtml(k.label||'')}" data-modnote="${escHtml((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1]||'')}" onclick="openAssignModFromEl(this)">👮 Mod</button>
   </td>
 </tr>`;
   }).join('');
 }
 
+
 function buildLogsHtml(arr) {
   const src = arr ?? logs;
   if (!src.length) return `<tr><td colspan="7" class="empty">Nenhum log ainda</td></tr>`;
-  return src.slice(0, 200).map(l => `
+  const ac = a => a==='login_ok'?'st-on':a==='relogin_ok'?'st-re':a==='verify_ok'?'st-vr':a==='login_blocked'?'st-off':a==='warn_limit'?'st-wl':'st-warn';
+  return src.slice(0,200).map(l => `
 <tr>
-  <td>${new Date(l.timestamp).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</td>
-  <td><span class="kc" style="font-size:13px">${escHtml(l.keyCode||'-')}</span></td>
-  <td>${escHtml(l.label||'-')}</td>
-  <td>${escHtml(l.phone||'-')}</td>
-  <td>${escHtml(l.ip||'-')}</td>
-  <td>${escHtml(l.wppVersion||'-')}</td>
-  <td><span class="badge ${l.action==='login_ok'?'on':l.action==='relogin_ok'?'re':l.action==='verify_ok'?'vr':l.action==='login_blocked'?'off':l.action==='warn_limit'?'wl':'warn'}">${escHtml(l.action)}</span></td>
+  <td style="color:var(--muted);font-family:'Courier New',monospace;font-size:11px;white-space:nowrap">${new Date(l.timestamp).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</td>
+  <td><span class="kc" style="font-size:12px">${escHtml(l.keyCode||'—')}</span></td>
+  <td style="color:var(--muted)">${escHtml(l.label||'—')}</td>
+  <td style="color:var(--muted)">${escHtml(l.phone||'—')}</td>
+  <td style="color:var(--muted)">${escHtml(l.ip||'—')}</td>
+  <td style="color:var(--muted)">${escHtml(l.wppVersion||'—')}</td>
+  <td><span class="st-badge ${ac(l.action)}">${escHtml(l.action)}</span></td>
 </tr>`).join('');
 }
 
+
 function renderAdminDashboard() {
-  const expiringSoon  = Object.values(keys).filter(k => k.active && isKeyExpiringSoon(k)).length;
-  const suspectKeys   = Object.entries(keys).filter(([code, k]) => {
+  const expiringSoon = Object.values(keys).filter(k => k.active && isKeyExpiringSoon(k)).length;
+  const suspectKeys  = Object.entries(keys).filter(([code, k]) => {
     const cl = k.suspectClearedAt ? new Date(k.suspectClearedAt) : null;
-    if (cl && (Date.now() - cl.getTime()) < 172800000) return false;
+    if (cl && (Date.now()-cl.getTime()) < 172800000) return false;
     const rl = logs.filter(l => l.keyCode === code && l.timestamp > new Date(Date.now()-86400000).toISOString());
     return new Set(rl.filter(l=>l.ip).map(l=>l.ip)).size > 3;
   }).length;
@@ -1334,150 +1349,219 @@ function renderAdminDashboard() {
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM Admin v8</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<title>ZVM Admin</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='900' font-size='15' fill='%2300ff00'%3EZV%3C/text%3E%3C/svg%3E">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --green:#00ff87;--dark:#080810;--card:#0f0f1a;--card2:#13131f;
-  --border:#1c1c2e;--border2:#252538;--text:#e2e2f0;--muted:#5a5a7a;
+  --green:#00ff00;--dark:#080810;--card:#0d0d18;--card2:#111120;
+  --border:#1a1a2e;--border2:#222238;--text:#e2e2f0;--muted:#5a5a8a;
   --red:#ff4757;--yellow:#ffd32a;--orange:#ff8600;--blue:#4f8ef7;--purple:#9b59b6;
-  --radius:10px;--radius-sm:6px;
+  --radius:9px;--radius-sm:5px;
 }
-body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
-header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040}
-.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
-main{position:relative;z-index:1}
-.hright{display:flex;align-items:center;gap:10px}
-a.out{color:var(--muted);font-size:13px;text-decoration:none;padding:6px 14px;border:1px solid var(--border2);border-radius:var(--radius-sm);transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
-a.out:hover{color:var(--red);border-color:var(--red)}
-main{padding:22px 24px;max-width:1800px;margin:0 auto}
-.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px}
-.sc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;position:relative;overflow:hidden;transition:border-color .2s,transform .15s;cursor:default}
-.sc:hover{border-color:var(--border2);transform:translateY(-1px)}
-.sc.warn-card{border-color:#ff860050;background:#ff860008}
-.sc.danger-card{border-color:#ff475750;background:#ff475708}
-.sc-icon{position:absolute;right:14px;top:14px;font-size:22px;opacity:.15}
-.sc .n{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:var(--green);line-height:1.1}
-.sc.warn-card .n{color:var(--orange)}
-.sc.danger-card .n{color:var(--red)}
-.sc .l{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.3px;margin-top:5px;font-family:'Syne',sans-serif}
-/* Search */
-.search-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 16px;background:var(--card2);border-bottom:1px solid var(--border)}
-.search-bar input{padding:7px 12px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:12px;outline:none;flex:1;min-width:160px;transition:border .18s}
-.search-bar input:focus{border-color:var(--green)}
-.search-bar select{padding:6px 9px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Syne',sans-serif;font-size:12px;outline:none;cursor:pointer}
+html{scroll-behavior:smooth}
+body{background:var(--dark);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;overflow-x:hidden;font-size:13px}
+
+/* ── Ambient ── */
+.amb{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+.amb::before{content:'';position:absolute;width:600px;height:600px;background:radial-gradient(circle,#00ff0008 0%,transparent 70%);top:-150px;left:-150px;animation:da 24s ease-in-out infinite}
+.amb::after{content:'';position:absolute;width:500px;height:500px;background:radial-gradient(circle,#4f8ef705 0%,transparent 70%);bottom:-100px;right:-100px;animation:db 30s ease-in-out infinite}
+@keyframes da{0%,100%{transform:translate(0,0)}50%{transform:translate(55px,35px)}}
+@keyframes db{0%,100%{transform:translate(0,0)}50%{transform:translate(-45px,-25px)}}
+.gridlines{position:fixed;inset:0;background-image:linear-gradient(rgba(0,255,0,.018) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,0,.018) 1px,transparent 1px);background-size:48px 48px;pointer-events:none;z-index:0}
+
+/* ── Layout ── */
+#app{position:relative;z-index:1;min-height:100vh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:54px;background:rgba(13,13,24,.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;gap:12px;flex-shrink:0}
+.hlogo{display:flex;align-items:center;gap:9px}
+.hmark{width:28px;height:28px;background:linear-gradient(135deg,#00ff00,#00cc00);border-radius:7px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px;color:#080810;flex-shrink:0}
+.hname{font-size:14px;font-weight:800;color:var(--green);letter-spacing:.3px}
+.hver{font-size:11px;color:var(--muted);margin-left:4px;font-weight:400}
+.hright{display:flex;align-items:center;gap:7px}
+.hbtn{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:transparent;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;transition:all .17s;text-decoration:none;font-family:inherit}
+.hbtn:hover{border-color:#00ff0035;color:var(--green);background:#00ff0008}
+.hbtn-out:hover{border-color:#ff475740;color:var(--red);background:#ff475708}
+main{flex:1;padding:20px 24px;max-width:1920px;margin:0 auto;width:100%}
+
+/* ── Stat cards ── */
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px}
+.sc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;position:relative;overflow:hidden;cursor:default;transition:border-color .2s,transform .14s}
+.sc:hover{transform:translateY(-2px);border-color:var(--border2)}
+.sc.sc-warn{border-color:#ff860035;background:linear-gradient(135deg,#ff860008,var(--card))}
+.sc.sc-danger{border-color:#ff475735;background:linear-gradient(135deg,#ff475708,var(--card))}
+.sc.sc-green{border-color:#00ff0030;background:linear-gradient(135deg,#00ff0008,var(--card))}
+.sc-icon{position:absolute;right:14px;top:14px;font-size:18px;opacity:.15}
+.sc-n{font-size:28px;font-weight:800;color:var(--green);line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-1px}
+.sc.sc-warn .sc-n{color:var(--orange)}
+.sc.sc-danger .sc-n{color:var(--red)}
+.sc-l{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-top:5px}
+
+/* ── Section ── */
 .sec{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:16px;overflow:hidden}
-.sh{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--card2);flex-wrap:wrap;gap:10px}
-.st{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:var(--green);display:flex;align-items:center;gap:6px}
+.sh{display:flex;align-items:center;justify-content:space-between;padding:11px 15px;background:var(--card2);border-bottom:1px solid var(--border);gap:10px;flex-wrap:wrap}
+.st{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--green);display:flex;align-items:center;gap:6px}
+
+/* ── Gen form ── */
 .gen-form{display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap}
-.gen-form input{padding:6px 9px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Syne',sans-serif;font-size:12px;outline:none;transition:border .18s}
-.gen-form input:focus{border-color:var(--green);background:#0a0a14}
-.gen-form input::placeholder{color:var(--muted)}
-.fi-name{flex:1;min-width:130px;max-width:170px}
-.fi-group{display:flex;gap:5px;align-items:flex-end}
-.fi-col{display:flex;flex-direction:column;gap:3px}
-.fi-lbl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;padding-left:2px;font-family:'Syne',sans-serif}
-.fi-num{width:56px;text-align:center}
-.fi-sep{width:1px;height:28px;background:var(--border2);margin:0 3px;flex-shrink:0;align-self:flex-end;margin-bottom:2px}
-.btn{padding:7px 12px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;transition:all .18s;white-space:nowrap;letter-spacing:.3px}
-.bp{background:var(--green);color:#000;box-shadow:0 0 12px #00ff8740}
-.bp:hover{box-shadow:0 4px 20px #00ff8760;opacity:.9}
-.bw{background:#ffd32a12;color:var(--yellow);border:1px solid #ffd32a35}
-.br{background:#ff475712;color:var(--red);border:1px solid #ff475735}
-.bcsv{background:#4f8ef712;color:var(--blue);border:1px solid #4f8ef735}
-.bs{padding:3px 8px;border:none;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;margin-right:2px;transition:all .15s;white-space:nowrap}
-.bs:hover{opacity:1;transform:translateY(-1px)}
-.bg{background:#00ff8712;color:var(--green);border:1px solid #00ff8730}
-.bg:hover{background:#00ff8722;border-color:#00ff8760}
-.bd{background:#ff475712;color:var(--red);border:1px solid #ff475730}
-.bd:hover{background:#ff475722;border-color:#ff475760}
-.bsusp{background:#ff475712;color:var(--red);border:1px solid #ff475730}
-.ov{overflow-x:auto}
+.fi{display:flex;flex-direction:column;gap:3px}
+.fi-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+.fi input[type=text],.fi input[type=number]{padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;font-family:inherit;outline:none;transition:border-color .17s}
+.fi input:focus{border-color:var(--green)}
+.fi-name{min-width:130px;flex:1}
+.fi-num input{width:54px;text-align:center}
+.fi-sep{width:1px;height:28px;background:var(--border2);align-self:flex-end;flex-shrink:0;margin-bottom:2px}
+.fi-chk{align-self:flex-end}
+.fi-chk label{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);cursor:pointer;padding:7px 0}
+.fi-chk input[type=checkbox]{accent-color:var(--green);width:13px;height:13px;cursor:pointer}
+.btn-gen{padding:7px 14px;background:linear-gradient(135deg,#00ff00,#00cc00);border:none;border-radius:var(--radius-sm);color:#080810;font-size:12px;font-weight:800;cursor:pointer;transition:opacity .17s,transform .12s;white-space:nowrap;font-family:inherit}
+.btn-gen:hover{opacity:.87;transform:translateY(-1px)}
+.btn-gen:active{transform:none}
+
+/* ── Search bar ── */
+.sbar{display:flex;gap:7px;align-items:center;padding:9px 15px;background:var(--card2);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.sbar input[type=text]{flex:1;min-width:200px;padding:6px 12px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;outline:none;transition:border-color .17s;font-family:inherit}
+.sbar input:focus{border-color:var(--green)}
+.sbar select{padding:6px 8px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:12px;outline:none;cursor:pointer;font-family:inherit}
+
+/* ── Generic buttons ── */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 13px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;transition:all .17s;white-space:nowrap}
+.btn:hover{opacity:.87;transform:translateY(-1px)}
+.btn:active{transform:none}
+.btn-g{background:#00ff0012;border:1px solid #00ff0030;color:var(--green)}
+.btn-g:hover{background:#00ff001e;border-color:#00ff0050}
+.btn-r{background:#ff475712;border:1px solid #ff475730;color:var(--red)}
+.btn-r:hover{background:#ff47571e;border-color:#ff475750}
+.btn-y{background:#ffd32a12;border:1px solid #ffd32a30;color:var(--yellow)}
+.btn-y:hover{background:#ffd32a1e;border-color:#ffd32a50}
+.btn-b{background:#4f8ef712;border:1px solid #4f8ef730;color:var(--blue)}
+.btn-b:hover{background:#4f8ef71e;border-color:#4f8ef750}
+
+/* ── Action buttons (table) ── */
+.ab{padding:3px 8px;border-radius:4px;border:none;cursor:pointer;font-size:11px;font-weight:700;font-family:inherit;transition:all .14s;white-space:nowrap}
+.ab:hover{opacity:1;transform:translateY(-1px)}
+.ab-g{background:#00ff0012;color:var(--green);border:1px solid #00ff0028}
+.ab-g:hover{background:#00ff001e;border-color:#00ff0045}
+.ab-r{background:#ff475712;color:var(--red);border:1px solid #ff475728}
+.ab-r:hover{background:#ff47571e;border-color:#ff475745}
+.ab-y{background:#ffd32a12;color:var(--yellow);border:1px solid #ffd32a28}
+.ab-p{background:#9b59b612;color:var(--purple);border:1px solid #9b59b628}
+.ab-p:hover{background:#9b59b61e;border-color:#9b59b645}
+
+/* ── Table ── */
+.tov{overflow-x:auto}
 table{width:100%;border-collapse:collapse}
-th{padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap;background:var(--card2);cursor:pointer;user-select:none;font-family:'Syne',sans-serif}
-th:hover{color:var(--text)}
-th.asc::after{content:' ▲';color:var(--green);font-size:12px}
-th.desc::after{content:' ▼';color:var(--green);font-size:12px}
-td{padding:7px 10px;font-size:11px;border-bottom:1px solid #14141f;vertical-align:middle}
+thead th{padding:8px 11px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);border-bottom:1px solid var(--border);background:var(--card2);white-space:nowrap;cursor:pointer;user-select:none;transition:color .14s}
+thead th:hover{color:var(--text)}
+thead th.asc::after{content:' ▲';color:var(--green);font-size:9px}
+thead th.desc::after{content:' ▼';color:var(--green);font-size:9px}
+td{padding:7px 11px;border-bottom:1px solid #0e0e1c;vertical-align:middle;font-size:12px}
 tr:last-child td{border-bottom:none}
-tr:hover td{background:#ffffff02}
-.kc{color:var(--green);font-size:12px;letter-spacing:.3px}
-.badge{padding:2px 7px;border-radius:3px;font-size:11px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;font-family:'Syne',sans-serif}
-.on{background:#00ff8718;color:var(--green);border:1px solid #00ff8730}
-.off{background:#ff475718;color:var(--red);border:1px solid #ff475730}
-.re{background:#4f8ef718;color:var(--blue)}
-.vr{background:#9b59b618;color:var(--purple)}
-.warn{background:#ffd32a18;color:var(--yellow)}
-.wl{background:#ff8c0018;color:#ff8c00}
-.empty{text-align:center;color:var(--muted);padding:40px!important;font-size:14px;font-family:'Syne',sans-serif}
-.toast{position:fixed;bottom:20px;right:20px;padding:11px 18px;border-radius:var(--radius);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;display:none;z-index:999999;box-shadow:0 6px 30px #00000070;max-width:380px;line-height:1.4}
-.alert-card{background:#ff860008;border:1px solid #ff860040;border-radius:var(--radius);padding:12px 18px;margin-bottom:20px;display:none;align-items:center;gap:12px;font-size:13px;color:#ff8600;font-family:'Syne',sans-serif}
-.badge-exp{background:#ff860018;color:#ff8600;border:1px solid #ff860040;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:700;font-family:'Syne',sans-serif}
-.badge-expired{background:#ff475718;color:#ff4757;border:1px solid #ff475740;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:700;font-family:'Syne',sans-serif}
-.note-btn{padding:3px 8px;background:#4f8ef710;color:var(--blue);border:1px solid #4f8ef730;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;transition:all .15s}
-.note-btn:hover{background:#4f8ef722;border-color:var(--blue)}
-.note-cell{cursor:pointer;max-width:130px}
+tr:hover td{background:#00ff0003}
+.kc{font-family:'Courier New',monospace;color:var(--green);font-size:12px;letter-spacing:.2px}
+.td-name{font-weight:600;color:var(--text);max-width:150px;word-break:break-word}
+.td-actions{display:flex;flex-wrap:wrap;gap:3px;min-width:280px;padding:5px 11px!important}
+.empty{text-align:center;color:var(--muted);padding:40px!important;font-size:13px}
+.note-cell{cursor:pointer;max-width:120px}
 .note-cell:hover .note-preview{color:var(--green)}
-.note-preview{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:120px;font-family:'Syne',sans-serif}
-.modal-bg{display:none;position:fixed;inset:0;background:#00000090;z-index:99999;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
+.note-preview{color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:110px;transition:color .14s}
+
+/* ── Status badges ── */
+.st-badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.3px;text-transform:uppercase}
+.st-on  {background:#00ff0015;color:var(--green);border:1px solid #00ff0030}
+.st-off {background:#ff475715;color:var(--red);border:1px solid #ff475730}
+.st-wait{background:#ffd32a15;color:var(--yellow);border:1px solid #ffd32a30}
+.st-re  {background:#4f8ef715;color:var(--blue);border:1px solid #4f8ef730}
+.st-vr  {background:#9b59b615;color:var(--purple);border:1px solid #9b59b630}
+.st-wl  {background:#ff860015;color:var(--orange);border:1px solid #ff860030}
+.st-warn{background:#1a1a2e;color:var(--muted);border:1px solid var(--border)}
+
+/* ── Toast ── */
+.toast{position:fixed;bottom:20px;right:20px;padding:11px 16px;border-radius:var(--radius);font-weight:700;font-size:12px;display:none;z-index:99999;max-width:380px;line-height:1.4;border:1px solid transparent}
+.tok {background:#00ff0015;border-color:#00ff0030;color:var(--green)}
+.terr{background:#ff475715;border-color:#ff475730;color:var(--red)}
+
+/* ── Modals ── */
+.modal-bg{display:none;position:fixed;inset:0;background:#00000088;z-index:99999;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
 .modal-bg.open{display:flex}
-.modal{background:var(--card);border:1px solid var(--border2);border-radius:12px;padding:22px;width:340px;max-width:95vw;box-shadow:0 20px 60px #00000090;max-height:90vh;overflow-y:auto}
-.modal h3{font-family:'Syne',sans-serif;font-size:13px;margin-bottom:11px;color:var(--green)}
-.modal textarea,.modal input[type=text],.modal input[type=number]{width:100%;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Syne',sans-serif;font-size:13px;padding:9px;outline:none;transition:border .2s}
-.modal textarea{resize:vertical;min-height:80px}
-.modal textarea:focus,.modal input:focus{border-color:var(--green)}
-.modal-actions{display:flex;gap:8px;margin-top:11px;justify-content:flex-end}
-@media(max-width:1300px){.stats{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:750px){.stats{grid-template-columns:1fr 1fr};main{padding:14px 12px}}
+.modal{background:var(--card);border:1px solid var(--border2);border-radius:12px;padding:20px;width:340px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px #00000099,0 0 0 1px #ffffff04}
+.modal.modal-w{width:400px}
+.modal h3{font-size:13px;font-weight:700;color:var(--green);margin-bottom:11px;display:flex;align-items:center;gap:6px}
+.modal-row{margin-bottom:12px}
+.modal-row label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:5px}
+.modal-row input[type=text],.modal-row input[type=number],.modal-row textarea{width:100%;padding:8px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:inherit;outline:none;transition:border-color .17s}
+.modal-row input:focus,.modal-row textarea:focus{border-color:var(--green)}
+.modal-row textarea{resize:vertical;min-height:76px}
+.modal-hint{font-size:11px;color:var(--muted);margin-top:5px}
+.mactions{display:flex;gap:7px;justify-content:flex-end;margin-top:13px}
+.trow{display:flex;gap:8px}
+.trow .modal-row{flex:1;text-align:center}
+.trow input{text-align:center;font-size:16px!important}
+.ph-item{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)}
+.ph-item:last-child{border-bottom:none}
+.ph-num{font-family:'Courier New',monospace;font-size:12px;color:var(--text)}
+.mod-btn-row{display:flex;flex-direction:column;gap:7px;margin-bottom:12px}
+.mod-btn{display:flex;align-items:center;gap:8px;padding:9px 13px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;color:var(--text);font-size:12px;font-weight:600;font-family:inherit;transition:all .14s}
+.mod-btn:hover{border-color:#00ff0030;color:var(--green)}
+.mod-btn.active{background:#9b59b612;border-color:#9b59b630;color:#c4b5fd}
+.log-filters{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.log-filters input[type=date],.log-filters input[type=text]{padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;font-family:inherit;outline:none;transition:border-color .14s}
+.log-filters input:focus{border-color:var(--green)}
+
+@media(max-width:1400px){.stats{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:900px){.stats{grid-template-columns:1fr 1fr};main{padding:14px};.td-actions{min-width:auto}}
+@media(max-width:580px){.stats{grid-template-columns:1fr};.gen-form{flex-direction:column}}
 </style>
 </head>
 <body>
+<div class="amb"></div>
+<div class="gridlines"></div>
+<div id="app">
+
 <header>
-  <div class="logo">⚡ ZVM <span style="font-size:13px;color:var(--muted);font-weight:400">v8</span></div>
+  <div class="hlogo">
+    <div class="hmark">ZV</div>
+    <div class="hname">Painel Administrativo<span class="hver">v8</span></div>
+  </div>
   <div class="hright">
-    <button class="btn bcsv" onclick="exportCSV()">⬇ CSV</button>
-    <a href="${R_ADMIN}/logout" class="out">↩ Sair</a>
+    <button class="hbtn" onclick="exportCSV()">⬇ CSV</button>
+    <a href="${R_ADMIN}/logout" class="hbtn hbtn-out">↩ Sair</a>
   </div>
 </header>
+
 <main>
   <div class="stats">
-    <div class="sc"><div class="sc-icon">🔑</div><div class="n" id="s-total">${Object.keys(keys).length}</div><div class="l">Total de Chaves</div></div>
-    <div class="sc"><div class="sc-icon">✅</div><div class="n" id="s-active">${Object.values(keys).filter(k=>k.active).length}</div><div class="l">Chaves Ativas</div></div>
-    <div class="sc ${expiringSoon>0?'warn-card':''}"><div class="sc-icon">⏰</div><div class="n" id="s-warn" style="${expiringSoon>0?'color:var(--orange)':''}">${expiringSoon}</div><div class="l">Expirando em ${EXPIRY_WARN_HOURS}h</div></div>
-
-    <div class="sc ${suspectKeys>0?'danger-card':''}"><div class="sc-icon">🕵️</div><div class="n" id="s-suspect" style="${suspectKeys>0?'color:var(--red)':''}">${suspectKeys}</div><div class="l">Suspeitas (24h)</div></div>
-    <div class="sc"><div class="sc-icon">📋</div><div class="n" id="s-logs">${logs.length}</div><div class="l">Acessos Registrados</div></div>
+    <div class="sc sc-green"><div class="sc-icon">🔑</div><div class="sc-n" id="s-total">${Object.keys(keys).length}</div><div class="sc-l">Total de Chaves</div></div>
+    <div class="sc"><div class="sc-icon">✅</div><div class="sc-n" id="s-active">${Object.values(keys).filter(k=>k.active).length}</div><div class="sc-l">Chaves Ativas</div></div>
+    <div class="sc ${expiringSoon>0?'sc-warn':''}"><div class="sc-icon">⏰</div><div class="sc-n" id="s-warn">${expiringSoon}</div><div class="sc-l">Expirando em ${EXPIRY_WARN_HOURS}h</div></div>
+    <div class="sc ${suspectKeys>0?'sc-danger':''}"><div class="sc-icon">🕵️</div><div class="sc-n" id="s-suspect">${suspectKeys}</div><div class="sc-l">Suspeitas (24h)</div></div>
+    <div class="sc"><div class="sc-icon">📋</div><div class="sc-n" id="s-logs">${logs.length}</div><div class="sc-l">Acessos no Log</div></div>
   </div>
 
   <div class="sec">
     <div class="sh">
       <div class="st">🔑 Chaves de Acesso</div>
       <div class="gen-form">
-        <div class="fi-name"><input type="text" id="nlabel" placeholder="Nome do cliente"></div>
+        <div class="fi fi-name"><div class="fi-lbl">Cliente</div><input type="text" id="nlabel" placeholder="Nome do cliente"></div>
         <div class="fi-sep"></div>
-        <div class="fi-group">
-          <div class="fi-col"><span class="fi-lbl">Dias</span><input type="number" id="ndays" class="fi-num" placeholder="0" min="0"></div>
-          <div class="fi-col"><span class="fi-lbl">Horas</span><input type="number" id="nhours" class="fi-num" placeholder="0" min="0"></div>
-          <div class="fi-col"><span class="fi-lbl">Min</span><input type="number" id="nmins" class="fi-num" placeholder="0" min="0"></div>
-        </div>
+        <div class="fi"><div class="fi-lbl">Dias</div><div class="fi-num"><input type="number" id="ndays" placeholder="0" min="0"></div></div>
+        <div class="fi"><div class="fi-lbl">Horas</div><div class="fi-num"><input type="number" id="nhours" placeholder="0" min="0"></div></div>
+        <div class="fi"><div class="fi-lbl">Min</div><div class="fi-num"><input type="number" id="nmins" placeholder="0" min="0"></div></div>
         <div class="fi-sep"></div>
-        <div class="fi-col"><span class="fi-lbl">Usos</span><input type="number" id="nuses" class="fi-num" placeholder="3" min="-1" style="width:60px"></div>
-        <div class="fi-col" style="align-items:center;gap:4px"><label style="font-size:12px;color:var(--muted);white-space:nowrap"><input type="checkbox" id="ndeferred" style="margin-right:4px">⏱ Ativar ao 1º uso</label></div>
-        <button class="btn bp" onclick="generateKey()">+ Gerar Chave</button>
+        <div class="fi"><div class="fi-lbl">Usos</div><div class="fi-num"><input type="number" id="nuses" placeholder="3" min="-1" style="width:54px"></div></div>
+        <div class="fi-chk"><label><input type="checkbox" id="ndeferred"> ⏱ 1º uso</label></div>
+        <button class="btn-gen" onclick="generateKey()">+ Gerar Chave</button>
       </div>
     </div>
-    <div class="search-bar">
+    <div class="sbar">
       <input type="text" id="search-input" placeholder="🔍 Buscar por nome, chave, telefone ou IP..." oninput="filterKeys()">
       <select id="filter-status" onchange="filterKeys()">
         <option value="">Todos os status</option>
-        <option value="ativo">Ativos</option>
-        <option value="bloqueado">Bloqueados</option>
+        <option value="ativo">Ativas</option>
+        <option value="bloqueado">Bloqueadas</option>
         <option value="suspeita">🕵️ Suspeitas</option>
       </select>
     </div>
-    <div class="ov">
+    <div class="tov">
       <table>
         <thead><tr>
           <th onclick="sortKeys('code')">Chave</th>
@@ -1499,100 +1583,92 @@ tr:hover td{background:#ffffff02}
 
   <div class="sec">
     <div class="sh">
-      <div class="st">📋 Log de Acessos <span style="font-size:13px;color:var(--muted);font-weight:400">retidos por ${LOG_RETENTION_DAYS} dias (LGPD)</span></div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <input type="date" id="logDate" style="padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:13px;outline:none" onchange="filterLog()">
-        <input type="text" id="logSearch" placeholder="Filtrar por chave/IP..." style="padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:13px;outline:none;width:180px" oninput="filterLog()">
-        <button class="btn bw" onclick="clearFilters()">✕ Limpar</button>
-        <button class="btn bw" onclick="doRefresh()">↻ Atualizar</button>
-        <button class="btn br" onclick="clearLog()">🗑 Limpar Log</button>
+      <div class="st">📋 Log de Acessos <span style="font-size:10px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">LGPD · ${LOG_RETENTION_DAYS} dias</span></div>
+      <div class="log-filters">
+        <input type="date" id="logDate" onchange="filterLog()">
+        <input type="text" id="logSearch" placeholder="Chave ou IP..." style="width:150px" oninput="filterLog()">
+        <button class="btn btn-y" onclick="clearFilters()">✕</button>
+        <button class="btn btn-y" onclick="doRefresh()">↻</button>
+        <button class="btn btn-r" onclick="clearLog()">🗑 Limpar Log</button>
       </div>
     </div>
-    <div class="ov">
+    <div class="tov">
       <table>
-        <thead><tr><th>Horário</th><th>Chave</th><th>Cliente</th><th>Telefone</th><th>IP</th><th>WPP Version</th><th>Ação</th></tr></thead>
+        <thead><tr><th>Horário</th><th>Chave</th><th>Cliente</th><th>Telefone</th><th>IP</th><th>WPP Ver.</th><th>Ação</th></tr></thead>
         <tbody id="lb">${buildLogsHtml()}</tbody>
       </table>
     </div>
   </div>
-  </div>
 </main>
+</div>
 
 <!-- Modals -->
 <div class="modal-bg" id="renewModal"><div class="modal">
   <h3>⏱ Adicionar Tempo — <span id="renewKeyLabel"></span></h3>
   <input type="hidden" id="renewKeyCode">
-  <div style="display:flex;gap:10px;margin-bottom:12px">
-    <div style="flex:1;text-align:center"><div style="font-size:12px;color:var(--muted);text-transform:uppercase;margin-bottom:5px">Dias</div><input type="number" id="renewDays" placeholder="0" min="0" style="width:100%;padding:8px;text-align:center"></div>
-    <div style="flex:1;text-align:center"><div style="font-size:12px;color:var(--muted);text-transform:uppercase;margin-bottom:5px">Horas</div><input type="number" id="renewHours" placeholder="0" min="0" style="width:100%;padding:8px;text-align:center"></div>
-    <div style="flex:1;text-align:center"><div style="font-size:12px;color:var(--muted);text-transform:uppercase;margin-bottom:5px">Min</div><input type="number" id="renewMins" placeholder="0" min="0" style="width:100%;padding:8px;text-align:center"></div>
+  <div class="trow">
+    <div class="modal-row"><label>Dias</label><input type="number" id="renewDays" placeholder="0" min="0"></div>
+    <div class="modal-row"><label>Horas</label><input type="number" id="renewHours" placeholder="0" min="0"></div>
+    <div class="modal-row"><label>Min</label><input type="number" id="renewMins" placeholder="0" min="0"></div>
   </div>
-  <div style="font-size:13px;color:var(--muted);margin-bottom:12px;font-family:'Syne',sans-serif" id="renewCurrentExpiry"></div>
-  <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);font-family:'Syne',sans-serif;cursor:pointer;margin-bottom:14px;padding:10px 12px;background:#00ff8710;border:1px solid #00ff8730;border-radius:6px">
-    <input type="checkbox" id="renewDeferred" style="accent-color:var(--green);width:15px;height:15px;cursor:pointer">
+  <div style="font-size:12px;color:var(--muted);margin-bottom:12px" id="renewCurrentExpiry"></div>
+  <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);cursor:pointer;margin-bottom:12px;padding:9px 11px;background:#00ff0008;border:1px solid #00ff0020;border-radius:var(--radius-sm)">
+    <input type="checkbox" id="renewDeferred" style="accent-color:var(--green);width:14px;height:14px;cursor:pointer">
     <span>⏱ <strong style="color:var(--green)">Ativar ao 1º uso</strong> — o prazo começa a contar somente no primeiro acesso</span>
   </label>
-  <div class="modal-actions">
-    <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeRenew()">Cancelar</button>
-    <button class="btn bp" onclick="saveRenew()">Adicionar Tempo</button>
+  <div class="mactions">
+    <button class="btn btn-y" onclick="closeRenew()">Cancelar</button>
+    <button class="btn btn-g" onclick="saveRenew()">Adicionar Tempo</button>
   </div>
 </div></div>
 
 <div class="modal-bg" id="editUsesModal"><div class="modal">
   <h3>👥 Limite de Dispositivos — <span id="editUsesLabel"></span></h3>
   <input type="hidden" id="editUsesCode">
-  <div style="margin-bottom:14px">
-    <div style="font-size:12px;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Máx. números simultâneos</div>
-    <input type="number" id="editUsesValue" min="-1" style="width:100%;padding:10px;font-size:16px;text-align:center">
-    <div style="font-size:13px;color:var(--muted);margin-top:8px;font-family:'Syne',sans-serif">Use <strong style="color:var(--green)">-1</strong> para ilimitado</div>
-  </div>
-  <div class="modal-actions">
-    <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeEditUses()">Cancelar</button>
-    <button class="btn bp" onclick="saveEditUses()">Salvar</button>
+  <div class="modal-row"><label>Máx. números simultâneos</label><input type="number" id="editUsesValue" min="-1" style="font-size:18px;text-align:center"><div class="modal-hint">Use <strong style="color:var(--green)">-1</strong> para ilimitado</div></div>
+  <div class="mactions">
+    <button class="btn btn-y" onclick="closeEditUses()">Cancelar</button>
+    <button class="btn btn-g" onclick="saveEditUses()">Salvar</button>
   </div>
 </div></div>
 
 <div class="modal-bg" id="renameModal"><div class="modal">
-  <h3>Renomear Chave</h3>
+  <h3>✏️ Renomear Chave</h3>
   <input type="hidden" id="renameCode">
-  <div style="margin-bottom:14px">
-    <div style="font-size:12px;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Novo nome</div>
-    <input type="text" id="renameValue" maxlength="60" style="width:100%;padding:10px;font-size:14px">
-  </div>
-  <div class="modal-actions">
-    <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeRename()">Cancelar</button>
-    <button class="btn bp" onclick="saveRename()">Salvar</button>
+  <div class="modal-row"><label>Novo nome</label><input type="text" id="renameValue" maxlength="60"></div>
+  <div class="mactions">
+    <button class="btn btn-y" onclick="closeRename()">Cancelar</button>
+    <button class="btn btn-g" onclick="saveRename()">Salvar</button>
   </div>
 </div></div>
 
 <div class="modal-bg" id="phonesModal"><div class="modal">
-  <h3>Números — <span id="phonesLabel"></span></h3>
-  <div id="phonesList" style="margin-bottom:14px;max-height:220px;overflow-y:auto;min-height:40px"></div>
-  <div class="modal-actions">
-    <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closePhones()">Fechar</button>
-    <button class="btn bd" id="removeAllBtn" onclick="removeAllPhones()">Remover Todos</button>
+  <h3>📱 Números — <span id="phonesLabel"></span></h3>
+  <div id="phonesList" style="max-height:220px;overflow-y:auto;margin-bottom:12px;min-height:36px"></div>
+  <div class="mactions">
+    <button class="btn btn-y" onclick="closePhones()">Fechar</button>
+    <button class="btn btn-r" id="removeAllBtn" onclick="removeAllPhones()">Remover Todos</button>
   </div>
 </div></div>
 
 <div class="modal-bg" id="noteModal"><div class="modal">
   <h3>📝 Nota — <span id="noteKeyLabel"></span></h3>
   <input type="hidden" id="noteKeyCode">
-  <textarea id="noteText" placeholder="Ex: Pagou até março, trial gratuito, cliente VIP..."></textarea>
-  <div class="modal-actions">
-    <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeNote()">Cancelar</button>
-    <button class="btn bp" onclick="saveNote()">Salvar Nota</button>
+  <div class="modal-row"><label>Anotação</label><textarea id="noteText" placeholder="Pagou até março, trial, VIP..."></textarea></div>
+  <div class="mactions">
+    <button class="btn btn-y" onclick="closeNote()">Cancelar</button>
+    <button class="btn btn-g" onclick="saveNote()">Salvar</button>
   </div>
 </div></div>
 
-<div class="modal-bg" id="assignModModal"><div class="modal" style="width:400px">
+<div class="modal-bg" id="assignModModal"><div class="modal modal-w">
   <h3>👮 Atribuir ao Moderador</h3>
-  <p style="font-size:12px;color:var(--muted);margin-bottom:16px">Selecione o moderador responsável por esta chave. Ela aparecerá no painel do moderador escolhido.</p>
+  <p style="font-size:11px;color:var(--muted);margin-bottom:14px">Chave: <span id="assignModLabel" style="color:var(--text);font-weight:700"></span></p>
   <input type="hidden" id="assignModCode">
-  <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;font-family:'Syne',sans-serif">Chave: <span id="assignModLabel" style="color:var(--text)"></span></div>
-  <div id="modListBtns" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px"></div>
-  <div style="display:flex;gap:8px;margin-top:4px">
-    <button class="btn" style="background:#ff475718;color:var(--red);border:1px solid #ff475730;flex:1" onclick="assignMod(document.getElementById('assignModCode').value,'')">🗑 Remover atribuição</button>
-    <button class="btn" style="background:#1e1e2e;color:var(--muted);flex:0 0 auto" onclick="closeAssignMod()">Cancelar</button>
+  <div class="mod-btn-row" id="modListBtns"></div>
+  <div class="mactions">
+    <button class="btn btn-r" onclick="assignMod(document.getElementById('assignModCode').value,'')">🗑 Remover</button>
+    <button class="btn btn-y" onclick="closeAssignMod()">Cancelar</button>
   </div>
 </div></div>
 
@@ -1602,10 +1678,14 @@ tr:hover td{background:#ffffff02}
 const _RA='${R_ADMIN}';
 const _MODS=${JSON.stringify(MODS.map(m => m.name))};
 
+
+const _RA='${R_ADMIN}';
+const _MODS=${JSON.stringify(MODS.map(m => m.name))};
+
 function toast(msg,ok=true){
   const t=document.getElementById('toast');
-  t.textContent=msg;t.style.background=ok?'var(--green)':'var(--red)';
-  t.style.color=ok?'#000':'#fff';t.style.display='block';
+  t.textContent=msg;t.className='toast '+(ok?'tok':'terr');
+  t.style.display='block';
   setTimeout(()=>t.style.display='none',3200);
 }
 
@@ -1620,13 +1700,12 @@ function openAssignMod(code,label,currentMod){
   _MODS.forEach(name=>{
     const btn=document.createElement('button');
     const isActive=currentMod===name;
-    btn.className='btn';
-    btn.style.cssText='font-size:13px;padding:10px 16px;text-align:left;display:flex;align-items:center;gap:10px;'+(isActive?'background:#7c3aed30;color:#c4b5fd;border:1px solid #7c3aed60':'background:#1e1e2e;color:var(--text);border:1px solid var(--border)');
-    btn.innerHTML=(isActive?'✅ ':'👤 ')+name+(isActive?' <span style="font-size:11px;color:#9b59b6;margin-left:auto">Atual</span>':'');
+    btn.className='mod-btn'+(isActive?' active':'');
+    btn.innerHTML=(isActive?'✅ ':'👤 ')+name+(isActive?' <span style="font-size:10px;margin-left:auto;opacity:.7">Atual</span>':'');
     btn.onclick=()=>assignMod(code,name);
     container.appendChild(btn);
   });
-  if(_MODS.length===0){container.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px;text-align:center">Nenhum moderador configurado.<br>Defina MOD_USER/PASS no Render.</div>';}
+  if(_MODS.length===0){container.innerHTML='<div style="color:var(--muted);font-size:12px;padding:12px;text-align:center">Nenhum moderador configurado.</div>';}
   document.getElementById('assignModModal').classList.add('open');
 }
 function closeAssignMod(){document.getElementById('assignModModal').classList.remove('open');}
@@ -1712,8 +1791,8 @@ async function doRefresh(){
     document.getElementById('s-total').textContent=d.totalKeys||0;
     document.getElementById('s-active').textContent=d.activeKeys||0;
     document.getElementById('s-logs').textContent=d.totalLogs||0;
-    const sw=document.getElementById('s-warn');sw.textContent=d.warnKeys||0;sw.style.color=d.warnKeys>0?'var(--orange)':'var(--green)';sw.closest('.sc').classList.toggle('warn-card',d.warnKeys>0);
-    const ssu=document.getElementById('s-suspect');if(ssu){ssu.textContent=d.suspectKeys||0;ssu.style.color=d.suspectKeys>0?'var(--red)':'';ssu.closest('.sc').classList.toggle('danger-card',d.suspectKeys>0);}
+    const sw=document.getElementById('s-warn');sw.textContent=d.warnKeys||0;sw.style.color=d.warnKeys>0?'var(--orange)':'var(--green)';const swsc=sw.closest('.sc');swsc.classList.toggle('sc-warn',d.warnKeys>0);
+    const ssu=document.getElementById('s-suspect');if(ssu){ssu.textContent=d.suspectKeys||0;ssu.style.color=d.suspectKeys>0?'var(--red)':'';ssu.closest('.sc').classList.toggle('sc-danger',d.suspectKeys>0);}
     document.getElementById('kb').innerHTML=d.keysHtml||'';
     document.getElementById('lb').innerHTML=d.logsHtml||'';
     filterKeys();
@@ -1808,7 +1887,7 @@ function openPhones(code,label){
   fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/phones').then(r=>r.json()).then(d=>{
     if(!d.phones||d.phones.length===0){list.innerHTML='<em style="color:var(--muted);font-size:12px">Nenhum número cadastrado</em>';document.getElementById('removeAllBtn').style.display='none';modal.dataset.phones='[]';return;}
     document.getElementById('removeAllBtn').style.display='';modal.dataset.phones=JSON.stringify(d.phones);
-    list.innerHTML=d.phones.map((ph,i)=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)"><span style="font-size:13px;font-family:monospace;color:var(--text)">'+ph.replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]))+'</span><button class="bs bd" data-idx="'+i+'" onclick="removePhone(this)">Remover</button></div>').join('');
+    list.innerHTML=d.phones.map((ph,i)=>'<div class="ph-item"><span class="ph-num">'+ph.replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]))+'</span><button class="ab ab-r" data-idx="'+i+'" onclick="removePhone(this)">Remover</button></div>').join('');
   }).catch(()=>{list.innerHTML='<em style="color:var(--red)">Erro ao carregar</em>';});
 }
 function closePhones(){document.getElementById('phonesModal').classList.remove('open');}
@@ -1839,9 +1918,11 @@ async function saveNote(){
 async function exportCSV(){
   try{const r=await fetch(_RA+'/api/export/csv');if(r.status===401){toast('Sessão expirada',false);return;}const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='zvm-chaves-'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(url);toast('CSV exportado!');}catch(e){toast('Erro ao exportar',false);}
 }
+
 </script>
 ${CANVAS_BG}</body></html>`;
 }
+
 
 function renderPlanosPage() {
   const PLANOS = [
