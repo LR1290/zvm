@@ -834,7 +834,7 @@ async function createKey(){
     const body={label,maxUses,deferred:true};
     if(days>0)body.expireDays=days;
     if(hours>0)body.expireHours=hours;
-    const r=await fetch(_RM+'/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const r=await fetch(_RM+'/api/keys', {credentials:'include',method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(r.status===401){toast('Sessão expirada.',false);setTimeout(()=>location.href=_RM+'/logout',1500);return;}
     const d=await r.json();
     if(!d.ok){toast('Erro: '+(d.error||'desconhecido'),false);return;}
@@ -928,7 +928,7 @@ function updateStats(keys,myName){
 
 async function loadHistory(){
   try{
-    const r=await fetch(_RM+'/api/my-keys');
+    const r=await fetch(_RM+'/api/my-keys', {credentials:'include'});
     if(r.status===401){toast('Sessão expirada. Redirecionando...',false);setTimeout(()=>location.href=_RM+'/logout',1500);return;}
     const d=await r.json();
     if(d.error==='db_error'){toast('Erro de conexão. Tente novamente.',false);return;}
@@ -980,7 +980,7 @@ async function saveModNote(){
   const code=document.getElementById('modNoteCode').value;
   const note=document.getElementById('modNoteText').value.trim();
   try{
-    const r=await fetch(_RM+'/api/keys/'+encodeURIComponent(code)+'/note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note})});
+    const r=await fetch(_RM+'/api/keys/'+encodeURIComponent(code, {credentials:'include'})+'/note', {credentials:'include',method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note})});
     if(r.status===401){toast('Sessão expirada.',false);return;}
     const d=await r.json();
     if(d.ok){toast('✅ Nota salva!');closeModNote();await loadHistory();}
@@ -1668,7 +1668,7 @@ function closeModules(){document.getElementById('modulesModal').classList.remove
 document.getElementById('modulesModal').addEventListener('click',function(e){if(e.target===this)closeModules();});
 async function toggleModule(code,checkbox){
   const moduleName=checkbox.dataset.mod,enabled=checkbox.checked;
-  try{const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/modules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({module:moduleName,enabled})});const d=await r.json();
+  try{const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code, {credentials:'include'})+'/modules', {credentials:'include',method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({module:moduleName,enabled})});const d=await r.json();
   if(d.ok){toast((enabled?'✅ ':'🔴 ')+moduleName+' '+(enabled?'ativado':'desativado'));const sp=checkbox.nextElementSibling;if(sp){sp.textContent=enabled?'ATIVO':'INATIVO';sp.className='mod-st '+(enabled?'on':'off');}await doRefresh();}else{toast('Erro: '+(d.error||'?'),false);checkbox.checked=!enabled;}}
   catch(e){toast('Erro de rede',false);checkbox.checked=!enabled;}
 }
@@ -1685,7 +1685,7 @@ function openAssignMod(code,label,currentMod){
 function closeAssignMod(){document.getElementById('assignModModal').classList.remove('open');}
 document.getElementById('assignModModal').addEventListener('click',function(e){if(e.target===this)closeAssignMod();});
 async function assignMod(code,modName){
-  try{const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/assign-mod',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({modName})});const d=await r.json();
+  try{const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code, {credentials:'include'})+'/assign-mod', {credentials:'include',method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({modName})});const d=await r.json();
   if(d.ok){toast(modName?'✅ Atribuída a: '+modName:'Atribuição removida');closeAssignMod();await doRefresh();}else toast('Erro: '+(d.error||'?'),false);}
   catch(e){toast('Erro de rede',false);}
 }
@@ -1734,7 +1734,7 @@ async function generateKey(){
     const body={label,maxUses};
     if(days>0)body.expireDays=days;if(hours>0)body.expireHours=hours;if(mins>0)body.expireMinutes=mins;
     const def=document.getElementById('ndeferred');if(def&&def.checked)body.deferred=true;
-    const r=await fetch(_RA+'/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const r=await fetch(_RA+'/api/keys', {credentials:'include',method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href=_RA,1500);return;}
     const d=await r.json();
     if(d.ok){const exp=[];if(days>0)exp.push(days+'d');if(hours>0)exp.push(hours+'h');if(mins>0)exp.push(mins+'min');
@@ -1747,7 +1747,7 @@ async function generateKey(){
 
 async function doRefresh(){
   try{
-    const r=await fetch(_RA+'/api/data');if(r.status===401)return;const d=await r.json();if(d.error)return;
+    const r=await fetch(_RA+'/api/data', {credentials:'include'});if(r.status===401)return;const d=await r.json();if(d.error)return;
     document.getElementById('s-total').textContent=d.totalKeys||0;
     document.getElementById('s-active').textContent=d.activeKeys||0;
     document.getElementById('s-warn').textContent=d.warnKeys||0;
@@ -1760,20 +1760,20 @@ async function doRefresh(){
 }
 setInterval(doRefresh,120000);
 
-async function toggleKey(code){try{const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/toggle',{method:'POST'});if(r.status===401){toast('Sessão expirada',false);return;}const d=await r.json();if(d.ok){toast(d.active?'Chave liberada!':'Chave bloqueada!');await doRefresh();}}catch(e){toast('Erro',false);}}
-async function deleteKey(code){if(!confirm('Excluir chave '+code+'?'))return;try{const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code),{method:'DELETE'});if(r.status===401){toast('Sessão expirada',false);return;}const d=await r.json();if(d.ok){toast('Chave excluída');await doRefresh();}}catch(e){toast('Erro',false);}}
+async function toggleKey(code){try{const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code, {credentials:'include'})+'/toggle', {credentials:'include',method:'POST'});if(r.status===401){toast('Sessão expirada',false);return;}const d=await r.json();if(d.ok){toast(d.active?'Chave liberada!':'Chave bloqueada!');await doRefresh();}}catch(e){toast('Erro',false);}}
+async function deleteKey(code){if(!confirm('Excluir chave '+code+'?'))return;try{const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code, {credentials:'include'}), {credentials:'include',method:'DELETE'});if(r.status===401){toast('Sessão expirada',false);return;}const d=await r.json();if(d.ok){toast('Chave excluída');await doRefresh();}}catch(e){toast('Erro',false);}}
 
 async function filterLog(){
   const date=document.getElementById('logDate').value;const q=(document.getElementById('logSearch').value||'').toLowerCase();
   if(!date&&!q)return doRefresh();
   try{const params=new URLSearchParams();if(date)params.set('date',date);if(q)params.set('q',q);
-  const r=await fetch(_RA+'/api/logs?'+params.toString());if(r.status===401)return;const d=await r.json();if(d.ok)document.getElementById('lb').innerHTML=d.logsHtml||'';}
+  const r=await fetch(_RA+'/api/logs?'+params.toString(, {credentials:'include'}));if(r.status===401)return;const d=await r.json();if(d.ok)document.getElementById('lb').innerHTML=d.logsHtml||'';}
   catch(e){toast('Erro ao filtrar',false);}
 }
 function clearFilters(){document.getElementById('logDate').value='';document.getElementById('logSearch').value='';doRefresh();}
 async function clearLog(){
   const date=document.getElementById('logDate').value;if(!confirm(date?'Limpar logs do dia '+date+'?':'Limpar TODO o log?'))return;
-  try{const body=date?{date}:{};const r=await fetch(_RA+'/api/logs',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(d.ok){toast(date?'Log do dia limpo!':'Log apagado!');clearFilters();}}catch(e){toast('Erro',false);}
+  try{const body=date?{date}:{};const r=await fetch(_RA+'/api/logs', {credentials:'include',method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(d.ok){toast(date?'Log do dia limpo!':'Log apagado!');clearFilters();}}catch(e){toast('Erro',false);}
 }
 
 function openRenew(code,label){document.getElementById('renewKeyCode').value=code;document.getElementById('renewKeyLabel').textContent=label;['renewDays','renewHours','renewMins'].forEach(id=>document.getElementById(id).value='');document.getElementById('renewModal').classList.add('open');document.getElementById('renewDays').focus();}
@@ -1782,7 +1782,7 @@ document.getElementById('renewModal').addEventListener('click',function(e){if(e.
 async function saveRenew(){
   const code=document.getElementById('renewKeyCode').value;const days=parseInt(document.getElementById('renewDays').value)||0;const hours=parseInt(document.getElementById('renewHours').value)||0;const mins=parseInt(document.getElementById('renewMins').value)||0;
   if(!days&&!hours&&!mins){toast('Informe pelo menos um valor.',false);return;}
-  const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/renew',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({days,hours,mins})});
+  const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code, {credentials:'include'})+'/renew', {credentials:'include',method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({days,hours,mins})});
   const d=await r.json();if(d.ok){toast('✅ Expira: '+new Date(d.expiresAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}));closeRenew();await doRefresh();}else toast('Erro: '+(d.error||'?'),false);
 }
 
@@ -1792,7 +1792,7 @@ document.getElementById('editUsesModal').addEventListener('click',function(e){if
 async function saveEditUses(){
   const code=document.getElementById('editUsesCode').value;const val=document.getElementById('editUsesValue').value.trim();const maxUses=val===''?3:parseInt(val);
   if(isNaN(maxUses)||maxUses<-1){toast('Valor inválido.',false);return;}
-  const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/max-uses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({maxUses})});
+  const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code, {credentials:'include'})+'/max-uses', {credentials:'include',method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({maxUses})});
   const d=await r.json();if(d.ok){toast('✅ '+(maxUses===-1?'Ilimitado':maxUses+' dispositivo(s)'));closeEditUses();await doRefresh();}else toast('Erro: '+(d.error||'?'),false);
 }
 
@@ -1803,14 +1803,14 @@ document.getElementById('renameValue').addEventListener('keydown',function(e){if
 async function saveRename(){
   const code=document.getElementById('renameCode').value;const label=document.getElementById('renameValue').value.trim();
   if(!label){toast('Nome não pode ser vazio.',false);return;}
-  const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/label',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label})});
+  const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code, {credentials:'include'})+'/label', {credentials:'include',method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label})});
   const d=await r.json();if(d.ok){toast('Renomeado: '+label);closeRename();await doRefresh();}else toast('Erro: '+(d.error||'?'),false);
 }
 
 function openPhones(code,label){
   const modal=document.getElementById('phonesModal');modal.dataset.code=code;document.getElementById('phonesLabel').textContent=label;
   const list=document.getElementById('phonesList');list.innerHTML='Carregando...';modal.classList.add('open');
-  fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/phones').then(r=>r.json()).then(d=>{
+  fetch(_RA+'/api/keys/'+encodeURIComponent(code, {credentials:'include'})+'/phones').then(r=>r.json()).then(d=>{
     if(!d.phones||!d.phones.length){list.innerHTML='<em style="color:var(--t2);font-size:12px">Nenhum número</em>';document.getElementById('removeAllBtn').style.display='none';modal.dataset.phones='[]';return;}
     document.getElementById('removeAllBtn').style.display='';modal.dataset.phones=JSON.stringify(d.phones);
     list.innerHTML=d.phones.map((ph,i)=>'<div class="ph-item"><span class="ph-num">'+ph.replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]))+'</span><button class="ab ab-red" data-idx="'+i+'" onclick="removePhone(this)">Remover</button></div>').join('');
@@ -1821,12 +1821,12 @@ document.getElementById('phonesModal').addEventListener('click',function(e){if(e
 async function removePhone(btn){
   const modal=document.getElementById('phonesModal'),code=modal.dataset.code,phones=JSON.parse(modal.dataset.phones||'[]'),phone=phones[parseInt(btn.dataset.idx)];
   if(!phone){toast('Número não encontrado.',false);return;}
-  const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/phones',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone})});
+  const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code, {credentials:'include'})+'/phones', {credentials:'include',method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone})});
   const d=await r.json();if(d.ok){toast('Número removido');closePhones();await doRefresh();}else toast('Erro: '+(d.error||'?'),false);
 }
 async function removeAllPhones(){
   const code=document.getElementById('phonesModal').dataset.code;if(!confirm('Remover TODOS os números?'))return;
-  const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/phones',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({all:true})});
+  const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code, {credentials:'include'})+'/phones', {credentials:'include',method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({all:true})});
   const d=await r.json();if(d.ok){toast('Todos removidos.');closePhones();await doRefresh();}else toast('Erro: '+(d.error||'?'),false);
 }
 
@@ -1836,12 +1836,12 @@ document.getElementById('noteModal').addEventListener('click',function(e){if(e.t
 document.getElementById('kb').addEventListener('click',function(e){const td=e.target.closest('.note-cell');if(!td)return;openNote(td.dataset.code||'',td.dataset.note||'');});
 async function saveNote(){
   const code=document.getElementById('noteKeyCode').value,note=document.getElementById('noteText').value.trim();
-  const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note})});
+  const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code, {credentials:'include'})+'/note', {credentials:'include',method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note})});
   const d=await r.json();if(d.ok){toast('Nota salva!');closeNote();await doRefresh();}else toast('Erro ao salvar nota',false);
 }
 
 async function exportCSV(){
-  try{const r=await fetch(_RA+'/api/export/csv');if(r.status===401){toast('Sessão expirada',false);return;}const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='zvm-chaves-'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(url);toast('CSV exportado!');}catch(e){toast('Erro ao exportar',false);}
+  try{const r=await fetch(_RA+'/api/export/csv', {credentials:'include'});if(r.status===401){toast('Sessão expirada',false);return;}const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='zvm-chaves-'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(url);toast('CSV exportado!');}catch(e){toast('Erro ao exportar',false);}
 }
 </script>
 </body></html>`;
