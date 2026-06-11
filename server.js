@@ -59,9 +59,9 @@ async function getMongoDb() {
   try {
     if (!_mongoClient) {
       _mongoClient = new MongoClient(MONGODB_URI, {
-        serverSelectionTimeoutMS: 5000,
-        connectTimeoutMS: 5000,
-        socketTimeoutMS: 5000,
+        serverSelectionTimeoutMS: 10000,
+        connectTimeoutMS: 10000,
+        socketTimeoutMS: 10000,
         tls: true,
         tlsAllowInvalidCertificates: false,
         tlsAllowInvalidHostnames: false,
@@ -1274,10 +1274,6 @@ function buildKeysHtml() {
     const expired  = isKeyExpired(k);
     const warnSoon = isKeyExpiringSoon(k);
     const uniqueIps = new Set(logs.filter(l => l.keyCode === code && l.ip).map(l => l.ip)).size;
-    const recentLogs = logs.filter(l => l.keyCode === code && l.timestamp > new Date(Date.now()-86400000).toISOString());
-    const recentIps  = new Set(recentLogs.filter(l => l.ip).map(l => l.ip));
-    const clearedAt  = k.suspectClearedAt ? new Date(k.suspectClearedAt) : null;
-    const isSuspect  = recentIps.size > 3 && !(clearedAt && (Date.now()-clearedAt.getTime()) < 172800000);
 
     const expHtml = (!k.expiresAt && k.expireDuration) ? (() => {
       const d=Math.floor(k.expireDuration/86400000),h=Math.floor((k.expireDuration%86400000)/3600000),m=Math.floor((k.expireDuration%3600000)/60000);
@@ -1289,13 +1285,12 @@ function buildKeysHtml() {
       return `<br><span style="font-size:11px;color:${expired?'var(--red)':warnSoon?'var(--orange)':'var(--yellow)'};">${label}</span>`;
     })() : '';
 
-    const rowStyle = isSuspect ? ' style="background:#ff000008;outline:1px solid #ff475718"' : warnSoon && !expired ? ' style="background:#ff860008"' : '';
-    const suspectBadge = isSuspect ? `<span title="${recentIps.size} IPs nas últimas 24h" style="color:#ff4757;font-size:11px;margin-left:4px">⚠</span>` : '';
+    const rowStyle = warnSoon && !expired ? ' style="background:#ff860008"' : '';
 
     return `
-<tr data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${k.active?'ativo':'bloqueado'}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-suspect="${isSuspect?'1':''}"${rowStyle}>
+<tr data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${k.active?'ativo':'bloqueado'}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-expired="${expired?'1':''}"${rowStyle}>
   <td><span class="kc">${escHtml(code)}</span></td>
-  <td class="td-name">${escHtml(k.label)}${suspectBadge}</td>
+  <td class="td-name">${escHtml(k.label)}</td>
   <td><span class="st-badge ${k.active?(k.expireDuration&&!k.expiresAt?'st-wait':'st-on'):'st-off'}">${k.active?(k.expireDuration&&!k.expiresAt?'AGUARDANDO':'ATIVO'):'BLOQUEADO'}</span></td>
   <td><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'var(--muted)'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
   <td style="color:var(--muted)">${escHtml(k.lastPhone||'—')}</td>
@@ -1311,7 +1306,6 @@ function buildKeysHtml() {
     <button class="ab ab-g" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">Renomear</button>
     ${(k.phones||[]).length>0?`<button class="ab ab-r" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Números</button>`:''}
     <button class="ab ab-r" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
-    ${isSuspect?`<button class="ab ab-y" onclick="clearSuspect('${escHtml(code)}')">🕵️</button>`:''}
     <button class="ab ab-p" data-code="${escHtml(code)}" data-label="${escHtml(k.label||'')}" data-modnote="${escHtml((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1]||'')}" onclick="openAssignModFromEl(this)">👮 Mod</button>
   </td>
 </tr>`;
@@ -1338,12 +1332,7 @@ function buildLogsHtml(arr) {
 
 function renderAdminDashboard() {
   const expiringSoon = Object.values(keys).filter(k => k.active && isKeyExpiringSoon(k)).length;
-  const suspectKeys  = Object.entries(keys).filter(([code, k]) => {
-    const cl = k.suspectClearedAt ? new Date(k.suspectClearedAt) : null;
-    if (cl && (Date.now()-cl.getTime()) < 172800000) return false;
-    const rl = logs.filter(l => l.keyCode === code && l.timestamp > new Date(Date.now()-86400000).toISOString());
-    return new Set(rl.filter(l=>l.ip).map(l=>l.ip)).size > 3;
-  }).length;
+  const expiredKeys   = Object.values(keys).filter(k => isKeyExpired(k)).length;
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -1533,7 +1522,7 @@ tr:hover td{background:#00ff0003}
     <div class="sc sc-green"><div class="sc-icon">🔑</div><div class="sc-n" id="s-total">${Object.keys(keys).length}</div><div class="sc-l">Total de Chaves</div></div>
     <div class="sc"><div class="sc-icon">✅</div><div class="sc-n" id="s-active">${Object.values(keys).filter(k=>k.active).length}</div><div class="sc-l">Chaves Ativas</div></div>
     <div class="sc ${expiringSoon>0?'sc-warn':''}"><div class="sc-icon">⏰</div><div class="sc-n" id="s-warn">${expiringSoon}</div><div class="sc-l">Expirando em ${EXPIRY_WARN_HOURS}h</div></div>
-    <div class="sc ${suspectKeys>0?'sc-danger':''}"><div class="sc-icon">🕵️</div><div class="sc-n" id="s-suspect">${suspectKeys}</div><div class="sc-l">Suspeitas (24h)</div></div>
+    <div class="sc ${expiredKeys>0?'sc-danger':''}"><div class="sc-icon">⏰</div><div class="sc-n" id="s-expired">${expiredKeys}</div><div class="sc-l">Expiradas</div></div>
     <div class="sc"><div class="sc-icon">📋</div><div class="sc-n" id="s-logs">${logs.length}</div><div class="sc-l">Acessos no Log</div></div>
   </div>
 
@@ -1558,7 +1547,7 @@ tr:hover td{background:#00ff0003}
         <option value="">Todos os status</option>
         <option value="ativo">Ativas</option>
         <option value="bloqueado">Bloqueadas</option>
-        <option value="suspeita">🕵️ Suspeitas</option>
+        <option value="expirada">⏰ Expiradas</option>
       </select>
     </div>
     <div class="tov">
@@ -1725,11 +1714,11 @@ function filterKeys(){
     const label=(row.dataset.label||'').toLowerCase();
     const phone=(row.dataset.phone||'').toLowerCase();
     const status=(row.dataset.status||'').toLowerCase();
-    const suspect=(row.dataset.suspect||'');
+    const expired2=(row.dataset.expired||'');
     const code=(row.querySelector('.kc')||{}).textContent||'';
     const ip=(row.cells[5]||{}).textContent||'';
     const matchQ=!q||label.includes(q)||phone.includes(q)||code.toLowerCase().includes(q)||ip.toLowerCase().includes(q);
-    const matchSt=!st||(st==='suspeita'?suspect==='1':status===st);
+    const matchSt=!st||(st==='expirada'?expired2==='1':status===st);
     row.style.display=(matchQ&&matchSt)?'':'none';
   });
 }
@@ -1788,7 +1777,7 @@ async function doRefresh(){
     document.getElementById('s-active').textContent=d.activeKeys||0;
     document.getElementById('s-logs').textContent=d.totalLogs||0;
     const sw=document.getElementById('s-warn');sw.textContent=d.warnKeys||0;sw.style.color=d.warnKeys>0?'var(--orange)':'var(--green)';const swsc=sw.closest('.sc');swsc.classList.toggle('sc-warn',d.warnKeys>0);
-    const ssu=document.getElementById('s-suspect');if(ssu){ssu.textContent=d.suspectKeys||0;ssu.style.color=d.suspectKeys>0?'var(--red)':'';ssu.closest('.sc').classList.toggle('sc-danger',d.suspectKeys>0);}
+    const sex=document.getElementById('s-expired');if(sex){sex.textContent=d.expiredKeys||0;sex.style.color=d.expiredKeys>0?'var(--red)':'';sex.closest('.sc').classList.toggle('sc-danger',d.expiredKeys>0);}
     document.getElementById('kb').innerHTML=d.keysHtml||'';
     document.getElementById('lb').innerHTML=d.logsHtml||'';
     filterKeys();
@@ -1802,15 +1791,6 @@ async function toggleKey(code){
 async function deleteKey(code){
   if(!confirm('Excluir chave '+code+'?'))return;
   try{const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code),{method:'DELETE'});if(r.status===401){toast('Sessão expirada',false);return;}const d=await r.json();if(d.ok){toast('Chave excluída');await doRefresh();}}catch(e){toast('Erro',false);}
-}
-async function clearSuspect(code){
-  if(!confirm('Marcar chave '+code+' como verificada e remover alerta de suspeita?'))return;
-  try{
-    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/clear-suspect',{method:'POST'});
-    const d=await r.json();
-    if(d.ok){toast('✅ Alerta removido — chave marcada como verificada');await doRefresh();}
-    else toast('Erro: '+(d.error||'?'),false);
-  }catch(e){toast('Erro de rede',false);}
 }
 
 async function filterLog(){
@@ -2749,12 +2729,23 @@ async function handleRequest(req, res) {
       sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada.', isLoggedIn: false });
       return;
     }
+    if (!serverReady) {
+      sendJson(res, { isLoggedIn: true, numberWarning: false, segments: [],
+        data: { key: keyCode, isLoggedIn: true, isPremium: true, permissions: [], message: '' }
+      });
+      return;
+    }
     if (!keys[keyCode]) {
       try {
         const db = await getMongoDb();
         const doc = await db.collection('store').findOne({ _id: 'keys' });
         if (doc && doc.data && doc.data[keyCode]) keys[keyCode] = doc.data[keyCode];
-      } catch(e) { /* continua */ }
+      } catch(e) {
+        sendJson(res, { isLoggedIn: true, numberWarning: false, segments: [],
+          data: { key: keyCode, isLoggedIn: true, isPremium: true, permissions: [], message: '' }
+        });
+        return;
+      }
     }
     if (!keys[keyCode]) {
       sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada. Contate o vendedor.', isLoggedIn: false });
@@ -2825,8 +2816,9 @@ async function handleRequest(req, res) {
   }
 
   if (p === R_EXT+'/v3/check-status' && req.method === 'POST') {
+    if (!serverReady) { sendJson(res, { active: true }); return; }
     if (!checkRateLimit(ip, 'check_status', 60, 60000)) {
-      sendJson(res, { active: true }); return; // silencioso — não deslogar por rate limit
+      sendJson(res, { active: true }); return;
     }
     if (parseInt(req.headers['content-length'] || 0) > MAX_BODY_SIZE) {
       sendJson(res, { active: true }); return;
@@ -2834,7 +2826,6 @@ async function handleRequest(req, res) {
     const rawBody = await new Promise(r=>{let b='';req.on('data',c=>{b+=c;});req.on('end',()=>r(b));});
     let body; try { body = JSON.parse(rawBody); } catch { body = {}; }
     const keyCode = (body.authKey || '').toLowerCase().slice(0, 20);
-    if (!serverReady) { sendJson(res, { active: true }); return; }
     if (!keyCode)     { sendJson(res, { active: true }); return; }
     if (!keys[keyCode]) {
       try {
@@ -3040,21 +3031,14 @@ async function handleRequest(req, res) {
 
   if (p === R_ADMIN+'/api/data' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const suspectKeys = Object.keys(keys).filter(code => {
-      const k2 = keys[code];
-      const cl2 = k2.suspectClearedAt ? new Date(k2.suspectClearedAt) : null;
-      if (cl2 && (Date.now() - cl2.getTime()) < 172800000) return false;
-      const recentLogs = logs.filter(l => l.keyCode === code && l.timestamp > new Date(Date.now()-86400000).toISOString());
-      return new Set(recentLogs.filter(l=>l.ip).map(l=>l.ip)).size > 3;
-    }).length;
     sendJson(res, {
-      totalKeys:     Object.keys(keys).length,
-      activeKeys:    Object.values(keys).filter(k=>k.active).length,
-      warnKeys:      Object.values(keys).filter(k=>k.active && isKeyExpiringSoon(k)).length,
-      suspectKeys,
-      totalLogs:     logs.length,
-      keysHtml:      buildKeysHtml(),
-      logsHtml:      buildLogsHtml()
+      totalKeys:   Object.keys(keys).length,
+      activeKeys:  Object.values(keys).filter(k=>k.active).length,
+      warnKeys:    Object.values(keys).filter(k=>k.active && isKeyExpiringSoon(k)).length,
+      expiredKeys: Object.values(keys).filter(k=>isKeyExpired(k)).length,
+      totalLogs:   logs.length,
+      keysHtml:    buildKeysHtml(),
+      logsHtml:    buildLogsHtml()
     }); return;
   }
 
@@ -3179,14 +3163,6 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true }); return;
   }
 
-  const codeClearSuspect = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/clear-suspect$`));
-  if (codeClearSuspect && req.method === 'POST') {
-    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    if (!keys[codeClearSuspect]) { sendJson(res, { error: 'not found' }, 404); return; }
-    keys[codeClearSuspect].suspectClearedAt = new Date().toISOString();
-    saveKey(codeClearSuspect);
-    sendJson(res, { ok: true }); return;
-  }
 
   const codeNote = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/note$`));
   if (codeNote && req.method === 'POST') {
