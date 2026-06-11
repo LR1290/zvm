@@ -1289,6 +1289,7 @@ function buildKeysHtml() {
 
     return `
 <tr data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${k.active?'ativo':'bloqueado'}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-expired="${expired?'1':''}"${rowStyle}>
+  <td style="padding:7px 6px 7px 12px"><input type="checkbox" class="row-chk" data-code="${escHtml(code)}" style="accent-color:var(--green);width:14px;height:14px;cursor:pointer" onchange="onRowCheck()"></td>
   <td><span class="kc">${escHtml(code)}</span></td>
   <td class="td-name">${escHtml(k.label)}</td>
   <td><span class="st-badge ${k.active?(k.expireDuration&&!k.expiresAt?'st-wait':'st-on'):'st-off'}">${k.active?(k.expireDuration&&!k.expiresAt?'AGUARDANDO':'ATIVO'):'BLOQUEADO'}</span></td>
@@ -1550,9 +1551,11 @@ tr:hover td{background:#00ff0003}
         <option value="expirada">⏰ Expiradas</option>
       </select>
     </div>
+    <div id="bulk-bar" style="display:none;align-items:center;gap:10px;padding:8px 15px;background:#ff475710;border-bottom:1px solid #ff475730"><span id="bulk-count" style="font-size:12px;color:var(--red);font-weight:700"></span><button class="ab ab-r" onclick="deleteSelected()">🗑 Excluir selecionadas</button><button class="ab" style="background:transparent;border:1px solid var(--border2);color:var(--muted)" onclick="clearSelection()">✕ Limpar seleção</button></div>
     <div class="tov">
       <table>
         <thead><tr>
+          <th style="width:32px;padding:8px 6px 8px 12px"><input type="checkbox" id="chk-all" title="Selecionar todas visíveis" style="accent-color:var(--green);width:14px;height:14px;cursor:pointer" onchange="toggleSelectAll(this)"></th>
           <th onclick="sortKeys('code')">Chave</th>
           <th onclick="sortKeys('label')" id="th-label">Cliente</th>
           <th onclick="sortKeys('status')" id="th-status">Status</th>
@@ -1708,6 +1711,7 @@ async function assignMod(code,modName){
 }
 
 function filterKeys(){
+  clearSelection();
   const q=(document.getElementById('search-input').value||'').toLowerCase();
   const st=document.getElementById('filter-status').value;
   document.querySelectorAll('#kb tr[data-label]').forEach(row=>{
@@ -1721,6 +1725,43 @@ function filterKeys(){
     const matchSt=!st||(st==='expirada'?expired2==='1':status===st);
     row.style.display=(matchQ&&matchSt)?'':'none';
   });
+}
+
+function onRowCheck(){
+  const checked=document.querySelectorAll('.row-chk:checked').length;
+  const all=document.querySelectorAll('.row-chk').length;
+  const chkAll=document.getElementById('chk-all');
+  if(chkAll)chkAll.indeterminate=checked>0&&checked<all,chkAll.checked=checked===all&&all>0;
+  const bar=document.getElementById('bulk-bar');
+  const cnt=document.getElementById('bulk-count');
+  if(checked>0){bar.style.display='flex';cnt.textContent=checked+' chave(s) selecionada(s)';}
+  else{bar.style.display='none';}
+}
+function toggleSelectAll(chk){
+  document.querySelectorAll('#kb tr[data-label]:not([style*="display:none"]) .row-chk').forEach(c=>{c.checked=chk.checked;});
+  onRowCheck();
+}
+function clearSelection(){
+  document.querySelectorAll('.row-chk').forEach(c=>c.checked=false);
+  const chkAll=document.getElementById('chk-all');
+  if(chkAll){chkAll.checked=false;chkAll.indeterminate=false;}
+  onRowCheck();
+}
+async function deleteSelected(){
+  const checked=Array.from(document.querySelectorAll('.row-chk:checked'));
+  if(!checked.length){toast('Nenhuma chave selecionada.',false);return;}
+  if(!confirm('Excluir '+checked.length+' chave(s) selecionada(s)? Esta ação é irreversível.'))return;
+  let ok=0,fail=0;
+  for(const c of checked){
+    try{
+      const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(c.dataset.code),{method:'DELETE'});
+      const d=await r.json();
+      if(d.ok)ok++;else fail++;
+    }catch{fail++;}
+  }
+  toast(ok+' excluída(s)'+(fail?' · '+fail+' erro(s)':''));
+  clearSelection();
+  await doRefresh();
 }
 
 let _sortCol=null,_sortDir=1;
@@ -1780,6 +1821,7 @@ async function doRefresh(){
     const sex=document.getElementById('s-expired');if(sex){sex.textContent=d.expiredKeys||0;sex.style.color=d.expiredKeys>0?'var(--red)':'';sex.closest('.sc').classList.toggle('sc-danger',d.expiredKeys>0);}
     document.getElementById('kb').innerHTML=d.keysHtml||'';
     document.getElementById('lb').innerHTML=d.logsHtml||'';
+    clearSelection();
     filterKeys();
   }catch(e){console.error('Refresh error',e);}
 }
