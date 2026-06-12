@@ -61,7 +61,13 @@ async function getMongoDb() {
       _mongoClient = new MongoClient(MONGODB_URI, {
         serverSelectionTimeoutMS: 10000,
         connectTimeoutMS: 10000,
-        socketTimeoutMS: 10000,
+        socketTimeoutMS: 45000,
+        maxPoolSize: 10,
+        minPoolSize: 2,
+        maxIdleTimeMS: 60000,
+        waitQueueTimeoutMS: 10000,
+        retryWrites: true,
+        retryReads: true,
         tls: true,
         tlsAllowInvalidCertificates: false,
         tlsAllowInvalidHostnames: false,
@@ -583,7 +589,7 @@ input:focus{border-color:#4f8ef7}
 .err{background:#ff475715;border:1px solid #ff4757;border-radius:6px;color:#ff4757;padding:11px 14px;font-size:14px;margin-bottom:16px;font-family:'Syne',sans-serif}
 </style></head><body>
 <div class="card">
-  <div class="logo">⚡ ZVM</div>
+  <div class="logo">⚡ ADMINISTRADOR</div>
   <div class="sub">Painel de Moderação</div>
   <div class="badge">👮 Acesso Moderador</div>
   ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
@@ -1021,26 +1027,27 @@ input:focus{border-color:#00ff87}
 </style>
 </head><body>
 <div class="card">
-  <div class="logo">⚡ ZVM</div>
+  <div class="logo">⚡ ADMINISTRADOR</div>
   <div class="sub">Ativação da Extensão</div>
   ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
   <form method="POST" action="/extension/auth/verify">
     <input type="hidden" name="callback" value="${escHtml(callback)}">
     <label>Sua Chave de Ativação</label>
-    <input type="text" name="key" value="${escHtml(keyVal)}" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="20">
+    <input type="text" name="key" id="zvm-key-inp" value="${escHtml(keyVal)}" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="25">
     <p style="text-align:left;font-size:13px;color:#8a8aaa;margin-top:8px;font-family:'Syne',sans-serif">Você recebeu esta chave junto com a sua compra.</p>
     <button type="submit" class="btn">Ativar Agora</button>
   </form>
   <div class="hint">Precisa de ajuda ou quer renovar?<br><a href="/planos">💳 Ver Planos</a> · <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20referente%20a%20minha%20renova%C3%A7%C3%A3o." target="_blank">💬 Suporte no WhatsApp</a></div>
 </div>
+<script>(function(){var i=document.getElementById('zvm-key-inp');if(!i)return;function clean(v){return v.replace(/[^a-z0-9\-]/g,'').slice(0,20);}i.addEventListener('paste',function(e){e.preventDefault();var t=(e.clipboardData||window.clipboardData).getData('text');i.value=clean(t.toLowerCase());});i.addEventListener('input',function(){var s=i.selectionStart;i.value=clean(i.value);i.setSelectionRange(s,s);});})();</script>
 ${CANVAS_BG}</body></html>`;
 }
 
 function renderAdminLogin(error = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM Admin</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='900' font-size='15' fill='%2300ff00'%3EZV%3C/text%3E%3C/svg%3E">
+<title>ZVM — Admin</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='900' font-size='12' fill='%2300ff00'%3EZVM%3C/text%3E%3C/svg%3E">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--g:#00ff00;--bg:#080810;--card:#0d0d18;--border:#1a1a2e;--t:#e2e2f0;--m:#5a5a8a}
@@ -1081,115 +1088,261 @@ ${CANVAS_BG}</body></html>`;
 function renderClientPortal() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Portal do Cliente</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-:root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--border:#1c1c2e;--text:#e2e2f0;--muted:#8a8aaa;--radius:14px}
-body{background:var(--dark);min-height:100vh;display:flex;flex-direction:column;font-family:'Inter',sans-serif;overflow-x:hidden;color:var(--text)}
-nav{display:flex;align-items:center;justify-content:space-between;padding:14px 32px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040;flex-shrink:0}
-.nav-logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:6px;letter-spacing:-0.5px}
-.nav-links{display:flex;gap:10px}
-.nav-links a{font-size:14px;color:var(--muted);text-decoration:none;padding:8px 16px;border:1px solid var(--border);border-radius:8px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
-.nav-links a:hover{color:var(--green);border-color:var(--green)}
-.page-body{flex:1;display:flex;align-items:center;justify-content:center;padding:20px;min-height:calc(100vh - 57px);flex-direction:column}
-.form-wrap{width:100%;max-width:480px;position:relative;z-index:1;display:flex;flex-direction:column;align-items:stretch}
-.logo{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--green);margin-bottom:4px;letter-spacing:-0.5px}
-.sub{color:var(--muted);font-size:13px;letter-spacing:2px;text-transform:uppercase;margin-bottom:32px;font-family:'Syne',sans-serif}
-label{display:block;text-align:left;font-size:13px;letter-spacing:.5px;color:var(--muted);text-transform:uppercase;margin-bottom:10px;font-family:'Syne',sans-serif;font-weight:600}
-input{width:100%;padding:15px 18px;background:var(--dark);border:1.5px solid var(--border);border-radius:10px;color:var(--green);font-family:'Space Mono',monospace;font-size:16px;outline:none;letter-spacing:2px;transition:border .2s}
-input:focus{border-color:var(--green)}
-.btn{width:100%;padding:16px;background:var(--green);border:none;border-radius:10px;color:#000;font-family:'Syne',sans-serif;font-weight:800;font-size:16px;cursor:pointer;margin-top:18px;transition:all .25s}
-.btn:hover{opacity:.9;transform:translateY(-2px);box-shadow:0 8px 24px #00ff8750}
-.btn:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
-.err{background:#ff475715;border:1px solid #ff4757;border-radius:8px;color:#ff4757;padding:13px 16px;font-size:14px;margin-bottom:18px;text-align:left;font-family:'Inter',sans-serif}
-.result-wrap{width:100%;max-width:1100px;margin:0 auto;padding:24px 32px;position:relative;z-index:1;display:none}
-.panel{display:none}
-.panel.active{display:block}
-.panel-title{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--text);margin-bottom:16px;display:flex;align-items:center;gap:8px}
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='900' font-size='13' fill='%2300ff00'%3EZVM%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<title>ZVM &mdash; Portal do Cliente</title>
+<style>*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --green:#00ff00;--green-soft:#00ff0015;--green-border:#00ff0035;
+  --dark:#080810;--dark2:#0d0d16;--card:#11111c;--card2:#16162400;
+  --border:#1e1e30;--border2:#2a2a40;--text:#eef0f6;--text2:#a8acc4;--muted:#6a6e8a;
+  --red:#ff4757;--yellow:#ffd32a;--orange:#ff8600;--blue:#4f8ef7;
+  --radius:14px;--radius-sm:10px;--radius-lg:20px;
+  --maxw:1080px;
+}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{
+  background:var(--dark);color:var(--text);
+  font-family:'Inter',system-ui,-apple-system,sans-serif;
+  font-size:clamp(15px,1vw + 13px,17px);line-height:1.65;
+  min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased;
+}
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(ellipse 70% 50% at 50% -5%,#00ff000d 0%,transparent 60%),radial-gradient(ellipse 50% 40% at 90% 10%,#4f8ef708 0%,transparent 55%)}
+.wrap{position:relative;z-index:1;max-width:var(--maxw);margin:0 auto;padding:0 clamp(20px,5vw,40px)}
+h1,h2,h3,h4{font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;line-height:1.2;letter-spacing:-.02em;color:#fff}
+h1{font-size:clamp(28px,4vw + 8px,52px)}
+h2{font-size:clamp(22px,2.5vw + 6px,34px)}
+h3{font-size:clamp(18px,1.5vw + 6px,22px);font-weight:700}
+a{color:inherit;text-decoration:none}
+code,.mono{font-family:'JetBrains Mono',monospace}
+
+/* Nav */
+.nav{position:sticky;top:0;z-index:100;background:rgba(8,8,16,.82);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+.nav-in{max-width:var(--maxw);margin:0 auto;padding:0 clamp(20px,5vw,40px);height:64px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.nav-logo{display:flex;align-items:center;gap:10px;font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;font-size:19px;color:#fff;letter-spacing:-.02em}
+.nav-mark{width:34px;height:34px;background:linear-gradient(135deg,#00ff00,#00cc00);border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;color:#080810;flex-shrink:0;font-family:'JetBrains Mono',monospace}
+.nav-links{display:flex;align-items:center;gap:6px}
+.nav-links a{padding:9px 16px;border-radius:var(--radius-sm);font-size:14px;font-weight:600;color:var(--text2);transition:all .18s}
+.nav-links a:hover{color:var(--green);background:var(--green-soft)}
+.nav-links a.active{color:var(--green);background:var(--green-soft)}
+.nav-toggle{display:none;background:none;border:1px solid var(--border2);border-radius:8px;width:40px;height:40px;cursor:pointer;color:var(--text);font-size:18px;align-items:center;justify-content:center}
+
+/* Hero */
+.hero{text-align:center;padding:clamp(48px,8vw,96px) 0 clamp(32px,5vw,56px)}
+.hero-badge{display:inline-flex;align-items:center;gap:7px;padding:7px 16px;background:var(--green-soft);border:1px solid var(--green-border);border-radius:100px;font-size:13px;font-weight:600;color:var(--green);margin-bottom:24px;font-family:'JetBrains Mono',monospace}
+.hero p.sub{font-size:clamp(16px,1.5vw + 8px,20px);color:var(--text2);max-width:600px;margin:20px auto 0;line-height:1.6}
+
+/* Section */
+.section{padding:clamp(32px,5vw,56px) 0}
+.section-head{text-align:center;margin-bottom:clamp(32px,5vw,48px)}
+.section-head p{color:var(--text2);margin-top:12px;font-size:clamp(15px,1vw + 10px,18px)}
+
+/* Cards */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:clamp(20px,3vw,28px)}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:14px 28px;border-radius:var(--radius-sm);font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:15px;cursor:pointer;border:none;transition:all .18s;white-space:nowrap}
+.btn-primary{background:linear-gradient(135deg,#00ff00,#00cc00);color:#080810}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 10px 30px #00ff0030}
+.btn-ghost{background:transparent;border:1.5px solid var(--border2);color:var(--text)}
+.btn-ghost:hover{border-color:var(--green);color:var(--green)}
+.btn-wa{background:#25d366;color:#fff}
+.btn-wa:hover{transform:translateY(-2px);box-shadow:0 10px 30px #25d36640}
+
+/* Footer */
+.footer{border-top:1px solid var(--border);margin-top:clamp(48px,8vw,80px);padding:clamp(40px,6vw,56px) 0 32px}
+.footer-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:32px;margin-bottom:40px}
+.footer-brand .nav-logo{margin-bottom:14px}
+.footer-brand p{color:var(--muted);font-size:14px;line-height:1.6;max-width:280px}
+.footer-col h4{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:16px;font-family:'Inter',sans-serif;font-weight:700}
+.footer-col a{display:block;color:var(--text2);font-size:14px;padding:6px 0;transition:color .15s}
+.footer-col a:hover{color:var(--green)}
+.footer-bottom{border-top:1px solid var(--border);padding-top:28px;text-align:center;color:var(--muted);font-size:13px;line-height:1.8}
+
+@media(max-width:760px){
+  .nav-links{position:fixed;inset:64px 0 auto 0;background:var(--dark2);border-bottom:1px solid var(--border);flex-direction:column;align-items:stretch;padding:12px 20px;gap:4px;display:none}
+  .nav-links.open{display:flex}
+  .nav-links a{padding:13px 16px;font-size:15px}
+  .nav-toggle{display:flex}
+  .footer-grid{grid-template-columns:1fr 1fr;gap:28px}
+  .footer-brand{grid-column:1/-1}
+}
+@media(max-width:480px){.footer-grid{grid-template-columns:1fr}}
+.faq-list{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+.faq-item{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;transition:border-color .2s}
+.faq-item[open]{border-color:var(--green-border)}
+.faq-item summary{padding:clamp(18px,2.5vw,24px);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:clamp(15px,1vw + 8px,18px);color:#fff;display:flex;align-items:center;justify-content:space-between;gap:16px;list-style:none;transition:color .15s}
+.faq-item summary::-webkit-details-marker{display:none}
+.faq-item summary:hover{color:var(--green)}
+.faq-chev{font-size:24px;color:var(--green);transition:transform .25s;flex-shrink:0;line-height:1}
+.faq-item[open] .faq-chev{transform:rotate(180deg)}
+.faq-ans{padding:0 clamp(18px,2.5vw,24px) clamp(18px,2.5vw,24px);color:var(--text2);line-height:1.7}
+.faq-ans code{background:var(--dark);border:1px solid var(--border2);border-radius:5px;padding:2px 7px;font-size:.88em;color:var(--green);font-family:'JetBrains Mono',monospace}
+.cta-box{max-width:760px;margin:clamp(40px,6vw,64px) auto 0;text-align:center;background:linear-gradient(135deg,var(--green-soft),var(--card));border:1px solid var(--green-border);border-radius:var(--radius-lg);padding:clamp(32px,5vw,48px)}
+.cta-box p{color:var(--text2);margin:12px 0 28px;font-size:clamp(15px,1vw + 8px,17px)}
+.cta-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}</style><style>
+.portal-wrap{display:grid;grid-template-columns:1fr;gap:0;min-height:calc(100vh - 64px)}
+.portal-grid{display:grid;grid-template-columns:1fr;align-items:start;padding:clamp(32px,6vw,64px) 0;gap:clamp(24px,4vw,40px)}
+.form-card{max-width:480px;margin:0 auto;width:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:clamp(28px,4vw,40px)}
+.form-card .nav-logo{justify-content:center;display:flex;margin-bottom:6px}
+.form-card .sub-title{text-align:center;color:var(--text2);font-size:14px;margin-bottom:28px}
+.field-label{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px}
+.field-hint{font-size:13px;color:var(--muted);margin-top:8px}
+input.key-input{width:100%;padding:14px 16px;background:var(--dark);border:1.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:16px;font-family:'JetBrains Mono',monospace;outline:none;transition:border-color .18s;letter-spacing:.03em}
+input.key-input:focus{border-color:var(--green)}
+.err-box{background:#ff475715;border:1px solid #ff475740;border-radius:var(--radius-sm);color:#ff8a93;padding:12px 16px;font-size:13px;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.btn-block{display:flex;width:100%;margin-top:14px}
+.link-row{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+.link-row .btn-ghost{width:100%}
+.privacy-note{font-size:12px;color:var(--muted);margin-top:20px;text-align:center;line-height:1.6}
+.help-row{text-align:center;font-size:13px;color:var(--text2);margin-top:18px}
+.help-row a{color:var(--green);font-weight:600}
+
+/* Result panel */
+.result-wrap{display:none;max-width:680px;margin:0 auto;width:100%}
+.panel-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:clamp(24px,4vw,36px)}
+.panel-title{font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;font-size:clamp(20px,2vw,26px);color:#fff;margin-bottom:20px}
 .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
-.info-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 18px}
-.info-card .lbl{font-size:12px;letter-spacing:.3px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;font-family:'Syne',sans-serif;font-weight:600}
-.info-card .val{font-size:16px;color:var(--text);font-family:'Syne',sans-serif;font-weight:700}
-.badge{display:inline-block;padding:5px 14px;border-radius:20px;font-size:14px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;font-family:'Syne',sans-serif}
-.row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #1e1e2e30}
-.row:last-child{border-bottom:none}
-.row-label{font-size:14px;letter-spacing:.3px;text-transform:uppercase;color:var(--muted);font-family:'Syne',sans-serif}
-.row-val{font-size:14px;color:var(--text);text-align:right;font-family:'Syne',sans-serif;font-weight:600}
-.badge-on{background:#00ff8720;color:#00ff87;border:1px solid #00ff8740}
-.badge-off{background:#ff475720;color:#ff4757;border:1px solid #ff475740}
-.badge-warn{background:#ffa50020;color:#ffa500;border:1px solid #ffa50040}
-.badge-def{background:#6b6b8a20;color:#6b6b8a;border:1px solid #6b6b8a40}
-.hint{margin-top:22px;color:#8a8aaa;font-size:13px;line-height:1.8;font-family:'Syne',sans-serif}.hint a{color:#00ff87;text-decoration:none}
-.expire-bar-wrap{margin-top:6px;background:#1e1e2e;border-radius:6px;overflow:hidden;height:6px}
-.expire-bar{height:6px;border-radius:6px;transition:width .6s}
-.section-links{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.link-btn{padding:14px 12px;background:#0f0f1a;border:1px solid #1c1c2e;border-radius:10px;color:#e2e2f0;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;text-align:center;text-decoration:none;transition:all .2s;display:block}
-.link-btn:hover{border-color:#00ff87;color:#00ff87;transform:translateY(-2px)}
-@media(max-width:900px){.page-body{grid-template-columns:1fr}.col-left{border-right:none;border-bottom:1px solid var(--border)}.section-links{grid-template-columns:1fr 1fr}}
-.spinner{display:inline-block;width:15px;height:15px;border:2px solid #00ff8730;border-top-color:#00ff87;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px}
+.info-card{background:var(--dark);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px}
+.info-card .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:700;margin-bottom:6px}
+.info-card .val{font-size:16px;font-weight:700;color:#fff;font-family:'Plus Jakarta Sans',sans-serif}
+
+.badge{display:inline-block;padding:4px 12px;border-radius:100px;font-size:12px;font-weight:700;letter-spacing:.02em}
+.badge-on{background:#00ff0018;color:var(--green);border:1px solid var(--green-border)}
+.badge-off{background:#ff475718;color:#ff8a93;border:1px solid #ff475740}
+.badge-warn{background:#ff860018;color:var(--orange);border:1px solid #ff860040}
+.badge-def{background:#ffd32a18;color:var(--yellow);border:1px solid #ffd32a40}
+
+.expire-bar-wrap{height:6px;background:var(--dark2);border-radius:4px;overflow:hidden}
+.expire-bar{height:100%;border-radius:4px;transition:width .4s}
+
+.phone-section-title{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:700;margin-bottom:12px}
+.phone-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin-bottom:8px}
+.phone-card{background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.phone-card .num{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:#fff}
+.phone-card button{padding:5px 12px;background:#ff4757;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-family:'Inter',sans-serif;font-weight:700;flex-shrink:0;transition:opacity .15s}
+.phone-card button:hover{opacity:.85}
+.phone-hint{font-size:13px;color:var(--muted);margin-top:6px;margin-bottom:20px}
+
+.renew-banner{display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--green-soft);border:1px solid var(--green-border);border-radius:var(--radius);padding:18px 22px;margin-bottom:24px;flex-wrap:wrap}
+.renew-banner .rb-title{font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;font-size:16px;color:var(--green);margin-bottom:4px}
+.renew-banner .rb-sub{font-size:13px;color:var(--text2)}
+.renew-banner .rb-btn{flex-shrink:0;padding:12px 24px;background:linear-gradient(135deg,#00ff00,#00cc00);color:#080810;font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;font-size:14px;border-radius:var(--radius-sm);text-decoration:none;white-space:nowrap}
+
+.section-links{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:20px 0}
+.section-links .link-btn{display:flex;align-items:center;justify-content:center;padding:13px;background:var(--dark);border:1.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-weight:600;text-decoration:none;transition:all .18s;text-align:center}
+.section-links .link-btn:hover{border-color:var(--green);color:var(--green)}
+
+.back-btn{padding:13px 24px;background:var(--dark);color:var(--text2);border:1.5px solid var(--border2);border-radius:var(--radius-sm);font-family:'Inter',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:all .18s}
+.back-btn:hover{border-color:var(--green);color:var(--green)}
+
+.loading-overlay{display:none;position:fixed;inset:0;background:#080810cc;z-index:9999;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.spinner{width:38px;height:38px;border:3px solid var(--border2);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
 @keyframes spin{to{transform:rotate(360deg)}}
-.loading-overlay{position:fixed;inset:0;background:#0a0a0f;display:flex;align-items:center;justify-content:center;z-index:99}
-.privacy-note{margin-top:16px;padding:12px 16px;background:#1e1e2e30;border-radius:8px;font-size:14px;color:#a0a0c0;text-align:left;line-height:1.7;font-family:'Syne',sans-serif}
-.privacy-note a{color:#4f8ef7;text-decoration:none}
-</style>
-</head><body>
-<nav>
-  <a href="/" class="nav-logo">⚡ ZVM</a>
-  <div class="nav-links">
-    <a href="/faq">FAQ</a>
-    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank">💬 Suporte</a>
+.spinner-sm{width:15px;height:15px;border-width:2px;margin-right:8px;vertical-align:-2px}
+
+@media(max-width:680px){.info-grid{grid-template-columns:1fr}.phone-grid{grid-template-columns:1fr 1fr}}
+</style></head><body>
+<nav class="nav"><div class="nav-in">
+  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span> ZVM</a>
+  <button class="nav-toggle" onclick="document.getElementById('navlinks').classList.toggle('open')">☰</button>
+  <div class="nav-links" id="navlinks">
+    <a href="/planos" class="">Planos</a>
+    <a href="/client" class="active">Portal do Cliente</a>
+    <a href="/faq" class="">FAQ</a>
+    <a href="/privacidade" class="">Privacidade</a>
   </div>
-</nav>
+</div></nav>
 <div id="loading-overlay" class="loading-overlay"><span class="spinner"></span></div>
-<div class="page-body">
-  <div class="form-wrap" id="main-form-wrap">
-    <div style="background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:36px 32px;text-align:center">
-    <div class="logo">⚡ ZVM</div>
-    <div class="sub">Portal do Cliente</div>
-    <div id="form-area">
-      <div id="err-box" class="err" style="display:none"></div>
-      <label>Sua Chave de Ativação</label>
-      <input type="text" id="key-input" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="20">
-      <p style="text-align:left;font-size:13px;color:#8a8aaa;margin-top:8px;font-family:'Syne',sans-serif">Você recebeu esta chave junto com a sua compra.</p>
-      <button class="btn" id="check-btn" onclick="checkKey()">Consultar Minha Chave</button>
-      <a class="btn" href="/faq" style="display:block;margin-top:10px;background:#1e1e2e;color:#8a8aaa;font-size:14px;text-decoration:none;text-align:center;padding:13px;border-radius:10px;border:1px solid #2a2a3e;transition:border-color .2s,color .2s;font-family:'Syne',sans-serif;font-weight:700" onmouseover="this.style.borderColor='#00ff87';this.style.color='#00ff87'" onmouseout="this.style.borderColor='#2a2a3e';this.style.color='#6b6b8a'">❓ FAQ — Dúvidas Frequentes</a>
-      <a class="btn" href="/planos" style="display:block;margin-top:8px;background:#00ff8710;color:#00ff87;font-size:14px;text-decoration:none;text-align:center;padding:13px;border-radius:10px;border:1px solid #00ff8730;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700" onmouseover="this.style.background='#00ff8720';this.style.borderColor='#00ff87'" onmouseout="this.style.background='#00ff8710';this.style.borderColor='#00ff8730'">💳 Ver Planos e Preços</a>
-      <div class="privacy-note">🔒 Ao usar este serviço, você concorda com nossa <a href="/privacidade">Política de Privacidade</a> e com a coleta de dados de uso para fins de licenciamento (LGPD).</div>
-    </div>
-    <div class="hint" style="margin-top:20px;color:#a0a0c0;font-size:14px;font-family:'Syne',sans-serif;text-align:center">
-      Precisa de ajuda? <a href="/planos" style="color:var(--green)">💳 Planos</a> · <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" style="color:var(--green)">💬 Suporte</a>
-    </div>
-    </div><!-- fecha card -->
-  </div><!-- fecha form-wrap -->
-  <div class="result-wrap" id="result-wrap">
-    <div id="result-panel" style="display:block">
-      <div class="panel-title" id="panel-name">Minha Conta</div>
-      <div class="info-grid">
-        <div class="info-card"><div class="lbl">Status</div><div class="val" id="r-status">—</div></div>
-        <div class="info-card"><div class="lbl">Dispositivos</div><div class="val" id="r-phones">—</div></div>
-        <div class="info-card" style="grid-column:span 2"><div class="lbl">Expira em</div><div class="val"><span id="r-expires">—</span><div class="expire-bar-wrap" id="r-bar-wrap" style="display:none;margin-top:10px"><div class="expire-bar" id="r-bar"></div></div></div></div>
-        <div class="info-card" id="r-act-card" style="display:none"><div class="lbl">Ativada em</div><div class="val" id="r-activated">—</div></div>
-        <div class="info-card" id="r-last-card" style="display:none"><div class="lbl">Último uso</div><div class="val" id="r-lastused">—</div></div>
-      </div>
-      <div id="r-phone-section" style="display:none;margin-bottom:16px">
-        <div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;font-family:'Syne',sans-serif;font-weight:700">Dispositivos cadastrados</div>
-        <div id="r-phone-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px"></div>
-        <div style="font-size:13px;color:var(--muted);margin-top:12px;font-family:'Syne',sans-serif">Remova um número para liberar o slot.</div>
-      </div>
-      <div id="r-renew-banner" style="display:none;margin-bottom:20px;background:#00ff8710;border:1px solid #00ff8730;border-radius:12px;padding:18px 22px;display:flex;align-items:center;justify-content:space-between;gap:16px">
-        <div>
-          <div style="font-size:16px;color:#00ff87;font-family:'Syne',sans-serif;font-weight:800;margin-bottom:4px">🔄 Hora de renovar!</div>
-          <div style="font-size:13px;color:var(--muted)">Renove agora e o tempo é somado ao restante.</div>
+<div class="wrap">
+  <div class="portal-grid">
+
+    <div class="form-wrap" id="main-form-wrap">
+      <div class="form-card">
+        <div class="nav-logo"><span class="nav-mark">ZVM</span> ZVM</div>
+        <div class="sub-title">Portal do Cliente</div>
+        <div id="form-area">
+          <div id="err-box" class="err-box" style="display:none"></div>
+          <label class="field-label">Sua Chave de Ativação</label>
+          <input type="text" class="key-input" id="key-input" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="25">
+          <p class="field-hint">Você recebeu esta chave junto com a sua compra.</p>
+          <button class="btn btn-primary btn-block" id="check-btn" onclick="checkKey()">Consultar Minha Chave</button>
+          <div class="link-row">
+            <a class="btn btn-ghost" href="/faq">❓ FAQ — Dúvidas Frequentes</a>
+            <a class="btn btn-ghost" href="/planos" style="color:var(--green);border-color:var(--green-border)">💳 Ver Planos e Preços</a>
+          </div>
+          <div class="privacy-note">🔒 Ao usar este serviço, você concorda com nossa <a href="/privacidade" style="color:var(--green)">Política de Privacidade</a> e com a coleta de dados de uso para fins de licenciamento (LGPD).</div>
+          <div class="help-row">Precisa de ajuda? <a href="/planos">💳 Planos</a> · <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM%20LR1290." target="_blank">💬 Suporte</a></div>
         </div>
-        <a href="/planos" style="flex-shrink:0;padding:12px 24px;background:#00ff87;color:#000;font-family:'Syne',sans-serif;font-weight:800;font-size:14px;border-radius:8px;text-decoration:none;white-space:nowrap">💳 Ver Planos</a>
       </div>
-      <div class="section-links" id="r-links" style="margin-bottom:20px"></div>
-      <button onclick="resetPanel()" style="padding:12px 24px;background:#1e1e2e;color:var(--muted);border:1px solid var(--border);border-radius:8px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#00ff87';this.style.color='#00ff87'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">← Consultar outra chave</button>
     </div>
+
+    <div class="result-wrap" id="result-wrap">
+      <div class="panel-card" id="result-panel">
+        <div class="panel-title" id="panel-name">Minha Conta</div>
+        <div class="info-grid">
+          <div class="info-card"><div class="lbl">Status</div><div class="val" id="r-status">—</div></div>
+          <div class="info-card"><div class="lbl">Dispositivos</div><div class="val" id="r-phones">—</div></div>
+          <div class="info-card" style="grid-column:span 2">
+            <div class="lbl">Expira em</div>
+            <div class="val"><span id="r-expires">—</span></div>
+            <div class="expire-bar-wrap" id="r-bar-wrap" style="display:none;margin-top:10px"><div class="expire-bar" id="r-bar"></div></div>
+          </div>
+          <div class="info-card" id="r-act-card" style="display:none"><div class="lbl">Ativada em</div><div class="val" id="r-activated">—</div></div>
+          <div class="info-card" id="r-last-card" style="display:none"><div class="lbl">Último uso</div><div class="val" id="r-lastused">—</div></div>
+        </div>
+
+        <div id="r-phone-section" style="display:none;margin-bottom:20px">
+          <div class="phone-section-title">Dispositivos cadastrados</div>
+          <div id="r-phone-list" class="phone-grid"></div>
+          <div class="phone-hint">Remova um número para liberar o slot.</div>
+        </div>
+
+        <div id="r-renew-banner" class="renew-banner" style="display:none">
+          <div>
+            <div class="rb-title">🔄 Hora de renovar!</div>
+            <div class="rb-sub">Renove agora e o tempo é somado ao restante.</div>
+          </div>
+          <a href="/planos" class="rb-btn">💳 Ver Planos</a>
+        </div>
+
+        <div class="section-links" id="r-links"></div>
+
+        <button onclick="resetPanel()" class="back-btn">← Consultar outra chave</button>
+      </div>
+    </div>
+
+  </div>
 </div>
+<footer class="footer"><div class="wrap">
+  <div class="footer-grid">
+    <div class="footer-brand">
+      <div class="nav-logo"><span class="nav-mark">ZVM</span> ZVM</div>
+      <p>Sistema de licenciamento para a extensão ZapVoice. Controle de acesso seguro e gestão de dispositivos.</p>
+    </div>
+    <div class="footer-col"><h4>Produto</h4>
+      <a href="/planos">Planos e Preços</a>
+      <a href="/client">Portal do Cliente</a>
+      <a href="/faq">Perguntas Frequentes</a>
+    </div>
+    <div class="footer-col"><h4>Suporte</h4>
+      <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM%20LR1290." target="_blank">WhatsApp</a>
+      <a href="/faq">Central de Ajuda</a>
+    </div>
+    <div class="footer-col"><h4>Legal</h4>
+      <a href="/privacidade">Privacidade</a>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    &copy; ${new Date().getFullYear()} ZVM &mdash; Todos os direitos reservados<br>
+    Licenciamento da extensão ZapVoice
+  </div>
+</div></footer>
+<script>document.querySelectorAll('.nav-links a').forEach(function(a){a.addEventListener('click',function(){document.getElementById('navlinks').classList.remove('open');});});</script>
 <script>
+
 function fmtDate(iso){if(!iso)return'—';const d=new Date(iso);return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
 
 function fmtHours(h){if(h===null||h===undefined)return null;if(h>=48)return Math.floor(h/24)+' dias';if(h>=1)return h+'h';return'menos de 1h';}
@@ -1263,9 +1416,11 @@ window.addEventListener('DOMContentLoaded',()=>{
   if(autoKey){document.getElementById('loading-overlay').style.display='flex';document.getElementById('form-area').style.display='none';doCheck(autoKey).finally(()=>{document.getElementById('loading-overlay').style.display='none';});}
   else document.getElementById('loading-overlay').style.display='none';
 });
+
 </script>
-${CANVAS_BG}</body></html>`;
+</body></html>`;
 }
+
 
 function buildKeysHtml() {
   const entries = Object.entries(keys);
@@ -1289,10 +1444,10 @@ function buildKeysHtml() {
 
     return `
 <tr data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${k.active?'ativo':'bloqueado'}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-expired="${expired?'1':''}"${rowStyle}>
-  <td style="padding:7px 6px 7px 14px"><input type="checkbox" class="row-chk" data-code="${escHtml(code)}" style="accent-color:var(--green);width:16px;height:16px;cursor:pointer;opacity:1;filter:brightness(1.4)" onchange="onRowCheck()"></td>
-  <td><span class="kc">${escHtml(code)}</span></td>
+  <td style="padding:5px 6px 5px 12px;width:28px"><input type="checkbox" class="row-chk" data-code="${escHtml(code)}" onchange="onRowCheck()"></td>
+  <td><span class="kc" onclick="copyKey(this,'${escHtml(code)}')" title="Clique para copiar">${escHtml(code)}</span></td>
   <td class="td-name">${escHtml(k.label)}</td>
-  <td><span class="st-badge ${k.active?(k.expireDuration&&!k.expiresAt?'st-wait':'st-on'):'st-off'}">${k.active?(k.expireDuration&&!k.expiresAt?'AGUARDANDO':'ATIVO'):'BLOQUEADO'}</span></td>
+  <td><span class="st-badge ${expired?'st-off':k.active?(k.expireDuration&&!k.expiresAt?'st-wait':'st-on'):'st-off'}">${expired?'EXPIRADA':k.active?(k.expireDuration&&!k.expiresAt?'AGUARDANDO':'ATIVO'):'BLOQUEADO'}</span></td>
   <td><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'var(--muted)'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
   <td style="color:var(--muted)">${escHtml(k.lastPhone||'—')}</td>
   <td style="color:var(--muted)" title="${uniqueIps} IPs únicos">${escHtml(k.lastIp||'—')}${uniqueIps>1?` <span style="color:#3a3a5a;font-size:11px">(+${uniqueIps-1})</span>`:''}</td>
@@ -1314,6 +1469,8 @@ function buildKeysHtml() {
 }
 
 
+
+
 function buildLogsHtml(arr) {
   const src = arr ?? logs;
   if (!src.length) return `<tr><td colspan="7" class="empty">Nenhum log ainda</td></tr>`;
@@ -1333,230 +1490,163 @@ function buildLogsHtml(arr) {
 
 function renderAdminDashboard() {
   const expiringSoon = Object.values(keys).filter(k => k.active && isKeyExpiringSoon(k)).length;
-  const expiredKeys   = Object.values(keys).filter(k => isKeyExpired(k)).length;
+  const expiredKeys  = Object.values(keys).filter(k => isKeyExpired(k)).length;
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM Admin</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='900' font-size='15' fill='%2300ff00'%3EZV%3C/text%3E%3C/svg%3E">
+<title>ZVM — Administrador</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='900' font-size='12' fill='%2300ff00'%3EZVM%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --green:#00ff00;--dark:#080810;--card:#0d0d18;--card2:#111120;
-  --border:#1a1a2e;--border2:#222238;--text:#e2e2f0;--muted:#5a5a8a;
+  --green:#00ff00;--dark:#080810;--card:#0f0f1a;--card2:#13131f;
+  --border:#1c1c2e;--border2:#252538;--text:#e2e2f0;--muted:#5a5a7a;
   --red:#ff4757;--yellow:#ffd32a;--orange:#ff8600;--blue:#4f8ef7;--purple:#9b59b6;
-  --radius:9px;--radius-sm:5px;
+  --radius:10px;--radius-sm:6px;
 }
-html{scroll-behavior:smooth}
-body{background:var(--dark);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;overflow-x:hidden;font-size:13px}
-
-/* ── Ambient ── */
-.amb{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden}
-.amb::before{content:'';position:absolute;width:600px;height:600px;background:radial-gradient(circle,#00ff0008 0%,transparent 70%);top:-150px;left:-150px;animation:da 24s ease-in-out infinite}
-.amb::after{content:'';position:absolute;width:500px;height:500px;background:radial-gradient(circle,#4f8ef705 0%,transparent 70%);bottom:-100px;right:-100px;animation:db 30s ease-in-out infinite}
-@keyframes da{0%,100%{transform:translate(0,0)}50%{transform:translate(55px,35px)}}
-@keyframes db{0%,100%{transform:translate(0,0)}50%{transform:translate(-45px,-25px)}}
-.gridlines{position:fixed;inset:0;background-image:linear-gradient(rgba(0,255,0,.018) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,0,.018) 1px,transparent 1px);background-size:48px 48px;pointer-events:none;z-index:0}
-
-/* ── Layout ── */
-#app{position:relative;z-index:1;min-height:100vh;display:flex;flex-direction:column}
-header{display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:54px;background:rgba(13,13,24,.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;gap:12px;flex-shrink:0}
-.hlogo{display:flex;align-items:center;gap:9px}
-.hmark{width:28px;height:28px;background:linear-gradient(135deg,#00ff00,#00cc00);border-radius:7px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px;color:#080810;flex-shrink:0}
-.hname{font-size:14px;font-weight:800;color:var(--green);letter-spacing:.3px}
-.hver{font-size:11px;color:var(--muted);margin-left:4px;font-weight:400}
-.hright{display:flex;align-items:center;gap:7px}
-.hbtn{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:transparent;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;transition:all .17s;text-decoration:none;font-family:inherit}
-.hbtn:hover{border-color:#00ff0035;color:var(--green);background:#00ff0008}
-.hbtn-out:hover{border-color:#ff475740;color:var(--red);background:#ff475708}
-main{flex:1;padding:20px 24px;max-width:1920px;margin:0 auto;width:100%}
-
-/* ── Stat cards ── */
-.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px}
-.sc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;position:relative;overflow:hidden;cursor:default;transition:border-color .2s,transform .14s}
-.sc:hover{transform:translateY(-2px);border-color:var(--border2)}
-.sc.sc-warn{border-color:#ff860035;background:linear-gradient(135deg,#ff860008,var(--card))}
-.sc.sc-danger{border-color:#ff475735;background:linear-gradient(135deg,#ff475708,var(--card))}
-.sc.sc-green{border-color:#00ff0030;background:linear-gradient(135deg,#00ff0008,var(--card))}
-.sc-icon{position:absolute;right:14px;top:14px;font-size:18px;opacity:.15}
-.sc-n{font-size:28px;font-weight:800;color:var(--green);line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-1px}
-.sc.sc-warn .sc-n{color:var(--orange)}
-.sc.sc-danger .sc-n{color:var(--red)}
-.sc-l{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-top:5px}
-
-/* ── Section ── */
+body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040}
+.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
+main{position:relative;z-index:1}
+.hright{display:flex;align-items:center;gap:10px}
+a.out{color:var(--muted);font-size:13px;text-decoration:none;padding:6px 14px;border:1px solid var(--border2);border-radius:var(--radius-sm);transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
+a.out:hover{color:var(--red);border-color:var(--red)}
+main{padding:22px 24px;max-width:1800px;margin:0 auto}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px}
+.sc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;position:relative;overflow:hidden;transition:border-color .2s,transform .15s;cursor:default}
+.sc:hover{border-color:var(--border2);transform:translateY(-1px)}
+.sc.warn-card{border-color:#ff860050;background:#ff860008}
+.sc.danger-card{border-color:#ff475750;background:#ff475708}
+.sc-icon{position:absolute;right:14px;top:14px;font-size:22px;opacity:.15}
+.sc .n{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:var(--green);line-height:1.1}
+.sc.warn-card .n{color:var(--orange)}
+.sc.danger-card .n{color:var(--red)}
+.sc .l{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.3px;margin-top:5px;font-family:'Syne',sans-serif}
+/* Search */
+.search-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 16px;background:var(--card2);border-bottom:1px solid var(--border)}
+.search-bar input{padding:7px 12px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:12px;outline:none;flex:1;min-width:160px;transition:border .18s}
+.search-bar input:focus{border-color:var(--green)}
+.search-bar select{padding:6px 9px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Syne',sans-serif;font-size:12px;outline:none;cursor:pointer}
 .sec{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:16px;overflow:hidden}
-.sh{display:flex;align-items:center;justify-content:space-between;padding:11px 15px;background:var(--card2);border-bottom:1px solid var(--border);gap:10px;flex-wrap:wrap}
-.st{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--green);display:flex;align-items:center;gap:6px}
-
-/* ── Gen form ── */
+.sh{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--card2);flex-wrap:wrap;gap:10px}
+.st{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:var(--green);display:flex;align-items:center;gap:6px}
 .gen-form{display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap}
-.fi{display:flex;flex-direction:column;gap:3px}
-.fi-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
-.fi input[type=text],.fi input[type=number]{padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;font-family:inherit;outline:none;transition:border-color .17s}
-.fi input:focus{border-color:var(--green)}
-.fi-name{min-width:130px;flex:1}
-.fi-num input{width:54px;text-align:center}
-.fi-sep{width:1px;height:28px;background:var(--border2);align-self:flex-end;flex-shrink:0;margin-bottom:2px}
-.fi-chk{align-self:flex-end}
-.fi-chk label{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);cursor:pointer;padding:7px 0}
-.fi-chk input[type=checkbox]{accent-color:var(--green);width:13px;height:13px;cursor:pointer}
-.btn-gen{padding:7px 14px;background:linear-gradient(135deg,#00ff00,#00cc00);border:none;border-radius:var(--radius-sm);color:#080810;font-size:12px;font-weight:800;cursor:pointer;transition:opacity .17s,transform .12s;white-space:nowrap;font-family:inherit}
-.btn-gen:hover{opacity:.87;transform:translateY(-1px)}
-.btn-gen:active{transform:none}
-
-/* ── Search bar ── */
-.sbar{display:flex;gap:7px;align-items:center;padding:9px 15px;background:var(--card2);border-bottom:1px solid var(--border);flex-wrap:wrap}
-.sbar input[type=text]{flex:1;min-width:200px;padding:6px 12px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;outline:none;transition:border-color .17s;font-family:inherit}
-.sbar input:focus{border-color:var(--green)}
-.sbar select{padding:6px 8px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-size:12px;outline:none;cursor:pointer;font-family:inherit}
-
-/* ── Generic buttons ── */
-.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 13px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;transition:all .17s;white-space:nowrap}
-.btn:hover{opacity:.87;transform:translateY(-1px)}
-.btn:active{transform:none}
-.btn-g{background:#00ff0012;border:1px solid #00ff0030;color:var(--green)}
-.btn-g:hover{background:#00ff001e;border-color:#00ff0050}
-.btn-r{background:#ff475712;border:1px solid #ff475730;color:var(--red)}
-.btn-r:hover{background:#ff47571e;border-color:#ff475750}
-.btn-y{background:#ffd32a12;border:1px solid #ffd32a30;color:var(--yellow)}
-.btn-y:hover{background:#ffd32a1e;border-color:#ffd32a50}
-.btn-b{background:#4f8ef712;border:1px solid #4f8ef730;color:var(--blue)}
-.btn-b:hover{background:#4f8ef71e;border-color:#4f8ef750}
-
-/* ── Action buttons (table) ── */
-.ab{padding:3px 8px;border-radius:4px;border:none;cursor:pointer;font-size:11px;font-weight:700;font-family:inherit;transition:all .14s;white-space:nowrap}
-.ab:hover{opacity:1;transform:translateY(-1px)}
-.ab-g{background:#00ff0012;color:var(--green);border:1px solid #00ff0028}
-.ab-g:hover{background:#00ff001e;border-color:#00ff0045}
-.ab-r{background:#ff475712;color:var(--red);border:1px solid #ff475728}
-.ab-r:hover{background:#ff47571e;border-color:#ff475745}
-.ab-y{background:#ffd32a12;color:var(--yellow);border:1px solid #ffd32a28}
-.ab-p{background:#9b59b612;color:var(--purple);border:1px solid #9b59b628}
-.ab-p:hover{background:#9b59b61e;border-color:#9b59b645}
-
-/* ── Table ── */
-.tov{overflow-x:auto}
+.gen-form input{padding:6px 9px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Syne',sans-serif;font-size:12px;outline:none;transition:border .18s}
+.gen-form input:focus{border-color:var(--green);background:#0a0a14}
+.gen-form input::placeholder{color:var(--muted)}
+.fi-name{flex:1;min-width:130px;max-width:170px}
+.fi-group{display:flex;gap:5px;align-items:flex-end}
+.fi-col{display:flex;flex-direction:column;gap:3px}
+.fi-lbl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;padding-left:2px;font-family:'Syne',sans-serif}
+.fi-num{width:56px;text-align:center}
+.fi-sep{width:1px;height:28px;background:var(--border2);margin:0 3px;flex-shrink:0;align-self:flex-end;margin-bottom:2px}
+.btn{padding:7px 12px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;transition:all .18s;white-space:nowrap;letter-spacing:.3px}
+.bp{background:var(--green);color:#000;box-shadow:0 0 12px #00ff8740}
+.bp:hover{box-shadow:0 4px 20px #00ff8760;opacity:.9}
+.bw{background:#ffd32a12;color:var(--yellow);border:1px solid #ffd32a35}
+.br{background:#ff475712;color:var(--red);border:1px solid #ff475735}
+.bcsv{background:#4f8ef712;color:var(--blue);border:1px solid #4f8ef735}
+.bs{padding:3px 8px;border:none;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;margin-right:2px;transition:all .15s;white-space:nowrap}
+.bs:hover{opacity:1;transform:translateY(-1px)}
+.bg{background:#00ff8712;color:var(--green);border:1px solid #00ff8730}
+.bg:hover{background:#00ff8722;border-color:#00ff8760}
+.bd{background:#ff475712;color:var(--red);border:1px solid #ff475730}
+.bd:hover{background:#ff475722;border-color:#ff475760}
+.bsusp{background:#ff475712;color:var(--red);border:1px solid #ff475730}
+.ov{overflow-x:auto}
 table{width:100%;border-collapse:collapse}
-thead th{padding:8px 11px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);border-bottom:1px solid var(--border);background:var(--card2);white-space:nowrap;cursor:pointer;user-select:none;transition:color .14s}
-thead th:hover{color:var(--text)}
-thead th.asc::after{content:' ▲';color:var(--green);font-size:9px}
-thead th.desc::after{content:' ▼';color:var(--green);font-size:9px}
-td{padding:7px 11px;border-bottom:1px solid #0e0e1c;vertical-align:middle;font-size:12px}
+th{padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap;background:var(--card2);cursor:pointer;user-select:none;font-family:'Syne',sans-serif}
+th:hover{color:var(--text)}
+th.asc::after{content:' ▲';color:var(--green);font-size:12px}
+th.desc::after{content:' ▼';color:var(--green);font-size:12px}
+td{padding:7px 10px;font-size:11px;border-bottom:1px solid #14141f;vertical-align:middle}
 tr:last-child td{border-bottom:none}
-tr:hover td{background:#00ff0003}
-.kc{font-family:'Courier New',monospace;color:var(--green);font-size:12px;letter-spacing:.2px}
-.td-name{font-weight:600;color:var(--text);max-width:150px;word-break:break-word}
-.td-actions{display:flex;flex-wrap:wrap;gap:3px;min-width:280px;padding:5px 11px!important}
-.empty{text-align:center;color:var(--muted);padding:40px!important;font-size:13px}
-.note-cell{cursor:pointer;max-width:120px}
+tr:hover td{background:#ffffff02}
+.kc{color:var(--green);font-size:12px;letter-spacing:.3px;cursor:pointer;transition:color .15s;border-bottom:1px dotted transparent}
+.kc:hover{color:#fff;border-bottom-color:var(--green)}
+.badge{padding:2px 7px;border-radius:3px;font-size:11px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;font-family:'Syne',sans-serif}
+.on{background:#00ff8718;color:var(--green);border:1px solid #00ff8730}
+.off{background:#ff475718;color:var(--red);border:1px solid #ff475730}
+.re{background:#4f8ef718;color:var(--blue)}
+.vr{background:#9b59b618;color:var(--purple)}
+.warn{background:#ffd32a18;color:var(--yellow)}
+.wl{background:#ff8c0018;color:#ff8c00}
+.empty{text-align:center;color:var(--muted);padding:40px!important;font-size:14px;font-family:'Syne',sans-serif}
+.toast{position:fixed;bottom:20px;right:20px;padding:11px 18px;border-radius:var(--radius);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;display:none;z-index:999999;box-shadow:0 6px 30px #00000070;max-width:380px;line-height:1.4}
+.alert-card{background:#ff860008;border:1px solid #ff860040;border-radius:var(--radius);padding:12px 18px;margin-bottom:20px;display:none;align-items:center;gap:12px;font-size:13px;color:#ff8600;font-family:'Syne',sans-serif}
+.badge-exp{background:#ff860018;color:#ff8600;border:1px solid #ff860040;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:700;font-family:'Syne',sans-serif}
+.badge-expired{background:#ff475718;color:#ff4757;border:1px solid #ff475740;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:700;font-family:'Syne',sans-serif}
+.note-btn{padding:3px 8px;background:#4f8ef710;color:var(--blue);border:1px solid #4f8ef730;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;transition:all .15s}
+.note-btn:hover{background:#4f8ef722;border-color:var(--blue)}
+.note-cell{cursor:pointer;max-width:130px}
 .note-cell:hover .note-preview{color:var(--green)}
-.note-preview{color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:110px;transition:color .14s}
-
-/* ── Status badges ── */
-.st-badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.3px;text-transform:uppercase}
-.st-on  {background:#00ff0015;color:var(--green);border:1px solid #00ff0030}
-.st-off {background:#ff475715;color:var(--red);border:1px solid #ff475730}
-.st-wait{background:#ffd32a15;color:var(--yellow);border:1px solid #ffd32a30}
-.st-re  {background:#4f8ef715;color:var(--blue);border:1px solid #4f8ef730}
-.st-vr  {background:#9b59b615;color:var(--purple);border:1px solid #9b59b630}
-.st-wl  {background:#ff860015;color:var(--orange);border:1px solid #ff860030}
-.st-warn{background:#1a1a2e;color:var(--muted);border:1px solid var(--border)}
-
-/* ── Toast ── */
-.toast{position:fixed;bottom:20px;right:20px;padding:11px 16px;border-radius:var(--radius);font-weight:700;font-size:12px;display:none;z-index:99999;max-width:380px;line-height:1.4;border:1px solid transparent}
-.tok {background:#00ff0015;border-color:#00ff0030;color:var(--green)}
-.terr{background:#ff475715;border-color:#ff475730;color:var(--red)}
-
-/* ── Modals ── */
-.modal-bg{display:none;position:fixed;inset:0;background:#00000088;z-index:99999;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.note-preview{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:120px;font-family:'Syne',sans-serif}
+.modal-bg{display:none;position:fixed;inset:0;background:#00000090;z-index:99999;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
 .modal-bg.open{display:flex}
-.modal{background:var(--card);border:1px solid var(--border2);border-radius:12px;padding:20px;width:340px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px #00000099,0 0 0 1px #ffffff04}
-.modal.modal-w{width:400px}
-.modal h3{font-size:13px;font-weight:700;color:var(--green);margin-bottom:11px;display:flex;align-items:center;gap:6px}
-.modal-row{margin-bottom:12px}
-.modal-row label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:5px}
-.modal-row input[type=text],.modal-row input[type=number],.modal-row textarea{width:100%;padding:8px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:inherit;outline:none;transition:border-color .17s}
-.modal-row input:focus,.modal-row textarea:focus{border-color:var(--green)}
-.modal-row textarea{resize:vertical;min-height:76px}
-.modal-hint{font-size:11px;color:var(--muted);margin-top:5px}
-.mactions{display:flex;gap:7px;justify-content:flex-end;margin-top:13px}
-.trow{display:flex;gap:8px}
-.trow .modal-row{flex:1;text-align:center}
-.trow input{text-align:center;font-size:16px!important}
-.ph-item{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)}
-.ph-item:last-child{border-bottom:none}
-.ph-num{font-family:'Courier New',monospace;font-size:12px;color:var(--text)}
-.mod-btn-row{display:flex;flex-direction:column;gap:7px;margin-bottom:12px}
-.mod-btn{display:flex;align-items:center;gap:8px;padding:9px 13px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;color:var(--text);font-size:12px;font-weight:600;font-family:inherit;transition:all .14s}
-.mod-btn:hover{border-color:#00ff0030;color:var(--green)}
-.mod-btn.active{background:#9b59b612;border-color:#9b59b630;color:#c4b5fd}
-.log-filters{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
-.log-filters input[type=date],.log-filters input[type=text]{padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;font-family:inherit;outline:none;transition:border-color .14s}
-.log-filters input:focus{border-color:var(--green)}
-input[type=checkbox].row-chk,input#chk-all{accent-color:var(--green);outline:1px solid #00ff0040;border-radius:2px}
+.modal{background:var(--card);border:1px solid var(--border2);border-radius:12px;padding:22px;width:340px;max-width:95vw;box-shadow:0 20px 60px #00000090;max-height:90vh;overflow-y:auto}
+.modal h3{font-family:'Syne',sans-serif;font-size:13px;margin-bottom:11px;color:var(--green)}
+.modal textarea,.modal input[type=text],.modal input[type=number]{width:100%;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Syne',sans-serif;font-size:13px;padding:9px;outline:none;transition:border .2s}
+.modal textarea{resize:vertical;min-height:80px}
+.modal textarea:focus,.modal input:focus{border-color:var(--green)}
+.modal-actions{display:flex;gap:8px;margin-top:11px;justify-content:flex-end}
+@media(max-width:1300px){.stats{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:750px){.stats{grid-template-columns:1fr 1fr};main{padding:14px 12px}}
 
-@media(max-width:1400px){.stats{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:900px){.stats{grid-template-columns:1fr 1fr};main{padding:14px};.td-actions{min-width:auto}}
-@media(max-width:580px){.stats{grid-template-columns:1fr};.gen-form{flex-direction:column}}
+.row-chk,#chk-all{-webkit-appearance:none;appearance:none;width:18px;height:18px;border:2px solid #3a3a52;border-radius:4px;background:var(--card2);cursor:pointer;vertical-align:middle;position:relative;transition:all .15s;flex-shrink:0;margin:0}.row-chk:hover,#chk-all:hover{border-color:#ff0000}.row-chk:checked,#chk-all:checked{background:#ff0000;border-color:#ff0000;box-shadow:0 0 8px #ff000070}.row-chk:checked::after,#chk-all:checked::after{content:'';position:absolute;left:5px;top:1px;width:5px;height:10px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}#chk-all:indeterminate{background:#ff0000;border-color:#ff0000}#chk-all:indeterminate::after{content:'';position:absolute;left:3px;top:7px;width:10px;height:2px;background:#fff;border:none;transform:none}
 </style>
+
 </head>
 <body>
-<div class="amb"></div>
-<div class="gridlines"></div>
-<div id="app">
-
 <header>
-  <div class="hlogo">
-    <div class="hmark">ZV</div>
-    <div class="hname">Painel Administrativo<span class="hver">v8</span></div>
-  </div>
+  <div class="logo">⚡ ADMINISTRADOR</div>
   <div class="hright">
-    <button class="hbtn" onclick="exportCSV()">⬇ CSV</button>
-    <a href="${R_ADMIN}/logout" class="hbtn hbtn-out">↩ Sair</a>
+    <button class="btn bcsv" onclick="exportCSV()">⬇ CSV</button>
+    <a href="${R_ADMIN}/logout" class="out">↩ Sair</a>
   </div>
 </header>
-
 <main>
   <div class="stats">
-    <div class="sc sc-green"><div class="sc-icon">🔑</div><div class="sc-n" id="s-total">${Object.keys(keys).length}</div><div class="sc-l">Total de Chaves</div></div>
-    <div class="sc"><div class="sc-icon">✅</div><div class="sc-n" id="s-active">${Object.values(keys).filter(k=>k.active).length}</div><div class="sc-l">Chaves Ativas</div></div>
-    <div class="sc ${expiringSoon>0?'sc-warn':''}"><div class="sc-icon">⏰</div><div class="sc-n" id="s-warn">${expiringSoon}</div><div class="sc-l">Expirando em ${EXPIRY_WARN_HOURS}h</div></div>
-    <div class="sc ${expiredKeys>0?'sc-danger':''}"><div class="sc-icon">⏰</div><div class="sc-n" id="s-expired">${expiredKeys}</div><div class="sc-l">Expiradas</div></div>
-    <div class="sc"><div class="sc-icon">📋</div><div class="sc-n" id="s-logs">${logs.length}</div><div class="sc-l">Acessos no Log</div></div>
+    <div class="sc"><div class="sc-icon">🔑</div><div class="n" id="s-total">${Object.keys(keys).length}</div><div class="l">Total de Chaves</div></div>
+    <div class="sc"><div class="sc-icon">✅</div><div class="n" id="s-active">${Object.values(keys).filter(k=>k.active).length}</div><div class="l">Chaves Ativas</div></div>
+    <div class="sc ${expiringSoon>0?'warn-card':''}"><div class="sc-icon">⏰</div><div class="n" id="s-warn" style="${expiringSoon>0?'color:var(--orange)':''}">${expiringSoon}</div><div class="l">Expirando em ${EXPIRY_WARN_HOURS}h</div></div>
+    <div class="sc ${expiredKeys>0?'danger-card':''}"><div class="sc-icon">🚫</div><div class="n" id="s-expired" style="${expiredKeys>0?'color:var(--red)':''}">${expiredKeys}</div><div class="l">Expiradas</div></div>
+    <div class="sc"><div class="sc-icon">📋</div><div class="n" id="s-logs">${logs.length}</div><div class="l">Acessos Registrados</div></div>
   </div>
 
   <div class="sec">
     <div class="sh">
       <div class="st">🔑 Chaves de Acesso</div>
       <div class="gen-form">
-        <div class="fi fi-name"><div class="fi-lbl">Cliente</div><input type="text" id="nlabel" placeholder="Nome do cliente"></div>
+        <div class="fi-name"><input type="text" id="nlabel" placeholder="Nome do cliente"></div>
         <div class="fi-sep"></div>
-        <div class="fi"><div class="fi-lbl">Dias</div><div class="fi-num"><input type="number" id="ndays" placeholder="0" min="0"></div></div>
-        <div class="fi"><div class="fi-lbl">Horas</div><div class="fi-num"><input type="number" id="nhours" placeholder="0" min="0"></div></div>
-        <div class="fi"><div class="fi-lbl">Min</div><div class="fi-num"><input type="number" id="nmins" placeholder="0" min="0"></div></div>
+        <div class="fi-group">
+          <div class="fi-col"><span class="fi-lbl">Dias</span><input type="number" id="ndays" class="fi-num" placeholder="0" min="0"></div>
+          <div class="fi-col"><span class="fi-lbl">Horas</span><input type="number" id="nhours" class="fi-num" placeholder="0" min="0"></div>
+          <div class="fi-col"><span class="fi-lbl">Min</span><input type="number" id="nmins" class="fi-num" placeholder="0" min="0"></div>
+        </div>
         <div class="fi-sep"></div>
-        <div class="fi"><div class="fi-lbl">Usos</div><div class="fi-num"><input type="number" id="nuses" placeholder="3" min="-1" style="width:54px"></div></div>
-        <div class="fi-chk"><label><input type="checkbox" id="ndeferred"> ⏱ 1º uso</label></div>
-        <button class="btn-gen" onclick="generateKey()">+ Gerar Chave</button>
+        <div class="fi-col"><span class="fi-lbl">Usos</span><input type="number" id="nuses" class="fi-num" placeholder="3" min="-1" style="width:60px"></div>
+        <div class="fi-col" style="align-items:center;gap:4px"><label style="font-size:12px;color:var(--muted);white-space:nowrap"><input type="checkbox" id="ndeferred" style="margin-right:4px">⏱ Ativar ao 1º uso</label></div>
+        <button class="btn bp" onclick="generateKey()">+ Gerar Chave</button>
       </div>
     </div>
-    <div class="sbar">
+    <div class="search-bar">
       <input type="text" id="search-input" placeholder="🔍 Buscar por nome, chave, telefone ou IP..." oninput="filterKeys()">
-      <select id="filter-status" onchange="filterKeys()">
+      <span id="filter-count" style="font-size:12px;color:var(--muted);white-space:nowrap;padding:0 4px"></span><select id="filter-status" onchange="filterKeys()">
         <option value="">Todos os status</option>
         <option value="ativo">Ativas</option>
         <option value="bloqueado">Bloqueadas</option>
         <option value="expirada">⏰ Expiradas</option>
       </select>
     </div>
-    <div id="bulk-bar" style="display:none;align-items:center;gap:10px;padding:8px 15px;background:#ff475710;border-bottom:1px solid #ff475730"><span id="bulk-count" style="font-size:12px;color:var(--red);font-weight:700"></span><button class="ab ab-r" onclick="deleteSelected()">🗑 Excluir selecionadas</button><button class="ab" style="background:transparent;border:1px solid var(--border2);color:var(--muted)" onclick="clearSelection()">✕ Limpar seleção</button></div>
-    <div class="tov">
+    <div id="bulk-bar" style="display:none;align-items:center;gap:10px;padding:7px 14px;background:#ff475712;border-bottom:1px solid #ff475730"><span id="bulk-count" style="font-size:12px;color:var(--red);font-weight:700"></span><button class="btn br" onclick="deleteSelected()">🗑 Excluir selecionadas</button><button class="btn bw" onclick="clearSelection()">✕ Limpar seleção</button></div>
+    <div class="ov">
       <table>
         <thead><tr>
-          <th style="width:36px;padding:8px 6px 8px 14px"><input type="checkbox" id="chk-all" title="Selecionar todas visíveis" style="accent-color:var(--green);width:16px;height:16px;cursor:pointer;opacity:1;filter:brightness(1.4)" onchange="toggleSelectAll(this)"></th>
+          <th style="width:28px;padding:8px 6px 8px 12px"><input type="checkbox" id="chk-all" title="Selecionar todas visíveis" onchange="toggleSelectAll(this)"></th>
           <th onclick="sortKeys('code')">Chave</th>
           <th onclick="sortKeys('label')" id="th-label">Cliente</th>
           <th onclick="sortKeys('status')" id="th-status">Status</th>
@@ -1576,24 +1666,25 @@ input[type=checkbox].row-chk,input#chk-all{accent-color:var(--green);outline:1px
 
   <div class="sec">
     <div class="sh">
-      <div class="st">📋 Log de Acessos <span style="font-size:10px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">LGPD · ${LOG_RETENTION_DAYS} dias</span></div>
-      <div class="log-filters">
-        <input type="date" id="logDate" onchange="filterLog()">
-        <input type="text" id="logSearch" placeholder="Chave ou IP..." style="width:150px" oninput="filterLog()">
-        <button class="btn btn-y" onclick="clearFilters()">✕</button>
-        <button class="btn btn-y" onclick="doRefresh()">↻</button>
-        <button class="btn btn-r" onclick="clearLog()">🗑 Limpar Log</button>
+      <div class="st">📋 Log de Acessos <span style="font-size:13px;color:var(--muted);font-weight:400">retidos por ${LOG_RETENTION_DAYS} dias (LGPD)</span></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="date" id="logDate" style="padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:13px;outline:none" onchange="filterLog()">
+        <input type="text" id="logSearch" placeholder="Filtrar por chave/IP..." style="padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:13px;outline:none;width:180px" oninput="filterLog()">
+        <button class="btn bw" onclick="clearFilters()">✕ Limpar</button>
+        <button class="btn bw" onclick="doRefresh()">↻ Atualizar</button>
+        <button class="btn br" onclick="clearLog()">🗑 Limpar Log</button>
       </div>
     </div>
-    <div class="tov">
+    <div class="ov">
       <table>
-        <thead><tr><th>Horário</th><th>Chave</th><th>Cliente</th><th>Telefone</th><th>IP</th><th>WPP Ver.</th><th>Ação</th></tr></thead>
+        <thead><tr><th></th><th>Horário</th><th>Chave</th><th>Cliente</th><th>Telefone</th><th>IP</th><th>WPP Version</th><th>Ação</th></tr></thead>
         <tbody id="lb">${buildLogsHtml()}</tbody>
       </table>
     </div>
   </div>
+  </div>
 </main>
-</div>
+
 
 <!-- Modals -->
 <div class="modal-bg" id="renewModal"><div class="modal">
@@ -1666,6 +1757,7 @@ input[type=checkbox].row-chk,input#chk-all{accent-color:var(--green);outline:1px
 </div></div>
 
 <div class="toast" id="toast"></div>
+<div class="toast" id="toast"></div>
 
 <script>
 const _RA='${R_ADMIN}';
@@ -1677,6 +1769,8 @@ function toast(msg,ok=true){
   t.style.display='block';
   setTimeout(()=>t.style.display='none',3200);
 }
+
+function copyKey(el,code){if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(code).then(function(){var o=el.textContent;el.textContent='✓ copiado';el.style.color='#fff';setTimeout(function(){el.textContent=o;el.style.color='';},1000);}).catch(function(){toast('Falha ao copiar',false);});}else{var ta=document.createElement('textarea');ta.value=code;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');toast('✓ Chave copiada');}catch(e){toast('Falha ao copiar',false);}document.body.removeChild(ta);}}
 
 function openAssignModFromEl(el){
   openAssignMod(el.dataset.code||'', el.dataset.label||'', el.dataset.modnote||'');
@@ -1715,7 +1809,7 @@ function filterKeys(){
   clearSelection();
   const q=(document.getElementById('search-input').value||'').toLowerCase();
   const st=document.getElementById('filter-status').value;
-  document.querySelectorAll('#kb tr[data-label]').forEach(row=>{
+  let shown=0;document.querySelectorAll('#kb tr[data-label]').forEach(row=>{
     const label=(row.dataset.label||'').toLowerCase();
     const phone=(row.dataset.phone||'').toLowerCase();
     const status=(row.dataset.status||'').toLowerCase();
@@ -1724,8 +1818,9 @@ function filterKeys(){
     const ip=(row.cells[5]||{}).textContent||'';
     const matchQ=!q||label.includes(q)||phone.includes(q)||code.toLowerCase().includes(q)||ip.toLowerCase().includes(q);
     const matchSt=!st||(st==='expirada'?expired2==='1':status===st);
-    row.style.display=(matchQ&&matchSt)?'':'none';
+    const vis=matchQ&&matchSt;row.style.display=vis?'':'none';if(vis)shown++;
   });
+  const fc=document.getElementById('filter-count');if(fc)fc.textContent=shown+' chave'+(shown!==1?'s':'');
 }
 
 function onRowCheck(){
@@ -1891,6 +1986,7 @@ function openRename(code,label){document.getElementById('renameCode').value=code
 function closeRename(){document.getElementById('renameModal').classList.remove('open');}
 document.getElementById('renameModal').addEventListener('click',function(e){if(e.target===this)closeRename();});
 document.getElementById('renameValue').addEventListener('keydown',function(e){if(e.key==='Enter')saveRename();});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'){document.querySelectorAll('.modal-bg.open').forEach(function(m){m.classList.remove('open');});}});
 async function saveRename(){
   const code=document.getElementById('renameCode').value;
   const label=document.getElementById('renameValue').value.trim();
@@ -1938,6 +2034,7 @@ async function exportCSV(){
   try{const r=await fetch(_RA+'/api/export/csv');if(r.status===401){toast('Sessão expirada',false);return;}const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='zvm-chaves-'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(url);toast('CSV exportado!');}catch(e){toast('Erro ao exportar',false);}
 }
 
+
 </script>
 ${CANVAS_BG}</body></html>`;
 }
@@ -1952,176 +2049,213 @@ function renderPlanosPage() {
   ];
 
   const cards = PLANOS.map(p => {
-    const comingSoon = p.link === '#';
-    return `<div class="plan-card${p.highlight?' hl':''}">
-  ${p.highlight?'<div class="pop-badge">⚡ Mais popular</div>':''}
-  <div class="plan-top">
+      const comingSoon = p.link === '#';
+      return `<div class="plan-card${p.highlight?' hl':''}">
+    ${p.highlight?'<div class="pop-badge">⚡ Mais popular</div>':''}
     <div class="plan-icon">${p.icon}</div>
     <div class="plan-name">${p.label}</div>
     <div class="plan-sub">${p.devices} número${p.devices>1?'s':''} de WhatsApp</div>
-  </div>
-  <div class="plan-pricing">
-    ${p.oldPrice?`<div class="old-price">R$ ${p.oldPrice}</div>`:''}
-    <div class="plan-price"><span class="cur">R$</span><span class="val">${p.price}</span><span class="per">/mês</span></div>
-    <div class="per-device">R$ ${p.perDevice} por número</div>
-  </div>
-  <div class="plan-divider"></div>
-  <ul class="plan-features">
-    <li>✅ Até ${p.devices} número(s) de WhatsApp</li>
-    <li>✅ 30 dias de acesso</li>
-    <li>✅ Todos os recursos inclusos</li>
-    <li>✅ Renovação automática pelo portal</li>
-  </ul>
-  <a href="${p.link}" class="plan-btn${p.highlight?' btn-hl':''}" ${comingSoon?'onclick="return false;"':'target="_blank"'}>
-    ${comingSoon?'🔒 Em breve':'💳 Assinar agora'}
-  </a>
-</div>`;
-  }).join('');
+    <div class="plan-pricing">
+      ${p.oldPrice?`<div class="old-price">R$ ${p.oldPrice}</div>`:''}
+      <div class="plan-price"><span class="cur">R$</span><span class="val">${p.price}</span><span class="per">/mês</span></div>
+      <div class="per-device">R$ ${p.perDevice} por número</div>
+    </div>
+    <div class="plan-divider"></div>
+    <ul class="plan-features">
+      <li>✅ Até ${p.devices} número(s) de WhatsApp</li>
+      <li>✅ 30 dias de acesso</li>
+      <li>✅ Todos os recursos inclusos</li>
+      <li>✅ Renovação automática pelo portal</li>
+    </ul>
+    <a href="${p.link}" class="plan-btn${p.highlight?' btn-hl':''}" ${comingSoon?'onclick="return false;"':'target="_blank"'}>
+      ${comingSoon?'🔒 Em breve':'💳 Assinar agora'}
+    </a>
+  </div>`;
+    }).join('');
 
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Planos e Preços</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--card2:#13131f;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--radius:14px}
-body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
-header{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000060}
-.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
-.hlinks{display:flex;gap:10px}
-.hlinks a{font-size:13px;color:var(--muted);text-decoration:none;padding:6px 14px;border:1px solid var(--border);border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
-.hlinks a:hover{color:var(--green);border-color:var(--green)}
-main{max-width:1060px;margin:0 auto;padding:56px 24px 80px}
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='900' font-size='13' fill='%2300ff00'%3EZVM%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<title>ZVM &mdash; Planos e Preços</title>
+<style>*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --green:#00ff00;--green-soft:#00ff0015;--green-border:#00ff0035;
+  --dark:#080810;--dark2:#0d0d16;--card:#11111c;--card2:#16162400;
+  --border:#1e1e30;--border2:#2a2a40;--text:#eef0f6;--text2:#a8acc4;--muted:#6a6e8a;
+  --red:#ff4757;--yellow:#ffd32a;--orange:#ff8600;--blue:#4f8ef7;
+  --radius:14px;--radius-sm:10px;--radius-lg:20px;
+  --maxw:1080px;
+}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{
+  background:var(--dark);color:var(--text);
+  font-family:'Inter',system-ui,-apple-system,sans-serif;
+  font-size:clamp(15px,1vw + 13px,17px);line-height:1.65;
+  min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased;
+}
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(ellipse 70% 50% at 50% -5%,#00ff000d 0%,transparent 60%),radial-gradient(ellipse 50% 40% at 90% 10%,#4f8ef708 0%,transparent 55%)}
+.wrap{position:relative;z-index:1;max-width:var(--maxw);margin:0 auto;padding:0 clamp(20px,5vw,40px)}
+h1,h2,h3,h4{font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;line-height:1.2;letter-spacing:-.02em;color:#fff}
+h1{font-size:clamp(28px,4vw + 8px,52px)}
+h2{font-size:clamp(22px,2.5vw + 6px,34px)}
+h3{font-size:clamp(18px,1.5vw + 6px,22px);font-weight:700}
+a{color:inherit;text-decoration:none}
+code,.mono{font-family:'JetBrains Mono',monospace}
+
+/* Nav */
+.nav{position:sticky;top:0;z-index:100;background:rgba(8,8,16,.82);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+.nav-in{max-width:var(--maxw);margin:0 auto;padding:0 clamp(20px,5vw,40px);height:64px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.nav-logo{display:flex;align-items:center;gap:10px;font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;font-size:19px;color:#fff;letter-spacing:-.02em}
+.nav-mark{width:34px;height:34px;background:linear-gradient(135deg,#00ff00,#00cc00);border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;color:#080810;flex-shrink:0;font-family:'JetBrains Mono',monospace}
+.nav-links{display:flex;align-items:center;gap:6px}
+.nav-links a{padding:9px 16px;border-radius:var(--radius-sm);font-size:14px;font-weight:600;color:var(--text2);transition:all .18s}
+.nav-links a:hover{color:var(--green);background:var(--green-soft)}
+.nav-links a.active{color:var(--green);background:var(--green-soft)}
+.nav-toggle{display:none;background:none;border:1px solid var(--border2);border-radius:8px;width:40px;height:40px;cursor:pointer;color:var(--text);font-size:18px;align-items:center;justify-content:center}
 
 /* Hero */
-.hero{text-align:center;margin-bottom:48px}
-.hero-badge{display:inline-flex;align-items:center;gap:6px;background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-size:12px;letter-spacing:2px;text-transform:uppercase;padding:5px 16px;border-radius:20px;margin-bottom:20px;font-family:'Syne',sans-serif}
-.hero h1{font-family:'Syne',sans-serif;font-size:clamp(28px,4vw,46px);font-weight:800;line-height:1.1;margin-bottom:14px}
-.hero h1 em{color:var(--green);font-style:normal}
-.hero-sub{color:#8a8aaa;font-size:13px;line-height:1.8;max-width:460px;margin:0 auto 28px;font-family:'Syne',sans-serif;letter-spacing:0}
-.guarantee{display:inline-flex;align-items:center;gap:20px;background:var(--card);border:1px solid var(--border);border-radius:30px;padding:10px 24px;font-size:14px;color:#8a8aaa;font-family:'Syne',sans-serif;letter-spacing:0}
-.guarantee span{display:flex;align-items:center;gap:6px}
+.hero{text-align:center;padding:clamp(48px,8vw,96px) 0 clamp(32px,5vw,56px)}
+.hero-badge{display:inline-flex;align-items:center;gap:7px;padding:7px 16px;background:var(--green-soft);border:1px solid var(--green-border);border-radius:100px;font-size:13px;font-weight:600;color:var(--green);margin-bottom:24px;font-family:'JetBrains Mono',monospace}
+.hero p.sub{font-size:clamp(16px,1.5vw + 8px,20px);color:var(--text2);max-width:600px;margin:20px auto 0;line-height:1.6}
 
-/* WIP banner */
-.wip-banner{background:#ffd32a08;border:1px solid #ffd32a25;border-radius:10px;padding:13px 20px;margin-bottom:36px;display:flex;align-items:center;gap:12px;font-size:13px;color:#c9a800;line-height:1.7;font-family:'Syne',sans-serif}
+/* Section */
+.section{padding:clamp(32px,5vw,56px) 0}
+.section-head{text-align:center;margin-bottom:clamp(32px,5vw,48px)}
+.section-head p{color:var(--text2);margin-top:12px;font-size:clamp(15px,1vw + 10px,18px)}
 
-/* Plans */
-.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:48px;justify-items:center}
-.plan-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px 20px 22px;text-align:center;position:relative;transition:border-color .25s,transform .2s,box-shadow .2s;display:flex;flex-direction:column;width:100%}
-.plan-card:hover{border-color:#00ff8740;transform:translateY(-4px);box-shadow:0 16px 40px #00000050}
-.plan-card.hl{border-color:#00ff8760;background:linear-gradient(165deg,#0d1a12,#0f0f1a);box-shadow:0 0 30px #00ff8715}
-.plan-card.hl:hover{box-shadow:0 16px 50px #00ff8725}
-.pop-badge{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:var(--green);color:#000;font-family:'Syne',sans-serif;font-weight:800;font-size:14px;padding:5px 18px;border-radius:20px;white-space:nowrap;letter-spacing:.3px}
-.plan-top{margin-bottom:20px}
-.plan-icon{font-size:36px;margin-bottom:10px}
-.plan-name{font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:var(--text);margin-bottom:4px}
-.plan-sub{font-size:13px;color:#8a8aaa;font-family:'Syne',sans-serif;letter-spacing:0}
-.plan-pricing{margin-bottom:18px}
-.old-price{font-size:13px;color:var(--muted);text-decoration:line-through;margin-bottom:4px}
-.plan-price{display:flex;align-items:baseline;justify-content:center;gap:3px;margin-bottom:4px}
-.cur{font-size:14px;color:var(--green);font-weight:700}
-.val{font-family:'Syne',sans-serif;font-size:34px;font-weight:800;color:var(--green);line-height:1}
-.per{font-size:14px;color:var(--muted);font-family:'Syne',sans-serif}
-.per-device{font-size:13px;color:#a0a0c0;font-family:'Syne',sans-serif;font-weight:600;margin-top:2px}
-.plan-divider{height:1px;background:var(--border);margin:16px 0}
-.plan-features{list-style:none;text-align:left;font-size:13px;color:#a0a0c0;line-height:1.5;display:flex;flex-direction:column;gap:10px;margin-bottom:20px;flex:1;font-family:'Syne',sans-serif;letter-spacing:0}
-.plan-features li{display:flex;align-items:center;gap:6px}
-.plan-btn{display:block;padding:12px;border-radius:8px;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;text-decoration:none;text-align:center;transition:all .2s;background:#1c1c2e;color:var(--muted);border:1px solid var(--border);cursor:not-allowed;opacity:.65;margin-top:auto}
-.plan-btn.btn-hl{background:var(--green);color:#000;border:none;cursor:not-allowed;opacity:.7}
+/* Cards */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:clamp(20px,3vw,28px)}
 
-/* Compare */
-.compare{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:32px}
-.compare-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.5px;padding:16px 22px;border-bottom:1px solid var(--border);background:var(--card2)}
-.compare table{width:100%;border-collapse:collapse;font-size:13px;font-family:'Syne',sans-serif}
-.compare th{padding:11px 16px;text-align:center;color:#a0a0c0;border-bottom:1px solid var(--border);font-weight:600;font-size:13px;background:var(--card2);font-family:'Syne',sans-serif}
-.compare th:first-child{text-align:left}
-.compare td{padding:11px 16px;text-align:center;border-bottom:1px solid #14141f;color:var(--text)}
-.compare td:first-child{text-align:left;color:#a0a0c0;font-size:13px;font-family:'Syne',sans-serif;letter-spacing:0}
-.compare tr:last-child td{border-bottom:none}
-.compare tr:hover td{background:#ffffff02}
-.ck{color:var(--green)}
-.cx{color:#ff475760}
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:14px 28px;border-radius:var(--radius-sm);font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:15px;cursor:pointer;border:none;transition:all .18s;white-space:nowrap}
+.btn-primary{background:linear-gradient(135deg,#00ff00,#00cc00);color:#080810}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 10px 30px #00ff0030}
+.btn-ghost{background:transparent;border:1.5px solid var(--border2);color:var(--text)}
+.btn-ghost:hover{border-color:var(--green);color:var(--green)}
+.btn-wa{background:#25d366;color:#fff}
+.btn-wa:hover{transform:translateY(-2px);box-shadow:0 10px 30px #25d36640}
 
-/* Incluso */
-.includes{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:22px 26px;margin-bottom:32px}
-.inc-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:var(--green);text-transform:uppercase;letter-spacing:.5px;margin-bottom:16px}
-.inc-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.inc-item{display:flex;align-items:center;gap:12px;font-size:14px;color:#c4c4d8;line-height:1.5;font-family:'Syne',sans-serif;letter-spacing:0;font-weight:500}
-.inc-item .ic{flex-shrink:0;font-size:20px}
+/* Footer */
+.footer{border-top:1px solid var(--border);margin-top:clamp(48px,8vw,80px);padding:clamp(40px,6vw,56px) 0 32px}
+.footer-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:32px;margin-bottom:40px}
+.footer-brand .nav-logo{margin-bottom:14px}
+.footer-brand p{color:var(--muted);font-size:14px;line-height:1.6;max-width:280px}
+.footer-col h4{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:16px;font-family:'Inter',sans-serif;font-weight:700}
+.footer-col a{display:block;color:var(--text2);font-size:14px;padding:6px 0;transition:color .15s}
+.footer-col a:hover{color:var(--green)}
+.footer-bottom{border-top:1px solid var(--border);padding-top:28px;text-align:center;color:var(--muted);font-size:13px;line-height:1.8}
 
-/* FAQ */
-.faq{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:26px 28px;margin-bottom:32px}
-.faq-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.5px;margin-bottom:18px}
-.faq-item{border-bottom:1px solid var(--border);padding:13px 0}
-.faq-item:last-child{border-bottom:none;padding-bottom:0}
-.faq-q{font-size:15px;color:#e2e2f0;font-weight:700;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px;user-select:none;font-family:'Syne',sans-serif;letter-spacing:-0.2px}
-.faq-q .arr{color:var(--muted);transition:transform .2s;flex-shrink:0}
-.faq-a{font-size:14px;color:#a0a0c0;line-height:1.9;padding-top:10px;display:none;font-family:'Syne',sans-serif;letter-spacing:0;font-weight:400}
-.faq-item.open .faq-a{display:block}
-.faq-item.open .arr{transform:rotate(90deg)}
-
-/* CTA */
-.cta{background:linear-gradient(135deg,#0a1a10,#0f0f1a);border:1px solid #00ff8740;border-radius:var(--radius);padding:36px 28px;text-align:center}
-.cta h3{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--text);margin-bottom:8px}
-.cta p{color:#8a8aaa;font-size:13px;margin-bottom:22px;line-height:1.8;font-family:'Syne',sans-serif;letter-spacing:0}
-.btn-wpp{display:inline-flex;align-items:center;gap:8px;background:#25d36620;border:1px solid #25d36640;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:12px 24px;border-radius:8px;text-decoration:none;transition:all .2s}
-.btn-wpp:hover{background:#25d36630;border-color:#25d366;transform:translateY(-2px)}
-footer{text-align:center;padding:28px;font-size:13px;color:#8a8aaa;border-top:1px solid var(--border);font-family:'Syne',sans-serif}
-footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
-@media(max-width:800px){.plans{grid-template-columns:1fr 1fr}.inc-grid{grid-template-columns:1fr}}
-@media(max-width:480px){.plans{grid-template-columns:1fr}.guarantee{flex-direction:column;gap:10px}}
+@media(max-width:760px){
+  .nav-links{position:fixed;inset:64px 0 auto 0;background:var(--dark2);border-bottom:1px solid var(--border);flex-direction:column;align-items:stretch;padding:12px 20px;gap:4px;display:none}
+  .nav-links.open{display:flex}
+  .nav-links a{padding:13px 16px;font-size:15px}
+  .nav-toggle{display:flex}
+  .footer-grid{grid-template-columns:1fr 1fr;gap:28px}
+  .footer-brand{grid-column:1/-1}
+}
+@media(max-width:480px){.footer-grid{grid-template-columns:1fr}}
+.faq-list{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+.faq-item{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;transition:border-color .2s}
+.faq-item[open]{border-color:var(--green-border)}
+.faq-item summary{padding:clamp(18px,2.5vw,24px);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:clamp(15px,1vw + 8px,18px);color:#fff;display:flex;align-items:center;justify-content:space-between;gap:16px;list-style:none;transition:color .15s}
+.faq-item summary::-webkit-details-marker{display:none}
+.faq-item summary:hover{color:var(--green)}
+.faq-chev{font-size:24px;color:var(--green);transition:transform .25s;flex-shrink:0;line-height:1}
+.faq-item[open] .faq-chev{transform:rotate(180deg)}
+.faq-ans{padding:0 clamp(18px,2.5vw,24px) clamp(18px,2.5vw,24px);color:var(--text2);line-height:1.7}
+.faq-ans code{background:var(--dark);border:1px solid var(--border2);border-radius:5px;padding:2px 7px;font-size:.88em;color:var(--green);font-family:'JetBrains Mono',monospace}
+.cta-box{max-width:760px;margin:clamp(40px,6vw,64px) auto 0;text-align:center;background:linear-gradient(135deg,var(--green-soft),var(--card));border:1px solid var(--green-border);border-radius:var(--radius-lg);padding:clamp(32px,5vw,48px)}
+.cta-box p{color:var(--text2);margin:12px 0 28px;font-size:clamp(15px,1vw + 8px,17px)}
+.cta-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}</style><style>
+.plans-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:clamp(40px,6vw,64px)}
+.plan-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:clamp(24px,3vw,32px);display:flex;flex-direction:column;position:relative;transition:border-color .2s,transform .2s}
+.plan-card:hover{transform:translateY(-4px);border-color:var(--border2)}
+.plan-card.hl{border-color:var(--green-border);background:linear-gradient(160deg,var(--green-soft),var(--card) 60%)}
+.pop-badge{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#00ff00,#00cc00);color:#080810;font-size:12px;font-weight:800;padding:5px 16px;border-radius:100px;font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap}
+.plan-icon{font-size:32px;margin-bottom:8px}
+.plan-name{font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;font-size:20px;color:#fff;margin-bottom:4px}
+.plan-sub{font-size:13px;color:var(--text2)}
+.plan-pricing{margin:20px 0}
+.old-price{font-size:14px;color:var(--muted);text-decoration:line-through;margin-bottom:2px}
+.plan-price{display:flex;align-items:baseline;gap:4px}
+.plan-price .cur{font-size:16px;font-weight:700;color:var(--text2)}
+.plan-price .val{font-size:clamp(30px,3vw,40px);font-weight:800;font-family:'Plus Jakarta Sans',sans-serif;color:#fff;letter-spacing:-.02em}
+.plan-price .per{font-size:14px;color:var(--muted)}
+.per-device{font-size:13px;color:var(--green);margin-top:4px;font-weight:600}
+.plan-divider{height:1px;background:var(--border);margin:18px 0}
+.plan-features{list-style:none;display:flex;flex-direction:column;gap:9px;margin-bottom:24px;flex:1}
+.plan-features li{font-size:14px;color:var(--text2)}
+.plan-btn{display:block;text-align:center;padding:13px;border-radius:var(--radius-sm);font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:14px;background:var(--card2);border:1.5px solid var(--border2);color:var(--text);transition:all .18s}
+.plan-btn:hover{border-color:var(--green);color:var(--green)}
+.plan-btn.btn-hl{background:linear-gradient(135deg,#00ff00,#00cc00);color:#080810;border:none}
+.plan-btn.btn-hl:hover{box-shadow:0 10px 30px #00ff0030;transform:translateY(-2px)}
+.guarantee{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:24px}
+.guarantee span{background:var(--card);border:1px solid var(--border);border-radius:100px;padding:8px 18px;font-size:13px;color:var(--text2);font-weight:600}
+.wip-banner{display:flex;align-items:center;gap:14px;background:var(--green-soft);border:1px solid var(--green-border);border-radius:var(--radius);padding:16px 20px;margin-bottom:32px;font-size:14px;color:var(--text2)}
+.compare-wrap{overflow-x:auto;margin-bottom:clamp(40px,6vw,64px)}
+table.compare{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;min-width:560px}
+table.compare th,table.compare td{padding:14px 18px;text-align:center;font-size:14px;border-bottom:1px solid var(--border)}
+table.compare th{font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;color:#fff;background:var(--card2)}
+table.compare td:first-child,table.compare th:first-child{text-align:left;color:var(--text2)}
+table.compare tr:last-child td{border-bottom:none}
+table.compare .ck{color:var(--green);font-weight:700}
+.includes-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:clamp(40px,6vw,64px)}
+.inc-item{display:flex;align-items:flex-start;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;font-size:14px;color:var(--text2)}
+.inc-item .ic{font-size:20px;flex-shrink:0}
+@media(max-width:900px){.plans-grid{grid-template-columns:1fr 1fr}.includes-grid{grid-template-columns:1fr}}
+@media(max-width:560px){.plans-grid{grid-template-columns:1fr}}
 </style></head><body>
-<header>
-  <a href="/" class="logo">⚡ ZVM</a>
-  <div class="hlinks">
-    <a href="/">Portal</a>
-    <a href="/faq">FAQ</a>
-    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank">💬 Suporte</a>
+<nav class="nav"><div class="nav-in">
+  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span> ZVM</a>
+  <button class="nav-toggle" onclick="document.getElementById('navlinks').classList.toggle('open')">☰</button>
+  <div class="nav-links" id="navlinks">
+    <a href="/planos" class="active">Planos</a>
+    <a href="/client" class="">Portal do Cliente</a>
+    <a href="/faq" class="">FAQ</a>
+    <a href="/privacidade" class="">Privacidade</a>
   </div>
-</header>
-<main>
-
-  <div class="hero">
+</div></nav>
+<div class="wrap">
+  <section class="hero">
     <div class="hero-badge">💳 Planos e Preços</div>
-    <h1>Simples, <em>transparente</em><br>e sem surpresas</h1>
-    <p class="hero-sub">Escolha o plano ideal para o seu uso. Todos incluem acesso completo à extensão ZVM por 30 dias.</p>
+    <h1>Simples, transparente<br>e sem surpresas</h1>
+    <p class="sub">Escolha o plano ideal para o seu uso. Todos incluem acesso completo à extensão ZVM por 30 dias.</p>
     <div class="guarantee">
       <span>✅ Sem fidelidade</span>
       <span>⚡ Ativação imediata</span>
       <span>💬 Suporte incluso</span>
     </div>
-  </div>
+  </section>
 
-  <div class="wip-banner">
-    <span style="font-size:18px;flex-shrink:0">🚧</span>
-    <span><strong>Links de pagamento em breve!</strong> Os planos já estão configurados — assim que os links da Payt forem adicionados você poderá assinar direto por aqui.</span>
-  </div>
+  <section class="section" style="padding-top:0">
+    <div class="wip-banner">
+      <span style="font-size:18px;flex-shrink:0">🚧</span>
+      <span><strong>Links de pagamento em breve!</strong> Os planos já estão configurados — assim que os links da Payt forem adicionados você poderá assinar direto por aqui.</span>
+    </div>
 
-  <div class="plans">${cards}</div>
+    <div class="plans-grid">${cards}</div>
 
-  <div class="compare">
-    <div class="compare-title">📊 Comparativo dos planos</div>
-    <table>
-      <thead><tr>
-        <th style="text-align:left">Recurso</th>
-        <th>Solo</th><th>Padrão</th><th>Pro</th><th>Empresarial</th>
-      </tr></thead>
-      <tbody>
-        <tr><td>Números de WhatsApp</td><td>1</td><td>3</td><td>5</td><td>10</td></tr>
-        <tr><td>Preço mensal</td><td>R$ 24,99</td><td>R$ 29,99</td><td>R$ 39,99</td><td>R$ 59,99</td></tr>
-        <tr><td>Preço por número</td><td>R$ 24,99</td><td style="color:var(--green)">R$ 10,00</td><td style="color:var(--green)">R$ 8,00</td><td style="color:var(--green)">R$ 6,00</td></tr>
-        <tr><td>Todos os recursos</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
-        <tr><td>Portal do cliente</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
-        <tr><td>Suporte WhatsApp</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
-        <tr><td>Renovação automática</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
-      </tbody>
-    </table>
-  </div>
+    <div class="section-head"><h2>Comparativo dos planos</h2></div>
+    <div class="compare-wrap">
+      <table class="compare">
+        <thead><tr><th>Recurso</th><th>Solo</th><th>Padrão</th><th>Pro</th><th>Empresarial</th></tr></thead>
+        <tbody>
+          <tr><td>Números de WhatsApp</td><td>1</td><td>3</td><td>5</td><td>10</td></tr>
+          <tr><td>Preço mensal</td><td>R$ 24,99</td><td>R$ 29,99</td><td>R$ 39,99</td><td>R$ 59,99</td></tr>
+          <tr><td>Preço por número</td><td>R$ 24,99</td><td class="ck">R$ 10,00</td><td class="ck">R$ 8,00</td><td class="ck">R$ 6,00</td></tr>
+          <tr><td>Todos os recursos</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
+          <tr><td>Portal do cliente</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
+          <tr><td>Suporte WhatsApp</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
+          <tr><td>Renovação automática</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
+        </tbody>
+      </table>
+    </div>
 
-  <div class="includes">
-    <div class="inc-title">✅ Incluso em todos os planos</div>
-    <div class="inc-grid">
+    <div class="section-head"><h2>Incluso em todos os planos</h2></div>
+    <div class="includes-grid">
       <div class="inc-item"><span class="ic">⚡</span><span>Acesso completo à extensão ZVM para WhatsApp Web</span></div>
       <div class="inc-item"><span class="ic">🔄</span><span>Atualizações automáticas durante a vigência</span></div>
       <div class="inc-item"><span class="ic">📱</span><span>Portal do cliente para gerenciar sua chave</span></div>
@@ -2131,258 +2265,436 @@ footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
       <div class="inc-item"><span class="ic">🔁</span><span>Renovação soma ao tempo restante</span></div>
       <div class="inc-item"><span class="ic">🔒</span><span>Chave exclusiva e intransferível</span></div>
     </div>
-  </div>
 
-  <div class="faq">
-    <div class="faq-title">💬 Dúvidas frequentes</div>
-    <div class="faq-item">
-      <div class="faq-q">O que é um "número de WhatsApp" no plano? <span class="arr">▶</span></div>
-      <div class="faq-a">Cada número corresponde a um WhatsApp diferente que pode usar a extensão simultaneamente. No plano Padrão (3 números), por exemplo, três números distintos podem usar ao mesmo tempo. Você gerencia quais números estão ativos pelo portal do cliente.</div>
+    <div class="section-head"><h2>Dúvidas sobre os planos</h2></div>
+    <div class="faq-list">
+      <details class="faq-item">
+        <summary>O que é um &quot;número de WhatsApp&quot; no plano?<span class="faq-chev">&#8964;</span></summary>
+        <div class="faq-ans">Cada número corresponde a um WhatsApp diferente que pode usar a extensão simultaneamente. No plano Padrão (3 números), três números distintos podem usar ao mesmo tempo. Você gerencia quais números estão ativos pelo <a href="/client" style="color:var(--green)">Portal do Cliente</a>.</div>
+      </details>
+      <details class="faq-item">
+        <summary>Quando minha chave é ativada após o pagamento?<span class="faq-chev">&#8964;</span></summary>
+        <div class="faq-ans">Imediatamente após a confirmação do pagamento pela Payt. Para PIX é instantâneo. A chave já estará disponível no portal do cliente antes mesmo de você fechar a janela de confirmação.</div>
+      </details>
+      <details class="faq-item">
+        <summary>Se eu já tenho uma chave e compro de novo, o que acontece?<span class="faq-chev">&#8964;</span></summary>
+        <div class="faq-ans">Sua chave existente é renovada automaticamente — os 30 dias são somados ao tempo que ainda resta. Você não perde nenhum dia e não precisa de uma chave nova.</div>
+      </details>
+      <details class="faq-item">
+        <summary>Posso mudar de plano (upgrade ou downgrade)?<span class="faq-chev">&#8964;</span></summary>
+        <div class="faq-ans">Sim. Entre em contato com o suporte via WhatsApp e ajustamos o seu plano sem complicações.</div>
+      </details>
+      <details class="faq-item">
+        <summary>O que acontece quando minha chave expira?<span class="faq-chev">&#8964;</span></summary>
+        <div class="faq-ans">A extensão para de funcionar até que você renove. Seu histórico e configurações são mantidos — basta renovar e tudo volta exatamente como estava.</div>
+      </details>
     </div>
-    <div class="faq-item">
-      <div class="faq-q">Quando minha chave é ativada após o pagamento? <span class="arr">▶</span></div>
-      <div class="faq-a">Imediatamente após a confirmação do pagamento pela Payt. Para PIX é instantâneo. A chave já estará disponível no portal do cliente antes mesmo de você fechar a janela de confirmação.</div>
+
+    <div class="cta-box">
+      <h3>Ainda tem dúvidas?</h3>
+      <p>Nossa equipe está disponível para te ajudar a escolher o melhor plano ou esclarecer qualquer questão antes de assinar.</p>
+      <div class="cta-actions">
+        <a class="btn btn-wa" href="https://wa.me/5521996771552?text=LR!%20Quero%20saber%20mais%20sobre%20os%20planos%20do%20ZVM." target="_blank">💬 Falar com o Suporte</a>
+      </div>
     </div>
-    <div class="faq-item">
-      <div class="faq-q">Se eu já tenho uma chave e compro de novo, o que acontece? <span class="arr">▶</span></div>
-      <div class="faq-a">Sua chave existente é renovada automaticamente — os 30 dias são somados ao tempo que ainda resta. Você não perde nenhum dia e não precisa de uma chave nova.</div>
+  </section>
+</div>
+<footer class="footer"><div class="wrap">
+  <div class="footer-grid">
+    <div class="footer-brand">
+      <div class="nav-logo"><span class="nav-mark">ZVM</span> ZVM</div>
+      <p>Sistema de licenciamento para a extensão ZapVoice. Controle de acesso seguro e gestão de dispositivos.</p>
     </div>
-    <div class="faq-item">
-      <div class="faq-q">Posso mudar de plano (upgrade ou downgrade)? <span class="arr">▶</span></div>
-      <div class="faq-a">Sim. Entre em contato com o suporte via WhatsApp e ajustamos o seu plano sem complicações.</div>
+    <div class="footer-col"><h4>Produto</h4>
+      <a href="/planos">Planos e Preços</a>
+      <a href="/client">Portal do Cliente</a>
+      <a href="/faq">Perguntas Frequentes</a>
     </div>
-    <div class="faq-item">
-      <div class="faq-q">O que acontece quando minha chave expira? <span class="arr">▶</span></div>
-      <div class="faq-a">A extensão para de funcionar até que você renove. Seu histórico e configurações são mantidos — basta renovar e tudo volta exatamente como estava.</div>
+    <div class="footer-col"><h4>Suporte</h4>
+      <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM%20LR1290." target="_blank">WhatsApp</a>
+      <a href="/faq">Central de Ajuda</a>
+    </div>
+    <div class="footer-col"><h4>Legal</h4>
+      <a href="/privacidade">Privacidade</a>
     </div>
   </div>
-
-  <div class="cta">
-    <h3>Ainda tem dúvidas?</h3>
-    <p>Nossa equipe está disponível para te ajudar a escolher o melhor plano<br>ou esclarecer qualquer questão antes de assinar.</p>
-    <a class="btn-wpp" href="https://wa.me/5521996771552?text=LR!%20Quero%20saber%20mais%20sobre%20os%20planos%20do%20ZVM." target="_blank">💬 Falar com o Suporte no WhatsApp</a>
+  <div class="footer-bottom">
+    &copy; ${new Date().getFullYear()} ZVM &mdash; Todos os direitos reservados<br>
+    Licenciamento da extensão ZapVoice
   </div>
-
-</main>
-<footer>
-  <p>© ${new Date().getFullYear()} ZVM — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/privacidade">Privacidade</a></p>
-  <p style="margin-top:6px;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:.5">Todos os direitos reservados</p>
-</footer>
-<script>
-document.querySelectorAll('.faq-item').forEach(item=>{
-  item.querySelector('.faq-q').addEventListener('click',()=>item.classList.toggle('open'));
-});
-</script>
-${CANVAS_BG}
+</div></footer>
+<script>document.querySelectorAll('.nav-links a').forEach(function(a){a.addEventListener('click',function(){document.getElementById('navlinks').classList.remove('open');});});</script>
 </body></html>`;
 }
 
 function renderFaqPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — FAQ</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--radius:14px}
-body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
-header{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000060}
-.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
-.header-links{display:flex;gap:10px}
-.header-links a{font-size:13px;color:var(--muted);text-decoration:none;padding:6px 14px;border:1px solid var(--border);border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
-.header-links a:hover{color:var(--green);border-color:var(--green)}
-main{max-width:920px;margin:0 auto;padding:60px 32px 80px}
-.hero{text-align:center;margin-bottom:64px}
-.hero-badge{display:inline-block;background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-size:12px;letter-spacing:2px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:22px;font-family:'Syne',sans-serif}
-.hero h1{font-family:'Syne',sans-serif;font-size:clamp(28px,5vw,48px);font-weight:800;line-height:1.1;margin-bottom:18px}
-.hero h1 span{color:var(--green)}
-.hero-sub{color:#a0a0c0;font-size:16px;line-height:1.8;max-width:600px;margin:0 auto 36px;font-family:'Syne',sans-serif}
-.wip-card{background:linear-gradient(135deg,#0f0f1a,#13101f);border:1px solid #7c3aed40;border-radius:var(--radius);padding:40px 36px;text-align:center;margin-bottom:56px;position:relative;overflow:hidden}
-.wip-card::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,#7c3aed18,transparent 70%);pointer-events:none}
-.wip-icon{font-size:52px;margin-bottom:18px;display:block;animation:float 3s ease-in-out infinite}
-@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
-.wip-title{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--text);margin-bottom:12px}
-.wip-title span{color:var(--green)}
-.wip-desc{color:#a0a0c0;font-size:15px;line-height:1.9;max-width:560px;margin:0 auto 28px;font-family:'Syne',sans-serif}
-.progress-wrap{background:#1e1e2e;border-radius:8px;height:6px;overflow:hidden;max-width:320px;margin:0 auto 10px}
-.progress-bar{height:6px;background:linear-gradient(90deg,#7c3aed,var(--green));border-radius:8px;animation:progress 2.5s ease-in-out infinite alternate}
-@keyframes progress{from{width:30%}to{width:45%}}
-.progress-label{font-size:12px;color:var(--muted);letter-spacing:1px;text-transform:uppercase}
-.coming-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--muted);letter-spacing:2px;text-transform:uppercase;text-align:center;margin-bottom:20px}
-.coming-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:52px}
-.coming-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px 22px;display:flex;align-items:flex-start;gap:14px;transition:border-color .2s}
-.coming-item:hover{border-color:#7c3aed40}
-.coming-item .ic{font-size:20px;flex-shrink:0;margin-top:1px}
-.coming-item h3{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px}
-.coming-item p{font-size:14px;color:#a0a0c0;line-height:1.6;font-family:'Syne',sans-serif}
-.support-section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:32px;text-align:center}
-.support-section h2{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:var(--text);margin-bottom:8px}
-.support-section p{color:#a0a0c0;font-size:15px;line-height:1.8;margin-bottom:24px;font-family:'Syne',sans-serif}
-.support-btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
-.btn-wpp{display:inline-flex;align-items:center;gap:8px;background:#25d36620;border:1px solid #25d36640;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:11px 22px;border-radius:8px;text-decoration:none;transition:all .2s}
-.btn-wpp:hover{background:#25d36630;border-color:#25d366;transform:translateY(-2px)}
-.btn-portal{display:inline-flex;align-items:center;gap:8px;background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:11px 22px;border-radius:8px;text-decoration:none;transition:all .2s}
-.btn-portal:hover{background:#00ff8722;border-color:var(--green);transform:translateY(-2px)}
-footer{text-align:center;padding:28px;font-size:13px;color:#8a8aaa;border-top:1px solid var(--border);font-family:'Syne',sans-serif}
-footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
-@media(max-width:520px){.coming-grid{grid-template-columns:1fr}.wip-card{padding:28px 20px}.header-links a{padding:5px 9px;font-size:12px}main{padding:40px 16px 60px}}
-</style>
-</head>
-<body>
-<header>
-  <a href="/" class="logo">⚡ ZVM</a>
-  <div class="header-links">
-    <a href="/">Portal</a>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='900' font-size='13' fill='%2300ff00'%3EZVM%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<title>ZVM &mdash; Perguntas Frequentes</title>
+<style>*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --green:#00ff00;--green-soft:#00ff0015;--green-border:#00ff0035;
+  --dark:#080810;--dark2:#0d0d16;--card:#11111c;--card2:#16162400;
+  --border:#1e1e30;--border2:#2a2a40;--text:#eef0f6;--text2:#a8acc4;--muted:#6a6e8a;
+  --red:#ff4757;--yellow:#ffd32a;--orange:#ff8600;--blue:#4f8ef7;
+  --radius:14px;--radius-sm:10px;--radius-lg:20px;
+  --maxw:1080px;
+}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{
+  background:var(--dark);color:var(--text);
+  font-family:'Inter',system-ui,-apple-system,sans-serif;
+  font-size:clamp(15px,1vw + 13px,17px);line-height:1.65;
+  min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased;
+}
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(ellipse 70% 50% at 50% -5%,#00ff000d 0%,transparent 60%),radial-gradient(ellipse 50% 40% at 90% 10%,#4f8ef708 0%,transparent 55%)}
+.wrap{position:relative;z-index:1;max-width:var(--maxw);margin:0 auto;padding:0 clamp(20px,5vw,40px)}
+h1,h2,h3,h4{font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;line-height:1.2;letter-spacing:-.02em;color:#fff}
+h1{font-size:clamp(28px,4vw + 8px,52px)}
+h2{font-size:clamp(22px,2.5vw + 6px,34px)}
+h3{font-size:clamp(18px,1.5vw + 6px,22px);font-weight:700}
+a{color:inherit;text-decoration:none}
+code,.mono{font-family:'JetBrains Mono',monospace}
+
+/* Nav */
+.nav{position:sticky;top:0;z-index:100;background:rgba(8,8,16,.82);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+.nav-in{max-width:var(--maxw);margin:0 auto;padding:0 clamp(20px,5vw,40px);height:64px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.nav-logo{display:flex;align-items:center;gap:10px;font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;font-size:19px;color:#fff;letter-spacing:-.02em}
+.nav-mark{width:34px;height:34px;background:linear-gradient(135deg,#00ff00,#00cc00);border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;color:#080810;flex-shrink:0;font-family:'JetBrains Mono',monospace}
+.nav-links{display:flex;align-items:center;gap:6px}
+.nav-links a{padding:9px 16px;border-radius:var(--radius-sm);font-size:14px;font-weight:600;color:var(--text2);transition:all .18s}
+.nav-links a:hover{color:var(--green);background:var(--green-soft)}
+.nav-links a.active{color:var(--green);background:var(--green-soft)}
+.nav-toggle{display:none;background:none;border:1px solid var(--border2);border-radius:8px;width:40px;height:40px;cursor:pointer;color:var(--text);font-size:18px;align-items:center;justify-content:center}
+
+/* Hero */
+.hero{text-align:center;padding:clamp(48px,8vw,96px) 0 clamp(32px,5vw,56px)}
+.hero-badge{display:inline-flex;align-items:center;gap:7px;padding:7px 16px;background:var(--green-soft);border:1px solid var(--green-border);border-radius:100px;font-size:13px;font-weight:600;color:var(--green);margin-bottom:24px;font-family:'JetBrains Mono',monospace}
+.hero p.sub{font-size:clamp(16px,1.5vw + 8px,20px);color:var(--text2);max-width:600px;margin:20px auto 0;line-height:1.6}
+
+/* Section */
+.section{padding:clamp(32px,5vw,56px) 0}
+.section-head{text-align:center;margin-bottom:clamp(32px,5vw,48px)}
+.section-head p{color:var(--text2);margin-top:12px;font-size:clamp(15px,1vw + 10px,18px)}
+
+/* Cards */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:clamp(20px,3vw,28px)}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:14px 28px;border-radius:var(--radius-sm);font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:15px;cursor:pointer;border:none;transition:all .18s;white-space:nowrap}
+.btn-primary{background:linear-gradient(135deg,#00ff00,#00cc00);color:#080810}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 10px 30px #00ff0030}
+.btn-ghost{background:transparent;border:1.5px solid var(--border2);color:var(--text)}
+.btn-ghost:hover{border-color:var(--green);color:var(--green)}
+.btn-wa{background:#25d366;color:#fff}
+.btn-wa:hover{transform:translateY(-2px);box-shadow:0 10px 30px #25d36640}
+
+/* Footer */
+.footer{border-top:1px solid var(--border);margin-top:clamp(48px,8vw,80px);padding:clamp(40px,6vw,56px) 0 32px}
+.footer-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:32px;margin-bottom:40px}
+.footer-brand .nav-logo{margin-bottom:14px}
+.footer-brand p{color:var(--muted);font-size:14px;line-height:1.6;max-width:280px}
+.footer-col h4{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:16px;font-family:'Inter',sans-serif;font-weight:700}
+.footer-col a{display:block;color:var(--text2);font-size:14px;padding:6px 0;transition:color .15s}
+.footer-col a:hover{color:var(--green)}
+.footer-bottom{border-top:1px solid var(--border);padding-top:28px;text-align:center;color:var(--muted);font-size:13px;line-height:1.8}
+
+@media(max-width:760px){
+  .nav-links{position:fixed;inset:64px 0 auto 0;background:var(--dark2);border-bottom:1px solid var(--border);flex-direction:column;align-items:stretch;padding:12px 20px;gap:4px;display:none}
+  .nav-links.open{display:flex}
+  .nav-links a{padding:13px 16px;font-size:15px}
+  .nav-toggle{display:flex}
+  .footer-grid{grid-template-columns:1fr 1fr;gap:28px}
+  .footer-brand{grid-column:1/-1}
+}
+@media(max-width:480px){.footer-grid{grid-template-columns:1fr}}
+.faq-list{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+.faq-item{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;transition:border-color .2s}
+.faq-item[open]{border-color:var(--green-border)}
+.faq-item summary{padding:clamp(18px,2.5vw,24px);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:clamp(15px,1vw + 8px,18px);color:#fff;display:flex;align-items:center;justify-content:space-between;gap:16px;list-style:none;transition:color .15s}
+.faq-item summary::-webkit-details-marker{display:none}
+.faq-item summary:hover{color:var(--green)}
+.faq-chev{font-size:24px;color:var(--green);transition:transform .25s;flex-shrink:0;line-height:1}
+.faq-item[open] .faq-chev{transform:rotate(180deg)}
+.faq-ans{padding:0 clamp(18px,2.5vw,24px) clamp(18px,2.5vw,24px);color:var(--text2);line-height:1.7}
+.faq-ans code{background:var(--dark);border:1px solid var(--border2);border-radius:5px;padding:2px 7px;font-size:.88em;color:var(--green);font-family:'JetBrains Mono',monospace}
+.cta-box{max-width:760px;margin:clamp(40px,6vw,64px) auto 0;text-align:center;background:linear-gradient(135deg,var(--green-soft),var(--card));border:1px solid var(--green-border);border-radius:var(--radius-lg);padding:clamp(32px,5vw,48px)}
+.cta-box p{color:var(--text2);margin:12px 0 28px;font-size:clamp(15px,1vw + 8px,17px)}
+.cta-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}</style>
+</head><body>
+<nav class="nav"><div class="nav-in">
+  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span> ZVM</a>
+  <button class="nav-toggle" onclick="document.getElementById('navlinks').classList.toggle('open')">☰</button>
+  <div class="nav-links" id="navlinks">
+    <a href="/planos">Planos</a>
+    <a href="/client">Portal do Cliente</a>
+    <a href="/faq" class="active">FAQ</a>
     <a href="/privacidade">Privacidade</a>
-    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM%20LR1290." target="_blank">💬 Suporte</a>
   </div>
-</header>
-<main>
-  <div class="hero">
-    <div class="hero-badge">Central de Ajuda</div>
-    <h1>Perguntas <span>Frequentes</span></h1>
-    <p class="hero-sub">Estamos construindo uma base de conhecimento completa para você. Em breve tudo estará aqui.</p>
-  </div>
-  <div class="wip-card">
-    <span class="wip-icon">🚧</span>
-    <div class="wip-title">Estamos <span>trabalhando nisso!</span></div>
-    <p class="wip-desc">Nossa central de FAQ está sendo desenvolvida com muito cuidado. Em breve você encontrará aqui respostas para todas as suas dúvidas sobre ativação, dispositivos, renovação, pagamentos e muito mais.</p>
-    <div class="progress-wrap"><div class="progress-bar"></div></div>
-    <p class="progress-label">Em desenvolvimento</p>
-  </div>
-  <p class="coming-title">O que vem por aí</p>
-  <div class="coming-grid">
-    <div class="coming-item"><span class="ic">🔑</span><div><h3>Ativação da Chave</h3><p>Como inserir e ativar sua chave no WhatsApp Web.</p></div></div>
-    <div class="coming-item"><span class="ic">📱</span><div><h3>Gerenciar Dispositivos</h3><p>Como adicionar, remover e trocar números vinculados.</p></div></div>
-    <div class="coming-item"><span class="ic">⏱</span><div><h3>Renovação e Validade</h3><p>Entenda como funciona a expiração e como renovar.</p></div></div>
-    <div class="coming-item"><span class="ic">💳</span><div><h3>Pagamentos</h3><p>Dúvidas sobre cobrança, planos e confirmação de compra.</p></div></div>
-    <div class="coming-item"><span class="ic">⚡</span><div><h3>Recursos da Extensão</h3><p>Como usar fluxos, funis, agendamentos e disparos.</p></div></div>
-    <div class="coming-item"><span class="ic">🔒</span><div><h3>Privacidade e LGPD</h3><p>Quais dados coletamos e como protegemos suas informações.</p></div></div>
-  </div>
-  <div class="support-section">
-    <h2>Ainda tem dúvidas?</h2>
-    <p>Enquanto o FAQ não está pronto, nossa equipe está disponível no WhatsApp para te ajudar com qualquer dúvida.</p>
-    <div class="support-btns">
-      <a class="btn-wpp" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM%20LR1290." target="_blank">💬 Falar com o Suporte</a>
-      <a class="btn-portal" href="/">🔑 Portal do Cliente</a>
+</div></nav>
+<div class="wrap">
+  <section class="hero">
+    <div class="hero-badge">&#10067; Central de Ajuda</div>
+    <h1>Perguntas Frequentes</h1>
+    <p class="sub">Tudo o que voce precisa saber sobre ativacao, dispositivos, renovacao e pagamentos.</p>
+  </section>
+  <section class="section" style="padding-top:0">
+    <div class="faq-list">
+      <details class="faq-item">
+  <summary>Como ativo minha chave no WhatsApp Web?<span class="faq-chev">&#8964;</span></summary>
+  <div class="faq-ans">Apos instalar a extensao, abra o WhatsApp Web. Uma tela de ativacao aparecera pedindo sua chave. Cole a chave que voce recebeu (formato <code>zv-xxxxx-xxxxx-xxxxx</code>) e clique em <strong>Ativar</strong>. Pronto &mdash; a extensao estara liberada para uso.</div>
+</details>
+<details class="faq-item">
+  <summary>Minha chave nao funciona, o que fazer?<span class="faq-chev">&#8964;</span></summary>
+  <div class="faq-ans">Verifique se copiou a chave completa, sem espacos antes ou depois. Se o problema persistir, consulte o status da sua chave no <a href='/client' style='color:var(--green)'>Portal do Cliente</a> ou fale com o suporte pelo WhatsApp.</div>
+</details>
+<details class="faq-item">
+  <summary>Quantos numeros posso usar com uma chave?<span class="faq-chev">&#8964;</span></summary>
+  <div class="faq-ans">Depende do seu plano. O plano <strong>Solo</strong> permite 1 numero, o <strong>Padrao</strong> 3, o <strong>Pro</strong> 5 e o <strong>Empresarial</strong> 10. Voce pode ver o limite e os numeros ativos no Portal do Cliente.</div>
+</details>
+<details class="faq-item">
+  <summary>Como removo um numero para usar em outro celular?<span class="faq-chev">&#8964;</span></summary>
+  <div class="faq-ans">Acesse o <a href='/client' style='color:var(--green)'>Portal do Cliente</a>, consulte sua chave e clique em remover ao lado do numero que deseja liberar. Depois e so ativar a chave no novo aparelho.</div>
+</details>
+<details class="faq-item">
+  <summary>Como sei quando minha chave expira?<span class="faq-chev">&#8964;</span></summary>
+  <div class="faq-ans">No Portal do Cliente voce ve a data exata de expiracao e quantas horas restam. Quando faltam menos de 48 horas, um aviso de "Expirando em breve" aparece.</div>
+</details>
+<details class="faq-item">
+  <summary>Como renovo minha chave?<span class="faq-chev">&#8964;</span></summary>
+  <div class="faq-ans">Entre em contato pelo WhatsApp para renovar. Sua chave e seus numeros cadastrados sao <strong>preservados</strong> &mdash; apenas o prazo e estendido.</div>
+</details>
+<details class="faq-item">
+  <summary>Quais formas de pagamento sao aceitas?<span class="faq-chev">&#8964;</span></summary>
+  <div class="faq-ans">Trabalhamos principalmente com <strong>PIX</strong> pela praticidade e confirmacao instantanea. Consulte o suporte para outras opcoes.</div>
+</details>
+    </div>
+    <div class="cta-box">
+      <h2>Ainda tem duvidas?</h2>
+      <p>Nossa equipe responde rapido pelo WhatsApp.</p>
+      <div class="cta-actions">
+        <a class="btn btn-wa" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM." target="_blank">&#128172; Falar no WhatsApp</a>
+        <a class="btn btn-ghost" href="/client">Acessar Portal</a>
+      </div>
+    </div>
+  </section>
+</div>
+<footer class="footer"><div class="wrap">
+  <div class="footer-grid">
+    <div class="footer-brand">
+      <div class="nav-logo"><span class="nav-mark">ZVM</span> ZVM</div>
+      <p>Sistema de licenciamento para a extensao ZapVoice. Controle de acesso seguro e gestao de dispositivos.</p>
+    </div>
+    <div class="footer-col"><h4>Produto</h4>
+      <a href="/planos">Planos e Precos</a>
+      <a href="/client">Portal do Cliente</a>
+      <a href="/faq">Perguntas Frequentes</a>
+    </div>
+    <div class="footer-col"><h4>Suporte</h4>
+      <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM." target="_blank">WhatsApp</a>
+      <a href="/faq">Central de Ajuda</a>
+    </div>
+    <div class="footer-col"><h4>Legal</h4>
+      <a href="/privacidade">Privacidade</a>
     </div>
   </div>
+  <div class="footer-bottom">
+    &copy; ${new Date().getFullYear()} ZVM &mdash; Todos os direitos reservados<br>
+    Licenciamento da extensao ZapVoice
   </div>
-</main>
-<footer>
-  <p>© ${new Date().getFullYear()} ZVM — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/privacidade">Privacidade</a></p>
-  <p style="margin-top:6px;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:.5">Todos os direitos reservados</p>
-</footer>
-${CANVAS_BG}
+</div></footer>
+<script>document.querySelectorAll('.nav-links a').forEach(function(a){a.addEventListener('click',function(){document.getElementById('navlinks').classList.remove('open');});});</script>
 </body></html>`;
 }
 
 function renderPrivacyPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Política de Privacidade</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--radius:12px}
-body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh}
-header{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000060}
-.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
-.header-links{display:flex;gap:10px}
-.header-links a{font-size:13px;color:var(--muted);text-decoration:none;padding:6px 14px;border:1px solid var(--border);border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
-.header-links a:hover{color:var(--green);border-color:var(--green)}
-main{max-width:720px;margin:0 auto;padding:56px 24px 80px}
-.hero{margin-bottom:48px}
-.hero-badge{display:inline-block;background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-size:12px;letter-spacing:2px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:18px;font-family:'Syne',sans-serif}
-.hero h1{font-family:'Syne',sans-serif;font-size:clamp(24px,4vw,36px);font-weight:800;margin-bottom:12px}
-.hero-meta{font-size:13px;color:var(--muted);font-family:'Syne',sans-serif}
-.section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px 32px;margin-bottom:14px}
-.section h2{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--green);margin-bottom:14px;display:flex;align-items:center;gap:8px}
-.section p,.section li{font-size:12px;color:#b0b0c8;line-height:1.9;margin-bottom:10px}
-.section ul{padding-left:18px}
-.section li{margin-bottom:6px}
-.section li::marker{color:var(--green)}
-.section p:last-child,.section li:last-child{margin-bottom:0}
-.highlight{background:#00ff8708;border:1px solid #00ff8720;border-radius:8px;padding:14px 18px;margin-top:14px}
-.highlight p{color:var(--text);font-size:13px;margin:0;font-family:'Syne',sans-serif;line-height:1.7}
-.tag{display:inline-block;background:#1e1e2e;border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:12px;color:var(--muted);margin:2px;vertical-align:middle}
-.contact-btn{display:inline-flex;align-items:center;gap:8px;background:#25d36618;border:1px solid #25d36630;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:11px 22px;border-radius:8px;text-decoration:none;transition:all .2s;margin-top:14px}
-.contact-btn:hover{background:#25d36628;transform:translateY(-2px);box-shadow:0 6px 20px #25d36625}
-footer{text-align:center;padding:28px;font-size:13px;color:#8a8aaa;border-top:1px solid var(--border);font-family:'Syne',sans-serif}
-footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
-@media(max-width:520px){main{padding:32px 16px 60px}.section{padding:20px 18px}.header-links a{padding:5px 9px;font-size:12px}}
-</style>
-</head>
-<body>
-<header>
-  <a href="/" class="logo">⚡ ZVM</a>
-  <div class="header-links">
-    <a href="/">Portal</a>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='900' font-size='13' fill='%2300ff00'%3EZVM%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<title>ZVM &mdash; Politica de Privacidade</title>
+<style>*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --green:#00ff00;--green-soft:#00ff0015;--green-border:#00ff0035;
+  --dark:#080810;--dark2:#0d0d16;--card:#11111c;--card2:#16162400;
+  --border:#1e1e30;--border2:#2a2a40;--text:#eef0f6;--text2:#a8acc4;--muted:#6a6e8a;
+  --red:#ff4757;--yellow:#ffd32a;--orange:#ff8600;--blue:#4f8ef7;
+  --radius:14px;--radius-sm:10px;--radius-lg:20px;
+  --maxw:1080px;
+}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{
+  background:var(--dark);color:var(--text);
+  font-family:'Inter',system-ui,-apple-system,sans-serif;
+  font-size:clamp(15px,1vw + 13px,17px);line-height:1.65;
+  min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased;
+}
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(ellipse 70% 50% at 50% -5%,#00ff000d 0%,transparent 60%),radial-gradient(ellipse 50% 40% at 90% 10%,#4f8ef708 0%,transparent 55%)}
+.wrap{position:relative;z-index:1;max-width:var(--maxw);margin:0 auto;padding:0 clamp(20px,5vw,40px)}
+h1,h2,h3,h4{font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;line-height:1.2;letter-spacing:-.02em;color:#fff}
+h1{font-size:clamp(28px,4vw + 8px,52px)}
+h2{font-size:clamp(22px,2.5vw + 6px,34px)}
+h3{font-size:clamp(18px,1.5vw + 6px,22px);font-weight:700}
+a{color:inherit;text-decoration:none}
+code,.mono{font-family:'JetBrains Mono',monospace}
+
+/* Nav */
+.nav{position:sticky;top:0;z-index:100;background:rgba(8,8,16,.82);backdrop-filter:blur(16px);border-bottom:1px solid var(--border)}
+.nav-in{max-width:var(--maxw);margin:0 auto;padding:0 clamp(20px,5vw,40px);height:64px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.nav-logo{display:flex;align-items:center;gap:10px;font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;font-size:19px;color:#fff;letter-spacing:-.02em}
+.nav-mark{width:34px;height:34px;background:linear-gradient(135deg,#00ff00,#00cc00);border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;color:#080810;flex-shrink:0;font-family:'JetBrains Mono',monospace}
+.nav-links{display:flex;align-items:center;gap:6px}
+.nav-links a{padding:9px 16px;border-radius:var(--radius-sm);font-size:14px;font-weight:600;color:var(--text2);transition:all .18s}
+.nav-links a:hover{color:var(--green);background:var(--green-soft)}
+.nav-links a.active{color:var(--green);background:var(--green-soft)}
+.nav-toggle{display:none;background:none;border:1px solid var(--border2);border-radius:8px;width:40px;height:40px;cursor:pointer;color:var(--text);font-size:18px;align-items:center;justify-content:center}
+
+/* Hero */
+.hero{text-align:center;padding:clamp(48px,8vw,96px) 0 clamp(32px,5vw,56px)}
+.hero-badge{display:inline-flex;align-items:center;gap:7px;padding:7px 16px;background:var(--green-soft);border:1px solid var(--green-border);border-radius:100px;font-size:13px;font-weight:600;color:var(--green);margin-bottom:24px;font-family:'JetBrains Mono',monospace}
+.hero p.sub{font-size:clamp(16px,1.5vw + 8px,20px);color:var(--text2);max-width:600px;margin:20px auto 0;line-height:1.6}
+
+/* Section */
+.section{padding:clamp(32px,5vw,56px) 0}
+.section-head{text-align:center;margin-bottom:clamp(32px,5vw,48px)}
+.section-head p{color:var(--text2);margin-top:12px;font-size:clamp(15px,1vw + 10px,18px)}
+
+/* Cards */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:clamp(20px,3vw,28px)}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:14px 28px;border-radius:var(--radius-sm);font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:15px;cursor:pointer;border:none;transition:all .18s;white-space:nowrap}
+.btn-primary{background:linear-gradient(135deg,#00ff00,#00cc00);color:#080810}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 10px 30px #00ff0030}
+.btn-ghost{background:transparent;border:1.5px solid var(--border2);color:var(--text)}
+.btn-ghost:hover{border-color:var(--green);color:var(--green)}
+.btn-wa{background:#25d366;color:#fff}
+.btn-wa:hover{transform:translateY(-2px);box-shadow:0 10px 30px #25d36640}
+
+/* Footer */
+.footer{border-top:1px solid var(--border);margin-top:clamp(48px,8vw,80px);padding:clamp(40px,6vw,56px) 0 32px}
+.footer-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:32px;margin-bottom:40px}
+.footer-brand .nav-logo{margin-bottom:14px}
+.footer-brand p{color:var(--muted);font-size:14px;line-height:1.6;max-width:280px}
+.footer-col h4{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:16px;font-family:'Inter',sans-serif;font-weight:700}
+.footer-col a{display:block;color:var(--text2);font-size:14px;padding:6px 0;transition:color .15s}
+.footer-col a:hover{color:var(--green)}
+.footer-bottom{border-top:1px solid var(--border);padding-top:28px;text-align:center;color:var(--muted);font-size:13px;line-height:1.8}
+
+@media(max-width:760px){
+  .nav-links{position:fixed;inset:64px 0 auto 0;background:var(--dark2);border-bottom:1px solid var(--border);flex-direction:column;align-items:stretch;padding:12px 20px;gap:4px;display:none}
+  .nav-links.open{display:flex}
+  .nav-links a{padding:13px 16px;font-size:15px}
+  .nav-toggle{display:flex}
+  .footer-grid{grid-template-columns:1fr 1fr;gap:28px}
+  .footer-brand{grid-column:1/-1}
+}
+@media(max-width:480px){.footer-grid{grid-template-columns:1fr}}
+.priv-wrap{max-width:800px;margin:0 auto}
+.priv-meta{color:var(--muted);font-size:14px;margin-bottom:8px;font-family:'JetBrains Mono',monospace}
+.priv-sec{margin-top:clamp(32px,4vw,44px)}
+.priv-sec h2{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.priv-sec p{color:var(--text2);margin-bottom:14px;line-height:1.75}
+.priv-sec ul{list-style:none;display:flex;flex-direction:column;gap:10px;margin:16px 0}
+.priv-sec li{position:relative;padding-left:28px;color:var(--text2);line-height:1.6}
+.priv-sec li::before{content:'';position:absolute;left:0;top:9px;width:8px;height:8px;border-radius:50%;background:var(--green)}
+.priv-sec li strong{color:var(--text)}
+.priv-note{background:var(--green-soft);border:1px solid var(--green-border);border-radius:var(--radius);padding:18px 22px;color:var(--text)!important;font-weight:500;margin:18px 0}
+.priv-legal{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 18px;font-size:14px;color:var(--muted);margin-top:14px}</style>
+</head><body>
+<nav class="nav"><div class="nav-in">
+  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span> ZVM</a>
+  <button class="nav-toggle" onclick="document.getElementById('navlinks').classList.toggle('open')">☰</button>
+  <div class="nav-links" id="navlinks">
+    <a href="/planos">Planos</a>
+    <a href="/client">Portal do Cliente</a>
     <a href="/faq">FAQ</a>
-    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank">💬 Suporte</a>
+    <a href="/privacidade" class="active">Privacidade</a>
   </div>
-</header>
-<main>
-  <div class="hero">
-    <div class="hero-badge">Legal</div>
-    <h1>Política de Privacidade</h1>
-    <p class="hero-meta">Última atualização: ${new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}</p>
-  </div>
-  <div class="section">
-    <h2>📋 Visão Geral</h2>
-    <p>Esta Política descreve como o <strong style="color:var(--text)">ZVM</strong> coleta, utiliza e protege seus dados ao usar o serviço de licenciamento da extensão ZVM.</p>
-    <p>Ao ativar ou consultar sua chave de acesso, você concorda com estes termos, em conformidade com a <strong style="color:var(--text)">Lei Geral de Proteção de Dados (LGPD — Lei nº 13.709/2018)</strong>.</p>
-  </div>
-  <div class="section">
-    <h2>🗂 Dados que Coletamos</h2>
-    <p>Para fins exclusivos de licenciamento e controle de acesso, coletamos:</p>
-    <ul>
-      <li><strong style="color:var(--text)">Chave de ativação</strong> — identificador único do seu acesso</li>
-      <li><strong style="color:var(--text)">Número de telefone</strong> — vinculado à chave para controle de dispositivos</li>
-      <li><strong style="color:var(--text)">Endereço IP</strong> — para detecção de uso indevido e segurança</li>
-      <li><strong style="color:var(--text)">Versão do WhatsApp Web</strong> — para compatibilidade técnica</li>
-      <li><strong style="color:var(--text)">Timestamps de acesso</strong> — data e hora de cada uso registrado</li>
-    </ul>
-    <div class="highlight">
-      <p>⚠️ <strong>Não coletamos</strong> mensagens, contatos, conversas ou qualquer conteúdo do WhatsApp. Nosso serviço não tem acesso ao conteúdo das suas comunicações.</p>
+</div></nav>
+<div class="wrap">
+  <section class="hero" style="padding-bottom:clamp(20px,3vw,32px)">
+    <div class="hero-badge">&#128274; LGPD</div>
+    <h1>Politica de Privacidade</h1>
+  </section>
+  <div class="priv-wrap">
+    <p class="priv-meta">Ultima atualizacao: ${new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}</p>
+    <div class="priv-sec">
+      <h2>&#128203; Visao Geral</h2>
+      <p>Esta Politica descreve como o ZVM coleta, utiliza e protege seus dados ao usar o servico de licenciamento da extensao ZapVoice.</p>
+      <p class="priv-legal">Ao ativar ou consultar sua chave de acesso, voce concorda com estes termos, em conformidade com a Lei Geral de Protecao de Dados (LGPD &mdash; Lei n&ordm; 13.709/2018).</p>
+    </div>
+    <div class="priv-sec">
+      <h2>&#128450; Dados que Coletamos</h2>
+      <p>Para fins exclusivos de licenciamento e controle de acesso, coletamos:</p>
+      <ul>
+        <li><strong>Numero de telefone</strong> &mdash; vinculado a chave para controle de dispositivos</li>
+        <li><strong>Endereco IP</strong> &mdash; para deteccao de uso indevido e seguranca</li>
+        <li><strong>Versao do WhatsApp Web</strong> &mdash; para compatibilidade tecnica</li>
+        <li><strong>Timestamps de acesso</strong> &mdash; data e hora de cada uso registrado</li>
+      </ul>
+      <div class="priv-note">&#9888;&#65039; Nao coletamos mensagens, contatos, conversas ou qualquer conteudo do WhatsApp. Nosso servico nao tem acesso ao conteudo das suas comunicacoes.</div>
+    </div>
+    <div class="priv-sec">
+      <h2>&#127919; Finalidade</h2>
+      <p>Os dados sao usados exclusivamente para:</p>
+      <ul>
+        <li>Validar e controlar o acesso a extensao ZapVoice</li>
+        <li>Detectar uso indevido ou compartilhamento nao autorizado de chaves</li>
+        <li>Suporte tecnico quando solicitado pelo usuario</li>
+        <li>Controle do numero de dispositivos vinculados por chave</li>
+      </ul>
+      <p class="priv-legal">Base legal: execucao de contrato (Art. 7&ordm;, V, LGPD).</p>
+    </div>
+    <div class="priv-sec">
+      <h2>&#9201; Retencao</h2>
+      <p>Registros de acesso sao removidos automaticamente apos <strong style="color:var(--text)">90 dias</strong>. Dados da chave sao mantidos enquanto ela estiver ativa. Ao excluir a chave, todos os dados associados sao removidos.</p>
+    </div>
+    <div class="priv-sec">
+      <h2>&#128274; Seguranca</h2>
+      <p>Dados armazenados no MongoDB Atlas com criptografia AES-256 em repouso e TLS em transito. O painel administrativo e protegido por senha e autenticacao de dois fatores (2FA).</p>
+    </div>
+    <div class="priv-sec">
+      <h2>&#129309; Compartilhamento</h2>
+      <p>Seus dados nao sao vendidos ou compartilhados com terceiros para fins comerciais. Apenas os provedores de infraestrutura tem acesso tecnico:</p>
+      <ul>
+        <li><strong>MongoDB Atlas</strong> &mdash; armazenamento dos dados</li>
+        <li><strong>Render.com</strong> &mdash; hospedagem do servidor</li>
+      </ul>
     </div>
   </div>
-  <div class="section">
-    <h2>🎯 Finalidade</h2>
-    <p>Os dados são usados exclusivamente para:</p>
-    <ul>
-      <li>Validar e controlar o acesso à extensão ZVM</li>
-      <li>Detectar uso indevido ou compartilhamento não autorizado de chaves</li>
-      <li>Suporte técnico quando solicitado pelo usuário</li>
-      <li>Controle do número de dispositivos vinculados por chave</li>
-    </ul>
-    <p>Base legal: <strong style="color:var(--text)">execução de contrato</strong> (Art. 7º, V, LGPD).</p>
+</div>
+<footer class="footer"><div class="wrap">
+  <div class="footer-grid">
+    <div class="footer-brand">
+      <div class="nav-logo"><span class="nav-mark">ZVM</span> ZVM</div>
+      <p>Sistema de licenciamento para a extensao ZapVoice. Controle de acesso seguro e gestao de dispositivos.</p>
+    </div>
+    <div class="footer-col"><h4>Produto</h4>
+      <a href="/planos">Planos e Precos</a>
+      <a href="/client">Portal do Cliente</a>
+      <a href="/faq">Perguntas Frequentes</a>
+    </div>
+    <div class="footer-col"><h4>Suporte</h4>
+      <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM." target="_blank">WhatsApp</a>
+      <a href="/faq">Central de Ajuda</a>
+    </div>
+    <div class="footer-col"><h4>Legal</h4>
+      <a href="/privacidade">Privacidade</a>
+    </div>
   </div>
-  <div class="section">
-    <h2>⏱ Retenção</h2>
-    <p>Registros de acesso são removidos automaticamente após <strong style="color:var(--text)">90 dias</strong>. Dados da chave são mantidos enquanto ela estiver ativa. Ao excluir a chave, todos os dados associados são apagados permanentemente.</p>
+  <div class="footer-bottom">
+    &copy; ${new Date().getFullYear()} ZVM &mdash; Todos os direitos reservados<br>
+    Licenciamento da extensao ZapVoice
   </div>
-  <div class="section">
-    <h2>🔒 Segurança</h2>
-    <p>Dados armazenados no <strong style="color:var(--text)">MongoDB Atlas</strong> com criptografia AES-256 em repouso e TLS em trânsito. O painel administrativo é protegido por senha e autenticação de dois fatores (2FA).</p>
-  </div>
-  <div class="section">
-    <h2>🤝 Compartilhamento</h2>
-    <p>Seus dados <strong style="color:var(--text)">não são vendidos ou compartilhados</strong> com terceiros para fins comerciais. Apenas os provedores de infraestrutura têm acesso técnico:</p>
-    <ul>
-      <li><span class="tag">MongoDB Atlas</span> armazenamento dos dados</li>
-      <li><span class="tag">Render.com</span> hospedagem do servidor</li>
-    </ul>
-  </div>
-  </div>
-</main>
-<footer>
-  <p>© ${new Date().getFullYear()} ZVM — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/privacidade">Privacidade</a></p>
-  <p style="margin-top:6px;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:.5">Todos os direitos reservados</p>
-</footer>
-${CANVAS_BG}
+</div></footer>
+<script>document.querySelectorAll('.nav-links a').forEach(function(a){a.addEventListener('click',function(){document.getElementById('navlinks').classList.remove('open');});});</script>
 </body></html>`;
 }
 
@@ -2407,7 +2719,7 @@ input:focus{border-color:#00ff87}
 .err{background:#ff475715;border:1px solid #ff4757;border-radius:6px;color:#ff4757;padding:11px 14px;font-size:14px;margin-bottom:16px;font-family:'Syne',sans-serif}
 </style></head><body>
 <div class="card">
-  <div class="logo">⚡ ZVM</div>
+  <div class="logo">⚡ ADMINISTRADOR</div>
   <div class="sub">Painel de Analytics</div>
   <div class="badge">📊 Acesso Privado</div>
   ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
@@ -2673,6 +2985,8 @@ async function handleRequest(req, res) {
     'Access-Control-Max-Age':       '86400',
     'Vary':                         'Origin',
     'X-Content-Type-Options':       'nosniff',
+    'X-XSS-Protection':             '1; mode=block',
+    'X-Permitted-Cross-Domain-Policies': 'none',
     'X-Frame-Options':              'DENY',
     'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
     'Referrer-Policy':              'no-referrer',
@@ -2708,7 +3022,7 @@ async function handleRequest(req, res) {
       return;
     }
     const form    = await parseFormBody(req);
-    const keyCode = (form.get('key') || '').trim().toLowerCase();
+    const keyCode = (form.get('key') || '').replace(/[\s\u00a0\u200b\ufeff]/g,'').toLowerCase();
     const callback= form.get('callback') || '';
     if (!keyCode || !keys[keyCode]) {
       await addLog({ keyCode: keyCode||'?', label: '-', phone: '-', ip, wppVersion: '-', action: 'key_not_found' });
@@ -2763,7 +3077,7 @@ async function handleRequest(req, res) {
     }
     const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
     let body; try { body = _safeParse(rawBody); } catch { body = {}; }
-    const keyCode    = (body.authKey || '').toLowerCase().slice(0, 20);
+    const keyCode    = (body.authKey || '').replace(/[\s\u00a0\u200b\ufeff]/g,'').toLowerCase().slice(0, 20);
     const phone      = body.phoneNumber || '-';
     const wppVersion = body.wppVersion  || '-';
     const deviceId   = body.deviceId    || '';
@@ -2868,7 +3182,7 @@ async function handleRequest(req, res) {
     }
     const rawBody = await new Promise(r=>{let b='';req.on('data',c=>{b+=c;});req.on('end',()=>r(b));});
     let body; try { body = JSON.parse(rawBody); } catch { body = {}; }
-    const keyCode = (body.authKey || '').toLowerCase().slice(0, 20);
+    const keyCode = (body.authKey || '').replace(/[\s\u00a0\u200b\ufeff]/g,'').toLowerCase().slice(0, 20);
     if (!keyCode)     { sendJson(res, { active: true }); return; }
     if (!keys[keyCode]) {
       try {
@@ -3605,6 +3919,9 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     const server = http.createServer(safeHandler);
     server.keepAliveTimeout = 65000; // acima dos 60s do LB do Render
     server.headersTimeout   = 66000;
+server.requestTimeout = 30000;
+server.maxHeadersCount = 100;
+server.maxRequestsPerSocket = 0;
     server.listen(PORT, () => {
       console.log(`🚀 Servidor ouvindo na porta ${PORT}`);
       setInterval(() => {
