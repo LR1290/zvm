@@ -589,7 +589,7 @@ input:focus{border-color:#4f8ef7}
 .err{background:#ff475715;border:1px solid #ff4757;border-radius:6px;color:#ff4757;padding:11px 14px;font-size:14px;margin-bottom:16px;font-family:'Syne',sans-serif}
 </style></head><body>
 <div class="card">
-  <div class="logo">⚡ ADMINISTRADOR</div>
+  <div class="logo">👮 PAINEL DE MODERAÇÃO</div>
   <div class="sub">Painel de Moderação</div>
   <div class="badge">👮 Acesso Moderador</div>
   ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
@@ -1027,7 +1027,7 @@ input:focus{border-color:#00ff87}
 </style>
 </head><body>
 <div class="card">
-  <div class="logo">⚡ ADMINISTRADOR</div>
+  <div class="logo">🔒 ATIVAR EXTENSÃO</div>
   <div class="sub">Ativação da Extensão</div>
   ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
   <form method="POST" action="/extension/auth/verify">
@@ -3870,7 +3870,7 @@ async function handleRequest(req, res) {
     sendHtml(res, renderPrivacyPage()); return;
   }
 
-  const CLIENT_PATHS = ['/', '/plans/manage', '/plans/new', '/dashboard/chaves'];
+  const CLIENT_PATHS = ['/', '/client', '/plans/manage', '/plans/new', '/dashboard/chaves'];
   if (req.method === 'GET' && (CLIENT_PATHS.includes(p) || p.startsWith('/unauthorized') || p.startsWith('/funnels') || p.startsWith('/labels'))) {
     sendHtml(res, renderClientPortal()); return;
   }
