@@ -61,7 +61,7 @@ async function getMongoDb() {
       _mongoClient = new MongoClient(MONGODB_URI, {
         serverSelectionTimeoutMS: 10000,
         connectTimeoutMS: 10000,
-        socketTimeoutMS: 45000,
+        socketTimeoutMS: 25000,
         maxPoolSize: 10,
         minPoolSize: 2,
         maxIdleTimeMS: 60000,
@@ -181,9 +181,10 @@ function generateTOTP(secret, window = 0) {
 
 function verifyTOTP(secret, token) {
   if (!secret) return true;
-  if (!token || token.length !== 6) return false;
+  if (!token || token.length !== 6 || !/^\d{6}$/.test(token)) return false;
+  const tokenBuf = Buffer.from(token);
   for (const w of [-2, -1, 0, 1, 2]) {  // drift window ampliado
-    if (generateTOTP(secret, w) === token) return true;
+    if (crypto.timingSafeEqual(Buffer.from(generateTOTP(secret, w)), tokenBuf)) return true;
   }
   return false;
 }
@@ -279,7 +280,7 @@ async function fireWebhook(event, keyCode, reason) {
 
 function generateCode() {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-  const seg = () => Array.from({length:5}, () => chars[Math.floor(Math.random()*chars.length)]).join('');
+  const seg = () => Array.from({length:5}, () => chars[crypto.randomInt(chars.length)]).join('');
   return `zv-${seg()}-${seg()}-${seg()}`;
 }
 function generateToken() { return crypto.randomBytes(32).toString('hex'); }
@@ -3773,6 +3774,10 @@ async function handleRequest(req, res) {
     if (!isAnalyticsSession(req)) { res.writeHead(302, { Location: R_ANALYTICS }); res.end(); return; }
     const payments = await getPayments({ limit: 10000 });
     const header = 'Data,Cliente,Email,Telefone,Produto,Valor,Status,Chave,Método';
+    // Neutraliza injecao de formula em CSV (OWASP): prefixa apostrofo se o
+    // campo comecar com =, +, -, @, tab ou CR — impede execucao em Excel/Sheets
+    // quando o admin abre o arquivo exportado.
+    const csvSafe = v => /^[=+\-@\t\r]/.test(String(v)) ? `'${v}` : v;
     const rows = payments.map(p => {
       const fmtDate = iso => iso ? new Date(iso).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}) : '';
       return [
@@ -3780,7 +3785,7 @@ async function handleRequest(req, res) {
         p.productName, (p.amount||0).toFixed(2).replace('.',','),
         p.approved ? 'APROVADO' : 'REJEITADO',
         p.keyCode || '', p.paymentMethod || ''
-      ].map(v => `"${String(v||'').replace(/"/g,'""')}"`).join(',');
+      ].map(csvSafe).map(v => `"${String(v||'').replace(/"/g,'""')}"`).join(',');
     });
     const csv = [header, ...rows].join('\r\n');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -4020,7 +4025,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
 
     console.log(`✅ zvm-lr1290 v8 — porta ${PORT}`);
     console.log(`🍃 MongoDB: conectado | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}`);
-    console.log(`🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
+    console.log(`🔐 Painéis ocultos (URL slug via APP_SECRET): ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO — rotas /admin, /mod, /analytics expostas!'}`);
     console.log(`🔑 2FA:  ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
     console.log(`💳 Payt: ${PAYT_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
     console.log(`🔑 Admin: ${R_ADMIN} | User: ${ADMIN_USER}`);
@@ -4043,9 +4048,9 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     const server = http.createServer(safeHandler);
     server.keepAliveTimeout = 65000; // acima dos 60s do LB do Render
     server.headersTimeout   = 66000;
-server.requestTimeout = 30000;
-server.maxHeadersCount = 100;
-server.maxRequestsPerSocket = 0;
+    server.requestTimeout   = 30000;
+    server.maxHeadersCount  = 100;
+    server.maxRequestsPerSocket = 0;
     server.listen(PORT, () => {
       console.log(`🚀 Servidor ouvindo na porta ${PORT}`);
       setInterval(() => {
