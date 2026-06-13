@@ -1027,29 +1027,55 @@ function renderExtensionLogin({ callback, error = '', keyVal = '' }) {
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
-.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:36px 32px;width:100%;max-width:420px;text-align:center;position:relative;z-index:1;box-shadow:0 0 0 1px #00ff0008,0 20px 60px #00000090,inset 0 1px 0 #ffffff06}
+body{background:#0a0a0f;min-height:100vh;font-family:'Space Mono',monospace;overflow-x:hidden}
+.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:44px 40px;width:100%;max-width:480px;text-align:center;position:relative;z-index:1;box-shadow:0 0 0 1px #00ff0008,0 20px 60px #00000090,inset 0 1px 0 #ffffff06}
+.layout{position:relative;z-index:1;min-height:100vh;display:flex;flex-wrap:wrap;gap:30px;align-items:center;justify-content:center;padding:40px 24px}
+.video-col{flex:1 1 480px;max-width:640px}
+.video-frame{position:relative;width:100%;padding-top:56.25%;border-radius:12px;overflow:hidden;border:1px solid #00ff0040;box-shadow:0 0 0 1px #00ff0008,0 20px 60px #00000090}
+.video-frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.card-col{flex:0 1 480px}
+@media(max-width:880px){.layout{padding:24px 16px}}
 .logo{font-family:'Syne',sans-serif;font-size:clamp(16px,5.2vw,22px);font-weight:800;color:#00ff00;margin-bottom:28px;letter-spacing:-0.5px;text-align:center;white-space:nowrap}
 label{display:block;text-align:center;font-size:14px;letter-spacing:.5px;color:#8a8aaa;text-transform:uppercase;margin-bottom:10px;font-family:'Syne',sans-serif;font-weight:600}
 input{width:100%;padding:13px 16px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:10px;color:#00ff00;font-family:'Space Mono',monospace;font-size:15px;outline:none;letter-spacing:2px;transition:border .2s;text-align:center}
 input:focus{border-color:#00ff00}
 .err{background:#ff475715;border:1px solid #ff4757;border-radius:8px;color:#ff4757;padding:13px 16px;font-size:14px;margin-bottom:18px;text-align:left;font-family:'Syne',sans-serif}
-.btn{width:100%;padding:14px;background:#00ff00;border:none;border-radius:10px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:15px;cursor:pointer;margin-top:20px;transition:opacity .2s}
+.btn{width:100%;padding:16px;background:#00ff00;border:none;border-radius:10px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:16px;cursor:pointer;margin-top:24px;transition:opacity .2s}
 .btn:hover{opacity:.85}
-.hint{margin-top:20px;color:#8a8aaa;font-size:13px;font-family:'Syne',sans-serif}.hint a{color:#00ff00;text-decoration:none}
+.hint{margin-top:24px;color:#8a8aaa;font-size:13px;font-family:'Syne',sans-serif}
+.hint-links{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+.link-btn{display:block;padding:14px 18px;border-radius:10px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;text-decoration:none;text-align:center;transition:opacity .2s,transform .15s;border:1.5px solid}
+.link-btn:hover{opacity:.85;transform:translateY(-1px)}
+.link-btn-green{background:#00ff0012;color:#00ff00;border-color:#00ff0040}
+.link-btn-purple{background:#9b59b618;color:#bf8aff;border-color:#9b59b650}
+.link-btn-whatsapp{background:#25d36618;color:#25d366;border-color:#25d36650}
 </style>
 </head><body>
-<div class="card">
-  <div class="logo">🔒 ATIVAR EXTENSÃO</div>
-  ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
-  <form method="POST" action="/extension/auth/verify">
-    <input type="hidden" name="callback" value="${escHtml(callback)}">
-    <label>Sua Chave de Ativação</label>
-    <input type="text" name="key" id="zvm-key-inp" value="${escHtml(keyVal)}" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="25">
-    <p style="text-align:center;font-size:13px;color:#8a8aaa;margin-top:8px;font-family:'Syne',sans-serif">Você recebeu esta chave junto com a sua compra.</p>
-    <button type="submit" class="btn">Ativar Agora</button>
-  </form>
-  <div class="hint">Precisa de ajuda ou quer renovar?<br><a href="/planos">💳 Ver Planos</a> · <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20referente%20a%20minha%20renova%C3%A7%C3%A3o." target="_blank">💬 Suporte no WhatsApp</a></div>
+<div class="layout">
+  <div class="video-col">
+    <div class="video-frame"><iframe src="https://www.youtube.com/embed/DZ29f5U6OF8" title="Tutorial de Ativação ZVM" allowfullscreen loading="lazy"></iframe></div>
+  </div>
+  <div class="card-col">
+    <div class="card">
+      <div class="logo">🔒 ATIVAR EXTENSÃO</div>
+      ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
+      <form method="POST" action="/extension/auth/verify">
+        <input type="hidden" name="callback" value="${escHtml(callback)}">
+        <label>Sua Chave de Ativação</label>
+        <input type="text" name="key" id="zvm-key-inp" value="${escHtml(keyVal)}" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="25">
+        <p style="text-align:center;font-size:13px;color:#8a8aaa;margin-top:8px;font-family:'Syne',sans-serif">Você recebeu esta chave junto com a sua compra.</p>
+        <button type="submit" class="btn">Ativar Agora</button>
+      </form>
+      <div class="hint">
+        Precisa de ajuda ou quer renovar?
+        <div class="hint-links">
+          <a class="link-btn link-btn-green" href="/planos">💳 Ver Planos</a>
+          <a class="link-btn link-btn-purple" href="https://bit.ly/ZVMLR1290" target="_blank">📢 Grupo de Atualizações ZVM</a>
+          <a class="link-btn link-btn-whatsapp" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20referente%20a%20minha%20renova%C3%A7%C3%A3o." target="_blank">💬 Suporte no WhatsApp</a>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 <script>(function(){var i=document.getElementById('zvm-key-inp');if(!i)return;function clean(v){return v.replace(/[^a-z0-9\-]/g,'').slice(0,20);}i.addEventListener('paste',function(e){e.preventDefault();var t=(e.clipboardData||window.clipboardData).getData('text');i.value=clean(t.toLowerCase());});i.addEventListener('input',function(){var s=i.selectionStart;i.value=clean(i.value);i.setSelectionRange(s,s);});})();</script>
 ${CANVAS_BG}</body></html>`;
@@ -1465,11 +1491,11 @@ function buildKeysHtml() {
   <td class="td-name">${escHtml(k.label)}</td>
   <td><span class="st-badge ${expired?'st-off':k.active?(k.expireDuration&&!k.expiresAt?'st-wait':'st-on'):'st-off'}">${expired?'EXPIRADA':k.active?(k.expireDuration&&!k.expiresAt?'AGUARDANDO':'ATIVO'):'BLOQUEADO'}</span></td>
   <td><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'var(--muted)'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
-  <td style="color:var(--muted)">${escHtml(k.lastPhone||'—')}</td>
-  <td style="color:var(--muted)" title="${uniqueIps} IPs únicos">${escHtml(k.lastIp||'—')}${uniqueIps>1?` <span style="color:#3a3a5a;font-size:11px">(+${uniqueIps-1})</span>`:''}</td>
+  <td style="color:var(--muted)"><span class="td-trunc">${escHtml(k.lastPhone||'—')}</span></td>
+  <td style="color:var(--muted)" title="${uniqueIps} IPs únicos"><span class="td-trunc">${escHtml(k.lastIp||'—')}${uniqueIps>1?` <span style="color:#3a3a5a;font-size:11px">(+${uniqueIps-1})</span>`:''}</span></td>
   <td style="color:var(--muted)">${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
   <td style="color:var(--muted)">${new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}${expHtml}</td>
-  <td style="color:var(--muted)">${escHtml(k.wppVersion||'—')}</td>
+  <td style="color:var(--muted)"><span class="td-trunc">${escHtml(k.wppVersion||'—')}</span></td>
   <td class="note-cell" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${k.note&&k.note.startsWith('[Mod:')?'<span style="color:#4f8ef7;font-size:12px">'+escHtml(k.note)+'</span>':escHtml(k.note||'')||'<span style="color:#2a2a4a">—</span>'}</span></td>
   <td class="td-actions">
     <button class="ab ${k.active?'ab-r':'ab-g'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
@@ -1632,7 +1658,8 @@ tr:hover td{background:#ffffff02}
 
 /* ── Table cell helpers ── */
 .td-actions{min-width:0;display:flex;flex-wrap:wrap;gap:6px;justify-content:center;align-items:center;padding:6px}
-.td-name{font-weight:700;color:var(--text)}
+.td-name{font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:100%}
+.td-trunc{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:100%}
 
 /* ── Modal layout helpers ── */
 .modal-w{width:440px}
