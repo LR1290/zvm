@@ -1053,7 +1053,7 @@ input:focus{border-color:#00ff00}
 </head><body>
 <div class="layout">
   <div class="video-col">
-    <div class="video-frame"><iframe src="https://www.youtube.com/embed/DZ29f5U6OF8" title="Tutorial de Ativação ZVM" allowfullscreen loading="lazy"></iframe></div>
+    <div class="video-frame"><iframe src="https://www.youtube.com/embed/DZ29f5U6OF8" title="Tutorial de Ativação ZVM" allowfullscreen loading="lazy" referrerpolicy="strict-origin-when-cross-origin"></iframe></div>
   </div>
   <div class="card-col">
     <div class="card">
