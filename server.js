@@ -1,6 +1,7 @@
 'use strict';
 const http   = require('http');
 const crypto = require('crypto');
+const zlib   = require('zlib');
 const { MongoClient } = require('mongodb');
 
 const PORT         = process.env.PORT         || 3000;
@@ -511,11 +512,24 @@ function parseFormBody(req) {
 function sendJson(res, data, status = 200) {
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Connection', 'keep-alive');
-  res.writeHead(status); res.end(JSON.stringify(data));
+  const body = JSON.stringify(data);
+  if (res._acceptGzip && body.length > 1024) {
+    const buf = zlib.gzipSync(body);
+    res.setHeader('Content-Encoding', 'gzip');
+    res.writeHead(status); res.end(buf);
+    return;
+  }
+  res.writeHead(status); res.end(body);
 }
 
 function sendHtml(res, html, status = 200) {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  if (res._acceptGzip && html.length > 1024) {
+    const buf = zlib.gzipSync(html);
+    res.setHeader('Content-Encoding', 'gzip');
+    res.writeHead(status); res.end(buf);
+    return;
+  }
   res.writeHead(status); res.end(html);
 }
 
@@ -1171,7 +1185,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
 .cta-box p{color:var(--text2);margin:12px 0 28px;font-size:clamp(15px,1vw + 8px,17px)}
 .cta-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}</style><style>
 .portal-wrap{display:grid;grid-template-columns:1fr;gap:0;min-height:calc(100vh - 64px)}
-.portal-grid{display:grid;grid-template-columns:1fr;align-items:start;padding:clamp(32px,6vw,64px) 0;gap:clamp(24px,4vw,40px)}
+.portal-grid{display:grid;grid-template-columns:1fr;align-items:start;padding:clamp(24px,4vw,40px) 0;gap:clamp(16px,2.5vw,24px)}
 .form-card{max-width:480px;margin:0 auto;width:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:clamp(28px,4vw,40px);box-shadow:0 0 0 1px #00ff0008,0 20px 60px #00000090,inset 0 1px 0 #ffffff06}
 .form-card .nav-logo{justify-content:center;display:flex;margin-bottom:6px}
 .form-card .sub-title{text-align:center;color:var(--text2);font-size:14px;margin-bottom:28px}
@@ -1496,9 +1510,9 @@ function renderAdminDashboard() {
   --radius:10px;--radius-sm:6px;
 }
 body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
-header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040}
 .logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
-main{position:relative;z-index:1}
+main{position:relative;z-index:1;padding:0 20px;max-width:100%}
 .hright{display:flex;align-items:center;gap:10px}
 a.out{color:var(--muted);font-size:13px;text-decoration:none;padding:6px 14px;border:1px solid var(--border2);border-radius:var(--radius-sm);transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
 a.out:hover{color:var(--red);border-color:var(--red)}
@@ -3053,6 +3067,7 @@ async function handleRequest(req, res) {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const p   = url.pathname;
   const ip  = getIp(req);
+  res._acceptGzip = (req.headers['accept-encoding'] || '').includes('gzip');
 
   const _corsH = {
     'Access-Control-Allow-Origin':  (()=>{
@@ -3508,6 +3523,7 @@ async function handleRequest(req, res) {
 
   if (p === R_ADMIN+'/api/keys' && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
     const body = await parseBody(req);
     const code = generateCode();
     let expiresAt = null, expireDuration = null;
@@ -3735,7 +3751,12 @@ async function handleRequest(req, res) {
     const csv = [header, ...rows].join('\r\n');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="zvm-chaves-${new Date().toISOString().slice(0,10)}.csv"`);
-    res.writeHead(200); res.end('\uFEFF' + csv); return;
+    const _csvBody = '\uFEFF' + csv;
+    if (res._acceptGzip && _csvBody.length > 1024) {
+      res.setHeader('Content-Encoding', 'gzip');
+      res.writeHead(200); res.end(zlib.gzipSync(_csvBody)); return;
+    }
+    res.writeHead(200); res.end(_csvBody); return;
   }
 
   if (p === R_ANALYTICS+'/login' && req.method === 'POST') {
@@ -3791,7 +3812,12 @@ async function handleRequest(req, res) {
     const csv = [header, ...rows].join('\r\n');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="zvm-pagamentos-${new Date().toISOString().slice(0,10)}.csv"`);
-    res.writeHead(200); res.end('\uFEFF' + csv); return;
+    const _csvBody2 = '\uFEFF' + csv;
+    if (res._acceptGzip && _csvBody2.length > 1024) {
+      res.setHeader('Content-Encoding', 'gzip');
+      res.writeHead(200); res.end(zlib.gzipSync(_csvBody2)); return;
+    }
+    res.writeHead(200); res.end(_csvBody2); return;
   }
 
   if (p === R_ANALYTICS+'/api/stats' && req.method === 'GET') {
