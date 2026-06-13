@@ -537,6 +537,15 @@ function escHtml(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/`/g,'&#96;');
 }
 
+// Defense-in-depth: rejects NoSQL-operator chars ($ and .) and JS prototype-chain
+// property names before any key code is used for object lookups or DB queries.
+function isSafeObjectKey(s) {
+  if (typeof s !== 'string' || !s) return false;
+  if (s.includes('$') || s.includes('.')) return false;
+  if (s === '__proto__' || s === 'constructor' || s === 'prototype') return false;
+  return /^[a-z0-9_-]{1,30}$/.test(s);
+}
+
 const DEDUP_WINDOWS = {
   'relogin_ok':   24 * 60 * 60 * 1000,
   'expired':       5 * 60 * 1000,
@@ -1155,6 +1164,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
 /* Footer */
 .footer{border-top:1px solid var(--border);margin-top:clamp(16px,2vw,24px);padding:clamp(24px,3vw,32px) 0 24px}
 .footer-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:32px;margin-bottom:40px}
+.footer-brand{display:flex;align-items:center;gap:15px}
 .footer-brand .nav-logo{flex-shrink:0}
 .footer-brand p{color:var(--muted);font-size:14px;line-height:1.6;max-width:280px}
 .footer-col h4{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:16px;font-family:'Inter',sans-serif;font-weight:700}
@@ -2232,6 +2242,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
 /* Footer */
 .footer{border-top:1px solid var(--border);margin-top:clamp(48px,8vw,80px);padding:clamp(40px,6vw,56px) 0 32px}
 .footer-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:32px;margin-bottom:40px}
+.footer-brand{display:flex;align-items:center;gap:15px}
 .footer-brand .nav-logo{flex-shrink:0}
 .footer-brand p{color:var(--muted);font-size:14px;line-height:1.6;max-width:280px}
 .footer-col h4{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:16px;font-family:'Inter',sans-serif;font-weight:700}
@@ -2489,6 +2500,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
 /* Footer */
 .footer{border-top:1px solid var(--border);margin-top:clamp(48px,8vw,80px);padding:clamp(40px,6vw,56px) 0 32px}
 .footer-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:32px;margin-bottom:40px}
+.footer-brand{display:flex;align-items:center;gap:15px}
 .footer-brand .nav-logo{flex-shrink:0}
 .footer-brand p{color:var(--muted);font-size:14px;line-height:1.6;max-width:280px}
 .footer-col h4{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:16px;font-family:'Inter',sans-serif;font-weight:700}
@@ -2675,6 +2687,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
 /* Footer */
 .footer{border-top:1px solid var(--border);margin-top:clamp(48px,8vw,80px);padding:clamp(40px,6vw,56px) 0 32px}
 .footer-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:32px;margin-bottom:40px}
+.footer-brand{display:flex;align-items:center;gap:15px}
 .footer-brand .nav-logo{flex-shrink:0}
 .footer-brand p{color:var(--muted);font-size:14px;line-height:1.6;max-width:280px}
 .footer-col h4{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:16px;font-family:'Inter',sans-serif;font-weight:700}
@@ -3175,7 +3188,8 @@ async function handleRequest(req, res) {
     }
     const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
     let body; try { body = _safeParse(rawBody); } catch { body = {}; }
-    const keyCode    = (body.authKey || '').replace(/[\s\u00a0\u200b\ufeff]/g,'').toLowerCase().slice(0, 20);
+    let keyCode    = (body.authKey || '').replace(/[\s\u00a0\u200b\ufeff]/g,'').toLowerCase().slice(0, 20);
+    if (keyCode && !isSafeObjectKey(keyCode)) keyCode = '';
     const phone      = body.phoneNumber || '-';
     const wppVersion = body.wppVersion  || '-';
     const deviceId   = body.deviceId    || '';
@@ -3479,7 +3493,7 @@ async function handleRequest(req, res) {
   if (p.startsWith(R_MOD+'/api/keys/') && p.endsWith('/note') && req.method === 'POST') {
     if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const codeFromUrl = decodeURIComponent(p.slice((R_MOD+'/api/keys/').length, -'/note'.length));
-    if (!codeFromUrl) { sendJson(res, { error: 'not found' }, 404); return; }
+    if (!codeFromUrl || !isSafeObjectKey(codeFromUrl)) { sendJson(res, { error: 'not found' }, 404); return; }
     if (!keys[codeFromUrl]) {
       try {
         const _db2 = await getMongoDb();
@@ -3506,7 +3520,7 @@ async function handleRequest(req, res) {
     const match = p.match(pattern);
     if (!match) return null;
     const code = decodeURIComponent(match[1]);
-    if (!/^[a-z0-9_\-]{1,30}$/.test(code)) return null;
+    if (!isSafeObjectKey(code)) return null;
     return code;
   }
   const RA = R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
