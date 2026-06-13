@@ -482,7 +482,9 @@ function _safeParse(raw) {
       if (hop.call(obj,'__proto__') || hop.call(obj,'constructor') || hop.call(obj,'prototype')) return {};
       return obj;
     }
-    return obj || {};
+    // Any non-plain-object JSON value (string, number, boolean, null, array)
+    // is normalized to {} so callers can always safely use body.field access.
+    return {};
   } catch { return {}; }
 }
 function parseBody(req) {
@@ -569,7 +571,7 @@ async function addLog(entry) {
 }
 
 const CANVAS_BG = `<canvas id="_cvs" style="position:fixed;inset:0;z-index:0;pointer-events:none"></canvas>
-<script>(function(){var c=document.getElementById('_cvs'),ctx=c.getContext('2d');function resize(){c.width=window.innerWidth;c.height=window.innerHeight;}resize();window.addEventListener('resize',resize);var pts=Array.from({length:60},function(){return{x:Math.random()*c.width,y:Math.random()*c.height,vx:(Math.random()-.5)*.4,vy:(Math.random()-.5)*.4,r:Math.random()*2+.5};});function draw(){ctx.clearRect(0,0,c.width,c.height);pts.forEach(function(p){p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>c.width)p.vx*=-1;if(p.y<0||p.y>c.height)p.vy*=-1;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle='rgba(124,58,237,0.5)';ctx.fill();});for(var i=0;i<pts.length;i++){for(var j=i+1;j<pts.length;j++){var dx=pts[i].x-pts[j].x,dy=pts[i].y-pts[j].y,d=Math.sqrt(dx*dx+dy*dy);if(d<130){ctx.beginPath();ctx.moveTo(pts[i].x,pts[i].y);ctx.lineTo(pts[j].x,pts[j].y);ctx.strokeStyle='rgba(124,58,237,'+(0.12*(1-d/130))+')';ctx.lineWidth=.7;ctx.stroke();}}}requestAnimationFrame(draw);}draw();})();</script>`;
+<script>(function(){var c=document.getElementById('_cvs'),ctx=c.getContext('2d');function resize(){c.width=window.innerWidth;c.height=window.innerHeight;}resize();window.addEventListener('resize',resize);var pts=Array.from({length:60},function(){return{x:Math.random()*c.width,y:Math.random()*c.height,vx:(Math.random()-.5)*.4,vy:(Math.random()-.5)*.4,r:Math.random()*2+.5};});function draw(){ctx.clearRect(0,0,c.width,c.height);pts.forEach(function(p){p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>c.width)p.vx*=-1;if(p.y<0||p.y>c.height)p.vy*=-1;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle='rgba(124,58,237,0.5)';ctx.fill();});for(var i=0;i<pts.length;i++){for(var j=i+1;j<pts.length;j++){var dx=pts[i].x-pts[j].x,dy=pts[i].y-pts[j].y,dsq=dx*dx+dy*dy;if(dsq<16900){var d=Math.sqrt(dsq);ctx.beginPath();ctx.moveTo(pts[i].x,pts[i].y);ctx.lineTo(pts[j].x,pts[j].y);ctx.strokeStyle='rgba(124,58,237,'+(0.12*(1-d/130))+')';ctx.lineWidth=.7;ctx.stroke();}}}requestAnimationFrame(draw);}draw();})();</script>`;
 
 function renderModLogin(error = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
@@ -1196,6 +1198,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
 .cta-box p{color:var(--text2);margin:12px 0 28px;font-size:clamp(15px,1vw + 8px,17px)}
 .cta-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}</style><style>
 .portal-wrap{display:grid;grid-template-columns:1fr;gap:0;min-height:calc(100vh - 64px)}
+.portal-wrap{min-height:calc(100vh - 64px);display:flex;flex-direction:column;justify-content:center}
 .portal-grid{display:grid;grid-template-columns:1fr;align-items:start;padding:clamp(24px,4vw,40px) 0;gap:clamp(16px,2.5vw,24px)}
 .form-card{max-width:480px;margin:0 auto;width:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:clamp(28px,4vw,40px);box-shadow:0 0 0 1px #00ff0008,0 20px 60px #00000090,inset 0 1px 0 #ffffff06}
 .form-card .nav-logo{justify-content:center;display:flex;margin-bottom:6px}
@@ -1269,7 +1272,7 @@ ${CANVAS_BG}
   </div>
 </div></nav>
 <div id="loading-overlay" class="loading-overlay"><span class="spinner"></span></div>
-<div class="wrap">
+<div class="wrap portal-wrap">
   <div class="portal-grid">
 
     <div class="form-wrap" id="main-form-wrap">
@@ -1610,7 +1613,7 @@ tr:hover td{background:#ffffff02}
 .row-chk,#chk-all{-webkit-appearance:none;appearance:none;width:18px;height:18px;border:2px solid #3a3a52;border-radius:4px;background:var(--card2);cursor:pointer;vertical-align:middle;position:relative;transition:all .15s;flex-shrink:0;margin:0}.row-chk:hover,#chk-all:hover{border-color:#ff0000}.row-chk:checked,#chk-all:checked{background:#ff0000;border-color:#ff0000;box-shadow:0 0 8px #ff000070}.row-chk:checked::after,#chk-all:checked::after{content:'';position:absolute;left:5px;top:1px;width:5px;height:10px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}#chk-all:indeterminate{background:#ff0000;border-color:#ff0000}#chk-all:indeterminate::after{content:'';position:absolute;left:3px;top:7px;width:10px;height:2px;background:#fff;border:none;transform:none}
 
 /* ── Action buttons (table row actions) ── */
-.ab{padding:2px 7px;border:none;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:10px;font-weight:700;margin-right:2px;margin-bottom:2px;transition:all .15s;white-space:nowrap;display:inline-block}
+.ab{padding:2px 7px;border:none;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:10px;font-weight:700;transition:all .15s;white-space:nowrap}
 .ab:hover{opacity:.85;transform:translateY(-1px)}
 .ab-g{background:#00ff0012;color:var(--green);border:1px solid #00ff0030}
 .ab-r{background:#ff475712;color:var(--red);border:1px solid #ff475730}
@@ -1628,7 +1631,7 @@ tr:hover td{background:#ffffff02}
 .st-warn{background:#ffd32a18;color:var(--yellow);border:1px solid #ffd32a35}
 
 /* ── Table cell helpers ── */
-.td-actions{min-width:0}
+.td-actions{min-width:0;display:flex;flex-wrap:wrap;gap:6px;justify-content:center;align-items:center;padding:6px}
 .td-name{font-weight:700;color:var(--text)}
 
 /* ── Modal layout helpers ── */
@@ -3421,8 +3424,8 @@ async function handleRequest(req, res) {
     if (!body.label || !String(body.label).trim()) { sendJson(res, { error: 'label obrigatório' }, 400); return; }
     const code = generateCode();
     let expiresAt = null, expireDuration = null;
-    const days    = parseInt(body.expireDays  || 0);
-    const hours   = parseInt(body.expireHours || 0);
+    const days    = parseInt(body.expireDays, 10)  || 0;
+    const hours   = parseInt(body.expireHours, 10) || 0;
     if (days > 0 || hours > 0) {
       const durationMs = ((days * 1440) + (hours * 60)) * 60000;
       if (body.deferred) { expireDuration = durationMs; }
@@ -3547,7 +3550,7 @@ async function handleRequest(req, res) {
     if (body.expiresAt) {
       expiresAt = new Date(body.expiresAt).toISOString();
     } else {
-      const days=parseInt(body.expireDays||0), hours=parseInt(body.expireHours||0), minutes=parseInt(body.expireMinutes||0);
+      const days=parseInt(body.expireDays,10)||0, hours=parseInt(body.expireHours,10)||0, minutes=parseInt(body.expireMinutes,10)||0;
       if (days>0 || hours>0 || minutes>0) {
         const durationMs = ((days*1440)+(hours*60)+minutes)*60000;
         if (body.deferred) { expireDuration = durationMs; }
@@ -3563,7 +3566,7 @@ async function handleRequest(req, res) {
       initialNote = 'Email: ' + clientEmailIn;
     }
     keys[code] = {
-      label: body.label || 'Cliente', active: true, createdAt: new Date().toISOString(),
+      label: String(body.label || 'Cliente').trim().slice(0, 60) || 'Cliente', active: true, createdAt: new Date().toISOString(),
       uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null,
       deviceId: null, wppVersion: null, note: initialNote,
       expiresAt, expireDuration: expireDuration || null,
@@ -3589,7 +3592,7 @@ async function handleRequest(req, res) {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!keys[codeRenew]) { sendJson(res, { error: 'not found' }, 404); return; }
     const body = await parseBody(req);
-    const days=parseInt(body.days||0), hours=parseInt(body.hours||0), mins=parseInt(body.mins||0);
+    const days=parseInt(body.days,10)||0, hours=parseInt(body.hours,10)||0, mins=parseInt(body.mins,10)||0;
     if (!days && !hours && !mins) { sendJson(res, { error: 'nenhum tempo informado' }, 400); return; }
     const addMs = ((days*1440)+(hours*60)+mins)*60000;
     if (body.deferred) {
