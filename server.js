@@ -1486,9 +1486,9 @@ function buildKeysHtml() {
 
     return `
 <tr data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${k.active?'ativo':'bloqueado'}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-expired="${expired?'1':''}"${rowStyle}>
-  <td style="padding:5px 6px 5px 12px;width:28px"><input type="checkbox" class="row-chk" data-code="${escHtml(code)}" onchange="onRowCheck()"></td>
+  <td style="padding:5px 6px 5px 12px"><input type="checkbox" class="row-chk" data-code="${escHtml(code)}" onchange="onRowCheck()"></td>
   <td><span class="kc" onclick="copyKey(this,'${escHtml(code)}')" title="Clique para copiar">${escHtml(code)}</span></td>
-  <td class="td-name">${escHtml(k.label)}</td>
+  <td class="td-name"><span class="td-trunc" style="font-weight:700">${escHtml(k.label)}</span></td>
   <td><span class="st-badge ${expired?'st-off':k.active?(k.expireDuration&&!k.expiresAt?'st-wait':'st-on'):'st-off'}">${expired?'EXPIRADA':k.active?(k.expireDuration&&!k.expiresAt?'AGUARDANDO':'ATIVO'):'BLOQUEADO'}</span></td>
   <td><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'var(--muted)'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
   <td style="color:var(--muted)"><span class="td-trunc">${escHtml(k.lastPhone||'—')}</span></td>
@@ -1600,11 +1600,11 @@ main{position:relative;z-index:1;padding:22px 20px;max-width:100%}
 .bsusp{background:#ff475712;color:var(--red);border:1px solid #ff475730}
 .ov{overflow-x:auto}
 table{width:100%;border-collapse:collapse;table-layout:fixed}
-th{padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap;background:var(--card2);cursor:pointer;user-select:none;font-family:'Syne',sans-serif}
+th{padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:#a8aabb;border-bottom:1px solid var(--border2);white-space:nowrap;background:var(--card2);cursor:pointer;user-select:none;font-family:'Syne',sans-serif}
 th:hover{color:var(--text)}
 th.asc::after{content:' ▲';color:var(--green);font-size:12px}
 th.desc::after{content:' ▼';color:var(--green);font-size:12px}
-td{padding:3px 10px;font-size:11px;line-height:1.35;border-bottom:1px solid #14141f;vertical-align:middle}
+td{padding:4px 10px;font-size:11px;line-height:1.35;border-bottom:1px solid var(--border);vertical-align:middle;overflow:hidden}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:#ffffff02}
 .kc{color:var(--green);font-size:12px;letter-spacing:.3px;cursor:pointer;transition:color .15s;border-bottom:1px dotted transparent;white-space:nowrap}
@@ -1640,7 +1640,7 @@ tr:hover td{background:#ffffff02}
 .row-chk,#chk-all{-webkit-appearance:none;appearance:none;width:18px;height:18px;border:2px solid #3a3a52;border-radius:4px;background:var(--card2);cursor:pointer;vertical-align:middle;position:relative;transition:all .15s;flex-shrink:0;margin:0}.row-chk:hover,#chk-all:hover{border-color:#ff0000}.row-chk:checked,#chk-all:checked{background:#ff0000;border-color:#ff0000;box-shadow:0 0 8px #ff000070}.row-chk:checked::after,#chk-all:checked::after{content:'';position:absolute;left:5px;top:1px;width:5px;height:10px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}#chk-all:indeterminate{background:#ff0000;border-color:#ff0000}#chk-all:indeterminate::after{content:'';position:absolute;left:3px;top:7px;width:10px;height:2px;background:#fff;border:none;transform:none}
 
 /* ── Action buttons (table row actions) ── */
-.ab{padding:2px 7px;border:none;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:10px;font-weight:700;transition:all .15s;white-space:nowrap}
+.ab{padding:2px 5px;border:none;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:10px;font-weight:700;transition:all .15s;white-space:nowrap}
 .ab:hover{opacity:.85;transform:translateY(-1px)}
 .ab-g{background:#00ff6612;color:var(--green);border:1px solid #00ff6630}
 .ab-r{background:#ff475712;color:var(--red);border:1px solid #ff475730}
@@ -1658,8 +1658,8 @@ tr:hover td{background:#ffffff02}
 .st-warn{background:#ffd32a18;color:var(--yellow);border:1px solid #ffd32a35}
 
 /* ── Table cell helpers ── */
-.td-actions{min-width:0;display:flex;flex-wrap:wrap;gap:6px;justify-content:center;align-items:center;padding:6px}
-.td-name{font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:100%}
+.td-actions{min-width:0;display:flex;flex-wrap:wrap;gap:4px;justify-content:center;align-items:center;padding:4px 6px}
+.td-name{color:var(--text)}
 .td-trunc{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:100%}
 
 /* ── Modal layout helpers ── */
@@ -1752,11 +1752,11 @@ tr:hover td{background:#ffffff02}
           <th style="width:3.5%" onclick="sortKeys('uses')" id="th-uses">Usos</th>
           <th style="width:7%" onclick="sortKeys('phone')" id="th-phone">Telefone</th>
           <th style="width:8%">Último IP</th>
-          <th style="width:8.5%" onclick="sortKeys('lastused')" id="th-lastused">Último Acesso</th>
-          <th style="width:10%" onclick="sortKeys('created')" id="th-created">Criada em</th>
-          <th style="width:7%">WPP Ver.</th>
-          <th style="width:7%">Notas</th>
-          <th style="width:23.5%">Ações</th>
+          <th style="width:7.5%" onclick="sortKeys('lastused')" id="th-lastused">Último Acesso</th>
+          <th style="width:9%" onclick="sortKeys('created')" id="th-created">Criada em</th>
+          <th style="width:5%">WPP Ver.</th>
+          <th style="width:6.5%">Notas</th>
+          <th style="width:28%">Ações</th>
         </tr></thead>
         <tbody id="kb">${buildKeysHtml()}</tbody>
       </table>
