@@ -1658,7 +1658,7 @@ tr:hover td{background:#00ff660a}
 .st-warn{background:#ffd32a18;color:var(--yellow);border:1px solid #ffd32a35}
 
 /* ── Table cell helpers ── */
-.td-actions{min-width:0;display:flex;flex-wrap:wrap;gap:4px;justify-content:center;align-items:center;padding:4px 6px}
+.td-actions{min-width:0;display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-start;align-items:center;padding:4px 6px}
 .td-name{color:var(--text)}
 .td-trunc{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:100%}
 
