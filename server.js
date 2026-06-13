@@ -1155,7 +1155,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
 /* Footer */
 .footer{border-top:1px solid var(--border);margin-top:clamp(16px,2vw,24px);padding:clamp(24px,3vw,32px) 0 24px}
 .footer-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:32px;margin-bottom:40px}
-.footer-brand .nav-logo{margin-bottom:14px}
+.footer-brand .nav-logo{flex-shrink:0}
 .footer-brand p{color:var(--muted);font-size:14px;line-height:1.6;max-width:280px}
 .footer-col h4{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:16px;font-family:'Inter',sans-serif;font-weight:700}
 .footer-col a{display:block;color:var(--text2);font-size:14px;padding:6px 0;transition:color .15s}
@@ -1169,7 +1169,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
   .nav-toggle{display:flex}
   .nav-text{display:none}
   .footer-grid{grid-template-columns:1fr 1fr;gap:28px}
-  .footer-brand{grid-column:1/-1}
+  .footer-brand{grid-column:1/-1;display:flex;align-items:center;gap:15px}
 }
 @media(max-width:480px){.footer-grid{grid-template-columns:1fr}}
 .faq-list{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
@@ -1559,7 +1559,7 @@ main{position:relative;z-index:1;padding:22px 20px;max-width:100%}
 .bd:hover{background:#ff475722;border-color:#ff475760}
 .bsusp{background:#ff475712;color:var(--red);border:1px solid #ff475730}
 .ov{overflow-x:auto}
-table{width:100%;border-collapse:collapse}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
 th{padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap;background:var(--card2);cursor:pointer;user-select:none;font-family:'Syne',sans-serif}
 th:hover{color:var(--text)}
 th.asc::after{content:' ▲';color:var(--green);font-size:12px}
@@ -1704,18 +1704,18 @@ tr:hover td{background:#ffffff02}
     <div class="ov">
       <table>
         <thead><tr>
-          <th style="width:28px;padding:8px 6px 8px 12px"><input type="checkbox" id="chk-all" title="Selecionar todas visíveis" onchange="toggleSelectAll(this)"></th>
-          <th onclick="sortKeys('code')">Chave</th>
-          <th onclick="sortKeys('label')" id="th-label">Cliente</th>
-          <th onclick="sortKeys('status')" id="th-status">Status</th>
-          <th onclick="sortKeys('uses')" id="th-uses">Usos</th>
-          <th onclick="sortKeys('phone')" id="th-phone">Telefone</th>
-          <th>Último IP</th>
-          <th onclick="sortKeys('lastused')" id="th-lastused">Último Acesso</th>
-          <th onclick="sortKeys('created')" id="th-created">Criada em</th>
-          <th>WPP Ver.</th>
-          <th>Notas</th>
-          <th>Ações</th>
+          <th style="width:2%;padding:8px 6px 8px 12px"><input type="checkbox" id="chk-all" title="Selecionar todas visíveis" onchange="toggleSelectAll(this)"></th>
+          <th style="width:9.5%" onclick="sortKeys('code')">Chave</th>
+          <th style="width:8%" onclick="sortKeys('label')" id="th-label">Cliente</th>
+          <th style="width:6%" onclick="sortKeys('status')" id="th-status">Status</th>
+          <th style="width:3.5%" onclick="sortKeys('uses')" id="th-uses">Usos</th>
+          <th style="width:7%" onclick="sortKeys('phone')" id="th-phone">Telefone</th>
+          <th style="width:8%">Último IP</th>
+          <th style="width:8.5%" onclick="sortKeys('lastused')" id="th-lastused">Último Acesso</th>
+          <th style="width:10%" onclick="sortKeys('created')" id="th-created">Criada em</th>
+          <th style="width:7%">WPP Ver.</th>
+          <th style="width:7%">Notas</th>
+          <th style="width:23.5%">Ações</th>
         </tr></thead>
         <tbody id="kb">${buildKeysHtml()}</tbody>
       </table>
@@ -1735,7 +1735,7 @@ tr:hover td{background:#ffffff02}
     </div>
     <div class="ov">
       <table>
-        <thead><tr><th></th><th>Horário</th><th>Chave</th><th>Cliente</th><th>Telefone</th><th>IP</th><th>WPP Version</th><th>Ação</th></tr></thead>
+        <thead><tr><th style="width:14%">Horário</th><th style="width:16%">Chave</th><th style="width:14%">Cliente</th><th style="width:12%">Telefone</th><th style="width:14%">IP</th><th style="width:12%">WPP Version</th><th style="width:18%">Ação</th></tr></thead>
         <tbody id="lb">${buildLogsHtml()}</tbody>
       </table>
     </div>
@@ -2232,7 +2232,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
 /* Footer */
 .footer{border-top:1px solid var(--border);margin-top:clamp(48px,8vw,80px);padding:clamp(40px,6vw,56px) 0 32px}
 .footer-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:32px;margin-bottom:40px}
-.footer-brand .nav-logo{margin-bottom:14px}
+.footer-brand .nav-logo{flex-shrink:0}
 .footer-brand p{color:var(--muted);font-size:14px;line-height:1.6;max-width:280px}
 .footer-col h4{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:16px;font-family:'Inter',sans-serif;font-weight:700}
 .footer-col a{display:block;color:var(--text2);font-size:14px;padding:6px 0;transition:color .15s}
@@ -2244,8 +2244,9 @@ code,.mono{font-family:'JetBrains Mono',monospace}
   .nav-links.open{display:flex}
   .nav-links a{padding:13px 16px;font-size:15px}
   .nav-toggle{display:flex}
+  .nav-text{display:none}
   .footer-grid{grid-template-columns:1fr 1fr;gap:28px}
-  .footer-brand{grid-column:1/-1}
+  .footer-brand{grid-column:1/-1;display:flex;align-items:center;gap:15px}
 }
 @media(max-width:480px){.footer-grid{grid-template-columns:1fr}}
 .faq-list{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
@@ -2301,7 +2302,7 @@ table.compare .ck{color:var(--green);font-weight:700}
 </style></head><body>
 ${CANVAS_BG}
 <nav class="nav"><div class="nav-in">
-  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span></a>
+  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span><span class="nav-text">ZVM Planos</span></a>
   <button class="nav-toggle" onclick="document.getElementById('navlinks').classList.toggle('open')">☰</button>
   <div class="nav-links" id="navlinks">
     <a href="/planos" class="active">Planos</a>
@@ -2488,7 +2489,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
 /* Footer */
 .footer{border-top:1px solid var(--border);margin-top:clamp(48px,8vw,80px);padding:clamp(40px,6vw,56px) 0 32px}
 .footer-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:32px;margin-bottom:40px}
-.footer-brand .nav-logo{margin-bottom:14px}
+.footer-brand .nav-logo{flex-shrink:0}
 .footer-brand p{color:var(--muted);font-size:14px;line-height:1.6;max-width:280px}
 .footer-col h4{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:16px;font-family:'Inter',sans-serif;font-weight:700}
 .footer-col a{display:block;color:var(--text2);font-size:14px;padding:6px 0;transition:color .15s}
@@ -2500,8 +2501,9 @@ code,.mono{font-family:'JetBrains Mono',monospace}
   .nav-links.open{display:flex}
   .nav-links a{padding:13px 16px;font-size:15px}
   .nav-toggle{display:flex}
+  .nav-text{display:none}
   .footer-grid{grid-template-columns:1fr 1fr;gap:28px}
-  .footer-brand{grid-column:1/-1}
+  .footer-brand{grid-column:1/-1;display:flex;align-items:center;gap:15px}
 }
 @media(max-width:480px){.footer-grid{grid-template-columns:1fr}}
 .faq-list{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
@@ -2520,7 +2522,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
 </head><body>
 ${CANVAS_BG}
 <nav class="nav"><div class="nav-in">
-  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span></a>
+  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span><span class="nav-text">ZVM FAQ</span></a>
   <button class="nav-toggle" onclick="document.getElementById('navlinks').classList.toggle('open')">☰</button>
   <div class="nav-links" id="navlinks">
     <a href="/planos">Planos</a>
@@ -2673,7 +2675,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
 /* Footer */
 .footer{border-top:1px solid var(--border);margin-top:clamp(48px,8vw,80px);padding:clamp(40px,6vw,56px) 0 32px}
 .footer-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:32px;margin-bottom:40px}
-.footer-brand .nav-logo{margin-bottom:14px}
+.footer-brand .nav-logo{flex-shrink:0}
 .footer-brand p{color:var(--muted);font-size:14px;line-height:1.6;max-width:280px}
 .footer-col h4{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:16px;font-family:'Inter',sans-serif;font-weight:700}
 .footer-col a{display:block;color:var(--text2);font-size:14px;padding:6px 0;transition:color .15s}
@@ -2685,8 +2687,9 @@ code,.mono{font-family:'JetBrains Mono',monospace}
   .nav-links.open{display:flex}
   .nav-links a{padding:13px 16px;font-size:15px}
   .nav-toggle{display:flex}
+  .nav-text{display:none}
   .footer-grid{grid-template-columns:1fr 1fr;gap:28px}
-  .footer-brand{grid-column:1/-1}
+  .footer-brand{grid-column:1/-1;display:flex;align-items:center;gap:15px}
 }
 @media(max-width:480px){.footer-grid{grid-template-columns:1fr}}
 .priv-wrap{max-width:800px;margin:0 auto}
@@ -2703,7 +2706,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
 </head><body>
 ${CANVAS_BG}
 <nav class="nav"><div class="nav-in">
-  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span></a>
+  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span><span class="nav-text">ZVM Privacidade</span></a>
   <button class="nav-toggle" onclick="document.getElementById('navlinks').classList.toggle('open')">☰</button>
   <div class="nav-links" id="navlinks">
     <a href="/planos">Planos</a>
@@ -2903,7 +2906,7 @@ main{padding:22px 24px;max-width:1600px;margin:0 auto;position:relative;z-index:
 .pb.active,.pb:hover{background:#00ff0018;border-color:#00ff0040;color:var(--green)}
 .period-btns{display:flex;gap:6px}
 .ov{overflow-x:auto}
-table{width:100%;border-collapse:collapse}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
 th{padding:11px 14px;text-align:left;font-size:13px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--border);background:var(--card2);white-space:nowrap;font-family:'Syne',sans-serif}
 td{padding:12px 14px;font-size:14px;border-bottom:1px solid #14141f;vertical-align:middle;font-family:'Syne',sans-serif}
 tr:last-child td{border-bottom:none}
