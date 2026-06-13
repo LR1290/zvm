@@ -558,7 +558,7 @@ function renderModLogin(error = '') {
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
 .card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:40px 36px;width:360px;position:relative;z-index:1;box-shadow:0 0 40px rgba(79,142,247,0.12)}
-.logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#4f8ef7;margin-bottom:4px;text-align:center;letter-spacing:-0.5px}
+.logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#4f8ef7;margin-bottom:18px;text-align:center;letter-spacing:-0.5px}
 .sub{color:#8a8aaa;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-bottom:24px;text-align:center;font-family:'Syne',sans-serif}
 .badge{display:inline-block;background:#4f8ef712;border:1px solid #4f8ef730;color:#4f8ef7;font-size:13px;letter-spacing:1px;text-transform:uppercase;padding:4px 12px;border-radius:20px;margin-bottom:20px;font-family:'Syne',sans-serif;display:block;text-align:center}
 label{display:block;font-size:12px;letter-spacing:1px;color:#8a8aaa;text-transform:uppercase;margin-bottom:7px;font-family:'Syne',sans-serif}
@@ -570,8 +570,7 @@ input:focus{border-color:#4f8ef7}
 </style></head><body>
 <div class="card">
   <div class="logo">👮 PAINEL DE MODERAÇÃO</div>
-  <div class="sub">Painel de Moderação</div>
-  <div class="badge">👮 Acesso Moderador</div>
+  <div class="badge">Acesso Moderador</div>
   ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
   <form method="POST" action="${R_MOD}/login">
     <label>Usuário</label><input type="text" name="user" autocomplete="off">
@@ -1005,7 +1004,7 @@ function renderExtensionLogin({ callback, error = '', keyVal = '' }) {
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
 .card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:36px 32px;width:100%;max-width:420px;text-align:center;position:relative;z-index:1;box-shadow:0 0 40px rgba(124,58,237,0.15)}
-.logo{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:#00ff00;margin-bottom:4px;letter-spacing:-0.5px}
+.logo{font-family:'Syne',sans-serif;font-size:clamp(19px,5.5vw,26px);font-weight:800;color:#00ff00;margin-bottom:28px;letter-spacing:-0.5px;text-align:center;white-space:nowrap}
 .sub{color:#8a8aaa;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:28px;font-family:'Syne',sans-serif}
 label{display:block;text-align:left;font-size:14px;letter-spacing:.5px;color:#8a8aaa;text-transform:uppercase;margin-bottom:10px;font-family:'Syne',sans-serif;font-weight:600}
 input{width:100%;padding:13px 16px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:10px;color:#00ff00;font-family:'Space Mono',monospace;font-size:15px;outline:none;letter-spacing:2px;transition:border .2s}
@@ -1018,7 +1017,6 @@ input:focus{border-color:#00ff00}
 </head><body>
 <div class="card">
   <div class="logo">🔒 ATIVAR EXTENSÃO</div>
-  <div class="sub">Ativação da Extensão</div>
   ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
   <form method="POST" action="/extension/auth/verify">
     <input type="hidden" name="callback" value="${escHtml(callback)}">
@@ -1175,7 +1173,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
 .cta-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}</style><style>
 .portal-wrap{display:grid;grid-template-columns:1fr;gap:0;min-height:calc(100vh - 64px)}
 .portal-grid{display:grid;grid-template-columns:1fr;align-items:start;padding:clamp(32px,6vw,64px) 0;gap:clamp(24px,4vw,40px)}
-.form-card{max-width:480px;margin:0 auto;width:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:clamp(28px,4vw,40px)}
+.form-card{max-width:480px;margin:0 auto;width:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:clamp(28px,4vw,40px);box-shadow:0 0 40px rgba(0,255,0,0.08)}
 .form-card .nav-logo{justify-content:center;display:flex;margin-bottom:6px}
 .form-card .sub-title{text-align:center;color:var(--text2);font-size:14px;margin-bottom:28px}
 .field-label{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px}
@@ -1192,7 +1190,7 @@ input.key-input:focus{border-color:var(--green)}
 
 /* Result panel */
 .result-wrap{display:none;max-width:680px;margin:0 auto;width:100%}
-.panel-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:clamp(24px,4vw,36px)}
+.panel-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:clamp(24px,4vw,36px);box-shadow:0 0 40px rgba(0,255,0,0.08)}
 .panel-title{font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;font-size:clamp(20px,2vw,26px);color:#fff;margin-bottom:20px}
 .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
 .info-card{background:var(--dark);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px}
@@ -1552,7 +1550,7 @@ th{padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;lett
 th:hover{color:var(--text)}
 th.asc::after{content:' ▲';color:var(--green);font-size:12px}
 th.desc::after{content:' ▼';color:var(--green);font-size:12px}
-td{padding:7px 10px;font-size:11px;border-bottom:1px solid #14141f;vertical-align:middle}
+td{padding:5px 10px;font-size:11px;border-bottom:1px solid #14141f;vertical-align:middle}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:#ffffff02}
 .kc{color:var(--green);font-size:12px;letter-spacing:.3px;cursor:pointer;transition:color .15s;border-bottom:1px dotted transparent}
