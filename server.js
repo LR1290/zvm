@@ -1004,7 +1004,7 @@ function renderExtensionLogin({ callback, error = '', keyVal = '' }) {
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
 .card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:36px 32px;width:100%;max-width:420px;text-align:center;position:relative;z-index:1;box-shadow:0 0 0 1px #00ff0008,0 20px 60px #00000090,inset 0 1px 0 #ffffff06}
-.logo{font-family:'Syne',sans-serif;font-size:clamp(19px,5.5vw,26px);font-weight:800;color:#00ff00;margin-bottom:28px;letter-spacing:-0.5px;text-align:center;white-space:nowrap}
+.logo{font-family:'Syne',sans-serif;font-size:clamp(16px,5.2vw,22px);font-weight:800;color:#00ff00;margin-bottom:28px;letter-spacing:-0.5px;text-align:center;white-space:nowrap}
 label{display:block;text-align:center;font-size:14px;letter-spacing:.5px;color:#8a8aaa;text-transform:uppercase;margin-bottom:10px;font-family:'Syne',sans-serif;font-weight:600}
 input{width:100%;padding:13px 16px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:10px;color:#00ff00;font-family:'Space Mono',monospace;font-size:15px;outline:none;letter-spacing:2px;transition:border .2s;text-align:center}
 input:focus{border-color:#00ff00}
@@ -1308,7 +1308,7 @@ ${CANVAS_BG}
   <div class="footer-grid">
     <div class="footer-brand">
       <div class="nav-logo"><span class="nav-mark">ZVM</span></div>
-      <p>Sistema de licenciamento para a extensão ZapVoice. Controle de acesso seguro e gestão de dispositivos.</p>
+      <p>Sistema de licenciamento para a extensão ZVM. Controle de acesso seguro e gestão de dispositivos.</p>
     </div>
     <div class="footer-col"><h4>Produto</h4>
       <a href="/planos">Planos e Preços</a>
@@ -1325,7 +1325,7 @@ ${CANVAS_BG}
   </div>
   <div class="footer-bottom">
     &copy; ${new Date().getFullYear()} ZVM &mdash; Todos os direitos reservados<br>
-    Licenciamento da extensão ZapVoice
+    Licenciamento da extensão ZVM
   </div>
 </div></footer>
 <script>document.querySelectorAll('.nav-links a').forEach(function(a){a.addEventListener('click',function(){document.getElementById('navlinks').classList.remove('open');});});</script>
@@ -2285,6 +2285,7 @@ table.compare .ck{color:var(--green);font-weight:700}
 @media(max-width:900px){.plans-grid{grid-template-columns:1fr 1fr}.includes-grid{grid-template-columns:1fr}}
 @media(max-width:560px){.plans-grid{grid-template-columns:1fr}}
 </style></head><body>
+${CANVAS_BG}
 <nav class="nav"><div class="nav-in">
   <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span></a>
   <button class="nav-toggle" onclick="document.getElementById('navlinks').classList.toggle('open')">☰</button>
@@ -2380,7 +2381,7 @@ table.compare .ck{color:var(--green);font-weight:700}
   <div class="footer-grid">
     <div class="footer-brand">
       <div class="nav-logo"><span class="nav-mark">ZVM</span></div>
-      <p>Sistema de licenciamento para a extensão ZapVoice. Controle de acesso seguro e gestão de dispositivos.</p>
+      <p>Sistema de licenciamento para a extensão ZVM. Controle de acesso seguro e gestão de dispositivos.</p>
     </div>
     <div class="footer-col"><h4>Produto</h4>
       <a href="/planos">Planos e Preços</a>
@@ -2397,7 +2398,7 @@ table.compare .ck{color:var(--green);font-weight:700}
   </div>
   <div class="footer-bottom">
     &copy; ${new Date().getFullYear()} ZVM &mdash; Todos os direitos reservados<br>
-    Licenciamento da extensão ZapVoice
+    Licenciamento da extensão ZVM
   </div>
 </div></footer>
 <script>document.querySelectorAll('.nav-links a').forEach(function(a){a.addEventListener('click',function(){document.getElementById('navlinks').classList.remove('open');});});</script>
@@ -2503,6 +2504,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
 .cta-box p{color:var(--text2);margin:12px 0 28px;font-size:clamp(15px,1vw + 8px,17px)}
 .cta-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}</style>
 </head><body>
+${CANVAS_BG}
 <nav class="nav"><div class="nav-in">
   <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span></a>
   <button class="nav-toggle" onclick="document.getElementById('navlinks').classList.toggle('open')">☰</button>
@@ -2564,7 +2566,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
   <div class="footer-grid">
     <div class="footer-brand">
       <div class="nav-logo"><span class="nav-mark">ZVM</span></div>
-      <p>Sistema de licenciamento para a extensao ZapVoice. Controle de acesso seguro e gestao de dispositivos.</p>
+      <p>Sistema de licenciamento para a extensao ZVM. Controle de acesso seguro e gestao de dispositivos.</p>
     </div>
     <div class="footer-col"><h4>Produto</h4>
       <a href="/planos">Planos e Precos</a>
@@ -2581,7 +2583,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
   </div>
   <div class="footer-bottom">
     &copy; ${new Date().getFullYear()} ZVM &mdash; Todos os direitos reservados<br>
-    Licenciamento da extensao ZapVoice
+    Licenciamento da extensao ZVM
   </div>
 </div></footer>
 <script>document.querySelectorAll('.nav-links a').forEach(function(a){a.addEventListener('click',function(){document.getElementById('navlinks').classList.remove('open');});});</script>
@@ -2685,6 +2687,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
 .priv-note{background:var(--green-soft);border:1px solid var(--green-border);border-radius:var(--radius);padding:18px 22px;color:var(--text)!important;font-weight:500;margin:18px 0}
 .priv-legal{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 18px;font-size:14px;color:var(--muted);margin-top:14px}</style>
 </head><body>
+${CANVAS_BG}
 <nav class="nav"><div class="nav-in">
   <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span></a>
   <button class="nav-toggle" onclick="document.getElementById('navlinks').classList.toggle('open')">☰</button>
@@ -2704,7 +2707,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
     <p class="priv-meta">Ultima atualizacao: ${new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}</p>
     <div class="priv-sec">
       <h2>&#128203; Visao Geral</h2>
-      <p>Esta Politica descreve como o ZVM coleta, utiliza e protege seus dados ao usar o servico de licenciamento da extensao ZapVoice.</p>
+      <p>Esta Politica descreve como o ZVM coleta, utiliza e protege seus dados ao usar o servico de licenciamento da extensao ZVM.</p>
       <p class="priv-legal">Ao ativar ou consultar sua chave de acesso, voce concorda com estes termos, em conformidade com a Lei Geral de Protecao de Dados (LGPD &mdash; Lei n&ordm; 13.709/2018).</p>
     </div>
     <div class="priv-sec">
@@ -2722,7 +2725,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
       <h2>&#127919; Finalidade</h2>
       <p>Os dados sao usados exclusivamente para:</p>
       <ul>
-        <li>Validar e controlar o acesso a extensao ZapVoice</li>
+        <li>Validar e controlar o acesso a extensao ZVM</li>
         <li>Detectar uso indevido ou compartilhamento nao autorizado de chaves</li>
         <li>Suporte tecnico quando solicitado pelo usuario</li>
         <li>Controle do numero de dispositivos vinculados por chave</li>
@@ -2751,7 +2754,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
   <div class="footer-grid">
     <div class="footer-brand">
       <div class="nav-logo"><span class="nav-mark">ZVM</span></div>
-      <p>Sistema de licenciamento para a extensao ZapVoice. Controle de acesso seguro e gestao de dispositivos.</p>
+      <p>Sistema de licenciamento para a extensao ZVM. Controle de acesso seguro e gestao de dispositivos.</p>
     </div>
     <div class="footer-col"><h4>Produto</h4>
       <a href="/planos">Planos e Precos</a>
@@ -2768,7 +2771,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
   </div>
   <div class="footer-bottom">
     &copy; ${new Date().getFullYear()} ZVM &mdash; Todos os direitos reservados<br>
-    Licenciamento da extensao ZapVoice
+    Licenciamento da extensao ZVM
   </div>
 </div></footer>
 <script>document.querySelectorAll('.nav-links a').forEach(function(a){a.addEventListener('click',function(){document.getElementById('navlinks').classList.remove('open');});});</script>
