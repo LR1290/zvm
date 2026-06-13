@@ -1153,7 +1153,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
 .btn-wa:hover{transform:translateY(-2px);box-shadow:0 10px 30px #25d36640}
 
 /* Footer */
-.footer{border-top:1px solid var(--border);margin-top:clamp(48px,8vw,80px);padding:clamp(40px,6vw,56px) 0 32px}
+.footer{border-top:1px solid var(--border);margin-top:clamp(16px,2vw,24px);padding:clamp(24px,3vw,32px) 0 24px}
 .footer-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:32px;margin-bottom:40px}
 .footer-brand .nav-logo{margin-bottom:14px}
 .footer-brand p{color:var(--muted);font-size:14px;line-height:1.6;max-width:280px}
@@ -1167,6 +1167,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
   .nav-links.open{display:flex}
   .nav-links a{padding:13px 16px;font-size:15px}
   .nav-toggle{display:flex}
+  .nav-text{display:none}
   .footer-grid{grid-template-columns:1fr 1fr;gap:28px}
   .footer-brand{grid-column:1/-1}
 }
@@ -1248,7 +1249,7 @@ input.key-input:focus{border-color:var(--green)}
 </style></head><body>
 ${CANVAS_BG}
 <nav class="nav"><div class="nav-in">
-  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span></a>
+  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span><span class="nav-text">Portal do Cliente</span></a>
   <button class="nav-toggle" onclick="document.getElementById('navlinks').classList.toggle('open')">☰</button>
   <div class="nav-links" id="navlinks">
     <a href="/planos" class="">Planos</a>
@@ -1512,11 +1513,10 @@ function renderAdminDashboard() {
 body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
 header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040}
 .logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
-main{position:relative;z-index:1;padding:0 20px;max-width:100%}
 .hright{display:flex;align-items:center;gap:10px}
 a.out{color:var(--muted);font-size:13px;text-decoration:none;padding:6px 14px;border:1px solid var(--border2);border-radius:var(--radius-sm);transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
 a.out:hover{color:var(--red);border-color:var(--red)}
-main{padding:22px 24px;max-width:1800px;margin:0 auto}
+main{position:relative;z-index:1;padding:22px 20px;max-width:100%}
 .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px}
 .sc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;position:relative;overflow:hidden;transition:border-color .2s,transform .15s;cursor:default}
 .sc:hover{border-color:var(--border2);transform:translateY(-1px)}
