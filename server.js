@@ -1003,9 +1003,8 @@ function renderExtensionLogin({ callback, error = '', keyVal = '' }) {
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
-.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:36px 32px;width:100%;max-width:420px;text-align:center;position:relative;z-index:1;box-shadow:0 0 40px rgba(124,58,237,0.15)}
+.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:36px 32px;width:100%;max-width:420px;text-align:center;position:relative;z-index:1;box-shadow:0 0 0 1px #00ff0008,0 20px 60px #00000090,inset 0 1px 0 #ffffff06}
 .logo{font-family:'Syne',sans-serif;font-size:clamp(19px,5.5vw,26px);font-weight:800;color:#00ff00;margin-bottom:28px;letter-spacing:-0.5px;text-align:center;white-space:nowrap}
-.sub{color:#8a8aaa;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:28px;font-family:'Syne',sans-serif}
 label{display:block;text-align:left;font-size:14px;letter-spacing:.5px;color:#8a8aaa;text-transform:uppercase;margin-bottom:10px;font-family:'Syne',sans-serif;font-weight:600}
 input{width:100%;padding:13px 16px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:10px;color:#00ff00;font-family:'Space Mono',monospace;font-size:15px;outline:none;letter-spacing:2px;transition:border .2s}
 input:focus{border-color:#00ff00}
@@ -1173,7 +1172,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
 .cta-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}</style><style>
 .portal-wrap{display:grid;grid-template-columns:1fr;gap:0;min-height:calc(100vh - 64px)}
 .portal-grid{display:grid;grid-template-columns:1fr;align-items:start;padding:clamp(32px,6vw,64px) 0;gap:clamp(24px,4vw,40px)}
-.form-card{max-width:480px;margin:0 auto;width:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:clamp(28px,4vw,40px);box-shadow:0 0 40px rgba(0,255,0,0.08)}
+.form-card{max-width:480px;margin:0 auto;width:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:clamp(28px,4vw,40px);box-shadow:0 0 0 1px #00ff0008,0 20px 60px #00000090,inset 0 1px 0 #ffffff06}
 .form-card .nav-logo{justify-content:center;display:flex;margin-bottom:6px}
 .form-card .sub-title{text-align:center;color:var(--text2);font-size:14px;margin-bottom:28px}
 .field-label{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px}
@@ -1190,7 +1189,7 @@ input.key-input:focus{border-color:var(--green)}
 
 /* Result panel */
 .result-wrap{display:none;max-width:680px;margin:0 auto;width:100%}
-.panel-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:clamp(24px,4vw,36px);box-shadow:0 0 40px rgba(0,255,0,0.08)}
+.panel-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:clamp(24px,4vw,36px);box-shadow:0 0 0 1px #00ff0008,0 20px 60px #00000090,inset 0 1px 0 #ffffff06}
 .panel-title{font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;font-size:clamp(20px,2vw,26px);color:#fff;margin-bottom:20px}
 .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
 .info-card{background:var(--dark);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px}
@@ -1249,7 +1248,7 @@ input.key-input:focus{border-color:var(--green)}
 
     <div class="form-wrap" id="main-form-wrap">
       <div class="form-card">
-        <div class="nav-logo"><span class="nav-mark">ZVM</span> ZVM</div>
+        <div class="nav-logo"><span class="nav-mark">ZVM</span></div>
         <div class="sub-title">Portal do Cliente</div>
         <div id="form-area">
           <div id="err-box" class="err-box" style="display:none"></div>
@@ -1307,7 +1306,7 @@ input.key-input:focus{border-color:var(--green)}
 <footer class="footer"><div class="wrap">
   <div class="footer-grid">
     <div class="footer-brand">
-      <div class="nav-logo"><span class="nav-mark">ZVM</span> ZVM</div>
+      <div class="nav-logo"><span class="nav-mark">ZVM</span></div>
       <p>Sistema de licenciamento para a extensão ZapVoice. Controle de acesso seguro e gestão de dispositivos.</p>
     </div>
     <div class="footer-col"><h4>Produto</h4>
@@ -1553,7 +1552,7 @@ th.desc::after{content:' ▼';color:var(--green);font-size:12px}
 td{padding:5px 10px;font-size:11px;border-bottom:1px solid #14141f;vertical-align:middle}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:#ffffff02}
-.kc{color:var(--green);font-size:12px;letter-spacing:.3px;cursor:pointer;transition:color .15s;border-bottom:1px dotted transparent}
+.kc{color:var(--green);font-size:12px;letter-spacing:.3px;cursor:pointer;transition:color .15s;border-bottom:1px dotted transparent;white-space:nowrap}
 .kc:hover{color:#fff;border-bottom-color:var(--green)}
 .badge{padding:2px 7px;border-radius:3px;font-size:11px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;font-family:'Syne',sans-serif}
 .on{background:#00ff0018;color:var(--green);border:1px solid #00ff0030}
@@ -2379,7 +2378,7 @@ table.compare .ck{color:var(--green);font-weight:700}
 <footer class="footer"><div class="wrap">
   <div class="footer-grid">
     <div class="footer-brand">
-      <div class="nav-logo"><span class="nav-mark">ZVM</span> ZVM</div>
+      <div class="nav-logo"><span class="nav-mark">ZVM</span></div>
       <p>Sistema de licenciamento para a extensão ZapVoice. Controle de acesso seguro e gestão de dispositivos.</p>
     </div>
     <div class="footer-col"><h4>Produto</h4>
@@ -2563,7 +2562,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
 <footer class="footer"><div class="wrap">
   <div class="footer-grid">
     <div class="footer-brand">
-      <div class="nav-logo"><span class="nav-mark">ZVM</span> ZVM</div>
+      <div class="nav-logo"><span class="nav-mark">ZVM</span></div>
       <p>Sistema de licenciamento para a extensao ZapVoice. Controle de acesso seguro e gestao de dispositivos.</p>
     </div>
     <div class="footer-col"><h4>Produto</h4>
@@ -2750,7 +2749,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
 <footer class="footer"><div class="wrap">
   <div class="footer-grid">
     <div class="footer-brand">
-      <div class="nav-logo"><span class="nav-mark">ZVM</span> ZVM</div>
+      <div class="nav-logo"><span class="nav-mark">ZVM</span></div>
       <p>Sistema de licenciamento para a extensao ZapVoice. Controle de acesso seguro e gestao de dispositivos.</p>
     </div>
     <div class="footer-col"><h4>Produto</h4>
