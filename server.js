@@ -1783,6 +1783,7 @@ tr:hover td{background:#ffffff02}
 <div class="modal-bg" id="noteModal"><div class="modal">
   <h3>📝 Nota — <span id="noteKeyLabel"></span></h3>
   <input type="hidden" id="noteKeyCode">
+  <div class="modal-row"><label>E-mail do cliente</label><input type="email" id="noteEmail" placeholder="cliente@exemplo.com" maxlength="120"></div>
   <div class="modal-row"><label>Anotação</label><textarea id="noteText" placeholder="Pagou até março, trial, VIP..."></textarea></div>
   <div class="mactions">
     <button class="btn btn-y" onclick="closeNote()">Cancelar</button>
@@ -2084,12 +2085,25 @@ async function removeAllPhones(){
   const d=await r.json();if(d.ok){toast('Todos removidos.');closePhones();await doRefresh();}else toast('Erro: '+(d.error||'?'),false);
 }
 
-function openNote(code,currentNote){document.getElementById('noteKeyCode').value=code;document.getElementById('noteKeyLabel').textContent=code;document.getElementById('noteText').value=currentNote||'';document.getElementById('noteModal').classList.add('open');setTimeout(()=>document.getElementById('noteText').focus(),100);}
+function _splitNote(note){
+  note=note||'';
+  const m=note.match(/Email: ([^\s|]+)/);
+  const email=m?m[1]:'';
+  const rest=note.replace(/Email: [^\s|]+\s*/,'').trim();
+  return {email,rest};
+}
+function openNote(code,currentNote){const parts=_splitNote(currentNote);document.getElementById('noteKeyCode').value=code;document.getElementById('noteKeyLabel').textContent=code;document.getElementById('noteEmail').value=parts.email;document.getElementById('noteText').value=parts.rest;document.getElementById('noteModal').classList.add('open');setTimeout(()=>document.getElementById('noteText').focus(),100);}
 function closeNote(){document.getElementById('noteModal').classList.remove('open');}
 document.getElementById('noteModal').addEventListener('click',function(e){if(e.target===this)closeNote();});
 document.getElementById('kb').addEventListener('click',function(e){const td=e.target.closest('.note-cell');if(!td)return;openNote(td.dataset.code||'',td.dataset.note||'');});
 async function saveNote(){
-  const code=document.getElementById('noteKeyCode').value,note=document.getElementById('noteText').value.trim();
+  const code=document.getElementById('noteKeyCode').value;
+  const rest=document.getElementById('noteText').value.trim();
+  const email=document.getElementById('noteEmail').value.trim().toLowerCase();
+  if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){toast('❌ E-mail inválido',false);return;}
+  let note=rest;
+  if(email)note=(rest?rest+' ':'')+'Email: '+email;
+  note=note.slice(0,500);
   const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note})});
   const d=await r.json();if(d.ok){toast('Nota salva!');closeNote();await doRefresh();}else toast('Erro ao salvar nota',false);
 }
@@ -3789,7 +3803,7 @@ async function handleRequest(req, res) {
 
     if (PAYT_SECRET) {
       const headerToken = String(req.headers['x-payt-token'] || req.headers['x-webhook-token'] || '');
-      const bodyKey     = String(payload.integration_key || '');
+      const bodyKey     = String(payload.integration_key || payload.secret || '');
       const provided    = headerToken || bodyKey;
       const secretBuf   = Buffer.from(PAYT_SECRET);
       const isValid     = provided && Buffer.byteLength(provided) === secretBuf.length &&
@@ -3805,13 +3819,19 @@ async function handleRequest(req, res) {
       res.writeHead(200); res.end('test_ignored'); return;
     }
 
-    const status   = String(payload.status || payload.payment_status || payload.sale_status || '').toLowerCase();
+    // Cakto envia os dados reais dentro de payload.data — usamos como fonte
+    // adicional sem remover os formatos genericos ja suportados.
+    const d = (payload.data && typeof payload.data === 'object') ? payload.data : {};
+
+    const event    = String(payload.event || '').toLowerCase();
+    const status   = String(d.status || payload.status || payload.payment_status || payload.sale_status || '').toLowerCase();
     const APPROVED = ['venda_paga','approved','paid','completed','finished','aprovada','finalizada','active','confirmed'];
-    const approved = APPROVED.some(s => status === s || status.includes(s));
+    const APPROVED_EVENTS = ['purchase_approved','subscription_renewed','subscription_created'];
+    const approved = APPROVED.some(s => status === s || status.includes(s)) || APPROVED_EVENTS.includes(event);
 
-    const txId = String(payload.transaction_id || payload.sale_id || payload.cart_id || payload.id || '').trim();
+    const txId = String(d.refId || d.id || payload.transaction_id || payload.sale_id || payload.cart_id || payload.id || '').trim();
 
-    const customer    = payload.customer || payload.buyer || payload.client || {};
+    const customer    = d.customer || payload.customer || payload.buyer || payload.client || {};
     const clientName  = customer.name        || customer.full_name     || payload.customer_name  || payload.buyer_name || 'Cliente';
     const clientEmail = customer.email       || payload.customer_email || payload.buyer_email    || payload.email      || '';
     const clientPhone = customer.phone       || customer.cellphone     || customer.phone_number  || payload.customer_phone || '';
@@ -3823,14 +3843,14 @@ async function handleRequest(req, res) {
       amount = payload.products.reduce((s, pr) => s + (parseFloat(String(pr.price||pr.value||0).replace(',','.')) || 0), 0);
     }
     if (productNameRaw === '-') {
-      const offer = payload.offer || payload.product || {};
+      const offer = d.product || d.offer || payload.offer || payload.product || {};
       productNameRaw = offer.name || offer.title || payload.product_name || payload.offer_name || payload.plan_name || '-';
     }
     if (!amount) {
-      const raw = payload.amount || payload.value || payload.price || payload.sale_amount || payload.total || 0;
+      const raw = d.amount || payload.amount || payload.value || payload.price || payload.sale_amount || payload.total || 0;
       amount = parseFloat(String(raw).replace(',','.')) || 0;
     }
-    const paymentMethod  = payload.payment_method || payload.charge_type || payload.method || payload.payment_type || '-';
+    const paymentMethod  = d.paymentMethod || payload.payment_method || payload.charge_type || payload.method || payload.payment_type || '-';
     const productNameLow = productNameRaw.toLowerCase();
 
     if (!approved) {
