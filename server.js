@@ -1480,12 +1480,12 @@ function buildLogsHtml(arr) {
   const ac = a => a==='login_ok'?'st-on':a==='relogin_ok'?'st-re':a==='verify_ok'?'st-vr':a==='login_blocked'?'st-off':a==='warn_limit'?'st-wl':'st-warn';
   return src.slice(0,200).map(l => `
 <tr>
-  <td style="color:var(--muted);font-family:'Courier New',monospace;font-size:11px;white-space:nowrap">${new Date(l.timestamp).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</td>
+  <td style="color:var(--muted);font-size:12px;white-space:nowrap">${new Date(l.timestamp).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</td>
   <td><span class="kc" style="font-size:12px">${escHtml(l.keyCode||'—')}</span></td>
-  <td style="color:var(--muted)">${escHtml(l.label||'—')}</td>
-  <td style="color:var(--muted)">${escHtml(l.phone||'—')}</td>
-  <td style="color:var(--muted)">${escHtml(l.ip||'—')}</td>
-  <td style="color:var(--muted)">${escHtml(l.wppVersion||'—')}</td>
+  <td style="color:var(--muted);font-size:12px">${escHtml(l.label||'—')}</td>
+  <td style="color:var(--muted);font-size:12px">${escHtml(l.phone||'—')}</td>
+  <td style="color:var(--muted);font-size:12px">${escHtml(l.ip||'—')}</td>
+  <td style="color:var(--muted);font-size:12px">${escHtml(l.wppVersion||'—')}</td>
   <td><span class="st-badge ${ac(l.action)}">${escHtml(l.action)}</span></td>
 </tr>`).join('');
 }
@@ -1618,7 +1618,7 @@ tr:hover td{background:#ffffff02}
 .st-warn{background:#ffd32a18;color:var(--yellow);border:1px solid #ffd32a35}
 
 /* ── Table cell helpers ── */
-.td-actions{white-space:nowrap;min-width:280px}
+.td-actions{min-width:0}
 .td-name{font-weight:700;color:var(--text)}
 
 /* ── Modal layout helpers ── */
@@ -2302,7 +2302,7 @@ table.compare .ck{color:var(--green);font-weight:700}
 </style></head><body>
 ${CANVAS_BG}
 <nav class="nav"><div class="nav-in">
-  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span><span class="nav-text">ZVM Planos</span></a>
+  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span><span class="nav-text">Planos</span></a>
   <button class="nav-toggle" onclick="document.getElementById('navlinks').classList.toggle('open')">☰</button>
   <div class="nav-links" id="navlinks">
     <a href="/planos" class="active">Planos</a>
@@ -2522,7 +2522,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
 </head><body>
 ${CANVAS_BG}
 <nav class="nav"><div class="nav-in">
-  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span><span class="nav-text">ZVM FAQ</span></a>
+  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span><span class="nav-text">FAQ</span></a>
   <button class="nav-toggle" onclick="document.getElementById('navlinks').classList.toggle('open')">☰</button>
   <div class="nav-links" id="navlinks">
     <a href="/planos">Planos</a>
@@ -2706,7 +2706,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
 </head><body>
 ${CANVAS_BG}
 <nav class="nav"><div class="nav-in">
-  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span><span class="nav-text">ZVM Privacidade</span></a>
+  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span><span class="nav-text">Privacidade</span></a>
   <button class="nav-toggle" onclick="document.getElementById('navlinks').classList.toggle('open')">☰</button>
   <div class="nav-links" id="navlinks">
     <a href="/planos">Planos</a>
