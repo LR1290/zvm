@@ -1005,8 +1005,8 @@ function renderExtensionLogin({ callback, error = '', keyVal = '' }) {
 body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
 .card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:36px 32px;width:100%;max-width:420px;text-align:center;position:relative;z-index:1;box-shadow:0 0 0 1px #00ff0008,0 20px 60px #00000090,inset 0 1px 0 #ffffff06}
 .logo{font-family:'Syne',sans-serif;font-size:clamp(19px,5.5vw,26px);font-weight:800;color:#00ff00;margin-bottom:28px;letter-spacing:-0.5px;text-align:center;white-space:nowrap}
-label{display:block;text-align:left;font-size:14px;letter-spacing:.5px;color:#8a8aaa;text-transform:uppercase;margin-bottom:10px;font-family:'Syne',sans-serif;font-weight:600}
-input{width:100%;padding:13px 16px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:10px;color:#00ff00;font-family:'Space Mono',monospace;font-size:15px;outline:none;letter-spacing:2px;transition:border .2s}
+label{display:block;text-align:center;font-size:14px;letter-spacing:.5px;color:#8a8aaa;text-transform:uppercase;margin-bottom:10px;font-family:'Syne',sans-serif;font-weight:600}
+input{width:100%;padding:13px 16px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:10px;color:#00ff00;font-family:'Space Mono',monospace;font-size:15px;outline:none;letter-spacing:2px;transition:border .2s;text-align:center}
 input:focus{border-color:#00ff00}
 .err{background:#ff475715;border:1px solid #ff4757;border-radius:8px;color:#ff4757;padding:13px 16px;font-size:14px;margin-bottom:18px;text-align:left;font-family:'Syne',sans-serif}
 .btn{width:100%;padding:14px;background:#00ff00;border:none;border-radius:10px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:15px;cursor:pointer;margin-top:20px;transition:opacity .2s}
@@ -1021,7 +1021,7 @@ input:focus{border-color:#00ff00}
     <input type="hidden" name="callback" value="${escHtml(callback)}">
     <label>Sua Chave de Ativação</label>
     <input type="text" name="key" id="zvm-key-inp" value="${escHtml(keyVal)}" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="25">
-    <p style="text-align:left;font-size:13px;color:#8a8aaa;margin-top:8px;font-family:'Syne',sans-serif">Você recebeu esta chave junto com a sua compra.</p>
+    <p style="text-align:center;font-size:13px;color:#8a8aaa;margin-top:8px;font-family:'Syne',sans-serif">Você recebeu esta chave junto com a sua compra.</p>
     <button type="submit" class="btn">Ativar Agora</button>
   </form>
   <div class="hint">Precisa de ajuda ou quer renovar?<br><a href="/planos">💳 Ver Planos</a> · <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20referente%20a%20minha%20renova%C3%A7%C3%A3o." target="_blank">💬 Suporte no WhatsApp</a></div>
@@ -1232,8 +1232,9 @@ input.key-input:focus{border-color:var(--green)}
 
 @media(max-width:680px){.info-grid{grid-template-columns:1fr}.phone-grid{grid-template-columns:1fr 1fr}}
 </style></head><body>
+${CANVAS_BG}
 <nav class="nav"><div class="nav-in">
-  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span> ZVM</a>
+  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span></a>
   <button class="nav-toggle" onclick="document.getElementById('navlinks').classList.toggle('open')">☰</button>
   <div class="nav-links" id="navlinks">
     <a href="/planos" class="">Planos</a>
@@ -1549,7 +1550,7 @@ th{padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;lett
 th:hover{color:var(--text)}
 th.asc::after{content:' ▲';color:var(--green);font-size:12px}
 th.desc::after{content:' ▼';color:var(--green);font-size:12px}
-td{padding:5px 10px;font-size:11px;border-bottom:1px solid #14141f;vertical-align:middle}
+td{padding:3px 10px;font-size:11px;line-height:1.35;border-bottom:1px solid #14141f;vertical-align:middle}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:#ffffff02}
 .kc{color:var(--green);font-size:12px;letter-spacing:.3px;cursor:pointer;transition:color .15s;border-bottom:1px dotted transparent;white-space:nowrap}
@@ -1585,7 +1586,7 @@ tr:hover td{background:#ffffff02}
 .row-chk,#chk-all{-webkit-appearance:none;appearance:none;width:18px;height:18px;border:2px solid #3a3a52;border-radius:4px;background:var(--card2);cursor:pointer;vertical-align:middle;position:relative;transition:all .15s;flex-shrink:0;margin:0}.row-chk:hover,#chk-all:hover{border-color:#ff0000}.row-chk:checked,#chk-all:checked{background:#ff0000;border-color:#ff0000;box-shadow:0 0 8px #ff000070}.row-chk:checked::after,#chk-all:checked::after{content:'';position:absolute;left:5px;top:1px;width:5px;height:10px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}#chk-all:indeterminate{background:#ff0000;border-color:#ff0000}#chk-all:indeterminate::after{content:'';position:absolute;left:3px;top:7px;width:10px;height:2px;background:#fff;border:none;transform:none}
 
 /* ── Action buttons (table row actions) ── */
-.ab{padding:3px 8px;border:none;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;margin-right:2px;margin-bottom:2px;transition:all .15s;white-space:nowrap;display:inline-block}
+.ab{padding:2px 7px;border:none;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:10px;font-weight:700;margin-right:2px;margin-bottom:2px;transition:all .15s;white-space:nowrap;display:inline-block}
 .ab:hover{opacity:.85;transform:translateY(-1px)}
 .ab-g{background:#00ff0012;color:var(--green);border:1px solid #00ff0030}
 .ab-r{background:#ff475712;color:var(--red);border:1px solid #ff475730}
@@ -2285,7 +2286,7 @@ table.compare .ck{color:var(--green);font-weight:700}
 @media(max-width:560px){.plans-grid{grid-template-columns:1fr}}
 </style></head><body>
 <nav class="nav"><div class="nav-in">
-  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span> ZVM</a>
+  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span></a>
   <button class="nav-toggle" onclick="document.getElementById('navlinks').classList.toggle('open')">☰</button>
   <div class="nav-links" id="navlinks">
     <a href="/planos" class="active">Planos</a>
@@ -2503,7 +2504,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
 .cta-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}</style>
 </head><body>
 <nav class="nav"><div class="nav-in">
-  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span> ZVM</a>
+  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span></a>
   <button class="nav-toggle" onclick="document.getElementById('navlinks').classList.toggle('open')">☰</button>
   <div class="nav-links" id="navlinks">
     <a href="/planos">Planos</a>
@@ -2685,7 +2686,7 @@ code,.mono{font-family:'JetBrains Mono',monospace}
 .priv-legal{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 18px;font-size:14px;color:var(--muted);margin-top:14px}</style>
 </head><body>
 <nav class="nav"><div class="nav-in">
-  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span> ZVM</a>
+  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span></a>
   <button class="nav-toggle" onclick="document.getElementById('navlinks').classList.toggle('open')">☰</button>
   <div class="nav-links" id="navlinks">
     <a href="/planos">Planos</a>
