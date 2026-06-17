@@ -149,6 +149,7 @@ function saveKey(code) {
     }
   }, 2000);
   _saveDebounce.set(code, tid);
+  return Promise.resolve();
 }
 
 async function deleteKeyFromDb(code) {
