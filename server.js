@@ -83,7 +83,7 @@ async function getMongoDb() {
       await _mongoClient.connect();
       console.log('✅ MongoDB conectado');
     }
-    _mongoDb = _mongoClient.db('zapvoice');
+    _mongoDb = _mongoClient.db('zvm');
     return _mongoDb;
   } catch(e) {
 
@@ -327,7 +327,7 @@ function getAuthData(keyCode, userName, phone, wppVer) {
       ownerId: DEFAULT_OWNER_ID, managerId: DEFAULT_MANAGER_ID,
       permissions: FULL_PERMISSIONS,
       username: userName || k.label || '',
-      paymentUrl: null, marketplace: 'premium', email: 'cliente@zapvoice.com.br',
+      paymentUrl: null, marketplace: 'premium', email: 'cliente@zvm.app',
       planName: 'Pro', plan_id: 'ZV_PRO', isLoggedIn: true, isPremium: true, isBasicPlan: false,
       message: 'OK', warnLimit: false,
       wppVersion: wppVer || null, userProfilePic: null, deviceId: null,
@@ -1080,7 +1080,7 @@ function renderExtensionLogin({ callback, error = '', keyVal = '' }) {
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow-x:hidden;padding:24px 16px}
-.wrap{display:grid;grid-template-columns:1fr 1fr;gap:24px;width:100%;max-width:920px;align-items:center;position:relative;z-index:1}
+.wrap{display:grid;grid-template-columns:3fr 2fr;gap:28px;width:100%;max-width:1100px;align-items:center;position:relative;z-index:1}
 .video-col{display:flex;flex-direction:column;gap:14px}
 .video-label{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:#5a5a7a;text-transform:uppercase;letter-spacing:2px;text-align:center}
 .video-wrap{position:relative;width:100%;padding-top:56.25%;border-radius:14px;overflow:hidden;border:1px solid #1e1e2e;box-shadow:0 0 30px rgba(0,255,135,0.07)}
@@ -1105,10 +1105,11 @@ input[type=text]:focus{border-color:#00ff87}
     <div class="video-label">▶ Tutorial de Ativação</div>
     <div class="video-wrap">
       <iframe
-        src="https://www.youtube-nocookie.com/embed/DZ29f5U6OF8?rel=0&modestbranding=1"
+        src="https://www.youtube.com/embed/DZ29f5U6OF8?rel=0&modestbranding=1&enablejsapi=1"
         title="Tutorial ZVM"
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-        allowfullscreen>
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowfullscreen
+        referrerpolicy="strict-origin-when-cross-origin">
       </iframe>
     </div>
   </div>
@@ -1119,15 +1120,23 @@ input[type=text]:focus{border-color:#00ff87}
     <form method="POST" action="/extension/auth/verify">
       <input type="hidden" name="callback" value="${escHtml(callback)}">
       <label>Sua Chave de Ativação</label>
-      <input type="text" name="key" value="${escHtml(keyVal)}" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="20">
+      <input type="text" name="key" id="key-field" value="${escHtml(keyVal)}" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="20" inputmode="text" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9\-]/g,'').slice(0,20)" onpaste="var e=this;setTimeout(function(){e.value=e.value.toLowerCase().replace(/[^a-z0-9\-]/g,'').slice(0,20);},0)">
       <p style="text-align:left;font-size:12px;color:#8a8aaa;margin-top:7px;font-family:'Syne',sans-serif">Você recebeu esta chave junto com a sua compra.</p>
-      <button type="submit" class="btn-activate">Ativar Agora</button>
+      <button type="submit" class="btn-activate" onclick="var v=document.getElementById('key-field').value.trim();if(!v){event.preventDefault();document.getElementById('key-field').style.borderColor='#ff4757';document.getElementById('key-field').focus();var h=document.querySelector('.err-inline');if(!h){h=document.createElement('p');h.className='err-inline';h.style.cssText='color:#ff4757;font-size:12px;text-align:left;margin-top:6px;font-family:Syne,sans-serif';document.getElementById('key-field').parentNode.appendChild(h);}h.textContent='⚠ Digite sua chave antes de ativar.';return;}">Ativar Agora</button>
     </form>
     <a href="https://chat.whatsapp.com/EnkHQfatoTJ43JTgxLYX55" target="_blank" rel="noopener noreferrer" class="btn-group">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="#25d366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.09.543 4.05 1.492 5.756L.057 23.992l6.354-1.666A11.95 11.95 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.808 9.808 0 01-5.007-1.374l-.36-.214-3.72.975.993-3.62-.234-.373A9.81 9.81 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182S21.818 6.57 21.818 12 17.43 21.818 12 21.818z"/></svg>
       Entrar no Grupo
     </a>
     ${freeBtn}
+    <div style="margin-top:12px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <div style="flex:1;height:1px;background:#1e1e2e"></div>
+        <span style="color:#5a5a7a;font-size:11px;font-family:'Syne',sans-serif;white-space:nowrap;letter-spacing:1px;text-transform:uppercase">chave expirada?</span>
+        <div style="flex:1;height:1px;background:#1e1e2e"></div>
+      </div>
+      <a href="/?backup=1" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:11px;background:#4f8ef710;border:1.5px solid #4f8ef730;border-radius:10px;color:#4f8ef7;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;text-decoration:none;transition:all .2s" onmouseover="this.style.background='#4f8ef720';this.style.borderColor='#4f8ef7'" onmouseout="this.style.background='#4f8ef710';this.style.borderColor='#4f8ef730'">📥 Baixar Backup dos Meus Dados</a>
+    </div>
     <div class="hint">Precisa de ajuda ou quer renovar?<br><a href="/planos">💳 Ver Planos</a> · <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20referente%20a%20minha%20renova%C3%A3o." target="_blank">💬 Suporte</a></div>
   </div>
 </div>
@@ -1272,6 +1281,11 @@ input:focus{border-color:var(--green)}
         <a href="/planos" style="flex-shrink:0;padding:12px 24px;background:#00ff87;color:#000;font-family:'Syne',sans-serif;font-weight:800;font-size:14px;border-radius:8px;text-decoration:none;white-space:nowrap">💳 Ver Planos</a>
       </div>
       <div class="section-links" id="r-links" style="margin-bottom:20px"></div>
+      <div id="r-backup-section" style="display:none;margin-bottom:20px;background:#ff475708;border:1px solid #ff475730;border-radius:12px;padding:16px 18px">
+        <div style="font-size:14px;color:#ff8a8a;font-family:'Syne',sans-serif;font-weight:700;margin-bottom:8px">📥 Chave inativa — Faça backup dos seus dados</div>
+        <p style="font-size:12px;color:#8a8aaa;font-family:'Syne',sans-serif;line-height:1.7;margin-bottom:12px">Baixe um arquivo JSON com os metadados desta chave.<br><strong style="color:#e2e2f0">Atenção:</strong> os dados da extensão (funis, gatilhos, áudios) ficam no Chrome e devem ser exportados pela Dashboard enquanto a chave ainda está ativa.</p>
+        <button id="r-backup-btn" style="padding:10px 20px;background:#ff475718;border:1px solid #ff475740;border-radius:8px;color:#ff8a8a;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;cursor:pointer;transition:all .2s" onmouseover="this.style.background='#ff475728'" onmouseout="this.style.background='#ff475718'">📥 Baixar Backup JSON</button>
+      </div>
       <button onclick="resetPanel()" style="padding:12px 24px;background:#1e1e2e;color:var(--muted);border:1px solid var(--border);border-radius:8px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#00ff87';this.style.color='#00ff87'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">← Consultar outra chave</button>
     </div>
 </div>
@@ -1313,7 +1327,13 @@ function showPanel(d,key){
   const actCard=document.getElementById('r-act-card'),lastCard=document.getElementById('r-last-card');
   if(d.activatedAt&&actCard){actCard.style.display='block';document.getElementById('r-activated').textContent=fmtDate(d.activatedAt);}
   if(d.lastUsed&&lastCard){lastCard.style.display='block';document.getElementById('r-lastused').textContent=fmtDate(d.lastUsed);}
-  document.getElementById('r-links').innerHTML='<a class="link-btn" href="https://app.zapvoice.com.br/dashboard/backup-fixer" target="_blank">🔧 Corrija Backups</a><a class="link-btn" href="https://app.zapvoice.com.br/dashboard/converter" target="_blank">🎵 Converta Áudios</a><a class="link-btn" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" style="border-color:#25d366;color:#25d366">💬 Suporte WhatsApp</a>';
+  document.getElementById('r-links').innerHTML='<a class="link-btn" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" style="border-color:#25d366;color:#25d366">💬 Suporte WhatsApp</a>';
+  var backupSection=document.getElementById('r-backup-section');
+  if(backupSection){
+    backupSection.style.display=(d.expired||!d.active)?'block':'none';
+    var backupBtn=document.getElementById('r-backup-btn');
+    if(backupBtn)backupBtn.onclick=function(){downloadBackup(key,d);};
+  }
   const renewBanner=document.getElementById('r-renew-banner');
   if(renewBanner){const showRenew=d.expired||(d.hoursLeft!==null&&d.hoursLeft<168);renewBanner.style.display=showRenew?'flex':'none';if(d.expired)renewBanner.querySelector('div div').textContent='⏰ Chave expirada!';}
   var phoneSec=document.getElementById('r-phone-section'),phoneList=document.getElementById('r-phone-list');
@@ -1338,6 +1358,26 @@ function resetPanel(){
   const btn=document.getElementById('check-btn');btn.disabled=false;btn.textContent='Consultar Minha Chave';
   document.getElementById('form-area').style.display='block';
 }
+function downloadBackup(key,d){
+  var now=new Date().toISOString().slice(0,16).replace('T','_').replace(/:/g,'-');
+  var data={
+    exportedAt:new Date().toISOString(),
+    key:key,
+    label:d.label||'',
+    status:d.active?'ativa':(d.expired?'expirada':'bloqueada'),
+    expiresAt:d.expiresAt||null,
+    activatedAt:d.activatedAt||null,
+    lastUsed:d.lastUsed||null,
+    phones:d.phones||0,
+    maxUses:d.maxUses||null,
+    warnCount:d.warnCount||0,
+    note:'Este arquivo contém os metadados da sua chave ZVM. Os dados da extensão (funis, gatilhos, áudios) ficam armazenados localmente no Chrome e devem ser exportados pela Dashboard da extensão enquanto ela está ativa.'
+  };
+  var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');a.href=url;a.download='zvm-backup-'+now+'.json';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+}
 async function clientRemovePhone(key,phoneIdx){
   if(!confirm('Remover este número desta chave?'))return;
   try{var r=await fetch('/client/remove-phone',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,phoneIdx})});var d=await r.json();if(d.ok){alert('Número removido! Você pode fazer login novamente.');doCheck(key);}else alert('Erro: '+(d.error||'?'));}catch(e){alert('Erro de rede.');}
@@ -1346,8 +1386,16 @@ document.getElementById('key-input').addEventListener('keydown',e=>{if(e.key==='
 window.addEventListener('DOMContentLoaded',()=>{
   const params=new URLSearchParams(window.location.search);
   const autoKey=(params.get('key')||'').trim().toLowerCase();
+  const isBackup=params.get('backup')==='1';
   if(autoKey){document.getElementById('loading-overlay').style.display='flex';document.getElementById('form-area').style.display='none';doCheck(autoKey).finally(()=>{document.getElementById('loading-overlay').style.display='none';});}
-  else document.getElementById('loading-overlay').style.display='none';
+  else{
+    document.getElementById('loading-overlay').style.display='none';
+    if(isBackup){
+      var eb=document.getElementById('err-box');
+      if(eb){eb.style.cssText='display:block;background:#4f8ef710;border:1px solid #4f8ef730;border-radius:8px;color:#4f8ef7;padding:12px 14px;font-size:13px;margin-bottom:14px;text-align:left;font-family:Syne,sans-serif';eb.textContent='📥 Digite sua chave abaixo (mesmo expirada) para consultar e baixar o backup dos metadados.';}
+      var ki=document.getElementById('key-input');if(ki)ki.focus();
+    }
+  }
 });
 </script>
 ${CANVAS_BG}</body></html>`;
@@ -2373,6 +2421,83 @@ ${CANVAS_BG}
 </body></html>`;
 }
 
+function renderStep2Page(key, keyId) {
+  const safeKey   = escHtml(key   || '');
+  const safeKeyId = escHtml(keyId || '');
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZVM — Conectando</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#080810;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif}
+.card{background:#0f0f1a;border:1px solid #00ff8740;border-radius:18px;padding:44px 40px;text-align:center;max-width:400px;width:100%;box-shadow:0 0 40px rgba(0,255,135,0.1)}
+.spinner{width:48px;height:48px;border:3px solid #00ff8720;border-top-color:#00ff87;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 24px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.title{font-size:22px;font-weight:800;color:#00ff87;margin-bottom:10px}
+.sub{color:#8a8aaa;font-size:14px;line-height:1.6}
+.bar-wrap{width:100%;height:3px;background:#1e1e2e;border-radius:2px;margin-top:28px;overflow:hidden}
+.bar{height:3px;background:#00ff87;border-radius:2px;animation:fill 3.5s ease-out forwards}
+@keyframes fill{from{width:0}to{width:100%}}
+</style>
+</head><body>
+<div class="card">
+  <div class="spinner"></div>
+  <div class="title">Conectando ao ZVM…</div>
+  <div class="sub">Aguarde enquanto a extensão processa seu acesso.<br>Esta janela fechará automaticamente.</div>
+  <div class="bar-wrap"><div class="bar"></div></div>
+</div>
+<script>
+(function(){
+  var params=new URLSearchParams(window.location.search);
+  var key=params.get('key')||'';
+  var keyId=params.get('keyId')||'';
+  if(window.opener){
+    try{ window.opener.postMessage({type:'ZVM_STEP2_AUTH',key:key,keyId:keyId},'*'); }catch(e){}
+  }
+  setTimeout(function(){ try{window.close();}catch(e){} },3500);
+})();
+</script>
+</body></html>`;
+}
+
+function renderThankYouPage() {
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZVM — Compra Confirmada</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#080810;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;padding:24px}
+.card{background:#0f0f1a;border:1px solid #00ff8740;border-radius:18px;padding:48px 40px;text-align:center;max-width:480px;width:100%;box-shadow:0 0 50px rgba(0,255,135,0.12)}
+.icon{font-size:56px;margin-bottom:20px;animation:pop .5s cubic-bezier(.34,1.56,.64,1)}
+@keyframes pop{from{transform:scale(0.5);opacity:0}to{transform:scale(1);opacity:1}}
+.title{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:#00ff87;margin-bottom:10px}
+.sub{color:#8a8aaa;font-size:14px;line-height:1.8;margin-bottom:28px}
+.steps{background:#080810;border:1px solid #1c1c2e;border-radius:12px;padding:20px 24px;text-align:left;margin-bottom:28px}
+.step{display:flex;align-items:flex-start;gap:14px;margin-bottom:14px;font-size:13px;color:#c0c0d8;font-family:'Syne',sans-serif}
+.step:last-child{margin-bottom:0}
+.step-num{background:#00ff8720;border:1px solid #00ff8740;color:#00ff87;font-weight:800;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;margin-top:1px}
+.btn{display:inline-block;padding:14px 32px;background:#00ff87;color:#000;font-family:'Syne',sans-serif;font-weight:800;font-size:15px;border-radius:10px;text-decoration:none;transition:opacity .2s}
+.btn:hover{opacity:.85}
+</style>
+</head><body>
+<div class="card">
+  <div class="icon">✅</div>
+  <div class="title">Pagamento Confirmado!</div>
+  <div class="sub">Sua chave de acesso foi gerada e está pronta para uso.<br>Siga os passos abaixo para ativar.</div>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><span>Abra o <strong style="color:#e2e2f0">WhatsApp Web</strong> no Chrome com a extensão ZVM instalada.</span></div>
+    <div class="step"><div class="step-num">2</div><span>Clique no ícone da extensão e vá em <strong style="color:#e2e2f0">Ativar Extensão</strong>.</span></div>
+    <div class="step"><div class="step-num">3</div><span>Digite sua chave que foi enviada por e-mail ou acesse o <strong style="color:#e2e2f0">Portal do Cliente</strong> abaixo.</span></div>
+  </div>
+  <a href="/" class="btn">🔑 Acessar Portal do Cliente</a>
+</div>
+${CANVAS_BG}</body></html>`;
+}
+
 function renderAnalyticsLogin(error = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -2759,7 +2884,7 @@ async function handleRequest(req, res) {
       _cbUrl.searchParams.set('planName',    'Pro');
       _cbUrl.searchParams.set('marketplace', 'premium');
       _cbUrl.searchParams.set('username',    keys[keyCode].label);
-      _cbUrl.searchParams.set('email',       'cliente@zapvoice.com.br');
+      _cbUrl.searchParams.set('email',       'cliente@zvm.app');
       _cbUrl.searchParams.set('plan_id',     'ZV_PRO');
       _cbUrl.searchParams.set('permissions', FULL_PERMISSIONS.join(','));
       res.writeHead(302, { Location: _cbUrl.toString() }); res.end();
@@ -3629,7 +3754,7 @@ async function handleRequest(req, res) {
   }
 
   if (req.method === 'GET' && (p === '/dashboard/backup-fixer' || p === '/dashboard/converter')) {
-    res.writeHead(302, { Location: 'https://app.zapvoice.com.br' + p }); res.end(); return;
+    res.writeHead(302, { Location: APP_BASE_URL + p }); res.end(); return;
   }
 
   if (p === '/faq' && req.method === 'GET') {
@@ -3642,6 +3767,16 @@ async function handleRequest(req, res) {
 
   if (p === '/privacidade' && req.method === 'GET') {
     sendHtml(res, renderPrivacyPage()); return;
+  }
+
+  if (p === '/unauthorized/special-register/step2' && req.method === 'GET') {
+    const key   = url.searchParams.get('key')   || '';
+    const keyId = url.searchParams.get('keyId') || '';
+    sendHtml(res, renderStep2Page(key, keyId)); return;
+  }
+
+  if ((p === '/pagina-obrigado' || p === '/obrigado') && req.method === 'GET') {
+    sendHtml(res, renderThankYouPage()); return;
   }
 
   const CLIENT_PATHS = ['/', '/plans/manage', '/plans/new', '/dashboard/chaves'];
