@@ -350,11 +350,45 @@ function isPaidPlan(body) {
   if (body.isBasic === true || body.isBasic === 'true') return true;
   return false;
 }
+function isExplicitFreeSession(body) {
+  const authKey = (body.authKey || '').toLowerCase().slice(0, 32);
+  const planId = body.planId || '';
+  const managerId = body.managerId || '';
+  if (authKey === FREE_AUTH_KEY) return true;
+  if (!isFreePlanId(planId)) return false;
+  return !managerId || managerId === FREE_MANAGER_ID;
+}
+function isProManagerId(managerId) {
+  return !!managerId && managerId !== FREE_MANAGER_ID;
+}
+function sanitizeKeyRecord(k) {
+  if (!k || typeof k !== 'object') return k;
+  if (k.plan_id === FREE_PLAN_ID || k.plan_id === FREE_OWNER_ID) k.plan_id = 'ZV_PRO';
+  if (k.planId === FREE_PLAN_ID || k.planId === FREE_OWNER_ID) k.planId = 'ZV_PRO';
+  if (!k.isBasicPlan) {
+    delete k.usageLimits;
+    if (k.usage && typeof k.usage === 'object') {
+      for (const t of USAGE_ITEM_TYPES) {
+        if (k.usage[t] && typeof k.usage[t].max === 'number' && k.usage[t].max >= 0) {
+          k.usage[t].max = -1;
+        }
+      }
+    }
+  }
+  return k;
+}
 function normalizeProUsage(usage, k) {
+  const isBasic = !!k?.isBasicPlan;
   for (const t of USAGE_ITEM_TYPES) {
     if (!usage[t]) usage[t] = { sent: 0, max: -1 };
-    const customMax = k?.usageLimits?.[t]?.max;
-    usage[t].max = typeof customMax === 'number' ? customMax : (USAGE_LIMITS[t]?.max ?? -1);
+    if (isBasic) {
+      const customMax = k?.usageLimits?.[t]?.max;
+      usage[t].max = typeof customMax === 'number'
+        ? customMax
+        : (FREE_USAGE_LIMITS[t]?.max ?? USAGE_LIMITS[t]?.max ?? -1);
+    } else {
+      usage[t].max = USAGE_LIMITS[t]?.max ?? -1;
+    }
     if (typeof usage[t].sent !== 'number') usage[t].sent = 0;
   }
   return usage;
@@ -427,41 +461,50 @@ function findKeyCodeByManager(keysMap, managerId, phone) {
   return fallback;
 }
 async function ensureKeyLoaded(keyCode) {
-  if (!keyCode || keys[keyCode]) return !!keys[keyCode];
+  if (!keyCode) return false;
+  if (keys[keyCode]) {
+    sanitizeKeyRecord(keys[keyCode]);
+    return true;
+  }
   try {
     const db = await getMongoDb();
     const doc = await db.collection('store').findOne({ _id: 'keys' });
     if (doc?.data?.[keyCode]) {
-      keys[keyCode] = doc.data[keyCode];
+      keys[keyCode] = sanitizeKeyRecord(doc.data[keyCode]);
       return true;
     }
     if (doc?.data && typeof doc.data === 'object') {
       const norm = keyCode.replace(/\s/g, '');
       for (const [code, val] of Object.entries(doc.data)) {
         if (code === keyCode || code.replace(/\s/g, '') === norm) {
-          keys[code] = val;
+          keys[code] = sanitizeKeyRecord(val);
           return true;
         }
       }
     }
   } catch (_) { /* continua */ }
+  if (keys[keyCode]) sanitizeKeyRecord(keys[keyCode]);
   return !!keys[keyCode];
 }
 async function resolveUsageKey(body) {
   const authKey = (body.authKey || '').toLowerCase().slice(0, 32);
   const planId = body.planId || '';
+  const managerId = body.managerId || '';
+  const phone = body.phoneNumber || '';
 
-  if (isFreePlanId(planId) || authKey === FREE_AUTH_KEY) return FREE_AUTH_KEY;
+  if (isExplicitFreeSession(body)) return FREE_AUTH_KEY;
 
-  if (authKey && await ensureKeyLoaded(authKey)) return authKey;
+  if (authKey && authKey !== FREE_AUTH_KEY && await ensureKeyLoaded(authKey)) return authKey;
 
-  const byPhone = findKeyCodeByPhone(keys, body.phoneNumber || '');
+  const byPhone = findKeyCodeByPhone(keys, phone);
   if (byPhone && await ensureKeyLoaded(byPhone)) return byPhone;
 
-  const byManager = findKeyCodeByManager(keys, body.managerId || '', body.phoneNumber || '');
+  const byManager = findKeyCodeByManager(keys, managerId, phone);
   if (byManager && await ensureKeyLoaded(byManager)) return byManager;
 
-  if (isPaidPlan(body)) return PAID_USAGE_KEY;
+  if (isPaidPlan(body) || isProManagerId(managerId)) return PAID_USAGE_KEY;
+
+  if (isFreePlanId(planId)) return FREE_AUTH_KEY;
 
   return null;
 }
@@ -479,6 +522,10 @@ function buildUsagePayload(keyCode, phone) {
   }
   const k = keys[keyCode];
   if (!k) return null;
+  sanitizeKeyRecord(k);
+  if (!k.isBasicPlan) {
+    return unlimitedUsagePayload(k.usage);
+  }
   const usage = ensureKeyUsage(k, USAGE_LIMITS);
   normalizeProUsage(usage, k);
   return {
@@ -536,7 +583,7 @@ function getFreeAuthData() {
   };
 }
 function getAuthData(keyCode, userName) {
-  const k = keys[keyCode] || {};
+  const k = sanitizeKeyRecord(keys[keyCode] || {});
   return {
     numberWarning: false,
     segments: Array.isArray(k.segments) ? k.segments : [],
@@ -556,7 +603,9 @@ function getAuthData(keyCode, userName) {
       marketplace: k.marketplace || 'premium',
       email: k.email || 'cliente@zapvoice.com.br',
       planName: k.planName || 'Pro',
-      plan_id: k.plan_id || k.planId || 'ZV_PRO',
+      plan_id: (k.plan_id === FREE_PLAN_ID || k.plan_id === FREE_OWNER_ID)
+        ? 'ZV_PRO'
+        : (k.plan_id || k.planId || 'ZV_PRO'),
       isLoggedIn: true,
       isPremium: !k.isBasicPlan,
       isBasicPlan: !!k.isBasicPlan,
@@ -3168,6 +3217,15 @@ async function handleRequest(req, res) {
       sendJson(res, { ok: false, status: false, data: { errorType: 'KEY_INVALID', message: 'Chave inválida' } }, 403);
       return;
     }
+    sanitizeKeyRecord(keys[keyCode]);
+    if (!keys[keyCode].isBasicPlan) {
+      const payload = unlimitedUsagePayload();
+      if (!body.hasError && body.itemType) {
+        incrementUsageRow(payload.limits, body.itemType, USAGE_LIMITS, body.scheduledItems);
+      }
+      sendJson(res, { ok: true, status: true, ...payload, isExpired: false });
+      return;
+    }
     const usage = ensureKeyUsage(keys[keyCode], USAGE_LIMITS);
     normalizeProUsage(usage, keys[keyCode]);
     if (body.hasError) {
@@ -3231,7 +3289,14 @@ async function handleRequest(req, res) {
     }
     if (keyCode === PAID_USAGE_KEY) {
       const payload = unlimitedUsagePayload(body.extensionLimits);
-      sendJson(res, { ok: true, status: true, limits: payload.limits });
+      sendJson(res, { ok: true, status: true, limits: payload.limits, expires_at: payload.expires_at });
+      return;
+    }
+    sanitizeKeyRecord(keys[keyCode]);
+    if (!keys[keyCode].isBasicPlan) {
+      const payload = unlimitedUsagePayload(body.extensionLimits);
+      sendJson(res, { ok: true, status: true, limits: payload.limits, expires_at: payload.expires_at });
+      saveKey(keyCode).catch(() => {});
       return;
     }
     const usage = ensureKeyUsage(keys[keyCode], USAGE_LIMITS);
@@ -3957,6 +4022,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     const loaded = await loadDb();
     keys = loaded.keys || {};
     logs = loaded.logs || [];
+    for (const code of Object.keys(keys)) sanitizeKeyRecord(keys[code]);
     serverReady = true;
 
     console.log(`✅ zvm-lr1290 v8 — porta ${PORT}`);
