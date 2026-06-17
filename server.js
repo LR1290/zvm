@@ -1058,6 +1058,20 @@ ${CANVAS_BG}</body></html>`;
 }
 
 function renderExtensionLogin({ callback, error = '', keyVal = '' }) {
+  const freeBtn = FREE_LOGIN_ENABLED ? `
+    <div style="margin-top:12px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <div style="flex:1;height:1px;background:#1e1e2e"></div>
+        <span style="color:#5a5a7a;font-size:11px;font-family:'Syne',sans-serif;white-space:nowrap;letter-spacing:1px;text-transform:uppercase">ou continue sem chave</span>
+        <div style="flex:1;height:1px;background:#1e1e2e"></div>
+      </div>
+      <form method="POST" action="/extension/auth/verify">
+        <input type="hidden" name="callback" value="${escHtml(callback)}">
+        <input type="hidden" name="key" value="">
+        <button type="submit" style="width:100%;padding:12px;background:transparent;border:1.5px solid #00ff8750;border-radius:10px;color:#00ff87;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:all .2s" onmouseover="this.style.background='#00ff8712';this.style.borderColor='#00ff87'" onmouseout="this.style.background='transparent';this.style.borderColor='#00ff8750'">🆓 Usar Gratuitamente</button>
+      </form>
+    </div>` : '';
+
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Ativação</title>
@@ -1065,31 +1079,57 @@ function renderExtensionLogin({ callback, error = '', keyVal = '' }) {
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
-.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:36px 32px;width:100%;max-width:420px;text-align:center;position:relative;z-index:1;box-shadow:0 0 40px rgba(124,58,237,0.15)}
-.logo{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:#00ff87;margin-bottom:4px;letter-spacing:-0.5px}
-.sub{color:#8a8aaa;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:28px;font-family:'Syne',sans-serif}
-label{display:block;text-align:left;font-size:14px;letter-spacing:.5px;color:#8a8aaa;text-transform:uppercase;margin-bottom:10px;font-family:'Syne',sans-serif;font-weight:600}
-input{width:100%;padding:13px 16px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:10px;color:#00ff87;font-family:'Space Mono',monospace;font-size:15px;outline:none;letter-spacing:2px;transition:border .2s}
-input:focus{border-color:#00ff87}
-.err{background:#ff475715;border:1px solid #ff4757;border-radius:8px;color:#ff4757;padding:13px 16px;font-size:14px;margin-bottom:18px;text-align:left;font-family:'Syne',sans-serif}
-.btn{width:100%;padding:14px;background:#00ff87;border:none;border-radius:10px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:15px;cursor:pointer;margin-top:20px;transition:opacity .2s}
-.btn:hover{opacity:.85}
-.hint{margin-top:20px;color:#8a8aaa;font-size:13px;font-family:'Syne',sans-serif}.hint a{color:#00ff87;text-decoration:none}
+body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow-x:hidden;padding:24px 16px}
+.wrap{display:grid;grid-template-columns:1fr 1fr;gap:24px;width:100%;max-width:920px;align-items:center;position:relative;z-index:1}
+.video-col{display:flex;flex-direction:column;gap:14px}
+.video-label{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:#5a5a7a;text-transform:uppercase;letter-spacing:2px;text-align:center}
+.video-wrap{position:relative;width:100%;padding-top:56.25%;border-radius:14px;overflow:hidden;border:1px solid #1e1e2e;box-shadow:0 0 30px rgba(0,255,135,0.07)}
+.video-wrap iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:none}
+.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:30px 26px;width:100%;text-align:center;box-shadow:0 0 40px rgba(124,58,237,0.15)}
+.logo{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:#00ff87;margin-bottom:4px;letter-spacing:-0.5px}
+.sub{color:#8a8aaa;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:20px;font-family:'Syne',sans-serif}
+label{display:block;text-align:left;font-size:13px;letter-spacing:.5px;color:#8a8aaa;text-transform:uppercase;margin-bottom:9px;font-family:'Syne',sans-serif;font-weight:600}
+input[type=text]{width:100%;padding:12px 14px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:10px;color:#00ff87;font-family:'Space Mono',monospace;font-size:14px;outline:none;letter-spacing:2px;transition:border .2s}
+input[type=text]:focus{border-color:#00ff87}
+.err{background:#ff475715;border:1px solid #ff4757;border-radius:8px;color:#ff4757;padding:12px 14px;font-size:13px;margin-bottom:14px;text-align:left;font-family:'Syne',sans-serif}
+.btn-activate{width:100%;padding:13px;background:#00ff87;border:none;border-radius:10px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:15px;cursor:pointer;margin-top:14px;transition:opacity .2s}
+.btn-activate:hover{opacity:.85}
+.btn-group{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px;background:#25d36618;border:1.5px solid #25d36640;border-radius:10px;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;cursor:pointer;text-decoration:none;margin-top:10px;transition:all .2s}
+.btn-group:hover{background:#25d36628;border-color:#25d366}
+.hint{margin-top:14px;color:#8a8aaa;font-size:12px;font-family:'Syne',sans-serif}.hint a{color:#00ff87;text-decoration:none}
+@media(max-width:700px){.wrap{grid-template-columns:1fr}.video-col{order:2}.card{order:1}}
 </style>
 </head><body>
-<div class="card">
-  <div class="logo">⚡ ZVM</div>
-  <div class="sub">Ativação da Extensão</div>
-  ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
-  <form method="POST" action="/extension/auth/verify">
-    <input type="hidden" name="callback" value="${escHtml(callback)}">
-    <label>Sua Chave de Ativação</label>
-    <input type="text" name="key" value="${escHtml(keyVal)}" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="20">
-    <p style="text-align:left;font-size:13px;color:#8a8aaa;margin-top:8px;font-family:'Syne',sans-serif">Você recebeu esta chave junto com a sua compra.</p>
-    <button type="submit" class="btn">Ativar Agora</button>
-  </form>
-  <div class="hint">Precisa de ajuda ou quer renovar?<br><a href="/planos">💳 Ver Planos</a> · <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20referente%20a%20minha%20renova%C3%A7%C3%A3o." target="_blank">💬 Suporte no WhatsApp</a></div>
+<div class="wrap">
+  <div class="video-col">
+    <div class="video-label">▶ Tutorial de Ativação</div>
+    <div class="video-wrap">
+      <iframe
+        src="https://www.youtube-nocookie.com/embed/DZ29f5U6OF8?rel=0&modestbranding=1"
+        title="Tutorial ZVM"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowfullscreen>
+      </iframe>
+    </div>
+  </div>
+  <div class="card">
+    <div class="logo">⚡ ZVM</div>
+    <div class="sub">Ativação da Extensão</div>
+    ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
+    <form method="POST" action="/extension/auth/verify">
+      <input type="hidden" name="callback" value="${escHtml(callback)}">
+      <label>Sua Chave de Ativação</label>
+      <input type="text" name="key" value="${escHtml(keyVal)}" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="20">
+      <p style="text-align:left;font-size:12px;color:#8a8aaa;margin-top:7px;font-family:'Syne',sans-serif">Você recebeu esta chave junto com a sua compra.</p>
+      <button type="submit" class="btn-activate">Ativar Agora</button>
+    </form>
+    <a href="https://chat.whatsapp.com/EnkHQfatoTJ43JTgxLYX55" target="_blank" rel="noopener noreferrer" class="btn-group">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="#25d366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.09.543 4.05 1.492 5.756L.057 23.992l6.354-1.666A11.95 11.95 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.808 9.808 0 01-5.007-1.374l-.36-.214-3.72.975.993-3.62-.234-.373A9.81 9.81 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182S21.818 6.57 21.818 12 17.43 21.818 12 21.818z"/></svg>
+      Entrar no Grupo
+    </a>
+    ${freeBtn}
+    <div class="hint">Precisa de ajuda ou quer renovar?<br><a href="/planos">💳 Ver Planos</a> · <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20referente%20a%20minha%20renova%C3%A3o." target="_blank">💬 Suporte</a></div>
+  </div>
 </div>
 ${CANVAS_BG}</body></html>`;
 }
@@ -2624,7 +2664,7 @@ async function handleRequest(req, res) {
     'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
     'Referrer-Policy':              'no-referrer',
     'Permissions-Policy':           'geolocation=(), microphone=(), camera=()',
-    'Content-Security-Policy':      "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
+    'Content-Security-Policy':      "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-src https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'",
     'X-Powered-By':                 'PHP/7.4.3',
   };
   Object.entries(_corsH).forEach(([k, v]) => res.setHeader(k, v));
@@ -2657,9 +2697,37 @@ async function handleRequest(req, res) {
     const form    = await parseFormBody(req);
     const keyCode = (form.get('key') || '').trim().toLowerCase();
     const callback= form.get('callback') || '';
-    if (!keyCode || !keys[keyCode]) {
-      await addLog({ keyCode: keyCode||'?', label: '-', phone: '-', ip, wppVersion: '-', action: 'key_not_found' });
-      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '❌ Chave não encontrada. Verifique ou entre em contato com o vendedor.' }));
+
+    if (!keyCode) {
+      if (FREE_LOGIN_ENABLED) {
+        addLog({ keyCode: '(free)', label: 'Free Login', phone: '-', ip, wppVersion: '-', action: 'free_login' }).catch(()=>{});
+        const _cbOk = ['chrome-extension:','https:','http:'];
+        let _cbUrl = null;
+        if (callback) { try { _cbUrl = new URL(callback); if (!_cbOk.includes(_cbUrl.protocol)) _cbUrl = null; } catch {} }
+        if (_cbUrl) {
+          _cbUrl.searchParams.set('key',         '');
+          _cbUrl.searchParams.set('keyId',       'free-' + crypto.randomBytes(8).toString('hex'));
+          _cbUrl.searchParams.set('ownerId',     DEFAULT_OWNER_ID);
+          _cbUrl.searchParams.set('managerId',   DEFAULT_MANAGER_ID);
+          _cbUrl.searchParams.set('isPremium',   'false');
+          _cbUrl.searchParams.set('isLoggedIn',  'true');
+          _cbUrl.searchParams.set('isFreePlan',  'true');
+          _cbUrl.searchParams.set('planName',    'Free');
+          _cbUrl.searchParams.set('marketplace', 'free');
+          _cbUrl.searchParams.set('username',    '');
+          _cbUrl.searchParams.set('email',       '');
+          _cbUrl.searchParams.set('plan_id',     FREE_PLAN_UUID);
+          _cbUrl.searchParams.set('permissions', FREE_PERMISSIONS.join(','));
+          res.writeHead(302, { Location: _cbUrl.toString() }); res.end();
+        } else {
+          const _freePage = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>ZVM — Plano Free</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace}.card{background:#111118;border:1px solid #00ff8740;border-radius:18px;padding:40px 36px;width:100%;max-width:420px;text-align:center}.icon{font-size:48px;margin-bottom:8px}.title{font-size:22px;font-weight:800;color:#00ff87;margin-bottom:8px}.sub{color:#8a8aaa;font-size:13px;line-height:1.6;margin-bottom:20px}.bar{width:100%;height:3px;background:#1a1a2e;border-radius:2px}.fill{height:100%;background:#00ff87;animation:drain 3s linear forwards;border-radius:2px}@keyframes drain{from{width:100%}to{width:0%}}</style></head><body><div class="card"><div class="icon">🆓</div><div class="title">Plano Free Ativo!</div><div class="sub">Volte ao WhatsApp Web e atualize a página.</div><div class="bar"><div class="fill"></div></div></div><script>setTimeout(function(){window.close();},3100);</script></body></html>`;
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(_freePage);
+        }
+        return;
+      }
+      await addLog({ keyCode: '?', label: '-', phone: '-', ip, wppVersion: '-', action: 'key_not_found' });
+      sendHtml(res, renderExtensionLogin({ callback, keyVal: '', error: '❌ Chave não encontrada. Verifique ou entre em contato com o vendedor.' }));
       return;
     }
     if (isKeyExpired(keys[keyCode])) {
