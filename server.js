@@ -1,7 +1,6 @@
 'use strict';
 const http   = require('http');
 const crypto = require('crypto');
-const zlib   = require('zlib');
 const { MongoClient } = require('mongodb');
 
 const PORT         = process.env.PORT         || 3000;
@@ -29,6 +28,16 @@ const LOG_RETENTION_DAYS = Math.max(1, parseInt(process.env.LOG_RETENTION_DAYS |
 
 const LOG_MAX = Math.min(parseInt(process.env.LOG_MAX || '500'), 2000);
 
+const FREE_PLAN_UUID     = '6a6d6a86-6bc6-4359-ad49-05639915e368';
+const UNLIMITED_USAGE    = process.env.UNLIMITED_USAGE === 'true';
+const FREE_LOGIN_ENABLED = process.env.FREE_LOGIN_ENABLED === 'true';
+const UNLEASH_CLIENT_KEY = process.env.UNLEASH_CLIENT_KEY || '';
+const GA_MEASUREMENT_ID  = process.env.GA_MEASUREMENT_ID  || 'G-KZG9GMXHN4';
+const DEFAULT_OWNER_ID   = process.env.DEFAULT_OWNER_ID   || 'zv-owner';
+const DEFAULT_MANAGER_ID = process.env.DEFAULT_MANAGER_ID || 'zv-manager';
+const APP_BASE_URL       = process.env.APP_BASE_URL        || 'https://app.zapvoice.com.br';
+const CHECKOUT_URL       = process.env.CHECKOUT_URL        || 'https://pay.zapvoice.com.br/invoice';
+
 if (!ADMIN_USER || !ADMIN_PASS) {
   console.error('❌ ERRO CRÍTICO: Defina ADMIN_USER e ADMIN_PASS nas variáveis de ambiente.');
   process.exit(1);
@@ -42,11 +51,15 @@ const FULL_PERMISSIONS = [
   'create_flow','massive_dispatching','schedule_item',
   'send_flow','send_funnel','send_trigger','zapsaver'
 ];
+const FREE_PERMISSIONS = [
+  'create_flow','massive_dispatching','schedule_item',
+  'send_flow','send_funnel','send_trigger'
+];
 const USAGE_LIMITS = {
-  audio:        { sent:0, max:-1 }, bulkMessages: { sent:0, max:-1 },
-  document:     { sent:0, max:-1 }, flow:         { sent:0, max:-1 },
-  funnel:       { sent:0, max:-1 }, media:        { sent:0, max:-1 },
-  message:      { sent:0, max:-1 }, scheduleItem: { sent:0, max:-1 }
+  audio:        { sent:0, max:20 }, bulkMessages: { sent:0, max:2  },
+  document:     { sent:0, max:20 }, flow:         { sent:0, max:5  },
+  funnel:       { sent:0, max:5  }, media:        { sent:0, max:20 },
+  message:      { sent:0, max:20 }, scheduleItem: { sent:0, max:5  }
 };
 const MAX_USES = 3;
 const AVAILABLE_MODULES = ['zapSaver'];
@@ -60,15 +73,9 @@ async function getMongoDb() {
   try {
     if (!_mongoClient) {
       _mongoClient = new MongoClient(MONGODB_URI, {
-        serverSelectionTimeoutMS: 10000,
-        connectTimeoutMS: 10000,
-        socketTimeoutMS: 25000,
-        maxPoolSize: 10,
-        minPoolSize: 2,
-        maxIdleTimeMS: 60000,
-        waitQueueTimeoutMS: 10000,
-        retryWrites: true,
-        retryReads: true,
+        serverSelectionTimeoutMS: 5000,
+        connectTimeoutMS: 5000,
+        socketTimeoutMS: 5000,
         tls: true,
         tlsAllowInvalidCertificates: false,
         tlsAllowInvalidHostnames: false,
@@ -156,6 +163,27 @@ let modSessions      = {};
 let analyticsSessions= {};
 let serverReady      = false;
 
+const APP_SECRET_KEY = (() => {
+  if (!APP_SECRET) return '';
+  if (/^[0-9a-fA-F]+$/.test(APP_SECRET) && APP_SECRET.length % 2 === 0) {
+    return Buffer.from(APP_SECRET, 'hex');
+  }
+  return APP_SECRET;
+})();
+const HMAC_TOLERANCE = 5 * 60 * 1000;
+
+function verifyHmac(rawBody, sig, ts) {
+  if (!APP_SECRET_KEY) return true;
+  if (!sig && !ts) return true;
+  if (!sig || !ts) return false;
+  const t = parseInt(ts, 10);
+  if (isNaN(t) || Math.abs(Date.now() - t) > HMAC_TOLERANCE) return false;
+  const expected = crypto.createHmac('sha256', APP_SECRET_KEY)
+    .update(ts + '.' + rawBody).digest('hex');
+  try { return crypto.timingSafeEqual(Buffer.from(sig,'hex'), Buffer.from(expected,'hex')); }
+  catch { return false; }
+}
+
 function base32Decode(b32) {
   const alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
   let bits = 0, val = 0;
@@ -182,10 +210,9 @@ function generateTOTP(secret, window = 0) {
 
 function verifyTOTP(secret, token) {
   if (!secret) return true;
-  if (!token || token.length !== 6 || !/^\d{6}$/.test(token)) return false;
-  const tokenBuf = Buffer.from(token);
+  if (!token || token.length !== 6) return false;
   for (const w of [-2, -1, 0, 1, 2]) {  // drift window ampliado
-    if (crypto.timingSafeEqual(Buffer.from(generateTOTP(secret, w)), tokenBuf)) return true;
+    if (generateTOTP(secret, w) === token) return true;
   }
   return false;
 }
@@ -281,24 +308,67 @@ async function fireWebhook(event, keyCode, reason) {
 
 function generateCode() {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-  const seg = () => Array.from({length:5}, () => chars[crypto.randomInt(chars.length)]).join('');
+  const seg = () => Array.from(crypto.randomBytes(5), b => chars[b % chars.length]).join('');
   return `zv-${seg()}-${seg()}-${seg()}`;
 }
 function generateToken() { return crypto.randomBytes(32).toString('hex'); }
 
-function getAuthData(keyCode, userName) {
+function getAuthData(keyCode, userName, phone, wppVer) {
   const k = keys[keyCode] || {};
   return {
-    numberWarning: false, segments: [],
+    numberWarning: false, unauthorizedNumber: false,
+    segments: ['pro'],
     isLoggedIn: true, isPremium: true,
+    isFreePlan: false, isBasicPlan: false,
+    dummyTrigger: false,
     modules: { ...DEFAULT_MODULES, ...(k.modules || {}) },
     data: {
-      key: keyCode, keyId: `id-${keyCode}`, ownerId: 'zv-owner', managerId: 'zv-manager',
+      key: keyCode, keyId: `id-${keyCode}`,
+      ownerId: DEFAULT_OWNER_ID, managerId: DEFAULT_MANAGER_ID,
       permissions: FULL_PERMISSIONS,
       username: userName || k.label || '',
       paymentUrl: null, marketplace: 'premium', email: 'cliente@zapvoice.com.br',
       planName: 'Pro', plan_id: 'ZV_PRO', isLoggedIn: true, isPremium: true, isBasicPlan: false,
-      message: '', warnLimit: false
+      message: 'OK', warnLimit: false,
+      wppVersion: wppVer || null, userProfilePic: null, deviceId: null,
+    }
+  };
+}
+
+function getFreePlanAuth(phone, wppVer) {
+  const sessionId = phone && phone !== '-'
+    ? 'free-' + crypto.createHash('sha256').update(phone).digest('hex').slice(0, 16)
+    : 'free-' + crypto.randomBytes(8).toString('hex');
+  return {
+    numberWarning:    false,
+    unauthorizedNumber: false,
+    segments:         [],
+    isLoggedIn:       true,
+    isPremium:        false,
+    isFreePlan:       true,
+    isBasicPlan:      false,
+    dummyTrigger:     false,
+    modules:          { ...DEFAULT_MODULES },
+    data: {
+      key:          '',
+      keyId:        sessionId,
+      ownerId:      DEFAULT_OWNER_ID,
+      managerId:    DEFAULT_MANAGER_ID,
+      permissions:  FREE_PERMISSIONS,
+      username:     '',
+      paymentUrl:   `${APP_BASE_URL}/plans/new`,
+      marketplace:  'free',
+      email:        '',
+      planName:     'Free',
+      plan_id:      FREE_PLAN_UUID,
+      isLoggedIn:   true,
+      isPremium:    false,
+      isBasicPlan:  false,
+      message:      'OK',
+      warnLimit:    false,
+      wppVersion:   wppVer || null,
+      userProfilePic: null,
+      deviceId:     null,
     }
   };
 }
@@ -482,9 +552,7 @@ function _safeParse(raw) {
       if (hop.call(obj,'__proto__') || hop.call(obj,'constructor') || hop.call(obj,'prototype')) return {};
       return obj;
     }
-    // Any non-plain-object JSON value (string, number, boolean, null, array)
-    // is normalized to {} so callers can always safely use body.field access.
-    return {};
+    return obj || {};
   } catch { return {}; }
 }
 function parseBody(req) {
@@ -514,24 +582,11 @@ function parseFormBody(req) {
 function sendJson(res, data, status = 200) {
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Connection', 'keep-alive');
-  const body = JSON.stringify(data);
-  if (res._acceptGzip && body.length > 1024) {
-    const buf = zlib.gzipSync(body);
-    res.setHeader('Content-Encoding', 'gzip');
-    res.writeHead(status); res.end(buf);
-    return;
-  }
-  res.writeHead(status); res.end(body);
+  res.writeHead(status); res.end(JSON.stringify(data));
 }
 
 function sendHtml(res, html, status = 200) {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  if (res._acceptGzip && html.length > 1024) {
-    const buf = zlib.gzipSync(html);
-    res.setHeader('Content-Encoding', 'gzip');
-    res.writeHead(status); res.end(buf);
-    return;
-  }
   res.writeHead(status); res.end(html);
 }
 
@@ -539,20 +594,12 @@ function escHtml(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/`/g,'&#96;');
 }
 
-// Defense-in-depth: rejects NoSQL-operator chars ($ and .) and JS prototype-chain
-// property names before any key code is used for object lookups or DB queries.
-function isSafeObjectKey(s) {
-  if (typeof s !== 'string' || !s) return false;
-  if (s.includes('$') || s.includes('.')) return false;
-  if (s === '__proto__' || s === 'constructor' || s === 'prototype') return false;
-  return /^[a-z0-9_-]{1,30}$/.test(s);
-}
-
 const DEDUP_WINDOWS = {
   'relogin_ok':   24 * 60 * 60 * 1000,
   'expired':       5 * 60 * 1000,
   'login_blocked': 5 * 60 * 1000,
   'warn_limit':   10 * 60 * 1000,
+  'free_login':   60 * 60 * 1000,  // 1h — evita escrita no DB a cada reconexão free
 };
 const _dedupMap = new Map();
 
@@ -571,7 +618,7 @@ async function addLog(entry) {
 }
 
 const CANVAS_BG = `<canvas id="_cvs" style="position:fixed;inset:0;z-index:0;pointer-events:none"></canvas>
-<script>(function(){var c=document.getElementById('_cvs'),ctx=c.getContext('2d');function resize(){c.width=window.innerWidth;c.height=window.innerHeight;}resize();window.addEventListener('resize',resize);var pts=Array.from({length:60},function(){return{x:Math.random()*c.width,y:Math.random()*c.height,vx:(Math.random()-.5)*.4,vy:(Math.random()-.5)*.4,r:Math.random()*2+.5};});function draw(){ctx.clearRect(0,0,c.width,c.height);pts.forEach(function(p){p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>c.width)p.vx*=-1;if(p.y<0||p.y>c.height)p.vy*=-1;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle='rgba(124,58,237,0.5)';ctx.fill();});for(var i=0;i<pts.length;i++){for(var j=i+1;j<pts.length;j++){var dx=pts[i].x-pts[j].x,dy=pts[i].y-pts[j].y,dsq=dx*dx+dy*dy;if(dsq<16900){var d=Math.sqrt(dsq);ctx.beginPath();ctx.moveTo(pts[i].x,pts[i].y);ctx.lineTo(pts[j].x,pts[j].y);ctx.strokeStyle='rgba(124,58,237,'+(0.12*(1-d/130))+')';ctx.lineWidth=.7;ctx.stroke();}}}requestAnimationFrame(draw);}draw();})();</script>`;
+<script>(function(){var c=document.getElementById('_cvs'),ctx=c.getContext('2d');function resize(){c.width=window.innerWidth;c.height=window.innerHeight;}resize();window.addEventListener('resize',resize);var pts=Array.from({length:60},function(){return{x:Math.random()*c.width,y:Math.random()*c.height,vx:(Math.random()-.5)*.4,vy:(Math.random()-.5)*.4,r:Math.random()*2+.5};});function draw(){ctx.clearRect(0,0,c.width,c.height);pts.forEach(function(p){p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>c.width)p.vx*=-1;if(p.y<0||p.y>c.height)p.vy*=-1;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle='rgba(124,58,237,0.5)';ctx.fill();});for(var i=0;i<pts.length;i++){for(var j=i+1;j<pts.length;j++){var dx=pts[i].x-pts[j].x,dy=pts[i].y-pts[j].y,d=Math.sqrt(dx*dx+dy*dy);if(d<130){ctx.beginPath();ctx.moveTo(pts[i].x,pts[i].y);ctx.lineTo(pts[j].x,pts[j].y);ctx.strokeStyle='rgba(124,58,237,'+(0.12*(1-d/130))+')';ctx.lineWidth=.7;ctx.stroke();}}}requestAnimationFrame(draw);}draw();})();</script>`;
 
 function renderModLogin(error = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
@@ -583,7 +630,7 @@ function renderModLogin(error = '') {
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
 .card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:40px 36px;width:360px;position:relative;z-index:1;box-shadow:0 0 40px rgba(79,142,247,0.12)}
-.logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#4f8ef7;margin-bottom:18px;text-align:center;letter-spacing:-0.5px}
+.logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#4f8ef7;margin-bottom:4px;text-align:center;letter-spacing:-0.5px}
 .sub{color:#8a8aaa;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-bottom:24px;text-align:center;font-family:'Syne',sans-serif}
 .badge{display:inline-block;background:#4f8ef712;border:1px solid #4f8ef730;color:#4f8ef7;font-size:13px;letter-spacing:1px;text-transform:uppercase;padding:4px 12px;border-radius:20px;margin-bottom:20px;font-family:'Syne',sans-serif;display:block;text-align:center}
 label{display:block;font-size:12px;letter-spacing:1px;color:#8a8aaa;text-transform:uppercase;margin-bottom:7px;font-family:'Syne',sans-serif}
@@ -594,8 +641,9 @@ input:focus{border-color:#4f8ef7}
 .err{background:#ff475715;border:1px solid #ff4757;border-radius:6px;color:#ff4757;padding:11px 14px;font-size:14px;margin-bottom:16px;font-family:'Syne',sans-serif}
 </style></head><body>
 <div class="card">
-  <div class="logo">👮 PAINEL DE MODERAÇÃO</div>
-  <div class="badge">Acesso Moderador</div>
+  <div class="logo">⚡ ZVM</div>
+  <div class="sub">Painel de Moderação</div>
+  <div class="badge">👮 Acesso Moderador</div>
   ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
   <form method="POST" action="${R_MOD}/login">
     <label>Usuário</label><input type="text" name="user" autocomplete="off">
@@ -620,7 +668,7 @@ function renderModDashboard(modName = 'Moderador') {
 :root{
   --blue:#4f8ef7;--dark:#080810;--card:#0f0f1a;--card2:#13131f;
   --border:#1c1c2e;--border2:#252538;--text:#e2e2f0;--muted:#5a5a7a;
-  --red:#ff4757;--green:#00ff00;--radius:10px;--radius-sm:6px;
+  --red:#ff4757;--green:#00ff87;--radius:10px;--radius-sm:6px;
 }
 body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
 header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040}
@@ -670,7 +718,7 @@ main{padding:28px 32px;max-width:1200px;margin:0 auto}
 .hist-table tr:hover td{background:#ffffff02}
 .kc{color:var(--blue);font-size:13px;letter-spacing:.2px;font-family:'Space Mono',monospace}
 .badge{padding:2px 7px;border-radius:3px;font-size:11px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;font-family:'Syne',sans-serif}
-.bon{background:#00ff0018;color:var(--green);border:1px solid #00ff0030}
+.bon{background:#00ff8718;color:var(--green);border:1px solid #00ff8730}
 .empty{text-align:center;color:var(--muted);padding:30px;font-size:13px;font-family:'Syne',sans-serif}
 .note-btn{padding:3px 8px;background:#4f8ef710;color:var(--blue);border:1px solid #4f8ef730;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;transition:all .15s}
 .note-btn:hover{background:#4f8ef722;border-color:var(--blue)}
@@ -720,7 +768,7 @@ main{padding:28px 32px;max-width:1200px;margin:0 auto}
 .tn-name{font-size:16px;font-weight:800;color:#fff;font-family:'Syne',sans-serif;margin-bottom:3px}
 .tn-desc{font-size:12px;color:#8a8aaa;font-family:'Syne',sans-serif}
 .tn-bar-wrap{height:3px;background:#ffffff10;margin:0 14px 14px;border-radius:2px;overflow:hidden}
-.tn-bar{height:3px;background:linear-gradient(90deg,#4f8ef7,#00ff00);border-radius:2px;width:0;transition:width 3s linear}
+.tn-bar{height:3px;background:linear-gradient(90deg,#4f8ef7,#00ff87);border-radius:2px;width:0;transition:width 3s linear}
 @media(max-width:1100px){.main-grid{grid-template-columns:1fr}}
 @media(max-width:900px){.stats{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:700px){.form-grid{grid-template-columns:1fr 1fr};.stats{grid-template-columns:1fr 1fr};.ach-grid{grid-template-columns:1fr}}
@@ -860,7 +908,7 @@ async function createKey(){
     meta.push(maxUses+' dispositivo(s)');meta.push('Ativa ao 1º uso');
     document.getElementById('result-meta').innerHTML=meta.map(m=>'<span class="result-tag">'+m+'</span>').join('');
     document.getElementById('result-box').classList.add('show');
-    ['nlabel','nemail','ndays','nhours','nuses'].forEach(id=>document.getElementById(id).value='');
+    ['nlabel','ndays','nhours','nuses'].forEach(id=>document.getElementById(id).value='');
     toast('✅ Chave criada: '+d.key);
     await loadHistory();
   }catch(e){toast('Erro de rede.',false);}
@@ -932,24 +980,14 @@ function updateStats(keys,myName){
   document.getElementById('stat-active').textContent=active;
   document.getElementById('stat-today').textContent=today;
   document.getElementById('stat-expiring').textContent=expiring;
-  loadRanking(myName,{total,active,expired,today});
-}
-async function loadRanking(myName,achStats){
-  let ranking=[];
-  try{
-    const r=await fetch(_RM+'/api/ranking');
-    if(r.ok){const d=await r.json();if(d.ok&&Array.isArray(d.ranking))ranking=d.ranking;}
-  }catch(e){}
-  if(!ranking.length){
-    const rankMap={};
-    _MODS.forEach(m=>rankMap[m]=0);
-    if(myName&&!(myName in rankMap))rankMap[myName]=0;
-    ranking=Object.entries(rankMap).map(([name,count])=>({name,count}));
-  }
-  ranking.sort((a,b)=>b.count-a.count);
+  const rankMap={};
+  _MODS.forEach(m=>rankMap[m]=0);
+  if(myName&&!(myName in rankMap))rankMap[myName]=0;
+  if(myName)rankMap[myName]=total;
+  const ranking=Object.entries(rankMap).map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count);
   const myRank=ranking.findIndex(r=>r.name===myName)+1;
   renderRanking(ranking,myName);
-  if(achStats)renderAchievements({...achStats,rank:myRank});
+  renderAchievements({total,active,expired,today,rank:myRank});
 }
 
 async function loadHistory(){
@@ -1027,109 +1065,71 @@ function renderExtensionLogin({ callback, error = '', keyVal = '' }) {
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#0a0a0f;min-height:100vh;font-family:'Space Mono',monospace;overflow-x:hidden}
-.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:44px 40px;width:100%;max-width:480px;text-align:center;position:relative;z-index:1;box-shadow:0 0 0 1px #00ff0008,0 20px 60px #00000090,inset 0 1px 0 #ffffff06}
-.layout{position:relative;z-index:1;min-height:100vh;display:flex;flex-wrap:wrap;gap:30px;align-items:center;justify-content:center;padding:40px 24px}
-.video-col{flex:1 1 480px;max-width:640px}
-.video-frame{position:relative;width:100%;padding-top:56.25%;border-radius:12px;overflow:hidden;border:1px solid #00ff0040;box-shadow:0 0 0 1px #00ff0008,0 20px 60px #00000090}
-.video-frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
-.card-col{flex:0 1 480px}
-@media(max-width:880px){.layout{padding:24px 16px}}
-.logo{font-family:'Syne',sans-serif;font-size:clamp(16px,5.2vw,22px);font-weight:800;color:#00ff00;margin-bottom:28px;letter-spacing:-0.5px;text-align:center;white-space:nowrap}
-label{display:block;text-align:center;font-size:14px;letter-spacing:.5px;color:#8a8aaa;text-transform:uppercase;margin-bottom:10px;font-family:'Syne',sans-serif;font-weight:600}
-input{width:100%;padding:13px 16px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:10px;color:#00ff00;font-family:'Space Mono',monospace;font-size:15px;outline:none;letter-spacing:2px;transition:border .2s;text-align:center}
-input:focus{border-color:#00ff00}
+body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
+.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:36px 32px;width:100%;max-width:420px;text-align:center;position:relative;z-index:1;box-shadow:0 0 40px rgba(124,58,237,0.15)}
+.logo{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:#00ff87;margin-bottom:4px;letter-spacing:-0.5px}
+.sub{color:#8a8aaa;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:28px;font-family:'Syne',sans-serif}
+label{display:block;text-align:left;font-size:14px;letter-spacing:.5px;color:#8a8aaa;text-transform:uppercase;margin-bottom:10px;font-family:'Syne',sans-serif;font-weight:600}
+input{width:100%;padding:13px 16px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:10px;color:#00ff87;font-family:'Space Mono',monospace;font-size:15px;outline:none;letter-spacing:2px;transition:border .2s}
+input:focus{border-color:#00ff87}
 .err{background:#ff475715;border:1px solid #ff4757;border-radius:8px;color:#ff4757;padding:13px 16px;font-size:14px;margin-bottom:18px;text-align:left;font-family:'Syne',sans-serif}
-.btn{width:100%;padding:16px;background:#00ff00;border:none;border-radius:10px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:16px;cursor:pointer;margin-top:24px;transition:opacity .2s}
+.btn{width:100%;padding:14px;background:#00ff87;border:none;border-radius:10px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:15px;cursor:pointer;margin-top:20px;transition:opacity .2s}
 .btn:hover{opacity:.85}
-.hint{margin-top:24px;color:#8a8aaa;font-size:13px;font-family:'Syne',sans-serif}
-.hint-links{display:flex;flex-direction:column;gap:10px;margin-top:14px}
-.link-btn{display:block;padding:14px 18px;border-radius:10px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;text-decoration:none;text-align:center;transition:opacity .2s,transform .15s;border:1.5px solid}
-.link-btn:hover{opacity:.85;transform:translateY(-1px)}
-.link-btn-green{background:#00ff0012;color:#00ff00;border-color:#00ff0040}
-.link-btn-purple{background:#9b59b618;color:#bf8aff;border-color:#9b59b650}
-.link-btn-whatsapp{background:#25d36618;color:#25d366;border-color:#25d36650}
+.hint{margin-top:20px;color:#8a8aaa;font-size:13px;font-family:'Syne',sans-serif}.hint a{color:#00ff87;text-decoration:none}
 </style>
 </head><body>
-<div class="layout">
-  <div class="video-col">
-    <div class="video-frame"><iframe src="https://www.youtube.com/embed/DZ29f5U6OF8" title="Tutorial de Ativação ZVM" allowfullscreen loading="lazy" referrerpolicy="strict-origin-when-cross-origin"></iframe></div>
-  </div>
-  <div class="card-col">
-    <div class="card">
-      <div class="logo">🔒 ATIVAR EXTENSÃO</div>
-      ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
-      <form method="POST" action="/extension/auth/verify">
-        <input type="hidden" name="callback" value="${escHtml(callback)}">
-        <label>Sua Chave de Ativação</label>
-        <input type="text" name="key" id="zvm-key-inp" value="${escHtml(keyVal)}" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="25">
-        <p style="text-align:center;font-size:13px;color:#8a8aaa;margin-top:8px;font-family:'Syne',sans-serif">Você recebeu esta chave junto com a sua compra.</p>
-        <button type="submit" class="btn">Ativar Agora</button>
-      </form>
-      <div class="hint">
-        Precisa de ajuda ou quer renovar?
-        <div class="hint-links">
-          <a class="link-btn link-btn-green" href="/planos">💳 Ver Planos</a>
-          <a class="link-btn link-btn-purple" href="https://bit.ly/ZVMLR1290" target="_blank">📢 Grupo de Atualizações ZVM</a>
-          <a class="link-btn link-btn-whatsapp" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20referente%20a%20minha%20renova%C3%A7%C3%A3o." target="_blank">💬 Suporte no WhatsApp</a>
-        </div>
-      </div>
-    </div>
-  </div>
+<div class="card">
+  <div class="logo">⚡ ZVM</div>
+  <div class="sub">Ativação da Extensão</div>
+  ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
+  <form method="POST" action="/extension/auth/verify">
+    <input type="hidden" name="callback" value="${escHtml(callback)}">
+    <label>Sua Chave de Ativação</label>
+    <input type="text" name="key" value="${escHtml(keyVal)}" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="20">
+    <p style="text-align:left;font-size:13px;color:#8a8aaa;margin-top:8px;font-family:'Syne',sans-serif">Você recebeu esta chave junto com a sua compra.</p>
+    <button type="submit" class="btn">Ativar Agora</button>
+  </form>
+  <div class="hint">Precisa de ajuda ou quer renovar?<br><a href="/planos">💳 Ver Planos</a> · <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20referente%20a%20minha%20renova%C3%A7%C3%A3o." target="_blank">💬 Suporte no WhatsApp</a></div>
 </div>
-<script>(function(){var i=document.getElementById('zvm-key-inp');if(!i)return;function clean(v){return v.replace(/[^a-z0-9\-]/g,'').slice(0,20);}i.addEventListener('paste',function(e){e.preventDefault();var t=(e.clipboardData||window.clipboardData).getData('text');i.value=clean(t.toLowerCase());});i.addEventListener('input',function(){var s=i.selectionStart;i.value=clean(i.value);i.setSelectionRange(s,s);});})();</script>
 ${CANVAS_BG}</body></html>`;
 }
 
 function renderAdminLogin(error = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Admin</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='900' font-size='12' fill='%2300ff00'%3EZVM%3C/text%3E%3C/svg%3E">
+<title>ZVM Admin</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-:root{--g:#00ff00;--bg:#080810;--card:#0d0d18;--border:#1a1a2e;--t:#e2e2f0;--m:#5a5a8a}
-body{background:var(--bg);min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden;position:relative}
-body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 80% 60% at 50% -10%,#00ff0010 0%,transparent 65%);pointer-events:none}
-.grid{position:fixed;inset:0;background-image:linear-gradient(rgba(0,255,0,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,0,.03) 1px,transparent 1px);background-size:44px 44px;pointer-events:none}
-.card{background:var(--card);border:1px solid #1e1e30;border-radius:16px;padding:40px 36px;width:100%;max-width:400px;position:relative;z-index:1;box-shadow:0 0 0 1px #00ff0008,0 20px 60px #00000090,inset 0 1px 0 #ffffff06}
-.logo{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:6px}
-.logo-badge{width:38px;height:38px;background:linear-gradient(135deg,#00ff00,#00cc00);border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;color:#080810;flex-shrink:0}
-.logo-name{font-size:20px;font-weight:800;color:var(--t);letter-spacing:-.5px}
-.logo-sub{text-align:center;font-size:11px;color:var(--m);letter-spacing:2.5px;text-transform:uppercase;margin-bottom:28px}
-.field{margin-bottom:15px}
-.field label{display:block;font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--m);margin-bottom:6px}
-.field input{width:100%;padding:11px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--t);font-size:13px;outline:none;transition:border-color .18s,box-shadow .18s;font-family:inherit}
-.field input:focus{border-color:var(--g);box-shadow:0 0 0 3px #00ff0012}
-.field .totp-input{font-size:20px;text-align:center;font-family:'Courier New',monospace;letter-spacing:7px}
-.btn{width:100%;padding:12px;background:linear-gradient(135deg,#00ff00,#00cc00);border:none;border-radius:8px;color:#080810;font-weight:800;font-size:14px;cursor:pointer;transition:opacity .18s,transform .12s;margin-top:6px;letter-spacing:.2px;font-family:inherit}
-.btn:hover{opacity:.88;transform:translateY(-1px)}
-.btn:active{transform:none}
-.err{background:#ff475712;border:1px solid #ff475740;border-radius:8px;color:#ff6b7a;padding:11px 14px;font-size:13px;margin-bottom:18px;display:flex;align-items:center;gap:7px}
+body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
+.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:40px 36px;width:360px;position:relative;z-index:1;box-shadow:0 0 40px rgba(124,58,237,0.15)}
+.logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#00ff87;margin-bottom:20px;text-align:center;letter-spacing:-0.5px}
+label{display:block;font-size:12px;letter-spacing:1px;color:#8a8aaa;text-transform:uppercase;margin-bottom:7px;font-family:'Syne',sans-serif}
+input{width:100%;padding:11px 14px;background:#0a0a0f;border:1px solid #1e1e2e;border-radius:8px;color:#e2e2f0;font-family:'Space Mono',monospace;font-size:13px;outline:none;margin-bottom:16px}
+input:focus{border-color:#00ff87}
+.btn{width:100%;padding:12px;background:#00ff87;border:none;border-radius:8px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer}
+.err{background:#ff475715;border:1px solid #ff4757;border-radius:6px;color:#ff4757;padding:11px 14px;font-size:14px;margin-bottom:16px;font-family:'Syne',sans-serif}
 </style></head><body>
-<div class="grid"></div>
 <div class="card">
-  <div class="logo"><div class="logo-badge">ZV</div><div class="logo-name">ZVM Admin</div></div>
-  <div class="logo-sub">Painel Administrativo</div>
-  ${error ? `<div class="err"><span>⚠</span>${escHtml(error)}</div>` : ''}
+  <div class="logo">⚡ ZVM Admin</div>
+  ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
   <form method="POST" action="${R_ADMIN}/login">
-    <div class="field"><label>Usuário</label><input type="text" name="user" autocomplete="off" autofocus></div>
-    <div class="field"><label>Senha</label><input type="password" name="pass"></div>
-    ${TOTP_SECRET ? `<div class="field"><label>Código 2FA</label><input class="totp-input" type="text" name="totp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000 000" autocomplete="one-time-code"></div>` : ''}
-    <button type="submit" class="btn">Entrar no Painel</button>
+    <label>Usuário</label><input type="text" name="user" autocomplete="off">
+    <label>Senha</label><input type="password" name="pass">
+    ${TOTP_SECRET ? `<label>Código 2FA</label><input type="text" name="totp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" autocomplete="one-time-code" style="letter-spacing:4px;font-size:18px;text-align:center">` : ''}
+    <button type="submit" class="btn">Entrar</button>
   </form>
 </div>
 ${CANVAS_BG}</body></html>`;
 }
 
-
 function renderClientPortal() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='900' font-size='13' fill='%2300ff00'%3EZVM%3C/text%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-<title>ZVM &mdash; Portal do Cliente</title>
+<title>ZVM — Portal do Cliente</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--border:#1c1c2e;--text:#e2e2f0;--muted:#8a8aaa;--radius:14px}
@@ -1179,182 +1179,63 @@ input:focus{border-color:var(--green)}
 .loading-overlay{position:fixed;inset:0;background:#0a0a0f;display:flex;align-items:center;justify-content:center;z-index:99}
 .privacy-note{margin-top:16px;padding:12px 16px;background:#1e1e2e30;border-radius:8px;font-size:14px;color:#a0a0c0;text-align:left;line-height:1.7;font-family:'Syne',sans-serif}
 .privacy-note a{color:#4f8ef7;text-decoration:none}
-
-/* Responsive nav */
-.nav{position:sticky;top:0;z-index:50;background:var(--card);border-bottom:1px solid var(--border)}
-.nav-in{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:60px;overflow:hidden}
-.nav-mark{width:32px;height:32px;background:linear-gradient(135deg,var(--green),#00cc55);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;color:#080810;flex-shrink:0;font-family:'Syne',monospace}
-.nav-text{font-family:'Syne',sans-serif;font-weight:800;font-size:16px;color:#fff;margin-left:8px}
-.nav-toggle{display:none;background:none;border:1px solid var(--border);border-radius:6px;width:38px;height:38px;cursor:pointer;color:var(--text);font-size:18px;align-items:center;justify-content:center;flex-shrink:0}
-@media(max-width:760px){
-  .nav-links{position:fixed;inset:60px 0 auto 0;background:var(--card);border-bottom:1px solid var(--border);flex-direction:column;align-items:stretch;padding:12px 20px;gap:4px;display:none}
-  .nav-links.open{display:flex}
-  .nav-links a{padding:12px 16px;font-size:14px}
-  .nav-toggle{display:flex}
-  .nav-text{display:none}
-}</style><style>
-.portal-wrap{display:grid;grid-template-columns:1fr;gap:0;min-height:calc(100vh - 64px)}
-.portal-wrap{min-height:calc(100vh - 64px);display:flex;flex-direction:column;justify-content:center}
-.portal-grid{display:grid;grid-template-columns:1fr;align-items:start;padding:clamp(24px,4vw,40px) 0;gap:clamp(16px,2.5vw,24px)}
-.form-card{max-width:480px;margin:0 auto;width:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:clamp(28px,4vw,40px);box-shadow:0 0 0 1px #00ff0008,0 20px 60px #00000090,inset 0 1px 0 #ffffff06}
-.form-card .nav-logo{justify-content:center;display:flex;margin-bottom:6px}
-.form-card .sub-title{text-align:center;color:var(--text2);font-size:14px;margin-bottom:28px}
-.field-label{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px}
-.field-hint{font-size:13px;color:var(--muted);margin-top:8px}
-input.key-input{width:100%;padding:14px 16px;background:var(--dark);border:1.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:16px;font-family:'JetBrains Mono',monospace;outline:none;transition:border-color .18s;letter-spacing:.03em}
-input.key-input:focus{border-color:var(--green)}
-.err-box{background:#ff475715;border:1px solid #ff475740;border-radius:var(--radius-sm);color:#ff8a93;padding:12px 16px;font-size:13px;margin-bottom:16px;display:flex;align-items:center;gap:8px}
-.btn-block{display:flex;width:100%;margin-top:14px}
-.link-row{display:flex;flex-direction:column;gap:10px;margin-top:14px}
-.link-row .btn-ghost{width:100%}
-.privacy-note{font-size:12px;color:var(--muted);margin-top:20px;text-align:center;line-height:1.6}
-.help-row{text-align:center;font-size:13px;color:var(--text2);margin-top:18px}
-.help-row a{color:var(--green);font-weight:600}
-
-/* Result panel */
-.result-wrap{display:none;max-width:680px;margin:0 auto;width:100%}
-.panel-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:clamp(24px,4vw,36px);box-shadow:0 0 0 1px #00ff0008,0 20px 60px #00000090,inset 0 1px 0 #ffffff06}
-.panel-title{font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;font-size:clamp(20px,2vw,26px);color:#fff;margin-bottom:20px}
-.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
-.info-card{background:var(--dark);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px}
-.info-card .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:700;margin-bottom:6px}
-.info-card .val{font-size:16px;font-weight:700;color:#fff;font-family:'Plus Jakarta Sans',sans-serif}
-
-.badge{display:inline-block;padding:4px 12px;border-radius:100px;font-size:12px;font-weight:700;letter-spacing:.02em}
-.badge-on{background:#00ff0018;color:var(--green);border:1px solid var(--green-border)}
-.badge-off{background:#ff475718;color:#ff8a93;border:1px solid #ff475740}
-.badge-warn{background:#ff860018;color:var(--orange);border:1px solid #ff860040}
-.badge-def{background:#ffd32a18;color:var(--yellow);border:1px solid #ffd32a40}
-
-.expire-bar-wrap{height:6px;background:var(--dark2);border-radius:4px;overflow:hidden}
-.expire-bar{height:100%;border-radius:4px;transition:width .4s}
-
-.phone-section-title{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:700;margin-bottom:12px}
-.phone-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin-bottom:8px}
-.phone-card{background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px}
-.phone-card .num{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:#fff}
-.phone-card button{padding:5px 12px;background:#ff4757;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-family:'Inter',sans-serif;font-weight:700;flex-shrink:0;transition:opacity .15s}
-.phone-card button:hover{opacity:.85}
-.phone-hint{font-size:13px;color:var(--muted);margin-top:6px;margin-bottom:20px}
-
-.renew-banner{display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--green-soft);border:1px solid var(--green-border);border-radius:var(--radius);padding:18px 22px;margin-bottom:24px;flex-wrap:wrap}
-.renew-banner .rb-title{font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;font-size:16px;color:var(--green);margin-bottom:4px}
-.renew-banner .rb-sub{font-size:13px;color:var(--text2)}
-.renew-banner .rb-btn{flex-shrink:0;padding:12px 24px;background:linear-gradient(135deg,#00ff00,#00cc00);color:#080810;font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;font-size:14px;border-radius:var(--radius-sm);text-decoration:none;white-space:nowrap}
-
-.section-links{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:20px 0}
-.section-links .link-btn{display:flex;align-items:center;justify-content:center;padding:13px;background:var(--dark);border:1.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-weight:600;text-decoration:none;transition:all .18s;text-align:center}
-.section-links .link-btn:hover{border-color:var(--green);color:var(--green)}
-
-.back-btn{padding:13px 24px;background:var(--dark);color:var(--text2);border:1.5px solid var(--border2);border-radius:var(--radius-sm);font-family:'Inter',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:all .18s}
-.back-btn:hover{border-color:var(--green);color:var(--green)}
-
-.loading-overlay{display:none;position:fixed;inset:0;background:#080810cc;z-index:9999;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
-.spinner{width:38px;height:38px;border:3px solid var(--border2);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
-@keyframes spin{to{transform:rotate(360deg)}}
-.spinner-sm{width:15px;height:15px;border-width:2px;margin-right:8px;vertical-align:-2px}
-
-@media(max-width:680px){.info-grid{grid-template-columns:1fr}.phone-grid{grid-template-columns:1fr 1fr}}
-</style></head><body>
-${CANVAS_BG}
-<nav class="nav"><div class="nav-in">
-  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span><span class="nav-text">Portal do Cliente</span></a>
-  <button class="nav-toggle" onclick="document.getElementById('navlinks').classList.toggle('open')">☰</button>
-  <div class="nav-links" id="navlinks">
-    <a href="/planos" class="">Planos</a>
-    <a href="/client" class="active">Portal do Cliente</a>
-    <a href="/faq" class="">FAQ</a>
-    <a href="/privacidade" class="">Privacidade</a>
+</style>
+</head><body>
+<nav>
+  <a href="/" class="nav-logo">⚡ ZVM</a>
+  <div class="nav-links">
+    <a href="/faq">FAQ</a>
+    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank">💬 Suporte</a>
   </div>
-</div></nav>
+</nav>
 <div id="loading-overlay" class="loading-overlay"><span class="spinner"></span></div>
-<div class="wrap portal-wrap">
-  <div class="portal-grid">
-
-    <div class="form-wrap" id="main-form-wrap">
-      <div class="form-card">
-        <div class="nav-logo"><span class="nav-mark">ZVM</span></div>
-        <div class="sub-title">Portal do Cliente</div>
-        <div id="form-area">
-          <div id="err-box" class="err-box" style="display:none"></div>
-          <label class="field-label">Sua Chave de Ativação</label>
-          <input type="text" class="key-input" id="key-input" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="25">
-          <p class="field-hint">Você recebeu esta chave junto com a sua compra.</p>
-          <button class="btn btn-primary btn-block" id="check-btn" onclick="checkKey()">Consultar Minha Chave</button>
-          <div class="link-row">
-            <a class="btn btn-ghost" href="/faq">❓ FAQ — Dúvidas Frequentes</a>
-            <a class="btn btn-ghost" href="/planos" style="color:var(--green);border-color:var(--green-border)">💳 Ver Planos e Preços</a>
-          </div>
-          <div class="privacy-note">🔒 Ao usar este serviço, você concorda com nossa <a href="/privacidade" style="color:var(--green)">Política de Privacidade</a> e com a coleta de dados de uso para fins de licenciamento (LGPD).</div>
-          <div class="help-row">Precisa de ajuda? <a href="/planos">💳 Planos</a> · <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM%20LR1290." target="_blank">💬 Suporte</a></div>
-        </div>
-      </div>
+<div class="page-body">
+  <div class="form-wrap" id="main-form-wrap">
+    <div style="background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:36px 32px;text-align:center">
+    <div class="logo">⚡ ZVM</div>
+    <div class="sub">Portal do Cliente</div>
+    <div id="form-area">
+      <div id="err-box" class="err" style="display:none"></div>
+      <label>Sua Chave de Ativação</label>
+      <input type="text" id="key-input" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="20">
+      <p style="text-align:left;font-size:13px;color:#8a8aaa;margin-top:8px;font-family:'Syne',sans-serif">Você recebeu esta chave junto com a sua compra.</p>
+      <button class="btn" id="check-btn" onclick="checkKey()">Consultar Minha Chave</button>
+      <a class="btn" href="/faq" style="display:block;margin-top:10px;background:#1e1e2e;color:#8a8aaa;font-size:14px;text-decoration:none;text-align:center;padding:13px;border-radius:10px;border:1px solid #2a2a3e;transition:border-color .2s,color .2s;font-family:'Syne',sans-serif;font-weight:700" onmouseover="this.style.borderColor='#00ff87';this.style.color='#00ff87'" onmouseout="this.style.borderColor='#2a2a3e';this.style.color='#6b6b8a'">❓ FAQ — Dúvidas Frequentes</a>
+      <a class="btn" href="/planos" style="display:block;margin-top:8px;background:#00ff8710;color:#00ff87;font-size:14px;text-decoration:none;text-align:center;padding:13px;border-radius:10px;border:1px solid #00ff8730;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700" onmouseover="this.style.background='#00ff8720';this.style.borderColor='#00ff87'" onmouseout="this.style.background='#00ff8710';this.style.borderColor='#00ff8730'">💳 Ver Planos e Preços</a>
+      <div class="privacy-note">🔒 Ao usar este serviço, você concorda com nossa <a href="/privacidade">Política de Privacidade</a> e com a coleta de dados de uso para fins de licenciamento (LGPD).</div>
     </div>
-
-    <div class="result-wrap" id="result-wrap">
-      <div class="panel-card" id="result-panel">
-        <div class="panel-title" id="panel-name">Minha Conta</div>
-        <div class="info-grid">
-          <div class="info-card"><div class="lbl">Status</div><div class="val" id="r-status">—</div></div>
-          <div class="info-card"><div class="lbl">Dispositivos</div><div class="val" id="r-phones">—</div></div>
-          <div class="info-card" style="grid-column:span 2">
-            <div class="lbl">Expira em</div>
-            <div class="val"><span id="r-expires">—</span></div>
-            <div class="expire-bar-wrap" id="r-bar-wrap" style="display:none;margin-top:10px"><div class="expire-bar" id="r-bar"></div></div>
-          </div>
-          <div class="info-card" id="r-act-card" style="display:none"><div class="lbl">Ativada em</div><div class="val" id="r-activated">—</div></div>
-          <div class="info-card" id="r-last-card" style="display:none"><div class="lbl">Último uso</div><div class="val" id="r-lastused">—</div></div>
-        </div>
-
-        <div id="r-phone-section" style="display:none;margin-bottom:20px">
-          <div class="phone-section-title">Dispositivos cadastrados</div>
-          <div id="r-phone-list" class="phone-grid"></div>
-          <div class="phone-hint">Remova um número para liberar o slot.</div>
-        </div>
-
-        <div id="r-renew-banner" class="renew-banner" style="display:none">
-          <div>
-            <div class="rb-title">🔄 Hora de renovar!</div>
-            <div class="rb-sub">Renove agora e o tempo é somado ao restante.</div>
-          </div>
-          <a href="/planos" class="rb-btn">💳 Ver Planos</a>
-        </div>
-
-        <div class="section-links" id="r-links"></div>
-
-        <button onclick="resetPanel()" class="back-btn">← Consultar outra chave</button>
-      </div>
+    <div class="hint" style="margin-top:20px;color:#a0a0c0;font-size:14px;font-family:'Syne',sans-serif;text-align:center">
+      Precisa de ajuda? <a href="/planos" style="color:var(--green)">💳 Planos</a> · <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" style="color:var(--green)">💬 Suporte</a>
     </div>
-
-  </div>
+    </div><!-- fecha card -->
+  </div><!-- fecha form-wrap -->
+  <div class="result-wrap" id="result-wrap">
+    <div id="result-panel" style="display:block">
+      <div class="panel-title" id="panel-name">Minha Conta</div>
+      <div class="info-grid">
+        <div class="info-card"><div class="lbl">Status</div><div class="val" id="r-status">—</div></div>
+        <div class="info-card"><div class="lbl">Dispositivos</div><div class="val" id="r-phones">—</div></div>
+        <div class="info-card" style="grid-column:span 2"><div class="lbl">Expira em</div><div class="val"><span id="r-expires">—</span><div class="expire-bar-wrap" id="r-bar-wrap" style="display:none;margin-top:10px"><div class="expire-bar" id="r-bar"></div></div></div></div>
+        <div class="info-card" id="r-act-card" style="display:none"><div class="lbl">Ativada em</div><div class="val" id="r-activated">—</div></div>
+        <div class="info-card" id="r-last-card" style="display:none"><div class="lbl">Último uso</div><div class="val" id="r-lastused">—</div></div>
+      </div>
+      <div id="r-phone-section" style="display:none;margin-bottom:16px">
+        <div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;font-family:'Syne',sans-serif;font-weight:700">Dispositivos cadastrados</div>
+        <div id="r-phone-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px"></div>
+        <div style="font-size:13px;color:var(--muted);margin-top:12px;font-family:'Syne',sans-serif">Remova um número para liberar o slot.</div>
+      </div>
+      <div id="r-renew-banner" style="display:none;margin-bottom:20px;background:#00ff8710;border:1px solid #00ff8730;border-radius:12px;padding:18px 22px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+        <div>
+          <div style="font-size:16px;color:#00ff87;font-family:'Syne',sans-serif;font-weight:800;margin-bottom:4px">🔄 Hora de renovar!</div>
+          <div style="font-size:13px;color:var(--muted)">Renove agora e o tempo é somado ao restante.</div>
+        </div>
+        <a href="/planos" style="flex-shrink:0;padding:12px 24px;background:#00ff87;color:#000;font-family:'Syne',sans-serif;font-weight:800;font-size:14px;border-radius:8px;text-decoration:none;white-space:nowrap">💳 Ver Planos</a>
+      </div>
+      <div class="section-links" id="r-links" style="margin-bottom:20px"></div>
+      <button onclick="resetPanel()" style="padding:12px 24px;background:#1e1e2e;color:var(--muted);border:1px solid var(--border);border-radius:8px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#00ff87';this.style.color='#00ff87'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">← Consultar outra chave</button>
+    </div>
 </div>
-<footer class="footer"><div class="wrap">
-  <div class="footer-grid">
-    <div class="footer-brand">
-      <div class="nav-logo"><span class="nav-mark">ZVM</span></div>
-      <p>Sistema de licenciamento para a extensão ZVM. Controle de acesso seguro e gestão de dispositivos.</p>
-    </div>
-    <div class="footer-col"><h4>Produto</h4>
-      <a href="/planos">Planos e Preços</a>
-      <a href="/client">Portal do Cliente</a>
-      <a href="/faq">Perguntas Frequentes</a>
-    </div>
-    <div class="footer-col"><h4>Suporte</h4>
-      <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM%20LR1290." target="_blank">WhatsApp</a>
-      <a href="/faq">Central de Ajuda</a>
-    </div>
-    <div class="footer-col"><h4>Legal</h4>
-      <a href="/privacidade">Privacidade</a>
-    </div>
-  </div>
-  <div class="footer-bottom">
-    &copy; ${new Date().getFullYear()} ZVM &mdash; Todos os direitos reservados<br>
-    Licenciamento da extensão ZVM
-  </div>
-</div></footer>
-<script>document.querySelectorAll('.nav-links a').forEach(function(a){a.addEventListener('click',function(){document.getElementById('navlinks').classList.remove('open');});});</script>
 <script>
-
 function fmtDate(iso){if(!iso)return'—';const d=new Date(iso);return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
 
 function fmtHours(h){if(h===null||h===undefined)return null;if(h>=48)return Math.floor(h/24)+' dias';if(h>=1)return h+'h';return'menos de 1h';}
@@ -1387,7 +1268,7 @@ function showPanel(d,key){
   const expEl=document.getElementById('r-expires'),barWrap=document.getElementById('r-bar-wrap'),bar=document.getElementById('r-bar');
   if(d.deferred){expEl.textContent='Ativa ao 1º uso';barWrap.style.display='none';}
   else if(d.expired){expEl.textContent='Expirada em '+fmtDate(d.expiresAt);barWrap.style.display='none';}
-  else if(d.expiresAt){const tl=fmtHours(d.hoursLeft);expEl.textContent=fmtDate(d.expiresAt)+(tl?' ('+tl+' restantes)':'');if(d.hoursLeft!==null){barWrap.style.display='block';const pct=Math.min(100,Math.max(2,(d.hoursLeft/(24*30))*100));bar.style.width=pct+'%';bar.style.background=d.hoursLeft<24?'#ff4757':d.hoursLeft<72?'#ffa500':'#00ff00';}}
+  else if(d.expiresAt){const tl=fmtHours(d.hoursLeft);expEl.textContent=fmtDate(d.expiresAt)+(tl?' ('+tl+' restantes)':'');if(d.hoursLeft!==null){barWrap.style.display='block';const pct=Math.min(100,Math.max(2,(d.hoursLeft/(24*30))*100));bar.style.width=pct+'%';bar.style.background=d.hoursLeft<24?'#ff4757':d.hoursLeft<72?'#ffa500':'#00ff87';}}
   else{expEl.textContent='Sem expiração';barWrap.style.display='none';}
   const actCard=document.getElementById('r-act-card'),lastCard=document.getElementById('r-last-card');
   if(d.activatedAt&&actCard){actCard.style.display='block';document.getElementById('r-activated').textContent=fmtDate(d.activatedAt);}
@@ -1428,107 +1309,110 @@ window.addEventListener('DOMContentLoaded',()=>{
   if(autoKey){document.getElementById('loading-overlay').style.display='flex';document.getElementById('form-area').style.display='none';doCheck(autoKey).finally(()=>{document.getElementById('loading-overlay').style.display='none';});}
   else document.getElementById('loading-overlay').style.display='none';
 });
-
 </script>
-</body></html>`;
+${CANVAS_BG}</body></html>`;
 }
-
 
 function buildKeysHtml() {
   const entries = Object.entries(keys);
-  if (!entries.length) return `<tr><td colspan="11" class="empty">Nenhuma chave cadastrada ainda</td></tr>`;
+  if (!entries.length) return `<tr><td colspan="11" class="empty">Nenhuma chave cadastrada</td></tr>`;
   return entries.map(([code, k]) => {
     const expired  = isKeyExpired(k);
     const warnSoon = isKeyExpiringSoon(k);
     const uniqueIps = new Set(logs.filter(l => l.keyCode === code && l.ip).map(l => l.ip)).size;
+    const recentLogs = logs.filter(l => l.keyCode === code && l.timestamp > new Date(Date.now() - 86400000).toISOString());
+    const recentIps  = new Set(recentLogs.filter(l => l.ip).map(l => l.ip));
+    const clearedAt  = k.suspectClearedAt ? new Date(k.suspectClearedAt) : null;
+    const isSuspect  = recentIps.size > 3 && !(clearedAt && (Date.now() - clearedAt.getTime()) < 172800000);
 
     const expHtml = (!k.expiresAt && k.expireDuration) ? (() => {
       const d=Math.floor(k.expireDuration/86400000),h=Math.floor((k.expireDuration%86400000)/3600000),m=Math.floor((k.expireDuration%3600000)/60000);
       const parts=[];if(d>0)parts.push(d+'d');if(h>0)parts.push(h+'h');if(m>0)parts.push(m+'m');
-      return `<br><span style="color:var(--green);font-size:11px">⏱ Ao ativar: ${parts.join(' ')}</span>`;
+      return `<br><span style="color:var(--blue);font-size:12px">⏱ Ao ativar: ${parts.join(' ')}</span>`;
     })() : k.expiresAt ? (() => {
       const exp=new Date(k.expiresAt),diffMs=exp-new Date(),diffH=Math.floor(diffMs/36e5),diffD=Math.floor(diffMs/864e5);
       let label=expired?'expirado':diffH<1?`exp: ${Math.floor((diffMs%36e5)/60000)}min`:diffH<24?`exp: ${diffH}h`:` exp: ${diffD}d — ${exp.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}`;
-      return `<br><span style="font-size:11px;color:${expired?'var(--red)':warnSoon?'var(--orange)':'var(--yellow)'};">${label}</span>`;
+      return `<br><span style="font-size:12px;color:${expired?'var(--red)':warnSoon?'var(--orange)':'var(--yellow)'}">${label}</span>`;
     })() : '';
 
-    const rowStyle = warnSoon && !expired ? ' style="background:#ff860008"' : '';
+    const rowStyle = isSuspect ? ' style="background:#ff000008;outline:1px solid #ff475720"' : warnSoon && !expired ? ' style="background:#ff860010"' : '';
+    const suspectBadge = isSuspect ? `<span title="${recentIps.size} IPs nas últimas 24h" style="color:#ff4757;font-size:13px;margin-left:4px">⚠ SUSPEITA</span>` : '';
 
     return `
-<tr data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${k.active?'ativo':'bloqueado'}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-expired="${expired?'1':''}"${rowStyle}>
-  <td style="padding:5px 6px 5px 12px"><input type="checkbox" class="row-chk" data-code="${escHtml(code)}" onchange="onRowCheck()"></td>
-  <td><span class="kc" onclick="copyKey(this,'${escHtml(code)}')" title="Clique para copiar">${escHtml(code)}</span></td>
-  <td class="td-name"><span class="td-trunc" style="font-weight:700">${escHtml(k.label)}</span></td>
-  <td><span class="st-badge ${expired?'st-off':k.active?(k.expireDuration&&!k.expiresAt?'st-wait':'st-on'):'st-off'}">${expired?'EXPIRADA':k.active?(k.expireDuration&&!k.expiresAt?'AGUARDANDO':'ATIVO'):'BLOQUEADO'}</span></td>
-  <td><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'var(--muted)'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
-  <td style="color:var(--muted)"><span class="td-trunc">${escHtml(k.lastPhone||'—')}</span></td>
-  <td style="color:var(--muted)" title="${uniqueIps} IPs únicos"><span class="td-trunc">${escHtml(k.lastIp||'—')}${uniqueIps>1?` <span style="color:#3a3a5a;font-size:11px">(+${uniqueIps-1})</span>`:''}</span></td>
-  <td style="color:var(--muted)">${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
-  <td style="color:var(--muted)">${new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}${expHtml}</td>
-  <td style="color:var(--muted)"><span class="td-trunc">${escHtml(k.wppVersion||'—')}</span></td>
-  <td class="note-cell" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${k.note&&k.note.startsWith('[Mod:')?'<span style="color:#4f8ef7;font-size:12px">'+escHtml(k.note)+'</span>':escHtml(k.note||'')||'<span style="color:#2a2a4a">—</span>'}</span></td>
-  <td class="td-actions">
-    <button class="ab ${k.active?'ab-r':'ab-g'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
-    <button class="ab ab-g" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">+Tempo</button>
-    <button class="ab ab-g" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${Number.isFinite(k.maxUses)?k.maxUses:MAX_USES})">Usos</button>
-    <button class="ab ab-g" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">Renomear</button>
-    ${(k.phones||[]).length>0?`<button class="ab ab-r" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Números</button>`:''}
-    <button class="ab ab-r" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
-    <button class="ab ab-p" data-code="${escHtml(code)}" data-label="${escHtml(k.label||'')}" data-modnote="${escHtml((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1]||'')}" onclick="openAssignModFromEl(this)">👮 Mod</button>
+<tr data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${k.active?'ativo':'bloqueado'}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-suspect="${isSuspect?'1':''}"`+rowStyle+`>
+  <td><span class="kc">${escHtml(code)}</span></td>
+  <td>${escHtml(k.label)}${suspectBadge}</td>
+  <td><span class="badge ${k.active?'on':'off'}">${k.active?(k.expireDuration&&!k.expiresAt?'AGUARDANDO':'ATIVO'):'BLOQUEADO'}</span></td>
+  <td><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
+  <td>${escHtml(k.lastPhone||'-')}</td>
+  <td title="${uniqueIps} IPs únicos registrados">${escHtml(k.lastIp||'-')} ${uniqueIps>1?`<span style="color:var(--muted);font-size:13px">(+${uniqueIps-1})</span>`:''}</td>
+  <td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
+  <td>${new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}${expHtml}</td>
+  <td>${escHtml(k.wppVersion||'-')}</td>
+  <td class="note-cell" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${k.note&&k.note.startsWith('[Mod:')?'<span style=\"color:#4f8ef7;font-size:13px;font-family:Syne,sans-serif\">'+escHtml(k.note)+'</span>':escHtml(k.note||'') || '<span style=\\"color:var(--muted)\\">—</span>'}</span></td>
+  <td>
+    <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
+    <button class="bs bg" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">+ Tempo</button>
+    <button class="bs bg" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${Number.isFinite(k.maxUses)?k.maxUses:MAX_USES})">Usos</button>
+    <button class="bs bg" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">Renomear</button>
+    ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Números</button>`:''}
+    <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
+    ${isSuspect?`<button class="bs bsusp" onclick="clearSuspect('${escHtml(code)}')">🕵️ Suspeita</button>`:''}
+    <button class="bs" style="background:#7c3aed18;color:#9b59b6;border:1px solid #7c3aed30" data-code="${escHtml(code)}" data-label="${escHtml(k.label||'')}" data-modnote="${escHtml((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1]||'')}" onclick="openAssignModFromEl(this)">👮 Mod</button>
   </td>
 </tr>`;
   }).join('');
 }
 
-
-
-
 function buildLogsHtml(arr) {
   const src = arr ?? logs;
   if (!src.length) return `<tr><td colspan="7" class="empty">Nenhum log ainda</td></tr>`;
-  const ac = a => a==='login_ok'?'st-on':a==='relogin_ok'?'st-re':a==='verify_ok'?'st-vr':a==='login_blocked'?'st-off':a==='warn_limit'?'st-wl':'st-warn';
-  return src.slice(0,200).map(l => `
+  return src.slice(0, 200).map(l => `
 <tr>
-  <td style="color:var(--muted);font-size:12px;white-space:nowrap">${new Date(l.timestamp).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</td>
-  <td><span class="kc" style="font-size:12px">${escHtml(l.keyCode||'—')}</span></td>
-  <td style="color:var(--muted);font-size:12px">${escHtml(l.label||'—')}</td>
-  <td style="color:var(--muted);font-size:12px">${escHtml(l.phone||'—')}</td>
-  <td style="color:var(--muted);font-size:12px">${escHtml(l.ip||'—')}</td>
-  <td style="color:var(--muted);font-size:12px">${escHtml(l.wppVersion||'—')}</td>
-  <td><span class="st-badge ${ac(l.action)}">${escHtml(l.action)}</span></td>
+  <td>${new Date(l.timestamp).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</td>
+  <td><span class="kc" style="font-size:13px">${escHtml(l.keyCode||'-')}</span></td>
+  <td>${escHtml(l.label||'-')}</td>
+  <td>${escHtml(l.phone||'-')}</td>
+  <td>${escHtml(l.ip||'-')}</td>
+  <td>${escHtml(l.wppVersion||'-')}</td>
+  <td><span class="badge ${l.action==='login_ok'?'on':l.action==='relogin_ok'?'re':l.action==='verify_ok'?'vr':l.action==='login_blocked'?'off':l.action==='warn_limit'?'wl':'warn'}">${escHtml(l.action)}</span></td>
 </tr>`).join('');
 }
 
-
 function renderAdminDashboard() {
-  const expiringSoon = Object.values(keys).filter(k => k.active && isKeyExpiringSoon(k)).length;
-  const expiredKeys  = Object.values(keys).filter(k => isKeyExpired(k)).length;
+  const expiringSoon  = Object.values(keys).filter(k => k.active && isKeyExpiringSoon(k)).length;
+  const suspectKeys   = Object.entries(keys).filter(([code, k]) => {
+    const cl = k.suspectClearedAt ? new Date(k.suspectClearedAt) : null;
+    if (cl && (Date.now() - cl.getTime()) < 172800000) return false;
+    const rl = logs.filter(l => l.keyCode === code && l.timestamp > new Date(Date.now()-86400000).toISOString());
+    return new Set(rl.filter(l=>l.ip).map(l=>l.ip)).size > 3;
+  }).length;
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Administrador</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='900' font-size='12' fill='%2300ff00'%3EZVM%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<title>ZVM Admin v8</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --green:#00ff66;--dark:#000000;--card:#0a0a0a;--card2:#111111;
-  --border:#1e1e24;--border2:#2a2a34;--text:#eeeef2;--muted:#6b6e80;
-  --red:#ff4455;--yellow:#ffd43b;--orange:#ff9a3c;--blue:#4f8ef7;--purple:#a855f7;
-  --radius:12px;--radius-sm:7px;
+  --green:#00ff87;--dark:#080810;--card:#0f0f1a;--card2:#13131f;
+  --border:#1c1c2e;--border2:#252538;--text:#e2e2f0;--muted:#5a5a7a;
+  --red:#ff4757;--yellow:#ffd32a;--orange:#ff8600;--blue:#4f8ef7;--purple:#9b59b6;
+  --radius:10px;--radius-sm:6px;
 }
 body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
-header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040}
 .logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
+main{position:relative;z-index:1}
 .hright{display:flex;align-items:center;gap:10px}
 a.out{color:var(--muted);font-size:13px;text-decoration:none;padding:6px 14px;border:1px solid var(--border2);border-radius:var(--radius-sm);transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
 a.out:hover{color:var(--red);border-color:var(--red)}
-main{position:relative;z-index:1;padding:22px 20px;max-width:100%}
+main{padding:22px 24px;max-width:1800px;margin:0 auto}
 .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px}
-.sc{background:var(--card);border:1px solid var(--border2);border-radius:var(--radius);padding:16px 18px;position:relative;overflow:hidden;transition:border-color .2s,transform .15s,box-shadow .2s;cursor:default;box-shadow:0 0 0 1px #00ff6606 inset,0 8px 24px #00000060}
-.sc:hover{box-shadow:0 1px 0 #ffffff08 inset,0 12px 32px #00000060;transform:translateY(-1px)}
+.sc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;position:relative;overflow:hidden;transition:border-color .2s,transform .15s;cursor:default}
 .sc:hover{border-color:var(--border2);transform:translateY(-1px)}
 .sc.warn-card{border-color:#ff860050;background:#ff860008}
 .sc.danger-card{border-color:#ff475750;background:#ff475708}
@@ -1542,7 +1426,7 @@ main{position:relative;z-index:1;padding:22px 20px;max-width:100%}
 .search-bar input{padding:7px 12px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:12px;outline:none;flex:1;min-width:160px;transition:border .18s}
 .search-bar input:focus{border-color:var(--green)}
 .search-bar select{padding:6px 9px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Syne',sans-serif;font-size:12px;outline:none;cursor:pointer}
-.sec{background:var(--card);border:1px solid var(--border2);border-radius:var(--radius);margin-bottom:16px;overflow:hidden;box-shadow:0 0 0 1px #00ff6608 inset,0 8px 24px #00000080}
+.sec{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:16px;overflow:hidden}
 .sh{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--card2);flex-wrap:wrap;gap:10px}
 .st{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:var(--green);display:flex;align-items:center;gap:6px}
 .gen-form{display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap}
@@ -1556,31 +1440,30 @@ main{position:relative;z-index:1;padding:22px 20px;max-width:100%}
 .fi-num{width:56px;text-align:center}
 .fi-sep{width:1px;height:28px;background:var(--border2);margin:0 3px;flex-shrink:0;align-self:flex-end;margin-bottom:2px}
 .btn{padding:7px 12px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;transition:all .18s;white-space:nowrap;letter-spacing:.3px}
-.bp{background:var(--green);color:#000;box-shadow:0 0 12px #00ff6640}
-.bp:hover{box-shadow:0 4px 20px #00ff6660;opacity:.9}
+.bp{background:var(--green);color:#000;box-shadow:0 0 12px #00ff8740}
+.bp:hover{box-shadow:0 4px 20px #00ff8760;opacity:.9}
 .bw{background:#ffd32a12;color:var(--yellow);border:1px solid #ffd32a35}
 .br{background:#ff475712;color:var(--red);border:1px solid #ff475735}
 .bcsv{background:#4f8ef712;color:var(--blue);border:1px solid #4f8ef735}
 .bs{padding:3px 8px;border:none;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;margin-right:2px;transition:all .15s;white-space:nowrap}
 .bs:hover{opacity:1;transform:translateY(-1px)}
-.bg{background:#00ff6612;color:var(--green);border:1px solid #00ff6630}
-.bg:hover{background:#00ff6622;border-color:#00ff6660}
+.bg{background:#00ff8712;color:var(--green);border:1px solid #00ff8730}
+.bg:hover{background:#00ff8722;border-color:#00ff8760}
 .bd{background:#ff475712;color:var(--red);border:1px solid #ff475730}
 .bd:hover{background:#ff475722;border-color:#ff475760}
 .bsusp{background:#ff475712;color:var(--red);border:1px solid #ff475730}
 .ov{overflow-x:auto}
-table{width:100%;border-collapse:collapse;table-layout:fixed}
-th{padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#9496a8;border-bottom:1px solid var(--border2);white-space:nowrap;background:var(--card2);cursor:pointer;user-select:none;font-family:'Syne',sans-serif}
+table{width:100%;border-collapse:collapse}
+th{padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap;background:var(--card2);cursor:pointer;user-select:none;font-family:'Syne',sans-serif}
 th:hover{color:var(--text)}
 th.asc::after{content:' ▲';color:var(--green);font-size:12px}
 th.desc::after{content:' ▼';color:var(--green);font-size:12px}
-td{padding:4px 10px;font-size:11px;line-height:1.35;border-bottom:1px solid #0f0f14;vertical-align:middle;overflow:hidden}
+td{padding:7px 10px;font-size:11px;border-bottom:1px solid #14141f;vertical-align:middle}
 tr:last-child td{border-bottom:none}
-tr:hover td{background:#00ff660a}
-.kc{color:var(--green);font-size:12px;letter-spacing:.3px;cursor:pointer;transition:color .15s;border-bottom:1px dotted transparent;white-space:nowrap}
-.kc:hover{color:#fff;border-bottom-color:var(--green)}
+tr:hover td{background:#ffffff02}
+.kc{color:var(--green);font-size:12px;letter-spacing:.3px}
 .badge{padding:2px 7px;border-radius:3px;font-size:11px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;font-family:'Syne',sans-serif}
-.on{background:#00ff6618;color:var(--green);border:1px solid #00ff6630}
+.on{background:#00ff8718;color:var(--green);border:1px solid #00ff8730}
 .off{background:#ff475718;color:var(--red);border:1px solid #ff475730}
 .re{background:#4f8ef718;color:var(--blue)}
 .vr{background:#9b59b618;color:var(--purple)}
@@ -1606,71 +1489,12 @@ tr:hover td{background:#00ff660a}
 .modal-actions{display:flex;gap:8px;margin-top:11px;justify-content:flex-end}
 @media(max-width:1300px){.stats{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:750px){.stats{grid-template-columns:1fr 1fr};main{padding:14px 12px}}
-
-.row-chk,#chk-all{-webkit-appearance:none;appearance:none;width:18px;height:18px;border:2px solid #3a3a52;border-radius:4px;background:var(--card2);cursor:pointer;vertical-align:middle;position:relative;transition:all .15s;flex-shrink:0;margin:0}.row-chk:hover,#chk-all:hover{border-color:#ff0000}.row-chk:checked,#chk-all:checked{background:#ff0000;border-color:#ff0000;box-shadow:0 0 8px #ff000070}.row-chk:checked::after,#chk-all:checked::after{content:'';position:absolute;left:5px;top:1px;width:5px;height:10px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}#chk-all:indeterminate{background:#ff0000;border-color:#ff0000}#chk-all:indeterminate::after{content:'';position:absolute;left:3px;top:7px;width:10px;height:2px;background:#fff;border:none;transform:none}
-
-/* ── Action buttons (table row actions) ── */
-.ab{padding:2px 5px;border:none;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:10px;font-weight:700;transition:all .15s;white-space:nowrap}
-.ab:hover{opacity:.85;transform:translateY(-1px)}
-.ab-g{background:#00ff6612;color:var(--green);border:1px solid #00ff6630}
-.ab-r{background:#ff475712;color:var(--red);border:1px solid #ff475730}
-.ab-p{background:#9b59b618;color:var(--purple);border:1px solid #9b59b635}
-.ab-y{background:#ffd32a12;color:var(--yellow);border:1px solid #ffd32a35}
-
-/* ── Status badges (table cells) ── */
-.st-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;font-family:'Syne',sans-serif;white-space:nowrap}
-.st-on{background:#00ff6618;color:var(--green);border:1px solid #00ff6630}
-.st-off{background:#ff475718;color:var(--red);border:1px solid #ff475730}
-.st-wait{background:#ffd32a18;color:var(--yellow);border:1px solid #ffd32a35}
-.st-re{background:#4f8ef718;color:var(--blue);border:1px solid #4f8ef730}
-.st-vr{background:#9b59b618;color:var(--purple);border:1px solid #9b59b635}
-.st-wl{background:#ff8c0018;color:#ff8c00;border:1px solid #ff8c0035}
-.st-warn{background:#ffd32a18;color:var(--yellow);border:1px solid #ffd32a35}
-
-/* ── Table cell helpers ── */
-.td-actions{min-width:0;display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-start;align-items:center;padding:4px 6px}
-.td-name{color:var(--text)}
-.td-trunc{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:100%}
-
-/* ── Modal layout helpers ── */
-.modal-w{width:440px}
-.modal-row{margin-bottom:12px}
-.modal-row label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:5px;font-family:'Syne',sans-serif}
-.modal-row input[type=text],.modal-row input[type=number],.modal-row textarea{width:100%;padding:8px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:inherit;outline:none;transition:border-color .17s}
-.modal-row input:focus,.modal-row textarea:focus{border-color:var(--green)}
-.modal-row textarea{resize:vertical;min-height:76px}
-.modal-hint{font-size:11px;color:var(--muted);margin-top:5px}
-.trow{display:flex;gap:8px}
-.trow .modal-row{flex:1;text-align:center}
-.trow input{text-align:center;font-size:16px!important}
-.mactions{display:flex;gap:7px;justify-content:flex-end;margin-top:13px}
-
-/* ── Action buttons (modals) ── */
-.btn-g{background:#00ff6612;border:1px solid #00ff6630;color:var(--green)}
-.btn-g:hover{background:#00ff661e;border-color:#00ff6650}
-.btn-r{background:#ff475712;border:1px solid #ff475730;color:var(--red)}
-.btn-r:hover{background:#ff47571e;border-color:#ff475750}
-.btn-y{background:#ffd32a12;border:1px solid #ffd32a30;color:var(--yellow)}
-.btn-y:hover{background:#ffd32a1e;border-color:#ffd32a50}
-
-/* ── Moderator assignment buttons ── */
-.mod-btn-row{display:flex;flex-direction:column;gap:7px;margin-bottom:12px;max-height:260px;overflow-y:auto}
-.mod-btn{display:flex;align-items:center;gap:8px;padding:9px 13px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;color:var(--text);font-size:12px;font-weight:600;font-family:'Syne',sans-serif;transition:all .14s;text-align:left}
-.mod-btn:hover{border-color:#00ff6630;color:var(--green)}
-.mod-btn.active{background:#9b59b612;border-color:#9b59b630;color:#c4b5fd}
-
-/* ── Phone removal items ── */
-.ph-item{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)}
-.ph-item:last-child{border-bottom:none}
-.ph-num{font-family:'Courier New',monospace;font-size:13px;color:var(--text)}
 </style>
-
 </head>
 <body>
 <header>
-  <div class="logo">⚡ ADMINISTRADOR</div>
+  <div class="logo">⚡ ZVM <span style="font-size:13px;color:var(--muted);font-weight:400">v8</span></div>
   <div class="hright">
-    <span id="last-refresh" style="font-size:11px;color:var(--muted);font-family:'Syne',sans-serif" title="Atualiza automaticamente a cada 2 min"></span>
     <button class="btn bcsv" onclick="exportCSV()">⬇ CSV</button>
     <a href="${R_ADMIN}/logout" class="out">↩ Sair</a>
   </div>
@@ -1680,7 +1504,8 @@ tr:hover td{background:#00ff660a}
     <div class="sc"><div class="sc-icon">🔑</div><div class="n" id="s-total">${Object.keys(keys).length}</div><div class="l">Total de Chaves</div></div>
     <div class="sc"><div class="sc-icon">✅</div><div class="n" id="s-active">${Object.values(keys).filter(k=>k.active).length}</div><div class="l">Chaves Ativas</div></div>
     <div class="sc ${expiringSoon>0?'warn-card':''}"><div class="sc-icon">⏰</div><div class="n" id="s-warn" style="${expiringSoon>0?'color:var(--orange)':''}">${expiringSoon}</div><div class="l">Expirando em ${EXPIRY_WARN_HOURS}h</div></div>
-    <div class="sc ${expiredKeys>0?'danger-card':''}"><div class="sc-icon">🚫</div><div class="n" id="s-expired" style="${expiredKeys>0?'color:var(--red)':''}">${expiredKeys}</div><div class="l">Expiradas</div></div>
+
+    <div class="sc ${suspectKeys>0?'danger-card':''}"><div class="sc-icon">🕵️</div><div class="n" id="s-suspect" style="${suspectKeys>0?'color:var(--red)':''}">${suspectKeys}</div><div class="l">Suspeitas (24h)</div></div>
     <div class="sc"><div class="sc-icon">📋</div><div class="n" id="s-logs">${logs.length}</div><div class="l">Acessos Registrados</div></div>
   </div>
 
@@ -1689,7 +1514,6 @@ tr:hover td{background:#00ff660a}
       <div class="st">🔑 Chaves de Acesso</div>
       <div class="gen-form">
         <div class="fi-name"><input type="text" id="nlabel" placeholder="Nome do cliente"></div>
-        <div class="fi-name"><input type="email" id="nemail" placeholder="E-mail do cliente (opcional)" maxlength="120"></div>
         <div class="fi-sep"></div>
         <div class="fi-group">
           <div class="fi-col"><span class="fi-lbl">Dias</span><input type="number" id="ndays" class="fi-num" placeholder="0" min="0"></div>
@@ -1703,30 +1527,28 @@ tr:hover td{background:#00ff660a}
       </div>
     </div>
     <div class="search-bar">
-      <input type="text" id="search-input" placeholder="🔍 Buscar por nome, chave, telefone ou IP... (atalho: /)" oninput="filterKeys()">
-      <span id="filter-count" style="font-size:12px;color:var(--muted);white-space:nowrap;padding:0 4px"></span><select id="filter-status" onchange="filterKeys()">
+      <input type="text" id="search-input" placeholder="🔍 Buscar por nome, chave, telefone ou IP..." oninput="filterKeys()">
+      <select id="filter-status" onchange="filterKeys()">
         <option value="">Todos os status</option>
-        <option value="ativo">Ativas</option>
-        <option value="bloqueado">Bloqueadas</option>
-        <option value="expirada">⏰ Expiradas</option>
+        <option value="ativo">Ativos</option>
+        <option value="bloqueado">Bloqueados</option>
+        <option value="suspeita">🕵️ Suspeitas</option>
       </select>
     </div>
-    <div id="bulk-bar" style="display:none;align-items:center;gap:10px;padding:7px 14px;background:#ff475712;border-bottom:1px solid #ff475730"><span id="bulk-count" style="font-size:12px;color:var(--red);font-weight:700"></span><button class="btn br" onclick="deleteSelected()">🗑 Excluir selecionadas</button><button class="btn bw" onclick="clearSelection()">✕ Limpar seleção</button></div>
     <div class="ov">
       <table>
         <thead><tr>
-          <th style="width:2%;padding:8px 6px 8px 12px"><input type="checkbox" id="chk-all" title="Selecionar todas visíveis" onchange="toggleSelectAll(this)"></th>
-          <th style="width:9.5%" onclick="sortKeys('code')">Chave</th>
-          <th style="width:8%" onclick="sortKeys('label')" id="th-label">Cliente</th>
-          <th style="width:6%" onclick="sortKeys('status')" id="th-status">Status</th>
-          <th style="width:3.5%" onclick="sortKeys('uses')" id="th-uses">Usos</th>
-          <th style="width:7%" onclick="sortKeys('phone')" id="th-phone">Telefone</th>
-          <th style="width:8%">Último IP</th>
-          <th style="width:7.5%" onclick="sortKeys('lastused')" id="th-lastused">Último Acesso</th>
-          <th style="width:9%" onclick="sortKeys('created')" id="th-created">Criada em</th>
-          <th style="width:5%">WPP Ver.</th>
-          <th style="width:6.5%">Notas</th>
-          <th style="width:28%">Ações</th>
+          <th onclick="sortKeys('code')">Chave</th>
+          <th onclick="sortKeys('label')" id="th-label">Cliente</th>
+          <th onclick="sortKeys('status')" id="th-status">Status</th>
+          <th onclick="sortKeys('uses')" id="th-uses">Usos</th>
+          <th onclick="sortKeys('phone')" id="th-phone">Telefone</th>
+          <th>Último IP</th>
+          <th onclick="sortKeys('lastused')" id="th-lastused">Último Acesso</th>
+          <th onclick="sortKeys('created')" id="th-created">Criada em</th>
+          <th>WPP Ver.</th>
+          <th>Notas</th>
+          <th>Ações</th>
         </tr></thead>
         <tbody id="kb">${buildKeysHtml()}</tbody>
       </table>
@@ -1746,7 +1568,7 @@ tr:hover td{background:#00ff660a}
     </div>
     <div class="ov">
       <table>
-        <thead><tr><th style="width:14%">Horário</th><th style="width:16%">Chave</th><th style="width:14%">Cliente</th><th style="width:12%">Telefone</th><th style="width:14%">IP</th><th style="width:12%">WPP Version</th><th style="width:18%">Ação</th></tr></thead>
+        <thead><tr><th>Horário</th><th>Chave</th><th>Cliente</th><th>Telefone</th><th>IP</th><th>WPP Version</th><th>Ação</th></tr></thead>
         <tbody id="lb">${buildLogsHtml()}</tbody>
       </table>
     </div>
@@ -1754,79 +1576,80 @@ tr:hover td{background:#00ff660a}
   </div>
 </main>
 
-
 <!-- Modals -->
 <div class="modal-bg" id="renewModal"><div class="modal">
   <h3>⏱ Adicionar Tempo — <span id="renewKeyLabel"></span></h3>
   <input type="hidden" id="renewKeyCode">
-  <div class="trow">
-    <div class="modal-row"><label>Dias</label><input type="number" id="renewDays" placeholder="0" min="0"></div>
-    <div class="modal-row"><label>Horas</label><input type="number" id="renewHours" placeholder="0" min="0"></div>
-    <div class="modal-row"><label>Min</label><input type="number" id="renewMins" placeholder="0" min="0"></div>
+  <div style="display:flex;gap:10px;margin-bottom:12px">
+    <div style="flex:1;text-align:center"><div style="font-size:12px;color:var(--muted);text-transform:uppercase;margin-bottom:5px">Dias</div><input type="number" id="renewDays" placeholder="0" min="0" style="width:100%;padding:8px;text-align:center"></div>
+    <div style="flex:1;text-align:center"><div style="font-size:12px;color:var(--muted);text-transform:uppercase;margin-bottom:5px">Horas</div><input type="number" id="renewHours" placeholder="0" min="0" style="width:100%;padding:8px;text-align:center"></div>
+    <div style="flex:1;text-align:center"><div style="font-size:12px;color:var(--muted);text-transform:uppercase;margin-bottom:5px">Min</div><input type="number" id="renewMins" placeholder="0" min="0" style="width:100%;padding:8px;text-align:center"></div>
   </div>
-  <div style="font-size:12px;color:var(--muted);margin-bottom:12px" id="renewCurrentExpiry"></div>
-  <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);cursor:pointer;margin-bottom:12px;padding:9px 11px;background:#00ff6608;border:1px solid #00ff6620;border-radius:var(--radius-sm)">
-    <input type="checkbox" id="renewDeferred" style="accent-color:var(--green);width:14px;height:14px;cursor:pointer">
-    <span>⏱ <strong style="color:var(--green)">Ativar ao 1º uso</strong> — o prazo começa a contar somente no primeiro acesso</span>
-  </label>
-  <div class="mactions">
-    <button class="btn btn-y" onclick="closeRenew()">Cancelar</button>
-    <button class="btn btn-g" onclick="saveRenew()">Adicionar Tempo</button>
+  <div style="font-size:13px;color:var(--muted);margin-bottom:12px;font-family:'Syne',sans-serif" id="renewCurrentExpiry"></div>
+  <div class="modal-actions">
+    <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeRenew()">Cancelar</button>
+    <button class="btn bp" onclick="saveRenew()">Adicionar Tempo</button>
   </div>
 </div></div>
 
 <div class="modal-bg" id="editUsesModal"><div class="modal">
   <h3>👥 Limite de Dispositivos — <span id="editUsesLabel"></span></h3>
   <input type="hidden" id="editUsesCode">
-  <div class="modal-row"><label>Máx. números simultâneos</label><input type="number" id="editUsesValue" min="-1" style="font-size:18px;text-align:center"><div class="modal-hint">Use <strong style="color:var(--green)">-1</strong> para ilimitado</div></div>
-  <div class="mactions">
-    <button class="btn btn-y" onclick="closeEditUses()">Cancelar</button>
-    <button class="btn btn-g" onclick="saveEditUses()">Salvar</button>
+  <div style="margin-bottom:14px">
+    <div style="font-size:12px;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Máx. números simultâneos</div>
+    <input type="number" id="editUsesValue" min="-1" style="width:100%;padding:10px;font-size:16px;text-align:center">
+    <div style="font-size:13px;color:var(--muted);margin-top:8px;font-family:'Syne',sans-serif">Use <strong style="color:var(--green)">-1</strong> para ilimitado</div>
+  </div>
+  <div class="modal-actions">
+    <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeEditUses()">Cancelar</button>
+    <button class="btn bp" onclick="saveEditUses()">Salvar</button>
   </div>
 </div></div>
 
 <div class="modal-bg" id="renameModal"><div class="modal">
-  <h3>✏️ Renomear Chave</h3>
+  <h3>Renomear Chave</h3>
   <input type="hidden" id="renameCode">
-  <div class="modal-row"><label>Novo nome</label><input type="text" id="renameValue" maxlength="60"></div>
-  <div class="mactions">
-    <button class="btn btn-y" onclick="closeRename()">Cancelar</button>
-    <button class="btn btn-g" onclick="saveRename()">Salvar</button>
+  <div style="margin-bottom:14px">
+    <div style="font-size:12px;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Novo nome</div>
+    <input type="text" id="renameValue" maxlength="60" style="width:100%;padding:10px;font-size:14px">
+  </div>
+  <div class="modal-actions">
+    <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeRename()">Cancelar</button>
+    <button class="btn bp" onclick="saveRename()">Salvar</button>
   </div>
 </div></div>
 
 <div class="modal-bg" id="phonesModal"><div class="modal">
-  <h3>📱 Números — <span id="phonesLabel"></span></h3>
-  <div id="phonesList" style="max-height:220px;overflow-y:auto;margin-bottom:12px;min-height:36px"></div>
-  <div class="mactions">
-    <button class="btn btn-y" onclick="closePhones()">Fechar</button>
-    <button class="btn btn-r" id="removeAllBtn" onclick="removeAllPhones()">Remover Todos</button>
+  <h3>Números — <span id="phonesLabel"></span></h3>
+  <div id="phonesList" style="margin-bottom:14px;max-height:220px;overflow-y:auto;min-height:40px"></div>
+  <div class="modal-actions">
+    <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closePhones()">Fechar</button>
+    <button class="btn bd" id="removeAllBtn" onclick="removeAllPhones()">Remover Todos</button>
   </div>
 </div></div>
 
 <div class="modal-bg" id="noteModal"><div class="modal">
   <h3>📝 Nota — <span id="noteKeyLabel"></span></h3>
   <input type="hidden" id="noteKeyCode">
-  <div class="modal-row"><label>E-mail do cliente</label><input type="email" id="noteEmail" placeholder="cliente@exemplo.com" maxlength="120"></div>
-  <div class="modal-row"><label>Anotação</label><textarea id="noteText" placeholder="Pagou até março, trial, VIP..."></textarea></div>
-  <div class="mactions">
-    <button class="btn btn-y" onclick="closeNote()">Cancelar</button>
-    <button class="btn btn-g" onclick="saveNote()">Salvar</button>
+  <textarea id="noteText" placeholder="Ex: Pagou até março, trial gratuito, cliente VIP..."></textarea>
+  <div class="modal-actions">
+    <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeNote()">Cancelar</button>
+    <button class="btn bp" onclick="saveNote()">Salvar Nota</button>
   </div>
 </div></div>
 
-<div class="modal-bg" id="assignModModal"><div class="modal modal-w">
+<div class="modal-bg" id="assignModModal"><div class="modal" style="width:400px">
   <h3>👮 Atribuir ao Moderador</h3>
-  <p style="font-size:11px;color:var(--muted);margin-bottom:14px">Chave: <span id="assignModLabel" style="color:var(--text);font-weight:700"></span></p>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:16px">Selecione o moderador responsável por esta chave. Ela aparecerá no painel do moderador escolhido.</p>
   <input type="hidden" id="assignModCode">
-  <div class="mod-btn-row" id="modListBtns"></div>
-  <div class="mactions">
-    <button class="btn btn-r" onclick="assignMod(document.getElementById('assignModCode').value,'')">🗑 Remover</button>
-    <button class="btn btn-y" onclick="closeAssignMod()">Cancelar</button>
+  <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;font-family:'Syne',sans-serif">Chave: <span id="assignModLabel" style="color:var(--text)"></span></div>
+  <div id="modListBtns" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px"></div>
+  <div style="display:flex;gap:8px;margin-top:4px">
+    <button class="btn" style="background:#ff475718;color:var(--red);border:1px solid #ff475730;flex:1" onclick="assignMod(document.getElementById('assignModCode').value,'')">🗑 Remover atribuição</button>
+    <button class="btn" style="background:#1e1e2e;color:var(--muted);flex:0 0 auto" onclick="closeAssignMod()">Cancelar</button>
   </div>
 </div></div>
 
-<div class="toast" id="toast"></div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1835,12 +1658,10 @@ const _MODS=${JSON.stringify(MODS.map(m => m.name))};
 
 function toast(msg,ok=true){
   const t=document.getElementById('toast');
-  t.textContent=msg;t.className='toast '+(ok?'tok':'terr');
-  t.style.display='block';
+  t.textContent=msg;t.style.background=ok?'var(--green)':'var(--red)';
+  t.style.color=ok?'#000':'#fff';t.style.display='block';
   setTimeout(()=>t.style.display='none',3200);
 }
-
-function copyKey(el,code){if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(code).then(function(){var o=el.textContent;el.textContent='✓ copiado';el.style.color='#fff';setTimeout(function(){el.textContent=o;el.style.color='';},1000);}).catch(function(){toast('Falha ao copiar',false);});}else{var ta=document.createElement('textarea');ta.value=code;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');toast('✓ Chave copiada');}catch(e){toast('Falha ao copiar',false);}document.body.removeChild(ta);}}
 
 function openAssignModFromEl(el){
   openAssignMod(el.dataset.code||'', el.dataset.label||'', el.dataset.modnote||'');
@@ -1853,12 +1674,13 @@ function openAssignMod(code,label,currentMod){
   _MODS.forEach(name=>{
     const btn=document.createElement('button');
     const isActive=currentMod===name;
-    btn.className='mod-btn'+(isActive?' active':'');
-    btn.innerHTML=(isActive?'✅ ':'👤 ')+name+(isActive?' <span style="font-size:10px;margin-left:auto;opacity:.7">Atual</span>':'');
+    btn.className='btn';
+    btn.style.cssText='font-size:13px;padding:10px 16px;text-align:left;display:flex;align-items:center;gap:10px;'+(isActive?'background:#7c3aed30;color:#c4b5fd;border:1px solid #7c3aed60':'background:#1e1e2e;color:var(--text);border:1px solid var(--border)');
+    btn.innerHTML=(isActive?'✅ ':'👤 ')+name+(isActive?' <span style="font-size:11px;color:#9b59b6;margin-left:auto">Atual</span>':'');
     btn.onclick=()=>assignMod(code,name);
     container.appendChild(btn);
   });
-  if(_MODS.length===0){container.innerHTML='<div style="color:var(--muted);font-size:12px;padding:12px;text-align:center">Nenhum moderador configurado.</div>';}
+  if(_MODS.length===0){container.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px;text-align:center">Nenhum moderador configurado.<br>Defina MOD_USER/PASS no Render.</div>';}
   document.getElementById('assignModModal').classList.add('open');
 }
 function closeAssignMod(){document.getElementById('assignModModal').classList.remove('open');}
@@ -1876,68 +1698,19 @@ async function assignMod(code,modName){
 }
 
 function filterKeys(){
-  clearSelection();
   const q=(document.getElementById('search-input').value||'').toLowerCase();
   const st=document.getElementById('filter-status').value;
-  let shown=0;document.querySelectorAll('#kb tr[data-label]').forEach(row=>{
+  document.querySelectorAll('#kb tr[data-label]').forEach(row=>{
     const label=(row.dataset.label||'').toLowerCase();
     const phone=(row.dataset.phone||'').toLowerCase();
     const status=(row.dataset.status||'').toLowerCase();
-    const expired2=(row.dataset.expired||'');
+    const suspect=(row.dataset.suspect||'');
     const code=(row.querySelector('.kc')||{}).textContent||'';
     const ip=(row.cells[5]||{}).textContent||'';
     const matchQ=!q||label.includes(q)||phone.includes(q)||code.toLowerCase().includes(q)||ip.toLowerCase().includes(q);
-    const matchSt=!st||(st==='expirada'?expired2==='1':status===st);
-    const vis=matchQ&&matchSt;row.style.display=vis?'':'none';if(vis)shown++;
+    const matchSt=!st||(st==='suspeita'?suspect==='1':status===st);
+    row.style.display=(matchQ&&matchSt)?'':'none';
   });
-  const fc=document.getElementById('filter-count');if(fc)fc.textContent=shown+' chave'+(shown!==1?'s':'');
-}
-
-function onRowCheck(){
-  let visTotal=0,visChecked=0;
-  document.querySelectorAll('#kb tr[data-label]').forEach(row=>{
-    if(row.style.display==='none')return;
-    visTotal++;
-    const c=row.querySelector('.row-chk');
-    if(c&&c.checked)visChecked++;
-  });
-  const checked=document.querySelectorAll('.row-chk:checked').length;
-  const chkAll=document.getElementById('chk-all');
-  if(chkAll)chkAll.indeterminate=visChecked>0&&visChecked<visTotal,chkAll.checked=visChecked===visTotal&&visTotal>0;
-  const bar=document.getElementById('bulk-bar');
-  const cnt=document.getElementById('bulk-count');
-  if(checked>0){bar.style.display='flex';cnt.textContent=checked+' chave(s) selecionada(s)';}
-  else{bar.style.display='none';}
-}
-function toggleSelectAll(chk){
-  document.querySelectorAll('#kb tr[data-label]').forEach(row=>{
-    if(row.style.display==='none')return;
-    const c=row.querySelector('.row-chk');
-    if(c)c.checked=chk.checked;
-  });
-  onRowCheck();
-}
-function clearSelection(){
-  document.querySelectorAll('.row-chk').forEach(c=>c.checked=false);
-  const chkAll=document.getElementById('chk-all');
-  if(chkAll){chkAll.checked=false;chkAll.indeterminate=false;}
-  onRowCheck();
-}
-async function deleteSelected(){
-  const checked=Array.from(document.querySelectorAll('.row-chk:checked'));
-  if(!checked.length){toast('Nenhuma chave selecionada.',false);return;}
-  if(!confirm('Excluir '+checked.length+' chave(s) selecionada(s)? Esta ação é irreversível.'))return;
-  let ok=0,fail=0;
-  for(const c of checked){
-    try{
-      const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(c.dataset.code),{method:'DELETE'});
-      const d=await r.json();
-      if(d.ok)ok++;else fail++;
-    }catch{fail++;}
-  }
-  toast(ok+' excluída(s)'+(fail?' · '+fail+' erro(s)':''));
-  clearSelection();
-  await doRefresh();
 }
 
 let _sortCol=null,_sortDir=1;
@@ -1961,7 +1734,6 @@ function sortKeys(col){
 
 async function generateKey(){
   const label=document.getElementById('nlabel').value.trim();
-  const email=document.getElementById('nemail').value.trim();
   const days=parseInt(document.getElementById('ndays').value||0);
   const hours=parseInt(document.getElementById('nhours').value||0);
   const mins=parseInt(document.getElementById('nmins').value||0);
@@ -1969,10 +1741,8 @@ async function generateKey(){
   const maxUses=_u===''?3:parseInt(_u);
   if(!label){toast('Informe o nome do cliente',false);return;}
   if(isNaN(maxUses)){toast('❌ Usos inválido',false);return;}
-  if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){toast('❌ E-mail inválido',false);return;}
   try{
     const body={label,maxUses};
-    if(email)body.email=email;
     if(days>0)body.expireDays=days;if(hours>0)body.expireHours=hours;if(mins>0)body.expireMinutes=mins;
     const def=document.getElementById('ndeferred');if(def&&def.checked)body.deferred=true;
     const r=await fetch(_RA+'/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -1988,28 +1758,21 @@ async function generateKey(){
   }catch(e){toast('❌ Erro de rede',false);}
 }
 
-function _updateRefreshTime(){
-  const el=document.getElementById('last-refresh');
-  if(el)el.textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-}
 async function doRefresh(){
   try{
     const r=await fetch(_RA+'/api/data');
     if(r.status===401){return;}
     const d=await r.json();if(d.error)return;
-    _updateRefreshTime();
     document.getElementById('s-total').textContent=d.totalKeys||0;
     document.getElementById('s-active').textContent=d.activeKeys||0;
     document.getElementById('s-logs').textContent=d.totalLogs||0;
-    const sw=document.getElementById('s-warn');sw.textContent=d.warnKeys||0;sw.style.color=d.warnKeys>0?'var(--orange)':'var(--green)';const swsc=sw.closest('.sc');swsc.classList.toggle('sc-warn',d.warnKeys>0);
-    const sex=document.getElementById('s-expired');if(sex){sex.textContent=d.expiredKeys||0;sex.style.color=d.expiredKeys>0?'var(--red)':'';sex.closest('.sc').classList.toggle('sc-danger',d.expiredKeys>0);}
+    const sw=document.getElementById('s-warn');sw.textContent=d.warnKeys||0;sw.style.color=d.warnKeys>0?'var(--orange)':'var(--green)';sw.closest('.sc').classList.toggle('warn-card',d.warnKeys>0);
+    const ssu=document.getElementById('s-suspect');if(ssu){ssu.textContent=d.suspectKeys||0;ssu.style.color=d.suspectKeys>0?'var(--red)':'';ssu.closest('.sc').classList.toggle('danger-card',d.suspectKeys>0);}
     document.getElementById('kb').innerHTML=d.keysHtml||'';
     document.getElementById('lb').innerHTML=d.logsHtml||'';
-    clearSelection();
     filterKeys();
   }catch(e){console.error('Refresh error',e);}
 }
-_updateRefreshTime();
 setInterval(doRefresh,120000); // 2 min — reduz requisições ao servidor
 
 async function toggleKey(code){
@@ -2018,6 +1781,15 @@ async function toggleKey(code){
 async function deleteKey(code){
   if(!confirm('Excluir chave '+code+'?'))return;
   try{const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code),{method:'DELETE'});if(r.status===401){toast('Sessão expirada',false);return;}const d=await r.json();if(d.ok){toast('Chave excluída');await doRefresh();}}catch(e){toast('Erro',false);}
+}
+async function clearSuspect(code){
+  if(!confirm('Marcar chave '+code+' como verificada e remover alerta de suspeita?'))return;
+  try{
+    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/clear-suspect',{method:'POST'});
+    const d=await r.json();
+    if(d.ok){toast('✅ Alerta removido — chave marcada como verificada');await doRefresh();}
+    else toast('Erro: '+(d.error||'?'),false);
+  }catch(e){toast('Erro de rede',false);}
 }
 
 async function filterLog(){
@@ -2039,7 +1811,7 @@ async function clearLog(){
   try{const body=date?{date}:{};const r=await fetch(_RA+'/api/logs',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(d.ok){toast(date?'Log do dia limpo!':'Log completo apagado!');clearFilters();}}catch(e){toast('Erro ao limpar',false);}
 }
 
-function openRenew(code,label){document.getElementById('renewKeyCode').value=code;document.getElementById('renewKeyLabel').textContent=label;['renewDays','renewHours','renewMins'].forEach(id=>document.getElementById(id).value='');const dc=document.getElementById('renewDeferred');if(dc)dc.checked=false;document.getElementById('renewModal').classList.add('open');document.getElementById('renewDays').focus();}
+function openRenew(code,label){document.getElementById('renewKeyCode').value=code;document.getElementById('renewKeyLabel').textContent=label;['renewDays','renewHours','renewMins'].forEach(id=>document.getElementById(id).value='');document.getElementById('renewModal').classList.add('open');document.getElementById('renewDays').focus();}
 function closeRenew(){document.getElementById('renewModal').classList.remove('open');}
 document.getElementById('renewModal').addEventListener('click',function(e){if(e.target===this)closeRenew();});
 async function saveRenew(){
@@ -2048,15 +1820,8 @@ async function saveRenew(){
   const hours=parseInt(document.getElementById('renewHours').value)||0;
   const mins=parseInt(document.getElementById('renewMins').value)||0;
   if(!days&&!hours&&!mins){toast('Informe pelo menos um valor.',false);return;}
-  const deferredEl=document.getElementById('renewDeferred');
-  const deferred=deferredEl&&deferredEl.checked;
-  const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/renew',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({days,hours,mins,deferred})});
-  const d=await r.json();
-  if(d.ok){
-    if(d.deferred)toast('✅ Renovada! Ativará ao 1º uso ('+days+'d '+hours+'h '+mins+'min)');
-    else toast('✅ Tempo adicionado! Expira: '+new Date(d.expiresAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}));
-    closeRenew();await doRefresh();
-  }else toast('Erro: '+(d.error||'?'),false);
+  const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/renew',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({days,hours,mins})});
+  const d=await r.json();if(d.ok){toast('✅ Tempo adicionado! Expira: '+new Date(d.expiresAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}));closeRenew();await doRefresh();}else toast('Erro: '+(d.error||'?'),false);
 }
 
 function openEditUses(code,label,current){document.getElementById('editUsesCode').value=code;document.getElementById('editUsesLabel').textContent=label;document.getElementById('editUsesValue').value=current;document.getElementById('editUsesModal').classList.add('open');setTimeout(()=>{document.getElementById('editUsesValue').focus();document.getElementById('editUsesValue').select();},50);}
@@ -2075,7 +1840,6 @@ function openRename(code,label){document.getElementById('renameCode').value=code
 function closeRename(){document.getElementById('renameModal').classList.remove('open');}
 document.getElementById('renameModal').addEventListener('click',function(e){if(e.target===this)closeRename();});
 document.getElementById('renameValue').addEventListener('keydown',function(e){if(e.key==='Enter')saveRename();});
-document.addEventListener('keydown',function(e){if(e.key==='Escape'){document.querySelectorAll('.modal-bg.open').forEach(function(m){m.classList.remove('open');});}if(e.key==='/'&&document.activeElement.tagName!=='INPUT'&&document.activeElement.tagName!=='TEXTAREA'){e.preventDefault();const si=document.getElementById('search-input');if(si)si.focus();}});
 async function saveRename(){
   const code=document.getElementById('renameCode').value;
   const label=document.getElementById('renameValue').value.trim();
@@ -2091,7 +1855,7 @@ function openPhones(code,label){
   fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/phones').then(r=>r.json()).then(d=>{
     if(!d.phones||d.phones.length===0){list.innerHTML='<em style="color:var(--muted);font-size:12px">Nenhum número cadastrado</em>';document.getElementById('removeAllBtn').style.display='none';modal.dataset.phones='[]';return;}
     document.getElementById('removeAllBtn').style.display='';modal.dataset.phones=JSON.stringify(d.phones);
-    list.innerHTML=d.phones.map((ph,i)=>'<div class="ph-item"><span class="ph-num">'+ph.replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]))+'</span><button class="ab ab-r" data-idx="'+i+'" onclick="removePhone(this)">Remover</button></div>').join('');
+    list.innerHTML=d.phones.map((ph,i)=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)"><span style="font-size:13px;font-family:monospace;color:var(--text)">'+ph.replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]))+'</span><button class="bs bd" data-idx="'+i+'" onclick="removePhone(this)">Remover</button></div>').join('');
   }).catch(()=>{list.innerHTML='<em style="color:var(--red)">Erro ao carregar</em>';});
 }
 function closePhones(){document.getElementById('phonesModal').classList.remove('open');}
@@ -2109,25 +1873,12 @@ async function removeAllPhones(){
   const d=await r.json();if(d.ok){toast('Todos removidos.');closePhones();await doRefresh();}else toast('Erro: '+(d.error||'?'),false);
 }
 
-function _splitNote(note){
-  note=note||'';
-  const m=note.match(/Email: ([^\s|]+)/);
-  const email=m?m[1]:'';
-  const rest=note.replace(/Email: [^\s|]+\s*/,'').trim();
-  return {email,rest};
-}
-function openNote(code,currentNote){const parts=_splitNote(currentNote);document.getElementById('noteKeyCode').value=code;document.getElementById('noteKeyLabel').textContent=code;document.getElementById('noteEmail').value=parts.email;document.getElementById('noteText').value=parts.rest;document.getElementById('noteModal').classList.add('open');setTimeout(()=>document.getElementById('noteText').focus(),100);}
+function openNote(code,currentNote){document.getElementById('noteKeyCode').value=code;document.getElementById('noteKeyLabel').textContent=code;document.getElementById('noteText').value=currentNote||'';document.getElementById('noteModal').classList.add('open');setTimeout(()=>document.getElementById('noteText').focus(),100);}
 function closeNote(){document.getElementById('noteModal').classList.remove('open');}
 document.getElementById('noteModal').addEventListener('click',function(e){if(e.target===this)closeNote();});
 document.getElementById('kb').addEventListener('click',function(e){const td=e.target.closest('.note-cell');if(!td)return;openNote(td.dataset.code||'',td.dataset.note||'');});
 async function saveNote(){
-  const code=document.getElementById('noteKeyCode').value;
-  const rest=document.getElementById('noteText').value.trim();
-  const email=document.getElementById('noteEmail').value.trim().toLowerCase();
-  if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){toast('❌ E-mail inválido',false);return;}
-  let note=rest;
-  if(email)note=(rest?rest+' ':'')+'Email: '+email;
-  note=note.slice(0,500);
+  const code=document.getElementById('noteKeyCode').value,note=document.getElementById('noteText').value.trim();
   const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note})});
   const d=await r.json();if(d.ok){toast('Nota salva!');closeNote();await doRefresh();}else toast('Erro ao salvar nota',false);
 }
@@ -2135,12 +1886,9 @@ async function saveNote(){
 async function exportCSV(){
   try{const r=await fetch(_RA+'/api/export/csv');if(r.status===401){toast('Sessão expirada',false);return;}const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='zvm-chaves-'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(url);toast('CSV exportado!');}catch(e){toast('Erro ao exportar',false);}
 }
-
-
 </script>
 ${CANVAS_BG}</body></html>`;
 }
-
 
 function renderPlanosPage() {
   const PLANOS = [
@@ -2151,36 +1899,37 @@ function renderPlanosPage() {
   ];
 
   const cards = PLANOS.map(p => {
-      const comingSoon = p.link === '#';
-      return `<div class="plan-card${p.highlight?' hl':''}">
-    ${p.highlight?'<div class="pop-badge">⚡ Mais popular</div>':''}
+    const comingSoon = p.link === '#';
+    return `<div class="plan-card${p.highlight?' hl':''}">
+  ${p.highlight?'<div class="pop-badge">⚡ Mais popular</div>':''}
+  <div class="plan-top">
     <div class="plan-icon">${p.icon}</div>
     <div class="plan-name">${p.label}</div>
     <div class="plan-sub">${p.devices} número${p.devices>1?'s':''} de WhatsApp</div>
-    <div class="plan-pricing">
-      ${p.oldPrice?`<div class="old-price">R$ ${p.oldPrice}</div>`:''}
-      <div class="plan-price"><span class="cur">R$</span><span class="val">${p.price}</span><span class="per">/mês</span></div>
-      <div class="per-device">R$ ${p.perDevice} por número</div>
-    </div>
-    <div class="plan-divider"></div>
-    <ul class="plan-features">
-      <li>✅ Até ${p.devices} número(s) de WhatsApp</li>
-      <li>✅ 30 dias de acesso</li>
-      <li>✅ Todos os recursos inclusos</li>
-      <li>✅ Renovação automática pelo portal</li>
-    </ul>
-    <a href="${p.link}" class="plan-btn${p.highlight?' btn-hl':''}" ${comingSoon?'onclick="return false;"':'target="_blank"'}>
-      ${comingSoon?'🔒 Em breve':'💳 Assinar agora'}
-    </a>
-  </div>`;
-    }).join('');
+  </div>
+  <div class="plan-pricing">
+    ${p.oldPrice?`<div class="old-price">R$ ${p.oldPrice}</div>`:''}
+    <div class="plan-price"><span class="cur">R$</span><span class="val">${p.price}</span><span class="per">/mês</span></div>
+    <div class="per-device">R$ ${p.perDevice} por número</div>
+  </div>
+  <div class="plan-divider"></div>
+  <ul class="plan-features">
+    <li>✅ Até ${p.devices} número(s) de WhatsApp</li>
+    <li>✅ 30 dias de acesso</li>
+    <li>✅ Todos os recursos inclusos</li>
+    <li>✅ Renovação automática pelo portal</li>
+  </ul>
+  <a href="${p.link}" class="plan-btn${p.highlight?' btn-hl':''}" ${comingSoon?'onclick="return false;"':'target="_blank"'}>
+    ${comingSoon?'🔒 Em breve':'💳 Assinar agora'}
+  </a>
+</div>`;
+  }).join('');
 
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='900' font-size='13' fill='%2300ff00'%3EZVM%3C/text%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-<title>ZVM &mdash; Planos e Preços</title>
+<title>ZVM — Planos e Preços</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--card2:#13131f;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--radius:14px}
@@ -2269,108 +2018,57 @@ footer{text-align:center;padding:28px;font-size:13px;color:#8a8aaa;border-top:1p
 footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
 @media(max-width:800px){.plans{grid-template-columns:1fr 1fr}.inc-grid{grid-template-columns:1fr}}
 @media(max-width:480px){.plans{grid-template-columns:1fr}.guarantee{flex-direction:column;gap:10px}}
-
-/* Nav */
-/* Responsive nav */
-.nav{position:sticky;top:0;z-index:50;background:var(--card);border-bottom:1px solid var(--border)}
-.nav-in{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:60px;overflow:hidden}
-.nav-mark{width:32px;height:32px;background:linear-gradient(135deg,var(--green),#00cc55);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;color:#080810;flex-shrink:0;font-family:'Syne',monospace}
-.nav-text{font-family:'Syne',sans-serif;font-weight:800;font-size:16px;color:#fff;margin-left:8px}
-.nav-toggle{display:none;background:none;border:1px solid var(--border);border-radius:6px;width:38px;height:38px;cursor:pointer;color:var(--text);font-size:18px;align-items:center;justify-content:center;flex-shrink:0}
-@media(max-width:760px){
-  .nav-links{position:fixed;inset:60px 0 auto 0;background:var(--card);border-bottom:1px solid var(--border);flex-direction:column;align-items:stretch;padding:12px 20px;gap:4px;display:none}
-  .nav-links.open{display:flex}
-  .nav-links a{padding:12px 16px;font-size:14px}
-  .nav-toggle{display:flex}
-  .nav-text{display:none}
-}</style><style>
-.plans-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:clamp(40px,6vw,64px)}
-.plan-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:clamp(24px,3vw,32px);display:flex;flex-direction:column;position:relative;transition:border-color .2s,transform .2s}
-.plan-card:hover{transform:translateY(-4px);border-color:var(--border2)}
-.plan-card.hl{border-color:var(--green-border);background:linear-gradient(160deg,var(--green-soft),var(--card) 60%)}
-.pop-badge{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#00ff00,#00cc00);color:#080810;font-size:12px;font-weight:800;padding:5px 16px;border-radius:100px;font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap}
-.plan-icon{font-size:32px;margin-bottom:8px}
-.plan-name{font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;font-size:20px;color:#fff;margin-bottom:4px}
-.plan-sub{font-size:13px;color:var(--text2)}
-.plan-pricing{margin:20px 0}
-.old-price{font-size:14px;color:var(--muted);text-decoration:line-through;margin-bottom:2px}
-.plan-price{display:flex;align-items:baseline;gap:4px}
-.plan-price .cur{font-size:16px;font-weight:700;color:var(--text2)}
-.plan-price .val{font-size:clamp(30px,3vw,40px);font-weight:800;font-family:'Plus Jakarta Sans',sans-serif;color:#fff;letter-spacing:-.02em}
-.plan-price .per{font-size:14px;color:var(--muted)}
-.per-device{font-size:13px;color:var(--green);margin-top:4px;font-weight:600}
-.plan-divider{height:1px;background:var(--border);margin:18px 0}
-.plan-features{list-style:none;display:flex;flex-direction:column;gap:9px;margin-bottom:24px;flex:1}
-.plan-features li{font-size:14px;color:var(--text2)}
-.plan-btn{display:block;text-align:center;padding:13px;border-radius:var(--radius-sm);font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:14px;background:var(--card2);border:1.5px solid var(--border2);color:var(--text);transition:all .18s}
-.plan-btn:hover{border-color:var(--green);color:var(--green)}
-.plan-btn.btn-hl{background:linear-gradient(135deg,#00ff00,#00cc00);color:#080810;border:none}
-.plan-btn.btn-hl:hover{box-shadow:0 10px 30px #00ff0030;transform:translateY(-2px)}
-.guarantee{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:24px}
-.guarantee span{background:var(--card);border:1px solid var(--border);border-radius:100px;padding:8px 18px;font-size:13px;color:var(--text2);font-weight:600}
-.wip-banner{display:flex;align-items:center;gap:14px;background:var(--green-soft);border:1px solid var(--green-border);border-radius:var(--radius);padding:16px 20px;margin-bottom:32px;font-size:14px;color:var(--text2)}
-.compare-wrap{overflow-x:auto;margin-bottom:clamp(40px,6vw,64px)}
-table.compare{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;min-width:560px}
-table.compare th,table.compare td{padding:14px 18px;text-align:center;font-size:14px;border-bottom:1px solid var(--border)}
-table.compare th{font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;color:#fff;background:var(--card2)}
-table.compare td:first-child,table.compare th:first-child{text-align:left;color:var(--text2)}
-table.compare tr:last-child td{border-bottom:none}
-table.compare .ck{color:var(--green);font-weight:700}
-.includes-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:clamp(40px,6vw,64px)}
-.inc-item{display:flex;align-items:flex-start;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;font-size:14px;color:var(--text2)}
-.inc-item .ic{font-size:20px;flex-shrink:0}
-@media(max-width:900px){.plans-grid{grid-template-columns:1fr 1fr}.includes-grid{grid-template-columns:1fr}}
-@media(max-width:560px){.plans-grid{grid-template-columns:1fr}}
 </style></head><body>
-${CANVAS_BG}
-<nav class="nav"><div class="nav-in">
-  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span><span class="nav-text">Planos</span></a>
-  <button class="nav-toggle" onclick="document.getElementById('navlinks').classList.toggle('open')">☰</button>
-  <div class="nav-links" id="navlinks">
-    <a href="/planos" class="active">Planos</a>
-    <a href="/client" class="">Portal do Cliente</a>
-    <a href="/faq" class="">FAQ</a>
-    <a href="/privacidade" class="">Privacidade</a>
+<header>
+  <a href="/" class="logo">⚡ ZVM</a>
+  <div class="hlinks">
+    <a href="/">Portal</a>
+    <a href="/faq">FAQ</a>
+    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank">💬 Suporte</a>
   </div>
-</div></nav>
-<div class="wrap">
-  <section class="hero">
+</header>
+<main>
+
+  <div class="hero">
     <div class="hero-badge">💳 Planos e Preços</div>
-    <h1>Simples, transparente<br>e sem surpresas</h1>
-    <p class="sub">Escolha o plano ideal para o seu uso. Todos incluem acesso completo à extensão ZVM por 30 dias.</p>
+    <h1>Simples, <em>transparente</em><br>e sem surpresas</h1>
+    <p class="hero-sub">Escolha o plano ideal para o seu uso. Todos incluem acesso completo à extensão ZVM por 30 dias.</p>
     <div class="guarantee">
       <span>✅ Sem fidelidade</span>
       <span>⚡ Ativação imediata</span>
       <span>💬 Suporte incluso</span>
     </div>
-  </section>
+  </div>
 
-  <section class="section" style="padding-top:0">
-    <div class="wip-banner">
-      <span style="font-size:18px;flex-shrink:0">🚧</span>
-      <span><strong>Links de pagamento em breve!</strong> Os planos já estão configurados — assim que os links da Payt forem adicionados você poderá assinar direto por aqui.</span>
-    </div>
+  <div class="wip-banner">
+    <span style="font-size:18px;flex-shrink:0">🚧</span>
+    <span><strong>Links de pagamento em breve!</strong> Os planos já estão configurados — assim que os links da Payt forem adicionados você poderá assinar direto por aqui.</span>
+  </div>
 
-    <div class="plans-grid">${cards}</div>
+  <div class="plans">${cards}</div>
 
-    <div class="section-head"><h2>Comparativo dos planos</h2></div>
-    <div class="compare-wrap">
-      <table class="compare">
-        <thead><tr><th>Recurso</th><th>Solo</th><th>Padrão</th><th>Pro</th><th>Empresarial</th></tr></thead>
-        <tbody>
-          <tr><td>Números de WhatsApp</td><td>1</td><td>3</td><td>5</td><td>10</td></tr>
-          <tr><td>Preço mensal</td><td>R$ 24,99</td><td>R$ 29,99</td><td>R$ 39,99</td><td>R$ 59,99</td></tr>
-          <tr><td>Preço por número</td><td>R$ 24,99</td><td class="ck">R$ 10,00</td><td class="ck">R$ 8,00</td><td class="ck">R$ 6,00</td></tr>
-          <tr><td>Todos os recursos</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
-          <tr><td>Portal do cliente</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
-          <tr><td>Suporte WhatsApp</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
-          <tr><td>Renovação automática</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
-        </tbody>
-      </table>
-    </div>
+  <div class="compare">
+    <div class="compare-title">📊 Comparativo dos planos</div>
+    <table>
+      <thead><tr>
+        <th style="text-align:left">Recurso</th>
+        <th>Solo</th><th>Padrão</th><th>Pro</th><th>Empresarial</th>
+      </tr></thead>
+      <tbody>
+        <tr><td>Números de WhatsApp</td><td>1</td><td>3</td><td>5</td><td>10</td></tr>
+        <tr><td>Preço mensal</td><td>R$ 24,99</td><td>R$ 29,99</td><td>R$ 39,99</td><td>R$ 59,99</td></tr>
+        <tr><td>Preço por número</td><td>R$ 24,99</td><td style="color:var(--green)">R$ 10,00</td><td style="color:var(--green)">R$ 8,00</td><td style="color:var(--green)">R$ 6,00</td></tr>
+        <tr><td>Todos os recursos</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
+        <tr><td>Portal do cliente</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
+        <tr><td>Suporte WhatsApp</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
+        <tr><td>Renovação automática</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
+      </tbody>
+    </table>
+  </div>
 
-    <div class="section-head"><h2>Incluso em todos os planos</h2></div>
-    <div class="includes-grid">
+  <div class="includes">
+    <div class="inc-title">✅ Incluso em todos os planos</div>
+    <div class="inc-grid">
       <div class="inc-item"><span class="ic">⚡</span><span>Acesso completo à extensão ZVM para WhatsApp Web</span></div>
       <div class="inc-item"><span class="ic">🔄</span><span>Atualizações automáticas durante a vigência</span></div>
       <div class="inc-item"><span class="ic">📱</span><span>Portal do cliente para gerenciar sua chave</span></div>
@@ -2380,75 +2078,58 @@ ${CANVAS_BG}
       <div class="inc-item"><span class="ic">🔁</span><span>Renovação soma ao tempo restante</span></div>
       <div class="inc-item"><span class="ic">🔒</span><span>Chave exclusiva e intransferível</span></div>
     </div>
+  </div>
 
-    <div class="section-head"><h2>Dúvidas sobre os planos</h2></div>
-    <div class="faq-list">
-      <details class="faq-item">
-        <summary>O que é um &quot;número de WhatsApp&quot; no plano?<span class="faq-chev">&#8964;</span></summary>
-        <div class="faq-ans">Cada número corresponde a um WhatsApp diferente que pode usar a extensão simultaneamente. No plano Padrão (3 números), três números distintos podem usar ao mesmo tempo. Você gerencia quais números estão ativos pelo <a href="/client" style="color:var(--green)">Portal do Cliente</a>.</div>
-      </details>
-      <details class="faq-item">
-        <summary>Quando minha chave é ativada após o pagamento?<span class="faq-chev">&#8964;</span></summary>
-        <div class="faq-ans">Imediatamente após a confirmação do pagamento pela Payt. Para PIX é instantâneo. A chave já estará disponível no portal do cliente antes mesmo de você fechar a janela de confirmação.</div>
-      </details>
-      <details class="faq-item">
-        <summary>Se eu já tenho uma chave e compro de novo, o que acontece?<span class="faq-chev">&#8964;</span></summary>
-        <div class="faq-ans">Sua chave existente é renovada automaticamente — os 30 dias são somados ao tempo que ainda resta. Você não perde nenhum dia e não precisa de uma chave nova.</div>
-      </details>
-      <details class="faq-item">
-        <summary>Posso mudar de plano (upgrade ou downgrade)?<span class="faq-chev">&#8964;</span></summary>
-        <div class="faq-ans">Sim. Entre em contato com o suporte via WhatsApp e ajustamos o seu plano sem complicações.</div>
-      </details>
-      <details class="faq-item">
-        <summary>O que acontece quando minha chave expira?<span class="faq-chev">&#8964;</span></summary>
-        <div class="faq-ans">A extensão para de funcionar até que você renove. Seu histórico e configurações são mantidos — basta renovar e tudo volta exatamente como estava.</div>
-      </details>
+  <div class="faq">
+    <div class="faq-title">💬 Dúvidas frequentes</div>
+    <div class="faq-item">
+      <div class="faq-q">O que é um "número de WhatsApp" no plano? <span class="arr">▶</span></div>
+      <div class="faq-a">Cada número corresponde a um WhatsApp diferente que pode usar a extensão simultaneamente. No plano Padrão (3 números), por exemplo, três números distintos podem usar ao mesmo tempo. Você gerencia quais números estão ativos pelo portal do cliente.</div>
     </div>
-
-    <div class="cta-box">
-      <h3>Ainda tem dúvidas?</h3>
-      <p>Nossa equipe está disponível para te ajudar a escolher o melhor plano ou esclarecer qualquer questão antes de assinar.</p>
-      <div class="cta-actions">
-        <a class="btn btn-wa" href="https://wa.me/5521996771552?text=LR!%20Quero%20saber%20mais%20sobre%20os%20planos%20do%20ZVM." target="_blank">💬 Falar com o Suporte</a>
-      </div>
+    <div class="faq-item">
+      <div class="faq-q">Quando minha chave é ativada após o pagamento? <span class="arr">▶</span></div>
+      <div class="faq-a">Imediatamente após a confirmação do pagamento pela Payt. Para PIX é instantâneo. A chave já estará disponível no portal do cliente antes mesmo de você fechar a janela de confirmação.</div>
     </div>
-  </section>
-</div>
-<footer class="footer"><div class="wrap">
-  <div class="footer-grid">
-    <div class="footer-brand">
-      <div class="nav-logo"><span class="nav-mark">ZVM</span></div>
-      <p>Sistema de licenciamento para a extensão ZVM. Controle de acesso seguro e gestão de dispositivos.</p>
+    <div class="faq-item">
+      <div class="faq-q">Se eu já tenho uma chave e compro de novo, o que acontece? <span class="arr">▶</span></div>
+      <div class="faq-a">Sua chave existente é renovada automaticamente — os 30 dias são somados ao tempo que ainda resta. Você não perde nenhum dia e não precisa de uma chave nova.</div>
     </div>
-    <div class="footer-col"><h4>Produto</h4>
-      <a href="/planos">Planos e Preços</a>
-      <a href="/client">Portal do Cliente</a>
-      <a href="/faq">Perguntas Frequentes</a>
+    <div class="faq-item">
+      <div class="faq-q">Posso mudar de plano (upgrade ou downgrade)? <span class="arr">▶</span></div>
+      <div class="faq-a">Sim. Entre em contato com o suporte via WhatsApp e ajustamos o seu plano sem complicações.</div>
     </div>
-    <div class="footer-col"><h4>Suporte</h4>
-      <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM%20LR1290." target="_blank">WhatsApp</a>
-      <a href="/faq">Central de Ajuda</a>
-    </div>
-    <div class="footer-col"><h4>Legal</h4>
-      <a href="/privacidade">Privacidade</a>
+    <div class="faq-item">
+      <div class="faq-q">O que acontece quando minha chave expira? <span class="arr">▶</span></div>
+      <div class="faq-a">A extensão para de funcionar até que você renove. Seu histórico e configurações são mantidos — basta renovar e tudo volta exatamente como estava.</div>
     </div>
   </div>
-  <div class="footer-bottom">
-    &copy; ${new Date().getFullYear()} ZVM &mdash; Todos os direitos reservados<br>
-    Licenciamento da extensão ZVM
+
+  <div class="cta">
+    <h3>Ainda tem dúvidas?</h3>
+    <p>Nossa equipe está disponível para te ajudar a escolher o melhor plano<br>ou esclarecer qualquer questão antes de assinar.</p>
+    <a class="btn-wpp" href="https://wa.me/5521996771552?text=LR!%20Quero%20saber%20mais%20sobre%20os%20planos%20do%20ZVM." target="_blank">💬 Falar com o Suporte no WhatsApp</a>
   </div>
-</div></footer>
-<script>document.querySelectorAll('.nav-links a').forEach(function(a){a.addEventListener('click',function(){document.getElementById('navlinks').classList.remove('open');});});</script>
+
+</main>
+<footer>
+  <p>© ${new Date().getFullYear()} ZVM — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/privacidade">Privacidade</a></p>
+  <p style="margin-top:6px;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:.5">Todos os direitos reservados</p>
+</footer>
+<script>
+document.querySelectorAll('.faq-item').forEach(item=>{
+  item.querySelector('.faq-q').addEventListener('click',()=>item.classList.toggle('open'));
+});
+</script>
+${CANVAS_BG}
 </body></html>`;
 }
 
 function renderFaqPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='900' font-size='13' fill='%2300ff00'%3EZVM%3C/text%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-<title>ZVM &mdash; Perguntas Frequentes</title>
+<title>ZVM — FAQ</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--radius:14px}
@@ -2493,119 +2174,67 @@ main{max-width:920px;margin:0 auto;padding:60px 32px 80px}
 footer{text-align:center;padding:28px;font-size:13px;color:#8a8aaa;border-top:1px solid var(--border);font-family:'Syne',sans-serif}
 footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
 @media(max-width:520px){.coming-grid{grid-template-columns:1fr}.wip-card{padding:28px 20px}.header-links a{padding:5px 9px;font-size:12px}main{padding:40px 16px 60px}}
-
-/* Nav */
-/* Responsive nav */
-.nav{position:sticky;top:0;z-index:50;background:var(--card);border-bottom:1px solid var(--border)}
-.nav-in{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:60px;overflow:hidden}
-.nav-mark{width:32px;height:32px;background:linear-gradient(135deg,var(--green),#00cc55);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;color:#080810;flex-shrink:0;font-family:'Syne',monospace}
-.nav-text{font-family:'Syne',sans-serif;font-weight:800;font-size:16px;color:#fff;margin-left:8px}
-.nav-toggle{display:none;background:none;border:1px solid var(--border);border-radius:6px;width:38px;height:38px;cursor:pointer;color:var(--text);font-size:18px;align-items:center;justify-content:center;flex-shrink:0}
-@media(max-width:760px){
-  .nav-links{position:fixed;inset:60px 0 auto 0;background:var(--card);border-bottom:1px solid var(--border);flex-direction:column;align-items:stretch;padding:12px 20px;gap:4px;display:none}
-  .nav-links.open{display:flex}
-  .nav-links a{padding:12px 16px;font-size:14px}
-  .nav-toggle{display:flex}
-  .nav-text{display:none}
-}</style>
-</head><body>
-${CANVAS_BG}
-<nav class="nav"><div class="nav-in">
-  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span><span class="nav-text">FAQ</span></a>
-  <button class="nav-toggle" onclick="document.getElementById('navlinks').classList.toggle('open')">☰</button>
-  <div class="nav-links" id="navlinks">
-    <a href="/planos">Planos</a>
-    <a href="/client">Portal do Cliente</a>
-    <a href="/faq" class="active">FAQ</a>
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo">⚡ ZVM</a>
+  <div class="header-links">
+    <a href="/">Portal</a>
     <a href="/privacidade">Privacidade</a>
+    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM%20LR1290." target="_blank">💬 Suporte</a>
   </div>
-</div></nav>
-<div class="wrap">
-  <section class="hero">
-    <div class="hero-badge">&#10067; Central de Ajuda</div>
-    <h1>Perguntas Frequentes</h1>
-    <p class="sub">Tudo o que voce precisa saber sobre ativacao, dispositivos, renovacao e pagamentos.</p>
-  </section>
-  <section class="section" style="padding-top:0">
-    <div class="faq-list">
-      <details class="faq-item">
-  <summary>Como ativo minha chave no WhatsApp Web?<span class="faq-chev">&#8964;</span></summary>
-  <div class="faq-ans">Apos instalar a extensao, abra o WhatsApp Web. Uma tela de ativacao aparecera pedindo sua chave. Cole a chave que voce recebeu (formato <code>zv-xxxxx-xxxxx-xxxxx</code>) e clique em <strong>Ativar</strong>. Pronto &mdash; a extensao estara liberada para uso.</div>
-</details>
-<details class="faq-item">
-  <summary>Minha chave nao funciona, o que fazer?<span class="faq-chev">&#8964;</span></summary>
-  <div class="faq-ans">Verifique se copiou a chave completa, sem espacos antes ou depois. Se o problema persistir, consulte o status da sua chave no <a href='/client' style='color:var(--green)'>Portal do Cliente</a> ou fale com o suporte pelo WhatsApp.</div>
-</details>
-<details class="faq-item">
-  <summary>Quantos numeros posso usar com uma chave?<span class="faq-chev">&#8964;</span></summary>
-  <div class="faq-ans">Depende do seu plano. O plano <strong>Solo</strong> permite 1 numero, o <strong>Padrao</strong> 3, o <strong>Pro</strong> 5 e o <strong>Empresarial</strong> 10. Voce pode ver o limite e os numeros ativos no Portal do Cliente.</div>
-</details>
-<details class="faq-item">
-  <summary>Como removo um numero para usar em outro celular?<span class="faq-chev">&#8964;</span></summary>
-  <div class="faq-ans">Acesse o <a href='/client' style='color:var(--green)'>Portal do Cliente</a>, consulte sua chave e clique em remover ao lado do numero que deseja liberar. Depois e so ativar a chave no novo aparelho.</div>
-</details>
-<details class="faq-item">
-  <summary>Como sei quando minha chave expira?<span class="faq-chev">&#8964;</span></summary>
-  <div class="faq-ans">No Portal do Cliente voce ve a data exata de expiracao e quantas horas restam. Quando faltam menos de 48 horas, um aviso de "Expirando em breve" aparece.</div>
-</details>
-<details class="faq-item">
-  <summary>Como renovo minha chave?<span class="faq-chev">&#8964;</span></summary>
-  <div class="faq-ans">Entre em contato pelo WhatsApp para renovar. Sua chave e seus numeros cadastrados sao <strong>preservados</strong> &mdash; apenas o prazo e estendido.</div>
-</details>
-<details class="faq-item">
-  <summary>Quais formas de pagamento sao aceitas?<span class="faq-chev">&#8964;</span></summary>
-  <div class="faq-ans">Trabalhamos principalmente com <strong>PIX</strong> pela praticidade e confirmacao instantanea. Consulte o suporte para outras opcoes.</div>
-</details>
-    </div>
-    <div class="cta-box">
-      <h2>Ainda tem duvidas?</h2>
-      <p>Nossa equipe responde rapido pelo WhatsApp.</p>
-      <div class="cta-actions">
-        <a class="btn btn-wa" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM." target="_blank">&#128172; Falar no WhatsApp</a>
-        <a class="btn btn-ghost" href="/client">Acessar Portal</a>
-      </div>
-    </div>
-  </section>
-</div>
-<footer class="footer"><div class="wrap">
-  <div class="footer-grid">
-    <div class="footer-brand">
-      <div class="nav-logo"><span class="nav-mark">ZVM</span></div>
-      <p>Sistema de licenciamento para a extensao ZVM. Controle de acesso seguro e gestao de dispositivos.</p>
-    </div>
-    <div class="footer-col"><h4>Produto</h4>
-      <a href="/planos">Planos e Precos</a>
-      <a href="/client">Portal do Cliente</a>
-      <a href="/faq">Perguntas Frequentes</a>
-    </div>
-    <div class="footer-col"><h4>Suporte</h4>
-      <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM." target="_blank">WhatsApp</a>
-      <a href="/faq">Central de Ajuda</a>
-    </div>
-    <div class="footer-col"><h4>Legal</h4>
-      <a href="/privacidade">Privacidade</a>
+</header>
+<main>
+  <div class="hero">
+    <div class="hero-badge">Central de Ajuda</div>
+    <h1>Perguntas <span>Frequentes</span></h1>
+    <p class="hero-sub">Estamos construindo uma base de conhecimento completa para você. Em breve tudo estará aqui.</p>
+  </div>
+  <div class="wip-card">
+    <span class="wip-icon">🚧</span>
+    <div class="wip-title">Estamos <span>trabalhando nisso!</span></div>
+    <p class="wip-desc">Nossa central de FAQ está sendo desenvolvida com muito cuidado. Em breve você encontrará aqui respostas para todas as suas dúvidas sobre ativação, dispositivos, renovação, pagamentos e muito mais.</p>
+    <div class="progress-wrap"><div class="progress-bar"></div></div>
+    <p class="progress-label">Em desenvolvimento</p>
+  </div>
+  <p class="coming-title">O que vem por aí</p>
+  <div class="coming-grid">
+    <div class="coming-item"><span class="ic">🔑</span><div><h3>Ativação da Chave</h3><p>Como inserir e ativar sua chave no WhatsApp Web.</p></div></div>
+    <div class="coming-item"><span class="ic">📱</span><div><h3>Gerenciar Dispositivos</h3><p>Como adicionar, remover e trocar números vinculados.</p></div></div>
+    <div class="coming-item"><span class="ic">⏱</span><div><h3>Renovação e Validade</h3><p>Entenda como funciona a expiração e como renovar.</p></div></div>
+    <div class="coming-item"><span class="ic">💳</span><div><h3>Pagamentos</h3><p>Dúvidas sobre cobrança, planos e confirmação de compra.</p></div></div>
+    <div class="coming-item"><span class="ic">⚡</span><div><h3>Recursos da Extensão</h3><p>Como usar fluxos, funis, agendamentos e disparos.</p></div></div>
+    <div class="coming-item"><span class="ic">🔒</span><div><h3>Privacidade e LGPD</h3><p>Quais dados coletamos e como protegemos suas informações.</p></div></div>
+  </div>
+  <div class="support-section">
+    <h2>Ainda tem dúvidas?</h2>
+    <p>Enquanto o FAQ não está pronto, nossa equipe está disponível no WhatsApp para te ajudar com qualquer dúvida.</p>
+    <div class="support-btns">
+      <a class="btn-wpp" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM%20LR1290." target="_blank">💬 Falar com o Suporte</a>
+      <a class="btn-portal" href="/">🔑 Portal do Cliente</a>
     </div>
   </div>
-  <div class="footer-bottom">
-    &copy; ${new Date().getFullYear()} ZVM &mdash; Todos os direitos reservados<br>
-    Licenciamento da extensao ZVM
   </div>
-</div></footer>
-<script>document.querySelectorAll('.nav-links a').forEach(function(a){a.addEventListener('click',function(){document.getElementById('navlinks').classList.remove('open');});});</script>
+</main>
+<footer>
+  <p>© ${new Date().getFullYear()} ZVM — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/privacidade">Privacidade</a></p>
+  <p style="margin-top:6px;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:.5">Todos os direitos reservados</p>
+</footer>
+${CANVAS_BG}
 </body></html>`;
 }
 
 function renderPrivacyPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='900' font-size='13' fill='%2300ff00'%3EZVM%3C/text%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-<title>ZVM &mdash; Politica de Privacidade</title>
+<title>ZVM — Política de Privacidade</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--radius:12px}
-body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
+body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh}
 header{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000060}
 .logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
 .header-links{display:flex;gap:10px}
@@ -2631,110 +2260,76 @@ main{max-width:720px;margin:0 auto;padding:56px 24px 80px}
 footer{text-align:center;padding:28px;font-size:13px;color:#8a8aaa;border-top:1px solid var(--border);font-family:'Syne',sans-serif}
 footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
 @media(max-width:520px){main{padding:32px 16px 60px}.section{padding:20px 18px}.header-links a{padding:5px 9px;font-size:12px}}
-
-/* Nav */
-/* Responsive nav */
-.nav{position:sticky;top:0;z-index:50;background:var(--card);border-bottom:1px solid var(--border)}
-.nav-in{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:60px;overflow:hidden}
-.nav-mark{width:32px;height:32px;background:linear-gradient(135deg,var(--green),#00cc55);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;color:#080810;flex-shrink:0;font-family:'Syne',monospace}
-.nav-text{font-family:'Syne',sans-serif;font-weight:800;font-size:16px;color:#fff;margin-left:8px}
-.nav-toggle{display:none;background:none;border:1px solid var(--border);border-radius:6px;width:38px;height:38px;cursor:pointer;color:var(--text);font-size:18px;align-items:center;justify-content:center;flex-shrink:0}
-@media(max-width:760px){
-  .nav-links{position:fixed;inset:60px 0 auto 0;background:var(--card);border-bottom:1px solid var(--border);flex-direction:column;align-items:stretch;padding:12px 20px;gap:4px;display:none}
-  .nav-links.open{display:flex}
-  .nav-links a{padding:12px 16px;font-size:14px}
-  .nav-toggle{display:flex}
-  .nav-text{display:none}
-}</style>
-</head><body>
-${CANVAS_BG}
-<nav class="nav"><div class="nav-in">
-  <a href="/planos" class="nav-logo"><span class="nav-mark">ZVM</span><span class="nav-text">Privacidade</span></a>
-  <button class="nav-toggle" onclick="document.getElementById('navlinks').classList.toggle('open')">☰</button>
-  <div class="nav-links" id="navlinks">
-    <a href="/planos">Planos</a>
-    <a href="/client">Portal do Cliente</a>
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo">⚡ ZVM</a>
+  <div class="header-links">
+    <a href="/">Portal</a>
     <a href="/faq">FAQ</a>
-    <a href="/privacidade" class="active">Privacidade</a>
+    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank">💬 Suporte</a>
   </div>
-</div></nav>
-<div class="wrap">
-  <section class="hero" style="padding-bottom:clamp(20px,3vw,32px)">
-    <div class="hero-badge">&#128274; LGPD</div>
-    <h1>Politica de Privacidade</h1>
-  </section>
-  <div class="priv-wrap">
-    <p class="priv-meta">Ultima atualizacao: ${new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}</p>
-    <div class="priv-sec">
-      <h2>&#128203; Visao Geral</h2>
-      <p>Esta Politica descreve como o ZVM coleta, utiliza e protege seus dados ao usar o servico de licenciamento da extensao ZVM.</p>
-      <p class="priv-legal">Ao ativar ou consultar sua chave de acesso, voce concorda com estes termos, em conformidade com a Lei Geral de Protecao de Dados (LGPD &mdash; Lei n&ordm; 13.709/2018).</p>
-    </div>
-    <div class="priv-sec">
-      <h2>&#128450; Dados que Coletamos</h2>
-      <p>Para fins exclusivos de licenciamento e controle de acesso, coletamos:</p>
-      <ul>
-        <li><strong>Numero de telefone</strong> &mdash; vinculado a chave para controle de dispositivos</li>
-        <li><strong>Endereco IP</strong> &mdash; para deteccao de uso indevido e seguranca</li>
-        <li><strong>Versao do WhatsApp Web</strong> &mdash; para compatibilidade tecnica</li>
-        <li><strong>Timestamps de acesso</strong> &mdash; data e hora de cada uso registrado</li>
-      </ul>
-      <div class="priv-note">&#9888;&#65039; Nao coletamos mensagens, contatos, conversas ou qualquer conteudo do WhatsApp. Nosso servico nao tem acesso ao conteudo das suas comunicacoes.</div>
-    </div>
-    <div class="priv-sec">
-      <h2>&#127919; Finalidade</h2>
-      <p>Os dados sao usados exclusivamente para:</p>
-      <ul>
-        <li>Validar e controlar o acesso a extensao ZVM</li>
-        <li>Detectar uso indevido ou compartilhamento nao autorizado de chaves</li>
-        <li>Suporte tecnico quando solicitado pelo usuario</li>
-        <li>Controle do numero de dispositivos vinculados por chave</li>
-      </ul>
-      <p class="priv-legal">Base legal: execucao de contrato (Art. 7&ordm;, V, LGPD).</p>
-    </div>
-    <div class="priv-sec">
-      <h2>&#9201; Retencao</h2>
-      <p>Registros de acesso sao removidos automaticamente apos <strong style="color:var(--text)">90 dias</strong>. Dados da chave sao mantidos enquanto ela estiver ativa. Ao excluir a chave, todos os dados associados sao removidos.</p>
-    </div>
-    <div class="priv-sec">
-      <h2>&#128274; Seguranca</h2>
-      <p>Dados armazenados no MongoDB Atlas com criptografia AES-256 em repouso e TLS em transito. O painel administrativo e protegido por senha e autenticacao de dois fatores (2FA).</p>
-    </div>
-    <div class="priv-sec">
-      <h2>&#129309; Compartilhamento</h2>
-      <p>Seus dados nao sao vendidos ou compartilhados com terceiros para fins comerciais. Apenas os provedores de infraestrutura tem acesso tecnico:</p>
-      <ul>
-        <li><strong>MongoDB Atlas</strong> &mdash; armazenamento dos dados</li>
-        <li><strong>Render.com</strong> &mdash; hospedagem do servidor</li>
-      </ul>
+</header>
+<main>
+  <div class="hero">
+    <div class="hero-badge">Legal</div>
+    <h1>Política de Privacidade</h1>
+    <p class="hero-meta">Última atualização: ${new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}</p>
+  </div>
+  <div class="section">
+    <h2>📋 Visão Geral</h2>
+    <p>Esta Política descreve como o <strong style="color:var(--text)">ZVM</strong> coleta, utiliza e protege seus dados ao usar o serviço de licenciamento da extensão ZVM.</p>
+    <p>Ao ativar ou consultar sua chave de acesso, você concorda com estes termos, em conformidade com a <strong style="color:var(--text)">Lei Geral de Proteção de Dados (LGPD — Lei nº 13.709/2018)</strong>.</p>
+  </div>
+  <div class="section">
+    <h2>🗂 Dados que Coletamos</h2>
+    <p>Para fins exclusivos de licenciamento e controle de acesso, coletamos:</p>
+    <ul>
+      <li><strong style="color:var(--text)">Chave de ativação</strong> — identificador único do seu acesso</li>
+      <li><strong style="color:var(--text)">Número de telefone</strong> — vinculado à chave para controle de dispositivos</li>
+      <li><strong style="color:var(--text)">Endereço IP</strong> — para detecção de uso indevido e segurança</li>
+      <li><strong style="color:var(--text)">Versão do WhatsApp Web</strong> — para compatibilidade técnica</li>
+      <li><strong style="color:var(--text)">Timestamps de acesso</strong> — data e hora de cada uso registrado</li>
+    </ul>
+    <div class="highlight">
+      <p>⚠️ <strong>Não coletamos</strong> mensagens, contatos, conversas ou qualquer conteúdo do WhatsApp. Nosso serviço não tem acesso ao conteúdo das suas comunicações.</p>
     </div>
   </div>
-</div>
-<footer class="footer"><div class="wrap">
-  <div class="footer-grid">
-    <div class="footer-brand">
-      <div class="nav-logo"><span class="nav-mark">ZVM</span></div>
-      <p>Sistema de licenciamento para a extensao ZVM. Controle de acesso seguro e gestao de dispositivos.</p>
-    </div>
-    <div class="footer-col"><h4>Produto</h4>
-      <a href="/planos">Planos e Precos</a>
-      <a href="/client">Portal do Cliente</a>
-      <a href="/faq">Perguntas Frequentes</a>
-    </div>
-    <div class="footer-col"><h4>Suporte</h4>
-      <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM." target="_blank">WhatsApp</a>
-      <a href="/faq">Central de Ajuda</a>
-    </div>
-    <div class="footer-col"><h4>Legal</h4>
-      <a href="/privacidade">Privacidade</a>
-    </div>
+  <div class="section">
+    <h2>🎯 Finalidade</h2>
+    <p>Os dados são usados exclusivamente para:</p>
+    <ul>
+      <li>Validar e controlar o acesso à extensão ZVM</li>
+      <li>Detectar uso indevido ou compartilhamento não autorizado de chaves</li>
+      <li>Suporte técnico quando solicitado pelo usuário</li>
+      <li>Controle do número de dispositivos vinculados por chave</li>
+    </ul>
+    <p>Base legal: <strong style="color:var(--text)">execução de contrato</strong> (Art. 7º, V, LGPD).</p>
   </div>
-  <div class="footer-bottom">
-    &copy; ${new Date().getFullYear()} ZVM &mdash; Todos os direitos reservados<br>
-    Licenciamento da extensao ZVM
+  <div class="section">
+    <h2>⏱ Retenção</h2>
+    <p>Registros de acesso são removidos automaticamente após <strong style="color:var(--text)">90 dias</strong>. Dados da chave são mantidos enquanto ela estiver ativa. Ao excluir a chave, todos os dados associados são apagados permanentemente.</p>
   </div>
-</div></footer>
-<script>document.querySelectorAll('.nav-links a').forEach(function(a){a.addEventListener('click',function(){document.getElementById('navlinks').classList.remove('open');});});</script>
+  <div class="section">
+    <h2>🔒 Segurança</h2>
+    <p>Dados armazenados no <strong style="color:var(--text)">MongoDB Atlas</strong> com criptografia AES-256 em repouso e TLS em trânsito. O painel administrativo é protegido por senha e autenticação de dois fatores (2FA).</p>
+  </div>
+  <div class="section">
+    <h2>🤝 Compartilhamento</h2>
+    <p>Seus dados <strong style="color:var(--text)">não são vendidos ou compartilhados</strong> com terceiros para fins comerciais. Apenas os provedores de infraestrutura têm acesso técnico:</p>
+    <ul>
+      <li><span class="tag">MongoDB Atlas</span> armazenamento dos dados</li>
+      <li><span class="tag">Render.com</span> hospedagem do servidor</li>
+    </ul>
+  </div>
+  </div>
+</main>
+<footer>
+  <p>© ${new Date().getFullYear()} ZVM — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/privacidade">Privacidade</a></p>
+  <p style="margin-top:6px;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:.5">Todos os direitos reservados</p>
+</footer>
+${CANVAS_BG}
 </body></html>`;
 }
 
@@ -2748,18 +2343,18 @@ function renderAnalyticsLogin(error = '') {
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#080810;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
 .card{background:#0f0f1a;border:1px solid #1c1c2e;border-radius:18px;padding:40px 36px;width:360px;position:relative;z-index:1;box-shadow:0 0 40px rgba(0,255,135,0.08)}
-.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#00ff00;margin-bottom:4px;text-align:center;letter-spacing:-0.5px}
+.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#00ff87;margin-bottom:4px;text-align:center;letter-spacing:-0.5px}
 .sub{color:#5a5a7a;font-size:12px;letter-spacing:3px;text-transform:uppercase;margin-bottom:24px;text-align:center}
-.badge{display:block;background:#00ff0012;border:1px solid #00ff0030;color:#00ff00;font-size:13px;letter-spacing:1px;text-transform:uppercase;padding:4px 14px;border-radius:20px;margin-bottom:20px;text-align:center;font-family:'Syne',sans-serif;font-weight:700}
+.badge{display:block;background:#00ff8712;border:1px solid #00ff8730;color:#00ff87;font-size:13px;letter-spacing:1px;text-transform:uppercase;padding:4px 14px;border-radius:20px;margin-bottom:20px;text-align:center;font-family:'Syne',sans-serif;font-weight:700}
 label{display:block;font-size:12px;letter-spacing:2px;color:#5a5a7a;text-transform:uppercase;margin-bottom:7px}
 input{width:100%;padding:11px 14px;background:#080810;border:1px solid #1c1c2e;border-radius:8px;color:#e2e2f0;font-family:'Space Mono',monospace;font-size:13px;outline:none;margin-bottom:16px;transition:border .2s}
-input:focus{border-color:#00ff00}
-.btn{width:100%;padding:12px;background:#00ff00;border:none;border-radius:8px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:opacity .2s}
+input:focus{border-color:#00ff87}
+.btn{width:100%;padding:12px;background:#00ff87;border:none;border-radius:8px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:opacity .2s}
 .btn:hover{opacity:.85}
 .err{background:#ff475715;border:1px solid #ff4757;border-radius:6px;color:#ff4757;padding:11px 14px;font-size:14px;margin-bottom:16px;font-family:'Syne',sans-serif}
 </style></head><body>
 <div class="card">
-  <div class="logo">⚡ ADMINISTRADOR</div>
+  <div class="logo">⚡ ZVM</div>
   <div class="sub">Painel de Analytics</div>
   <div class="badge">📊 Acesso Privado</div>
   ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
@@ -2790,14 +2385,14 @@ async function renderAnalyticsDashboard() {
   <td>${escH(p.clientName)}</td>
   <td style="color:#6b6b8a;font-size:12px">${escH(p.clientEmail)}</td>
   <td>${escH(p.productName)}</td>
-  <td style="color:${p.approved?'#00ff00':'#ff4757'};font-weight:700">${fmtBRL(p.amount)}</td>
+  <td style="color:${p.approved?'#00ff87':'#ff4757'};font-weight:700">${fmtBRL(p.amount)}</td>
   <td><span class="badge ${p.approved?'bon':'boff'}">${p.approved?'APROVADO':'REJEITADO'}</span></td>
   <td style="color:#4f8ef7;font-size:12px">${escH(p.keyCode||'-')}</td>
 </tr>`;
   }).join('') : '<tr><td colspan="7" class="empty">Nenhum pagamento registrado ainda.<br>Configure o webhook da Payt apontando para /payt/webhook</td></tr>';
 
   const topClientsRows = (stats?.topClients||[]).map(c =>
-    `<tr><td>${escH(c._id)}</td><td style="text-align:center;color:#00ff00;font-weight:700">${c.count}</td><td style="text-align:right;color:#00ff00">${fmtBRL(c.total)}</td></tr>`
+    `<tr><td>${escH(c._id)}</td><td style="text-align:center;color:#00ff87;font-weight:700">${c.count}</td><td style="text-align:right;color:#00ff87">${fmtBRL(c.total)}</td></tr>`
   ).join('') || '<tr><td colspan="3" class="empty">Sem dados</td></tr>';
 
   const modRows = (stats?.byMod||[]).map((m,i) =>
@@ -2811,11 +2406,11 @@ async function renderAnalyticsDashboard() {
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--gold:#00ff00;--dark:#080810;--card:#0f0f1a;--card2:#13131f;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--green:#00ff00;--red:#ff4757;--blue:#4f8ef7;--radius:10px}
+:root{--gold:#00ff87;--dark:#080810;--card:#0f0f1a;--card2:#13131f;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--green:#00ff87;--red:#ff4757;--blue:#4f8ef7;--radius:10px}
 body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh}
 header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040}
 .logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
-.badge-an{background:#00ff0012;border:1px solid #00ff0030;color:var(--green);font-size:12px;text-transform:uppercase;padding:4px 12px;border-radius:20px;font-family:'Syne',sans-serif;font-weight:700}
+.badge-an{background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-size:12px;text-transform:uppercase;padding:4px 12px;border-radius:20px;font-family:'Syne',sans-serif;font-weight:700}
 a.out{color:var(--muted);font-size:13px;text-decoration:none;padding:6px 14px;border:1px solid var(--border);border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
 a.out:hover{color:var(--red);border-color:var(--red)}
 main{padding:22px 24px;max-width:1600px;margin:0 auto;position:relative;z-index:1}
@@ -2823,7 +2418,7 @@ main{padding:22px 24px;max-width:1600px;margin:0 auto;position:relative;z-index:
 .stats{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px}
 .stats2{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
 .sc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;position:relative;overflow:hidden;transition:border-color .2s}
-.sc:hover{border-color:#00ff0030}
+.sc:hover{border-color:#00ff8730}
 .sc-icon{position:absolute;right:12px;top:12px;font-size:20px;opacity:.12}
 .sc .n{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:var(--green);line-height:1.1}
 .sc .n.green{color:var(--green)}
@@ -2843,19 +2438,19 @@ main{padding:22px 24px;max-width:1600px;margin:0 auto;position:relative;z-index:
 .sh input{padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Syne',sans-serif;font-size:13px;outline:none;width:200px}
 .sh input:focus{border-color:var(--green)}
 .btn{padding:8px 14px;border:none;border-radius:6px;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;transition:all .18s}
-.bcsv{background:#00ff0012;color:var(--green);border:1px solid #00ff0030}
-.bcsv:hover{background:#00ff0022;border-color:var(--green)}
+.bcsv{background:#00ff8712;color:var(--green);border:1px solid #00ff8730}
+.bcsv:hover{background:#00ff8722;border-color:var(--green)}
 .pb{padding:5px 12px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;cursor:pointer;transition:all .18s}
-.pb.active,.pb:hover{background:#00ff0018;border-color:#00ff0040;color:var(--green)}
+.pb.active,.pb:hover{background:#00ff8718;border-color:#00ff8740;color:var(--green)}
 .period-btns{display:flex;gap:6px}
 .ov{overflow-x:auto}
-table{width:100%;border-collapse:collapse;table-layout:fixed}
+table{width:100%;border-collapse:collapse}
 th{padding:11px 14px;text-align:left;font-size:13px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--border);background:var(--card2);white-space:nowrap;font-family:'Syne',sans-serif}
 td{padding:12px 14px;font-size:14px;border-bottom:1px solid #14141f;vertical-align:middle;font-family:'Syne',sans-serif}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:#ffffff02}
 .badge{padding:2px 7px;border-radius:3px;font-size:11px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;font-family:'Syne',sans-serif}
-.bon{background:#00ff0018;color:var(--green);border:1px solid #00ff0030}
+.bon{background:#00ff8718;color:var(--green);border:1px solid #00ff8730}
 .boff{background:#ff475718;color:var(--red);border:1px solid #ff475730}
 .empty{text-align:center;color:var(--muted);padding:30px;font-size:13px;line-height:2;font-family:'Syne',sans-serif}
 /* Retention bar */
@@ -2987,19 +2582,19 @@ loadChart(()=>{
   new Chart(document.getElementById('chartVendas'),{type:'bar',data:{
     labels:_days.map(d=>d.date.slice(5)),
     datasets:[
-      {label:'Vendas',data:_days.map(d=>d.count),backgroundColor:'#00ff0022',borderColor:'#00ff00',borderWidth:1.5,borderRadius:4,yAxisID:'y'},
-      {label:'Receita (R$)',data:_days.map(d=>d.revenue),type:'line',borderColor:'#00ff00',backgroundColor:'#00ff0015',borderWidth:2,pointRadius:2,tension:0.4,yAxisID:'y2'}
+      {label:'Vendas',data:_days.map(d=>d.count),backgroundColor:'#00ff8722',borderColor:'#00ff87',borderWidth:1.5,borderRadius:4,yAxisID:'y'},
+      {label:'Receita (R$)',data:_days.map(d=>d.revenue),type:'line',borderColor:'#00ff87',backgroundColor:'#00ff8715',borderWidth:2,pointRadius:2,tension:0.4,yAxisID:'y2'}
     ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{family:'Space Mono',size:10},boxWidth:12}}},scales:{y:{position:'left',grid:{color:'#1c1c2e'},ticks:{precision:0}},y2:{position:'right',grid:{drawOnChartArea:false},ticks:{callback:v=>'R$'+v.toFixed(0)}},x:{grid:{color:'#1c1c2e'},ticks:{font:{size:9},maxRotation:45}}}}});
 
-  if(_byProduct.length){const colors=['#ffd32a','#00ff00','#4f8ef7','#ff4757','#9b59b6','#ff8600'];
+  if(_byProduct.length){const colors=['#ffd32a','#00ff87','#4f8ef7','#ff4757','#9b59b6','#ff8600'];
   new Chart(document.getElementById('chartProdutos'),{type:'doughnut',data:{labels:_byProduct.map(p=>p._id||'?'),datasets:[{data:_byProduct.map(p=>p.revenue||p.count),backgroundColor:colors,borderColor:'#0f0f1a',borderWidth:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{family:'Space Mono',size:10},boxWidth:10,padding:8}},tooltip:{callbacks:{label:ctx=>' R$ '+ctx.parsed.toFixed(2).replace('.',',')}}}}}});}
 
   new Chart(document.getElementById('chartHoras'),{type:'bar',data:{
     labels:_hours.map(h=>h.h),
-    datasets:[{label:'Vendas',data:_hours.map(h=>h.count),backgroundColor:_hours.map(h=>{const max=Math.max(..._hours.map(x=>x.count));return h.count===max?'#00ff00':'#00ff0022';}),borderColor:'#00ff0060',borderWidth:1,borderRadius:3}]
+    datasets:[{label:'Vendas',data:_hours.map(h=>h.count),backgroundColor:_hours.map(h=>{const max=Math.max(..._hours.map(x=>x.count));return h.count===max?'#00ff87':'#00ff8722';}),borderColor:'#00ff8760',borderWidth:1,borderRadius:3}]
   },options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{grid:{color:'#1c1c2e'},ticks:{precision:0,font:{size:8}}},x:{grid:{color:'#1c1c2e'},ticks:{font:{size:8}}}}}});
 
-  if(_byMethod.length){const mc=['#4f8ef7','#ffd32a','#00ff00','#ff4757','#9b59b6'];
+  if(_byMethod.length){const mc=['#4f8ef7','#ffd32a','#00ff87','#ff4757','#9b59b6'];
   new Chart(document.getElementById('chartMetodos'),{type:'pie',data:{labels:_byMethod.map(m=>m._id||'?'),datasets:[{data:_byMethod.map(m=>m.count),backgroundColor:mc,borderColor:'#0f0f1a',borderWidth:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{family:'Space Mono',size:10},boxWidth:10,padding:8}}}}});}
 });
 
@@ -3013,7 +2608,6 @@ async function handleRequest(req, res) {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const p   = url.pathname;
   const ip  = getIp(req);
-  res._acceptGzip = (req.headers['accept-encoding'] || '').includes('gzip');
 
   const _corsH = {
     'Access-Control-Allow-Origin':  (()=>{
@@ -3026,13 +2620,11 @@ async function handleRequest(req, res) {
     'Access-Control-Max-Age':       '86400',
     'Vary':                         'Origin',
     'X-Content-Type-Options':       'nosniff',
-    'X-XSS-Protection':             '1; mode=block',
-    'X-Permitted-Cross-Domain-Policies': 'none',
     'X-Frame-Options':              'DENY',
     'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
     'Referrer-Policy':              'no-referrer',
     'Permissions-Policy':           'geolocation=(), microphone=(), camera=()',
-    'Content-Security-Policy':      "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://i.ytimg.com; connect-src 'self'; frame-src https://www.youtube.com; frame-ancestors 'none'",
+    'Content-Security-Policy':      "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
     'X-Powered-By':                 'PHP/7.4.3',
   };
   Object.entries(_corsH).forEach(([k, v]) => res.setHeader(k, v));
@@ -3063,7 +2655,7 @@ async function handleRequest(req, res) {
       return;
     }
     const form    = await parseFormBody(req);
-    const keyCode = (form.get('key') || '').replace(/[\s\u00a0\u200b\ufeff]/g,'').toLowerCase();
+    const keyCode = (form.get('key') || '').trim().toLowerCase();
     const callback= form.get('callback') || '';
     if (!keyCode || !keys[keyCode]) {
       await addLog({ keyCode: keyCode||'?', label: '-', phone: '-', ip, wppVersion: '-', action: 'key_not_found' });
@@ -3104,7 +2696,7 @@ async function handleRequest(req, res) {
       _cbUrl.searchParams.set('permissions', FULL_PERMISSIONS.join(','));
       res.writeHead(302, { Location: _cbUrl.toString() }); res.end();
     } else {
-      const _noCallbackPage = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>ZVM - Ativado</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace}.card{background:#111118;border:1px solid #00ff0040;border-radius:18px;padding:40px 36px;width:100%;max-width:420px;text-align:center}.icon{font-size:48px;margin-bottom:8px}.title{font-size:22px;font-weight:800;color:#00ff00;margin-bottom:8px}.sub{color:#8a8aaa;font-size:13px;line-height:1.6;margin-bottom:20px}.key{background:#0a0a0f;border:1px solid #00ff0030;border-radius:8px;padding:10px 16px;color:#00ff00;font-size:14px;letter-spacing:2px;margin-bottom:20px}.bar{width:100%;height:3px;background:#1a1a2e;border-radius:2px}.fill{height:100%;background:#00ff00;animation:drain 3s linear forwards;border-radius:2px}@keyframes drain{from{width:100%}to{width:0%}}</style></head><body><div class="card"><div class="icon">&#x26A1;</div><div class="title">Chave Ativada!</div><div class="sub">Volte ao WhatsApp Web e atualize a p&aacute;gina.</div><div class="key">${keyCode}</div><div class="bar"><div class="fill"></div></div></div><script>setTimeout(function(){window.close();},3100);</script></body></html>`;
+      const _noCallbackPage = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>ZVM - Ativado</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace}.card{background:#111118;border:1px solid #00ff8740;border-radius:18px;padding:40px 36px;width:100%;max-width:420px;text-align:center}.icon{font-size:48px;margin-bottom:8px}.title{font-size:22px;font-weight:800;color:#00ff87;margin-bottom:8px}.sub{color:#8a8aaa;font-size:13px;line-height:1.6;margin-bottom:20px}.key{background:#0a0a0f;border:1px solid #00ff8730;border-radius:8px;padding:10px 16px;color:#00ff87;font-size:14px;letter-spacing:2px;margin-bottom:20px}.bar{width:100%;height:3px;background:#1a1a2e;border-radius:2px}.fill{height:100%;background:#00ff87;animation:drain 3s linear forwards;border-radius:2px}@keyframes drain{from{width:100%}to{width:0%}}</style></head><body><div class="card"><div class="icon">&#x26A1;</div><div class="title">Chave Ativada!</div><div class="sub">Volte ao WhatsApp Web e atualize a p&aacute;gina.</div><div class="key">${keyCode}</div><div class="bar"><div class="fill"></div></div></div><script>setTimeout(function(){window.close();},3100);</script></body></html>`;
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(_noCallbackPage);
     }
@@ -3116,22 +2708,25 @@ async function handleRequest(req, res) {
       sendJson(res, { authError: 'rateLimited', authErrorMessage: 'Muitas tentativas. Aguarde.', isLoggedIn: false }, 429);
       return;
     }
-    const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
+    const rawBody = await new Promise((resolve) => {
+      let b = '', size = 0;
+      req.on('data', c => { size += c.length; if (size > MAX_BODY_SIZE) { req.destroy(); resolve(''); return; } b += c; });
+      req.on('end', () => resolve(b));
+    });
     let body; try { body = _safeParse(rawBody); } catch { body = {}; }
-    let keyCode    = (body.authKey || '').replace(/[\s\u00a0\u200b\ufeff]/g,'').toLowerCase().slice(0, 20);
-    if (keyCode && !isSafeObjectKey(keyCode)) keyCode = '';
+    const rawKey     = (body.authKey || '').toLowerCase().slice(0, 20);
+    const keyCode    = rawKey.replace(/[^a-z0-9\-]/g, '');
     const phone      = body.phoneNumber || '-';
     const wppVersion = body.wppVersion  || '-';
     const deviceId   = body.deviceId    || '';
 
     if (!keyCode) {
-      sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada.', isLoggedIn: false });
-      return;
-    }
-    if (!serverReady) {
-      sendJson(res, { isLoggedIn: true, numberWarning: false, segments: [],
-        data: { key: keyCode, isLoggedIn: true, isPremium: true, permissions: [], message: '' }
-      });
+      if (FREE_LOGIN_ENABLED) {
+        addLog({ keyCode: '(free)', label: 'Free Login', phone: '-', ip, wppVersion, action: 'free_login' }).catch(()=>{});
+        sendJson(res, getFreePlanAuth(phone, wppVersion));
+        return;
+      }
+      sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada.', isLoggedIn: false, data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave inválida ou inexistente.', permissions: [] } }, 404);
       return;
     }
     if (!keys[keyCode]) {
@@ -3139,28 +2734,28 @@ async function handleRequest(req, res) {
         const db = await getMongoDb();
         const doc = await db.collection('store').findOne({ _id: 'keys' });
         if (doc && doc.data && doc.data[keyCode]) keys[keyCode] = doc.data[keyCode];
-      } catch(e) {
-        sendJson(res, { isLoggedIn: true, numberWarning: false, segments: [],
-          data: { key: keyCode, isLoggedIn: true, isPremium: true, permissions: [], message: '' }
-        });
-        return;
-      }
+      } catch(e) { /* continua */ }
     }
     if (!keys[keyCode]) {
-      sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada. Contate o vendedor.', isLoggedIn: false });
+      if (FREE_LOGIN_ENABLED) {
+        addLog({ keyCode: keyCode||'(free)', label: 'Free Login', phone: '-', ip, wppVersion, action: 'free_login' }).catch(()=>{});
+        sendJson(res, getFreePlanAuth(phone, wppVersion));
+        return;
+      }
+      sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada. Contate o vendedor.', isLoggedIn: false, data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave inválida ou inexistente.', permissions: [] } }, 404);
       addLog({ keyCode, label: '-', phone, ip, wppVersion, action: 'key_not_found' }).catch(()=>{});
       return;
     }
     if (isKeyExpired(keys[keyCode])) {
       keys[keyCode].active = false;
-      sendJson(res, { authError: 'keyExpired', reason: 'expired', isLoggedIn: false, data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave expirada.', permissions: [] } }, 403);
+      sendJson(res, { authError: 'keyExpired', reason: 'expired', isLoggedIn: false, data: { message: 'CHAVE EXPIRADA. Renove para continuar.', permissions: [] } }, 403);
       addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'expired' }).catch(()=>{});
-      saveKey(keyCode);
+      saveKey(keyCode).catch(()=>{});
       fireWebhook('key_expired', keyCode, 'Expiração detectada no v3/key');
       return;
     }
     if (!keys[keyCode].active) {
-      sendJson(res, { authError: 'keyBlocked', reason: 'blocked', isLoggedIn: false, data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave bloqueada.', permissions: [] } }, 403);
+      sendJson(res, { authError: 'keyBlocked', reason: 'blocked', isLoggedIn: false, data: { message: 'CHAVE BLOQUEADA. Entre em contato com o vendedor.', permissions: [] } }, 403);
       addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'login_blocked' }).catch(()=>{});
       return;
     }
@@ -3183,11 +2778,11 @@ async function handleRequest(req, res) {
         }
         keys[keyCode].warnCountTs = new Date().toISOString();
         sendJson(res, {
-          warnLimit: true, isLoggedIn: false, warnRemaining: keys[keyCode].warnCount,
+          authError: 'userNotFound', warnLimit: true, isLoggedIn: false, warnRemaining: keys[keyCode].warnCount,
           data: { message: `USUÁRIO NÃO ENCONTRADO. Limite de ativações atingido (${keys[keyCode].phones.length}/${keyMaxUses}).`, permissions: [] }
         }, 403);
         addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'warn_limit' }).catch(()=>{});
-        saveKey(keyCode);
+        saveKey(keyCode).catch(()=>{});
         return;
       }
       keys[keyCode].phones.push(phone);
@@ -3206,26 +2801,37 @@ async function handleRequest(req, res) {
     if (hasPhone) keys[keyCode].lastPhone = phone;
     if (deviceId) keys[keyCode].deviceId  = deviceId;
 
-    sendJson(res, getAuthData(keyCode, body.userName || ''));
+    sendJson(res, getAuthData(keyCode, body.userName || '', phone !== '-' ? phone : null, wppVersion !== '-' ? wppVersion : null));
 
     const _action = isNewPhone ? 'login_ok' : 'relogin_ok';
     addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: _action }).catch(()=>{});
-    saveKey(keyCode);
+    saveKey(keyCode).catch(()=>{});
     return;
   }
 
   if (p === R_EXT+'/v3/check-status' && req.method === 'POST') {
-    if (!serverReady) { sendJson(res, { active: true }); return; }
     if (!checkRateLimit(ip, 'check_status', 60, 60000)) {
-      sendJson(res, { active: true }); return;
+      sendJson(res, { active: true }); return; // silencioso — não deslogar por rate limit
     }
     if (parseInt(req.headers['content-length'] || 0) > MAX_BODY_SIZE) {
       sendJson(res, { active: true }); return;
     }
-    const rawBody = await new Promise(r=>{let b='';req.on('data',c=>{b+=c;});req.on('end',()=>r(b));});
+    const rawBody = await new Promise((resolve) => {
+      let b = '', size = 0;
+      req.on('data', c => { size += c.length; if (size > MAX_BODY_SIZE) { req.destroy(); resolve(''); return; } b += c; });
+      req.on('end', () => resolve(b));
+    });
     let body; try { body = JSON.parse(rawBody); } catch { body = {}; }
-    const keyCode = (body.authKey || '').replace(/[\s\u00a0\u200b\ufeff]/g,'').toLowerCase().slice(0, 20);
-    if (!keyCode)     { sendJson(res, { active: true }); return; }
+    const keyCode = (body.authKey || '').toLowerCase().slice(0, 20);
+    if (!serverReady) { sendJson(res, { active: true }); return; }
+    if (!keyCode) {
+      if (FREE_LOGIN_ENABLED) {
+        sendJson(res, { active: true, isFreePlan: true, isPremium: false, modules: { ...DEFAULT_MODULES }, ts: Date.now() });
+      } else {
+        sendJson(res, { active: true });
+      }
+      return;
+    }
     if (!keys[keyCode]) {
       try {
         const db  = await getMongoDb();
@@ -3238,7 +2844,7 @@ async function handleRequest(req, res) {
     if (!keys[keyCode]) { sendJson(res, { active: false, reason: 'not_found' }); return; }
     if (isKeyExpired(keys[keyCode]))   {
       keys[keyCode].active = false;
-      saveKey(keyCode);
+      saveKey(keyCode).catch(()=>{});
       sendJson(res, { active: false, reason: 'expired' }); return;
     }
     if (!keys[keyCode].active)         {
@@ -3258,17 +2864,61 @@ async function handleRequest(req, res) {
     return;
   }
 
-  if ([R_EXT+'/v3/usage', R_EXT+'/v3/get-usage', R_EXT+'/v3/sync-usage'].includes(p)) {
-    sendJson(res, { ok: true, status: true, limits: USAGE_LIMITS, expires_at: new Date(Date.now()+365*24*60*60*1000).toISOString(), isExpired: false });
+  if (p === R_EXT+'/v3/usage' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const itemType = body.itemType || '';
+    const action   = body.action   || 'increase';
+    const limits   = UNLIMITED_USAGE
+      ? Object.fromEntries(Object.keys(USAGE_LIMITS).map(k => [k, { max: -1, sent: 0 }]))
+      : { ...USAGE_LIMITS };
+    const expiresAt = new Date(Date.now() + 365*24*60*60*1000).toISOString();
+    let message = 'Mensagem enviada';
+    if (!UNLIMITED_USAGE && itemType && limits[itemType]) {
+      const cur = limits[itemType];
+      if (action === 'increase') cur.sent = Math.min(cur.sent + 1, cur.max > 0 ? cur.max : cur.sent + 1);
+      if (cur.max > 0) {
+        const remaining = cur.max - cur.sent;
+        const labels = { audio:'áudios', bulkMessages:'disparos em massa', document:'documentos', flow:'fluxos', funnel:'funis', media:'mídias', message:'mensagens', scheduleItem:'agendamentos de itens simultâneos' };
+        if (remaining <= 0) {
+          sendJson(res, { limits: null, status: false, errorType: 'MAX_LIMIT_REACHED', message: `O limite diário de envio de ${labels[itemType]||itemType} foi alcançado` }, 429);
+          return;
+        }
+        message = `Mensagem enviada, você ainda pode enviar ${remaining} ${labels[itemType]||itemType}`;
+      }
+    }
+    sendJson(res, { limits, status: true, message, expires_at: expiresAt });
+    return;
+  }
+
+  if (p === R_EXT+'/v3/get-usage' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const planId = body.planId === FREE_PLAN_UUID ? 'ZV_FREE' : (body.planId || 'ZV_PRO');
+    const limits = UNLIMITED_USAGE
+      ? Object.fromEntries(Object.keys(USAGE_LIMITS).map(k => [k, { max: -1, sent: 0 }]))
+      : { ...USAGE_LIMITS };
+    const today = new Date().toISOString().slice(0, 10);
+    sendJson(res, { limits, status: true, expires_at: today, isExpired: false, planId });
+    return;
+  }
+
+  if (p === R_EXT+'/v3/sync-usage' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const echoed = (body.extensionLimits && typeof body.extensionLimits === 'object') ? body.extensionLimits : USAGE_LIMITS;
+    sendJson(res, { ok: true, status: true, limits: echoed });
+    return;
+  }
+
+  if (p === R_EXT+'/v3/create-user-event' && req.method === 'POST') {
+    sendJson(res, { status: 'success' });
+    return;
+  }
+
+  if (p === '/dmg/dashboard/events/customer/new' && req.method === 'POST') {
+    sendJson(res, { status: 'success' });
     return;
   }
 
   if (p === R_ADMIN+'/login' && req.method === 'POST') {
-    if (!checkRateLimit(ip, 'login')) {
-      const mins = getRateLimitWait(ip, 'login');
-      sendHtml(res, renderAdminLogin(`⏳ Muitas tentativas. Aguarde ${mins} minuto(s).`), 429);
-      return;
-    }
     const form   = await parseFormBody(req);
     const _u=Buffer.from(form.get('user')||''), _p=Buffer.from(form.get('pass')||'');
     const _au=Buffer.from(ADMIN_USER||''), _ap=Buffer.from(ADMIN_PASS||'');
@@ -3351,8 +3001,8 @@ async function handleRequest(req, res) {
     if (!body.label || !String(body.label).trim()) { sendJson(res, { error: 'label obrigatório' }, 400); return; }
     const code = generateCode();
     let expiresAt = null, expireDuration = null;
-    const days    = parseInt(body.expireDays, 10)  || 0;
-    const hours   = parseInt(body.expireHours, 10) || 0;
+    const days    = parseInt(body.expireDays  || 0);
+    const hours   = parseInt(body.expireHours || 0);
     if (days > 0 || hours > 0) {
       const durationMs = ((days * 1440) + (hours * 60)) * 60000;
       if (body.deferred) { expireDuration = durationMs; }
@@ -3398,32 +3048,10 @@ async function handleRequest(req, res) {
     }
   }
 
-  if (p === R_MOD+'/api/ranking' && req.method === 'GET') {
-    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    try {
-      const db  = await getMongoDb();
-      const doc = await db.collection('store').findOne({ _id: 'keys' });
-      const dbKeys = (doc && doc.data) ? doc.data : {};
-      const modCounts = {};
-      MODS.forEach(m => { if (m.name) modCounts[m.name] = 0; });
-      Object.values(dbKeys).forEach(k => {
-        const match = (k.note || '').match(/\[Mod: ([^\]]+)\]/);
-        if (match && match[1] in modCounts) modCounts[match[1]]++;
-      });
-      const ranking = Object.entries(modCounts)
-        .map(([name, count]) => ({ name, count }))
-        .sort((a, b) => b.count - a.count);
-      sendJson(res, { ok: true, ranking }); return;
-    } catch(e) {
-      console.error('[DB] ranking:', e.message);
-      sendJson(res, { error: 'db_error' }, 500); return;
-    }
-  }
-
   if (p.startsWith(R_MOD+'/api/keys/') && p.endsWith('/note') && req.method === 'POST') {
     if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const codeFromUrl = decodeURIComponent(p.slice((R_MOD+'/api/keys/').length, -'/note'.length));
-    if (!codeFromUrl || !isSafeObjectKey(codeFromUrl)) { sendJson(res, { error: 'not found' }, 404); return; }
+    if (!codeFromUrl) { sendJson(res, { error: 'not found' }, 404); return; }
     if (!keys[codeFromUrl]) {
       try {
         const _db2 = await getMongoDb();
@@ -3450,34 +3078,40 @@ async function handleRequest(req, res) {
     const match = p.match(pattern);
     if (!match) return null;
     const code = decodeURIComponent(match[1]);
-    if (!isSafeObjectKey(code)) return null;
+    if (!/^[a-z0-9_\-]{1,30}$/.test(code)) return null;
     return code;
   }
   const RA = R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   if (p === R_ADMIN+'/api/data' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const suspectKeys = Object.keys(keys).filter(code => {
+      const k2 = keys[code];
+      const cl2 = k2.suspectClearedAt ? new Date(k2.suspectClearedAt) : null;
+      if (cl2 && (Date.now() - cl2.getTime()) < 172800000) return false;
+      const recentLogs = logs.filter(l => l.keyCode === code && l.timestamp > new Date(Date.now()-86400000).toISOString());
+      return new Set(recentLogs.filter(l=>l.ip).map(l=>l.ip)).size > 3;
+    }).length;
     sendJson(res, {
-      totalKeys:   Object.keys(keys).length,
-      activeKeys:  Object.values(keys).filter(k=>k.active).length,
-      warnKeys:    Object.values(keys).filter(k=>k.active && isKeyExpiringSoon(k)).length,
-      expiredKeys: Object.values(keys).filter(k=>isKeyExpired(k)).length,
-      totalLogs:   logs.length,
-      keysHtml:    buildKeysHtml(),
-      logsHtml:    buildLogsHtml()
+      totalKeys:     Object.keys(keys).length,
+      activeKeys:    Object.values(keys).filter(k=>k.active).length,
+      warnKeys:      Object.values(keys).filter(k=>k.active && isKeyExpiringSoon(k)).length,
+      suspectKeys,
+      totalLogs:     logs.length,
+      keysHtml:      buildKeysHtml(),
+      logsHtml:      buildLogsHtml()
     }); return;
   }
 
   if (p === R_ADMIN+'/api/keys' && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
     const body = await parseBody(req);
     const code = generateCode();
     let expiresAt = null, expireDuration = null;
     if (body.expiresAt) {
       expiresAt = new Date(body.expiresAt).toISOString();
     } else {
-      const days=parseInt(body.expireDays,10)||0, hours=parseInt(body.expireHours,10)||0, minutes=parseInt(body.expireMinutes,10)||0;
+      const days=parseInt(body.expireDays||0), hours=parseInt(body.expireHours||0), minutes=parseInt(body.expireMinutes||0);
       if (days>0 || hours>0 || minutes>0) {
         const durationMs = ((days*1440)+(hours*60)+minutes)*60000;
         if (body.deferred) { expireDuration = durationMs; }
@@ -3485,17 +3119,10 @@ async function handleRequest(req, res) {
       }
     }
     const maxUses = (body.maxUses !== undefined) ? parseInt(body.maxUses) : MAX_USES;
-    // E-mail do cliente (opcional) — gravado na nota como "Email: x@y.com" para
-    // permitir localizar a chave em renovacoes futuras (manual ou via checkout).
-    let initialNote = '';
-    const clientEmailIn = String(body.email || '').trim().toLowerCase();
-    if (clientEmailIn && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmailIn) && clientEmailIn.length <= 120) {
-      initialNote = 'Email: ' + clientEmailIn;
-    }
     keys[code] = {
-      label: String(body.label || 'Cliente').trim().slice(0, 60) || 'Cliente', active: true, createdAt: new Date().toISOString(),
+      label: body.label || 'Cliente', active: true, createdAt: new Date().toISOString(),
       uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null,
-      deviceId: null, wppVersion: null, note: initialNote,
+      deviceId: null, wppVersion: null, note: '',
       expiresAt, expireDuration: expireDuration || null,
       maxUses: isNaN(maxUses) ? MAX_USES : maxUses, warnCount: 0,
       modules: { ...DEFAULT_MODULES },
@@ -3519,23 +3146,13 @@ async function handleRequest(req, res) {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!keys[codeRenew]) { sendJson(res, { error: 'not found' }, 404); return; }
     const body = await parseBody(req);
-    const days=parseInt(body.days,10)||0, hours=parseInt(body.hours,10)||0, mins=parseInt(body.mins,10)||0;
+    const days=parseInt(body.days||0), hours=parseInt(body.hours||0), mins=parseInt(body.mins||0);
     if (!days && !hours && !mins) { sendJson(res, { error: 'nenhum tempo informado' }, 400); return; }
     const addMs = ((days*1440)+(hours*60)+mins)*60000;
-    if (body.deferred) {
-      keys[codeRenew].expiresAt      = null;
-      keys[codeRenew].expireDuration = addMs;
-      keys[codeRenew].activatedAt    = null;
-      keys[codeRenew].active         = true;
-      saveKey(codeRenew);
-      await addLog({ keyCode: codeRenew, label: keys[codeRenew].label, phone: '-', ip, wppVersion: '-', action: 'renewed_deferred' });
-      sendJson(res, { ok: true, deferred: true }); return;
-    }
     const base  = (keys[codeRenew].expiresAt && !isKeyExpired(keys[codeRenew]))
       ? new Date(keys[codeRenew].expiresAt).getTime() : Date.now();
-    keys[codeRenew].expiresAt      = new Date(base+addMs).toISOString();
-    keys[codeRenew].expireDuration = null;
-    keys[codeRenew].active         = true;
+    keys[codeRenew].expiresAt = new Date(base+addMs).toISOString();
+    keys[codeRenew].active    = true;
     saveKey(codeRenew);
     await addLog({ keyCode: codeRenew, label: keys[codeRenew].label, phone: '-', ip, wppVersion: '-', action: 'renewed' });
     sendJson(res, { ok: true, expiresAt: keys[codeRenew].expiresAt }); return;
@@ -3561,7 +3178,7 @@ async function handleRequest(req, res) {
     const label = String(body.label||'').trim().slice(0, 60);
     if (!label) { sendJson(res, { error: 'label vazio' }, 400); return; }
     keys[codeLabel].label = label;
-    saveKey(codeLabel);
+    saveKey(codeLabel).catch(()=>{});
     sendJson(res, { ok: true, label }); return;
   }
 
@@ -3584,7 +3201,7 @@ async function handleRequest(req, res) {
       keys[codePhonesDelete].uses=keys[codePhonesDelete].phones.length;
       if (keys[codePhonesDelete].lastPhone===body.phone) keys[codePhonesDelete].lastPhone=keys[codePhonesDelete].phones.at(-1)||null;
     } else { sendJson(res, { error: 'informe phone ou all:true' }, 400); return; }
-    saveKey(codePhonesDelete);
+    saveKey(codePhonesDelete).catch(()=>{});
     sendJson(res, { ok: true, phones: keys[codePhonesDelete].phones }); return;
   }
 
@@ -3597,6 +3214,14 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true }); return;
   }
 
+  const codeClearSuspect = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/clear-suspect$`));
+  if (codeClearSuspect && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    if (!keys[codeClearSuspect]) { sendJson(res, { error: 'not found' }, 404); return; }
+    keys[codeClearSuspect].suspectClearedAt = new Date().toISOString();
+    saveKey(codeClearSuspect);
+    sendJson(res, { ok: true }); return;
+  }
 
   const codeNote = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/note$`));
   if (codeNote && req.method === 'POST') {
@@ -3679,10 +3304,6 @@ async function handleRequest(req, res) {
   if (p === R_ADMIN+'/api/export/csv' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const header = 'Chave,Cliente,Status,Usos,Telefone,Último IP,WPP Version,Último Acesso,Criada em,Expira em,Nota';
-    // Neutraliza injecao de formula em CSV (OWASP): prefixa apostrofo se o
-    // campo comecar com =, +, -, @, tab ou CR — impede execucao em Excel/Sheets
-    // quando o admin abre o arquivo exportado.
-    const csvSafe = v => /^[=+\-@\t\r]/.test(String(v)) ? `'${v}` : v;
     const rows = Object.entries(keys).map(([code, k]) => {
       const cols = [
         code, k.label, k.active?'ATIVO':'BLOQUEADO',
@@ -3692,18 +3313,13 @@ async function handleRequest(req, res) {
         new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}),
         k.expiresAt ? new Date(k.expiresAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}) : 'Sem expiração',
         (k.note||'').replace(/,/g,';')
-      ].map(csvSafe);
+      ];
       return cols.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',');
     });
     const csv = [header, ...rows].join('\r\n');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="zvm-chaves-${new Date().toISOString().slice(0,10)}.csv"`);
-    const _csvBody = '\uFEFF' + csv;
-    if (res._acceptGzip && _csvBody.length > 1024) {
-      res.setHeader('Content-Encoding', 'gzip');
-      res.writeHead(200); res.end(zlib.gzipSync(_csvBody)); return;
-    }
-    res.writeHead(200); res.end(_csvBody); return;
+    res.writeHead(200); res.end('\uFEFF' + csv); return;
   }
 
   if (p === R_ANALYTICS+'/login' && req.method === 'POST') {
@@ -3743,10 +3359,6 @@ async function handleRequest(req, res) {
     if (!isAnalyticsSession(req)) { res.writeHead(302, { Location: R_ANALYTICS }); res.end(); return; }
     const payments = await getPayments({ limit: 10000 });
     const header = 'Data,Cliente,Email,Telefone,Produto,Valor,Status,Chave,Método';
-    // Neutraliza injecao de formula em CSV (OWASP): prefixa apostrofo se o
-    // campo comecar com =, +, -, @, tab ou CR — impede execucao em Excel/Sheets
-    // quando o admin abre o arquivo exportado.
-    const csvSafe = v => /^[=+\-@\t\r]/.test(String(v)) ? `'${v}` : v;
     const rows = payments.map(p => {
       const fmtDate = iso => iso ? new Date(iso).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}) : '';
       return [
@@ -3754,17 +3366,12 @@ async function handleRequest(req, res) {
         p.productName, (p.amount||0).toFixed(2).replace('.',','),
         p.approved ? 'APROVADO' : 'REJEITADO',
         p.keyCode || '', p.paymentMethod || ''
-      ].map(csvSafe).map(v => `"${String(v||'').replace(/"/g,'""')}"`).join(',');
+      ].map(v => `"${String(v||'').replace(/"/g,'""')}"`).join(',');
     });
     const csv = [header, ...rows].join('\r\n');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="zvm-pagamentos-${new Date().toISOString().slice(0,10)}.csv"`);
-    const _csvBody2 = '\uFEFF' + csv;
-    if (res._acceptGzip && _csvBody2.length > 1024) {
-      res.setHeader('Content-Encoding', 'gzip');
-      res.writeHead(200); res.end(zlib.gzipSync(_csvBody2)); return;
-    }
-    res.writeHead(200); res.end(_csvBody2); return;
+    res.writeHead(200); res.end('\uFEFF' + csv); return;
   }
 
   if (p === R_ANALYTICS+'/api/stats' && req.method === 'GET') {
@@ -3774,21 +3381,23 @@ async function handleRequest(req, res) {
   }
 
   if (p === '/payt/webhook' && req.method === 'POST') {
-    const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
+    const rawBody = await new Promise((resolve) => {
+      let b = '', size = 0;
+      req.on('data', c => { size += c.length; if (size > MAX_BODY_SIZE) { req.destroy(); resolve(''); return; } b += c; });
+      req.on('end', () => resolve(b));
+    });
 
     let payload;
     try { payload = JSON.parse(rawBody); }
     catch { try { payload = Object.fromEntries(new URLSearchParams(rawBody).entries()); } catch { res.writeHead(400); res.end('Bad Request'); return; } }
 
     if (PAYT_SECRET) {
-      const headerToken = String(req.headers['x-payt-token'] || req.headers['x-webhook-token'] || '');
-      const bodyKey     = String(payload.integration_key || payload.secret || '');
-      const provided    = headerToken || bodyKey;
-      const secretBuf   = Buffer.from(PAYT_SECRET);
-      const isValid     = provided && Buffer.byteLength(provided) === secretBuf.length &&
-        crypto.timingSafeEqual(Buffer.from(provided), secretBuf);
-      if (!isValid) {
-        console.warn('[PAYT] Token/integration_key inválido ou ausente — ignorado');
+      const headerToken = req.headers['x-payt-token'] || req.headers['x-webhook-token'] || '';
+      const bodyKey     = payload.integration_key || '';
+      const validHeader = !headerToken || headerToken === PAYT_SECRET;
+      const validBody   = !bodyKey     || bodyKey   === PAYT_SECRET;
+      if (!validHeader || !validBody) {
+        console.warn('[PAYT] Token/integration_key inválido — ignorado');
         res.writeHead(401); res.end('Unauthorized'); return;
       }
     }
@@ -3798,19 +3407,13 @@ async function handleRequest(req, res) {
       res.writeHead(200); res.end('test_ignored'); return;
     }
 
-    // Cakto envia os dados reais dentro de payload.data — usamos como fonte
-    // adicional sem remover os formatos genericos ja suportados.
-    const d = (payload.data && typeof payload.data === 'object') ? payload.data : {};
-
-    const event    = String(payload.event || '').toLowerCase();
-    const status   = String(d.status || payload.status || payload.payment_status || payload.sale_status || '').toLowerCase();
+    const status   = String(payload.status || payload.payment_status || payload.sale_status || '').toLowerCase();
     const APPROVED = ['venda_paga','approved','paid','completed','finished','aprovada','finalizada','active','confirmed'];
-    const APPROVED_EVENTS = ['purchase_approved','subscription_renewed','subscription_created'];
-    const approved = APPROVED.some(s => status === s || status.includes(s)) || APPROVED_EVENTS.includes(event);
+    const approved = APPROVED.some(s => status === s || status.includes(s));
 
-    const txId = String(d.refId || d.id || payload.transaction_id || payload.sale_id || payload.cart_id || payload.id || '').trim();
+    const txId = String(payload.transaction_id || payload.sale_id || payload.cart_id || payload.id || '').trim();
 
-    const customer    = d.customer || payload.customer || payload.buyer || payload.client || {};
+    const customer    = payload.customer || payload.buyer || payload.client || {};
     const clientName  = customer.name        || customer.full_name     || payload.customer_name  || payload.buyer_name || 'Cliente';
     const clientEmail = customer.email       || payload.customer_email || payload.buyer_email    || payload.email      || '';
     const clientPhone = customer.phone       || customer.cellphone     || customer.phone_number  || payload.customer_phone || '';
@@ -3822,14 +3425,14 @@ async function handleRequest(req, res) {
       amount = payload.products.reduce((s, pr) => s + (parseFloat(String(pr.price||pr.value||0).replace(',','.')) || 0), 0);
     }
     if (productNameRaw === '-') {
-      const offer = d.product || d.offer || payload.offer || payload.product || {};
+      const offer = payload.offer || payload.product || {};
       productNameRaw = offer.name || offer.title || payload.product_name || payload.offer_name || payload.plan_name || '-';
     }
     if (!amount) {
-      const raw = d.amount || payload.amount || payload.value || payload.price || payload.sale_amount || payload.total || 0;
+      const raw = payload.amount || payload.value || payload.price || payload.sale_amount || payload.total || 0;
       amount = parseFloat(String(raw).replace(',','.')) || 0;
     }
-    const paymentMethod  = d.paymentMethod || payload.payment_method || payload.charge_type || payload.method || payload.payment_type || '-';
+    const paymentMethod  = payload.payment_method || payload.charge_type || payload.method || payload.payment_type || '-';
     const productNameLow = productNameRaw.toLowerCase();
 
     if (!approved) {
@@ -3839,7 +3442,7 @@ async function handleRequest(req, res) {
     }
 
     if (txId) {
-      if (Object.values(keys).some(k => k.note && (k.note.endsWith('payt_tx:'+txId) || k.note.endsWith('renovado_payt_tx:'+txId)))) {
+      if (Object.values(keys).some(k => k.note && (k.note.includes('payt_tx:'+txId) || k.note.includes('renovado_payt_tx:'+txId)))) {
         console.log('[PAYT] Transacao ja processada (memoria):', txId);
         res.writeHead(200); res.end('ok'); return;
       }
@@ -3953,7 +3556,7 @@ async function handleRequest(req, res) {
     keys[keyCode].phones  = phones.filter(p => p !== phone);
     keys[keyCode].uses    = keys[keyCode].phones.length;
     if (keys[keyCode].lastPhone === phone) keys[keyCode].lastPhone = keys[keyCode].phones.at(-1) || null;
-    saveKey(keyCode);
+    saveKey(keyCode).catch(()=>{});
     sendJson(res, { ok: true, phones: keys[keyCode].phones }); return;
   }
 
@@ -3973,9 +3576,42 @@ async function handleRequest(req, res) {
     sendHtml(res, renderPrivacyPage()); return;
   }
 
-  const CLIENT_PATHS = ['/', '/client', '/plans/manage', '/plans/new', '/dashboard/chaves'];
+  const CLIENT_PATHS = ['/', '/plans/manage', '/plans/new', '/dashboard/chaves'];
   if (req.method === 'GET' && (CLIENT_PATHS.includes(p) || p.startsWith('/unauthorized') || p.startsWith('/funnels') || p.startsWith('/labels'))) {
     sendHtml(res, renderClientPortal()); return;
+  }
+
+  if (p === '/unleash/api/frontend' && req.method === 'GET') {
+    const uninstallUrl = JSON.stringify({ baseUrl: `${APP_BASE_URL}/uninstall`, enableDynamicParamsInBaseUrl: true });
+    sendJson(res, {
+      version: 2,
+      features: [
+        { name: 'free-login',                  enabled: FREE_LOGIN_ENABLED, variant: { name: 'disabled', enabled: false } },
+        { name: 'usage-limit',                 enabled: true,               variant: { name: 'disabled', enabled: false } },
+        { name: 'login-by-key',                enabled: true,               variant: { name: 'disabled', enabled: false } },
+        { name: 'track-auth-events',           enabled: true,            variant: { name: 'disabled', enabled: false } },
+        { name: 'track-item-sent-events',      enabled: true,            variant: { name: 'disabled', enabled: false } },
+        { name: 'track-page-events',           enabled: true,            variant: { name: 'disabled', enabled: false } },
+        { name: 'track-trigger-events',        enabled: true,            variant: { name: 'disabled', enabled: false } },
+        { name: 'trigger-webhooks',            enabled: true,            variant: { name: 'disabled', enabled: false } },
+        { name: 'unlimited-usage',             enabled: UNLIMITED_USAGE, variant: { name: 'disabled', enabled: false } },
+        { name: 'skip-anti-debug',             enabled: false,           variant: { name: 'disabled', enabled: false } },
+        { name: 'key-warning-ad-block',        enabled: false,           variant: { name: 'disabled', enabled: false } },
+        { name: 'modals',                      enabled: false,           variant: { name: 'disabled', enabled: false } },
+        { name: 'news',                        enabled: false,           variant: { name: 'disabled', enabled: false } },
+        { name: 'hovered-chat-list-item-selector', enabled: false,       variant: { name: 'disabled', enabled: false } },
+        { name: 'hovered-message-item-selector',   enabled: false,       variant: { name: 'disabled', enabled: false } },
+        { name: 'redirect-uninstall-url',      enabled: true,            variant: {
+          name: 'default', enabled: true,
+          payload: { type: 'json', value: uninstallUrl }
+        }},
+      ]
+    });
+    return;
+  }
+
+  if ((p === '/g/collect' || p.startsWith('/g/collect')) && req.method === 'POST') {
+    res.writeHead(204); res.end(); return;
   }
 
   sendJson(res, { ok: true });
@@ -3999,7 +3635,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
 
     console.log(`✅ zvm-lr1290 v8 — porta ${PORT}`);
     console.log(`🍃 MongoDB: conectado | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}`);
-    console.log(`🔐 Painéis ocultos (URL slug via APP_SECRET): ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO — rotas /admin, /mod, /analytics expostas!'}`);
+    console.log(`🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
     console.log(`🔑 2FA:  ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
     console.log(`💳 Payt: ${PAYT_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
     console.log(`🔑 Admin: ${R_ADMIN} | User: ${ADMIN_USER}`);
@@ -4007,6 +3643,9 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     console.log(`📊 Analytics: ${ANALYTICS_PASS ? 'ATIVO' : '⚠ INATIVO'}`);
     console.log(`🌐 Extension: ${R_EXT}/v3/key`);
     console.log(`📊 Webhook: ${WEBHOOK_URL || 'não configurado'}`);
+    console.log(`🏁 Unleash mock: /unleash/api/frontend | unlimited-usage: ${UNLIMITED_USAGE}`);
+    console.log(`🆓 Free login: ${FREE_LOGIN_ENABLED ? 'ATIVO — chaves inválidas autenticam como Free Plan' : 'inativo'}`);
+    console.log(`📡 GA collect: /g/collect (intercept GA4 beacons)`);
     console.log(`🗂  Retenção de logs: ${LOG_RETENTION_DAYS} dias (LGPD) | Máx em memória: ${LOG_MAX}`);
 
     const safeHandler = (req, res) => {
@@ -4022,9 +3661,6 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     const server = http.createServer(safeHandler);
     server.keepAliveTimeout = 65000; // acima dos 60s do LB do Render
     server.headersTimeout   = 66000;
-    server.requestTimeout   = 30000;
-    server.maxHeadersCount  = 100;
-    server.maxRequestsPerSocket = 0;
     server.listen(PORT, () => {
       console.log(`🚀 Servidor ouvindo na porta ${PORT}`);
       setInterval(() => {
