@@ -18,7 +18,7 @@ const MODS = [
 
 const PAYT_SECRET  = process.env.PAYT_SECRET  || '';
 const ANALYTICS_PASS = process.env.ANALYTICS_PASS || '';
-const MONGODB_URI  = process.env.MONGODB_URI  || '';
+const MONGODB_URI  = (process.env.MONGODB_URI || '').replace(/^["']|["']$/g, '');
 const APP_SECRET   = process.env.APP_SECRET   || '';
 const TOTP_SECRET  = process.env.TOTP_SECRET  || '';
 const WEBHOOK_URL  = process.env.WEBHOOK_URL  || '';
@@ -69,12 +69,13 @@ const USAGE_ITEM_TYPES = [
   'bulkMessages', 'scheduleItem',
 ];
 function resolveMongoDbName() {
-  if (process.env.MONGODB_DB) return process.env.MONGODB_DB;
-  try {
-    const path = MONGODB_URI.split('?')[0];
-    const name = path.substring(path.lastIndexOf('/') + 1);
-    if (name && !name.includes('@')) return name;
-  } catch (_) { /* fallback */ }
+  const fromEnv = (process.env.MONGODB_DB || '').trim();
+  if (fromEnv) {
+    if (fromEnv.toLowerCase() !== 'zapvoice') {
+      console.warn(`[DB] MONGODB_DB="${fromEnv}" — suas chaves estao em "zapvoice" (Atlas).`);
+    }
+    return fromEnv;
+  }
   return 'zapvoice';
 }
 const MONGODB_DB = resolveMongoDbName();
@@ -115,9 +116,13 @@ async function loadDb() {
     const db = await getMongoDb();
     const keysDoc = await db.collection('store').findOne({ _id: 'keys' });
     const logsDoc = await db.collection('store').findOne({ _id: 'logs' });
+    const keyCount = keysDoc?.data ? Object.keys(keysDoc.data).length : 0;
+    if (keyCount === 0) {
+      console.warn(`[DB] Nenhuma chave em zapvoice.store (doc _id:"keys"). Verifique Atlas ou permissao do usuario.`);
+    }
     return {
-      keys: keysDoc ? keysDoc.data : {},
-      logs: logsDoc ? logsDoc.data : [],
+      keys: keysDoc?.data && typeof keysDoc.data === 'object' ? keysDoc.data : {},
+      logs: Array.isArray(logsDoc?.data) ? logsDoc.data : [],
     };
   } catch (e) {
     console.error('[DB] Erro ao carregar:', e.message);
@@ -377,7 +382,19 @@ async function ensureKeyLoaded(keyCode) {
   try {
     const db = await getMongoDb();
     const doc = await db.collection('store').findOne({ _id: 'keys' });
-    if (doc?.data?.[keyCode]) keys[keyCode] = doc.data[keyCode];
+    if (doc?.data?.[keyCode]) {
+      keys[keyCode] = doc.data[keyCode];
+      return true;
+    }
+    if (doc?.data && typeof doc.data === 'object') {
+      const norm = keyCode.replace(/\s/g, '');
+      for (const [code, val] of Object.entries(doc.data)) {
+        if (code === keyCode || code.replace(/\s/g, '') === norm) {
+          keys[code] = val;
+          return true;
+        }
+      }
+    }
   } catch (_) { /* continua */ }
   return !!keys[keyCode];
 }
@@ -3871,7 +3888,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     serverReady = true;
 
     console.log(`✅ zvm-lr1290 v8 — porta ${PORT}`);
-    console.log(`🍃 MongoDB: ${MONGODB_DB} | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}`);
+    console.log(`🍃 MongoDB: zapvoice.store | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}`);
     console.log(`🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
     console.log(`🔑 2FA:  ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
     console.log(`💳 Payt: ${PAYT_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
