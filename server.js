@@ -28,16 +28,6 @@ const LOG_RETENTION_DAYS = Math.max(1, parseInt(process.env.LOG_RETENTION_DAYS |
 
 const LOG_MAX = Math.min(parseInt(process.env.LOG_MAX || '500'), 2000);
 
-const FREE_PLAN_UUID     = '6a6d6a86-6bc6-4359-ad49-05639915e368';
-const UNLIMITED_USAGE    = process.env.UNLIMITED_USAGE === 'true';
-const FREE_LOGIN_ENABLED = process.env.FREE_LOGIN_ENABLED === 'true';
-const UNLEASH_CLIENT_KEY = process.env.UNLEASH_CLIENT_KEY || '';
-const GA_MEASUREMENT_ID  = process.env.GA_MEASUREMENT_ID  || 'G-KZG9GMXHN4';
-const DEFAULT_OWNER_ID   = process.env.DEFAULT_OWNER_ID   || 'zv-owner';
-const DEFAULT_MANAGER_ID = process.env.DEFAULT_MANAGER_ID || 'zv-manager';
-const APP_BASE_URL       = process.env.APP_BASE_URL        || 'https://app.zapvoice.com.br';
-const CHECKOUT_URL       = process.env.CHECKOUT_URL        || 'https://pay.zapvoice.com.br/invoice';
-
 if (!ADMIN_USER || !ADMIN_PASS) {
   console.error('❌ ERRO CRÍTICO: Defina ADMIN_USER e ADMIN_PASS nas variáveis de ambiente.');
   process.exit(1);
@@ -51,15 +41,11 @@ const FULL_PERMISSIONS = [
   'create_flow','massive_dispatching','schedule_item',
   'send_flow','send_funnel','send_trigger','zapsaver'
 ];
-const FREE_PERMISSIONS = [
-  'create_flow','massive_dispatching','schedule_item',
-  'send_flow','send_funnel','send_trigger'
-];
 const USAGE_LIMITS = {
-  audio:        { sent:0, max:20 }, bulkMessages: { sent:0, max:2  },
-  document:     { sent:0, max:20 }, flow:         { sent:0, max:5  },
-  funnel:       { sent:0, max:5  }, media:        { sent:0, max:20 },
-  message:      { sent:0, max:20 }, scheduleItem: { sent:0, max:5  }
+  audio:        { sent:0, max:-1 }, bulkMessages: { sent:0, max:-1 },
+  document:     { sent:0, max:-1 }, flow:         { sent:0, max:-1 },
+  funnel:       { sent:0, max:-1 }, media:        { sent:0, max:-1 },
+  message:      { sent:0, max:-1 }, scheduleItem: { sent:0, max:-1 }
 };
 const MAX_USES = 3;
 const AVAILABLE_MODULES = ['zapSaver'];
@@ -83,7 +69,7 @@ async function getMongoDb() {
       await _mongoClient.connect();
       console.log('✅ MongoDB conectado');
     }
-    _mongoDb = _mongoClient.db('zvm');
+    _mongoDb = _mongoClient.db('zapvoice');
     return _mongoDb;
   } catch(e) {
 
@@ -308,67 +294,24 @@ async function fireWebhook(event, keyCode, reason) {
 
 function generateCode() {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-  const seg = () => Array.from(crypto.randomBytes(5), b => chars[b % chars.length]).join('');
+  const seg = () => Array.from({length:5}, () => chars[Math.floor(Math.random()*chars.length)]).join('');
   return `zv-${seg()}-${seg()}-${seg()}`;
 }
 function generateToken() { return crypto.randomBytes(32).toString('hex'); }
 
-function getAuthData(keyCode, userName, phone, wppVer) {
+function getAuthData(keyCode, userName) {
   const k = keys[keyCode] || {};
   return {
-    numberWarning: false, unauthorizedNumber: false,
-    segments: ['pro'],
+    numberWarning: false, segments: [],
     isLoggedIn: true, isPremium: true,
-    isFreePlan: false, isBasicPlan: false,
-    dummyTrigger: false,
     modules: { ...DEFAULT_MODULES, ...(k.modules || {}) },
     data: {
-      key: keyCode, keyId: `id-${keyCode}`,
-      ownerId: DEFAULT_OWNER_ID, managerId: DEFAULT_MANAGER_ID,
+      key: keyCode, keyId: `id-${keyCode}`, ownerId: 'zv-owner', managerId: 'zv-manager',
       permissions: FULL_PERMISSIONS,
       username: userName || k.label || '',
-      paymentUrl: null, marketplace: 'premium', email: 'cliente@zvm.app',
+      paymentUrl: null, marketplace: 'premium', email: 'cliente@zapvoice.com.br',
       planName: 'Pro', plan_id: 'ZV_PRO', isLoggedIn: true, isPremium: true, isBasicPlan: false,
-      message: 'OK', warnLimit: false,
-      wppVersion: wppVer || null, userProfilePic: null, deviceId: null,
-    }
-  };
-}
-
-function getFreePlanAuth(phone, wppVer) {
-  const sessionId = phone && phone !== '-'
-    ? 'free-' + crypto.createHash('sha256').update(phone).digest('hex').slice(0, 16)
-    : 'free-' + crypto.randomBytes(8).toString('hex');
-  return {
-    numberWarning:    false,
-    unauthorizedNumber: false,
-    segments:         [],
-    isLoggedIn:       true,
-    isPremium:        false,
-    isFreePlan:       true,
-    isBasicPlan:      false,
-    dummyTrigger:     false,
-    modules:          { ...DEFAULT_MODULES },
-    data: {
-      key:          '',
-      keyId:        sessionId,
-      ownerId:      DEFAULT_OWNER_ID,
-      managerId:    DEFAULT_MANAGER_ID,
-      permissions:  FREE_PERMISSIONS,
-      username:     '',
-      paymentUrl:   `${APP_BASE_URL}/plans/new`,
-      marketplace:  'free',
-      email:        '',
-      planName:     'Free',
-      plan_id:      FREE_PLAN_UUID,
-      isLoggedIn:   true,
-      isPremium:    false,
-      isBasicPlan:  false,
-      message:      'OK',
-      warnLimit:    false,
-      wppVersion:   wppVer || null,
-      userProfilePic: null,
-      deviceId:     null,
+      message: '', warnLimit: false
     }
   };
 }
@@ -599,7 +542,6 @@ const DEDUP_WINDOWS = {
   'expired':       5 * 60 * 1000,
   'login_blocked': 5 * 60 * 1000,
   'warn_limit':   10 * 60 * 1000,
-  'free_login':   60 * 60 * 1000,  // 1h — evita escrita no DB a cada reconexão free
 };
 const _dedupMap = new Map();
 
@@ -1058,46 +1000,40 @@ ${CANVAS_BG}</body></html>`;
 }
 
 function renderExtensionLogin({ callback, error = '', keyVal = '' }) {
-  const freeBtn = FREE_LOGIN_ENABLED ? `
-    <div style="margin-top:12px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-        <div style="flex:1;height:1px;background:#1e1e2e"></div>
-        <span style="color:#5a5a7a;font-size:11px;font-family:'Syne',sans-serif;white-space:nowrap;letter-spacing:1px;text-transform:uppercase">ou continue sem chave</span>
-        <div style="flex:1;height:1px;background:#1e1e2e"></div>
-      </div>
-      <form method="POST" action="/extension/auth/verify">
-        <input type="hidden" name="callback" value="${escHtml(callback)}">
-        <input type="hidden" name="key" value="">
-        <button type="submit" style="width:100%;padding:12px;background:transparent;border:1.5px solid #00ff8750;border-radius:10px;color:#00ff87;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:all .2s" onmouseover="this.style.background='#00ff8712';this.style.borderColor='#00ff87'" onmouseout="this.style.background='transparent';this.style.borderColor='#00ff8750'">🆓 Usar Gratuitamente</button>
-      </form>
-    </div>` : '';
-
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Ativação</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow-x:hidden;padding:24px 16px}
 .wrap{display:grid;grid-template-columns:3fr 2fr;gap:28px;width:100%;max-width:1100px;align-items:center;position:relative;z-index:1}
-.video-col{display:flex;flex-direction:column;gap:14px}
-.video-label{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:#5a5a7a;text-transform:uppercase;letter-spacing:2px;text-align:center}
+.video-col{display:flex;flex-direction:column;gap:12px}
+.video-label{font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:#5a5a7a;text-transform:uppercase;letter-spacing:2px;text-align:center}
 .video-wrap{position:relative;width:100%;padding-top:56.25%;border-radius:14px;overflow:hidden;border:1px solid #1e1e2e;box-shadow:0 0 30px rgba(0,255,135,0.07)}
 .video-wrap iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:none}
 .card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:30px 26px;width:100%;text-align:center;box-shadow:0 0 40px rgba(124,58,237,0.15)}
 .logo{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:#00ff87;margin-bottom:4px;letter-spacing:-0.5px}
-.sub{color:#8a8aaa;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:20px;font-family:'Syne',sans-serif}
-label{display:block;text-align:left;font-size:13px;letter-spacing:.5px;color:#8a8aaa;text-transform:uppercase;margin-bottom:9px;font-family:'Syne',sans-serif;font-weight:600}
-input[type=text]{width:100%;padding:12px 14px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:10px;color:#00ff87;font-family:'Space Mono',monospace;font-size:14px;outline:none;letter-spacing:2px;transition:border .2s}
-input[type=text]:focus{border-color:#00ff87}
-.err{background:#ff475715;border:1px solid #ff4757;border-radius:8px;color:#ff4757;padding:12px 14px;font-size:13px;margin-bottom:14px;text-align:left;font-family:'Syne',sans-serif}
-.btn-activate{width:100%;padding:13px;background:#00ff87;border:none;border-radius:10px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:15px;cursor:pointer;margin-top:14px;transition:opacity .2s}
-.btn-activate:hover{opacity:.85}
-.btn-group{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px;background:#25d36618;border:1.5px solid #25d36640;border-radius:10px;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;cursor:pointer;text-decoration:none;margin-top:10px;transition:all .2s}
-.btn-group:hover{background:#25d36628;border-color:#25d366}
-.hint{margin-top:14px;color:#8a8aaa;font-size:12px;font-family:'Syne',sans-serif}.hint a{color:#00ff87;text-decoration:none}
-@media(max-width:700px){.wrap{grid-template-columns:1fr}.video-col{order:2}.card{order:1}}
+.sub{color:#8a8aaa;font-size:11px;letter-spacing:2px;text-transform:uppercase;margin-bottom:20px;font-family:'Syne',sans-serif}
+.field-label{display:block;text-align:left;font-size:12px;letter-spacing:.5px;color:#8a8aaa;text-transform:uppercase;margin-bottom:8px;font-family:'Syne',sans-serif;font-weight:700}
+input[type=text].key-input{width:100%;padding:13px 14px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:10px;color:#00ff87;font-family:'Space Mono',monospace;font-size:14px;outline:none;letter-spacing:2px;transition:border-color .2s}
+input[type=text].key-input:focus{border-color:#00ff87}
+.key-hint{text-align:left;font-size:11px;color:#5a5a7a;margin-top:6px;font-family:'Syne',sans-serif}
+.err{background:#ff475715;border:1px solid #ff4757;border-radius:8px;color:#ff4757;padding:11px 14px;font-size:13px;margin-bottom:14px;text-align:left;font-family:'Syne',sans-serif}
+.err-inline{color:#ff4757;font-size:12px;text-align:left;margin-top:5px;font-family:'Syne',sans-serif}
+.divider{display:flex;align-items:center;gap:10px;margin:14px 0}
+.divider-line{flex:1;height:1px;background:#1e1e2e}
+.divider-text{color:#5a5a7a;font-size:10px;font-family:'Syne',sans-serif;white-space:nowrap;letter-spacing:1.5px;text-transform:uppercase}
+.btn-primary{width:100%;padding:14px;background:#00ff87;border:none;border-radius:10px;color:#000;font-family:'Syne',sans-serif;font-weight:800;font-size:15px;cursor:pointer;margin-top:14px;transition:opacity .2s}
+.btn-primary:hover{opacity:.85}
+.btn-wa{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:13px;background:#25d36615;border:1.5px solid #25d36640;border-radius:10px;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;text-decoration:none;transition:all .2s}
+.btn-wa:hover{background:#25d36625;border-color:#25d366}
+.btn-free{width:100%;padding:13px;background:transparent;border:1.5px solid #00ff8740;border-radius:10px;color:#00ff87;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:all .2s}
+.btn-free:hover{background:#00ff8710;border-color:#00ff87}
+.hint{margin-top:14px;color:#5a5a7a;font-size:11px;font-family:'Syne',sans-serif;line-height:1.8}
+.hint a{color:#8a8aaa;text-decoration:none}.hint a:hover{color:#00ff87}
+@media(max-width:720px){.wrap{grid-template-columns:1fr}.video-col{order:2}.card{order:1}}
 </style>
 </head><body>
 <div class="wrap">
@@ -1105,7 +1041,7 @@ input[type=text]:focus{border-color:#00ff87}
     <div class="video-label">▶ Tutorial de Ativação</div>
     <div class="video-wrap">
       <iframe
-        src="https://www.youtube.com/embed/DZ29f5U6OF8?rel=0&modestbranding=1&enablejsapi=1"
+        src="https://www.youtube.com/embed/DZ29f5U6OF8?rel=0&modestbranding=1"
         title="Tutorial ZVM"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
         allowfullscreen
@@ -1119,25 +1055,43 @@ input[type=text]:focus{border-color:#00ff87}
     ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
     <form method="POST" action="/extension/auth/verify">
       <input type="hidden" name="callback" value="${escHtml(callback)}">
-      <label>Sua Chave de Ativação</label>
-      <input type="text" name="key" id="key-field" value="${escHtml(keyVal)}" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="20" inputmode="text" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9\-]/g,'').slice(0,20)" onpaste="var e=this;setTimeout(function(){e.value=e.value.toLowerCase().replace(/[^a-z0-9\-]/g,'').slice(0,20);},0)">
-      <p style="text-align:left;font-size:12px;color:#8a8aaa;margin-top:7px;font-family:'Syne',sans-serif">Você recebeu esta chave junto com a sua compra.</p>
-      <button type="submit" class="btn-activate" onclick="var v=document.getElementById('key-field').value.trim();if(!v){event.preventDefault();document.getElementById('key-field').style.borderColor='#ff4757';document.getElementById('key-field').focus();var h=document.querySelector('.err-inline');if(!h){h=document.createElement('p');h.className='err-inline';h.style.cssText='color:#ff4757;font-size:12px;text-align:left;margin-top:6px;font-family:Syne,sans-serif';document.getElementById('key-field').parentNode.appendChild(h);}h.textContent='⚠ Digite sua chave antes de ativar.';return;}">Ativar Agora</button>
+      <label class="field-label">Sua Chave de Ativação</label>
+      <input
+        type="text" name="key" id="key-field" class="key-input"
+        value="${escHtml(keyVal)}"
+        placeholder="zv-xxxxx-xxxxx-xxxxx"
+        autocomplete="off" spellcheck="false" maxlength="20"
+        oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9\-]/g,'').slice(0,20)"
+        onpaste="var e=this;setTimeout(function(){e.value=e.value.toLowerCase().replace(/[^a-z0-9\-]/g,'').slice(0,20);},0)">
+      <p class="key-hint">Você recebeu esta chave junto com a sua compra.</p>
+      <button type="submit" class="btn-primary" onclick="
+        var v=document.getElementById('key-field').value.trim();
+        if(!v){
+          event.preventDefault();
+          var f=document.getElementById('key-field');
+          f.style.borderColor='#ff4757';f.focus();
+          var h=document.querySelector('.err-inline');
+          if(!h){h=document.createElement('p');h.className='err-inline';f.parentNode.appendChild(h);}
+          h.textContent='⚠ Digite sua chave antes de ativar.';
+          return;
+        }
+      ">Ativar Agora</button>
     </form>
-    <a href="https://chat.whatsapp.com/EnkHQfatoTJ43JTgxLYX55" target="_blank" rel="noopener noreferrer" class="btn-group">
+    <div class="divider"><div class="divider-line"></div><div class="divider-text">outros acessos</div><div class="divider-line"></div></div>
+    <a href="https://chat.whatsapp.com/EnkHQfatoTJ43JTgxLYX55" target="_blank" rel="noopener noreferrer" class="btn-wa">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="#25d366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.09.543 4.05 1.492 5.756L.057 23.992l6.354-1.666A11.95 11.95 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.808 9.808 0 01-5.007-1.374l-.36-.214-3.72.975.993-3.62-.234-.373A9.81 9.81 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182S21.818 6.57 21.818 12 17.43 21.818 12 21.818z"/></svg>
       Entrar no Grupo
     </a>
-    ${freeBtn}
-    <div style="margin-top:12px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-        <div style="flex:1;height:1px;background:#1e1e2e"></div>
-        <span style="color:#5a5a7a;font-size:11px;font-family:'Syne',sans-serif;white-space:nowrap;letter-spacing:1px;text-transform:uppercase">chave expirada?</span>
-        <div style="flex:1;height:1px;background:#1e1e2e"></div>
-      </div>
-      <a href="/?backup=1" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:11px;background:#4f8ef710;border:1.5px solid #4f8ef730;border-radius:10px;color:#4f8ef7;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;text-decoration:none;transition:all .2s" onmouseover="this.style.background='#4f8ef720';this.style.borderColor='#4f8ef7'" onmouseout="this.style.background='#4f8ef710';this.style.borderColor='#4f8ef730'">📥 Baixar Backup dos Meus Dados</a>
+    <div class="divider"><div class="divider-line"></div><div class="divider-text">acesso gratuito</div><div class="divider-line"></div></div>
+    <form method="POST" action="/extension/auth/verify">
+      <input type="hidden" name="callback" value="${escHtml(callback)}">
+      <input type="hidden" name="key" value="">
+      <button type="submit" class="btn-free">🆓 Entrar Gratuitamente</button>
+    </form>
+    <div class="hint">
+      Precisa de ajuda? <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank">💬 Suporte</a>
+      &nbsp;·&nbsp; <a href="/planos">💳 Ver Planos</a>
     </div>
-    <div class="hint">Precisa de ajuda ou quer renovar?<br><a href="/planos">💳 Ver Planos</a> · <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20referente%20a%20minha%20renova%C3%A3o." target="_blank">💬 Suporte</a></div>
   </div>
 </div>
 ${CANVAS_BG}</body></html>`;
@@ -1281,11 +1235,6 @@ input:focus{border-color:var(--green)}
         <a href="/planos" style="flex-shrink:0;padding:12px 24px;background:#00ff87;color:#000;font-family:'Syne',sans-serif;font-weight:800;font-size:14px;border-radius:8px;text-decoration:none;white-space:nowrap">💳 Ver Planos</a>
       </div>
       <div class="section-links" id="r-links" style="margin-bottom:20px"></div>
-      <div id="r-backup-section" style="display:none;margin-bottom:20px;background:#ff475708;border:1px solid #ff475730;border-radius:12px;padding:16px 18px">
-        <div style="font-size:14px;color:#ff8a8a;font-family:'Syne',sans-serif;font-weight:700;margin-bottom:8px">📥 Chave inativa — Faça backup dos seus dados</div>
-        <p style="font-size:12px;color:#8a8aaa;font-family:'Syne',sans-serif;line-height:1.7;margin-bottom:12px">Baixe um arquivo JSON com os metadados desta chave.<br><strong style="color:#e2e2f0">Atenção:</strong> os dados da extensão (funis, gatilhos, áudios) ficam no Chrome e devem ser exportados pela Dashboard enquanto a chave ainda está ativa.</p>
-        <button id="r-backup-btn" style="padding:10px 20px;background:#ff475718;border:1px solid #ff475740;border-radius:8px;color:#ff8a8a;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;cursor:pointer;transition:all .2s" onmouseover="this.style.background='#ff475728'" onmouseout="this.style.background='#ff475718'">📥 Baixar Backup JSON</button>
-      </div>
       <button onclick="resetPanel()" style="padding:12px 24px;background:#1e1e2e;color:var(--muted);border:1px solid var(--border);border-radius:8px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#00ff87';this.style.color='#00ff87'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">← Consultar outra chave</button>
     </div>
 </div>
@@ -1327,13 +1276,7 @@ function showPanel(d,key){
   const actCard=document.getElementById('r-act-card'),lastCard=document.getElementById('r-last-card');
   if(d.activatedAt&&actCard){actCard.style.display='block';document.getElementById('r-activated').textContent=fmtDate(d.activatedAt);}
   if(d.lastUsed&&lastCard){lastCard.style.display='block';document.getElementById('r-lastused').textContent=fmtDate(d.lastUsed);}
-  document.getElementById('r-links').innerHTML='<a class="link-btn" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" style="border-color:#25d366;color:#25d366">💬 Suporte WhatsApp</a>';
-  var backupSection=document.getElementById('r-backup-section');
-  if(backupSection){
-    backupSection.style.display=(d.expired||!d.active)?'block':'none';
-    var backupBtn=document.getElementById('r-backup-btn');
-    if(backupBtn)backupBtn.onclick=function(){downloadBackup(key,d);};
-  }
+  document.getElementById('r-links').innerHTML='<a class="link-btn" href="https://app.zapvoice.com.br/dashboard/backup-fixer" target="_blank">🔧 Corrija Backups</a><a class="link-btn" href="https://app.zapvoice.com.br/dashboard/converter" target="_blank">🎵 Converta Áudios</a><a class="link-btn" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" style="border-color:#25d366;color:#25d366">💬 Suporte WhatsApp</a>';
   const renewBanner=document.getElementById('r-renew-banner');
   if(renewBanner){const showRenew=d.expired||(d.hoursLeft!==null&&d.hoursLeft<168);renewBanner.style.display=showRenew?'flex':'none';if(d.expired)renewBanner.querySelector('div div').textContent='⏰ Chave expirada!';}
   var phoneSec=document.getElementById('r-phone-section'),phoneList=document.getElementById('r-phone-list');
@@ -1358,26 +1301,6 @@ function resetPanel(){
   const btn=document.getElementById('check-btn');btn.disabled=false;btn.textContent='Consultar Minha Chave';
   document.getElementById('form-area').style.display='block';
 }
-function downloadBackup(key,d){
-  var now=new Date().toISOString().slice(0,16).replace('T','_').replace(/:/g,'-');
-  var data={
-    exportedAt:new Date().toISOString(),
-    key:key,
-    label:d.label||'',
-    status:d.active?'ativa':(d.expired?'expirada':'bloqueada'),
-    expiresAt:d.expiresAt||null,
-    activatedAt:d.activatedAt||null,
-    lastUsed:d.lastUsed||null,
-    phones:d.phones||0,
-    maxUses:d.maxUses||null,
-    warnCount:d.warnCount||0,
-    note:'Este arquivo contém os metadados da sua chave ZVM. Os dados da extensão (funis, gatilhos, áudios) ficam armazenados localmente no Chrome e devem ser exportados pela Dashboard da extensão enquanto ela está ativa.'
-  };
-  var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
-  var url=URL.createObjectURL(blob);
-  var a=document.createElement('a');a.href=url;a.download='zvm-backup-'+now+'.json';
-  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
-}
 async function clientRemovePhone(key,phoneIdx){
   if(!confirm('Remover este número desta chave?'))return;
   try{var r=await fetch('/client/remove-phone',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,phoneIdx})});var d=await r.json();if(d.ok){alert('Número removido! Você pode fazer login novamente.');doCheck(key);}else alert('Erro: '+(d.error||'?'));}catch(e){alert('Erro de rede.');}
@@ -1386,16 +1309,8 @@ document.getElementById('key-input').addEventListener('keydown',e=>{if(e.key==='
 window.addEventListener('DOMContentLoaded',()=>{
   const params=new URLSearchParams(window.location.search);
   const autoKey=(params.get('key')||'').trim().toLowerCase();
-  const isBackup=params.get('backup')==='1';
   if(autoKey){document.getElementById('loading-overlay').style.display='flex';document.getElementById('form-area').style.display='none';doCheck(autoKey).finally(()=>{document.getElementById('loading-overlay').style.display='none';});}
-  else{
-    document.getElementById('loading-overlay').style.display='none';
-    if(isBackup){
-      var eb=document.getElementById('err-box');
-      if(eb){eb.style.cssText='display:block;background:#4f8ef710;border:1px solid #4f8ef730;border-radius:8px;color:#4f8ef7;padding:12px 14px;font-size:13px;margin-bottom:14px;text-align:left;font-family:Syne,sans-serif';eb.textContent='📥 Digite sua chave abaixo (mesmo expirada) para consultar e baixar o backup dos metadados.';}
-      var ki=document.getElementById('key-input');if(ki)ki.focus();
-    }
-  }
+  else document.getElementById('loading-overlay').style.display='none';
 });
 </script>
 ${CANVAS_BG}</body></html>`;
@@ -2421,83 +2336,6 @@ ${CANVAS_BG}
 </body></html>`;
 }
 
-function renderStep2Page(key, keyId) {
-  const safeKey   = escHtml(key   || '');
-  const safeKeyId = escHtml(keyId || '');
-  return `<!DOCTYPE html><html lang="pt-BR"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Conectando</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&display=swap" rel="stylesheet">
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:#080810;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif}
-.card{background:#0f0f1a;border:1px solid #00ff8740;border-radius:18px;padding:44px 40px;text-align:center;max-width:400px;width:100%;box-shadow:0 0 40px rgba(0,255,135,0.1)}
-.spinner{width:48px;height:48px;border:3px solid #00ff8720;border-top-color:#00ff87;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 24px}
-@keyframes spin{to{transform:rotate(360deg)}}
-.title{font-size:22px;font-weight:800;color:#00ff87;margin-bottom:10px}
-.sub{color:#8a8aaa;font-size:14px;line-height:1.6}
-.bar-wrap{width:100%;height:3px;background:#1e1e2e;border-radius:2px;margin-top:28px;overflow:hidden}
-.bar{height:3px;background:#00ff87;border-radius:2px;animation:fill 3.5s ease-out forwards}
-@keyframes fill{from{width:0}to{width:100%}}
-</style>
-</head><body>
-<div class="card">
-  <div class="spinner"></div>
-  <div class="title">Conectando ao ZVM…</div>
-  <div class="sub">Aguarde enquanto a extensão processa seu acesso.<br>Esta janela fechará automaticamente.</div>
-  <div class="bar-wrap"><div class="bar"></div></div>
-</div>
-<script>
-(function(){
-  var params=new URLSearchParams(window.location.search);
-  var key=params.get('key')||'';
-  var keyId=params.get('keyId')||'';
-  if(window.opener){
-    try{ window.opener.postMessage({type:'ZVM_STEP2_AUTH',key:key,keyId:keyId},'*'); }catch(e){}
-  }
-  setTimeout(function(){ try{window.close();}catch(e){} },3500);
-})();
-</script>
-</body></html>`;
-}
-
-function renderThankYouPage() {
-  return `<!DOCTYPE html><html lang="pt-BR"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Compra Confirmada</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:#080810;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;padding:24px}
-.card{background:#0f0f1a;border:1px solid #00ff8740;border-radius:18px;padding:48px 40px;text-align:center;max-width:480px;width:100%;box-shadow:0 0 50px rgba(0,255,135,0.12)}
-.icon{font-size:56px;margin-bottom:20px;animation:pop .5s cubic-bezier(.34,1.56,.64,1)}
-@keyframes pop{from{transform:scale(0.5);opacity:0}to{transform:scale(1);opacity:1}}
-.title{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:#00ff87;margin-bottom:10px}
-.sub{color:#8a8aaa;font-size:14px;line-height:1.8;margin-bottom:28px}
-.steps{background:#080810;border:1px solid #1c1c2e;border-radius:12px;padding:20px 24px;text-align:left;margin-bottom:28px}
-.step{display:flex;align-items:flex-start;gap:14px;margin-bottom:14px;font-size:13px;color:#c0c0d8;font-family:'Syne',sans-serif}
-.step:last-child{margin-bottom:0}
-.step-num{background:#00ff8720;border:1px solid #00ff8740;color:#00ff87;font-weight:800;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;margin-top:1px}
-.btn{display:inline-block;padding:14px 32px;background:#00ff87;color:#000;font-family:'Syne',sans-serif;font-weight:800;font-size:15px;border-radius:10px;text-decoration:none;transition:opacity .2s}
-.btn:hover{opacity:.85}
-</style>
-</head><body>
-<div class="card">
-  <div class="icon">✅</div>
-  <div class="title">Pagamento Confirmado!</div>
-  <div class="sub">Sua chave de acesso foi gerada e está pronta para uso.<br>Siga os passos abaixo para ativar.</div>
-  <div class="steps">
-    <div class="step"><div class="step-num">1</div><span>Abra o <strong style="color:#e2e2f0">WhatsApp Web</strong> no Chrome com a extensão ZVM instalada.</span></div>
-    <div class="step"><div class="step-num">2</div><span>Clique no ícone da extensão e vá em <strong style="color:#e2e2f0">Ativar Extensão</strong>.</span></div>
-    <div class="step"><div class="step-num">3</div><span>Digite sua chave que foi enviada por e-mail ou acesse o <strong style="color:#e2e2f0">Portal do Cliente</strong> abaixo.</span></div>
-  </div>
-  <a href="/" class="btn">🔑 Acessar Portal do Cliente</a>
-</div>
-${CANVAS_BG}</body></html>`;
-}
-
 function renderAnalyticsLogin(error = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -2822,37 +2660,9 @@ async function handleRequest(req, res) {
     const form    = await parseFormBody(req);
     const keyCode = (form.get('key') || '').trim().toLowerCase();
     const callback= form.get('callback') || '';
-
-    if (!keyCode) {
-      if (FREE_LOGIN_ENABLED) {
-        addLog({ keyCode: '(free)', label: 'Free Login', phone: '-', ip, wppVersion: '-', action: 'free_login' }).catch(()=>{});
-        const _cbOk = ['chrome-extension:','https:','http:'];
-        let _cbUrl = null;
-        if (callback) { try { _cbUrl = new URL(callback); if (!_cbOk.includes(_cbUrl.protocol)) _cbUrl = null; } catch {} }
-        if (_cbUrl) {
-          _cbUrl.searchParams.set('key',         '');
-          _cbUrl.searchParams.set('keyId',       'free-' + crypto.randomBytes(8).toString('hex'));
-          _cbUrl.searchParams.set('ownerId',     DEFAULT_OWNER_ID);
-          _cbUrl.searchParams.set('managerId',   DEFAULT_MANAGER_ID);
-          _cbUrl.searchParams.set('isPremium',   'false');
-          _cbUrl.searchParams.set('isLoggedIn',  'true');
-          _cbUrl.searchParams.set('isFreePlan',  'true');
-          _cbUrl.searchParams.set('planName',    'Free');
-          _cbUrl.searchParams.set('marketplace', 'free');
-          _cbUrl.searchParams.set('username',    '');
-          _cbUrl.searchParams.set('email',       '');
-          _cbUrl.searchParams.set('plan_id',     FREE_PLAN_UUID);
-          _cbUrl.searchParams.set('permissions', FREE_PERMISSIONS.join(','));
-          res.writeHead(302, { Location: _cbUrl.toString() }); res.end();
-        } else {
-          const _freePage = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>ZVM — Plano Free</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace}.card{background:#111118;border:1px solid #00ff8740;border-radius:18px;padding:40px 36px;width:100%;max-width:420px;text-align:center}.icon{font-size:48px;margin-bottom:8px}.title{font-size:22px;font-weight:800;color:#00ff87;margin-bottom:8px}.sub{color:#8a8aaa;font-size:13px;line-height:1.6;margin-bottom:20px}.bar{width:100%;height:3px;background:#1a1a2e;border-radius:2px}.fill{height:100%;background:#00ff87;animation:drain 3s linear forwards;border-radius:2px}@keyframes drain{from{width:100%}to{width:0%}}</style></head><body><div class="card"><div class="icon">🆓</div><div class="title">Plano Free Ativo!</div><div class="sub">Volte ao WhatsApp Web e atualize a página.</div><div class="bar"><div class="fill"></div></div></div><script>setTimeout(function(){window.close();},3100);</script></body></html>`;
-          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-          res.end(_freePage);
-        }
-        return;
-      }
-      await addLog({ keyCode: '?', label: '-', phone: '-', ip, wppVersion: '-', action: 'key_not_found' });
-      sendHtml(res, renderExtensionLogin({ callback, keyVal: '', error: '❌ Chave não encontrada. Verifique ou entre em contato com o vendedor.' }));
+    if (!keyCode || !keys[keyCode]) {
+      await addLog({ keyCode: keyCode||'?', label: '-', phone: '-', ip, wppVersion: '-', action: 'key_not_found' });
+      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '❌ Chave não encontrada. Verifique ou entre em contato com o vendedor.' }));
       return;
     }
     if (isKeyExpired(keys[keyCode])) {
@@ -2884,7 +2694,7 @@ async function handleRequest(req, res) {
       _cbUrl.searchParams.set('planName',    'Pro');
       _cbUrl.searchParams.set('marketplace', 'premium');
       _cbUrl.searchParams.set('username',    keys[keyCode].label);
-      _cbUrl.searchParams.set('email',       'cliente@zvm.app');
+      _cbUrl.searchParams.set('email',       'cliente@zapvoice.com.br');
       _cbUrl.searchParams.set('plan_id',     'ZV_PRO');
       _cbUrl.searchParams.set('permissions', FULL_PERMISSIONS.join(','));
       res.writeHead(302, { Location: _cbUrl.toString() }); res.end();
@@ -2901,25 +2711,15 @@ async function handleRequest(req, res) {
       sendJson(res, { authError: 'rateLimited', authErrorMessage: 'Muitas tentativas. Aguarde.', isLoggedIn: false }, 429);
       return;
     }
-    const rawBody = await new Promise((resolve) => {
-      let b = '', size = 0;
-      req.on('data', c => { size += c.length; if (size > MAX_BODY_SIZE) { req.destroy(); resolve(''); return; } b += c; });
-      req.on('end', () => resolve(b));
-    });
+    const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
     let body; try { body = _safeParse(rawBody); } catch { body = {}; }
-    const rawKey     = (body.authKey || '').toLowerCase().slice(0, 20);
-    const keyCode    = rawKey.replace(/[^a-z0-9\-]/g, '');
+    const keyCode    = (body.authKey || '').toLowerCase().slice(0, 20);
     const phone      = body.phoneNumber || '-';
     const wppVersion = body.wppVersion  || '-';
     const deviceId   = body.deviceId    || '';
 
     if (!keyCode) {
-      if (FREE_LOGIN_ENABLED) {
-        addLog({ keyCode: '(free)', label: 'Free Login', phone: '-', ip, wppVersion, action: 'free_login' }).catch(()=>{});
-        sendJson(res, getFreePlanAuth(phone, wppVersion));
-        return;
-      }
-      sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada.', isLoggedIn: false, data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave inválida ou inexistente.', permissions: [] } }, 404);
+      sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada.', isLoggedIn: false });
       return;
     }
     if (!keys[keyCode]) {
@@ -2930,25 +2730,20 @@ async function handleRequest(req, res) {
       } catch(e) { /* continua */ }
     }
     if (!keys[keyCode]) {
-      if (FREE_LOGIN_ENABLED) {
-        addLog({ keyCode: keyCode||'(free)', label: 'Free Login', phone: '-', ip, wppVersion, action: 'free_login' }).catch(()=>{});
-        sendJson(res, getFreePlanAuth(phone, wppVersion));
-        return;
-      }
-      sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada. Contate o vendedor.', isLoggedIn: false, data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave inválida ou inexistente.', permissions: [] } }, 404);
+      sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada. Contate o vendedor.', isLoggedIn: false });
       addLog({ keyCode, label: '-', phone, ip, wppVersion, action: 'key_not_found' }).catch(()=>{});
       return;
     }
     if (isKeyExpired(keys[keyCode])) {
       keys[keyCode].active = false;
-      sendJson(res, { authError: 'keyExpired', reason: 'expired', isLoggedIn: false, data: { message: 'CHAVE EXPIRADA. Renove para continuar.', permissions: [] } }, 403);
+      sendJson(res, { authError: 'keyExpired', reason: 'expired', isLoggedIn: false, data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave expirada.', permissions: [] } }, 403);
       addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'expired' }).catch(()=>{});
       saveKey(keyCode).catch(()=>{});
       fireWebhook('key_expired', keyCode, 'Expiração detectada no v3/key');
       return;
     }
     if (!keys[keyCode].active) {
-      sendJson(res, { authError: 'keyBlocked', reason: 'blocked', isLoggedIn: false, data: { message: 'CHAVE BLOQUEADA. Entre em contato com o vendedor.', permissions: [] } }, 403);
+      sendJson(res, { authError: 'keyBlocked', reason: 'blocked', isLoggedIn: false, data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave bloqueada.', permissions: [] } }, 403);
       addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'login_blocked' }).catch(()=>{});
       return;
     }
@@ -2971,7 +2766,7 @@ async function handleRequest(req, res) {
         }
         keys[keyCode].warnCountTs = new Date().toISOString();
         sendJson(res, {
-          authError: 'userNotFound', warnLimit: true, isLoggedIn: false, warnRemaining: keys[keyCode].warnCount,
+          warnLimit: true, isLoggedIn: false, warnRemaining: keys[keyCode].warnCount,
           data: { message: `USUÁRIO NÃO ENCONTRADO. Limite de ativações atingido (${keys[keyCode].phones.length}/${keyMaxUses}).`, permissions: [] }
         }, 403);
         addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'warn_limit' }).catch(()=>{});
@@ -2994,7 +2789,7 @@ async function handleRequest(req, res) {
     if (hasPhone) keys[keyCode].lastPhone = phone;
     if (deviceId) keys[keyCode].deviceId  = deviceId;
 
-    sendJson(res, getAuthData(keyCode, body.userName || '', phone !== '-' ? phone : null, wppVersion !== '-' ? wppVersion : null));
+    sendJson(res, getAuthData(keyCode, body.userName || ''));
 
     const _action = isNewPhone ? 'login_ok' : 'relogin_ok';
     addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: _action }).catch(()=>{});
@@ -3009,22 +2804,11 @@ async function handleRequest(req, res) {
     if (parseInt(req.headers['content-length'] || 0) > MAX_BODY_SIZE) {
       sendJson(res, { active: true }); return;
     }
-    const rawBody = await new Promise((resolve) => {
-      let b = '', size = 0;
-      req.on('data', c => { size += c.length; if (size > MAX_BODY_SIZE) { req.destroy(); resolve(''); return; } b += c; });
-      req.on('end', () => resolve(b));
-    });
+    const rawBody = await new Promise(r=>{let b='';req.on('data',c=>{b+=c;});req.on('end',()=>r(b));});
     let body; try { body = JSON.parse(rawBody); } catch { body = {}; }
     const keyCode = (body.authKey || '').toLowerCase().slice(0, 20);
     if (!serverReady) { sendJson(res, { active: true }); return; }
-    if (!keyCode) {
-      if (FREE_LOGIN_ENABLED) {
-        sendJson(res, { active: true, isFreePlan: true, isPremium: false, modules: { ...DEFAULT_MODULES }, ts: Date.now() });
-      } else {
-        sendJson(res, { active: true });
-      }
-      return;
-    }
+    if (!keyCode)     { sendJson(res, { active: true }); return; }
     if (!keys[keyCode]) {
       try {
         const db  = await getMongoDb();
@@ -3057,57 +2841,8 @@ async function handleRequest(req, res) {
     return;
   }
 
-  if (p === R_EXT+'/v3/usage' && req.method === 'POST') {
-    const body = await parseBody(req);
-    const itemType = body.itemType || '';
-    const action   = body.action   || 'increase';
-    const limits   = UNLIMITED_USAGE
-      ? Object.fromEntries(Object.keys(USAGE_LIMITS).map(k => [k, { max: -1, sent: 0 }]))
-      : { ...USAGE_LIMITS };
-    const expiresAt = new Date(Date.now() + 365*24*60*60*1000).toISOString();
-    let message = 'Mensagem enviada';
-    if (!UNLIMITED_USAGE && itemType && limits[itemType]) {
-      const cur = limits[itemType];
-      if (action === 'increase') cur.sent = Math.min(cur.sent + 1, cur.max > 0 ? cur.max : cur.sent + 1);
-      if (cur.max > 0) {
-        const remaining = cur.max - cur.sent;
-        const labels = { audio:'áudios', bulkMessages:'disparos em massa', document:'documentos', flow:'fluxos', funnel:'funis', media:'mídias', message:'mensagens', scheduleItem:'agendamentos de itens simultâneos' };
-        if (remaining <= 0) {
-          sendJson(res, { limits: null, status: false, errorType: 'MAX_LIMIT_REACHED', message: `O limite diário de envio de ${labels[itemType]||itemType} foi alcançado` }, 429);
-          return;
-        }
-        message = `Mensagem enviada, você ainda pode enviar ${remaining} ${labels[itemType]||itemType}`;
-      }
-    }
-    sendJson(res, { limits, status: true, message, expires_at: expiresAt });
-    return;
-  }
-
-  if (p === R_EXT+'/v3/get-usage' && req.method === 'POST') {
-    const body = await parseBody(req);
-    const planId = body.planId === FREE_PLAN_UUID ? 'ZV_FREE' : (body.planId || 'ZV_PRO');
-    const limits = UNLIMITED_USAGE
-      ? Object.fromEntries(Object.keys(USAGE_LIMITS).map(k => [k, { max: -1, sent: 0 }]))
-      : { ...USAGE_LIMITS };
-    const today = new Date().toISOString().slice(0, 10);
-    sendJson(res, { limits, status: true, expires_at: today, isExpired: false, planId });
-    return;
-  }
-
-  if (p === R_EXT+'/v3/sync-usage' && req.method === 'POST') {
-    const body = await parseBody(req);
-    const echoed = (body.extensionLimits && typeof body.extensionLimits === 'object') ? body.extensionLimits : USAGE_LIMITS;
-    sendJson(res, { ok: true, status: true, limits: echoed });
-    return;
-  }
-
-  if (p === R_EXT+'/v3/create-user-event' && req.method === 'POST') {
-    sendJson(res, { status: 'success' });
-    return;
-  }
-
-  if (p === '/dmg/dashboard/events/customer/new' && req.method === 'POST') {
-    sendJson(res, { status: 'success' });
+  if ([R_EXT+'/v3/usage', R_EXT+'/v3/get-usage', R_EXT+'/v3/sync-usage'].includes(p)) {
+    sendJson(res, { ok: true, status: true, limits: USAGE_LIMITS, expires_at: new Date(Date.now()+365*24*60*60*1000).toISOString(), isExpired: false });
     return;
   }
 
@@ -3574,11 +3309,7 @@ async function handleRequest(req, res) {
   }
 
   if (p === '/payt/webhook' && req.method === 'POST') {
-    const rawBody = await new Promise((resolve) => {
-      let b = '', size = 0;
-      req.on('data', c => { size += c.length; if (size > MAX_BODY_SIZE) { req.destroy(); resolve(''); return; } b += c; });
-      req.on('end', () => resolve(b));
-    });
+    const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
 
     let payload;
     try { payload = JSON.parse(rawBody); }
@@ -3754,7 +3485,7 @@ async function handleRequest(req, res) {
   }
 
   if (req.method === 'GET' && (p === '/dashboard/backup-fixer' || p === '/dashboard/converter')) {
-    res.writeHead(302, { Location: APP_BASE_URL + p }); res.end(); return;
+    res.writeHead(302, { Location: 'https://app.zapvoice.com.br' + p }); res.end(); return;
   }
 
   if (p === '/faq' && req.method === 'GET') {
@@ -3769,52 +3500,9 @@ async function handleRequest(req, res) {
     sendHtml(res, renderPrivacyPage()); return;
   }
 
-  if (p === '/unauthorized/special-register/step2' && req.method === 'GET') {
-    const key   = url.searchParams.get('key')   || '';
-    const keyId = url.searchParams.get('keyId') || '';
-    sendHtml(res, renderStep2Page(key, keyId)); return;
-  }
-
-  if ((p === '/pagina-obrigado' || p === '/obrigado') && req.method === 'GET') {
-    sendHtml(res, renderThankYouPage()); return;
-  }
-
   const CLIENT_PATHS = ['/', '/plans/manage', '/plans/new', '/dashboard/chaves'];
   if (req.method === 'GET' && (CLIENT_PATHS.includes(p) || p.startsWith('/unauthorized') || p.startsWith('/funnels') || p.startsWith('/labels'))) {
     sendHtml(res, renderClientPortal()); return;
-  }
-
-  if (p === '/unleash/api/frontend' && req.method === 'GET') {
-    const uninstallUrl = JSON.stringify({ baseUrl: `${APP_BASE_URL}/uninstall`, enableDynamicParamsInBaseUrl: true });
-    sendJson(res, {
-      version: 2,
-      features: [
-        { name: 'free-login',                  enabled: FREE_LOGIN_ENABLED, variant: { name: 'disabled', enabled: false } },
-        { name: 'usage-limit',                 enabled: true,               variant: { name: 'disabled', enabled: false } },
-        { name: 'login-by-key',                enabled: true,               variant: { name: 'disabled', enabled: false } },
-        { name: 'track-auth-events',           enabled: true,            variant: { name: 'disabled', enabled: false } },
-        { name: 'track-item-sent-events',      enabled: true,            variant: { name: 'disabled', enabled: false } },
-        { name: 'track-page-events',           enabled: true,            variant: { name: 'disabled', enabled: false } },
-        { name: 'track-trigger-events',        enabled: true,            variant: { name: 'disabled', enabled: false } },
-        { name: 'trigger-webhooks',            enabled: true,            variant: { name: 'disabled', enabled: false } },
-        { name: 'unlimited-usage',             enabled: UNLIMITED_USAGE, variant: { name: 'disabled', enabled: false } },
-        { name: 'skip-anti-debug',             enabled: false,           variant: { name: 'disabled', enabled: false } },
-        { name: 'key-warning-ad-block',        enabled: false,           variant: { name: 'disabled', enabled: false } },
-        { name: 'modals',                      enabled: false,           variant: { name: 'disabled', enabled: false } },
-        { name: 'news',                        enabled: false,           variant: { name: 'disabled', enabled: false } },
-        { name: 'hovered-chat-list-item-selector', enabled: false,       variant: { name: 'disabled', enabled: false } },
-        { name: 'hovered-message-item-selector',   enabled: false,       variant: { name: 'disabled', enabled: false } },
-        { name: 'redirect-uninstall-url',      enabled: true,            variant: {
-          name: 'default', enabled: true,
-          payload: { type: 'json', value: uninstallUrl }
-        }},
-      ]
-    });
-    return;
-  }
-
-  if ((p === '/g/collect' || p.startsWith('/g/collect')) && req.method === 'POST') {
-    res.writeHead(204); res.end(); return;
   }
 
   sendJson(res, { ok: true });
@@ -3846,9 +3534,6 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     console.log(`📊 Analytics: ${ANALYTICS_PASS ? 'ATIVO' : '⚠ INATIVO'}`);
     console.log(`🌐 Extension: ${R_EXT}/v3/key`);
     console.log(`📊 Webhook: ${WEBHOOK_URL || 'não configurado'}`);
-    console.log(`🏁 Unleash mock: /unleash/api/frontend | unlimited-usage: ${UNLIMITED_USAGE}`);
-    console.log(`🆓 Free login: ${FREE_LOGIN_ENABLED ? 'ATIVO — chaves inválidas autenticam como Free Plan' : 'inativo'}`);
-    console.log(`📡 GA collect: /g/collect (intercept GA4 beacons)`);
     console.log(`🗂  Retenção de logs: ${LOG_RETENTION_DAYS} dias (LGPD) | Máx em memória: ${LOG_MAX}`);
 
     const safeHandler = (req, res) => {
