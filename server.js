@@ -562,6 +562,11 @@ function getFreeAuthData() {
     isPremium: false,
     isFreePlan: true,
     isBasicPlan: false,
+    expiresAt: null,
+    hoursLeft: null,
+    daysLeft: null,
+    expiringSoon: false,
+    deferred: false,
     modules: { ...DEFAULT_MODULES },
     data: {
       key: FREE_AUTH_KEY,
@@ -580,11 +585,13 @@ function getFreeAuthData() {
       isBasicPlan: false,
       message: '',
       warnLimit: false,
+      expiresAt: null,
     },
   };
 }
 function getAuthData(keyCode, userName) {
   const k = sanitizeKeyRecord(keys[keyCode] || {});
+  const expiry = getKeyExpiryMeta(k);
   return {
     numberWarning: false,
     segments: Array.isArray(k.segments) ? k.segments : [],
@@ -592,6 +599,11 @@ function getAuthData(keyCode, userName) {
     isPremium: true,
     isFreePlan: false,
     isBasicPlan: !!k.isBasicPlan,
+    expiresAt: expiry.expiresAt,
+    hoursLeft: expiry.hoursLeft,
+    daysLeft: expiry.daysLeft,
+    expiringSoon: expiry.expiringSoon,
+    deferred: expiry.deferred,
     modules: { ...DEFAULT_MODULES, ...(k.modules || {}) },
     data: {
       key: keyCode,
@@ -612,6 +624,7 @@ function getAuthData(keyCode, userName) {
       isBasicPlan: !!k.isBasicPlan,
       message: '',
       warnLimit: false,
+      expiresAt: expiry.expiresAt,
     },
   };
 }
@@ -677,6 +690,21 @@ function isKeyExpiringSoon(k) {
 function hoursUntilExpiry(k) {
   if (!k.expiresAt) return null;
   return Math.max(0, Math.floor((new Date(k.expiresAt) - new Date()) / 3600000));
+}
+function daysUntilExpiry(k) {
+  if (!k?.expiresAt) return null;
+  return Math.max(0, Math.floor((new Date(k.expiresAt) - new Date()) / (24 * 3600000)));
+}
+function getKeyExpiryMeta(k) {
+  const deferred = !!(k?.expireDuration && !k?.expiresAt);
+  const expiresAt = k?.expiresAt || null;
+  return {
+    expiresAt,
+    hoursLeft: expiresAt ? hoursUntilExpiry(k) : null,
+    daysLeft: expiresAt ? daysUntilExpiry(k) : null,
+    expiringSoon: expiresAt ? isKeyExpiringSoon(k) : false,
+    deferred,
+  };
 }
 
 function getIp(req) {
