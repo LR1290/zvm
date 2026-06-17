@@ -47,6 +47,37 @@ const USAGE_LIMITS = {
   funnel:       { sent:0, max:-1 }, media:        { sent:0, max:-1 },
   message:      { sent:0, max:-1 }, scheduleItem: { sent:0, max:-1 }
 };
+const FREE_AUTH_KEY   = 'free';
+const FREE_PLAN_ID    = 'ZV_FREE';
+const FREE_OWNER_ID   = '6a6d6a86-6bc6-4359-ad49-05639915e368';
+const FREE_MANAGER_ID = 'zv-free-manager';
+const FREE_KEY_ID     = 'id-free';
+const FREE_USAGE_LIMITS = {
+  audio: { sent: 0, max: 10 }, bulkMessages: { sent: 0, max: 0 },
+  document: { sent: 0, max: 10 }, flow: { sent: 0, max: 0 },
+  funnel: { sent: 0, max: 0 }, media: { sent: 0, max: 10 },
+  message: { sent: 0, max: 20 }, scheduleItem: { sent: 0, max: 5 },
+};
+const AUTH_MSG = {
+  BLOCKED: 'CHAVE BLOQUEADA',
+  EXPIRED: 'CHAVE EXPIRADA',
+  USER_NOT_FOUND: 'USUÁRIO NÃO ENCONTRADO',
+  INACTIVE: 'CHAVE DESATIVADA',
+};
+const USAGE_ITEM_TYPES = [
+  'audio', 'document', 'media', 'message', 'flow', 'funnel',
+  'bulkMessages', 'scheduleItem',
+];
+function resolveMongoDbName() {
+  if (process.env.MONGODB_DB) return process.env.MONGODB_DB;
+  try {
+    const path = MONGODB_URI.split('?')[0];
+    const name = path.substring(path.lastIndexOf('/') + 1);
+    if (name && !name.includes('@')) return name;
+  } catch (_) { /* fallback */ }
+  return 'zapvoice';
+}
+const MONGODB_DB = resolveMongoDbName();
 const MAX_USES = 3;
 const AVAILABLE_MODULES = ['zapSaver'];
 const DEFAULT_MODULES = Object.fromEntries(AVAILABLE_MODULES.map(m => [m, false]));
@@ -69,7 +100,7 @@ async function getMongoDb() {
       await _mongoClient.connect();
       console.log('✅ MongoDB conectado');
     }
-    _mongoDb = _mongoClient.db('zapvoice');
+    _mongoDb = _mongoClient.db(MONGODB_DB);
     return _mongoDb;
   } catch(e) {
 
@@ -143,6 +174,7 @@ async function saveLogs() {
 }
 
 let keys             = {};
+let freeUsage        = { usageDate: '', byPhone: {} };
 let logs             = [];
 let sessions         = {};
 let modSessions      = {};
@@ -299,21 +331,212 @@ function generateCode() {
 }
 function generateToken() { return crypto.randomBytes(32).toString('hex'); }
 
+function isFreeAuthKey(key) {
+  return key === FREE_AUTH_KEY || key === FREE_PLAN_ID || key === FREE_OWNER_ID;
+}
+function isFreePlanId(planId) {
+  return planId === FREE_PLAN_ID || planId === FREE_OWNER_ID;
+}
+function usageTodayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+function cloneLimits(template) {
+  return JSON.parse(JSON.stringify(template));
+}
+function ensureKeyUsage(key, defaultLimits) {
+  if (!key.usage || typeof key.usage !== 'object') key.usage = cloneLimits(defaultLimits);
+  if (key.usageDate !== usageTodayKey()) {
+    for (const t of USAGE_ITEM_TYPES) {
+      if (key.usage[t]) key.usage[t].sent = 0;
+      else key.usage[t] = { sent: 0, max: defaultLimits[t]?.max ?? -1 };
+    }
+    key.usageDate = usageTodayKey();
+  }
+  return key.usage;
+}
+function ensureFreeUsage(phone) {
+  const id = (phone && phone !== '-') ? String(phone).replace(/\D/g, '') : '_anon_';
+  if (freeUsage.usageDate !== usageTodayKey()) {
+    freeUsage = { usageDate: usageTodayKey(), byPhone: {} };
+  }
+  if (!freeUsage.byPhone[id]) freeUsage.byPhone[id] = cloneLimits(FREE_USAGE_LIMITS);
+  return freeUsage.byPhone[id];
+}
+function findKeyCodeByPhone(keysMap, phone) {
+  if (!phone || phone === '-') return null;
+  const norm = String(phone).replace(/\D/g, '');
+  for (const [code, k] of Object.entries(keysMap)) {
+    if (!k || typeof k !== 'object') continue;
+    if (k.lastPhone === phone) return code;
+    if (Array.isArray(k.phones) && k.phones.some(p => p === phone || String(p).replace(/\D/g, '') === norm)) return code;
+  }
+  return null;
+}
+async function ensureKeyLoaded(keyCode) {
+  if (!keyCode || keys[keyCode]) return !!keys[keyCode];
+  try {
+    const db = await getMongoDb();
+    const doc = await db.collection('store').findOne({ _id: 'keys' });
+    if (doc?.data?.[keyCode]) keys[keyCode] = doc.data[keyCode];
+  } catch (_) { /* continua */ }
+  return !!keys[keyCode];
+}
+async function resolveUsageKey(body) {
+  const authKey = (body.authKey || '').toLowerCase().slice(0, 32);
+  if (isFreeAuthKey(authKey) || isFreePlanId(body.planId || '')) return FREE_AUTH_KEY;
+  if (authKey && await ensureKeyLoaded(authKey)) return authKey;
+  const byPhone = findKeyCodeByPhone(keys, body.phoneNumber || '');
+  if (byPhone && await ensureKeyLoaded(byPhone)) return byPhone;
+  return null;
+}
+function buildUsagePayload(keyCode, phone) {
+  if (keyCode === FREE_AUTH_KEY) {
+    const usage = ensureFreeUsage(phone || '');
+    return {
+      limits: usage,
+      expires_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+      isExpired: false,
+    };
+  }
+  const k = keys[keyCode];
+  if (!k) return null;
+  const usage = ensureKeyUsage(k, USAGE_LIMITS);
+  if (k.usageLimits && typeof k.usageLimits === 'object') {
+    for (const t of USAGE_ITEM_TYPES) {
+      if (k.usageLimits[t] && typeof k.usageLimits[t].max === 'number') usage[t].max = k.usageLimits[t].max;
+    }
+  }
+  return {
+    limits: usage,
+    expires_at: k.expiresAt || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+    isExpired: isKeyExpired(k),
+  };
+}
+function incrementUsageRow(usage, itemType, defaultLimits, scheduledItems) {
+  if (!USAGE_ITEM_TYPES.includes(itemType)) {
+    return { ok: false, errorType: 'UNKNOWN_ITEM_TYPE', message: 'Tipo de item desconhecido' };
+  }
+  if (!usage[itemType]) usage[itemType] = { sent: 0, max: defaultLimits[itemType]?.max ?? -1 };
+  const row = usage[itemType];
+  if (itemType === 'scheduleItem' && typeof scheduledItems === 'number') {
+    row.sent = Math.max(row.sent || 0, scheduledItems);
+  } else if (row.max === 0) {
+    return { ok: false, errorType: 'MAX_LIMIT_REACHED', message: 'Recurso indisponível no plano gratuito' };
+  } else if (row.max < 0) {
+    row.sent = (row.sent || 0) + 1;
+  } else if (row.sent >= row.max) {
+    return { ok: false, errorType: 'MAX_LIMIT_REACHED', message: 'Limite diário atingido' };
+  } else {
+    row.sent = (row.sent || 0) + 1;
+  }
+  return { ok: true, limits: usage };
+}
+function getFreeAuthData() {
+  return {
+    numberWarning: false,
+    segments: [],
+    isLoggedIn: true,
+    isPremium: false,
+    isFreePlan: true,
+    isBasicPlan: false,
+    modules: { ...DEFAULT_MODULES },
+    data: {
+      key: FREE_AUTH_KEY,
+      keyId: FREE_KEY_ID,
+      ownerId: FREE_OWNER_ID,
+      managerId: FREE_MANAGER_ID,
+      permissions: [],
+      username: 'Usuário Gratuito',
+      paymentUrl: null,
+      marketplace: 'free',
+      email: '',
+      planName: 'Gratuito',
+      plan_id: FREE_PLAN_ID,
+      isLoggedIn: true,
+      isPremium: false,
+      isBasicPlan: false,
+      message: '',
+      warnLimit: false,
+    },
+  };
+}
 function getAuthData(keyCode, userName) {
   const k = keys[keyCode] || {};
   return {
-    numberWarning: false, segments: [],
-    isLoggedIn: true, isPremium: true,
+    numberWarning: false,
+    segments: Array.isArray(k.segments) ? k.segments : [],
+    isLoggedIn: true,
+    isPremium: true,
+    isFreePlan: false,
+    isBasicPlan: !!k.isBasicPlan,
     modules: { ...DEFAULT_MODULES, ...(k.modules || {}) },
     data: {
-      key: keyCode, keyId: `id-${keyCode}`, ownerId: 'zv-owner', managerId: 'zv-manager',
-      permissions: FULL_PERMISSIONS,
+      key: keyCode,
+      keyId: k.keyId || `id-${keyCode}`,
+      ownerId: k.ownerId || 'zv-owner',
+      managerId: k.managerId || 'zv-manager',
+      permissions: Array.isArray(k.permissions) && k.permissions.length ? k.permissions : FULL_PERMISSIONS,
       username: userName || k.label || '',
-      paymentUrl: null, marketplace: 'premium', email: 'cliente@zapvoice.com.br',
-      planName: 'Pro', plan_id: 'ZV_PRO', isLoggedIn: true, isPremium: true, isBasicPlan: false,
-      message: '', warnLimit: false
-    }
+      paymentUrl: k.paymentUrl || null,
+      marketplace: k.marketplace || 'premium',
+      email: k.email || 'cliente@zapvoice.com.br',
+      planName: k.planName || 'Pro',
+      plan_id: k.plan_id || k.planId || 'ZV_PRO',
+      isLoggedIn: true,
+      isPremium: !k.isBasicPlan,
+      isBasicPlan: !!k.isBasicPlan,
+      message: '',
+      warnLimit: false,
+    },
   };
+}
+function redirectExtensionCallback(res, callback, plan, keyCode) {
+  const _cbOk = ['chrome-extension:', 'https:', 'http:'];
+  let _cbUrl = null;
+  if (callback) {
+    try {
+      _cbUrl = new URL(callback);
+      if (!_cbOk.includes(_cbUrl.protocol)) _cbUrl = null;
+    } catch (_) { _cbUrl = null; }
+  }
+  if (_cbUrl) {
+    if (plan === 'free') {
+      _cbUrl.searchParams.set('key', FREE_AUTH_KEY);
+      _cbUrl.searchParams.set('keyId', FREE_KEY_ID);
+      _cbUrl.searchParams.set('ownerId', FREE_OWNER_ID);
+      _cbUrl.searchParams.set('managerId', FREE_MANAGER_ID);
+      _cbUrl.searchParams.set('isPremium', 'false');
+      _cbUrl.searchParams.set('isLoggedIn', 'true');
+      _cbUrl.searchParams.set('planName', 'Gratuito');
+      _cbUrl.searchParams.set('marketplace', 'free');
+      _cbUrl.searchParams.set('username', 'Usuário Gratuito');
+      _cbUrl.searchParams.set('email', '');
+      _cbUrl.searchParams.set('plan_id', FREE_PLAN_ID);
+      _cbUrl.searchParams.set('permissions', '');
+    } else {
+      const k = keys[keyCode] || {};
+      _cbUrl.searchParams.set('key', keyCode);
+      _cbUrl.searchParams.set('keyId', k.keyId || `id-${keyCode}`);
+      _cbUrl.searchParams.set('ownerId', k.ownerId || 'zv-owner');
+      _cbUrl.searchParams.set('managerId', k.managerId || 'zv-manager');
+      _cbUrl.searchParams.set('isPremium', 'true');
+      _cbUrl.searchParams.set('isLoggedIn', 'true');
+      _cbUrl.searchParams.set('planName', k.planName || 'Pro');
+      _cbUrl.searchParams.set('marketplace', k.marketplace || 'premium');
+      _cbUrl.searchParams.set('username', k.label || '');
+      _cbUrl.searchParams.set('email', k.email || 'cliente@zapvoice.com.br');
+      _cbUrl.searchParams.set('plan_id', k.plan_id || k.planId || 'ZV_PRO');
+      _cbUrl.searchParams.set('permissions', (Array.isArray(k.permissions) && k.permissions.length ? k.permissions : FULL_PERMISSIONS).join(','));
+    }
+    res.writeHead(302, { Location: _cbUrl.toString() });
+    res.end();
+    return;
+  }
+  const title = plan === 'free' ? 'Acesso Gratuito Ativado!' : 'Chave Ativada!';
+  const label = plan === 'free' ? 'Plano Gratuito' : keyCode;
+  const page = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>ZVM - Ativado</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace}.card{background:#111118;border:1px solid #00ff8740;border-radius:18px;padding:40px 36px;width:100%;max-width:420px;text-align:center}.title{font-size:22px;font-weight:800;color:#00ff87;margin-bottom:8px}.sub{color:#8a8aaa;font-size:13px;line-height:1.6;margin-bottom:20px}.key{background:#0a0a0f;border:1px solid #00ff8730;border-radius:8px;padding:10px 16px;color:#00ff87;font-size:14px;margin-bottom:20px}</style></head><body><div class="card"><div class="title">${title}</div><div class="sub">Volte ao WhatsApp Web e atualize a página.</div><div class="key">${label}</div></div><script>setTimeout(function(){window.close();},3100);</script></body></html>`;
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(page);
 }
 
 function isKeyExpired(k) {
@@ -1085,7 +1308,7 @@ input[type=text].key-input:focus{border-color:#00ff87}
     <div class="divider"><div class="divider-line"></div><div class="divider-text">acesso gratuito</div><div class="divider-line"></div></div>
     <form method="POST" action="/extension/auth/verify">
       <input type="hidden" name="callback" value="${escHtml(callback)}">
-      <input type="hidden" name="key" value="">
+      <input type="hidden" name="mode" value="free">
       <button type="submit" class="btn-free">🆓 Entrar Gratuitamente</button>
     </form>
     <div class="hint">
@@ -2657,11 +2880,23 @@ async function handleRequest(req, res) {
       sendHtml(res, renderExtensionLogin({ callback: '', error: `⏳ Muitas tentativas. Aguarde ${mins} minuto(s).` }), 429);
       return;
     }
-    const form    = await parseFormBody(req);
-    const keyCode = (form.get('key') || '').trim().toLowerCase();
-    const callback= form.get('callback') || '';
-    if (!keyCode || !keys[keyCode]) {
-      await addLog({ keyCode: keyCode||'?', label: '-', phone: '-', ip, wppVersion: '-', action: 'key_not_found' });
+    const form     = await parseFormBody(req);
+    const mode     = (form.get('mode') || '').trim().toLowerCase();
+    const keyCode  = (form.get('key') || '').trim().toLowerCase().slice(0, 32);
+    const callback = form.get('callback') || '';
+
+    if (mode === 'free') {
+      addLog({ keyCode: FREE_AUTH_KEY, label: 'Gratuito', phone: '-', ip, wppVersion: '-', action: 'free_login' }).catch(() => {});
+      redirectExtensionCallback(res, callback, 'free');
+      return;
+    }
+
+    if (!keyCode) {
+      sendHtml(res, renderExtensionLogin({ callback, error: '❌ Digite sua chave de ativação.' }));
+      return;
+    }
+    if (!await ensureKeyLoaded(keyCode)) {
+      await addLog({ keyCode, label: '-', phone: '-', ip, wppVersion: '-', action: 'key_not_found' });
       sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '❌ Chave não encontrada. Verifique ou entre em contato com o vendedor.' }));
       return;
     }
@@ -2670,39 +2905,18 @@ async function handleRequest(req, res) {
       await addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'expired' });
       saveKey(keyCode);
       fireWebhook('key_expired', keyCode, 'Expiração detectada no login');
-      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '⏰ Chave expirada. Entre em contato com o vendedor para renovar.' }));
+      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '⏰ Chave expirada. Use "Entrar Gratuitamente" para acessar backups ou renove sua chave.' }));
       return;
     }
     if (!keys[keyCode].active) {
       await addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'login_blocked' });
-      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '🚫 Chave bloqueada. Entre em contato com o vendedor.' }));
+      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '🚫 Chave bloqueada. Use "Entrar Gratuitamente" para acessar backups ou contate o vendedor.' }));
       return;
     }
     keys[keyCode].lastUsed = new Date().toISOString();
     keys[keyCode].lastIp   = ip;
     saveKey(keyCode);
-    const _cbOk = ['chrome-extension:','https:','http:'];
-    let _cbUrl = null;
-    if (callback) { try { _cbUrl = new URL(callback); if (!_cbOk.includes(_cbUrl.protocol)) _cbUrl = null; } catch {} }
-    if (_cbUrl) {
-      _cbUrl.searchParams.set('key',         keyCode);
-      _cbUrl.searchParams.set('keyId',       `id-${keyCode}`);
-      _cbUrl.searchParams.set('ownerId',     'zv-owner');
-      _cbUrl.searchParams.set('managerId',   'zv-manager');
-      _cbUrl.searchParams.set('isPremium',   'true');
-      _cbUrl.searchParams.set('isLoggedIn',  'true');
-      _cbUrl.searchParams.set('planName',    'Pro');
-      _cbUrl.searchParams.set('marketplace', 'premium');
-      _cbUrl.searchParams.set('username',    keys[keyCode].label);
-      _cbUrl.searchParams.set('email',       'cliente@zapvoice.com.br');
-      _cbUrl.searchParams.set('plan_id',     'ZV_PRO');
-      _cbUrl.searchParams.set('permissions', FULL_PERMISSIONS.join(','));
-      res.writeHead(302, { Location: _cbUrl.toString() }); res.end();
-    } else {
-      const _noCallbackPage = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>ZVM - Ativado</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace}.card{background:#111118;border:1px solid #00ff8740;border-radius:18px;padding:40px 36px;width:100%;max-width:420px;text-align:center}.icon{font-size:48px;margin-bottom:8px}.title{font-size:22px;font-weight:800;color:#00ff87;margin-bottom:8px}.sub{color:#8a8aaa;font-size:13px;line-height:1.6;margin-bottom:20px}.key{background:#0a0a0f;border:1px solid #00ff8730;border-radius:8px;padding:10px 16px;color:#00ff87;font-size:14px;letter-spacing:2px;margin-bottom:20px}.bar{width:100%;height:3px;background:#1a1a2e;border-radius:2px}.fill{height:100%;background:#00ff87;animation:drain 3s linear forwards;border-radius:2px}@keyframes drain{from{width:100%}to{width:0%}}</style></head><body><div class="card"><div class="icon">&#x26A1;</div><div class="title">Chave Ativada!</div><div class="sub">Volte ao WhatsApp Web e atualize a p&aacute;gina.</div><div class="key">${keyCode}</div><div class="bar"><div class="fill"></div></div></div><script>setTimeout(function(){window.close();},3100);</script></body></html>`;
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(_noCallbackPage);
-    }
+    redirectExtensionCallback(res, callback, 'pro', keyCode);
     return;
   }
 
@@ -2711,39 +2925,40 @@ async function handleRequest(req, res) {
       sendJson(res, { authError: 'rateLimited', authErrorMessage: 'Muitas tentativas. Aguarde.', isLoggedIn: false }, 429);
       return;
     }
-    const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
-    let body; try { body = _safeParse(rawBody); } catch { body = {}; }
-    const keyCode    = (body.authKey || '').toLowerCase().slice(0, 20);
+    if (parseInt(req.headers['content-length'] || 0) > MAX_BODY_SIZE) {
+      sendJson(res, { authError: 'invalidRequest', authErrorMessage: 'Payload muito grande.', isLoggedIn: false }, 413);
+      return;
+    }
+    const body = await parseBody(req);
+    const keyCode    = (body.authKey || '').toLowerCase().slice(0, 32);
     const phone      = body.phoneNumber || '-';
     const wppVersion = body.wppVersion  || '-';
     const deviceId   = body.deviceId    || '';
+
+    if (isFreeAuthKey(keyCode)) {
+      sendJson(res, getFreeAuthData());
+      return;
+    }
 
     if (!keyCode) {
       sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada.', isLoggedIn: false });
       return;
     }
-    if (!keys[keyCode]) {
-      try {
-        const db = await getMongoDb();
-        const doc = await db.collection('store').findOne({ _id: 'keys' });
-        if (doc && doc.data && doc.data[keyCode]) keys[keyCode] = doc.data[keyCode];
-      } catch(e) { /* continua */ }
-    }
-    if (!keys[keyCode]) {
+    if (!await ensureKeyLoaded(keyCode)) {
       sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada. Contate o vendedor.', isLoggedIn: false });
       addLog({ keyCode, label: '-', phone, ip, wppVersion, action: 'key_not_found' }).catch(()=>{});
       return;
     }
     if (isKeyExpired(keys[keyCode])) {
       keys[keyCode].active = false;
-      sendJson(res, { authError: 'keyExpired', reason: 'expired', isLoggedIn: false, data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave expirada.', permissions: [] } }, 403);
+      sendJson(res, { authError: 'keyExpired', reason: 'expired', isLoggedIn: false, data: { message: `${AUTH_MSG.EXPIRED}. Chave expirada.`, permissions: [] } }, 403);
       addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'expired' }).catch(()=>{});
       saveKey(keyCode).catch(()=>{});
       fireWebhook('key_expired', keyCode, 'Expiração detectada no v3/key');
       return;
     }
     if (!keys[keyCode].active) {
-      sendJson(res, { authError: 'keyBlocked', reason: 'blocked', isLoggedIn: false, data: { message: 'USUÁRIO NÃO ENCONTRADO. Chave bloqueada.', permissions: [] } }, 403);
+      sendJson(res, { authError: 'keyBlocked', reason: 'blocked', isLoggedIn: false, data: { message: `${AUTH_MSG.BLOCKED}. Chave bloqueada.`, permissions: [] } }, 403);
       addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'login_blocked' }).catch(()=>{});
       return;
     }
@@ -2767,7 +2982,7 @@ async function handleRequest(req, res) {
         keys[keyCode].warnCountTs = new Date().toISOString();
         sendJson(res, {
           warnLimit: true, isLoggedIn: false, warnRemaining: keys[keyCode].warnCount,
-          data: { message: `USUÁRIO NÃO ENCONTRADO. Limite de ativações atingido (${keys[keyCode].phones.length}/${keyMaxUses}).`, permissions: [] }
+          data: { message: `${AUTH_MSG.USER_NOT_FOUND}. Limite de ativações atingido (${keys[keyCode].phones.length}/${keyMaxUses}).`, permissions: [] }
         }, 403);
         addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'warn_limit' }).catch(()=>{});
         saveKey(keyCode).catch(()=>{});
@@ -2806,25 +3021,22 @@ async function handleRequest(req, res) {
     }
     const rawBody = await new Promise(r=>{let b='';req.on('data',c=>{b+=c;});req.on('end',()=>r(b));});
     let body; try { body = JSON.parse(rawBody); } catch { body = {}; }
-    const keyCode = (body.authKey || '').toLowerCase().slice(0, 20);
+    const keyCode = (body.authKey || '').toLowerCase().slice(0, 32);
     if (!serverReady) { sendJson(res, { active: true }); return; }
     if (!keyCode)     { sendJson(res, { active: true }); return; }
-    if (!keys[keyCode]) {
-      try {
-        const db  = await getMongoDb();
-        const doc = await db.collection('store').findOne({ _id: 'keys' });
-        if (doc && doc.data && doc.data[keyCode]) keys[keyCode] = doc.data[keyCode];
-      } catch(e) {
-        sendJson(res, { active: true }); return;
-      }
+    if (isFreeAuthKey(keyCode)) {
+      sendJson(res, { active: true, expiringSoon: false, hoursLeft: null, modules: { ...DEFAULT_MODULES }, ts: Date.now() });
+      return;
     }
-    if (!keys[keyCode]) { sendJson(res, { active: false, reason: 'not_found' }); return; }
-    if (isKeyExpired(keys[keyCode]))   {
+    if (!await ensureKeyLoaded(keyCode)) {
+      sendJson(res, { active: false, reason: 'not_found' }); return;
+    }
+    if (isKeyExpired(keys[keyCode])) {
       keys[keyCode].active = false;
       saveKey(keyCode).catch(()=>{});
       sendJson(res, { active: false, reason: 'expired' }); return;
     }
-    if (!keys[keyCode].active)         {
+    if (!keys[keyCode].active) {
       addLog({ keyCode, label: keys[keyCode].label||'-', phone: '-', ip, wppVersion: '-', action: 'check_blocked' }).catch(()=>{});
       sendJson(res, { active: false, reason: 'blocked' }); return;
     }
@@ -2841,8 +3053,142 @@ async function handleRequest(req, res) {
     return;
   }
 
+  if (p === R_EXT+'/v3/usage' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'api')) {
+      sendJson(res, { ok: false, status: false, data: { errorType: 'RATE_LIMITED', message: 'Muitas requisições' } }, 429);
+      return;
+    }
+    const body = await parseBody(req);
+    const keyCode = await resolveUsageKey(body);
+    if (!keyCode) {
+      sendJson(res, { ok: false, status: false, data: { errorType: 'KEY_NOT_FOUND' } }, 404);
+      return;
+    }
+    const phone = body.phoneNumber || '-';
+    if (keyCode === FREE_AUTH_KEY) {
+      const usage = ensureFreeUsage(phone);
+      if (body.hasError) {
+        const payload = buildUsagePayload(FREE_AUTH_KEY, phone);
+        sendJson(res, { ok: true, status: true, limits: payload.limits, expires_at: payload.expires_at });
+        return;
+      }
+      const result = incrementUsageRow(usage, body.itemType, FREE_USAGE_LIMITS, body.scheduledItems);
+      if (!result.ok) {
+        sendJson(res, { ok: false, status: false, data: { errorType: result.errorType, message: result.message } }, 403);
+        return;
+      }
+      const payload = buildUsagePayload(FREE_AUTH_KEY, phone);
+      sendJson(res, { ok: true, status: true, limits: payload.limits, expires_at: payload.expires_at, isExpired: false });
+      return;
+    }
+    if (!keys[keyCode].active || isKeyExpired(keys[keyCode])) {
+      sendJson(res, { ok: false, status: false, data: { errorType: 'KEY_INVALID', message: 'Chave inválida' } }, 403);
+      return;
+    }
+    const usage = ensureKeyUsage(keys[keyCode], USAGE_LIMITS);
+    if (body.hasError) {
+      sendJson(res, { ok: true, status: true, limits: usage, expires_at: buildUsagePayload(keyCode, phone).expires_at });
+      return;
+    }
+    const result = incrementUsageRow(usage, body.itemType, keys[keyCode].usageLimits || USAGE_LIMITS, body.scheduledItems);
+    if (!result.ok) {
+      sendJson(res, { ok: false, status: false, data: { errorType: result.errorType, message: result.message } }, 403);
+      return;
+    }
+    saveKey(keyCode).catch(() => {});
+    const payload = buildUsagePayload(keyCode, phone);
+    sendJson(res, { ok: true, status: true, limits: payload.limits, expires_at: payload.expires_at, isExpired: false });
+    return;
+  }
+
+  if (p === R_EXT+'/v3/get-usage' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'api')) {
+      sendJson(res, { ok: false, status: false, data: { errorType: 'RATE_LIMITED' } }, 429);
+      return;
+    }
+    const body = await parseBody(req);
+    const keyCode = await resolveUsageKey(body);
+    if (!keyCode) {
+      sendJson(res, { ok: false, status: false, data: { errorType: 'KEY_NOT_FOUND' } }, 404);
+      return;
+    }
+    const payload = buildUsagePayload(keyCode, body.phoneNumber || '');
+    if (!payload) {
+      sendJson(res, { ok: false, status: false, data: { errorType: 'KEY_NOT_FOUND' } }, 404);
+      return;
+    }
+    if (keyCode !== FREE_AUTH_KEY) saveKey(keyCode).catch(() => {});
+    sendJson(res, { ok: true, status: true, ...payload });
+    return;
+  }
+
+  if (p === R_EXT+'/v3/sync-usage' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'api')) {
+      sendJson(res, { ok: false, status: false, data: { errorType: 'RATE_LIMITED' } }, 429);
+      return;
+    }
+    const body = await parseBody(req);
+    const keyCode = await resolveUsageKey(body);
+    if (!keyCode) {
+      sendJson(res, { ok: false, status: false, data: { errorType: 'KEY_NOT_FOUND' } }, 404);
+      return;
+    }
+    if (keyCode === FREE_AUTH_KEY) {
+      const usage = ensureFreeUsage(body.phoneNumber || '');
+      if (body.extensionLimits && typeof body.extensionLimits === 'object') {
+        for (const t of USAGE_ITEM_TYPES) {
+          if (body.extensionLimits[t] && typeof body.extensionLimits[t].sent === 'number') {
+            usage[t].sent = Math.max(usage[t].sent || 0, body.extensionLimits[t].sent);
+          }
+        }
+      }
+      sendJson(res, { ok: true, status: true, limits: usage });
+      return;
+    }
+    const usage = ensureKeyUsage(keys[keyCode], USAGE_LIMITS);
+    if (body.extensionLimits && typeof body.extensionLimits === 'object') {
+      for (const t of USAGE_ITEM_TYPES) {
+        if (!usage[t]) usage[t] = { sent: 0, max: -1 };
+        if (body.extensionLimits[t] && typeof body.extensionLimits[t].sent === 'number') {
+          usage[t].sent = Math.max(usage[t].sent || 0, body.extensionLimits[t].sent);
+        }
+      }
+    }
+    saveKey(keyCode).catch(() => {});
+    sendJson(res, { ok: true, status: true, limits: usage });
+    return;
+  }
+
+  if (p === R_EXT+'/v3/create-user-event' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'api')) {
+      sendJson(res, { status: 'error' }, 429);
+      return;
+    }
+    const body = await parseBody(req);
+    const eventType = String(body.event_type || '').slice(0, 64);
+    if (!eventType) {
+      sendJson(res, { status: 'error' }, 400);
+      return;
+    }
+    try {
+      const db = await getMongoDb();
+      await db.collection('user_events').insertOne({
+        event_type: eventType,
+        keyId: String(body.keyId || '').slice(0, 64),
+        userId: String(body.userId || '').slice(0, 64),
+        metadata: body.metadata && typeof body.metadata === 'object' ? body.metadata : {},
+        createdAt: new Date(),
+        ip,
+      });
+    } catch (e) {
+      console.warn('[EVENT] Falha ao persistir:', e.message);
+    }
+    sendJson(res, { status: 'success' });
+    return;
+  }
+
   if ([R_EXT+'/v3/usage', R_EXT+'/v3/get-usage', R_EXT+'/v3/sync-usage'].includes(p)) {
-    sendJson(res, { ok: true, status: true, limits: USAGE_LIMITS, expires_at: new Date(Date.now()+365*24*60*60*1000).toISOString(), isExpired: false });
+    sendJson(res, { ok: false, status: false, data: { errorType: 'METHOD_NOT_ALLOWED' } }, 405);
     return;
   }
 
@@ -3525,7 +3871,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     serverReady = true;
 
     console.log(`✅ zvm-lr1290 v8 — porta ${PORT}`);
-    console.log(`🍃 MongoDB: conectado | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}`);
+    console.log(`🍃 MongoDB: ${MONGODB_DB} | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}`);
     console.log(`🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
     console.log(`🔑 2FA:  ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
     console.log(`💳 Payt: ${PAYT_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
