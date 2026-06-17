@@ -52,6 +52,7 @@ const FREE_PLAN_ID    = 'ZV_FREE';
 const FREE_OWNER_ID   = '6a6d6a86-6bc6-4359-ad49-05639915e368';
 const FREE_MANAGER_ID = 'zv-free-manager';
 const FREE_KEY_ID     = 'id-free';
+const PAID_USAGE_KEY  = '__paid__';
 const FREE_USAGE_LIMITS = {
   audio: { sent: 0, max: 10 }, bulkMessages: { sent: 0, max: 0 },
   document: { sent: 0, max: 10 }, flow: { sent: 0, max: 0 },
@@ -337,10 +338,41 @@ function generateCode() {
 function generateToken() { return crypto.randomBytes(32).toString('hex'); }
 
 function isFreeAuthKey(key) {
-  return key === FREE_AUTH_KEY || key === FREE_PLAN_ID || key === FREE_OWNER_ID;
+  return key === FREE_AUTH_KEY;
 }
 function isFreePlanId(planId) {
   return planId === FREE_PLAN_ID || planId === FREE_OWNER_ID;
+}
+function isPaidPlan(body) {
+  const planId = body.planId || '';
+  if (isFreePlanId(planId)) return false;
+  if (planId) return true;
+  if (body.isBasic === true || body.isBasic === 'true') return true;
+  return false;
+}
+function normalizeProUsage(usage, k) {
+  for (const t of USAGE_ITEM_TYPES) {
+    if (!usage[t]) usage[t] = { sent: 0, max: -1 };
+    const customMax = k?.usageLimits?.[t]?.max;
+    usage[t].max = typeof customMax === 'number' ? customMax : (USAGE_LIMITS[t]?.max ?? -1);
+    if (typeof usage[t].sent !== 'number') usage[t].sent = 0;
+  }
+  return usage;
+}
+function unlimitedUsagePayload(sentSource) {
+  const limits = cloneLimits(USAGE_LIMITS);
+  if (sentSource && typeof sentSource === 'object') {
+    for (const t of USAGE_ITEM_TYPES) {
+      if (sentSource[t] && typeof sentSource[t].sent === 'number') {
+        limits[t].sent = sentSource[t].sent;
+      }
+    }
+  }
+  return {
+    limits,
+    expires_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+    isExpired: false,
+  };
 }
 function usageTodayKey() {
   return new Date().toISOString().slice(0, 10);
@@ -372,10 +404,27 @@ function findKeyCodeByPhone(keysMap, phone) {
   const norm = String(phone).replace(/\D/g, '');
   for (const [code, k] of Object.entries(keysMap)) {
     if (!k || typeof k !== 'object') continue;
-    if (k.lastPhone === phone) return code;
+    const lastNorm = String(k.lastPhone || '').replace(/\D/g, '');
+    if (k.lastPhone === phone || (norm && lastNorm === norm)) return code;
     if (Array.isArray(k.phones) && k.phones.some(p => p === phone || String(p).replace(/\D/g, '') === norm)) return code;
   }
   return null;
+}
+function findKeyCodeByManager(keysMap, managerId, phone) {
+  if (!managerId) return null;
+  const norm = phone ? String(phone).replace(/\D/g, '') : '';
+  let fallback = null;
+  for (const [code, k] of Object.entries(keysMap)) {
+    if (!k || typeof k !== 'object' || k.active === false) continue;
+    if (k.managerId !== managerId) continue;
+    if (norm) {
+      const lastNorm = String(k.lastPhone || '').replace(/\D/g, '');
+      if (lastNorm === norm) return code;
+      if (Array.isArray(k.phones) && k.phones.some(p => String(p).replace(/\D/g, '') === norm)) return code;
+    }
+    if (!fallback) fallback = code;
+  }
+  return fallback;
 }
 async function ensureKeyLoaded(keyCode) {
   if (!keyCode || keys[keyCode]) return !!keys[keyCode];
@@ -400,10 +449,20 @@ async function ensureKeyLoaded(keyCode) {
 }
 async function resolveUsageKey(body) {
   const authKey = (body.authKey || '').toLowerCase().slice(0, 32);
-  if (isFreeAuthKey(authKey) || isFreePlanId(body.planId || '')) return FREE_AUTH_KEY;
+  const planId = body.planId || '';
+
+  if (isFreePlanId(planId) || authKey === FREE_AUTH_KEY) return FREE_AUTH_KEY;
+
   if (authKey && await ensureKeyLoaded(authKey)) return authKey;
+
   const byPhone = findKeyCodeByPhone(keys, body.phoneNumber || '');
   if (byPhone && await ensureKeyLoaded(byPhone)) return byPhone;
+
+  const byManager = findKeyCodeByManager(keys, body.managerId || '', body.phoneNumber || '');
+  if (byManager && await ensureKeyLoaded(byManager)) return byManager;
+
+  if (isPaidPlan(body)) return PAID_USAGE_KEY;
+
   return null;
 }
 function buildUsagePayload(keyCode, phone) {
@@ -415,14 +474,13 @@ function buildUsagePayload(keyCode, phone) {
       isExpired: false,
     };
   }
+  if (keyCode === PAID_USAGE_KEY) {
+    return unlimitedUsagePayload();
+  }
   const k = keys[keyCode];
   if (!k) return null;
   const usage = ensureKeyUsage(k, USAGE_LIMITS);
-  if (k.usageLimits && typeof k.usageLimits === 'object') {
-    for (const t of USAGE_ITEM_TYPES) {
-      if (k.usageLimits[t] && typeof k.usageLimits[t].max === 'number') usage[t].max = k.usageLimits[t].max;
-    }
-  }
+  normalizeProUsage(usage, k);
   return {
     limits: usage,
     expires_at: k.expiresAt || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
@@ -3098,11 +3156,20 @@ async function handleRequest(req, res) {
       sendJson(res, { ok: true, status: true, limits: payload.limits, expires_at: payload.expires_at, isExpired: false });
       return;
     }
+    if (keyCode === PAID_USAGE_KEY) {
+      const payload = unlimitedUsagePayload();
+      if (!body.hasError && body.itemType) {
+        incrementUsageRow(payload.limits, body.itemType, USAGE_LIMITS, body.scheduledItems);
+      }
+      sendJson(res, { ok: true, status: true, ...payload, isExpired: false });
+      return;
+    }
     if (!keys[keyCode].active || isKeyExpired(keys[keyCode])) {
       sendJson(res, { ok: false, status: false, data: { errorType: 'KEY_INVALID', message: 'Chave inválida' } }, 403);
       return;
     }
     const usage = ensureKeyUsage(keys[keyCode], USAGE_LIMITS);
+    normalizeProUsage(usage, keys[keyCode]);
     if (body.hasError) {
       sendJson(res, { ok: true, status: true, limits: usage, expires_at: buildUsagePayload(keyCode, phone).expires_at });
       return;
@@ -3134,7 +3201,7 @@ async function handleRequest(req, res) {
       sendJson(res, { ok: false, status: false, data: { errorType: 'KEY_NOT_FOUND' } }, 404);
       return;
     }
-    if (keyCode !== FREE_AUTH_KEY) saveKey(keyCode).catch(() => {});
+    if (keyCode !== FREE_AUTH_KEY && keyCode !== PAID_USAGE_KEY) saveKey(keyCode).catch(() => {});
     sendJson(res, { ok: true, status: true, ...payload });
     return;
   }
@@ -3162,10 +3229,15 @@ async function handleRequest(req, res) {
       sendJson(res, { ok: true, status: true, limits: usage });
       return;
     }
+    if (keyCode === PAID_USAGE_KEY) {
+      const payload = unlimitedUsagePayload(body.extensionLimits);
+      sendJson(res, { ok: true, status: true, limits: payload.limits });
+      return;
+    }
     const usage = ensureKeyUsage(keys[keyCode], USAGE_LIMITS);
+    normalizeProUsage(usage, keys[keyCode]);
     if (body.extensionLimits && typeof body.extensionLimits === 'object') {
       for (const t of USAGE_ITEM_TYPES) {
-        if (!usage[t]) usage[t] = { sent: 0, max: -1 };
         if (body.extensionLimits[t] && typeof body.extensionLimits[t].sent === 'number') {
           usage[t].sent = Math.max(usage[t].sent || 0, body.extensionLimits[t].sent);
         }
