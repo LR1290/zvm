@@ -1,6 +1,7 @@
 'use strict';
 const http   = require('http');
 const crypto = require('crypto');
+const zlib   = require('zlib');
 const { MongoClient } = require('mongodb');
 
 const PORT         = process.env.PORT         || 3000;
@@ -149,6 +150,7 @@ function saveKey(code) {
     }
   }, 2000);
   _saveDebounce.set(code, tid);
+  _keysHtmlCache = null; // invalidar cache HTML do admin
   return Promise.resolve();
 }
 
@@ -905,9 +907,25 @@ function sendJson(res, data, status = 200) {
 }
 
 function sendHtml(res, html, status = 200) {
+  const buf = Buffer.from(html, 'utf8');
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.writeHead(status); res.end(html);
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Connection', 'keep-alive');
+  if (buf.length > 4096) {
+    zlib.gzip(buf, (err, compressed) => {
+      if (err) { res.writeHead(status); res.end(buf); return; }
+      res.setHeader('Content-Encoding', 'gzip');
+      res.setHeader('Content-Length', compressed.length);
+      res.writeHead(status);
+      res.end(compressed);
+    });
+  } else {
+    res.writeHead(status);
+    res.end(buf);
+  }
 }
+
+// sendHtml com gzip declarado acima
 
 function escHtml(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/`/g,'&#96;');
@@ -1692,6 +1710,10 @@ window.addEventListener('DOMContentLoaded',()=>{
 ${CANVAS_BG}</body></html>`;
 }
 
+let _keysHtmlCache = null;
+let _keysHtmlCacheTs = 0;
+const _KEYS_CACHE_TTL = 15000; // 15s — admin vê dados frescos, mas sem rebuild a cada request
+
 function buildKeysHtml() {
   const entries = Object.entries(keys);
   if (!entries.length) return `<tr><td colspan="11" class="empty">Nenhuma chave cadastrada</td></tr>`;
@@ -1771,7 +1793,7 @@ function renderAdminDashboard() {
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM Admin v8</title>
+<title>ZVM Admin v9</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -3157,6 +3179,7 @@ async function handleRequest(req, res) {
     if (hasPhone) keys[keyCode].lastPhone = phone;
     if (deviceId) keys[keyCode].deviceId  = deviceId;
 
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     sendJson(res, getAuthData(keyCode, body.userName || ''));
 
     const _action = isNewPhone ? 'login_ok' : 'relogin_ok';
@@ -3195,12 +3218,15 @@ async function handleRequest(req, res) {
     }
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    const _k = keys[keyCode];
     sendJson(res, {
       active:       true,
-      expiringSoon: isKeyExpiringSoon(keys[keyCode]),
-      hoursLeft:    hoursUntilExpiry(keys[keyCode]),
-      deferred:     !!(keys[keyCode].expireDuration && !keys[keyCode].expiresAt),
-      modules:      { ...DEFAULT_MODULES, ...(keys[keyCode].modules || {}) },
+      expiringSoon: isKeyExpiringSoon(_k),
+      hoursLeft:    hoursUntilExpiry(_k),
+      daysLeft:     daysUntilExpiry(_k),
+      expiresAt:    _k.expiresAt || null,
+      deferred:     !!(_k.expireDuration && !_k.expiresAt),
+      modules:      { ...DEFAULT_MODULES, ...(_k.modules || {}) },
       ts:           Date.now()
     });
     return;
@@ -3973,6 +3999,7 @@ async function handleRequest(req, res) {
       phoneList:   (k.phones || []).map((ph, i) => ({ idx: i, display: ph.replace(/(\d+)(\d{4})$/, '••••$2') })),
       maxUses:     k.maxUses === -1 ? null : (k.maxUses > 0 ? k.maxUses : MAX_USES),
       hoursLeft:   hoursUntilExpiry(k),
+      daysLeft:    daysUntilExpiry(k),
       deferred:    !!(k.expireDuration && !k.expiresAt),
       warnCount:   k.warnCount || 0,
     }); return;
@@ -4054,7 +4081,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     for (const code of Object.keys(keys)) sanitizeKeyRecord(keys[code]);
     serverReady = true;
 
-    console.log(`✅ zvm-lr1290 v8 — porta ${PORT}`);
+    console.log(`✅ zvm-lr1290 v9 — porta ${PORT}`);
     console.log(`🍃 MongoDB: zapvoice.store | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}`);
     console.log(`🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
     console.log(`🔑 2FA:  ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
@@ -4088,7 +4115,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
         );
         req.on('error', () => {});
         req.end();
-      }, 10 * 60 * 1000); // 600 000 ms = 10 min
+      }, 8 * 60 * 1000);  // 480 000 ms = 8 min (Render free dorme após ~14min)
     });
   } catch (e) {
     console.error('❌ Falha ao iniciar:', e.message);
