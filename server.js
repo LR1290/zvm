@@ -64,7 +64,6 @@ const AUTH_MSG = {
   BLOCKED: 'CHAVE BLOQUEADA',
   EXPIRED: 'CHAVE EXPIRADA',
   USER_NOT_FOUND: 'USUÁRIO NÃO ENCONTRADO',
-  INACTIVE: 'CHAVE DESATIVADA',
 };
 const USAGE_ITEM_TYPES = [
   'audio', 'document', 'media', 'message', 'flow', 'funnel',
@@ -193,27 +192,6 @@ let sessions         = {};
 let modSessions      = {};
 let analyticsSessions= {};
 let serverReady      = false;
-
-const APP_SECRET_KEY = (() => {
-  if (!APP_SECRET) return '';
-  if (/^[0-9a-fA-F]+$/.test(APP_SECRET) && APP_SECRET.length % 2 === 0) {
-    return Buffer.from(APP_SECRET, 'hex');
-  }
-  return APP_SECRET;
-})();
-const HMAC_TOLERANCE = 5 * 60 * 1000;
-
-function verifyHmac(rawBody, sig, ts) {
-  if (!APP_SECRET_KEY) return true;
-  if (!sig && !ts) return true;
-  if (!sig || !ts) return false;
-  const t = parseInt(ts, 10);
-  if (isNaN(t) || Math.abs(Date.now() - t) > HMAC_TOLERANCE) return false;
-  const expected = crypto.createHmac('sha256', APP_SECRET_KEY)
-    .update(ts + '.' + rawBody).digest('hex');
-  try { return crypto.timingSafeEqual(Buffer.from(sig,'hex'), Buffer.from(expected,'hex')); }
-  catch { return false; }
-}
 
 function base32Decode(b32) {
   const alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -747,6 +725,84 @@ function getKeyValiditySortKey(k) {
   if (k.expiresAt) return new Date(k.expiresAt).getTime();
   if (k.expireDuration && !k.expiresAt) return Date.now() + 86400000 * 3650;
   return Number.MAX_SAFE_INTEGER;
+}
+
+const SUSPECT_CLEAR_MS = 172800000;
+
+function dayAgoIso() {
+  return new Date(Date.now() - 86400000).toISOString();
+}
+
+function recentKeyLogs(code) {
+  const since = dayAgoIso();
+  return logs.filter(l => l.keyCode === code && l.timestamp > since);
+}
+
+function getSuspectMeta(code, k) {
+  const clearedAt = k?.suspectClearedAt ? new Date(k.suspectClearedAt) : null;
+  if (clearedAt && (Date.now() - clearedAt.getTime()) < SUSPECT_CLEAR_MS) {
+    return { isSuspect: false, recentIpCount: 0 };
+  }
+  const recentIps = new Set(recentKeyLogs(code).filter(l => l.ip).map(l => l.ip));
+  return { isSuspect: recentIps.size > 3, recentIpCount: recentIps.size };
+}
+
+function isKeySuspect(code, k) {
+  return getSuspectMeta(code, k).isSuspect;
+}
+
+function getKeyStats() {
+  const all = Object.values(keys);
+  return {
+    totalKeys: Object.keys(keys).length,
+    activeKeys: all.filter(k => k.active && !isKeyExpired(k)).length,
+    expiredKeys: all.filter(k => isKeyExpired(k)).length,
+    warnKeys: all.filter(k => k.active && isKeyExpiringSoon(k)).length,
+    suspectKeys: Object.entries(keys).filter(([code, k]) => isKeySuspect(code, k)).length,
+    totalLogs: logs.length,
+  };
+}
+
+function parseKeyExpiryFromBody(body, { allowMinutes = false } = {}) {
+  if (body.expiresAt) {
+    return { expiresAt: new Date(body.expiresAt).toISOString(), expireDuration: null };
+  }
+  const days = parseInt(body.expireDays || 0);
+  const hours = parseInt(body.expireHours || 0);
+  const minutes = allowMinutes ? parseInt(body.expireMinutes || 0) : 0;
+  if (!days && !hours && !minutes) return { expiresAt: null, expireDuration: null };
+  const durationMs = ((days * 1440) + (hours * 60) + minutes) * 60000;
+  if (body.deferred) return { expiresAt: null, expireDuration: durationMs };
+  return { expiresAt: new Date(Date.now() + durationMs).toISOString(), expireDuration: null };
+}
+
+function removePhoneFromKey(k, phone) {
+  k.phones = (k.phones || []).filter(p => p !== phone);
+  k.uses = k.phones.length;
+  if (k.lastPhone === phone) k.lastPhone = k.phones.at(-1) || null;
+}
+
+function clearAllPhonesFromKey(k) {
+  k.phones = [];
+  k.uses = 0;
+  k.lastPhone = null;
+}
+
+function resolvePhoneToRemove(phones, { phoneIdx, phoneTxt }) {
+  if (phoneIdx >= 0 && phoneIdx < phones.length) return phones[phoneIdx];
+  if (phoneTxt) {
+    const digits = phoneTxt.replace(/[^0-9]/g, '');
+    return phones.find(p => p === phoneTxt || (digits && p.endsWith(digits))) || null;
+  }
+  return null;
+}
+
+function logActionBadgeClass(action) {
+  if (action === 'login_ok') return 'on';
+  if (action === 'relogin_ok') return 're';
+  if (action === 'login_blocked') return 'off';
+  if (action === 'warn_limit') return 'wl';
+  return 'warn';
 }
 
 function getIp(req) {
@@ -1812,7 +1868,6 @@ function buildKeysHtml() {
   const entries = Object.entries(keys);
   if (!entries.length) return `<tr><td colspan="12" class="empty">Nenhuma chave cadastrada</td></tr>`;
 
-  const dayAgo = new Date(Date.now() - 86400000).toISOString();
   const logByKey = new Map();
   for (const l of logs) {
     if (!l.keyCode) continue;
@@ -1825,15 +1880,12 @@ function buildKeysHtml() {
     const warnSoon = isKeyExpiringSoon(k);
     const keyLogs  = logByKey.get(code) || [];
     const uniqueIps = new Set(keyLogs.filter(l => l.ip).map(l => l.ip)).size;
-    const recentLogs = keyLogs.filter(l => l.timestamp > dayAgo);
-    const recentIps  = new Set(recentLogs.filter(l => l.ip).map(l => l.ip));
-    const clearedAt  = k.suspectClearedAt ? new Date(k.suspectClearedAt) : null;
-    const isSuspect  = recentIps.size > 3 && !(clearedAt && (Date.now() - clearedAt.getTime()) < 172800000);
+    const { isSuspect, recentIpCount } = getSuspectMeta(code, k);
 
     const rowStyle = isSuspect ? ' style="background:#ff000008;outline:1px solid #ff475720"'
       : warnSoon && !expired ? ' style="background:#ff860010"' : '';
     const suspectBadge = isSuspect
-      ? `<span title="${recentIps.size} IPs nas últimas 24h" style="color:#ff4757;font-size:13px;margin-left:4px">⚠ SUSPEITA</span>` : '';
+      ? `<span title="${recentIpCount} IPs nas últimas 24h" style="color:#ff4757;font-size:13px;margin-left:4px">⚠ SUSPEITA</span>` : '';
     const deferredAttr = (!k.expiresAt && k.expireDuration) ? '1' : '0';
     const dispStatus   = getKeyDisplayStatus(k);
     const zsOn         = !!(k.modules && k.modules.zapSaver);
@@ -1885,19 +1937,13 @@ function buildLogsHtml(arr) {
   <td>${escHtml(l.phone||'-')}</td>
   <td>${escHtml(l.ip||'-')}</td>
   <td>${escHtml(l.wppVersion||'-')}</td>
-  <td><span class="badge ${l.action==='login_ok'?'on':l.action==='relogin_ok'?'re':l.action==='verify_ok'?'vr':l.action==='login_blocked'?'off':l.action==='warn_limit'?'wl':'warn'}">${escHtml(l.action)}</span></td>
+  <td><span class="badge ${logActionBadgeClass(l.action)}">${escHtml(l.action)}</span></td>
 </tr>`).join('');
 }
 
 function renderAdminDashboard() {
-  const expiringSoon  = Object.values(keys).filter(k => k.active && isKeyExpiringSoon(k)).length;
-  const expiredCount  = Object.values(keys).filter(k => isKeyExpired(k)).length;
-  const suspectKeys   = Object.entries(keys).filter(([code, k]) => {
-    const cl = k.suspectClearedAt ? new Date(k.suspectClearedAt) : null;
-    if (cl && (Date.now() - cl.getTime()) < 172800000) return false;
-    const rl = logs.filter(l => l.keyCode === code && l.timestamp > new Date(Date.now()-86400000).toISOString());
-    return new Set(rl.filter(l=>l.ip).map(l=>l.ip)).size > 3;
-  }).length;
+  const stats = getKeyStats();
+  const { expiredKeys: expiredCount, warnKeys: expiringSoon, suspectKeys } = stats;
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -2019,12 +2065,12 @@ tr:hover td{background:#ffffff02}
     <span id="urgent-alert-text">${expiredCount>0?`<strong>${expiredCount} expirada(s)</strong>`:''}${expiredCount>0&&expiringSoon>0?' · ':''}${expiringSoon>0?`<strong>${expiringSoon} expirando em ${EXPIRY_WARN_HOURS}h</strong>`:''}</span>
   </div>
   <div class="stats">
-    <div class="sc"><div class="sc-icon">🔑</div><div class="n" id="s-total">${Object.keys(keys).length}</div><div class="l">Total</div></div>
-    <div class="sc"><div class="sc-icon">✅</div><div class="n" id="s-active">${Object.values(keys).filter(k=>k.active&&!isKeyExpired(k)).length}</div><div class="l">Ativas</div></div>
+    <div class="sc"><div class="sc-icon">🔑</div><div class="n" id="s-total">${stats.totalKeys}</div><div class="l">Total</div></div>
+    <div class="sc"><div class="sc-icon">✅</div><div class="n" id="s-active">${stats.activeKeys}</div><div class="l">Ativas</div></div>
     <div class="sc ${expiredCount>0?'expired-card':''}"><div class="sc-icon">⛔</div><div class="n" id="s-expired" style="${expiredCount>0?'color:var(--red)':''}">${expiredCount}</div><div class="l">Expiradas</div></div>
     <div class="sc ${expiringSoon>0?'warn-card':''}"><div class="sc-icon">⏰</div><div class="n" id="s-warn" style="${expiringSoon>0?'color:var(--orange)':''}">${expiringSoon}</div><div class="l">Expirando (${EXPIRY_WARN_HOURS}h)</div></div>
     <div class="sc ${suspectKeys>0?'danger-card':''}"><div class="sc-icon">🕵️</div><div class="n" id="s-suspect" style="${suspectKeys>0?'color:var(--red)':''}">${suspectKeys}</div><div class="l">Suspeitas</div></div>
-    <div class="sc"><div class="sc-icon">📋</div><div class="n" id="s-logs">${logs.length}</div><div class="l">Logs</div></div>
+    <div class="sc"><div class="sc-icon">📋</div><div class="n" id="s-logs">${stats.totalLogs}</div><div class="l">Logs</div></div>
   </div>
 
   <div class="sec">
@@ -3658,14 +3704,7 @@ async function handleRequest(req, res) {
     const body = await parseBody(req);
     if (!body.label || !String(body.label).trim()) { sendJson(res, { error: 'label obrigatório' }, 400); return; }
     const code = generateCode();
-    let expiresAt = null, expireDuration = null;
-    const days    = parseInt(body.expireDays  || 0);
-    const hours   = parseInt(body.expireHours || 0);
-    if (days > 0 || hours > 0) {
-      const durationMs = ((days * 1440) + (hours * 60)) * 60000;
-      if (body.deferred) { expireDuration = durationMs; }
-      else { expiresAt = new Date(Date.now() + durationMs).toISOString(); }
-    }
+    const { expiresAt, expireDuration } = parseKeyExpiryFromBody(body);
     const maxUses = Math.max(1, parseInt(body.maxUses) || MAX_USES);
     keys[code] = {
       label: String(body.label).trim().slice(0, 60),
@@ -3710,14 +3749,7 @@ async function handleRequest(req, res) {
     if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const codeFromUrl = decodeURIComponent(p.slice((R_MOD+'/api/keys/').length, -'/note'.length));
     if (!codeFromUrl) { sendJson(res, { error: 'not found' }, 404); return; }
-    if (!keys[codeFromUrl]) {
-      try {
-        const _db2 = await getMongoDb();
-        const _doc2 = await _db2.collection('store').findOne({ _id: 'keys' });
-        if (_doc2 && _doc2.data && _doc2.data[codeFromUrl]) keys[codeFromUrl] = _doc2.data[codeFromUrl];
-      } catch(e) { /* continua */ }
-    }
-    if (!keys[codeFromUrl]) { sendJson(res, { error: 'not found' }, 404); return; }
+    if (!await ensureKeyLoaded(codeFromUrl)) { sendJson(res, { error: 'not found' }, 404); return; }
     const _mc3 = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
     const _ms3 = _mc3 ? modSessions[_mc3[1]] : null;
     const _myName3 = _ms3 ? _ms3.modName : null;
@@ -3743,23 +3775,10 @@ async function handleRequest(req, res) {
 
   if (p === R_ADMIN+'/api/data' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const suspectKeys = Object.keys(keys).filter(code => {
-      const k2 = keys[code];
-      const cl2 = k2.suspectClearedAt ? new Date(k2.suspectClearedAt) : null;
-      if (cl2 && (Date.now() - cl2.getTime()) < 172800000) return false;
-      const recentLogs = logs.filter(l => l.keyCode === code && l.timestamp > new Date(Date.now()-86400000).toISOString());
-      return new Set(recentLogs.filter(l=>l.ip).map(l=>l.ip)).size > 3;
-    }).length;
     sendJson(res, {
-      totalKeys:     Object.keys(keys).length,
-      activeKeys:    Object.values(keys).filter(k => k.active && !isKeyExpired(k)).length,
-      expiredKeys:   Object.values(keys).filter(k => isKeyExpired(k)).length,
-      blockedKeys:   Object.values(keys).filter(k => !k.active && !isKeyExpired(k)).length,
-      warnKeys:      Object.values(keys).filter(k => k.active && isKeyExpiringSoon(k)).length,
-      suspectKeys,
-      totalLogs:     logs.length,
-      keysHtml:      getKeysHtmlCached(),
-      logsHtml:      buildLogsHtml()
+      ...getKeyStats(),
+      keysHtml: getKeysHtmlCached(),
+      logsHtml: buildLogsHtml(),
     }); return;
   }
 
@@ -3767,17 +3786,7 @@ async function handleRequest(req, res) {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const body = await parseBody(req);
     const code = generateCode();
-    let expiresAt = null, expireDuration = null;
-    if (body.expiresAt) {
-      expiresAt = new Date(body.expiresAt).toISOString();
-    } else {
-      const days=parseInt(body.expireDays||0), hours=parseInt(body.expireHours||0), minutes=parseInt(body.expireMinutes||0);
-      if (days>0 || hours>0 || minutes>0) {
-        const durationMs = ((days*1440)+(hours*60)+minutes)*60000;
-        if (body.deferred) { expireDuration = durationMs; }
-        else { expiresAt = new Date(Date.now()+durationMs).toISOString(); }
-      }
-    }
+    const { expiresAt, expireDuration } = parseKeyExpiryFromBody(body, { allowMinutes: true });
     const maxUses = (body.maxUses !== undefined) ? parseInt(body.maxUses) : MAX_USES;
     keys[code] = {
       label: body.label || 'Cliente', active: true, createdAt: new Date().toISOString(),
@@ -3862,11 +3871,9 @@ async function handleRequest(req, res) {
     if (!kPhDel) { sendJson(res, { error: 'not found' }, 404); return; }
     const body = await parseBody(req);
     if (body.all) {
-      kPhDel.phones=[]; kPhDel.uses=0; kPhDel.lastPhone=null;
+      clearAllPhonesFromKey(kPhDel);
     } else if (body.phone) {
-      kPhDel.phones=(kPhDel.phones||[]).filter(ph=>ph!==body.phone);
-      kPhDel.uses=kPhDel.phones.length;
-      if (kPhDel.lastPhone===body.phone) kPhDel.lastPhone=kPhDel.phones.at(-1)||null;
+      removePhoneFromKey(kPhDel, body.phone);
     } else { sendJson(res, { error: 'informe phone ou all:true' }, 400); return; }
     saveKey(codePhonesDelete).catch(()=>{});
     sendJson(res, { ok: true, phones: kPhDel.phones }); return;
@@ -3921,19 +3928,10 @@ async function handleRequest(req, res) {
   const codeAssignMod = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/assign-mod$`));
   if (codeAssignMod && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    if (!keys[codeAssignMod]) {
-      try {
-        const _dbA = await getMongoDb();
-        const _docA = await _dbA.collection('store').findOne({ _id: 'keys' });
-        if (_docA && _docA.data && _docA.data[codeAssignMod]) {
-          keys[codeAssignMod] = _docA.data[codeAssignMod];
-        }
-      } catch(e) { console.error('[DB] assign-mod lookup:', e.message); }
-    }
-    if (!keys[codeAssignMod]) { sendJson(res, { error: 'not found' }, 404); return; }
+    const k = await adminGetKey(codeAssignMod);
+    if (!k) { sendJson(res, { error: 'not found' }, 404); return; }
     const body    = await parseBody(req);
     const modName = String(body.modName || '').trim().slice(0, 60);
-    const k       = keys[codeAssignMod];
     let note = (k.note || '').replace(/\[Mod: [^\]]+\]\s*/g, '').trim();
     if (modName) note = '[Mod: ' + modName + ']' + (note ? ' ' + note : '');
     k.note = note.slice(0, 500);
@@ -4165,19 +4163,8 @@ async function handleRequest(req, res) {
     const body = await parseBody(req);
     const code = (body.key || '').trim().toLowerCase().slice(0, 20);
     if (!code) { sendJson(res, { error: 'not_found' }, 404); return; }
-
-    let k = keys[code];
-    if (!k) {
-      try {
-        const db = await getMongoDb();
-        const doc = await db.collection('store').findOne({ _id: 'keys' });
-        if (doc && doc.data && doc.data[code]) {
-          k = doc.data[code];
-          keys[code] = k; // atualizar memória local
-        }
-      } catch(e) { console.error('[DB] Erro ao buscar chave:', e.message); }
-    }
-    if (!k) { sendJson(res, { error: 'not_found' }, 404); return; }
+    if (!await ensureKeyLoaded(code)) { sendJson(res, { error: 'not_found' }, 404); return; }
+    const k = keys[code];
 
     sendJson(res, {
       label:       k.label || 'Cliente',
@@ -4204,29 +4191,11 @@ async function handleRequest(req, res) {
     const phoneTxt = (body.phone||'').trim();
     if (!keyCode) { sendJson(res, { error: 'not_found' }, 404); return; }
     if (phoneIdx < 0 && !phoneTxt) { sendJson(res, { error: 'phone obrigatorio' }, 400); return; }
-    if (!keys[keyCode]) {
-      try {
-        const db  = await getMongoDb();
-        const doc = await db.collection('store').findOne({ _id: 'keys' });
-        if (doc && doc.data && doc.data[keyCode]) {
-          keys[keyCode] = doc.data[keyCode];
-        }
-      } catch(e) {
-        sendJson(res, { error: 'db_error' }, 503); return;
-      }
-    }
-    if (!keys[keyCode]) { sendJson(res, { error: 'not_found' }, 404); return; }
+    if (!await ensureKeyLoaded(keyCode)) { sendJson(res, { error: 'not_found' }, 404); return; }
     const phones = keys[keyCode].phones || [];
-    let phone;
-    if (phoneIdx >= 0 && phoneIdx < phones.length) {
-      phone = phones[phoneIdx];
-    } else if (phoneTxt) {
-      phone = phones.find(p => p === phoneTxt || p.endsWith(phoneTxt.replace(/[^0-9]/g,'')));
-    }
+    const phone = resolvePhoneToRemove(phones, { phoneIdx, phoneTxt });
     if (!phone) { sendJson(res, { error: 'numero nao encontrado' }, 404); return; }
-    keys[keyCode].phones  = phones.filter(p => p !== phone);
-    keys[keyCode].uses    = keys[keyCode].phones.length;
-    if (keys[keyCode].lastPhone === phone) keys[keyCode].lastPhone = keys[keyCode].phones.at(-1) || null;
+    removePhoneFromKey(keys[keyCode], phone);
     saveKey(keyCode).catch(()=>{});
     sendJson(res, { ok: true, phones: keys[keyCode].phones }); return;
   }
