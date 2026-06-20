@@ -2284,7 +2284,7 @@ function filterKeys(){
     if(visible)shown++;
   });
   const fc=document.getElementById('keys-filter-count');
-  if(fc)fc.textContent=(st||q)?(shown+' de '+total+' chave(s) exibida(s)' : total+' chave(s)';
+  if(fc)fc.textContent=(st||q)?(shown+' de '+total+' chave(s) exibida(s)'):(total+' chave(s)');
 }
 
 let _sortCol=null,_sortDir=1;
@@ -2343,7 +2343,13 @@ async function doRefresh(manual){
     const d=await r.json();if(d.error)return;
     document.getElementById('s-total').textContent=d.totalKeys||0;
     document.getElementById('s-active').textContent=d.activeKeys||0;
-    const se=document.getElementById('s-expired');if(se){se.textContent=d.expiredKeys||0;se.style.color=(d.expiredKeys||0)>0?'var(--red)':'';se.closest('.sc')?.classList.toggle('expired-card',(d.expiredKeys||0)>0);}
+    const se=document.getElementById('s-expired');
+    if(se){
+      se.textContent=d.expiredKeys||0;
+      se.style.color=(d.expiredKeys||0)>0?'var(--red)':'';
+      const seCard=se.closest('.sc');
+      if(seCard)seCard.classList.toggle('expired-card',(d.expiredKeys||0)>0);
+    }
     document.getElementById('s-logs').textContent=d.totalLogs||0;
     const sw=document.getElementById('s-warn');sw.textContent=d.warnKeys||0;sw.style.color=d.warnKeys>0?'var(--orange)':'var(--green)';sw.closest('.sc').classList.toggle('warn-card',d.warnKeys>0);
     const ssu=document.getElementById('s-suspect');if(ssu){ssu.textContent=d.suspectKeys||0;ssu.style.color=d.suspectKeys>0?'var(--red)':'';ssu.closest('.sc').classList.toggle('danger-card',d.suspectKeys>0);}
