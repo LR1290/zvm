@@ -493,6 +493,11 @@ async function ensureKeyLoaded(keyCode) {
   if (keys[keyCode]) sanitizeKeyRecord(keys[keyCode]);
   return !!keys[keyCode];
 }
+async function adminGetKey(code) {
+  if (!code) return null;
+  if (!keys[code]) await ensureKeyLoaded(code);
+  return keys[code] || null;
+}
 async function resolveUsageKey(body) {
   const authKey = (body.authKey || '').toLowerCase().slice(0, 32);
   const planId = body.planId || '';
@@ -715,6 +720,33 @@ function getKeyExpiryMeta(k) {
     expiringSoon: expiresAt ? isKeyExpiringSoon(k) : false,
     deferred,
   };
+}
+
+function getKeyDisplayStatus(k) {
+  if (isKeyExpired(k)) return 'expirada';
+  if (!k.active) return 'bloqueado';
+  if (k.expireDuration && !k.expiresAt) return 'aguardando';
+  if (isKeyExpiringSoon(k)) return 'expirando';
+  return 'ativo';
+}
+
+function renderKeyStatusBadge(k) {
+  const st = getKeyDisplayStatus(k);
+  const map = {
+    ativo:      ['on',  'ATIVO'],
+    bloqueado:  ['off', 'BLOQUEADO'],
+    expirada:   ['off', 'EXPIRADA'],
+    expirando:  ['wl',  'EXPIRANDO'],
+    aguardando: ['vr',  'AGUARDANDO'],
+  };
+  const [cls, lbl] = map[st] || ['warn', st.toUpperCase()];
+  return `<span class="badge ${cls}">${lbl}</span>`;
+}
+
+function getKeyValiditySortKey(k) {
+  if (k.expiresAt) return new Date(k.expiresAt).getTime();
+  if (k.expireDuration && !k.expiresAt) return Date.now() + 86400000 * 3650;
+  return Number.MAX_SAFE_INTEGER;
 }
 
 function getIp(req) {
@@ -1803,12 +1835,14 @@ function buildKeysHtml() {
     const suspectBadge = isSuspect
       ? `<span title="${recentIps.size} IPs nas últimas 24h" style="color:#ff4757;font-size:13px;margin-left:4px">⚠ SUSPEITA</span>` : '';
     const deferredAttr = (!k.expiresAt && k.expireDuration) ? '1' : '0';
+    const dispStatus   = getKeyDisplayStatus(k);
+    const zsOn         = !!(k.modules && k.modules.zapSaver);
 
     return `
-<tr data-code="${escHtml(code)}" data-expires-at="${escHtml(k.expiresAt || '')}" data-deferred="${deferredAttr}" data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${k.active?'ativo':'bloqueado'}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-suspect="${isSuspect?'1':''}"` + rowStyle + `>
+<tr data-code="${escHtml(code)}" data-expires-at="${escHtml(k.expiresAt || '')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-lastused="${escHtml(k.lastUsed||'')}" data-suspect="${isSuspect?'1':''}"` + rowStyle + `>
   <td><span class="kc">${escHtml(code)}</span></td>
-  <td>${escHtml(k.label)}${suspectBadge}</td>
-  <td><span class="badge ${k.active?'on':'off'}">${k.active?(k.expireDuration&&!k.expiresAt?'AGUARDANDO':'ATIVO'):'BLOQUEADO'}</span></td>
+  <td>${escHtml(k.label)}${suspectBadge}${zsOn?'<span title="ZapSaver ativo" style="color:#4f8ef7;font-size:11px;margin-left:4px">💾</span>':''}</td>
+  <td>${renderKeyStatusBadge(k)}</td>
   <td>${formatValidityCell(k)}</td>
   <td><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
   <td>${escHtml(k.lastPhone||'-')}</td>
@@ -1817,7 +1851,7 @@ function buildKeysHtml() {
   <td>${new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</td>
   <td>${escHtml(k.wppVersion||'-')}</td>
   <td class="note-cell" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${k.note&&k.note.startsWith('[Mod:')?'<span style=\"color:#4f8ef7;font-size:13px;font-family:Syne,sans-serif\">'+escHtml(k.note)+'</span>':escHtml(k.note||'') || '<span style=\\"color:var(--muted)\\">—</span>'}</span></td>
-  <td>
+  <td><div class="acts">
     <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
     <button class="bs bg" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">+ Tempo</button>
     <button class="bs bg" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${Number.isFinite(k.maxUses)?k.maxUses:MAX_USES})">Usos</button>
@@ -1825,8 +1859,9 @@ function buildKeysHtml() {
     ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Números</button>`:''}
     <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
     ${isSuspect?`<button class="bs bsusp" onclick="clearSuspect('${escHtml(code)}')">🕵️ Suspeita</button>`:''}
-    <button class="bs" style="background:#7c3aed18;color:#9b59b6;border:1px solid #7c3aed30" data-code="${escHtml(code)}" data-label="${escHtml(k.label||'')}" data-modnote="${escHtml((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1]||'')}" onclick="openAssignModFromEl(this)">👮 Mod</button>
-  </td>
+    <button class="bs ${zsOn?'bg':'bw'}" title="ZapSaver" onclick="toggleModule('${escHtml(code)}','zapSaver',${zsOn?'false':'true'})">💾</button>
+    <button class="bs" style="background:#7c3aed18;color:#9b59b6;border:1px solid #7c3aed30" data-code="${escHtml(code)}" data-label="${escHtml(k.label||'')}" data-modnote="${escHtml((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1]||'')}" onclick="openAssignModFromEl(this)">👮</button>
+  </div></td>
 </tr>`;
   }).join('');
 }
@@ -1856,6 +1891,7 @@ function buildLogsHtml(arr) {
 
 function renderAdminDashboard() {
   const expiringSoon  = Object.values(keys).filter(k => k.active && isKeyExpiringSoon(k)).length;
+  const expiredCount  = Object.values(keys).filter(k => isKeyExpired(k)).length;
   const suspectKeys   = Object.entries(keys).filter(([code, k]) => {
     const cl = k.suspectClearedAt ? new Date(k.suspectClearedAt) : null;
     if (cl && (Date.now() - cl.getTime()) < 172800000) return false;
@@ -1867,7 +1903,7 @@ function renderAdminDashboard() {
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM Admin v9</title>
+<title>ZVM Admin v10</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -1886,7 +1922,7 @@ main{position:relative;z-index:1}
 a.out{color:var(--muted);font-size:13px;text-decoration:none;padding:6px 14px;border:1px solid var(--border2);border-radius:var(--radius-sm);transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
 a.out:hover{color:var(--red);border-color:var(--red)}
 main{padding:22px 24px;max-width:1800px;margin:0 auto}
-.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px}
+.stats{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px}
 .sc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;position:relative;overflow:hidden;transition:border-color .2s,transform .15s;cursor:default}
 .sc:hover{border-color:var(--border2);transform:translateY(-1px)}
 .sc.warn-card{border-color:#ff860050;background:#ff860008}
@@ -1962,26 +1998,40 @@ tr:hover td{background:#ffffff02}
 .modal textarea{resize:vertical;min-height:80px}
 .modal textarea:focus,.modal input:focus{border-color:var(--green)}
 .modal-actions{display:flex;gap:8px;margin-top:11px;justify-content:flex-end}
+.sc.expired-card{border-color:#ff475740;background:#ff475706}
+.sc.expired-card .n{color:var(--red)}
+.alert-strip{background:#ff860010;border:1px solid #ff860035;border-radius:var(--radius);padding:11px 16px;margin-bottom:16px;align-items:center;gap:10px;font-size:13px;color:#ff8600;font-family:'Syne',sans-serif;flex-wrap:wrap}
+.filter-chips{display:flex;gap:6px;flex-wrap:wrap;padding:0 16px 10px}
+.chip{padding:5px 11px;border-radius:20px;border:1px solid var(--border2);background:var(--dark);color:var(--muted);font-family:'Syne',sans-serif;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap}
+.chip:hover,.chip.on{border-color:var(--green);color:var(--green);background:#00ff870a}
+.hdr-meta{font-size:11px;color:var(--muted);font-family:'Syne',sans-serif;margin-right:6px}
+.acts{display:flex;flex-wrap:wrap;gap:3px;max-width:240px}
 @media(max-width:1300px){.stats{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:750px){.stats{grid-template-columns:1fr 1fr};main{padding:14px 12px}}
+@media(max-width:750px){.stats{grid-template-columns:1fr 1fr};main{padding:14px 12px};.acts{max-width:160px}}
 </style>
 </head>
 <body>
 <header>
-  <div class="logo">⚡ ZVM <span style="font-size:13px;color:var(--muted);font-weight:400">v8</span></div>
+  <div class="logo">⚡ ZVM <span style="font-size:13px;color:var(--muted);font-weight:400">Admin v10</span></div>
   <div class="hright">
+    <span class="hdr-meta" id="last-refresh">—</span>
+    <button class="btn bw" onclick="doRefresh(true)">↻ Atualizar</button>
     <button class="btn bcsv" onclick="exportCSV()">⬇ CSV</button>
     <a href="${R_ADMIN}/logout" class="out">↩ Sair</a>
   </div>
 </header>
 <main>
+  <div class="alert-strip" id="urgent-alert">
+    <span>⚠️</span>
+    <span id="urgent-alert-text">${expiredCount>0?`<strong>${expiredCount} expirada(s)</strong>`:''}${expiredCount>0&&expiringSoon>0?' · ':''}${expiringSoon>0?`<strong>${expiringSoon} expirando em ${EXPIRY_WARN_HOURS}h</strong>`:''}</span>
+  </div>
   <div class="stats">
-    <div class="sc"><div class="sc-icon">🔑</div><div class="n" id="s-total">${Object.keys(keys).length}</div><div class="l">Total de Chaves</div></div>
-    <div class="sc"><div class="sc-icon">✅</div><div class="n" id="s-active">${Object.values(keys).filter(k=>k.active).length}</div><div class="l">Chaves Ativas</div></div>
-    <div class="sc ${expiringSoon>0?'warn-card':''}"><div class="sc-icon">⏰</div><div class="n" id="s-warn" style="${expiringSoon>0?'color:var(--orange)':''}">${expiringSoon}</div><div class="l">Expirando em ${EXPIRY_WARN_HOURS}h</div></div>
-
-    <div class="sc ${suspectKeys>0?'danger-card':''}"><div class="sc-icon">🕵️</div><div class="n" id="s-suspect" style="${suspectKeys>0?'color:var(--red)':''}">${suspectKeys}</div><div class="l">Suspeitas (24h)</div></div>
-    <div class="sc"><div class="sc-icon">📋</div><div class="n" id="s-logs">${logs.length}</div><div class="l">Acessos Registrados</div></div>
+    <div class="sc"><div class="sc-icon">🔑</div><div class="n" id="s-total">${Object.keys(keys).length}</div><div class="l">Total</div></div>
+    <div class="sc"><div class="sc-icon">✅</div><div class="n" id="s-active">${Object.values(keys).filter(k=>k.active&&!isKeyExpired(k)).length}</div><div class="l">Ativas</div></div>
+    <div class="sc ${expiredCount>0?'expired-card':''}"><div class="sc-icon">⛔</div><div class="n" id="s-expired" style="${expiredCount>0?'color:var(--red)':''}">${expiredCount}</div><div class="l">Expiradas</div></div>
+    <div class="sc ${expiringSoon>0?'warn-card':''}"><div class="sc-icon">⏰</div><div class="n" id="s-warn" style="${expiringSoon>0?'color:var(--orange)':''}">${expiringSoon}</div><div class="l">Expirando (${EXPIRY_WARN_HOURS}h)</div></div>
+    <div class="sc ${suspectKeys>0?'danger-card':''}"><div class="sc-icon">🕵️</div><div class="n" id="s-suspect" style="${suspectKeys>0?'color:var(--red)':''}">${suspectKeys}</div><div class="l">Suspeitas</div></div>
+    <div class="sc"><div class="sc-icon">📋</div><div class="n" id="s-logs">${logs.length}</div><div class="l">Logs</div></div>
   </div>
 
   <div class="sec">
@@ -2003,12 +2053,24 @@ tr:hover td{background:#ffffff02}
     </div>
     <div class="search-bar">
       <input type="text" id="search-input" placeholder="🔍 Buscar por nome, chave, telefone ou IP..." oninput="filterKeys()">
-      <select id="filter-status" onchange="filterKeys()">
-        <option value="">Todos os status</option>
+      <select id="filter-status" onchange="setQuickFilter(this.value)" style="display:none">
+        <option value="">Todos</option>
         <option value="ativo">Ativos</option>
+        <option value="expirando">Expirando</option>
+        <option value="expirada">Expiradas</option>
         <option value="bloqueado">Bloqueados</option>
-        <option value="suspeita">🕵️ Suspeitas</option>
+        <option value="aguardando">Aguardando 1º uso</option>
+        <option value="suspeita">Suspeitas</option>
       </select>
+    </div>
+    <div class="filter-chips">
+      <button type="button" class="chip on" data-filter="" onclick="setQuickFilter('')">Todos</button>
+      <button type="button" class="chip" data-filter="ativo" onclick="setQuickFilter('ativo')">Ativos</button>
+      <button type="button" class="chip" data-filter="expirando" onclick="setQuickFilter('expirando')">Expirando</button>
+      <button type="button" class="chip" data-filter="expirada" onclick="setQuickFilter('expirada')">Expiradas</button>
+      <button type="button" class="chip" data-filter="bloqueado" onclick="setQuickFilter('bloqueado')">Bloqueados</button>
+      <button type="button" class="chip" data-filter="aguardando" onclick="setQuickFilter('aguardando')">1º uso</button>
+      <button type="button" class="chip" data-filter="suspeita" onclick="setQuickFilter('suspeita')">🕵️ Suspeitas</button>
     </div>
     <div class="ov">
       <table>
@@ -2048,7 +2110,6 @@ tr:hover td{background:#ffffff02}
         <tbody id="lb">${buildLogsHtml()}</tbody>
       </table>
     </div>
-  </div>
   </div>
 </main>
 
@@ -2173,6 +2234,12 @@ async function assignMod(code,modName){
   }catch(e){toast('Erro de rede',false);}
 }
 
+function setQuickFilter(val){
+  document.getElementById('filter-status').value=val;
+  document.querySelectorAll('.filter-chips .chip').forEach(c=>c.classList.toggle('on',c.dataset.filter===val));
+  filterKeys();
+}
+
 function filterKeys(){
   const q=(document.getElementById('search-input').value||'').toLowerCase();
   const st=document.getElementById('filter-status').value;
@@ -2181,9 +2248,9 @@ function filterKeys(){
     const phone=(row.dataset.phone||'').toLowerCase();
     const status=(row.dataset.status||'').toLowerCase();
     const suspect=(row.dataset.suspect||'');
-    const code=(row.querySelector('.kc')||{}).textContent||'';
-    const ip=(row.cells[5]||{}).textContent||'';
-    const matchQ=!q||label.includes(q)||phone.includes(q)||code.toLowerCase().includes(q)||ip.toLowerCase().includes(q);
+    const code=(row.dataset.code||'').toLowerCase();
+    const ip=(row.cells[6]||{}).textContent||'';
+    const matchQ=!q||label.includes(q)||phone.includes(q)||code.includes(q)||ip.toLowerCase().includes(q);
     const matchSt=!st||(st==='suspeita'?suspect==='1':status===st);
     row.style.display=(matchQ&&matchSt)?'':'none';
   });
@@ -2195,14 +2262,18 @@ function sortKeys(col){
   const rows=Array.from(tbody.querySelectorAll('tr[data-label]'));
   if(!rows.length)return;
   if(_sortCol===col)_sortDir*=-1;else{_sortCol=col;_sortDir=1;}
-  document.querySelectorAll('th').forEach(th=>th.classList.remove('asc','desc'));
+  document.querySelectorAll('th[id^="th-"]').forEach(th=>th.classList.remove('asc','desc'));
   const th=document.getElementById('th-'+col);if(th)th.classList.add(_sortDir===1?'asc':'desc');
   rows.sort((a,b)=>{
     let va,vb;
-    if(col==='uses'){va=parseInt(a.dataset.uses||0);vb=parseInt(b.dataset.uses||0);}
-    else if(col==='created'||col==='lastused'){va=a.dataset[col==='lastused'?'lastused':'created']||'';vb=b.dataset[col==='lastused'?'lastused':'created']||'';}
+    if(col==='uses'){va=parseInt(a.dataset.uses||0,10);vb=parseInt(b.dataset.uses||0,10);}
+    else if(col==='validity'){va=parseFloat(a.dataset.validity||0);vb=parseFloat(b.dataset.validity||0);}
+    else if(col==='code'){va=(a.dataset.code||'').toLowerCase();vb=(b.dataset.code||'').toLowerCase();}
+    else if(col==='created'||col==='lastused'){va=a.dataset[col]||'';vb=b.dataset[col]||'';}
     else if(col==='phone'){va=a.dataset.phone||'';vb=b.dataset.phone||'';}
+    else if(col==='status'){va=a.dataset.status||'';vb=b.dataset.status||'';}
     else{va=(a.dataset[col]||'').toLowerCase();vb=(b.dataset[col]||'').toLowerCase();}
+    if(typeof va==='number'&&typeof vb==='number'){if(va<vb)return -1*_sortDir;if(va>vb)return 1*_sortDir;return 0;}
     if(va<vb)return -1*_sortDir;if(va>vb)return 1*_sortDir;return 0;
   });
   rows.forEach(r=>tbody.appendChild(r));
@@ -2234,22 +2305,43 @@ async function generateKey(){
   }catch(e){toast('❌ Erro de rede',false);}
 }
 
-async function doRefresh(){
+async function doRefresh(manual){
   try{
     const r=await fetch(_RA+'/api/data');
-    if(r.status===401){return;}
+    if(r.status===401){if(manual)toast('Sessão expirada',false);return;}
     const d=await r.json();if(d.error)return;
     document.getElementById('s-total').textContent=d.totalKeys||0;
     document.getElementById('s-active').textContent=d.activeKeys||0;
+    const se=document.getElementById('s-expired');if(se){se.textContent=d.expiredKeys||0;se.style.color=(d.expiredKeys||0)>0?'var(--red)':'';se.closest('.sc')?.classList.toggle('expired-card',(d.expiredKeys||0)>0);}
     document.getElementById('s-logs').textContent=d.totalLogs||0;
     const sw=document.getElementById('s-warn');sw.textContent=d.warnKeys||0;sw.style.color=d.warnKeys>0?'var(--orange)':'var(--green)';sw.closest('.sc').classList.toggle('warn-card',d.warnKeys>0);
     const ssu=document.getElementById('s-suspect');if(ssu){ssu.textContent=d.suspectKeys||0;ssu.style.color=d.suspectKeys>0?'var(--red)':'';ssu.closest('.sc').classList.toggle('danger-card',d.suspectKeys>0);}
+    const alert=document.getElementById('urgent-alert'),alertTxt=document.getElementById('urgent-alert-text');
+    if(alert&&alertTxt){
+      const parts=[];
+      if((d.expiredKeys||0)>0)parts.push('<strong>'+d.expiredKeys+' expirada(s)</strong>');
+      if((d.warnKeys||0)>0)parts.push('<strong>'+d.warnKeys+' expirando em breve</strong>');
+      alert.style.display=parts.length?'flex':'none';
+      alertTxt.innerHTML=parts.join(' · ');
+    }
     document.getElementById('kb').innerHTML=d.keysHtml||'';
     document.getElementById('lb').innerHTML=d.logsHtml||'';
+    const lr=document.getElementById('last-refresh');
+    if(lr)lr.textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
     filterKeys();
-  }catch(e){console.error('Refresh error',e);}
+    if(manual)toast('Painel atualizado');
+  }catch(e){console.error('Refresh error',e);if(manual)toast('Erro ao atualizar',false);}
 }
-setInterval(doRefresh,120000); // 2 min — reduz requisições ao servidor
+setInterval(()=>doRefresh(false),120000);
+
+async function toggleModule(code,module,enabled){
+  try{
+    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/modules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({module,enabled})});
+    const d=await r.json();
+    if(d.ok){toast(enabled?'ZapSaver ativado':'ZapSaver desativado');await doRefresh();}
+    else toast('Erro: '+(d.error||'?'),false);
+  }catch(e){toast('Erro de rede',false);}
+}
 
 async function toggleKey(code){
   try{const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/toggle',{method:'POST'});if(r.status===401){toast('Sessão expirada',false);return;}const d=await r.json();if(d.ok){toast(d.active?'Chave liberada!':'Chave bloqueada!');await doRefresh();}}catch(e){toast('Erro',false);}
@@ -2379,6 +2471,7 @@ async function saveNote(){
 async function exportCSV(){
   try{const r=await fetch(_RA+'/api/export/csv');if(r.status===401){toast('Sessão expirada',false);return;}const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='zvm-chaves-'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(url);toast('CSV exportado!');}catch(e){toast('Erro ao exportar',false);}
 }
+const lr0=document.getElementById('last-refresh');if(lr0)lr0.textContent='Carregado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 </script>
 ${CANVAS_BG}</body></html>`;
 }
@@ -3494,6 +3587,10 @@ async function handleRequest(req, res) {
   }
 
   if (p === R_ADMIN+'/login' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'login')) {
+      const mins = getRateLimitWait(ip, 'login');
+      sendHtml(res, renderAdminLogin(`⏳ Muitas tentativas. Aguarde ${mins} minuto(s).`), 429); return;
+    }
     const form   = await parseFormBody(req);
     const _u=Buffer.from(form.get('user')||''), _p=Buffer.from(form.get('pass')||'');
     const _au=Buffer.from(ADMIN_USER||''), _ap=Buffer.from(ADMIN_PASS||'');
@@ -3669,8 +3766,10 @@ async function handleRequest(req, res) {
     }).length;
     sendJson(res, {
       totalKeys:     Object.keys(keys).length,
-      activeKeys:    Object.values(keys).filter(k=>k.active).length,
-      warnKeys:      Object.values(keys).filter(k=>k.active && isKeyExpiringSoon(k)).length,
+      activeKeys:    Object.values(keys).filter(k => k.active && !isKeyExpired(k)).length,
+      expiredKeys:   Object.values(keys).filter(k => isKeyExpired(k)).length,
+      blockedKeys:   Object.values(keys).filter(k => !k.active && !isKeyExpired(k)).length,
+      warnKeys:      Object.values(keys).filter(k => k.active && isKeyExpiringSoon(k)).length,
       suspectKeys,
       totalLogs:     logs.length,
       keysHtml:      getKeysHtmlCached(),
@@ -3709,38 +3808,42 @@ async function handleRequest(req, res) {
   const codeToggle = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/toggle$`));
   if (codeToggle && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    if (!keys[codeToggle]) { sendJson(res, { error: 'not found' }, 404); return; }
-    keys[codeToggle].active = !keys[codeToggle].active;
+    const k = await adminGetKey(codeToggle);
+    if (!k) { sendJson(res, { error: 'not found' }, 404); return; }
+    k.active = !k.active;
     saveKey(codeToggle);
-    if (!keys[codeToggle].active) fireWebhook('key_blocked', codeToggle, 'Bloqueio manual pelo admin');
-    sendJson(res, { ok: true, active: keys[codeToggle].active }); return;
+    if (!k.active) fireWebhook('key_blocked', codeToggle, 'Bloqueio manual pelo admin');
+    sendJson(res, { ok: true, active: k.active }); return;
   }
 
   const codeRenew = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/renew$`));
   if (codeRenew && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    if (!keys[codeRenew]) { sendJson(res, { error: 'not found' }, 404); return; }
+    const kRenew = await adminGetKey(codeRenew);
+    if (!kRenew) { sendJson(res, { error: 'not found' }, 404); return; }
     const body = await parseBody(req);
     const days=parseInt(body.days||0), hours=parseInt(body.hours||0), mins=parseInt(body.mins||0);
     if (!days && !hours && !mins) { sendJson(res, { error: 'nenhum tempo informado' }, 400); return; }
     const addMs = ((days*1440)+(hours*60)+mins)*60000;
-    const base  = (keys[codeRenew].expiresAt && !isKeyExpired(keys[codeRenew]))
-      ? new Date(keys[codeRenew].expiresAt).getTime() : Date.now();
-    keys[codeRenew].expiresAt = new Date(base+addMs).toISOString();
-    keys[codeRenew].active    = true;
+    const base  = (kRenew.expiresAt && !isKeyExpired(kRenew))
+      ? new Date(kRenew.expiresAt).getTime() : Date.now();
+    kRenew.expiresAt = new Date(base+addMs).toISOString();
+    kRenew.expireDuration = null;
+    kRenew.active = true;
     saveKey(codeRenew);
-    await addLog({ keyCode: codeRenew, label: keys[codeRenew].label, phone: '-', ip, wppVersion: '-', action: 'renewed' });
-    sendJson(res, { ok: true, expiresAt: keys[codeRenew].expiresAt }); return;
+    await addLog({ keyCode: codeRenew, label: kRenew.label, phone: '-', ip, wppVersion: '-', action: 'renewed' });
+    sendJson(res, { ok: true, expiresAt: kRenew.expiresAt }); return;
   }
 
   const codeMaxUses = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/max-uses$`));
   if (codeMaxUses && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    if (!keys[codeMaxUses]) { sendJson(res, { error: 'not found' }, 404); return; }
+    const kMu = await adminGetKey(codeMaxUses);
+    if (!kMu) { sendJson(res, { error: 'not found' }, 404); return; }
     const body = await parseBody(req);
     const maxUses = parseInt(body.maxUses);
     if (isNaN(maxUses) || maxUses < -1) { sendJson(res, { error: 'invalid' }, 400); return; }
-    keys[codeMaxUses].maxUses = maxUses;
+    kMu.maxUses = maxUses;
     saveKey(codeMaxUses);
     sendJson(res, { ok: true, maxUses }); return;
   }
@@ -3748,11 +3851,12 @@ async function handleRequest(req, res) {
   const codeLabel = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/label$`));
   if (codeLabel && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    if (!keys[codeLabel]) { sendJson(res, { error: 'not found' }, 404); return; }
+    const kLbl = await adminGetKey(codeLabel);
+    if (!kLbl) { sendJson(res, { error: 'not found' }, 404); return; }
     const body  = await parseBody(req);
     const label = String(body.label||'').trim().slice(0, 60);
     if (!label) { sendJson(res, { error: 'label vazio' }, 400); return; }
-    keys[codeLabel].label = label;
+    kLbl.label = label;
     saveKey(codeLabel).catch(()=>{});
     sendJson(res, { ok: true, label }); return;
   }
@@ -3760,31 +3864,34 @@ async function handleRequest(req, res) {
   const codePhonesGet = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/phones$`));
   if (codePhonesGet && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    if (!keys[codePhonesGet]) { sendJson(res, { error: 'not found' }, 404); return; }
-    sendJson(res, { ok: true, phones: keys[codePhonesGet].phones || [] }); return;
+    const kPh = await adminGetKey(codePhonesGet);
+    if (!kPh) { sendJson(res, { error: 'not found' }, 404); return; }
+    sendJson(res, { ok: true, phones: kPh.phones || [] }); return;
   }
 
   const codePhonesDelete = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/phones$`));
   if (codePhonesDelete && req.method === 'DELETE') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    if (!keys[codePhonesDelete]) { sendJson(res, { error: 'not found' }, 404); return; }
+    const kPhDel = await adminGetKey(codePhonesDelete);
+    if (!kPhDel) { sendJson(res, { error: 'not found' }, 404); return; }
     const body = await parseBody(req);
     if (body.all) {
-      keys[codePhonesDelete].phones=[]; keys[codePhonesDelete].uses=0; keys[codePhonesDelete].lastPhone=null;
+      kPhDel.phones=[]; kPhDel.uses=0; kPhDel.lastPhone=null;
     } else if (body.phone) {
-      keys[codePhonesDelete].phones=(keys[codePhonesDelete].phones||[]).filter(ph=>ph!==body.phone);
-      keys[codePhonesDelete].uses=keys[codePhonesDelete].phones.length;
-      if (keys[codePhonesDelete].lastPhone===body.phone) keys[codePhonesDelete].lastPhone=keys[codePhonesDelete].phones.at(-1)||null;
+      kPhDel.phones=(kPhDel.phones||[]).filter(ph=>ph!==body.phone);
+      kPhDel.uses=kPhDel.phones.length;
+      if (kPhDel.lastPhone===body.phone) kPhDel.lastPhone=kPhDel.phones.at(-1)||null;
     } else { sendJson(res, { error: 'informe phone ou all:true' }, 400); return; }
     saveKey(codePhonesDelete).catch(()=>{});
-    sendJson(res, { ok: true, phones: keys[codePhonesDelete].phones }); return;
+    sendJson(res, { ok: true, phones: kPhDel.phones }); return;
   }
 
   const codeResetWarn = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/reset-warn$`));
   if (codeResetWarn && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    if (!keys[codeResetWarn]) { sendJson(res, { error: 'not found' }, 404); return; }
-    keys[codeResetWarn].warnCount = 0;
+    const kRw = await adminGetKey(codeResetWarn);
+    if (!kRw) { sendJson(res, { error: 'not found' }, 404); return; }
+    kRw.warnCount = 0;
     saveKey(codeResetWarn);
     sendJson(res, { ok: true }); return;
   }
@@ -3792,8 +3899,9 @@ async function handleRequest(req, res) {
   const codeClearSuspect = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/clear-suspect$`));
   if (codeClearSuspect && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    if (!keys[codeClearSuspect]) { sendJson(res, { error: 'not found' }, 404); return; }
-    keys[codeClearSuspect].suspectClearedAt = new Date().toISOString();
+    const kCs = await adminGetKey(codeClearSuspect);
+    if (!kCs) { sendJson(res, { error: 'not found' }, 404); return; }
+    kCs.suspectClearedAt = new Date().toISOString();
     saveKey(codeClearSuspect);
     sendJson(res, { ok: true }); return;
   }
@@ -3801,9 +3909,10 @@ async function handleRequest(req, res) {
   const codeNote = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/note$`));
   if (codeNote && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    if (!keys[codeNote]) { sendJson(res, { error: 'not found' }, 404); return; }
+    const kNote = await adminGetKey(codeNote);
+    if (!kNote) { sendJson(res, { error: 'not found' }, 404); return; }
     const body = await parseBody(req);
-    keys[codeNote].note = String(body.note||'').slice(0, 500);
+    kNote.note = String(body.note||'').slice(0, 500);
     saveKey(codeNote);
     sendJson(res, { ok: true }); return;
   }
@@ -3811,15 +3920,16 @@ async function handleRequest(req, res) {
   const codeModules = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/modules$`));
   if (codeModules && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    if (!keys[codeModules]) { sendJson(res, { error: 'not found' }, 404); return; }
+    const kMod = await adminGetKey(codeModules);
+    if (!kMod) { sendJson(res, { error: 'not found' }, 404); return; }
     const body = await parseBody(req);
     const moduleName = String(body.module || '').trim();
     const enabled    = !!body.enabled;
     if (!AVAILABLE_MODULES.includes(moduleName)) { sendJson(res, { error: 'modulo: '+moduleName }, 400); return; }
-    if (!keys[codeModules].modules) keys[codeModules].modules = { ...DEFAULT_MODULES };
-    keys[codeModules].modules[moduleName] = enabled;
+    if (!kMod.modules) kMod.modules = { ...DEFAULT_MODULES };
+    kMod.modules[moduleName] = enabled;
     saveKey(codeModules);
-    sendJson(res, { ok: true, module: moduleName, enabled, modules: keys[codeModules].modules }); return;
+    sendJson(res, { ok: true, module: moduleName, enabled, modules: kMod.modules }); return;
   }
 
   const codeAssignMod = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/assign-mod$`));
@@ -3878,15 +3988,18 @@ async function handleRequest(req, res) {
 
   if (p === R_ADMIN+'/api/export/csv' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const header = 'Chave,Cliente,Status,Usos,Telefone,Último IP,WPP Version,Último Acesso,Criada em,Expira em,Nota';
+    const header = 'Chave,Cliente,Status,Validade,Usos,Telefone,Último IP,WPP Version,Último Acesso,Criada em,Expira em,ZapSaver,Nota';
     const rows = Object.entries(keys).map(([code, k]) => {
+      const stLabel = getKeyDisplayStatus(k).toUpperCase();
       const cols = [
-        code, k.label, k.active?'ATIVO':'BLOQUEADO',
+        code, k.label, stLabel,
+        k.expiresAt ? new Date(k.expiresAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}) : (k.expireDuration ? 'Ao 1º uso' : 'Sem expiração'),
         `${(k.phones||[]).length}/${k.maxUses===-1?'Ilimitado':(k.maxUses>0?k.maxUses:MAX_USES)}`,
         k.lastPhone||'', k.lastIp||'', k.wppVersion||'',
         k.lastUsed ? new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}) : '',
         new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}),
         k.expiresAt ? new Date(k.expiresAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}) : 'Sem expiração',
+        (k.modules && k.modules.zapSaver) ? 'SIM' : 'NAO',
         (k.note||'').replace(/,/g,';')
       ];
       return cols.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',');
@@ -4173,7 +4286,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     for (const code of Object.keys(keys)) sanitizeKeyRecord(keys[code]);
     serverReady = true;
 
-    console.log(`✅ zvm-lr1290 v9 — porta ${PORT}`);
+    console.log(`✅ zvm-lr1290 v10 — porta ${PORT}`);
     console.log(`🍃 MongoDB: zapvoice.store | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}`);
     console.log(`🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
     console.log(`🔑 2FA:  ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
