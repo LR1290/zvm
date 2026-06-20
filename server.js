@@ -1936,7 +1936,7 @@ main{padding:22px 24px;max-width:1800px;margin:0 auto}
 .search-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 16px;background:var(--card2);border-bottom:1px solid var(--border)}
 .search-bar input{padding:7px 12px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:12px;outline:none;flex:1;min-width:160px;transition:border .18s}
 .search-bar input:focus{border-color:var(--green)}
-.search-bar select{padding:6px 9px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Syne',sans-serif;font-size:12px;outline:none;cursor:pointer}
+.search-bar select{padding:6px 9px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Syne',sans-serif;font-size:12px;outline:none;cursor:pointer;min-width:170px}
 .sec{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:16px;overflow:hidden}
 .sh{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--card2);flex-wrap:wrap;gap:10px}
 .st{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:var(--green);display:flex;align-items:center;gap:6px}
@@ -1982,11 +1982,6 @@ tr:hover td{background:#ffffff02}
 .wl{background:#ff8c0018;color:#ff8c00}
 .empty{text-align:center;color:var(--muted);padding:40px!important;font-size:14px;font-family:'Syne',sans-serif}
 .toast{position:fixed;bottom:20px;right:20px;padding:11px 18px;border-radius:var(--radius);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;display:none;z-index:999999;box-shadow:0 6px 30px #00000070;max-width:380px;line-height:1.4}
-.alert-card{background:#ff860008;border:1px solid #ff860040;border-radius:var(--radius);padding:12px 18px;margin-bottom:20px;display:none;align-items:center;gap:12px;font-size:13px;color:#ff8600;font-family:'Syne',sans-serif}
-.badge-exp{background:#ff860018;color:#ff8600;border:1px solid #ff860040;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:700;font-family:'Syne',sans-serif}
-.badge-expired{background:#ff475718;color:#ff4757;border:1px solid #ff475740;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:700;font-family:'Syne',sans-serif}
-.note-btn{padding:3px 8px;background:#4f8ef710;color:var(--blue);border:1px solid #4f8ef730;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;transition:all .15s}
-.note-btn:hover{background:#4f8ef722;border-color:var(--blue)}
 .note-cell{cursor:pointer;max-width:130px}
 .note-cell:hover .note-preview{color:var(--green)}
 .note-preview{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:120px;font-family:'Syne',sans-serif}
@@ -2001,11 +1996,9 @@ tr:hover td{background:#ffffff02}
 .sc.expired-card{border-color:#ff475740;background:#ff475706}
 .sc.expired-card .n{color:var(--red)}
 .alert-strip{background:#ff860010;border:1px solid #ff860035;border-radius:var(--radius);padding:11px 16px;margin-bottom:16px;align-items:center;gap:10px;font-size:13px;color:#ff8600;font-family:'Syne',sans-serif;flex-wrap:wrap}
-.filter-chips{display:flex;gap:6px;flex-wrap:wrap;padding:0 16px 10px}
-.chip{padding:5px 11px;border-radius:20px;border:1px solid var(--border2);background:var(--dark);color:var(--muted);font-family:'Syne',sans-serif;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap}
-.chip:hover,.chip.on{border-color:var(--green);color:var(--green);background:#00ff870a}
 .hdr-meta{font-size:11px;color:var(--muted);font-family:'Syne',sans-serif;margin-right:6px}
 .acts{display:flex;flex-wrap:wrap;gap:3px;max-width:240px}
+.filter-count{font-size:11px;color:var(--muted);font-family:'Syne',sans-serif;padding:0 16px 8px}
 @media(max-width:1300px){.stats{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:750px){.stats{grid-template-columns:1fr 1fr};main{padding:14px 12px};.acts{max-width:160px}}
 </style>
@@ -2053,25 +2046,17 @@ tr:hover td{background:#ffffff02}
     </div>
     <div class="search-bar">
       <input type="text" id="search-input" placeholder="🔍 Buscar por nome, chave, telefone ou IP..." oninput="filterKeys()">
-      <select id="filter-status" onchange="setQuickFilter(this.value)" style="display:none">
-        <option value="">Todos</option>
+      <select id="filter-status" onchange="filterKeys()" title="Filtrar por status">
+        <option value="">Todos os status</option>
         <option value="ativo">Ativos</option>
-        <option value="expirando">Expirando</option>
+        <option value="expirando">Expirando em breve</option>
         <option value="expirada">Expiradas</option>
         <option value="bloqueado">Bloqueados</option>
         <option value="aguardando">Aguardando 1º uso</option>
-        <option value="suspeita">Suspeitas</option>
+        <option value="suspeita">🕵️ Suspeitas</option>
       </select>
     </div>
-    <div class="filter-chips">
-      <button type="button" class="chip on" data-filter="" onclick="setQuickFilter('')">Todos</button>
-      <button type="button" class="chip" data-filter="ativo" onclick="setQuickFilter('ativo')">Ativos</button>
-      <button type="button" class="chip" data-filter="expirando" onclick="setQuickFilter('expirando')">Expirando</button>
-      <button type="button" class="chip" data-filter="expirada" onclick="setQuickFilter('expirada')">Expiradas</button>
-      <button type="button" class="chip" data-filter="bloqueado" onclick="setQuickFilter('bloqueado')">Bloqueados</button>
-      <button type="button" class="chip" data-filter="aguardando" onclick="setQuickFilter('aguardando')">1º uso</button>
-      <button type="button" class="chip" data-filter="suspeita" onclick="setQuickFilter('suspeita')">🕵️ Suspeitas</button>
-    </div>
+    <div class="filter-count" id="keys-filter-count"></div>
     <div class="ov">
       <table>
         <thead><tr>
@@ -2234,16 +2219,12 @@ async function assignMod(code,modName){
   }catch(e){toast('Erro de rede',false);}
 }
 
-function setQuickFilter(val){
-  document.getElementById('filter-status').value=val;
-  document.querySelectorAll('.filter-chips .chip').forEach(c=>c.classList.toggle('on',c.dataset.filter===val));
-  filterKeys();
-}
-
 function filterKeys(){
   const q=(document.getElementById('search-input').value||'').toLowerCase();
   const st=document.getElementById('filter-status').value;
+  let shown=0,total=0;
   document.querySelectorAll('#kb tr[data-label]').forEach(row=>{
+    total++;
     const label=(row.dataset.label||'').toLowerCase();
     const phone=(row.dataset.phone||'').toLowerCase();
     const status=(row.dataset.status||'').toLowerCase();
@@ -2252,8 +2233,12 @@ function filterKeys(){
     const ip=(row.cells[6]||{}).textContent||'';
     const matchQ=!q||label.includes(q)||phone.includes(q)||code.includes(q)||ip.toLowerCase().includes(q);
     const matchSt=!st||(st==='suspeita'?suspect==='1':status===st);
-    row.style.display=(matchQ&&matchSt)?'':'none';
+    const visible=matchQ&&matchSt;
+    row.style.display=visible?'':'none';
+    if(visible)shown++;
   });
+  const fc=document.getElementById('keys-filter-count');
+  if(fc)fc.textContent=(st||q)?(shown+' de '+total+' chave(s) exibida(s)' : total+' chave(s)';
 }
 
 let _sortCol=null,_sortDir=1;
@@ -2472,6 +2457,7 @@ async function exportCSV(){
   try{const r=await fetch(_RA+'/api/export/csv');if(r.status===401){toast('Sessão expirada',false);return;}const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='zvm-chaves-'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(url);toast('CSV exportado!');}catch(e){toast('Erro ao exportar',false);}
 }
 const lr0=document.getElementById('last-refresh');if(lr0)lr0.textContent='Carregado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+filterKeys();
 </script>
 ${CANVAS_BG}</body></html>`;
 }
