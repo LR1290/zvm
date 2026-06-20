@@ -96,6 +96,9 @@ async function getMongoDb() {
         serverSelectionTimeoutMS: 5000,
         connectTimeoutMS: 5000,
         socketTimeoutMS: 5000,
+        maxPoolSize: 5,
+        minPoolSize: 0,
+        maxIdleTimeMS: 30000,
         tls: true,
         tlsAllowInvalidCertificates: false,
         tlsAllowInvalidHostnames: false,
@@ -150,7 +153,7 @@ function saveKey(code) {
     }
   }, 2000);
   _saveDebounce.set(code, tid);
-  _keysHtmlCache = null; // invalidar cache HTML do admin
+  invalidateKeysHtmlCache();
   return Promise.resolve();
 }
 
@@ -161,6 +164,7 @@ async function deleteKeyFromDb(code) {
       { _id: 'keys' },
       { $unset: { [`data.${code}`]: '' }, $set: { updatedAt: new Date() } }
     );
+    invalidateKeysHtmlCache();
   } catch (e) {
     console.error('[DB] Erro ao deletar chave:', e.message);
   }
@@ -627,6 +631,10 @@ function getAuthData(keyCode, userName) {
       message: '',
       warnLimit: false,
       expiresAt: expiry.expiresAt,
+      hoursLeft: expiry.hoursLeft,
+      daysLeft: expiry.daysLeft,
+      expiringSoon: expiry.expiringSoon,
+      deferred: expiry.deferred,
     },
   };
 }
@@ -901,9 +909,23 @@ function parseFormBody(req) {
 }
 
 function sendJson(res, data, status = 200) {
-  res.setHeader('Content-Type', 'application/json');
+  const body = JSON.stringify(data);
+  const buf = Buffer.from(body, 'utf8');
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Connection', 'keep-alive');
-  res.writeHead(status); res.end(JSON.stringify(data));
+  const accept = String(res.req?.headers?.['accept-encoding'] || '');
+  if (buf.length > 2048 && accept.includes('gzip')) {
+    zlib.gzip(buf, (err, compressed) => {
+      if (err) { res.writeHead(status); res.end(buf); return; }
+      res.setHeader('Content-Encoding', 'gzip');
+      res.setHeader('Content-Length', compressed.length);
+      res.writeHead(status);
+      res.end(compressed);
+    });
+    return;
+  }
+  res.writeHead(status);
+  res.end(buf);
 }
 
 function sendHtml(res, html, status = 200) {
@@ -1714,41 +1736,85 @@ let _keysHtmlCache = null;
 let _keysHtmlCacheTs = 0;
 const _KEYS_CACHE_TTL = 15000; // 15s — admin vê dados frescos, mas sem rebuild a cada request
 
+function invalidateKeysHtmlCache() {
+  _keysHtmlCache = null;
+  _keysHtmlCacheTs = 0;
+}
+
+function formatValidityCell(k) {
+  const expired  = isKeyExpired(k);
+  const warnSoon = isKeyExpiringSoon(k);
+  if (!k.expiresAt && k.expireDuration) {
+    const d = Math.floor(k.expireDuration / 86400000);
+    const h = Math.floor((k.expireDuration % 86400000) / 3600000);
+    const parts = [];
+    if (d > 0) parts.push(d + 'd');
+    if (h > 0) parts.push(h + 'h');
+    return `<span class="badge" style="background:#4f8ef722;color:var(--blue);border:1px solid #4f8ef744">⏱ Ao 1º uso</span>` +
+      `<br><span style="font-size:12px;color:var(--muted)">${parts.join(' ') || '—'}</span>`;
+  }
+  if (!k.expiresAt) {
+    return `<span class="badge on" style="opacity:.85">∞ Sem expiração</span>`;
+  }
+  const exp = new Date(k.expiresAt);
+  const expStr = exp.toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+  if (expired) {
+    return `<span class="badge off">EXPIRADA</span><br><span style="font-size:12px;color:var(--red)">${expStr}</span>`;
+  }
+  const diffH = hoursUntilExpiry(k);
+  const diffD = daysUntilExpiry(k);
+  const remain = diffH < 1
+    ? Math.max(0, Math.floor((exp - Date.now()) / 60000)) + ' min'
+    : diffH < 24
+      ? diffH + ' h'
+      : diffD + ' d' + (diffH % 24 ? ' ' + (diffH % 24) + 'h' : '');
+  return `<span class="badge ${warnSoon ? 'wl' : 'on'}" style="${warnSoon ? '' : 'background:#00ff8722;color:var(--green);border:1px solid #00ff8744'}">${remain} restantes</span>` +
+    `<br><span style="font-size:12px;color:${warnSoon ? 'var(--orange)' : 'var(--green)'}">até ${expStr}</span>`;
+}
+
 function buildKeysHtml() {
   const entries = Object.entries(keys);
-  if (!entries.length) return `<tr><td colspan="11" class="empty">Nenhuma chave cadastrada</td></tr>`;
+  if (!entries.length) return `<tr><td colspan="12" class="empty">Nenhuma chave cadastrada</td></tr>`;
+
+  const dayAgo = new Date(Date.now() - 86400000).toISOString();
+  const logByKey = new Map();
+  for (const l of logs) {
+    if (!l.keyCode) continue;
+    if (!logByKey.has(l.keyCode)) logByKey.set(l.keyCode, []);
+    logByKey.get(l.keyCode).push(l);
+  }
+
   return entries.map(([code, k]) => {
     const expired  = isKeyExpired(k);
     const warnSoon = isKeyExpiringSoon(k);
-    const uniqueIps = new Set(logs.filter(l => l.keyCode === code && l.ip).map(l => l.ip)).size;
-    const recentLogs = logs.filter(l => l.keyCode === code && l.timestamp > new Date(Date.now() - 86400000).toISOString());
+    const keyLogs  = logByKey.get(code) || [];
+    const uniqueIps = new Set(keyLogs.filter(l => l.ip).map(l => l.ip)).size;
+    const recentLogs = keyLogs.filter(l => l.timestamp > dayAgo);
     const recentIps  = new Set(recentLogs.filter(l => l.ip).map(l => l.ip));
     const clearedAt  = k.suspectClearedAt ? new Date(k.suspectClearedAt) : null;
     const isSuspect  = recentIps.size > 3 && !(clearedAt && (Date.now() - clearedAt.getTime()) < 172800000);
 
-    const expHtml = (!k.expiresAt && k.expireDuration) ? (() => {
-      const d=Math.floor(k.expireDuration/86400000),h=Math.floor((k.expireDuration%86400000)/3600000),m=Math.floor((k.expireDuration%3600000)/60000);
-      const parts=[];if(d>0)parts.push(d+'d');if(h>0)parts.push(h+'h');if(m>0)parts.push(m+'m');
-      return `<br><span style="color:var(--blue);font-size:12px">⏱ Ao ativar: ${parts.join(' ')}</span>`;
-    })() : k.expiresAt ? (() => {
-      const exp=new Date(k.expiresAt),diffMs=exp-new Date(),diffH=Math.floor(diffMs/36e5),diffD=Math.floor(diffMs/864e5);
-      let label=expired?'expirado':diffH<1?`exp: ${Math.floor((diffMs%36e5)/60000)}min`:diffH<24?`exp: ${diffH}h`:` exp: ${diffD}d — ${exp.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}`;
-      return `<br><span style="font-size:12px;color:${expired?'var(--red)':warnSoon?'var(--orange)':'var(--yellow)'}">${label}</span>`;
-    })() : '';
-
-    const rowStyle = isSuspect ? ' style="background:#ff000008;outline:1px solid #ff475720"' : warnSoon && !expired ? ' style="background:#ff860010"' : '';
-    const suspectBadge = isSuspect ? `<span title="${recentIps.size} IPs nas últimas 24h" style="color:#ff4757;font-size:13px;margin-left:4px">⚠ SUSPEITA</span>` : '';
+    const rowStyle = isSuspect ? ' style="background:#ff000008;outline:1px solid #ff475720"'
+      : warnSoon && !expired ? ' style="background:#ff860010"' : '';
+    const suspectBadge = isSuspect
+      ? `<span title="${recentIps.size} IPs nas últimas 24h" style="color:#ff4757;font-size:13px;margin-left:4px">⚠ SUSPEITA</span>` : '';
+    const deferredAttr = (!k.expiresAt && k.expireDuration) ? '1' : '0';
 
     return `
-<tr data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${k.active?'ativo':'bloqueado'}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-suspect="${isSuspect?'1':''}"`+rowStyle+`>
+<tr data-code="${escHtml(code)}" data-expires-at="${escHtml(k.expiresAt || '')}" data-deferred="${deferredAttr}" data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${k.active?'ativo':'bloqueado'}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-suspect="${isSuspect?'1':''}"` + rowStyle + `>
   <td><span class="kc">${escHtml(code)}</span></td>
   <td>${escHtml(k.label)}${suspectBadge}</td>
   <td><span class="badge ${k.active?'on':'off'}">${k.active?(k.expireDuration&&!k.expiresAt?'AGUARDANDO':'ATIVO'):'BLOQUEADO'}</span></td>
+  <td>${formatValidityCell(k)}</td>
   <td><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
   <td>${escHtml(k.lastPhone||'-')}</td>
   <td title="${uniqueIps} IPs únicos registrados">${escHtml(k.lastIp||'-')} ${uniqueIps>1?`<span style="color:var(--muted);font-size:13px">(+${uniqueIps-1})</span>`:''}</td>
   <td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
-  <td>${new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}${expHtml}</td>
+  <td>${new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</td>
   <td>${escHtml(k.wppVersion||'-')}</td>
   <td class="note-cell" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${k.note&&k.note.startsWith('[Mod:')?'<span style=\"color:#4f8ef7;font-size:13px;font-family:Syne,sans-serif\">'+escHtml(k.note)+'</span>':escHtml(k.note||'') || '<span style=\\"color:var(--muted)\\">—</span>'}</span></td>
   <td>
@@ -1763,6 +1829,14 @@ function buildKeysHtml() {
   </td>
 </tr>`;
   }).join('');
+}
+
+function getKeysHtmlCached() {
+  const now = Date.now();
+  if (_keysHtmlCache && (now - _keysHtmlCacheTs) < _KEYS_CACHE_TTL) return _keysHtmlCache;
+  _keysHtmlCache = buildKeysHtml();
+  _keysHtmlCacheTs = now;
+  return _keysHtmlCache;
 }
 
 function buildLogsHtml(arr) {
@@ -1942,6 +2016,7 @@ tr:hover td{background:#ffffff02}
           <th onclick="sortKeys('code')">Chave</th>
           <th onclick="sortKeys('label')" id="th-label">Cliente</th>
           <th onclick="sortKeys('status')" id="th-status">Status</th>
+          <th onclick="sortKeys('validity')" id="th-validity">Validade</th>
           <th onclick="sortKeys('uses')" id="th-uses">Usos</th>
           <th onclick="sortKeys('phone')" id="th-phone">Telefone</th>
           <th>Último IP</th>
@@ -1951,7 +2026,7 @@ tr:hover td{background:#ffffff02}
           <th>Notas</th>
           <th>Ações</th>
         </tr></thead>
-        <tbody id="kb">${buildKeysHtml()}</tbody>
+        <tbody id="kb">${getKeysHtmlCached()}</tbody>
       </table>
     </div>
   </div>
@@ -2212,7 +2287,24 @@ async function clearLog(){
   try{const body=date?{date}:{};const r=await fetch(_RA+'/api/logs',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(d.ok){toast(date?'Log do dia limpo!':'Log completo apagado!');clearFilters();}}catch(e){toast('Erro ao limpar',false);}
 }
 
-function openRenew(code,label){document.getElementById('renewKeyCode').value=code;document.getElementById('renewKeyLabel').textContent=label;['renewDays','renewHours','renewMins'].forEach(id=>document.getElementById(id).value='');document.getElementById('renewModal').classList.add('open');document.getElementById('renewDays').focus();}
+function openRenew(code,label){
+  document.getElementById('renewKeyCode').value=code;
+  document.getElementById('renewKeyLabel').textContent=label;
+  ['renewDays','renewHours','renewMins'].forEach(id=>document.getElementById(id).value='');
+  const row=document.querySelector('#kb tr[data-code="'+code+'"]');
+  const expEl=document.getElementById('renewCurrentExpiry');
+  if(row&&expEl){
+    if(row.dataset.deferred==='1')expEl.textContent='Validade: ativa no 1º uso (contador ainda não iniciou)';
+    else if(row.dataset.expiresAt){
+      const d=new Date(row.dataset.expiresAt);
+      const expired=Date.now()>d.getTime();
+      expEl.textContent='Validade atual: '+d.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})+(expired?' (EXPIRADA)':'');
+      expEl.style.color=expired?'var(--red)':row.dataset.expiresAt&&((d-Date.now())<48*3600000)?'var(--orange)':'var(--muted)';
+    }else expEl.textContent='Validade: sem expiração definida';
+  }
+  document.getElementById('renewModal').classList.add('open');
+  document.getElementById('renewDays').focus();
+}
 function closeRenew(){document.getElementById('renewModal').classList.remove('open');}
 document.getElementById('renewModal').addEventListener('click',function(e){if(e.target===this)closeRenew();});
 async function saveRenew(){
@@ -3581,7 +3673,7 @@ async function handleRequest(req, res) {
       warnKeys:      Object.values(keys).filter(k=>k.active && isKeyExpiringSoon(k)).length,
       suspectKeys,
       totalLogs:     logs.length,
-      keysHtml:      buildKeysHtml(),
+      keysHtml:      getKeysHtmlCached(),
       logsHtml:      buildLogsHtml()
     }); return;
   }
