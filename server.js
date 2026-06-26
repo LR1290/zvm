@@ -1686,32 +1686,15 @@ input:focus{border-color:var(--green)}
 .loading-overlay{position:fixed;inset:0;background:#0a0a0f;display:flex;align-items:center;justify-content:center;z-index:99}
 .privacy-note{margin-top:16px;padding:12px 16px;background:#1e1e2e30;border-radius:8px;font-size:14px;color:#a0a0c0;text-align:left;line-height:1.7;font-family:'Syne',sans-serif}
 .privacy-note a{color:#4f8ef7;text-decoration:none}
-footer.zvm-footer{text-align:center;padding:18px 24px;font-size:12px;color:#4a4a6a;font-family:'Syne',sans-serif;border-top:1px solid #1c1c2e20;flex-shrink:0}
-footer.zvm-footer a{color:#5a5a8a;text-decoration:none;transition:color .2s}
-footer.zvm-footer a:hover{color:var(--green)}
 </style>
 </head><body>
 <nav>
   <a href="/" class="nav-logo">⚡ ZVM</a>
-  <div class="nav-links" id="main-nav">
-    <a href="/faq" data-navpath="/faq">FAQ</a>
-    <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
-    <a href="/planos" data-navpath="/planos">PLANOS</a>
-    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">SUPORTE</a>
+  <div class="nav-links">
+    <a href="/faq">FAQ</a>
+    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank">💬 Suporte</a>
   </div>
 </nav>
-<script>
-(function(){
-  var cp=window.location.pathname;
-  document.querySelectorAll('#main-nav a[data-navpath]').forEach(function(a){
-    if(a.getAttribute('data-navpath')===cp){
-      a.style.color='var(--green)';
-      a.style.borderColor='var(--green)';
-      a.style.background='#00ff8712';
-    }
-  });
-})();
-</script>
 <div id="loading-overlay" class="loading-overlay"><span class="spinner"></span></div>
 <div class="page-body">
   <div class="form-wrap" id="main-form-wrap">
@@ -1759,12 +1742,6 @@ footer.zvm-footer a:hover{color:var(--green)}
       <button onclick="resetPanel()" style="padding:12px 24px;background:#1e1e2e;color:var(--muted);border:1px solid var(--border);border-radius:8px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#00ff87';this.style.color='#00ff87'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">← Consultar outra chave</button>
     </div>
 </div>
-<footer class="zvm-footer">
-  © ${new Date().getFullYear()} ZVM. Todos os direitos reservados. &nbsp;·&nbsp;
-  <a href="/privacidade">Privacidade</a> &nbsp;·&nbsp;
-  <a href="/faq">FAQ</a> &nbsp;·&nbsp;
-  <a href="/planos">Planos</a>
-</footer>
 <script>
 function fmtDate(iso){if(!iso)return'—';const d=new Date(iso);return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
 
@@ -2167,23 +2144,6 @@ tr:hover td{background:#ffffff02}
   </div>
 </main>
 
-<!-- Auditoria de Segurança -->
-  <div class="sec" id="pentest-sec">
-    <div class="sh">
-      <div>
-        <div class="st">🛡 Auditoria de Segurança</div>
-        <div style="font-size:11px;color:var(--muted);font-family:'Syne',sans-serif;margin-top:3px">Testes automatizados contra as rotas do servidor.</div>
-      </div>
-      <button class="btn bw" id="pentest-btn" onclick="runPentest()" style="display:flex;align-items:center;gap:6px"><span id="pentest-icon" style="display:inline-block;font-size:14px">↻</span> Re-executar</button>
-    </div>
-    <div class="ov">
-      <table>
-        <thead><tr><th style="width:42%">Teste</th><th style="width:10%;text-align:center">Status</th><th>Detalhe</th></tr></thead>
-        <tbody id="pentest-tb"><tr><td class="empty" colspan="3">Clique em "Re-executar" para iniciar a auditoria.</td></tr></tbody>
-      </table>
-    </div>
-  </div>
-
 <!-- Modals -->
 <div class="modal-bg" id="renewModal"><div class="modal">
   <h3>⏱ Adicionar Tempo — <span id="renewKeyLabel"></span></h3>
@@ -2550,32 +2510,6 @@ async function exportCSV(){
 }
 const lr0=document.getElementById('last-refresh');if(lr0)lr0.textContent='Carregado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 filterKeys();
-
-function _escH(s){return String(s||'').replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));}
-async function runPentest(){
-  const btn=document.getElementById('pentest-btn');
-  const icon=document.getElementById('pentest-icon');
-  const tb=document.getElementById('pentest-tb');
-  btn.disabled=true;
-  icon.style.cssText='display:inline-block;animation:spin .7s linear infinite;font-size:14px';
-  tb.innerHTML='<tr><td class="empty" colspan="3"><span class="spinner"></span> Executando testes de segurança…</td></tr>';
-  try{
-    const r=await fetch(_RA+'/api/pentest/run',{method:'POST'});
-    if(r.status===401){tb.innerHTML='<tr><td class="empty" colspan="3" style="color:var(--red)">Sessão expirada. Faça login novamente.</td></tr>';return;}
-    const d=await r.json();
-    if(!d.ok||!Array.isArray(d.tests)){tb.innerHTML='<tr><td class="empty" colspan="3" style="color:var(--red)">Erro ao executar testes.</td></tr>';return;}
-    tb.innerHTML=d.tests.map(function(t){return'<tr>'+
-      '<td style="font-size:12px;font-family:\'Syne\',sans-serif;color:var(--text);padding:9px 10px">'+_escH(t.name)+'</td>'+
-      '<td style="text-align:center"><span class="badge '+(t.ok?'on':'off')+'">'+(t.ok?'PASS':'FAIL')+'</span></td>'+
-      '<td style="font-size:11px;color:var(--muted);font-family:\'Syne\',sans-serif;word-break:break-all">'+_escH(t.detail)+'</td>'+
-      '</tr>';}).join('');
-  }catch(e){
-    tb.innerHTML='<tr><td class="empty" colspan="3" style="color:var(--red)">Erro de rede ao executar pentest.</td></tr>';
-  }finally{
-    btn.disabled=false;
-    icon.style.cssText='display:inline-block;font-size:14px';
-  }
-}
 </script>
 ${CANVAS_BG}</body></html>`;
 }
@@ -3326,9 +3260,11 @@ async function handleRequest(req, res) {
     if (p === '/analytics' || p.startsWith('/analytics/')) { res.writeHead(404); res.end('Not found'); return; }
   }
 
+  console.log(`[${new Date().toISOString()}] ${req.method} ${p} — ${ip}`);
+
   if (p === '/health' && req.method === 'GET') {
-    res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});
-    res.end(JSON.stringify({status:'ok',uptime:Math.floor(process.uptime())})); return;
+    res.writeHead(200,{'Content-Type':'text/plain','Cache-Control':'no-store'});
+    res.end('ok'); return;
   }
 
   if ((p === R_EXT+'/auth/' || p === R_EXT+'/auth') && req.method === 'GET') {
@@ -4286,120 +4222,12 @@ async function handleRequest(req, res) {
     sendHtml(res, renderPrivacyPage()); return;
   }
 
-  // ── ZapSaver label validation endpoint ──────────────────────────────────
-  if (p === R_EXT + '/v3/labels' && req.method === 'POST') {
-    if (!checkRateLimit(ip, 'api')) {
-      sendJson(res, { ok: false, error: 'rate_limited' }, 429); return;
-    }
-    const accessToken = (req.headers['x-access-token'] || '').trim();
-    if (!accessToken) {
-      sendJson(res, { ok: false, msg: 'invalid_access_token' }, 403); return;
-    }
-    const body = await parseBody(req);
-    if (typeof body.label !== 'string') {
-      sendJson(res, { ok: false, error: 'nosql_injection_detected' }, 400); return;
-    }
-    if (body.label.length > 60) {
-      sendJson(res, { ok: false, error: 'label_too_long' }, 400); return;
-    }
-    sendJson(res, { ok: true }); return;
-  }
-
-  // ── Pentest interno (admin-gated) ────────────────────────────────────────
-  if (p === R_ADMIN + '/api/pentest/run' && req.method === 'POST') {
-    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-
-    function _probe(probePath, opts) {
-      opts = opts || {};
-      return new Promise(function(resolve) {
-        var bodyStr = opts.body ? JSON.stringify(opts.body) : null;
-        var headers = Object.assign({}, opts.headers || {});
-        if (bodyStr) {
-          headers['Content-Type'] = 'application/json';
-          headers['Content-Length'] = Buffer.byteLength(bodyStr);
-        }
-        var reqOpts = {
-          hostname: '127.0.0.1', port: PORT,
-          path: probePath, method: opts.method || 'GET',
-          headers: headers, timeout: 4000,
-        };
-        var r = http.request(reqOpts, function(res2) {
-          var d = '';
-          res2.on('data', function(c) { d += c; });
-          res2.on('end', function() { resolve({ status: res2.statusCode, headers: res2.headers, body: d }); });
-        });
-        r.on('error', function() { resolve({ status: 0, headers: {}, body: '' }); });
-        r.on('timeout', function() { r.destroy(); resolve({ status: 0, headers: {}, body: '' }); });
-        if (bodyStr) r.write(bodyStr);
-        r.end();
-      });
-    }
-
-    var _labelsPath = R_EXT + '/v3/labels';
-    var results = await Promise.all([
-      _probe('/api/__pentest_probe_notfound_xyz__'),
-      _probe(_labelsPath, { method: 'POST', headers: { 'x-access-token': 'pentest' }, body: { label: { $gt: '' } } }),
-      _probe(_labelsPath, { method: 'POST', headers: { 'x-access-token': 'pentest' }, body: { label: 'a'.repeat(61) } }),
-      _probe(_labelsPath, { method: 'POST', body: { label: 'test' } }),
-      _probe('/health'),
-    ]);
-
-    var r0 = results[0], r1 = results[1], r2 = results[2], r3 = results[3], r4 = results[4];
-
-    function _ct(r) { return r.headers['content-type'] || ''; }
-    function _tryParse(r) { try { return JSON.parse(r.body); } catch { return {}; } }
-
-    var j1 = _tryParse(r1), j2 = _tryParse(r2), j3 = _tryParse(r3);
-    var xfo = (r4.headers['x-frame-options'] || '').toUpperCase();
-    var csp = r4.headers['content-security-policy'] || '';
-
-    var tests = [
-      {
-        name: 'API /unknown retorna JSON',
-        ok: (r0.status === 404 || r0.status === 403) && _ct(r0).includes('application/json'),
-        detail: 'HTTP ' + r0.status + ' · ' + (_ct(r0) || 'sem content-type'),
-      },
-      {
-        name: 'Injeção NoSQL em label rejeitada (400)',
-        ok: r1.status === 400 && j1.error === 'nosql_injection_detected',
-        detail: 'HTTP ' + r1.status + ' · error=' + (j1.error || '-'),
-      },
-      {
-        name: 'Label > 60 chars rejeitada (400)',
-        ok: r2.status === 400 && j2.error === 'label_too_long',
-        detail: 'HTTP ' + r2.status + ' · error=' + (j2.error || '-'),
-      },
-      {
-        name: 'Endpoint interno sem access-token retorna 403',
-        ok: r3.status === 403 && j3.msg === 'invalid_access_token',
-        detail: 'HTTP ' + r3.status + ' · msg=' + (j3.msg || '-'),
-      },
-      {
-        name: '/health retorna JSON',
-        ok: r4.status === 200 && _ct(r4).includes('application/json'),
-        detail: 'HTTP ' + r4.status + ' · ' + (_ct(r4) || 'sem content-type'),
-      },
-      {
-        name: 'X-Frame-Options: DENY presente',
-        ok: xfo === 'DENY',
-        detail: xfo || 'ausente',
-      },
-      {
-        name: "Content-Security-Policy presente",
-        ok: csp.includes("default-src 'self'"),
-        detail: csp ? (csp.length > 90 ? csp.slice(0, 90) + '…' : csp) : 'ausente',
-      },
-    ];
-
-    sendJson(res, { ok: true, tests: tests }); return;
-  }
-
   const CLIENT_PATHS = ['/', '/plans/manage', '/plans/new', '/dashboard/chaves'];
   if (req.method === 'GET' && (CLIENT_PATHS.includes(p) || p.startsWith('/unauthorized') || p.startsWith('/funnels') || p.startsWith('/labels'))) {
     sendHtml(res, renderClientPortal()); return;
   }
 
-  sendJson(res, { error: 'not_found' }, 404);
+  sendJson(res, { ok: true });
 }
 
 async function gracefulShutdown(signal) {
