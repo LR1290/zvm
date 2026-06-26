@@ -2564,11 +2564,11 @@ async function runPentest(){
     if(r.status===401){tb.innerHTML='<tr><td class="empty" colspan="3" style="color:var(--red)">Sessão expirada. Faça login novamente.</td></tr>';return;}
     const d=await r.json();
     if(!d.ok||!Array.isArray(d.tests)){tb.innerHTML='<tr><td class="empty" colspan="3" style="color:var(--red)">Erro ao executar testes.</td></tr>';return;}
-    tb.innerHTML=d.tests.map(t=>`<tr>
-      <td style="font-size:12px;font-family:'Syne',sans-serif;color:var(--text);padding:9px 10px">${_escH(t.name)}</td>
-      <td style="text-align:center"><span class="badge ${t.ok?'on':'off'}">${t.ok?'PASS':'FAIL'}</span></td>
-      <td style="font-size:11px;color:var(--muted);font-family:'Syne',sans-serif;word-break:break-all">${_escH(t.detail)}</td>
-    </tr>`).join('');
+    tb.innerHTML=d.tests.map(function(t){return'<tr>'+
+      '<td style="font-size:12px;font-family:\'Syne\',sans-serif;color:var(--text);padding:9px 10px">'+_escH(t.name)+'</td>'+
+      '<td style="text-align:center"><span class="badge '+(t.ok?'on':'off')+'">'+(t.ok?'PASS':'FAIL')+'</span></td>'+
+      '<td style="font-size:11px;color:var(--muted);font-family:\'Syne\',sans-serif;word-break:break-all">'+_escH(t.detail)+'</td>'+
+      '</tr>';}).join('');
   }catch(e){
     tb.innerHTML='<tr><td class="empty" colspan="3" style="color:var(--red)">Erro de rede ao executar pentest.</td></tr>';
   }finally{
