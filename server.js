@@ -3326,8 +3326,6 @@ async function handleRequest(req, res) {
     if (p === '/analytics' || p.startsWith('/analytics/')) { res.writeHead(404); res.end('Not found'); return; }
   }
 
-  console.log(`[${new Date().toISOString()}] ${req.method} ${p} — ${ip}`);
-
   if (p === '/health' && req.method === 'GET') {
     res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});
     res.end(JSON.stringify({status:'ok',uptime:Math.floor(process.uptime())})); return;
