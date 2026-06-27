@@ -1913,7 +1913,7 @@ function buildKeysHtml() {
     const zsOn         = !!(k.modules && k.modules.zapSaver);
 
     return `
-<tr data-code="${escHtml(code)}" data-expires-at="${escHtml(k.expiresAt || '')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-lastused="${escHtml(k.lastUsed||'')}" data-suspect="${isSuspect?'1':''}"` + rowStyle + `>
+<tr data-code="${escHtml(code)}" data-lbl="${escHtml(k.label||'')}" data-expires-at="${escHtml(k.expiresAt || '')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-lastused="${escHtml(k.lastUsed||'')}" data-suspect="${isSuspect?'1':''}" data-maxuses="${Number.isFinite(k.maxUses)?k.maxUses:MAX_USES}" data-zson="${zsOn?'true':'false'}" data-modnote="${escHtml((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1]||'')}"` + rowStyle + `>
   <td><span class="kc">${escHtml(code)}</span></td>
   <td>${escHtml(k.label)}${suspectBadge}${zsOn?'<span title="ZapSaver ativo" style="color:#4f8ef7;font-size:11px;margin-left:4px">💾</span>':''}</td>
   <td>${renderKeyStatusBadge(k)}</td>
@@ -1924,16 +1924,16 @@ function buildKeysHtml() {
   <td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
   <td>${new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</td>
   <td>${escHtml(k.wppVersion||'-')}</td>
-  <td class="note-cell" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${k.note&&k.note.startsWith('[Mod:')?'<span style=\"color:#4f8ef7;font-size:13px;font-family:Syne,sans-serif\">'+escHtml(k.note)+'</span>':escHtml(k.note||'') || '<span style=\\"color:var(--muted)\\">—</span>'}</span></td>
+  <td class="note-cell" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${k.note&&k.note.startsWith('[Mod:')?'<span style="color:#4f8ef7;font-size:13px;font-family:Syne,sans-serif">'+escHtml(k.note)+'</span>':escHtml(k.note||'')||'<span style="color:var(--muted)">—</span>'}</span></td>
   <td><div class="acts">
-    <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
-    <button class="bs bg" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">+ Tempo</button>
-    <button class="bs bg" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${Number.isFinite(k.maxUses)?k.maxUses:MAX_USES})">Usos</button>
-    <button class="bs bg" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">Renomear</button>
-    ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Números</button>`:''}
-    <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
-    ${isSuspect?`<button class="bs bsusp" onclick="clearSuspect('${escHtml(code)}')">🕵️ Suspeita</button>`:''}
-    <button class="bs ${zsOn?'bg':'bw'}" title="ZapSaver" onclick="toggleModule('${escHtml(code)}','zapSaver',${zsOn?'false':'true'})">💾</button>
+    <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey(this.closest('tr').dataset.code)">${k.active?'Bloquear':'Liberar'}</button>
+    <button class="bs bg" onclick="openRenew(this.closest('tr').dataset.code,this.closest('tr').dataset.lbl)">+ Tempo</button>
+    <button class="bs bg" onclick="openEditUses(this.closest('tr').dataset.code,this.closest('tr').dataset.lbl,+this.closest('tr').dataset.maxuses)">Usos</button>
+    <button class="bs bg" onclick="openRename(this.closest('tr').dataset.code,this.closest('tr').dataset.lbl)">Renomear</button>
+    ${(k.phones||[]).length>0?'<button class="bs bd" onclick="openPhones(this.closest(\'tr\').dataset.code,this.closest(\'tr\').dataset.lbl)">Números</button>':''}
+    <button class="bs bd" onclick="deleteKey(this.closest('tr').dataset.code)">Excluir</button>
+    ${isSuspect?'<button class="bs bsusp" onclick="clearSuspect(this.closest(\'tr\').dataset.code)">🕵️ Suspeita</button>':''}
+    <button class="bs ${zsOn?'bg':'bw'}" title="ZapSaver" onclick="toggleModule(this.closest('tr').dataset.code,'zapSaver',this.closest('tr').dataset.zson==='true'?false:true)">💾</button>
     <button class="bs" style="background:#7c3aed18;color:#9b59b6;border:1px solid #7c3aed30" data-code="${escHtml(code)}" data-label="${escHtml(k.label||'')}" data-modnote="${escHtml((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1]||'')}" onclick="openAssignModFromEl(this)">👮</button>
   </div></td>
 </tr>`;
@@ -2071,7 +2071,7 @@ tr:hover td{background:#ffffff02}
 @media(max-width:750px){.stats{grid-template-columns:1fr 1fr};.admin-content{padding:14px 12px};.acts{max-width:160px}}
 .admin-wrap{display:flex;min-height:calc(100vh - 57px);align-items:flex-start}
 .admin-content{flex:1;min-width:0;padding:22px 24px;max-width:1800px}
-.rsidebar{width:148px;flex-shrink:0;background:var(--card);border-left:1px solid var(--border);position:sticky;top:57px;height:calc(100vh - 57px);display:flex;flex-direction:column;overflow:hidden}
+.rsidebar{width:148px;flex-shrink:0;background:var(--card);border-right:1px solid var(--border);position:sticky;top:57px;height:calc(100vh - 57px);display:flex;flex-direction:column;overflow:hidden}
 .rsb-title{font-family:'Syne',sans-serif;font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;padding:14px 14px 8px;border-bottom:1px solid var(--border)}
 .rtab{display:block;width:100%;padding:14px 14px;background:transparent;border:none;border-left:3px solid transparent;color:var(--muted);font-family:'Syne',sans-serif;font-size:11px;font-weight:700;text-align:left;cursor:pointer;transition:background .15s,color .15s,border-color .15s;letter-spacing:.4px;text-transform:uppercase;line-height:1.5;white-space:normal}
 .rtab:hover{background:#00ff8708;color:var(--text);border-left-color:#00ff8730}
@@ -2090,7 +2090,14 @@ tr:hover td{background:#ffffff02}
     <a href="${R_ADMIN}/logout" class="out">↩ Sair</a>
   </div>
 </header>
-<div class="admin-wrap"><div class="admin-content">
+<div class="admin-wrap">
+<nav class="rsidebar">
+  <div class="rsb-title">Navegação</div>
+  <button class="rtab" data-tab="keys" onclick="switchTab('keys')">🔑 Chaves</button>
+  <button class="rtab" data-tab="logs" onclick="switchTab('logs')">📋 Logs do Sistema</button>
+  <button class="rtab" data-tab="audit" onclick="switchTab('audit')">🛡 Auditoria de Segurança</button>
+</nav>
+<div class="admin-content">
   <div class="alert-strip" id="urgent-alert">
     <span>⚠️</span>
     <span id="urgent-alert-text">${expiredCount>0?`<strong>${expiredCount} expirada(s)</strong>`:''}${expiredCount>0&&expiringSoon>0?' · ':''}${expiringSoon>0?`<strong>${expiringSoon} expirando em ${EXPIRY_WARN_HOURS}h</strong>`:''}</span>
@@ -2195,12 +2202,6 @@ tr:hover td{background:#ffffff02}
   </div>
   </div><!-- /sec-panel audit -->
 </div><!-- /admin-content -->
-<nav class="rsidebar">
-  <div class="rsb-title">Navegação</div>
-  <button class="rtab" data-tab="keys" onclick="switchTab('keys')">🔑 Chaves</button>
-  <button class="rtab" data-tab="logs" onclick="switchTab('logs')">📋 Logs do Sistema</button>
-  <button class="rtab" data-tab="audit" onclick="switchTab('audit')">🛡 Auditoria de Segurança</button>
-</nav>
 </div><!-- /admin-wrap -->
 
 <!-- Modals -->
