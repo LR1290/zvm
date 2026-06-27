@@ -1696,6 +1696,7 @@ footer.zvm-footer a:hover{color:var(--green)}
 <nav>
   <a href="/" class="nav-logo">⚡ ZVM</a>
   <div class="nav-links" id="main-nav">
+    <a href="/" data-navpath="/">PAINEL</a>
     <a href="/faq" data-navpath="/faq">FAQ</a>
     <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
     <a href="/planos" data-navpath="/planos">PLANOS</a>
@@ -2577,6 +2578,20 @@ function switchTab(t){
 (function(){switchTab(localStorage.getItem('zvmTab')||'keys');})();
 
 function _escH(s){return String(s||'').replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));}
+
+window.switchTab=switchTab;window.filterKeys=filterKeys;window.sortKeys=sortKeys;
+window.generateKey=generateKey;window.doRefresh=doRefresh;window.toggleKey=toggleKey;
+window.deleteKey=deleteKey;window.clearSuspect=clearSuspect;window.openRenew=openRenew;
+window.closeRenew=closeRenew;window.saveRenew=saveRenew;window.openEditUses=openEditUses;
+window.closeEditUses=closeEditUses;window.saveEditUses=saveEditUses;window.openRename=openRename;
+window.closeRename=closeRename;window.saveRename=saveRename;window.openPhones=openPhones;
+window.closePhones=closePhones;window.removePhone=removePhone;window.removeAllPhones=removeAllPhones;
+window.openNote=openNote;window.closeNote=closeNote;window.saveNote=saveNote;
+window.openAssignMod=openAssignMod;window.openAssignModFromEl=openAssignModFromEl;
+window.closeAssignMod=closeAssignMod;window.assignMod=assignMod;window.filterLog=filterLog;
+window.clearFilters=clearFilters;window.clearLog=clearLog;window.exportCSV=exportCSV;
+window.toggleModule=toggleModule;window.runPentest=runPentest;window.toast=toast;
+
 async function runPentest(){
   const btn=document.getElementById('pentest-btn');
   const icon=document.getElementById('pentest-icon');
@@ -2742,6 +2757,7 @@ footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
 <nav>
   <a href="/" class="nav-logo">⚡ ZVM</a>
   <div class="nav-links" id="main-nav">
+    <a href="/" data-navpath="/">PAINEL</a>
     <a href="/faq" data-navpath="/faq">FAQ</a>
     <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
     <a href="/planos" data-navpath="/planos">PLANOS</a>
@@ -2910,6 +2926,7 @@ footer.zvm-footer a:hover{color:var(--green)}
 <nav>
   <a href="/" class="nav-logo">⚡ ZVM</a>
   <div class="nav-links" id="main-nav">
+    <a href="/" data-navpath="/">PAINEL</a>
     <a href="/faq" data-navpath="/faq">FAQ</a>
     <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
     <a href="/planos" data-navpath="/planos">PLANOS</a>
@@ -3053,6 +3070,7 @@ footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
 <nav>
   <a href="/" class="nav-logo">⚡ ZVM</a>
   <div class="nav-links" id="main-nav">
+    <a href="/" data-navpath="/">PAINEL</a>
     <a href="/faq" data-navpath="/faq">FAQ</a>
     <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
     <a href="/planos" data-navpath="/planos">PLANOS</a>
