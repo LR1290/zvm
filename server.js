@@ -1644,10 +1644,8 @@ body{background:var(--dark);min-height:100vh;display:flex;flex-direction:column;
 nav{display:flex;align-items:center;justify-content:space-between;padding:14px 32px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040;flex-shrink:0}
 .nav-logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:6px;letter-spacing:-0.5px}
 .nav-links{display:flex;gap:10px}
-.nav-links a{font-size:14px;color:var(--muted);text-decoration:none;padding:8px 16px;border:1px solid var(--border);border-radius:8px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700;position:relative}
+.nav-links a{font-size:14px;color:var(--muted);text-decoration:none;padding:8px 16px;border:1px solid var(--border);border-radius:8px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
 .nav-links a:hover{color:var(--green);border-color:var(--green)}
-.nav-links a.nav-active{color:var(--green)!important;border-color:#00ff8760!important;background:#00ff8712!important}
-.nav-links a.nav-active::after{content:'';position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);width:6px;height:6px;border-radius:50%;background:#00ff33;box-shadow:0 0 8px #00ff33;pointer-events:none}
 .page-body{flex:1;display:flex;align-items:center;justify-content:center;padding:20px;min-height:calc(100vh - 57px);flex-direction:column}
 .form-wrap{width:100%;max-width:480px;position:relative;z-index:1;display:flex;flex-direction:column;align-items:stretch}
 .logo{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--green);margin-bottom:4px;letter-spacing:-0.5px}
@@ -1688,29 +1686,15 @@ input:focus{border-color:var(--green)}
 .loading-overlay{position:fixed;inset:0;background:#0a0a0f;display:flex;align-items:center;justify-content:center;z-index:99}
 .privacy-note{margin-top:16px;padding:12px 16px;background:#1e1e2e30;border-radius:8px;font-size:14px;color:#a0a0c0;text-align:left;line-height:1.7;font-family:'Syne',sans-serif}
 .privacy-note a{color:#4f8ef7;text-decoration:none}
-footer.zvm-footer{text-align:center;padding:18px 24px;font-size:12px;color:#4a4a6a;font-family:'Syne',sans-serif;border-top:1px solid #1c1c2e20;flex-shrink:0}
-footer.zvm-footer a{color:#5a5a8a;text-decoration:none;transition:color .2s}
-footer.zvm-footer a:hover{color:var(--green)}
 </style>
 </head><body>
 <nav>
   <a href="/" class="nav-logo">⚡ ZVM</a>
-  <div class="nav-links" id="main-nav">
-    <a href="/" data-navpath="/">PAINEL</a>
-    <a href="/faq" data-navpath="/faq">FAQ</a>
-    <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
-    <a href="/planos" data-navpath="/planos">PLANOS</a>
-    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">SUPORTE</a>
+  <div class="nav-links">
+    <a href="/faq">FAQ</a>
+    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank">💬 Suporte</a>
   </div>
 </nav>
-<script>
-(function(){
-  var cp=window.location.pathname;
-  document.querySelectorAll('#main-nav a[data-navpath]').forEach(function(a){
-    if(a.getAttribute('data-navpath')===cp) a.classList.add('nav-active');
-  });
-})();
-</script>
 <div id="loading-overlay" class="loading-overlay"><span class="spinner"></span></div>
 <div class="page-body">
   <div class="form-wrap" id="main-form-wrap">
@@ -1758,12 +1742,6 @@ footer.zvm-footer a:hover{color:var(--green)}
       <button onclick="resetPanel()" style="padding:12px 24px;background:#1e1e2e;color:var(--muted);border:1px solid var(--border);border-radius:8px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#00ff87';this.style.color='#00ff87'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">← Consultar outra chave</button>
     </div>
 </div>
-<footer class="zvm-footer">
-  © ${new Date().getFullYear()} ZVM. Todos os direitos reservados. &nbsp;·&nbsp;
-  <a href="/privacidade">Privacidade</a> &nbsp;·&nbsp;
-  <a href="/faq">FAQ</a> &nbsp;·&nbsp;
-  <a href="/planos">Planos</a>
-</footer>
 <script>
 function fmtDate(iso){if(!iso)return'—';const d=new Date(iso);return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
 
@@ -1913,7 +1891,7 @@ function buildKeysHtml() {
     const zsOn         = !!(k.modules && k.modules.zapSaver);
 
     return `
-<tr data-code="${escHtml(code)}" data-lbl="${escHtml(k.label||'')}" data-expires-at="${escHtml(k.expiresAt || '')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-lastused="${escHtml(k.lastUsed||'')}" data-suspect="${isSuspect?'1':''}" data-maxuses="${Number.isFinite(k.maxUses)?k.maxUses:MAX_USES}" data-zson="${zsOn?'true':'false'}" data-modnote="${escHtml((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1]||'')}"` + rowStyle + `>
+<tr data-code="${escHtml(code)}" data-expires-at="${escHtml(k.expiresAt || '')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-lastused="${escHtml(k.lastUsed||'')}" data-suspect="${isSuspect?'1':''}"` + rowStyle + `>
   <td><span class="kc">${escHtml(code)}</span></td>
   <td>${escHtml(k.label)}${suspectBadge}${zsOn?'<span title="ZapSaver ativo" style="color:#4f8ef7;font-size:11px;margin-left:4px">💾</span>':''}</td>
   <td>${renderKeyStatusBadge(k)}</td>
@@ -1924,16 +1902,16 @@ function buildKeysHtml() {
   <td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
   <td>${new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</td>
   <td>${escHtml(k.wppVersion||'-')}</td>
-  <td class="note-cell" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${k.note&&k.note.startsWith('[Mod:')?'<span style="color:#4f8ef7;font-size:13px;font-family:Syne,sans-serif">'+escHtml(k.note)+'</span>':escHtml(k.note||'')||'<span style="color:var(--muted)">—</span>'}</span></td>
+  <td class="note-cell" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${k.note&&k.note.startsWith('[Mod:')?'<span style=\"color:#4f8ef7;font-size:13px;font-family:Syne,sans-serif\">'+escHtml(k.note)+'</span>':escHtml(k.note||'') || '<span style=\\"color:var(--muted)\\">—</span>'}</span></td>
   <td><div class="acts">
-    <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey(this.closest('tr').dataset.code)">${k.active?'Bloquear':'Liberar'}</button>
-    <button class="bs bg" onclick="openRenew(this.closest('tr').dataset.code,this.closest('tr').dataset.lbl)">+ Tempo</button>
-    <button class="bs bg" onclick="openEditUses(this.closest('tr').dataset.code,this.closest('tr').dataset.lbl,+this.closest('tr').dataset.maxuses)">Usos</button>
-    <button class="bs bg" onclick="openRename(this.closest('tr').dataset.code,this.closest('tr').dataset.lbl)">Renomear</button>
-    ${(k.phones||[]).length>0?'<button class="bs bd" onclick="openPhones(this.closest(\'tr\').dataset.code,this.closest(\'tr\').dataset.lbl)">Números</button>':''}
-    <button class="bs bd" onclick="deleteKey(this.closest('tr').dataset.code)">Excluir</button>
-    ${isSuspect?'<button class="bs bsusp" onclick="clearSuspect(this.closest(\'tr\').dataset.code)">🕵️ Suspeita</button>':''}
-    <button class="bs ${zsOn?'bg':'bw'}" title="ZapSaver" onclick="toggleModule(this.closest('tr').dataset.code,'zapSaver',this.closest('tr').dataset.zson==='true'?false:true)">💾</button>
+    <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
+    <button class="bs bg" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">+ Tempo</button>
+    <button class="bs bg" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${Number.isFinite(k.maxUses)?k.maxUses:MAX_USES})">Usos</button>
+    <button class="bs bg" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">Renomear</button>
+    ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Números</button>`:''}
+    <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
+    ${isSuspect?`<button class="bs bsusp" onclick="clearSuspect('${escHtml(code)}')">🕵️ Suspeita</button>`:''}
+    <button class="bs ${zsOn?'bg':'bw'}" title="ZapSaver" onclick="toggleModule('${escHtml(code)}','zapSaver',${zsOn?'false':'true'})">💾</button>
     <button class="bs" style="background:#7c3aed18;color:#9b59b6;border:1px solid #7c3aed30" data-code="${escHtml(code)}" data-label="${escHtml(k.label||'')}" data-modnote="${escHtml((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1]||'')}" onclick="openAssignModFromEl(this)">👮</button>
   </div></td>
 </tr>`;
@@ -2068,16 +2046,7 @@ tr:hover td{background:#ffffff02}
 .acts{display:flex;flex-wrap:wrap;gap:3px;max-width:240px}
 .filter-count{font-size:11px;color:var(--muted);font-family:'Syne',sans-serif;padding:0 16px 8px}
 @media(max-width:1300px){.stats{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:750px){.stats{grid-template-columns:1fr 1fr};.admin-content{padding:14px 12px};.acts{max-width:160px}}
-.admin-wrap{display:flex;min-height:calc(100vh - 57px);align-items:flex-start}
-.admin-content{flex:1;min-width:0;padding:22px 24px;max-width:1800px}
-.rsidebar{width:148px;flex-shrink:0;background:var(--card);border-right:1px solid var(--border);position:sticky;top:57px;height:calc(100vh - 57px);display:flex;flex-direction:column;overflow:hidden}
-.rsb-title{font-family:'Syne',sans-serif;font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;padding:14px 14px 8px;border-bottom:1px solid var(--border)}
-.rtab{display:block;width:100%;padding:14px 14px;background:transparent;border:none;border-left:3px solid transparent;color:var(--muted);font-family:'Syne',sans-serif;font-size:11px;font-weight:700;text-align:left;cursor:pointer;transition:background .15s,color .15s,border-color .15s;letter-spacing:.4px;text-transform:uppercase;line-height:1.5;white-space:normal}
-.rtab:hover{background:#00ff8708;color:var(--text);border-left-color:#00ff8730}
-.rtab.active{background:#00ff8712;color:var(--green);border-left-color:var(--green)}
-.sec-panel{display:none}
-.sec-panel.active{display:block}
+@media(max-width:750px){.stats{grid-template-columns:1fr 1fr};main{padding:14px 12px};.acts{max-width:160px}}
 </style>
 </head>
 <body>
@@ -2090,14 +2059,7 @@ tr:hover td{background:#ffffff02}
     <a href="${R_ADMIN}/logout" class="out">↩ Sair</a>
   </div>
 </header>
-<div class="admin-wrap">
-<nav class="rsidebar">
-  <div class="rsb-title">Navegação</div>
-  <button class="rtab" data-tab="keys" onclick="switchTab('keys')">🔑 Chaves</button>
-  <button class="rtab" data-tab="logs" onclick="switchTab('logs')">📋 Logs do Sistema</button>
-  <button class="rtab" data-tab="audit" onclick="switchTab('audit')">🛡 Auditoria de Segurança</button>
-</nav>
-<div class="admin-content">
+<main>
   <div class="alert-strip" id="urgent-alert">
     <span>⚠️</span>
     <span id="urgent-alert-text">${expiredCount>0?`<strong>${expiredCount} expirada(s)</strong>`:''}${expiredCount>0&&expiringSoon>0?' · ':''}${expiringSoon>0?`<strong>${expiringSoon} expirando em ${EXPIRY_WARN_HOURS}h</strong>`:''}</span>
@@ -2111,7 +2073,6 @@ tr:hover td{background:#ffffff02}
     <div class="sc"><div class="sc-icon">📋</div><div class="n" id="s-logs">${stats.totalLogs}</div><div class="l">Logs</div></div>
   </div>
 
-  <div class="sec-panel active" data-panel="keys">
   <div class="sec">
     <div class="sh">
       <div class="st">🔑 Chaves de Acesso</div>
@@ -2163,8 +2124,6 @@ tr:hover td{background:#ffffff02}
     </div>
   </div>
 
-  </div><!-- /sec-panel keys -->
-  <div class="sec-panel" data-panel="logs">
   <div class="sec">
     <div class="sh">
       <div class="st">📋 Log de Acessos <span style="font-size:13px;color:var(--muted);font-weight:400">retidos por ${LOG_RETENTION_DAYS} dias (LGPD)</span></div>
@@ -2183,26 +2142,7 @@ tr:hover td{background:#ffffff02}
       </table>
     </div>
   </div>
-  </div><!-- /sec-panel logs -->
-  <div class="sec-panel" data-panel="audit">
-  <div class="sec" id="pentest-sec">
-    <div class="sh">
-      <div>
-        <div class="st">🛡 Auditoria de Segurança</div>
-        <div style="font-size:11px;color:var(--muted);font-family:'Syne',sans-serif;margin-top:3px">Testes automatizados contra as rotas do servidor.</div>
-      </div>
-      <button class="btn bw" id="pentest-btn" onclick="runPentest()" style="display:flex;align-items:center;gap:6px"><span id="pentest-icon" style="display:inline-block;font-size:14px">↻</span> Re-executar</button>
-    </div>
-    <div class="ov">
-      <table>
-        <thead><tr><th style="width:42%">Teste</th><th style="width:10%;text-align:center">Status</th><th>Detalhe</th></tr></thead>
-        <tbody id="pentest-tb"><tr><td class="empty" colspan="3">Clique em "Re-executar" para iniciar a auditoria.</td></tr></tbody>
-      </table>
-    </div>
-  </div>
-  </div><!-- /sec-panel audit -->
-</div><!-- /admin-content -->
-</div><!-- /admin-wrap -->
+</main>
 
 <!-- Modals -->
 <div class="modal-bg" id="renewModal"><div class="modal">
@@ -2570,53 +2510,6 @@ async function exportCSV(){
 }
 const lr0=document.getElementById('last-refresh');if(lr0)lr0.textContent='Carregado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 filterKeys();
-
-function switchTab(t){
-  document.querySelectorAll('.rtab').forEach(function(b){b.classList.toggle('active',b.dataset.tab===t);});
-  document.querySelectorAll('.sec-panel').forEach(function(p){p.classList.toggle('active',p.dataset.panel===t);});
-  try{localStorage.setItem('zvmTab',t);}catch(e){}
-}
-(function(){switchTab(localStorage.getItem('zvmTab')||'keys');})();
-
-function _escH(s){return String(s||'').replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));}
-
-window.switchTab=switchTab;window.filterKeys=filterKeys;window.sortKeys=sortKeys;
-window.generateKey=generateKey;window.doRefresh=doRefresh;window.toggleKey=toggleKey;
-window.deleteKey=deleteKey;window.clearSuspect=clearSuspect;window.openRenew=openRenew;
-window.closeRenew=closeRenew;window.saveRenew=saveRenew;window.openEditUses=openEditUses;
-window.closeEditUses=closeEditUses;window.saveEditUses=saveEditUses;window.openRename=openRename;
-window.closeRename=closeRename;window.saveRename=saveRename;window.openPhones=openPhones;
-window.closePhones=closePhones;window.removePhone=removePhone;window.removeAllPhones=removeAllPhones;
-window.openNote=openNote;window.closeNote=closeNote;window.saveNote=saveNote;
-window.openAssignMod=openAssignMod;window.openAssignModFromEl=openAssignModFromEl;
-window.closeAssignMod=closeAssignMod;window.assignMod=assignMod;window.filterLog=filterLog;
-window.clearFilters=clearFilters;window.clearLog=clearLog;window.exportCSV=exportCSV;
-window.toggleModule=toggleModule;window.runPentest=runPentest;window.toast=toast;
-
-async function runPentest(){
-  const btn=document.getElementById('pentest-btn');
-  const icon=document.getElementById('pentest-icon');
-  const tb=document.getElementById('pentest-tb');
-  btn.disabled=true;
-  icon.style.cssText='display:inline-block;animation:spin .7s linear infinite;font-size:14px';
-  tb.innerHTML='<tr><td class="empty" colspan="3"><span class="spinner"></span> Executando testes de segurança…</td></tr>';
-  try{
-    const r=await fetch(_RA+'/api/pentest/run',{method:'POST'});
-    if(r.status===401){tb.innerHTML='<tr><td class="empty" colspan="3" style="color:var(--red)">Sessão expirada. Faça login novamente.</td></tr>';return;}
-    const d=await r.json();
-    if(!d.ok||!Array.isArray(d.tests)){tb.innerHTML='<tr><td class="empty" colspan="3" style="color:var(--red)">Erro ao executar testes.</td></tr>';return;}
-    tb.innerHTML=d.tests.map(function(t){return'<tr>'+
-      '<td style="font-size:12px;font-family:\'Syne\',sans-serif;color:var(--text);padding:9px 10px">'+_escH(t.name)+'</td>'+
-      '<td style="text-align:center"><span class="badge '+(t.ok?'on':'off')+'">'+(t.ok?'PASS':'FAIL')+'</span></td>'+
-      '<td style="font-size:11px;color:var(--muted);font-family:\'Syne\',sans-serif;word-break:break-all">'+_escH(t.detail)+'</td>'+
-      '</tr>';}).join('');
-  }catch(e){
-    tb.innerHTML='<tr><td class="empty" colspan="3" style="color:var(--red)">Erro de rede ao executar pentest.</td></tr>';
-  }finally{
-    btn.disabled=false;
-    icon.style.cssText='display:inline-block;font-size:14px';
-  }
-}
 </script>
 ${CANVAS_BG}</body></html>`;
 }
@@ -2664,18 +2557,13 @@ function renderPlanosPage() {
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--card2:#13131f;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--radius:14px}
-body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden;display:flex;flex-direction:column}
-nav{display:flex;align-items:center;justify-content:space-between;padding:14px 32px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040;flex-shrink:0}
-.nav-logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:6px;letter-spacing:-0.5px}
-.nav-links{display:flex;gap:10px}
-.nav-links a{font-size:14px;color:var(--muted);text-decoration:none;padding:8px 16px;border:1px solid var(--border);border-radius:8px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700;position:relative}
-.nav-links a:hover{color:var(--green);border-color:var(--green)}
-.nav-links a.nav-active{color:var(--green)!important;border-color:#00ff8760!important;background:#00ff8712!important}
-.nav-links a.nav-active::after{content:'';position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);width:6px;height:6px;border-radius:50%;background:#00ff33;box-shadow:0 0 8px #00ff33;pointer-events:none}
-footer.zvm-footer{text-align:center;padding:18px 24px;font-size:12px;color:#4a4a6a;font-family:'Syne',sans-serif;border-top:1px solid #1c1c2e20;flex-shrink:0}
-footer.zvm-footer a{color:#5a5a8a;text-decoration:none;transition:color .2s}
-footer.zvm-footer a:hover{color:var(--green)}
-main{max-width:1060px;margin:0 auto;padding:56px 24px 80px;flex:1}
+body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000060}
+.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
+.hlinks{display:flex;gap:10px}
+.hlinks a{font-size:13px;color:var(--muted);text-decoration:none;padding:6px 14px;border:1px solid var(--border);border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
+.hlinks a:hover{color:var(--green);border-color:var(--green)}
+main{max-width:1060px;margin:0 auto;padding:56px 24px 80px}
 
 /* Hero */
 .hero{text-align:center;margin-bottom:48px}
@@ -2755,24 +2643,14 @@ footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
 @media(max-width:800px){.plans{grid-template-columns:1fr 1fr}.inc-grid{grid-template-columns:1fr}}
 @media(max-width:480px){.plans{grid-template-columns:1fr}.guarantee{flex-direction:column;gap:10px}}
 </style></head><body>
-<nav>
-  <a href="/" class="nav-logo">⚡ ZVM</a>
-  <div class="nav-links" id="main-nav">
-    <a href="/" data-navpath="/">PAINEL</a>
-    <a href="/faq" data-navpath="/faq">FAQ</a>
-    <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
-    <a href="/planos" data-navpath="/planos">PLANOS</a>
-    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">SUPORTE</a>
+<header>
+  <a href="/" class="logo">⚡ ZVM</a>
+  <div class="hlinks">
+    <a href="/">Portal</a>
+    <a href="/faq">FAQ</a>
+    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank">💬 Suporte</a>
   </div>
-</nav>
-<script>
-(function(){
-  var cp=window.location.pathname;
-  document.querySelectorAll('#main-nav a[data-navpath]').forEach(function(a){
-    if(a.getAttribute('data-navpath')===cp) a.classList.add('nav-active');
-  });
-})();
-</script>
+</header>
 <main>
 
   <div class="hero">
@@ -2857,15 +2735,13 @@ footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
   </div>
 
 </main>
-<footer class="zvm-footer">
-  © ${new Date().getFullYear()} ZVM. Todos os direitos reservados. &nbsp;·&nbsp;
-  <a href="/privacidade">Privacidade</a> &nbsp;·&nbsp;
-  <a href="/faq">FAQ</a> &nbsp;·&nbsp;
-  <a href="/planos">Planos</a>
+<footer>
+  <p>© ${new Date().getFullYear()} ZVM — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/privacidade">Privacidade</a></p>
+  <p style="margin-top:6px;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:.5">Todos os direitos reservados</p>
 </footer>
 <script>
-document.querySelectorAll('.faq-item').forEach(function(item){
-  item.querySelector('.faq-q').addEventListener('click',function(){item.classList.toggle('open');});
+document.querySelectorAll('.faq-item').forEach(item=>{
+  item.querySelector('.faq-q').addEventListener('click',()=>item.classList.toggle('open'));
 });
 </script>
 ${CANVAS_BG}
@@ -2881,145 +2757,93 @@ function renderFaqPage() {
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--radius:14px}
-body{background:var(--dark);color:var(--text);font-family:'Inter',sans-serif;min-height:100vh;overflow-x:hidden;display:flex;flex-direction:column}
-nav{display:flex;align-items:center;justify-content:space-between;padding:14px 32px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040;flex-shrink:0}
-.nav-logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:6px;letter-spacing:-0.5px}
-.nav-links{display:flex;gap:10px}
-.nav-links a{font-size:14px;color:var(--muted);text-decoration:none;padding:8px 16px;border:1px solid var(--border);border-radius:8px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700;position:relative}
-.nav-links a:hover{color:var(--green);border-color:var(--green)}
-.nav-links a.nav-active{color:var(--green)!important;border-color:#00ff8760!important;background:#00ff8712!important}
-.nav-links a.nav-active::after{content:'';position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);width:6px;height:6px;border-radius:50%;background:#00ff33;box-shadow:0 0 8px #00ff33;pointer-events:none}
-main{max-width:860px;margin:0 auto;padding:56px 32px 80px;width:100%;flex:1}
-.hero{text-align:center;margin-bottom:48px}
-.hero-badge{display:inline-block;background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-size:12px;letter-spacing:2px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:20px;font-family:'Syne',sans-serif}
-.hero h1{font-family:'Syne',sans-serif;font-size:clamp(26px,5vw,42px);font-weight:800;line-height:1.1;margin-bottom:14px}
+body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000060}
+.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
+.header-links{display:flex;gap:10px}
+.header-links a{font-size:13px;color:var(--muted);text-decoration:none;padding:6px 14px;border:1px solid var(--border);border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
+.header-links a:hover{color:var(--green);border-color:var(--green)}
+main{max-width:920px;margin:0 auto;padding:60px 32px 80px}
+.hero{text-align:center;margin-bottom:64px}
+.hero-badge{display:inline-block;background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-size:12px;letter-spacing:2px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:22px;font-family:'Syne',sans-serif}
+.hero h1{font-family:'Syne',sans-serif;font-size:clamp(28px,5vw,48px);font-weight:800;line-height:1.1;margin-bottom:18px}
 .hero h1 span{color:var(--green)}
-.hero-sub{color:#a0a0c0;font-size:15px;line-height:1.8;max-width:560px;margin:0 auto;font-family:'Syne',sans-serif}
-.video-wrap{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:28px}
-.video-label{padding:14px 20px;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--green);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:#0d0d1a}
-.video-responsive{position:relative;padding-bottom:56.25%;height:0;overflow:hidden}
-.video-responsive iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:none}
-.guide-section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:26px 28px;margin-bottom:14px;display:flex;gap:20px;align-items:flex-start}
-.guide-icon{font-size:28px;flex-shrink:0;margin-top:2px}
-.guide-title{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:var(--text);margin-bottom:14px}
-.guide-body ol,.guide-body ul{padding-left:20px}
-.guide-body li{font-size:14px;color:#b0b0c8;line-height:1.9;margin-bottom:6px;font-family:'Syne',sans-serif}
-.guide-body li:last-child{margin-bottom:0}
-.guide-body p{font-size:14px;color:#b0b0c8;line-height:1.9;margin-bottom:12px;font-family:'Syne',sans-serif}
-.guide-body strong{color:var(--text)}
-.guide-tip{margin-top:14px;background:#00ff8708;border:1px solid #00ff8720;border-radius:8px;padding:11px 16px;font-size:13px;color:#a0c8a8;font-family:'Syne',sans-serif;line-height:1.6}
-.guide-tip a{color:var(--green);text-decoration:none}
-.support-section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:32px;text-align:center;margin-top:28px}
+.hero-sub{color:#a0a0c0;font-size:16px;line-height:1.8;max-width:600px;margin:0 auto 36px;font-family:'Syne',sans-serif}
+.wip-card{background:linear-gradient(135deg,#0f0f1a,#13101f);border:1px solid #7c3aed40;border-radius:var(--radius);padding:40px 36px;text-align:center;margin-bottom:56px;position:relative;overflow:hidden}
+.wip-card::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,#7c3aed18,transparent 70%);pointer-events:none}
+.wip-icon{font-size:52px;margin-bottom:18px;display:block;animation:float 3s ease-in-out infinite}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.wip-title{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--text);margin-bottom:12px}
+.wip-title span{color:var(--green)}
+.wip-desc{color:#a0a0c0;font-size:15px;line-height:1.9;max-width:560px;margin:0 auto 28px;font-family:'Syne',sans-serif}
+.progress-wrap{background:#1e1e2e;border-radius:8px;height:6px;overflow:hidden;max-width:320px;margin:0 auto 10px}
+.progress-bar{height:6px;background:linear-gradient(90deg,#7c3aed,var(--green));border-radius:8px;animation:progress 2.5s ease-in-out infinite alternate}
+@keyframes progress{from{width:30%}to{width:45%}}
+.progress-label{font-size:12px;color:var(--muted);letter-spacing:1px;text-transform:uppercase}
+.coming-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--muted);letter-spacing:2px;text-transform:uppercase;text-align:center;margin-bottom:20px}
+.coming-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:52px}
+.coming-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px 22px;display:flex;align-items:flex-start;gap:14px;transition:border-color .2s}
+.coming-item:hover{border-color:#7c3aed40}
+.coming-item .ic{font-size:20px;flex-shrink:0;margin-top:1px}
+.coming-item h3{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px}
+.coming-item p{font-size:14px;color:#a0a0c0;line-height:1.6;font-family:'Syne',sans-serif}
+.support-section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:32px;text-align:center}
 .support-section h2{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:var(--text);margin-bottom:8px}
-.support-section p{color:#a0a0c0;font-size:14px;line-height:1.8;margin-bottom:24px;font-family:'Syne',sans-serif}
+.support-section p{color:#a0a0c0;font-size:15px;line-height:1.8;margin-bottom:24px;font-family:'Syne',sans-serif}
 .support-btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
-.btn-wpp{display:inline-flex;align-items:center;gap:8px;background:#25d36620;border:1px solid #25d36640;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;padding:11px 22px;border-radius:8px;text-decoration:none;transition:all .2s}
+.btn-wpp{display:inline-flex;align-items:center;gap:8px;background:#25d36620;border:1px solid #25d36640;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:11px 22px;border-radius:8px;text-decoration:none;transition:all .2s}
 .btn-wpp:hover{background:#25d36630;border-color:#25d366;transform:translateY(-2px)}
-.btn-portal{display:inline-flex;align-items:center;gap:8px;background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-family:'Syne',sans-serif;font-weight:700;font-size:13px;padding:11px 22px;border-radius:8px;text-decoration:none;transition:all .2s}
+.btn-portal{display:inline-flex;align-items:center;gap:8px;background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:11px 22px;border-radius:8px;text-decoration:none;transition:all .2s}
 .btn-portal:hover{background:#00ff8722;border-color:var(--green);transform:translateY(-2px)}
-footer.zvm-footer{text-align:center;padding:18px 24px;font-size:12px;color:#4a4a6a;font-family:'Syne',sans-serif;border-top:1px solid #1c1c2e20;flex-shrink:0}
-footer.zvm-footer a{color:#5a5a8a;text-decoration:none;transition:color .2s}
-footer.zvm-footer a:hover{color:var(--green)}
-@media(max-width:600px){main{padding:32px 16px 60px}.guide-section{flex-direction:column;gap:12px}.guide-icon{font-size:22px}.nav-links a{padding:6px 10px;font-size:12px}}
+footer{text-align:center;padding:28px;font-size:13px;color:#8a8aaa;border-top:1px solid var(--border);font-family:'Syne',sans-serif}
+footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
+@media(max-width:520px){.coming-grid{grid-template-columns:1fr}.wip-card{padding:28px 20px}.header-links a{padding:5px 9px;font-size:12px}main{padding:40px 16px 60px}}
 </style>
 </head>
 <body>
-<nav>
-  <a href="/" class="nav-logo">⚡ ZVM</a>
-  <div class="nav-links" id="main-nav">
-    <a href="/" data-navpath="/">PAINEL</a>
-    <a href="/faq" data-navpath="/faq">FAQ</a>
-    <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
-    <a href="/planos" data-navpath="/planos">PLANOS</a>
-    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">SUPORTE</a>
+<header>
+  <a href="/" class="logo">⚡ ZVM</a>
+  <div class="header-links">
+    <a href="/">Portal</a>
+    <a href="/privacidade">Privacidade</a>
+    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM%20LR1290." target="_blank">💬 Suporte</a>
   </div>
-</nav>
-<script>
-(function(){
-  var cp=window.location.pathname;
-  document.querySelectorAll('#main-nav a[data-navpath]').forEach(function(a){
-    if(a.getAttribute('data-navpath')===cp) a.classList.add('nav-active');
-  });
-})();
-</script>
+</header>
 <main>
   <div class="hero">
     <div class="hero-badge">Central de Ajuda</div>
     <h1>Perguntas <span>Frequentes</span></h1>
-    <p class="hero-sub">Tudo o que você precisa saber para instalar, ativar e usar o ZVM com segurança.</p>
+    <p class="hero-sub">Estamos construindo uma base de conhecimento completa para você. Em breve tudo estará aqui.</p>
   </div>
-
-  <div class="video-wrap">
-    <div class="video-label">🎬 Tutorial Oficial — Instalação e Ativação</div>
-    <div class="video-responsive">
-      <iframe src="https://www.youtube.com/embed/DZ29f5U6OF8" title="ZVM Tutorial de Instalação e Ativação" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
-    </div>
+  <div class="wip-card">
+    <span class="wip-icon">🚧</span>
+    <div class="wip-title">Estamos <span>trabalhando nisso!</span></div>
+    <p class="wip-desc">Nossa central de FAQ está sendo desenvolvida com muito cuidado. Em breve você encontrará aqui respostas para todas as suas dúvidas sobre ativação, dispositivos, renovação, pagamentos e muito mais.</p>
+    <div class="progress-wrap"><div class="progress-bar"></div></div>
+    <p class="progress-label">Em desenvolvimento</p>
   </div>
-
-  <div class="guide-section">
-    <div class="guide-icon">💻</div>
-    <div style="flex:1;min-width:0">
-      <div class="guide-title">Como Instalar</div>
-      <div class="guide-body">
-        <ol>
-          <li>Baixe o arquivo da extensão fornecido pelo suporte no WhatsApp.</li>
-          <li>Abra o <strong>Google Chrome</strong> ou <strong>Microsoft Edge</strong> e acesse <strong>chrome://extensions</strong> (ou <strong>edge://extensions</strong>).</li>
-          <li>Ative o <strong>Modo Desenvolvedor</strong> no canto superior direito da página.</li>
-          <li>Clique em <strong>"Carregar sem compactação"</strong> e selecione a pasta da extensão descompactada.</li>
-          <li>O ícone do ZVM aparecerá na barra de extensões do navegador. Pronto para ativar.</li>
-        </ol>
-      </div>
-    </div>
+  <p class="coming-title">O que vem por aí</p>
+  <div class="coming-grid">
+    <div class="coming-item"><span class="ic">🔑</span><div><h3>Ativação da Chave</h3><p>Como inserir e ativar sua chave no WhatsApp Web.</p></div></div>
+    <div class="coming-item"><span class="ic">📱</span><div><h3>Gerenciar Dispositivos</h3><p>Como adicionar, remover e trocar números vinculados.</p></div></div>
+    <div class="coming-item"><span class="ic">⏱</span><div><h3>Renovação e Validade</h3><p>Entenda como funciona a expiração e como renovar.</p></div></div>
+    <div class="coming-item"><span class="ic">💳</span><div><h3>Pagamentos</h3><p>Dúvidas sobre cobrança, planos e confirmação de compra.</p></div></div>
+    <div class="coming-item"><span class="ic">⚡</span><div><h3>Recursos da Extensão</h3><p>Como usar fluxos, funis, agendamentos e disparos.</p></div></div>
+    <div class="coming-item"><span class="ic">🔒</span><div><h3>Privacidade e LGPD</h3><p>Quais dados coletamos e como protegemos suas informações.</p></div></div>
   </div>
-
-  <div class="guide-section">
-    <div class="guide-icon">🔑</div>
-    <div style="flex:1;min-width:0">
-      <div class="guide-title">Como Ativar</div>
-      <div class="guide-body">
-        <ol>
-          <li>Abra o <strong>WhatsApp Web</strong> no seu navegador com a extensão instalada.</li>
-          <li>Clique no ícone do ZVM na barra de extensões do navegador.</li>
-          <li>No campo <strong>"Chave de Ativação"</strong>, cole exatamente a chave recebida após a compra (formato: <code style="color:var(--green);font-size:12px">zv-xxxxx-xxxxx-xxxxx</code>).</li>
-          <li>Clique em <strong>Ativar</strong>. O servidor validará a chave em segundos.</li>
-          <li>Após a confirmação, todos os recursos do ZVM estarão disponíveis no WhatsApp Web.</li>
-        </ol>
-        <div class="guide-tip">💡 Sua chave fica vinculada ao número do WhatsApp usado no <strong>primeiro acesso</strong>. Guarde-a em local seguro — ela é pessoal e intransferível.</div>
-      </div>
-    </div>
-  </div>
-
-  <div class="guide-section">
-    <div class="guide-icon">🔒</div>
-    <div style="flex:1;min-width:0">
-      <div class="guide-title">Sincronização e Privacidade</div>
-      <div class="guide-body">
-        <p>O ZVM opera <strong>de forma isolada dentro do seu navegador</strong>, conectando-se diretamente ao WhatsApp Web como extensão local. Veja como funciona:</p>
-        <ul>
-          <li><strong>Isolamento total:</strong> cada aba do WhatsApp Web é independente. O ZVM não interfere em outras abas, aplicações ou dispositivos.</li>
-          <li><strong>Sem leitura de mensagens:</strong> o ZVM não acessa, armazena nem transmite o conteúdo das suas conversas, contatos ou arquivos de mídia.</li>
-          <li><strong>Dados mínimos de licenciamento:</strong> apenas seu número de telefone, IP e timestamp de acesso são registrados — exclusivamente para controle de licença (conforme a LGPD).</li>
-          <li><strong>Dados removidos automaticamente:</strong> registros de acesso são excluídos após 90 dias sem ação necessária da sua parte.</li>
-        </ul>
-        <div class="guide-tip">🔒 Leia nossa <a href="/privacidade">Política de Privacidade completa</a> para mais detalhes sobre coleta e proteção de dados.</div>
-      </div>
-    </div>
-  </div>
-
   <div class="support-section">
     <h2>Ainda tem dúvidas?</h2>
-    <p>Nossa equipe está disponível no WhatsApp para te ajudar com instalação, ativação ou qualquer outra questão.</p>
+    <p>Enquanto o FAQ não está pronto, nossa equipe está disponível no WhatsApp para te ajudar com qualquer dúvida.</p>
     <div class="support-btns">
-      <a class="btn-wpp" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM." target="_blank" rel="noopener">💬 Falar com o Suporte</a>
+      <a class="btn-wpp" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM%20LR1290." target="_blank">💬 Falar com o Suporte</a>
       <a class="btn-portal" href="/">🔑 Portal do Cliente</a>
     </div>
   </div>
+  </div>
 </main>
-<footer class="zvm-footer">
-  © ${new Date().getFullYear()} ZVM. Todos os direitos reservados. &nbsp;·&nbsp;
-  <a href="/privacidade">Privacidade</a> &nbsp;·&nbsp;
-  <a href="/faq">FAQ</a> &nbsp;·&nbsp;
-  <a href="/planos">Planos</a>
+<footer>
+  <p>© ${new Date().getFullYear()} ZVM — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/privacidade">Privacidade</a></p>
+  <p style="margin-top:6px;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:.5">Todos os direitos reservados</p>
 </footer>
 ${CANVAS_BG}
 </body></html>`;
@@ -3034,18 +2858,13 @@ function renderPrivacyPage() {
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--radius:12px}
-body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;display:flex;flex-direction:column}
-nav{display:flex;align-items:center;justify-content:space-between;padding:14px 32px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040;flex-shrink:0}
-.nav-logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:6px;letter-spacing:-0.5px}
-.nav-links{display:flex;gap:10px}
-.nav-links a{font-size:14px;color:var(--muted);text-decoration:none;padding:8px 16px;border:1px solid var(--border);border-radius:8px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700;position:relative}
-.nav-links a:hover{color:var(--green);border-color:var(--green)}
-.nav-links a.nav-active{color:var(--green)!important;border-color:#00ff8760!important;background:#00ff8712!important}
-.nav-links a.nav-active::after{content:'';position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);width:6px;height:6px;border-radius:50%;background:#00ff33;box-shadow:0 0 8px #00ff33;pointer-events:none}
-footer.zvm-footer{text-align:center;padding:18px 24px;font-size:12px;color:#4a4a6a;font-family:'Syne',sans-serif;border-top:1px solid #1c1c2e20;flex-shrink:0}
-footer.zvm-footer a{color:#5a5a8a;text-decoration:none;transition:color .2s}
-footer.zvm-footer a:hover{color:var(--green)}
-main{max-width:720px;margin:0 auto;padding:56px 24px 80px;flex:1}
+body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000060}
+.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
+.header-links{display:flex;gap:10px}
+.header-links a{font-size:13px;color:var(--muted);text-decoration:none;padding:6px 14px;border:1px solid var(--border);border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
+.header-links a:hover{color:var(--green);border-color:var(--green)}
+main{max-width:720px;margin:0 auto;padding:56px 24px 80px}
 .hero{margin-bottom:48px}
 .hero-badge{display:inline-block;background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-size:12px;letter-spacing:2px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:18px;font-family:'Syne',sans-serif}
 .hero h1{font-family:'Syne',sans-serif;font-size:clamp(24px,4vw,36px);font-weight:800;margin-bottom:12px}
@@ -3068,24 +2887,14 @@ footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
 </style>
 </head>
 <body>
-<nav>
-  <a href="/" class="nav-logo">⚡ ZVM</a>
-  <div class="nav-links" id="main-nav">
-    <a href="/" data-navpath="/">PAINEL</a>
-    <a href="/faq" data-navpath="/faq">FAQ</a>
-    <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
-    <a href="/planos" data-navpath="/planos">PLANOS</a>
-    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">SUPORTE</a>
+<header>
+  <a href="/" class="logo">⚡ ZVM</a>
+  <div class="header-links">
+    <a href="/">Portal</a>
+    <a href="/faq">FAQ</a>
+    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank">💬 Suporte</a>
   </div>
-</nav>
-<script>
-(function(){
-  var cp=window.location.pathname;
-  document.querySelectorAll('#main-nav a[data-navpath]').forEach(function(a){
-    if(a.getAttribute('data-navpath')===cp) a.classList.add('nav-active');
-  });
-})();
-</script>
+</header>
 <main>
   <div class="hero">
     <div class="hero-badge">Legal</div>
@@ -3140,11 +2949,9 @@ footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
   </div>
   </div>
 </main>
-<footer class="zvm-footer">
-  © ${new Date().getFullYear()} ZVM. Todos os direitos reservados. &nbsp;·&nbsp;
-  <a href="/privacidade">Privacidade</a> &nbsp;·&nbsp;
-  <a href="/faq">FAQ</a> &nbsp;·&nbsp;
-  <a href="/planos">Planos</a>
+<footer>
+  <p>© ${new Date().getFullYear()} ZVM — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/privacidade">Privacidade</a></p>
+  <p style="margin-top:6px;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:.5">Todos os direitos reservados</p>
 </footer>
 ${CANVAS_BG}
 </body></html>`;
@@ -3453,9 +3260,11 @@ async function handleRequest(req, res) {
     if (p === '/analytics' || p.startsWith('/analytics/')) { res.writeHead(404); res.end('Not found'); return; }
   }
 
+  console.log(`[${new Date().toISOString()}] ${req.method} ${p} — ${ip}`);
+
   if (p === '/health' && req.method === 'GET') {
-    res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});
-    res.end(JSON.stringify({status:'ok',uptime:Math.floor(process.uptime())})); return;
+    res.writeHead(200,{'Content-Type':'text/plain','Cache-Control':'no-store'});
+    res.end('ok'); return;
   }
 
   if ((p === R_EXT+'/auth/' || p === R_EXT+'/auth') && req.method === 'GET') {
@@ -4413,120 +4222,12 @@ async function handleRequest(req, res) {
     sendHtml(res, renderPrivacyPage()); return;
   }
 
-  // ── ZapSaver label validation endpoint ──────────────────────────────────
-  if (p === R_EXT + '/v3/labels' && req.method === 'POST') {
-    if (!checkRateLimit(ip, 'api')) {
-      sendJson(res, { ok: false, error: 'rate_limited' }, 429); return;
-    }
-    const accessToken = (req.headers['x-access-token'] || '').trim();
-    if (!accessToken) {
-      sendJson(res, { ok: false, msg: 'invalid_access_token' }, 403); return;
-    }
-    const body = await parseBody(req);
-    if (typeof body.label !== 'string') {
-      sendJson(res, { ok: false, error: 'nosql_injection_detected' }, 400); return;
-    }
-    if (body.label.length > 60) {
-      sendJson(res, { ok: false, error: 'label_too_long' }, 400); return;
-    }
-    sendJson(res, { ok: true }); return;
-  }
-
-  // ── Pentest interno (admin-gated) ────────────────────────────────────────
-  if (p === R_ADMIN + '/api/pentest/run' && req.method === 'POST') {
-    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-
-    function _probe(probePath, opts) {
-      opts = opts || {};
-      return new Promise(function(resolve) {
-        var bodyStr = opts.body ? JSON.stringify(opts.body) : null;
-        var headers = Object.assign({}, opts.headers || {});
-        if (bodyStr) {
-          headers['Content-Type'] = 'application/json';
-          headers['Content-Length'] = Buffer.byteLength(bodyStr);
-        }
-        var reqOpts = {
-          hostname: '127.0.0.1', port: PORT,
-          path: probePath, method: opts.method || 'GET',
-          headers: headers, timeout: 4000,
-        };
-        var r = http.request(reqOpts, function(res2) {
-          var d = '';
-          res2.on('data', function(c) { d += c; });
-          res2.on('end', function() { resolve({ status: res2.statusCode, headers: res2.headers, body: d }); });
-        });
-        r.on('error', function() { resolve({ status: 0, headers: {}, body: '' }); });
-        r.on('timeout', function() { r.destroy(); resolve({ status: 0, headers: {}, body: '' }); });
-        if (bodyStr) r.write(bodyStr);
-        r.end();
-      });
-    }
-
-    var _labelsPath = R_EXT + '/v3/labels';
-    var results = await Promise.all([
-      _probe('/api/__pentest_probe_notfound_xyz__'),
-      _probe(_labelsPath, { method: 'POST', headers: { 'x-access-token': 'pentest' }, body: { label: { $gt: '' } } }),
-      _probe(_labelsPath, { method: 'POST', headers: { 'x-access-token': 'pentest' }, body: { label: 'a'.repeat(61) } }),
-      _probe(_labelsPath, { method: 'POST', body: { label: 'test' } }),
-      _probe('/health'),
-    ]);
-
-    var r0 = results[0], r1 = results[1], r2 = results[2], r3 = results[3], r4 = results[4];
-
-    function _ct(r) { return r.headers['content-type'] || ''; }
-    function _tryParse(r) { try { return JSON.parse(r.body); } catch { return {}; } }
-
-    var j1 = _tryParse(r1), j2 = _tryParse(r2), j3 = _tryParse(r3);
-    var xfo = (r4.headers['x-frame-options'] || '').toUpperCase();
-    var csp = r4.headers['content-security-policy'] || '';
-
-    var tests = [
-      {
-        name: 'API /unknown retorna JSON',
-        ok: (r0.status === 404 || r0.status === 403) && _ct(r0).includes('application/json'),
-        detail: 'HTTP ' + r0.status + ' · ' + (_ct(r0) || 'sem content-type'),
-      },
-      {
-        name: 'Injeção NoSQL em label rejeitada (400)',
-        ok: r1.status === 400 && j1.error === 'nosql_injection_detected',
-        detail: 'HTTP ' + r1.status + ' · error=' + (j1.error || '-'),
-      },
-      {
-        name: 'Label > 60 chars rejeitada (400)',
-        ok: r2.status === 400 && j2.error === 'label_too_long',
-        detail: 'HTTP ' + r2.status + ' · error=' + (j2.error || '-'),
-      },
-      {
-        name: 'Endpoint interno sem access-token retorna 403',
-        ok: r3.status === 403 && j3.msg === 'invalid_access_token',
-        detail: 'HTTP ' + r3.status + ' · msg=' + (j3.msg || '-'),
-      },
-      {
-        name: '/health retorna JSON',
-        ok: r4.status === 200 && _ct(r4).includes('application/json'),
-        detail: 'HTTP ' + r4.status + ' · ' + (_ct(r4) || 'sem content-type'),
-      },
-      {
-        name: 'X-Frame-Options: DENY presente',
-        ok: xfo === 'DENY',
-        detail: xfo || 'ausente',
-      },
-      {
-        name: "Content-Security-Policy presente",
-        ok: csp.includes("default-src 'self'"),
-        detail: csp ? (csp.length > 90 ? csp.slice(0, 90) + '…' : csp) : 'ausente',
-      },
-    ];
-
-    sendJson(res, { ok: true, tests: tests }); return;
-  }
-
   const CLIENT_PATHS = ['/', '/plans/manage', '/plans/new', '/dashboard/chaves'];
   if (req.method === 'GET' && (CLIENT_PATHS.includes(p) || p.startsWith('/unauthorized') || p.startsWith('/funnels') || p.startsWith('/labels'))) {
     sendHtml(res, renderClientPortal()); return;
   }
 
-  sendJson(res, { error: 'not_found' }, 404);
+  sendJson(res, { ok: true });
 }
 
 async function gracefulShutdown(signal) {
