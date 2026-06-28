@@ -2018,8 +2018,8 @@ function buildKeysHtml() {
   <td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
   <td>${new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</td>
   <td>${escHtml(k.wppVersion||'-')}</td>
-  <td class="note-cell" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${k.note&&k.note.startsWith('[Mod:')?'<span style=\"color:#4f8ef7;font-size:13px;font-family:Syne,sans-serif\">'+escHtml(k.note)+'</span>':escHtml(k.note||'') || '<span style=\\"color:var(--muted)\\">—</span>'}</span></td>
-  <td><div class="acts">
+  <td class="note-cell td-note" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${k.note&&k.note.startsWith('[Mod:')?'<span style=\"color:#5b8cf7;font-size:11px\">'+escHtml(k.note)+'</span>':escHtml(k.note||'')||'<span style=\"color:var(--tx3)\">—</span>'}</span></td>
+  <td class="td-acts"><div class="acts">
     <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
     <button class="bs bg" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">+ Tempo</button>
     <button class="bs bg" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${Number.isFinite(k.maxUses)?k.maxUses:MAX_USES})">Usos</button>
@@ -2027,7 +2027,7 @@ function buildKeysHtml() {
     ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Números</button>`:''}
     <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
     <button class="bs ${zsOn?'bg':'bw'}" title="ZapSaver" onclick="toggleModule('${escHtml(code)}','zapSaver',${zsOn?'false':'true'})">💾</button>
-    <button class="bs" style="background:#7c3aed18;color:#9b59b6;border:1px solid #7c3aed30" data-code="${escHtml(code)}" data-label="${escHtml(k.label||'')}" data-modnote="${escHtml((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1]||'')}" onclick="openAssignModFromEl(this)">👮</button>
+    <button class="bs" style="background:#7c3aed18;color:#a78bfa;border:1px solid #7c3aed28" data-code="${escHtml(code)}" data-label="${escHtml(k.label||'')}" data-modnote="${escHtml((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1]||'')}" onclick="openAssignModFromEl(this)">👮</button>
   </div></td>
 </tr>`;
   }).join('');
@@ -2080,26 +2080,29 @@ function renderAdminDashboard() {
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --g:#00d97e;--g-dim:#00b368;--g-bg:#00d97e0d;--g-brd:#00d97e28;
-  --bg:#0b0d11;--s0:#0f1117;--s1:#131720;--s2:#181c27;--s3:#1e2232;
-  --brd:#1e2235;--brd2:#272c40;
-  --tx:#c6c8d8;--tx2:#8284a0;--tx3:#484a5f;
-  --red:#f05060;--red-bg:#f0506010;--red-brd:#f0506030;
-  --yellow:#f0b429;--yel-bg:#f0b42910;--yel-brd:#f0b42930;
-  --orange:#f97316;--org-bg:#f9731610;--org-brd:#f9731630;
+  --g:#00e676;--g-dim:#00c45a;--g-bg:#00e67609;--g-brd:#00e67622;
+  --bg:#000000;--s0:#080808;--s1:#0d0d0d;--s2:#111111;--s3:#161616;
+  --brd:#1e1e1e;--brd2:#2a2a2a;
+  --tx:#d0d2e0;--tx2:#7a7c90;--tx3:#3e4050;
+  --red:#f05060;--red-bg:#f0506012;--red-brd:#f0506035;
+  --yellow:#f0b429;--yel-bg:#f0b42912;--yel-brd:#f0b42935;
+  --orange:#f97316;--org-bg:#f9731612;--org-brd:#f9731635;
   --blue:#5b8cf7;--purple:#a78bfa;
   --r:8px;--r-sm:5px;--r-lg:12px;
   --hdr:52px;
   --sidebar-w:48px;--sidebar-open:178px;
-  --shadow:0 1px 3px #00000030,0 4px 12px #00000025;
-  --shadow-lg:0 8px 32px #00000060;
+  --shadow:0 1px 4px #00000060,0 4px 16px #00000040;
+  --shadow-lg:0 8px 32px #00000090;
 }
 /* ── Reset & Base ── */
 body{background:var(--bg);color:var(--tx);font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;font-size:13px;line-height:1.5;min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased}
 a{color:inherit;text-decoration:none}
 button{font-family:inherit}
+/* Garante que todo conteúdo fique acima do canvas animado (z-index:0) */
+header,nav,.admin-content,.modal-bg,.toast{position:relative;z-index:2}
+header{position:sticky}
 /* ── Header ── */
-header{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:var(--hdr);border-bottom:1px solid var(--brd);background:var(--s0);position:sticky;top:0;z-index:50;box-shadow:0 1px 0 var(--brd),0 2px 12px #00000030}
+header{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:var(--hdr);border-bottom:1px solid var(--brd);background:rgba(8,8,8,.96);top:0;z-index:50;box-shadow:0 1px 0 var(--brd),0 2px 16px #00000060;backdrop-filter:blur(8px)}
 .logo{font-size:15px;font-weight:700;color:var(--g);display:flex;align-items:center;gap:7px;letter-spacing:-.2px}
 .logo-dot{width:7px;height:7px;border-radius:50%;background:var(--g);box-shadow:0 0 8px var(--g)}
 .logo-ver{font-size:11px;color:var(--tx3);font-weight:400;margin-left:2px}
@@ -2111,7 +2114,7 @@ a.out:hover{color:var(--red);border-color:var(--red-brd)}
 .admin-wrap{display:flex;min-height:calc(100vh - var(--hdr));align-items:flex-start}
 .admin-content{flex:1;min-width:0;padding:18px 20px;max-width:1900px}
 /* ── Sidebar ── */
-.rsidebar{width:var(--sidebar-w);flex-shrink:0;background:var(--s0);border-right:1px solid var(--brd);position:sticky;top:var(--hdr);height:calc(100vh - var(--hdr));display:flex;flex-direction:column;overflow:hidden;transition:width .2s cubic-bezier(.4,0,.2,1);z-index:40}
+.rsidebar{width:var(--sidebar-w);flex-shrink:0;background:rgba(8,8,8,.97);border-right:1px solid var(--brd);position:sticky;top:var(--hdr);height:calc(100vh - var(--hdr));display:flex;flex-direction:column;overflow:hidden;transition:width .2s cubic-bezier(.4,0,.2,1);z-index:40;backdrop-filter:blur(6px)}
 .rsidebar:hover{width:var(--sidebar-open)}
 .rsb-title{font-size:9px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:1.4px;padding:14px 14px 8px;border-bottom:1px solid var(--brd);white-space:nowrap;opacity:0;transition:opacity .15s}
 .rsidebar:hover .rsb-title{opacity:1}
@@ -2178,18 +2181,22 @@ a.out:hover{color:var(--red);border-color:var(--red-brd)}
 .bd:hover{background:#f0506018;border-color:#f0506060}
 .bsusp{background:var(--red-bg);color:var(--red);border:1px solid var(--red-brd)}
 /* ── Table ── */
-.ov{overflow-x:auto}
-table{width:100%;border-collapse:collapse}
+.ov{overflow-x:auto;position:relative;z-index:1}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
 thead{position:sticky;top:var(--hdr);z-index:10}
-th{padding:8px 10px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--tx3);border-bottom:1px solid var(--brd);white-space:nowrap;background:var(--s2);cursor:pointer;user-select:none;transition:color .15s}
+th{padding:8px 10px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--tx3);border-bottom:1px solid var(--brd);white-space:nowrap;overflow:hidden;background:var(--s2);cursor:pointer;user-select:none;transition:color .15s}
 th:hover{color:var(--tx)}
 th.asc::after{content:' ▲';color:var(--g);font-size:10px}
 th.desc::after{content:' ▼';color:var(--g);font-size:10px}
-td{padding:7px 10px;font-size:13px;border-bottom:1px solid var(--brd);vertical-align:middle;color:var(--tx)}
+td{padding:7px 10px;font-size:13px;border-bottom:1px solid var(--brd);vertical-align:middle;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0}
 tr:last-child td{border-bottom:none}
-tr:nth-child(even) td{background:#ffffff03}
-tr:hover td{background:#ffffff05}
-.kc{color:var(--g);font-size:12px;letter-spacing:.2px;font-family:'JetBrains Mono','Fira Code','Cascadia Code',monospace}
+tr:nth-child(even) td{background:#ffffff04}
+tr:hover td{background:#ffffff07}
+.kc{color:var(--g);font-size:12px;letter-spacing:.2px;font-family:'JetBrains Mono','Fira Code','Cascadia Code',monospace;display:block;overflow:hidden;text-overflow:ellipsis}
+/* Células que precisam de wrap normal (ações, badges) */
+td.td-acts{white-space:normal;overflow:visible;max-width:none;padding:5px 8px}
+td.td-note{max-width:120px}
+td.td-status{white-space:nowrap;overflow:hidden}
 /* ── Badges ── */
 .badge{display:inline-block;padding:2px 7px;border-radius:3px;font-size:11px;font-weight:600;letter-spacing:.4px;text-transform:uppercase}
 .on{background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd)}
@@ -2291,9 +2298,24 @@ tr:hover td{background:#ffffff05}
     </div>
     <div class="filter-count" id="keys-filter-count"></div>
     <div class="ov">
-      <table>
+      <table style="min-width:900px">
+        <colgroup>
+          <col style="width:36px">
+          <col style="width:13%">
+          <col style="width:10%">
+          <col style="width:7%">
+          <col style="width:11%">
+          <col style="width:5%">
+          <col style="width:9%">
+          <col style="width:9%">
+          <col style="width:10%">
+          <col style="width:9%">
+          <col style="width:6%">
+          <col style="width:7%">
+          <col style="width:auto">
+        </colgroup>
         <thead><tr>
-          <th style="width:34px;padding:8px 6px"><input type="checkbox" id="master-cb" title="Selecionar todas" style="width:13px;height:13px;cursor:pointer;accent-color:var(--g)" onchange="toggleAllCheckboxes(this.checked)"></th>
+          <th style="padding:8px 6px"><input type="checkbox" id="master-cb" title="Selecionar todas" style="width:13px;height:13px;cursor:pointer;accent-color:var(--g)" onchange="toggleAllCheckboxes(this.checked)"></th>
           <th onclick="sortKeys('code')">Chave</th>
           <th onclick="sortKeys('label')" id="th-label">Cliente</th>
           <th onclick="sortKeys('status')" id="th-status">Status</th>
@@ -2305,7 +2327,7 @@ tr:hover td{background:#ffffff05}
           <th onclick="sortKeys('created')" id="th-created">Criada em</th>
           <th>WPP</th>
           <th>Nota</th>
-          <th>Ações</th>
+          <th style="cursor:default">Ações</th>
         </tr></thead>
         <tbody id="kb">${getKeysHtmlCached()}</tbody>
       </table>
