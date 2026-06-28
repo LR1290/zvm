@@ -1074,6 +1074,13 @@ const DEDUP_WINDOWS = {
 };
 const _dedupMap = new Map();
 
+// Sanitiza campos de log vindos de fontes externas:
+// remove chars de controle (newline, null, etc.) e aplica caps de tamanho
+// para impedir log injection e corrompimento de registros estruturados.
+function _sanitizeLogField(v, maxLen = 120) {
+  return String(v || '').replace(/[\x00-\x1f\x7f]/g, ' ').trim().slice(0, maxLen);
+}
+
 async function addLog(entry) {
   const dedupMs = DEDUP_WINDOWS[entry.action];
   if (dedupMs) {
@@ -1082,7 +1089,17 @@ async function addLog(entry) {
     if (Date.now() - lastTs < dedupMs) return;
     _dedupMap.set(dedupKey, Date.now());
   }
-  logs.unshift({ ...entry, timestamp: new Date().toISOString() });
+  // Spread primeiro, depois sobrescreve com valores higienizados
+  logs.unshift({
+    ...entry,
+    keyCode:    _sanitizeLogField(entry.keyCode,    32),
+    label:      _sanitizeLogField(entry.label,      80),
+    phone:      _sanitizeLogField(entry.phone,      20),
+    ip:         _sanitizeLogField(entry.ip,         45), // IPv6 max = 39 chars
+    wppVersion: _sanitizeLogField(entry.wppVersion, 40),
+    action:     _sanitizeLogField(entry.action,     30),
+    timestamp:  new Date().toISOString(),
+  });
 
   if (logs.length > LOG_MAX) logs = logs.slice(0, LOG_MAX);
   await saveLogs();
@@ -1987,19 +2004,29 @@ function getKeysHtmlCached() {
   return _keysHtmlCache;
 }
 
+// Limite de 200 entradas: protege o event loop contra bloqueio síncrono
+// sob LOG_MAX = 500–2000. A API /api/logs retorna HTML paginado do mesmo modo.
 function buildLogsHtml(arr) {
   const src = arr ?? logs;
   if (!src.length) return `<tr><td colspan="7" class="empty">Nenhum log ainda</td></tr>`;
-  return src.slice(0, 200).map(l => `
+  return src.slice(0, 200).map(l => {
+    // Guard: toLocaleString em Date inválida retorna "Invalid Date" (seguro, mas feio)
+    const tsRaw = typeof l.timestamp === 'string' ? l.timestamp : '';
+    const tsDate = tsRaw ? new Date(tsRaw) : null;
+    const tsDisplay = tsDate && !isNaN(tsDate)
+      ? tsDate.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+      : escHtml(tsRaw || '—');
+    return `
 <tr>
-  <td>${new Date(l.timestamp).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</td>
+  <td>${tsDisplay}</td>
   <td><span class="kc" style="font-size:13px">${escHtml(l.keyCode||'-')}</span></td>
   <td>${escHtml(l.label||'-')}</td>
   <td>${escHtml(l.phone||'-')}</td>
   <td>${escHtml(l.ip||'-')}</td>
   <td>${escHtml(l.wppVersion||'-')}</td>
   <td><span class="badge ${logActionBadgeClass(l.action)}">${escHtml(l.action)}</span></td>
-</tr>`).join('');
+</tr>`;
+  }).join('');
 }
 
 function renderAdminDashboard() {
@@ -4169,23 +4196,57 @@ async function handleRequest(req, res) {
   if (p === R_ADMIN+'/api/logs' && req.method === 'DELETE') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const body = await parseBody(req);
-    if (body.date) { logs = logs.filter(l => !l.timestamp.startsWith(body.date)); }
-    else { logs = []; }
+    if (body.date !== undefined) {
+      // Valida formato estritamente: YYYY-MM-DD (10 chars). String vazia ou objeto
+      // causariam startsWith("") == true deletando TUDO, ou TypeError em null.date.
+      const dateStr = typeof body.date === 'string' ? body.date : '';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        sendJson(res, { error: 'date inválida — use YYYY-MM-DD' }, 400); return;
+      }
+      // Converte o prefixo de data para UTC compensando o fuso de exibição (BRT = UTC-3).
+      // Logs são gravados em UTC; o admin vê em São Paulo. O filtro precisa cobrir
+      // o dia completo em BRT: das 03:00 UTC do dia até 03:00 UTC do dia seguinte.
+      const dayStartUTC = new Date(dateStr + 'T03:00:00.000Z');
+      const dayEndUTC   = new Date(dayStartUTC.getTime() + 24 * 60 * 60 * 1000);
+      logs = logs.filter(l => {
+        if (typeof l.timestamp !== 'string') return true; // preserva entradas sem timestamp
+        const t = new Date(l.timestamp);
+        return isNaN(t) || t < dayStartUTC || t >= dayEndUTC;
+      });
+    } else {
+      logs = [];
+    }
     await saveLogs();
     sendJson(res, { ok: true, remaining: logs.length }); return;
   }
 
   if (p === R_ADMIN+'/api/logs' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const date = url.searchParams.get('date');
-    const q    = (url.searchParams.get('q') || '').toLowerCase();
-    let filtered = date ? logs.filter(l => l.timestamp.startsWith(date)) : logs;
-    if (q) filtered = filtered.filter(l =>
-      (l.keyCode||'').toLowerCase().includes(q) ||
-      (l.ip||'').toLowerCase().includes(q) ||
-      (l.phone||'').toLowerCase().includes(q) ||
-      (l.label||'').toLowerCase().includes(q)
-    );
+    const dateParam = url.searchParams.get('date') || '';
+    const q         = (url.searchParams.get('q') || '').toLowerCase().slice(0, 100);
+
+    let filtered = logs;
+    if (dateParam) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+        sendJson(res, { error: 'date inválida — use YYYY-MM-DD' }, 400); return;
+      }
+      // Filtra pelo dia completo em BRT (UTC-3): cobre 03:00 UTC do dia até 03:00 UTC do próximo
+      const dayStartUTC = new Date(dateParam + 'T03:00:00.000Z');
+      const dayEndUTC   = new Date(dayStartUTC.getTime() + 24 * 60 * 60 * 1000);
+      filtered = logs.filter(l => {
+        if (typeof l.timestamp !== 'string') return false;
+        const t = new Date(l.timestamp);
+        return !isNaN(t) && t >= dayStartUTC && t < dayEndUTC;
+      });
+    }
+    if (q) {
+      filtered = filtered.filter(l =>
+        (l.keyCode||'').toLowerCase().includes(q) ||
+        (l.ip||'').toLowerCase().includes(q) ||
+        (l.phone||'').toLowerCase().includes(q) ||
+        (l.label||'').toLowerCase().includes(q)
+      );
+    }
     sendJson(res, { ok: true, logsHtml: buildLogsHtml(filtered) }); return;
   }
 
