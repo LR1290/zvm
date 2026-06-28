@@ -1157,17 +1157,18 @@ function renderModLogin(error = '') {
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
-.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:40px 36px;width:360px;position:relative;z-index:1;box-shadow:0 0 40px rgba(79,142,247,0.12)}
-.logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#4f8ef7;margin-bottom:4px;text-align:center;letter-spacing:-0.5px}
-.sub{color:#8a8aaa;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-bottom:24px;text-align:center;font-family:'Syne',sans-serif}
-.badge{display:inline-block;background:#4f8ef712;border:1px solid #4f8ef730;color:#4f8ef7;font-size:13px;letter-spacing:1px;text-transform:uppercase;padding:4px 12px;border-radius:20px;margin-bottom:20px;font-family:'Syne',sans-serif;display:block;text-align:center}
-label{display:block;font-size:12px;letter-spacing:1px;color:#8a8aaa;text-transform:uppercase;margin-bottom:7px;font-family:'Syne',sans-serif}
-input{width:100%;padding:11px 14px;background:#0a0a0f;border:1px solid #1e1e2e;border-radius:8px;color:#e2e2f0;font-family:'Space Mono',monospace;font-size:13px;outline:none;margin-bottom:16px;transition:border .2s}
-input:focus{border-color:#4f8ef7}
-.btn{width:100%;padding:12px;background:#4f8ef7;border:none;border-radius:8px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:opacity .2s}
-.btn:hover{opacity:.85}
-.err{background:#ff475715;border:1px solid #ff4757;border-radius:6px;color:#ff4757;padding:11px 14px;font-size:14px;margin-bottom:16px;font-family:'Syne',sans-serif}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:#000}::-webkit-scrollbar-thumb{background:#00e67640;border-radius:10px}::-webkit-scrollbar-thumb:hover{background:#00e676}
+body{background:#000;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
+.card{background:#0a0a0a;border:1px solid #1a1a1a;border-radius:16px;padding:36px 32px;width:360px;position:relative;z-index:1;box-shadow:0 0 40px #5b8cf710,0 8px 32px #00000090}
+.logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#00e676;margin-bottom:4px;text-align:center;letter-spacing:-0.5px}
+.sub{color:#4a4a4a;font-size:11px;letter-spacing:2px;text-transform:uppercase;margin-bottom:22px;text-align:center;font-family:'Syne',sans-serif}
+.badge{display:block;background:#5b8cf710;border:1px solid #5b8cf730;color:#5b8cf7;font-size:12px;letter-spacing:1px;text-transform:uppercase;padding:4px 12px;border-radius:20px;margin-bottom:18px;font-family:'Syne',sans-serif;text-align:center}
+label{display:block;font-size:11px;letter-spacing:1px;color:#5a5a5a;text-transform:uppercase;margin-bottom:6px;font-family:'Syne',sans-serif}
+input{width:100%;padding:10px 13px;background:#000;border:1px solid #1a1a1a;border-radius:7px;color:#c8cad8;font-family:'Space Mono',monospace;font-size:13px;outline:none;margin-bottom:14px;transition:border-color .18s}
+input:focus{border-color:#00e676;box-shadow:0 0 0 2px #00e67615}
+.btn{width:100%;padding:11px;background:#00e676;border:none;border-radius:7px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:opacity .2s,box-shadow .2s}
+.btn:hover{opacity:.9;box-shadow:0 4px 16px #00e67640}
+.err{background:#f0506012;border:1px solid #f0506035;border-radius:6px;color:#f05060;padding:11px 14px;font-size:13px;margin-bottom:14px;font-family:'Syne',sans-serif}
 </style></head><body>
 <div class="card">
   <div class="logo">⚡ ZVM</div>
@@ -1692,14 +1693,16 @@ function renderAdminLogin(error = '') {
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
-.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:40px 36px;width:360px;position:relative;z-index:1;box-shadow:0 0 40px rgba(124,58,237,0.15)}
-.logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#00ff87;margin-bottom:20px;text-align:center;letter-spacing:-0.5px}
-label{display:block;font-size:12px;letter-spacing:1px;color:#8a8aaa;text-transform:uppercase;margin-bottom:7px;font-family:'Syne',sans-serif}
-input{width:100%;padding:11px 14px;background:#0a0a0f;border:1px solid #1e1e2e;border-radius:8px;color:#e2e2f0;font-family:'Space Mono',monospace;font-size:13px;outline:none;margin-bottom:16px}
-input:focus{border-color:#00ff87}
-.btn{width:100%;padding:12px;background:#00ff87;border:none;border-radius:8px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer}
-.err{background:#ff475715;border:1px solid #ff4757;border-radius:6px;color:#ff4757;padding:11px 14px;font-size:14px;margin-bottom:16px;font-family:'Syne',sans-serif}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:#000}::-webkit-scrollbar-thumb{background:#00e67640;border-radius:10px}::-webkit-scrollbar-thumb:hover{background:#00e676}
+body{background:#000;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
+.card{background:#0a0a0a;border:1px solid #1a1a1a;border-radius:16px;padding:36px 32px;width:360px;position:relative;z-index:1;box-shadow:0 0 40px #00e67610,0 8px 32px #00000090}
+.logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#00e676;margin-bottom:20px;text-align:center;letter-spacing:-0.5px;text-shadow:0 0 20px #00e67640}
+label{display:block;font-size:11px;letter-spacing:1px;color:#5a5a5a;text-transform:uppercase;margin-bottom:6px;font-family:'Syne',sans-serif}
+input{width:100%;padding:10px 13px;background:#000;border:1px solid #1a1a1a;border-radius:7px;color:#c8cad8;font-family:'Space Mono',monospace;font-size:13px;outline:none;margin-bottom:14px;transition:border-color .18s}
+input:focus{border-color:#00e676;box-shadow:0 0 0 2px #00e67615}
+.btn{width:100%;padding:11px;background:#00e676;border:none;border-radius:7px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:opacity .2s,box-shadow .2s}
+.btn:hover{opacity:.9;box-shadow:0 4px 16px #00e67640}
+.err{background:#f0506012;border:1px solid #f0506035;border-radius:6px;color:#f05060;padding:11px 14px;font-size:13px;margin-bottom:14px;font-family:'Syne',sans-serif}
 </style></head><body>
 <div class="card">
   <div class="logo">⚡ ZVM Admin</div>
@@ -2180,15 +2183,20 @@ a.out:hover{color:var(--red);border-color:var(--red-brd)}
 .bd{background:var(--red-bg);color:var(--red);border:1px solid var(--red-brd)}
 .bd:hover{background:#f0506018;border-color:#f0506060}
 .bsusp{background:var(--red-bg);color:var(--red);border:1px solid var(--red-brd)}
+/* ── Scrollbars ── */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:#000}
+::-webkit-scrollbar-thumb{background:#00e67640;border-radius:10px}
+::-webkit-scrollbar-thumb:hover{background:#00e676}
 /* ── Table ── */
-.ov{overflow-x:auto;position:relative;z-index:1}
+.ov{overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 220px);position:relative;z-index:1}
 table{width:100%;border-collapse:collapse;table-layout:fixed}
-thead{position:sticky;top:var(--hdr);z-index:10}
-th{padding:8px 10px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--tx3);border-bottom:1px solid var(--brd);white-space:nowrap;overflow:hidden;background:var(--s2);cursor:pointer;user-select:none;transition:color .15s}
+thead{position:sticky;top:0;z-index:10}
+th{padding:6px 8px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--tx3);border-bottom:1px solid var(--brd);white-space:nowrap;overflow:hidden;background:#000;cursor:pointer;user-select:none;transition:color .15s}
 th:hover{color:var(--tx)}
 th.asc::after{content:' ▲';color:var(--g);font-size:10px}
 th.desc::after{content:' ▼';color:var(--g);font-size:10px}
-td{padding:7px 10px;font-size:13px;border-bottom:1px solid var(--brd);vertical-align:middle;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0}
+td{padding:4px 8px;font-size:12px;border-bottom:1px solid var(--brd);vertical-align:middle;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0}
 tr:last-child td{border-bottom:none}
 tr:nth-child(even) td{background:#ffffff04}
 tr:hover td{background:#ffffff07}
@@ -3431,17 +3439,18 @@ function renderAnalyticsLogin(error = '') {
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#080810;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
-.card{background:#0f0f1a;border:1px solid #1c1c2e;border-radius:18px;padding:40px 36px;width:360px;position:relative;z-index:1;box-shadow:0 0 40px rgba(0,255,135,0.08)}
-.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#00ff87;margin-bottom:4px;text-align:center;letter-spacing:-0.5px}
-.sub{color:#5a5a7a;font-size:12px;letter-spacing:3px;text-transform:uppercase;margin-bottom:24px;text-align:center}
-.badge{display:block;background:#00ff8712;border:1px solid #00ff8730;color:#00ff87;font-size:13px;letter-spacing:1px;text-transform:uppercase;padding:4px 14px;border-radius:20px;margin-bottom:20px;text-align:center;font-family:'Syne',sans-serif;font-weight:700}
-label{display:block;font-size:12px;letter-spacing:2px;color:#5a5a7a;text-transform:uppercase;margin-bottom:7px}
-input{width:100%;padding:11px 14px;background:#080810;border:1px solid #1c1c2e;border-radius:8px;color:#e2e2f0;font-family:'Space Mono',monospace;font-size:13px;outline:none;margin-bottom:16px;transition:border .2s}
-input:focus{border-color:#00ff87}
-.btn{width:100%;padding:12px;background:#00ff87;border:none;border-radius:8px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:opacity .2s}
-.btn:hover{opacity:.85}
-.err{background:#ff475715;border:1px solid #ff4757;border-radius:6px;color:#ff4757;padding:11px 14px;font-size:14px;margin-bottom:16px;font-family:'Syne',sans-serif}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:#000}::-webkit-scrollbar-thumb{background:#00e67640;border-radius:10px}::-webkit-scrollbar-thumb:hover{background:#00e676}
+body{background:#000;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow:hidden}
+.card{background:#0a0a0a;border:1px solid #1a1a1a;border-radius:16px;padding:36px 32px;width:360px;position:relative;z-index:1;box-shadow:0 0 40px #00e67610,0 8px 32px #00000090}
+.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#00e676;margin-bottom:4px;text-align:center;letter-spacing:-0.5px;text-shadow:0 0 20px #00e67440}
+.sub{color:#4a4a4a;font-size:11px;letter-spacing:3px;text-transform:uppercase;margin-bottom:22px;text-align:center}
+.badge{display:block;background:#00e67610;border:1px solid #00e67630;color:#00e676;font-size:12px;letter-spacing:1px;text-transform:uppercase;padding:4px 14px;border-radius:20px;margin-bottom:18px;text-align:center;font-family:'Syne',sans-serif;font-weight:700}
+label{display:block;font-size:11px;letter-spacing:2px;color:#5a5a5a;text-transform:uppercase;margin-bottom:6px}
+input{width:100%;padding:10px 13px;background:#000;border:1px solid #1a1a1a;border-radius:7px;color:#c8cad8;font-family:'Space Mono',monospace;font-size:13px;outline:none;margin-bottom:14px;transition:border-color .18s}
+input:focus{border-color:#00e676;box-shadow:0 0 0 2px #00e67615}
+.btn{width:100%;padding:11px;background:#00e676;border:none;border-radius:7px;color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:opacity .2s,box-shadow .2s}
+.btn:hover{opacity:.9;box-shadow:0 4px 16px #00e67640}
+.err{background:#f0506012;border:1px solid #f0506035;border-radius:6px;color:#f05060;padding:11px 14px;font-size:13px;margin-bottom:14px;font-family:'Syne',sans-serif}
 </style></head><body>
 <div class="card">
   <div class="logo">⚡ ZVM</div>
@@ -3888,6 +3897,99 @@ async function runInternalSecurityAudit() {
     name:   'Telemetria de alertas ativa',
     pass:   true,
     detail: `${securityAlerts.length} alerta(s) registrado(s) desde o boot`,
+  });
+
+  // ── BLOCO 6: CORS / Route Leakage ───────────────────────────────────────
+  // 6a. Admin route com Origin externo: deve retornar Access-Control-Allow-Origin: null
+  const rCorsAdmin = await _probe(R_ADMIN + '/login', {
+    method: 'GET',
+    headers: { 'Origin': 'https://evil.example.com' },
+  });
+  const corsAdminHdr = rCorsAdmin.headers['access-control-allow-origin'] || '';
+  results.push({
+    name:   'CORS — rota admin bloqueia Origin externo',
+    pass:   corsAdminHdr === 'null' || corsAdminHdr === '',
+    detail: `Access-Control-Allow-Origin: "${corsAdminHdr}" para Origin: evil.example.com`,
+  });
+
+  // 6b. Rota /admin sem slug (sem APP_SECRET ativo) não deve existir quando APP_SECRET está presente
+  const plainAdminLeak = await _probe('/admin');
+  results.push({
+    name:   'Rota /admin sem slug inacessível (APP_SECRET)',
+    pass:   APP_SECRET ? plainAdminLeak.status === 404 : true,
+    detail: APP_SECRET
+      ? `HTTP ${plainAdminLeak.status} (esperado 404)`
+      : 'APP_SECRET ausente — slug HMAC desativado (risco)',
+  });
+
+  // 6c. Rota /mod sem slug
+  const plainModLeak = await _probe('/mod');
+  results.push({
+    name:   'Rota /mod sem slug inacessível (APP_SECRET)',
+    pass:   APP_SECRET ? plainModLeak.status === 404 : true,
+    detail: APP_SECRET
+      ? `HTTP ${plainModLeak.status} (esperado 404)`
+      : 'APP_SECRET ausente — slug HMAC desativado (risco)',
+  });
+
+  // ── BLOCO 7: Hardening de Cookies de Sessão ─────────────────────────────
+  // Tenta login com credenciais erradas para obter o cabeçalho Set-Cookie
+  const rLoginProbe = await _probe(R_ADMIN + '/login', {
+    method: 'POST',
+    body:   { user: '__pentest__', pass: '__pentest__', totp: '000000' },
+  });
+  const setCookie = rLoginProbe.headers['set-cookie'];
+  let cookieRaw = '';
+  if (Array.isArray(setCookie)) cookieRaw = setCookie.join('; ');
+  else if (typeof setCookie === 'string') cookieRaw = setCookie;
+  const hasHttpOnly  = /httponly/i.test(cookieRaw);
+  const hasSecure    = /;\s*secure/i.test(cookieRaw);
+  const hasSameSite  = /samesite\s*=\s*strict/i.test(cookieRaw);
+
+  results.push({
+    name:   'Cookie sessão — atributo HttpOnly',
+    pass:   hasHttpOnly || cookieRaw === '',
+    detail: cookieRaw
+      ? (hasHttpOnly ? 'HttpOnly presente' : 'AUSENTE — cookie acessível via JS (risco XSS)')
+      : 'Nenhum Set-Cookie na resposta de login (normal em tentativa inválida)',
+  });
+  results.push({
+    name:   'Cookie sessão — atributo Secure',
+    pass:   hasSecure || cookieRaw === '',
+    detail: cookieRaw
+      ? (hasSecure ? 'Secure presente' : 'AUSENTE — cookie trafega em HTTP simples')
+      : 'Nenhum Set-Cookie na resposta de login',
+  });
+  results.push({
+    name:   'Cookie sessão — SameSite=Strict',
+    pass:   hasSameSite || cookieRaw === '',
+    detail: cookieRaw
+      ? (hasSameSite ? 'SameSite=Strict presente' : 'AUSENTE — risco de CSRF via cross-site request')
+      : 'Nenhum Set-Cookie na resposta de login',
+  });
+
+  // ── BLOCO 8: Proteção contra remoção em massa no MongoDB ─────────────────
+  // DELETE /api/keys/batch com codes:[] deve retornar 400, nunca deletar tudo
+  const rBatchEmpty = await _probe(R_ADMIN + '/api/keys/batch', {
+    method: 'DELETE',
+    headers: { 'Cookie': '__pentest__=1' },
+    body:   { codes: [] },
+  });
+  results.push({
+    name:   'DELETE batch com codes:[] retorna 400 (não deleta tudo)',
+    pass:   rBatchEmpty.status === 400 || rBatchEmpty.status === 401,
+    detail: `HTTP ${rBatchEmpty.status} (esperado 400 sem auth, ou 400 com body vazio)`,
+  });
+
+  // DELETE /api/keys/batch sem body deve retornar 400 ou 401
+  const rBatchNobody = await _probe(R_ADMIN + '/api/keys/batch', {
+    method: 'DELETE',
+    headers: { 'Cookie': '__pentest__=1' },
+  });
+  results.push({
+    name:   'DELETE batch sem body retorna 400/401 (guard)',
+    pass:   rBatchNobody.status === 400 || rBatchNobody.status === 401,
+    detail: `HTTP ${rBatchNobody.status}`,
   });
 
   return { ok: true, results, ts: new Date().toISOString() };
