@@ -2007,7 +2007,7 @@ function buildKeysHtml() {
 
     return `
 <tr data-code="${escHtml(code)}" data-expires-at="${escHtml(k.expiresAt || '')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-lastused="${escHtml(k.lastUsed||'')}"` + rowStyle + `>
-  <td style="width:36px;padding:8px 6px"><input type="checkbox" class="key-cb" data-code="${escHtml(code)}" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)"></td>
+  <td style="width:34px;padding:7px 6px"><input type="checkbox" class="key-cb" data-code="${escHtml(code)}" style="width:13px;height:13px;cursor:pointer;accent-color:var(--g)"></td>
   <td><span class="kc">${escHtml(code)}</span></td>
   <td>${escHtml(k.label)}${zsOn?'<span title="ZapSaver ativo" style="color:#4f8ef7;font-size:13px;margin-left:4px">💾</span>':''}</td>
   <td>${renderKeyStatusBadge(k)}</td>
@@ -2080,120 +2080,155 @@ function renderAdminDashboard() {
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --green:#00ff66;--dark:#060608;--card:#0d0d16;--card2:#111119;
-  --border:#1a1a2c;--border2:#232336;--text:#e8e8f4;--muted:#545470;
-  --red:#ff3a4a;--yellow:#ffd32a;--orange:#ff8600;--blue:#4f8ef7;--purple:#9b59b6;
-  --radius:10px;--radius-sm:6px;
-  --glow-green:0 0 18px #00ff6640,0 0 40px #00ff6620;
-  --glow-green-sm:0 0 10px #00ff6650;
+  --g:#00d97e;--g-dim:#00b368;--g-bg:#00d97e0d;--g-brd:#00d97e28;
+  --bg:#0b0d11;--s0:#0f1117;--s1:#131720;--s2:#181c27;--s3:#1e2232;
+  --brd:#1e2235;--brd2:#272c40;
+  --tx:#c6c8d8;--tx2:#8284a0;--tx3:#484a5f;
+  --red:#f05060;--red-bg:#f0506010;--red-brd:#f0506030;
+  --yellow:#f0b429;--yel-bg:#f0b42910;--yel-brd:#f0b42930;
+  --orange:#f97316;--org-bg:#f9731610;--org-brd:#f9731630;
+  --blue:#5b8cf7;--purple:#a78bfa;
+  --r:8px;--r-sm:5px;--r-lg:12px;
+  --hdr:52px;
+  --sidebar-w:48px;--sidebar-open:178px;
+  --shadow:0 1px 3px #00000030,0 4px 12px #00000025;
+  --shadow-lg:0 8px 32px #00000060;
 }
-body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
-header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040}
-.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
-main{position:relative;z-index:1}
-.hright{display:flex;align-items:center;gap:10px}
-a.out{color:var(--muted);font-size:13px;text-decoration:none;padding:6px 14px;border:1px solid var(--border2);border-radius:var(--radius-sm);transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
-a.out:hover{color:var(--red);border-color:var(--red)}
-main{padding:22px 24px;max-width:1800px;margin:0 auto}
-.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px}
-.sc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;position:relative;overflow:hidden;transition:border-color .2s,transform .15s;cursor:default}
-.sc:hover{border-color:var(--border2);transform:translateY(-1px)}
-.sc.warn-card{border-color:#ff860050;background:#ff860008}
-.sc.danger-card{border-color:#ff475750;background:#ff475708}
-.sc-icon{position:absolute;right:14px;top:14px;font-size:22px;opacity:.15}
-.sc .n{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:var(--green);line-height:1.1;text-shadow:var(--glow-green-sm)}
-.sc.warn-card .n{color:var(--orange)}
-.sc.danger-card .n{color:var(--red)}
-.sc .l{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.3px;margin-top:5px;font-family:'Syne',sans-serif}
-/* Search */
-.search-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 16px;background:var(--card2);border-bottom:1px solid var(--border)}
-.search-bar input{padding:7px 12px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:12px;outline:none;flex:1;min-width:160px;transition:border .18s}
-.search-bar input:focus{border-color:var(--green)}
-.search-bar select{padding:6px 9px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Syne',sans-serif;font-size:12px;outline:none;cursor:pointer;min-width:170px}
-.sec{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:16px;overflow:hidden}
-.sh{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--card2);flex-wrap:wrap;gap:10px}
-.st{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:var(--green);display:flex;align-items:center;gap:6px}
-.gen-form{display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap}
-.gen-form input{padding:6px 9px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Syne',sans-serif;font-size:12px;outline:none;transition:border .18s}
-.gen-form input:focus{border-color:var(--green);background:#0a0a14}
-.gen-form input::placeholder{color:var(--muted)}
-.fi-name{flex:1;min-width:130px;max-width:170px}
-.fi-group{display:flex;gap:5px;align-items:flex-end}
-.fi-col{display:flex;flex-direction:column;gap:3px}
-.fi-lbl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;padding-left:2px;font-family:'Syne',sans-serif}
-.fi-num{width:56px;text-align:center}
-.fi-sep{width:1px;height:28px;background:var(--border2);margin:0 3px;flex-shrink:0;align-self:flex-end;margin-bottom:2px}
-.btn{padding:7px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;transition:all .18s;white-space:nowrap;letter-spacing:.3px}
-.bp{background:var(--green);color:#000;box-shadow:0 0 14px #00ff6650,0 2px 8px #00000060}
-.bp:hover{box-shadow:var(--glow-green);transform:translateY(-1px)}
-.bw{background:#ffd32a12;color:var(--yellow);border:1px solid #ffd32a35}
-.br{background:#ff475712;color:var(--red);border:1px solid #ff475735}
-.bcsv{background:#4f8ef712;color:var(--blue);border:1px solid #4f8ef735}
-.bs{padding:4px 9px;border:none;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;margin-right:2px;transition:all .15s;white-space:nowrap}
-.bs:hover{opacity:1;transform:translateY(-1px)}
-.bg{background:#00ff8712;color:var(--green);border:1px solid #00ff8730}
-.bg:hover{background:#00ff8722;border-color:#00ff8760}
-.bd{background:#ff475712;color:var(--red);border:1px solid #ff475730}
-.bd:hover{background:#ff475722;border-color:#ff475760}
-.bsusp{background:#ff475712;color:var(--red);border:1px solid #ff475730}
-.ov{overflow-x:auto}
-table{width:100%;border-collapse:collapse}
-th{padding:9px 10px;text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap;background:var(--card2);cursor:pointer;user-select:none;font-family:'Syne',sans-serif}
-th:hover{color:var(--text)}
-th.asc::after{content:' ▲';color:var(--green);font-size:12px}
-th.desc::after{content:' ▼';color:var(--green);font-size:12px}
-td{padding:8px 10px;font-size:14px;border-bottom:1px solid #14141f;vertical-align:middle}
-tr:last-child td{border-bottom:none}
-tr:hover td{background:#ffffff03}
-.kc{color:var(--green);font-size:14px;letter-spacing:.3px;text-shadow:var(--glow-green-sm)}
-.badge{padding:3px 8px;border-radius:3px;font-size:13px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;font-family:'Syne',sans-serif}
-.on{background:#00ff8718;color:var(--green);border:1px solid #00ff8730}
-.off{background:#ff475718;color:var(--red);border:1px solid #ff475730}
-.re{background:#4f8ef718;color:var(--blue)}
-.vr{background:#9b59b618;color:var(--purple)}
-.warn{background:#ffd32a18;color:var(--yellow)}
-.wl{background:#ff8c0018;color:#ff8c00}
-.empty{text-align:center;color:var(--muted);padding:40px!important;font-size:14px;font-family:'Syne',sans-serif}
-.toast{position:fixed;bottom:20px;right:20px;padding:11px 18px;border-radius:var(--radius);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;display:none;z-index:999999;box-shadow:0 6px 30px #00000070;max-width:380px;line-height:1.4}
-.note-cell{cursor:pointer;max-width:130px}
-.note-cell:hover .note-preview{color:var(--green)}
-.note-preview{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:120px;font-family:'Syne',sans-serif}
-.modal-bg{display:none;position:fixed;inset:0;background:#00000090;z-index:99999;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
-.modal-bg.open{display:flex}
-.modal{background:var(--card);border:1px solid var(--border2);border-radius:12px;padding:22px;width:340px;max-width:95vw;box-shadow:0 20px 60px #00000090;max-height:90vh;overflow-y:auto}
-.modal h3{font-family:'Syne',sans-serif;font-size:13px;margin-bottom:11px;color:var(--green)}
-.modal textarea,.modal input[type=text],.modal input[type=number]{width:100%;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Syne',sans-serif;font-size:13px;padding:9px;outline:none;transition:border .2s}
-.modal textarea{resize:vertical;min-height:80px}
-.modal textarea:focus,.modal input:focus{border-color:var(--green)}
-.modal-actions{display:flex;gap:8px;margin-top:11px;justify-content:flex-end}
-.sc.expired-card{border-color:#ff475740;background:#ff475706}
-.sc.expired-card .n{color:var(--red)}
-.alert-strip{background:#ff860010;border:1px solid #ff860035;border-radius:var(--radius);padding:11px 16px;margin-bottom:16px;align-items:center;gap:10px;font-size:13px;color:#ff8600;font-family:'Syne',sans-serif;flex-wrap:wrap}
-.hdr-meta{font-size:11px;color:var(--muted);font-family:'Syne',sans-serif;margin-right:6px}
-.acts{display:flex;flex-wrap:wrap;gap:3px;max-width:240px}
-.filter-count{font-size:11px;color:var(--muted);font-family:'Syne',sans-serif;padding:0 16px 8px}
-/* Hover sidebar */
-.admin-wrap{display:flex;min-height:calc(100vh - 57px);align-items:flex-start}
-.admin-content{flex:1;min-width:0;padding:22px 24px}
-.rsidebar{width:44px;flex-shrink:0;background:var(--card);border-right:1px solid var(--border);position:sticky;top:57px;height:calc(100vh - 57px);display:flex;flex-direction:column;overflow:hidden;transition:width .22s cubic-bezier(.4,0,.2,1);z-index:40}
-.rsidebar:hover{width:160px}
-.rsb-title{font-family:'Syne',sans-serif;font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;padding:14px 12px 8px;border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden;opacity:0;transition:opacity .15s}
+/* ── Reset & Base ── */
+body{background:var(--bg);color:var(--tx);font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;font-size:13px;line-height:1.5;min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+button{font-family:inherit}
+/* ── Header ── */
+header{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:var(--hdr);border-bottom:1px solid var(--brd);background:var(--s0);position:sticky;top:0;z-index:50;box-shadow:0 1px 0 var(--brd),0 2px 12px #00000030}
+.logo{font-size:15px;font-weight:700;color:var(--g);display:flex;align-items:center;gap:7px;letter-spacing:-.2px}
+.logo-dot{width:7px;height:7px;border-radius:50%;background:var(--g);box-shadow:0 0 8px var(--g)}
+.logo-ver{font-size:11px;color:var(--tx3);font-weight:400;margin-left:2px}
+.hright{display:flex;align-items:center;gap:8px}
+.hdr-meta{font-size:11px;color:var(--tx3);margin-right:4px}
+a.out{color:var(--tx2);font-size:12px;padding:5px 12px;border:1px solid var(--brd2);border-radius:var(--r-sm);transition:all .2s}
+a.out:hover{color:var(--red);border-color:var(--red-brd)}
+/* ── Layout shell ── */
+.admin-wrap{display:flex;min-height:calc(100vh - var(--hdr));align-items:flex-start}
+.admin-content{flex:1;min-width:0;padding:18px 20px;max-width:1900px}
+/* ── Sidebar ── */
+.rsidebar{width:var(--sidebar-w);flex-shrink:0;background:var(--s0);border-right:1px solid var(--brd);position:sticky;top:var(--hdr);height:calc(100vh - var(--hdr));display:flex;flex-direction:column;overflow:hidden;transition:width .2s cubic-bezier(.4,0,.2,1);z-index:40}
+.rsidebar:hover{width:var(--sidebar-open)}
+.rsb-title{font-size:9px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:1.4px;padding:14px 14px 8px;border-bottom:1px solid var(--brd);white-space:nowrap;opacity:0;transition:opacity .15s}
 .rsidebar:hover .rsb-title{opacity:1}
-.rtab{display:flex;align-items:center;gap:10px;width:100%;padding:13px 12px;background:transparent;border:none;border-left:3px solid transparent;color:var(--muted);font-family:'Syne',sans-serif;font-size:11px;font-weight:700;text-align:left;cursor:pointer;transition:background .15s,color .15s,border-color .15s;white-space:nowrap;overflow:hidden}
-.rtab:hover{background:#00ff8708;color:var(--text);border-left-color:#00ff8730}
-.rtab.active{background:#00ff6615;color:var(--green);border-left-color:var(--green);box-shadow:inset 3px 0 12px #00ff6625}
-.rtab-icon{font-size:15px;flex-shrink:0;line-height:1}
-.rtab-label{opacity:0;transition:opacity .15s;font-size:11px}
+.rtab{display:flex;align-items:center;gap:11px;width:100%;padding:11px 14px;background:transparent;border:none;border-left:2px solid transparent;color:var(--tx3);font-size:12px;font-weight:600;text-align:left;cursor:pointer;transition:all .15s;white-space:nowrap;overflow:hidden}
+.rtab:hover{background:var(--g-bg);color:var(--tx);border-left-color:var(--g-brd)}
+.rtab.active{background:var(--g-bg);color:var(--g);border-left-color:var(--g)}
+.rtab-icon{font-size:14px;flex-shrink:0;line-height:1;width:16px;text-align:center}
+.rtab-label{opacity:0;transition:opacity .12s;font-size:12px}
 .rsidebar:hover .rtab-label{opacity:1}
 .sec-panel{display:none}
 .sec-panel.active{display:block}
+/* ── Alert strip ── */
+.alert-strip{display:flex;background:var(--org-bg);border:1px solid var(--org-brd);border-radius:var(--r);padding:9px 14px;margin-bottom:14px;align-items:center;gap:8px;font-size:12px;color:var(--orange);flex-wrap:wrap}
+/* ── Stats grid ── */
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px}
+.sc{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);padding:14px 16px;position:relative;overflow:hidden;transition:border-color .18s,box-shadow .18s;cursor:default}
+.sc:hover{border-color:var(--brd2);box-shadow:var(--shadow)}
+.sc.warn-card{border-color:var(--yel-brd);background:var(--yel-bg)}
+.sc.expired-card{border-color:var(--red-brd);background:var(--red-bg)}
+.sc-icon{position:absolute;right:12px;top:12px;font-size:18px;opacity:.12}
+.sc .n{font-size:22px;font-weight:700;color:var(--g);line-height:1.15;font-variant-numeric:tabular-nums}
+.sc.warn-card .n{color:var(--yellow)}
+.sc.expired-card .n{color:var(--red)}
+.sc .l{color:var(--tx3);font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.5px;margin-top:4px}
+/* ── Section card ── */
+.sec{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);margin-bottom:14px;overflow:hidden}
+.sh{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid var(--brd);background:var(--s2);flex-wrap:wrap;gap:8px}
+.st{font-size:13px;font-weight:600;color:var(--tx);display:flex;align-items:center;gap:6px}
+.st-accent{color:var(--g)}
+/* ── Generate key form ── */
+.gen-form{display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap}
+.gen-form input{padding:5px 8px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;transition:border-color .18s}
+.gen-form input:focus{border-color:var(--g)}
+.gen-form input::placeholder{color:var(--tx3)}
+.fi-name{flex:1;min-width:130px;max-width:170px}
+.fi-group{display:flex;gap:4px;align-items:flex-end}
+.fi-col{display:flex;flex-direction:column;gap:2px}
+.fi-lbl{font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.4px;padding-left:2px}
+.fi-num{width:52px;text-align:center}
+.fi-sep{width:1px;height:24px;background:var(--brd2);margin:0 2px;flex-shrink:0;align-self:flex-end;margin-bottom:2px}
+/* ── Search bar ── */
+.search-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:9px 16px;background:var(--s2);border-bottom:1px solid var(--brd)}
+.search-bar input{padding:6px 10px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;flex:1;min-width:160px;transition:border-color .18s}
+.search-bar input:focus{border-color:var(--g)}
+.search-bar select{padding:5px 8px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;cursor:pointer;min-width:160px;transition:border-color .18s}
+.search-bar select:focus{border-color:var(--g)}
+.filter-count{font-size:11px;color:var(--tx3);padding:5px 16px 6px}
+/* ── Buttons ── */
+.btn{padding:6px 12px;border:none;border-radius:var(--r-sm);cursor:pointer;font-weight:600;font-size:12px;transition:all .18s;white-space:nowrap;letter-spacing:.1px}
+.bp{background:var(--g);color:#000814}
+.bp:hover{background:var(--g-dim);transform:translateY(-1px);box-shadow:0 2px 8px #00d97e35}
+.bw{background:var(--yel-bg);color:var(--yellow);border:1px solid var(--yel-brd)}
+.bw:hover{background:#f0b42918}
+.br{background:var(--red-bg);color:var(--red);border:1px solid var(--red-brd)}
+.br:hover{background:#f0506018}
+.bcsv{background:#5b8cf710;color:var(--blue);border:1px solid #5b8cf728}
+.bcsv:hover{background:#5b8cf718}
+/* ── Row action buttons ── */
+.bs{padding:3px 8px;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600;margin-right:2px;transition:all .15s;white-space:nowrap;letter-spacing:.1px}
+.bs:hover{transform:translateY(-1px)}
+.bg{background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd)}
+.bg:hover{background:#00d97e18;border-color:#00d97e50}
+.bd{background:var(--red-bg);color:var(--red);border:1px solid var(--red-brd)}
+.bd:hover{background:#f0506018;border-color:#f0506060}
+.bsusp{background:var(--red-bg);color:var(--red);border:1px solid var(--red-brd)}
+/* ── Table ── */
+.ov{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+thead{position:sticky;top:var(--hdr);z-index:10}
+th{padding:8px 10px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--tx3);border-bottom:1px solid var(--brd);white-space:nowrap;background:var(--s2);cursor:pointer;user-select:none;transition:color .15s}
+th:hover{color:var(--tx)}
+th.asc::after{content:' ▲';color:var(--g);font-size:10px}
+th.desc::after{content:' ▼';color:var(--g);font-size:10px}
+td{padding:7px 10px;font-size:13px;border-bottom:1px solid var(--brd);vertical-align:middle;color:var(--tx)}
+tr:last-child td{border-bottom:none}
+tr:nth-child(even) td{background:#ffffff03}
+tr:hover td{background:#ffffff05}
+.kc{color:var(--g);font-size:12px;letter-spacing:.2px;font-family:'JetBrains Mono','Fira Code','Cascadia Code',monospace}
+/* ── Badges ── */
+.badge{display:inline-block;padding:2px 7px;border-radius:3px;font-size:11px;font-weight:600;letter-spacing:.4px;text-transform:uppercase}
+.on{background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd)}
+.off{background:var(--red-bg);color:var(--red);border:1px solid var(--red-brd)}
+.re{background:#5b8cf710;color:var(--blue);border:1px solid #5b8cf728}
+.vr{background:#a78bfa10;color:var(--purple);border:1px solid #a78bfa28}
+.warn{background:var(--yel-bg);color:var(--yellow);border:1px solid var(--yel-brd)}
+.wl{background:var(--org-bg);color:var(--orange);border:1px solid var(--org-brd)}
+/* ── Misc ── */
+.empty{text-align:center;color:var(--tx3);padding:36px!important;font-size:13px}
+.acts{display:flex;flex-wrap:wrap;gap:3px;max-width:260px}
+.note-cell{cursor:pointer;max-width:130px}
+.note-cell:hover .note-preview{color:var(--g)}
+.note-preview{color:var(--tx3);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:120px}
+/* ── Toast ── */
+.toast{position:fixed;bottom:20px;right:20px;padding:10px 16px;border-radius:var(--r);font-weight:600;font-size:12px;display:none;z-index:999999;box-shadow:var(--shadow-lg);max-width:360px;line-height:1.4;border:1px solid transparent}
+/* ── Modal ── */
+.modal-bg{display:none;position:fixed;inset:0;background:#00000080;z-index:99999;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.modal-bg.open{display:flex}
+.modal{background:var(--s1);border:1px solid var(--brd2);border-radius:var(--r-lg);padding:20px;width:340px;max-width:95vw;box-shadow:var(--shadow-lg);max-height:90vh;overflow-y:auto}
+.modal h3{font-size:14px;font-weight:600;margin-bottom:12px;color:var(--tx)}
+.modal-lbl{font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.modal textarea,.modal input[type=text],.modal input[type=number]{width:100%;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:13px;padding:8px 10px;outline:none;transition:border-color .18s}
+.modal textarea{resize:vertical;min-height:76px;font-family:inherit}
+.modal textarea:focus,.modal input:focus{border-color:var(--g)}
+.modal-actions{display:flex;gap:8px;margin-top:12px;justify-content:flex-end}
+.modal-cancel{background:var(--s2);color:var(--tx2);border:1px solid var(--brd2)}
+.modal-cancel:hover{color:var(--tx)}
+/* ── Responsive ── */
 @media(max-width:1100px){.stats{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:750px){.stats{grid-template-columns:1fr 1fr};.admin-content{padding:14px 12px};.acts{max-width:160px};.rsidebar{display:none}}
+@media(max-width:750px){.stats{grid-template-columns:1fr 1fr};.admin-content{padding:12px};.acts{max-width:180px};.rsidebar{display:none}}
 </style>
 </head>
 <body>
 <header>
-  <div class="logo">⚡ ZVM <span style="font-size:13px;color:var(--muted);font-weight:400">Admin v10</span></div>
+  <div class="logo">
+    <span class="logo-dot"></span>ZVM
+    <span class="logo-ver">Admin v10</span>
+  </div>
   <div class="hright">
     <span class="hdr-meta" id="last-refresh">—</span>
     <button class="btn bw" onclick="doRefresh(true)">↻ Atualizar</button>
@@ -2203,28 +2238,31 @@ tr:hover td{background:#ffffff03}
 </header>
 <div class="admin-wrap">
 <nav class="rsidebar" id="rsidebar">
-  <div class="rsb-title">Navegação</div>
+  <div class="rsb-title">Menu</div>
   <button class="rtab active" data-tab="keys" onclick="switchTab('keys')"><span class="rtab-icon">🔑</span><span class="rtab-label">Chaves</span></button>
   <button class="rtab" data-tab="logs" onclick="switchTab('logs')"><span class="rtab-icon">📋</span><span class="rtab-label">Logs</span></button>
   <button class="rtab" data-tab="audit" onclick="switchTab('audit')"><span class="rtab-icon">🛡</span><span class="rtab-label">Auditoria</span></button>
 </nav>
 <div class="admin-content">
-  <div class="alert-strip" id="urgent-alert">
-    <span>⚠️</span>
+
+  <div class="alert-strip" id="urgent-alert" style="${(expiredCount>0||expiringSoon>0)?'':'display:none'}">
+    <span>⚠</span>
     <span id="urgent-alert-text">${expiredCount>0?`<strong>${expiredCount} expirada(s)</strong>`:''}${expiredCount>0&&expiringSoon>0?' · ':''}${expiringSoon>0?`<strong>${expiringSoon} expirando em ${EXPIRY_WARN_HOURS}h</strong>`:''}</span>
   </div>
+
   <div class="stats">
     <div class="sc"><div class="sc-icon">🔑</div><div class="n" id="s-total">${stats.totalKeys}</div><div class="l">Total</div></div>
     <div class="sc"><div class="sc-icon">✅</div><div class="n" id="s-active">${stats.activeKeys}</div><div class="l">Ativas</div></div>
-    <div class="sc ${expiredCount>0?'expired-card':''}"><div class="sc-icon">⛔</div><div class="n" id="s-expired" style="${expiredCount>0?'color:var(--red)':''}">${expiredCount}</div><div class="l">Expiradas</div></div>
-    <div class="sc ${expiringSoon>0?'warn-card':''}"><div class="sc-icon">⏰</div><div class="n" id="s-warn" style="${expiringSoon>0?'color:var(--orange)':''}">${expiringSoon}</div><div class="l">Expirando (${EXPIRY_WARN_HOURS}h)</div></div>
+    <div class="sc${expiredCount>0?' expired-card':''}"><div class="sc-icon">⛔</div><div class="n" id="s-expired">${expiredCount}</div><div class="l">Expiradas</div></div>
+    <div class="sc${expiringSoon>0?' warn-card':''}"><div class="sc-icon">⏰</div><div class="n" id="s-warn">${expiringSoon}</div><div class="l">Expirando (${EXPIRY_WARN_HOURS}h)</div></div>
     <div class="sc"><div class="sc-icon">📋</div><div class="n" id="s-logs">${stats.totalLogs}</div><div class="l">Logs</div></div>
   </div>
 
+  <!-- ── PAINEL CHAVES ── -->
   <div class="sec-panel active" data-panel="keys">
   <div class="sec">
     <div class="sh">
-      <div class="st">🔑 Chaves de Acesso</div>
+      <div class="st"><span class="st-accent">🔑</span> Chaves de Acesso</div>
       <div class="gen-form">
         <div class="fi-name"><input type="text" id="nlabel" placeholder="Nome do cliente"></div>
         <div class="fi-sep"></div>
@@ -2234,19 +2272,19 @@ tr:hover td{background:#ffffff03}
           <div class="fi-col"><span class="fi-lbl">Min</span><input type="number" id="nmins" class="fi-num" placeholder="0" min="0"></div>
         </div>
         <div class="fi-sep"></div>
-        <div class="fi-col"><span class="fi-lbl">Usos</span><input type="number" id="nuses" class="fi-num" placeholder="3" min="-1" style="width:60px"></div>
-        <div class="fi-col" style="align-items:center;gap:4px"><label style="font-size:12px;color:var(--muted);white-space:nowrap"><input type="checkbox" id="ndeferred" style="margin-right:4px">⏱ Ativar ao 1º uso</label></div>
+        <div class="fi-col"><span class="fi-lbl">Usos</span><input type="number" id="nuses" class="fi-num" placeholder="3" min="-1" style="width:56px"></div>
+        <div class="fi-col" style="justify-content:flex-end;padding-bottom:1px"><label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--tx2);white-space:nowrap;cursor:pointer"><input type="checkbox" id="ndeferred" style="accent-color:var(--g);width:13px;height:13px">⏱ Ativar ao 1º uso</label></div>
         <button class="btn bp" onclick="generateKey()">+ Gerar Chave</button>
       </div>
     </div>
     <div class="search-bar">
-      <input type="text" id="search-input" placeholder="🔍 Buscar por nome, chave, telefone ou IP..." oninput="filterKeys()">
-      <select id="filter-status" onchange="filterKeys()" title="Filtrar por status">
+      <input type="text" id="search-input" placeholder="Buscar por nome, chave, telefone ou IP…" oninput="filterKeys()">
+      <select id="filter-status" onchange="filterKeys()">
         <option value="">Todos os status</option>
-        <option value="ativo">Ativos</option>
-        <option value="expirando">Expirando em breve</option>
+        <option value="ativo">Ativas</option>
+        <option value="expirando">Expirando</option>
         <option value="expirada">Expiradas</option>
-        <option value="bloqueado">Bloqueados</option>
+        <option value="bloqueado">Bloqueadas</option>
         <option value="aguardando">Aguardando 1º uso</option>
       </select>
       <button class="btn br" id="btn-delete-batch" style="display:none" onclick="deleteBatchKeys()">🗑 Excluir Selecionadas (<span id="batch-count">0</span>)</button>
@@ -2255,7 +2293,7 @@ tr:hover td{background:#ffffff03}
     <div class="ov">
       <table>
         <thead><tr>
-          <th style="width:36px;padding:9px 6px"><input type="checkbox" id="master-cb" title="Selecionar todas" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)" onchange="toggleAllCheckboxes(this.checked)"></th>
+          <th style="width:34px;padding:8px 6px"><input type="checkbox" id="master-cb" title="Selecionar todas" style="width:13px;height:13px;cursor:pointer;accent-color:var(--g)" onchange="toggleAllCheckboxes(this.checked)"></th>
           <th onclick="sortKeys('code')">Chave</th>
           <th onclick="sortKeys('label')" id="th-label">Cliente</th>
           <th onclick="sortKeys('status')" id="th-status">Status</th>
@@ -2265,8 +2303,8 @@ tr:hover td{background:#ffffff03}
           <th>Último IP</th>
           <th onclick="sortKeys('lastused')" id="th-lastused">Último Acesso</th>
           <th onclick="sortKeys('created')" id="th-created">Criada em</th>
-          <th>WPP Ver.</th>
-          <th>Notas</th>
+          <th>WPP</th>
+          <th>Nota</th>
           <th>Ações</th>
         </tr></thead>
         <tbody id="kb">${getKeysHtmlCached()}</tbody>
@@ -2275,13 +2313,14 @@ tr:hover td{background:#ffffff03}
   </div>
   </div>
 
+  <!-- ── PAINEL LOGS ── -->
   <div class="sec-panel" data-panel="logs">
   <div class="sec">
     <div class="sh">
-      <div class="st">📋 Log de Acessos <span style="font-size:13px;color:var(--muted);font-weight:400">retidos por ${LOG_RETENTION_DAYS} dias (LGPD)</span></div>
+      <div class="st"><span class="st-accent">📋</span> Log de Acessos <span style="font-size:11px;color:var(--tx3);font-weight:400;margin-left:4px">retenção ${LOG_RETENTION_DAYS}d (LGPD)</span></div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <input type="date" id="logDate" style="padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:13px;outline:none" onchange="filterLog()">
-        <input type="text" id="logSearch" placeholder="Filtrar por chave/IP..." style="padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:13px;outline:none;width:180px" oninput="filterLog()">
+        <input type="date" id="logDate" style="padding:5px 8px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;transition:border-color .18s" onchange="filterLog()">
+        <input type="text" id="logSearch" placeholder="Filtrar por chave ou IP…" style="padding:5px 8px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;width:170px;transition:border-color .18s" oninput="filterLog()">
         <button class="btn bw" onclick="clearFilters()">✕ Limpar</button>
         <button class="btn bw" onclick="doRefresh()">↻ Atualizar</button>
         <button class="btn br" onclick="clearLog()">🗑 Limpar Log</button>
@@ -2289,19 +2328,20 @@ tr:hover td{background:#ffffff03}
     </div>
     <div class="ov">
       <table>
-        <thead><tr><th>Horário</th><th>Chave</th><th>Cliente</th><th>Telefone</th><th>IP</th><th>WPP Version</th><th>Ação</th></tr></thead>
+        <thead><tr><th>Horário</th><th>Chave</th><th>Cliente</th><th>Telefone</th><th>IP</th><th>WPP</th><th>Ação</th></tr></thead>
         <tbody id="lb">${buildLogsHtml()}</tbody>
       </table>
     </div>
   </div>
   </div>
 
+  <!-- ── PAINEL AUDITORIA ── -->
   <div class="sec-panel" data-panel="audit">
   <div class="sec" id="pentest-sec">
     <div class="sh">
       <div>
-        <div class="st">🛡 Auditoria de Segurança</div>
-        <div style="font-size:11px;color:var(--muted);font-family:'Syne',sans-serif;margin-top:3px">Varredura ativa: config hardening · fuzzing de injeção · headers · TLS · telemetria</div>
+        <div class="st"><span class="st-accent">🛡</span> Auditoria de Segurança</div>
+        <div style="font-size:11px;color:var(--tx3);margin-top:2px">Config hardening · fuzzing NoSQL · headers · TLS · telemetria</div>
       </div>
       <button class="btn bw" id="pentest-btn" onclick="runPentest()">▶ Executar Varredura</button>
     </div>
@@ -2313,19 +2353,17 @@ tr:hover td{background:#ffffff03}
           <th>Detalhe</th>
         </tr></thead>
         <tbody id="pentest-tb">
-          <tr><td class="empty" colspan="3" style="padding:22px;text-align:center">
-            Clique em <strong>▶ Executar Varredura</strong> para iniciar a auditoria de segurança.
-          </td></tr>
+          <tr><td class="empty" colspan="3">Clique em <strong>▶ Executar Varredura</strong> para iniciar a auditoria de segurança.</td></tr>
         </tbody>
       </table>
     </div>
   </div>
 
-  <div class="sec" style="margin-top:14px">
+  <div class="sec" style="margin-top:12px">
     <div class="sh">
       <div>
-        <div class="st">🚨 Alertas de Segurança Recentes</div>
-        <div style="font-size:11px;color:var(--muted);font-family:'Syne',sans-serif;margin-top:3px">Logins falhos · Rate limit · Payloads suspeitos · Webhooks inválidos</div>
+        <div class="st"><span class="st-accent">🚨</span> Alertas de Segurança</div>
+        <div style="font-size:11px;color:var(--tx3);margin-top:2px">Logins falhos · Rate limit · Payloads suspeitos · Webhooks inválidos</div>
       </div>
     </div>
     <div class="ov">
@@ -2347,77 +2385,77 @@ tr:hover td{background:#ffffff03}
 </div><!-- /admin-content -->
 </div><!-- /admin-wrap -->
 
-<!-- Modals -->
+<!-- ── Modals ── -->
 <div class="modal-bg" id="renewModal"><div class="modal">
-  <h3>⏱ Adicionar Tempo — <span id="renewKeyLabel"></span></h3>
+  <h3>⏱ Adicionar Tempo — <span id="renewKeyLabel" style="color:var(--g)"></span></h3>
   <input type="hidden" id="renewKeyCode">
   <div style="display:flex;gap:10px;margin-bottom:12px">
-    <div style="flex:1;text-align:center"><div style="font-size:12px;color:var(--muted);text-transform:uppercase;margin-bottom:5px">Dias</div><input type="number" id="renewDays" placeholder="0" min="0" style="width:100%;padding:8px;text-align:center"></div>
-    <div style="flex:1;text-align:center"><div style="font-size:12px;color:var(--muted);text-transform:uppercase;margin-bottom:5px">Horas</div><input type="number" id="renewHours" placeholder="0" min="0" style="width:100%;padding:8px;text-align:center"></div>
-    <div style="flex:1;text-align:center"><div style="font-size:12px;color:var(--muted);text-transform:uppercase;margin-bottom:5px">Min</div><input type="number" id="renewMins" placeholder="0" min="0" style="width:100%;padding:8px;text-align:center"></div>
+    <div style="flex:1;text-align:center"><div class="modal-lbl">Dias</div><input type="number" id="renewDays" placeholder="0" min="0" style="width:100%;padding:7px;text-align:center"></div>
+    <div style="flex:1;text-align:center"><div class="modal-lbl">Horas</div><input type="number" id="renewHours" placeholder="0" min="0" style="width:100%;padding:7px;text-align:center"></div>
+    <div style="flex:1;text-align:center"><div class="modal-lbl">Min</div><input type="number" id="renewMins" placeholder="0" min="0" style="width:100%;padding:7px;text-align:center"></div>
   </div>
-  <div style="font-size:13px;color:var(--muted);margin-bottom:12px;font-family:'Syne',sans-serif" id="renewCurrentExpiry"></div>
+  <div style="font-size:12px;color:var(--tx3);margin-bottom:12px" id="renewCurrentExpiry"></div>
   <div class="modal-actions">
-    <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeRenew()">Cancelar</button>
+    <button class="btn modal-cancel" onclick="closeRenew()">Cancelar</button>
     <button class="btn bp" onclick="saveRenew()">Adicionar Tempo</button>
   </div>
 </div></div>
 
 <div class="modal-bg" id="editUsesModal"><div class="modal">
-  <h3>👥 Limite de Dispositivos — <span id="editUsesLabel"></span></h3>
+  <h3>👥 Limite de Dispositivos — <span id="editUsesLabel" style="color:var(--g)"></span></h3>
   <input type="hidden" id="editUsesCode">
   <div style="margin-bottom:14px">
-    <div style="font-size:12px;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Máx. números simultâneos</div>
-    <input type="number" id="editUsesValue" min="-1" style="width:100%;padding:10px;font-size:16px;text-align:center">
-    <div style="font-size:13px;color:var(--muted);margin-top:8px;font-family:'Syne',sans-serif">Use <strong style="color:var(--green)">-1</strong> para ilimitado</div>
+    <div class="modal-lbl">Máx. números simultâneos</div>
+    <input type="number" id="editUsesValue" min="-1" style="width:100%;padding:9px;font-size:15px;text-align:center;margin-top:6px">
+    <div style="font-size:12px;color:var(--tx3);margin-top:8px">Use <strong style="color:var(--g)">-1</strong> para ilimitado</div>
   </div>
   <div class="modal-actions">
-    <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeEditUses()">Cancelar</button>
+    <button class="btn modal-cancel" onclick="closeEditUses()">Cancelar</button>
     <button class="btn bp" onclick="saveEditUses()">Salvar</button>
   </div>
 </div></div>
 
 <div class="modal-bg" id="renameModal"><div class="modal">
-  <h3>Renomear Chave</h3>
+  <h3>✏ Renomear Chave</h3>
   <input type="hidden" id="renameCode">
   <div style="margin-bottom:14px">
-    <div style="font-size:12px;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Novo nome</div>
-    <input type="text" id="renameValue" maxlength="60" style="width:100%;padding:10px;font-size:14px">
+    <div class="modal-lbl">Novo nome do cliente</div>
+    <input type="text" id="renameValue" maxlength="60" style="width:100%;padding:8px 10px;margin-top:6px">
   </div>
   <div class="modal-actions">
-    <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeRename()">Cancelar</button>
+    <button class="btn modal-cancel" onclick="closeRename()">Cancelar</button>
     <button class="btn bp" onclick="saveRename()">Salvar</button>
   </div>
 </div></div>
 
 <div class="modal-bg" id="phonesModal"><div class="modal">
-  <h3>Números — <span id="phonesLabel"></span></h3>
+  <h3>📱 Números — <span id="phonesLabel" style="color:var(--g)"></span></h3>
   <div id="phonesList" style="margin-bottom:14px;max-height:220px;overflow-y:auto;min-height:40px"></div>
   <div class="modal-actions">
-    <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closePhones()">Fechar</button>
+    <button class="btn modal-cancel" onclick="closePhones()">Fechar</button>
     <button class="btn bd" id="removeAllBtn" onclick="removeAllPhones()">Remover Todos</button>
   </div>
 </div></div>
 
 <div class="modal-bg" id="noteModal"><div class="modal">
-  <h3>📝 Nota — <span id="noteKeyLabel"></span></h3>
+  <h3>📝 Nota — <span id="noteKeyLabel" style="color:var(--g)"></span></h3>
   <input type="hidden" id="noteKeyCode">
-  <textarea id="noteText" placeholder="Ex: Pagou até março, trial gratuito, cliente VIP..."></textarea>
+  <textarea id="noteText" placeholder="Ex: Pagou até março, trial, VIP…"></textarea>
   <div class="modal-actions">
-    <button class="btn" style="background:#1e1e2e;color:var(--muted)" onclick="closeNote()">Cancelar</button>
+    <button class="btn modal-cancel" onclick="closeNote()">Cancelar</button>
     <button class="btn bp" onclick="saveNote()">Salvar Nota</button>
   </div>
 </div></div>
 
 <div class="modal-bg" id="assignModModal"><div class="modal" style="width:400px">
   <h3>👮 Atribuir ao Moderador</h3>
-  <p style="font-size:12px;color:var(--muted);margin-bottom:16px">Selecione o moderador responsável por esta chave. Ela aparecerá no painel do moderador escolhido.</p>
+  <p style="font-size:12px;color:var(--tx3);margin-bottom:14px">Selecione o moderador responsável por esta chave.</p>
   <input type="hidden" id="assignModCode">
-  <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;font-family:'Syne',sans-serif">Chave: <span id="assignModLabel" style="color:var(--text)"></span></div>
-  <div id="modListBtns" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px"></div>
-  <div style="display:flex;gap:8px;margin-top:4px">
-    <button class="btn" style="background:#ff475718;color:var(--red);border:1px solid #ff475730;flex:1" onclick="assignMod(document.getElementById('assignModCode').value,'')">🗑 Remover atribuição</button>
-    <button class="btn" style="background:#1e1e2e;color:var(--muted);flex:0 0 auto" onclick="closeAssignMod()">Cancelar</button>
+  <div style="font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Chave: <span id="assignModLabel" style="color:var(--tx);font-size:11px;font-weight:400;text-transform:none"></span></div>
+  <div id="modListBtns" style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px"></div>
+  <div style="display:flex;gap:8px">
+    <button class="btn bd" style="flex:1" onclick="assignMod(document.getElementById('assignModCode').value,'')">🗑 Remover atribuição</button>
+    <button class="btn modal-cancel" onclick="closeAssignMod()">Cancelar</button>
   </div>
 </div></div>
 
@@ -2429,9 +2467,11 @@ const _MODS=${JSON.stringify(MODS.map(m => m.name))};
 
 function toast(msg,ok=true){
   const t=document.getElementById('toast');
-  t.textContent=msg;t.style.background=ok?'var(--green)':'var(--red)';
-  t.style.color=ok?'#000':'#fff';t.style.display='block';
-  setTimeout(()=>t.style.display='none',3200);
+  t.textContent=msg;
+  if(ok){t.style.background='var(--g-bg)';t.style.color='var(--g)';t.style.borderColor='var(--g-brd)';}
+  else{t.style.background='var(--red-bg)';t.style.color='var(--red)';t.style.borderColor='var(--red-brd)';}
+  t.style.display='block';
+  clearTimeout(t._tid);t._tid=setTimeout(()=>t.style.display='none',3400);
 }
 
 function openAssignModFromEl(el){
