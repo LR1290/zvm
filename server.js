@@ -1,5 +1,6 @@
 'use strict';
 const http   = require('http');
+const https  = require('https');
 const crypto = require('crypto');
 const zlib   = require('zlib');
 const { MongoClient } = require('mongodb');
@@ -92,15 +93,17 @@ async function getMongoDb() {
   try {
     if (!_mongoClient) {
       _mongoClient = new MongoClient(MONGODB_URI, {
-        serverSelectionTimeoutMS: 5000,
-        connectTimeoutMS: 5000,
-        socketTimeoutMS: 5000,
-        maxPoolSize: 5,
-        minPoolSize: 0,
-        maxIdleTimeMS: 30000,
-        tls: true,
+        serverSelectionTimeoutMS: 8000,
+        connectTimeoutMS:         8000,
+        socketTimeoutMS:          30000, // Atlas keepalive; 5 s causava timeouts sob carga
+        maxPoolSize:              10,    // Node 22 lida melhor com mais sockets paralelos
+        minPoolSize:              1,     // mantém 1 socket quente após warm-up
+        maxIdleTimeMS:            60000,
+        waitQueueTimeoutMS:       10000,
+        tls:                      true,
         tlsAllowInvalidCertificates: false,
-        tlsAllowInvalidHostnames: false,
+        tlsAllowInvalidHostnames:    false,
+        compressors:              ['zstd', 'zlib'], // compressão wire nativa do driver 6.x
       });
       await _mongoClient.connect();
       console.log('✅ MongoDB conectado');
@@ -291,7 +294,7 @@ setInterval(() => {
     if (now > new Date(s.expiresAt).getTime()) delete analyticsSessions[k];
 }, 60 * 60 * 1000); // 1h — sessões duram horas, limpeza não precisa ser frequente
 
-async function fireWebhook(event, keyCode, reason) {
+function fireWebhook(event, keyCode, reason) {
   if (!WEBHOOK_URL) return;
   const k = keys[keyCode];
   const payload = {
@@ -302,22 +305,29 @@ async function fireWebhook(event, keyCode, reason) {
     timestamp: new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
   };
   try {
-    const { default: https } = await import(WEBHOOK_URL.startsWith('https') ? 'https' : 'http');
+    const transport = WEBHOOK_URL.startsWith('https') ? https : http;
     const url  = new URL(WEBHOOK_URL);
     const data = JSON.stringify(payload);
-    const req  = https.request({
-      hostname: url.hostname, port: url.port || (WEBHOOK_URL.startsWith('https') ? 443 : 80),
-      path: url.pathname + url.search, method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) }
+    const req  = transport.request({
+      hostname: url.hostname,
+      port:     url.port || (WEBHOOK_URL.startsWith('https') ? 443 : 80),
+      path:     url.pathname + url.search,
+      method:   'POST',
+      headers:  { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
+      timeout:  8000,
     });
     req.on('error', e => console.warn('[WEBHOOK] Erro:', e.message));
+    req.on('timeout', () => { req.destroy(); console.warn('[WEBHOOK] Timeout'); });
     req.write(data); req.end();
   } catch (e) { console.warn('[WEBHOOK] Falha:', e.message); }
 }
 
 function generateCode() {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-  const seg = () => Array.from({length:5}, () => chars[Math.floor(Math.random()*chars.length)]).join('');
+  const seg = () => {
+    const bytes = crypto.randomBytes(5);
+    return Array.from(bytes, b => chars[b % chars.length]).join('');
+  };
   return `zv-${seg()}-${seg()}-${seg()}`;
 }
 function generateToken() { return crypto.randomBytes(32).toString('hex'); }
@@ -959,7 +969,28 @@ async function getPaymentStats() {
   } catch (e) { console.error('[DB] Erro nas stats:', e.message); return null; }
 }
 
-const MAX_BODY_SIZE = 64 * 1024; // 64KB — proteção contra DoS
+const MAX_BODY_SIZE     = 64  * 1024; // 64 KB — API interna (keys/usage)
+const WEBHOOK_BODY_SIZE = 256 * 1024; // 256 KB — webhooks externos (PayT)
+
+// Coleta raw string com hard-limit; retorna null se exceder (req.destroy() encerra conexão)
+function readRawBody(req, maxBytes = MAX_BODY_SIZE) {
+  return new Promise(resolve => {
+    let b = '', size = 0;
+    req.on('data', c => {
+      size += c.length;
+      if (size > maxBytes) { req.destroy(); resolve(null); return; }
+      b += c;
+    });
+    req.on('end',   () => resolve(b));
+    req.on('error', () => resolve(null));
+  });
+}
+
+// Sanitiza IDs/códigos de chave: apenas a-z0-9 e hífen, max 40 chars
+// Impede NoSQL injection via injeção de objeto ($where, $regex, etc.)
+function sanitizeId(s, maxLen = 40) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9\-]/g, '').slice(0, maxLen);
+}
 
 function _safeParse(raw) {
   try {
@@ -996,22 +1027,27 @@ function parseFormBody(req) {
   });
 }
 
+// Opções de compressão: Z_BEST_SPEED (nível 1) minimiza CPU sem sacrificar latência.
+// Resposta zlib já é assíncrona (callback), não bloqueia o event loop.
+const _ZLIB_OPTS = { level: zlib.constants.Z_BEST_SPEED };
+
+function _gzipSend(res, buf, status) {
+  zlib.gzip(buf, _ZLIB_OPTS, (err, compressed) => {
+    if (err || res.destroyed) { res.writeHead(status); res.end(buf); return; }
+    res.setHeader('Content-Encoding', 'gzip');
+    res.setHeader('Content-Length', compressed.length);
+    res.writeHead(status);
+    res.end(compressed);
+  });
+}
+
 function sendJson(res, data, status = 200) {
   const body = JSON.stringify(data);
-  const buf = Buffer.from(body, 'utf8');
+  const buf  = Buffer.from(body, 'utf8');
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Connection', 'keep-alive');
   const accept = String(res.req?.headers?.['accept-encoding'] || '');
-  if (buf.length > 2048 && accept.includes('gzip')) {
-    zlib.gzip(buf, (err, compressed) => {
-      if (err) { res.writeHead(status); res.end(buf); return; }
-      res.setHeader('Content-Encoding', 'gzip');
-      res.setHeader('Content-Length', compressed.length);
-      res.writeHead(status);
-      res.end(compressed);
-    });
-    return;
-  }
+  if (buf.length > 2048 && accept.includes('gzip')) { _gzipSend(res, buf, status); return; }
   res.writeHead(status);
   res.end(buf);
 }
@@ -1021,21 +1057,10 @@ function sendHtml(res, html, status = 200) {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Connection', 'keep-alive');
-  if (buf.length > 4096) {
-    zlib.gzip(buf, (err, compressed) => {
-      if (err) { res.writeHead(status); res.end(buf); return; }
-      res.setHeader('Content-Encoding', 'gzip');
-      res.setHeader('Content-Length', compressed.length);
-      res.writeHead(status);
-      res.end(compressed);
-    });
-  } else {
-    res.writeHead(status);
-    res.end(buf);
-  }
+  if (buf.length > 4096) { _gzipSend(res, buf, status); return; }
+  res.writeHead(status);
+  res.end(buf);
 }
-
-// sendHtml com gzip declarado acima
 
 function escHtml(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/`/g,'&#96;');
@@ -1886,9 +1911,19 @@ function formatValidityCell(k) {
     `<br><span style="font-size:12px;color:${warnSoon ? 'var(--orange)' : 'var(--green)'}">até ${expStr}</span>`;
 }
 
+// Limita renderização síncrona para proteger o event loop sob grandes volumes.
+// O filtro client-side (filterKeys) opera sobre os data-attributes já presentes no DOM.
+const RENDER_MAX_KEYS = 300;
+
 function buildKeysHtml() {
-  const entries = Object.entries(keys);
+  let entries = Object.entries(keys);
   if (!entries.length) return `<tr><td colspan="12" class="empty">Nenhuma chave cadastrada</td></tr>`;
+
+  // Ordena por createdAt desc para exibir as mais recentes primeiro quando truncado
+  if (entries.length > RENDER_MAX_KEYS) {
+    entries.sort((a, b) => (b[1].createdAt || '') > (a[1].createdAt || '') ? 1 : -1);
+    entries = entries.slice(0, RENDER_MAX_KEYS);
+  }
 
   const logByKey = new Map();
   for (const l of logs) {
@@ -1897,7 +1932,11 @@ function buildKeysHtml() {
     logByKey.get(l.keyCode).push(l);
   }
 
-  return entries.map(([code, k]) => {
+  const truncWarning = Object.keys(keys).length > RENDER_MAX_KEYS
+    ? `<tr><td colspan="12" style="text-align:center;padding:8px;font-size:11px;color:var(--orange);font-family:'Syne',sans-serif">⚠ Exibindo ${RENDER_MAX_KEYS} de ${Object.keys(keys).length} chaves (mais recentes). Use a busca para localizar outras.</td></tr>`
+    : '';
+
+  return truncWarning + entries.map(([code, k]) => {
     const expired  = isKeyExpired(k);
     const warnSoon = isKeyExpiringSoon(k);
     const keyLogs  = logByKey.get(code) || [];
@@ -3458,7 +3497,7 @@ async function handleRequest(req, res) {
     }
     const form     = await parseFormBody(req);
     const mode     = (form.get('mode') || '').trim().toLowerCase();
-    const keyCode  = (form.get('key') || '').trim().toLowerCase().slice(0, 32);
+    const keyCode  = sanitizeId(form.get('key'), 32);
     const callback = form.get('callback') || '';
 
     if (mode === 'free') {
@@ -3506,7 +3545,7 @@ async function handleRequest(req, res) {
       return;
     }
     const body = await parseBody(req);
-    const keyCode    = (body.authKey || '').toLowerCase().slice(0, 32);
+    const keyCode    = sanitizeId(body.authKey, 32);
     const phone      = body.phoneNumber || '-';
     const wppVersion = body.wppVersion  || '-';
     const deviceId   = body.deviceId    || '';
@@ -3593,12 +3632,8 @@ async function handleRequest(req, res) {
     if (!checkRateLimit(ip, 'check_status', 60, 60000)) {
       sendJson(res, { active: true }); return; // silencioso — não deslogar por rate limit
     }
-    if (parseInt(req.headers['content-length'] || 0) > MAX_BODY_SIZE) {
-      sendJson(res, { active: true }); return;
-    }
-    const rawBody = await new Promise(r=>{let b='';req.on('data',c=>{b+=c;});req.on('end',()=>r(b));});
-    let body; try { body = JSON.parse(rawBody); } catch { body = {}; }
-    const keyCode = (body.authKey || '').toLowerCase().slice(0, 32);
+    const body    = await parseBody(req); // 64 KB limit + prototype-pollution guard
+    const keyCode = sanitizeId(body.authKey, 32);
     if (!serverReady) { sendJson(res, { active: true }); return; }
     if (!keyCode)     { sendJson(res, { active: true }); return; }
     if (isFreeAuthKey(keyCode)) {
@@ -3931,7 +3966,7 @@ async function handleRequest(req, res) {
 
   if (p.startsWith(R_MOD+'/api/keys/') && p.endsWith('/note') && req.method === 'POST') {
     if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const codeFromUrl = decodeURIComponent(p.slice((R_MOD+'/api/keys/').length, -'/note'.length));
+    const codeFromUrl = sanitizeId(decodeURIComponent(p.slice((R_MOD+'/api/keys/').length, -'/note'.length)), 30);
     if (!codeFromUrl) { sendJson(res, { error: 'not found' }, 404); return; }
     if (!await ensureKeyLoaded(codeFromUrl)) { sendJson(res, { error: 'not found' }, 404); return; }
     const _mc3 = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
@@ -4237,7 +4272,8 @@ async function handleRequest(req, res) {
   }
 
   if (p === '/payt/webhook' && req.method === 'POST') {
-    const rawBody = await new Promise(r=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>r(b));});
+    const rawBody = await readRawBody(req, WEBHOOK_BODY_SIZE);
+    if (rawBody === null) { res.writeHead(413); res.end('Payload Too Large'); return; }
 
     let payload;
     try { payload = JSON.parse(rawBody); }
@@ -4345,7 +4381,7 @@ async function handleRequest(req, res) {
   if (p === '/client/status' && req.method === 'POST') {
     if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
     const body = await parseBody(req);
-    const code = (body.key || '').trim().toLowerCase().slice(0, 20);
+    const code = sanitizeId(body.key, 20);
     if (!code) { sendJson(res, { error: 'not_found' }, 404); return; }
     if (!await ensureKeyLoaded(code)) { sendJson(res, { error: 'not_found' }, 404); return; }
     const k = keys[code];
@@ -4370,7 +4406,7 @@ async function handleRequest(req, res) {
   if (p === '/client/remove-phone' && req.method === 'POST') {
     if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
     const body    = await parseBody(req);
-    const keyCode = (body.key||'').trim().toLowerCase().slice(0, 20);
+    const keyCode = sanitizeId(body.key, 20);
     const phoneIdx = body.phoneIdx != null ? parseInt(body.phoneIdx) : -1;
     const phoneTxt = (body.phone||'').trim();
     if (!keyCode) { sendJson(res, { error: 'not_found' }, 404); return; }
