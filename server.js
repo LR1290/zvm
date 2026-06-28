@@ -70,17 +70,15 @@ const USAGE_ITEM_TYPES = [
   'audio', 'document', 'media', 'message', 'flow', 'funnel',
   'bulkMessages', 'scheduleItem',
 ];
-function resolveMongoDbName() {
+const MONGODB_DB = (() => {
   const fromEnv = (process.env.MONGODB_DB || '').trim();
   if (fromEnv) {
-    if (fromEnv.toLowerCase() !== 'zapvoice') {
+    if (fromEnv.toLowerCase() !== 'zapvoice')
       console.warn(`[DB] MONGODB_DB="${fromEnv}" — suas chaves estao em "zapvoice" (Atlas).`);
-    }
     return fromEnv;
   }
   return 'zapvoice';
-}
-const MONGODB_DB = resolveMongoDbName();
+})();
 const MAX_USES = 3;
 const AVAILABLE_MODULES = ['zapSaver'];
 const DEFAULT_MODULES = Object.fromEntries(AVAILABLE_MODULES.map(m => [m, false]));
@@ -266,15 +264,13 @@ function deriveSlug(seed) {
   if (!APP_SECRET) return null;
   return crypto.createHmac('sha256', APP_SECRET).update(seed).digest('hex').slice(0, 14);
 }
-const _slugAdmin     = deriveSlug('admin-panel');
-const _slugMod       = deriveSlug('mod-panel');
-const _slugAnalytics = deriveSlug('analytics-panel');
-const R_ADMIN        = _slugAdmin     ? '/' + _slugAdmin     : '/admin';
-const R_MOD          = _slugMod       ? '/' + _slugMod       : '/mod';
-const R_ANALYTICS    = _slugAnalytics ? '/' + _slugAnalytics : '/analytics';
-const R_EXT          = '/extension';
+const R_ADMIN     = (s => s ? '/' + s : '/admin')    (deriveSlug('admin-panel'));
+const R_MOD       = (s => s ? '/' + s : '/mod')      (deriveSlug('mod-panel'));
+const R_ANALYTICS = (s => s ? '/' + s : '/analytics')(deriveSlug('analytics-panel'));
+const R_EXT       = '/extension';
 
-const rateLimitMap = new Map();
+const rateLimitMap  = new Map();
+const _DEDUP_TTL_MS = 60 * 60 * 1000; // TTL para entradas de dedup de logs (1h)
 const RL_CONFIG = {
   login:        { max: 5,  windowMs: 60000, blockMs: 10 * 60000 },
   api:          { max: 30, windowMs: 60000, blockMs:  2 * 60000 },
@@ -316,9 +312,8 @@ setInterval(() => {
   const now = Date.now();
   for (const [k, e] of rateLimitMap.entries())
     if (now > e.blockedUntil && now > e.resetAt) rateLimitMap.delete(k);
-  const dedupTTL = 60 * 60 * 1000;
   for (const [k, ts] of _dedupMap.entries())
-    if (now - ts > dedupTTL) _dedupMap.delete(k);
+    if (now - ts > _DEDUP_TTL_MS) _dedupMap.delete(k);
 }, 30 * 60 * 1000); // 30 min — recursos mínimos
 
 setInterval(() => {
@@ -4895,17 +4890,15 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     for (const code of Object.keys(keys)) sanitizeKeyRecord(keys[code]);
     serverReady = true;
 
-    console.log(`✅ zvm-lr1290 v10 — porta ${PORT}`);
-    console.log(`🍃 MongoDB: zapvoice.store | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}`);
-    console.log(`🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
-    console.log(`🔑 2FA:  ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
-    console.log(`💳 Payt: ${PAYT_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
-    console.log(`🔑 Admin: ${R_ADMIN} | User: ${ADMIN_USER}`);
-    console.log(`👮 Mod:   ${MODS.length > 0 ? R_MOD+' | '+MODS.length+' mod(s): '+MODS.map(m=>m.name).join(', ') : '⚠ inativo — defina MOD_USER e MOD_PASS'}`);
-    console.log(`📊 Analytics: ${ANALYTICS_PASS ? 'ATIVO' : '⚠ INATIVO'}`);
-    console.log(`🌐 Extension: ${R_EXT}/v3/key`);
-    console.log(`📊 Webhook: ${WEBHOOK_URL || 'não configurado'}`);
-    console.log(`🗂  Retenção de logs: ${LOG_RETENTION_DAYS} dias (LGPD) | Máx em memória: ${LOG_MAX}`);
+    console.log(
+      `✅ zvm-lr1290 v10 — porta ${PORT}\n` +
+      `🍃 MongoDB: zapvoice.store | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}\n` +
+      `🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | 2FA: ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | Payt: ${PAYT_SECRET ? 'ATIVO' : '⚠ INATIVO'}\n` +
+      `🔑 Admin: ${R_ADMIN} | User: ${ADMIN_USER}\n` +
+      `👮 Mod:   ${MODS.length > 0 ? R_MOD+' | '+MODS.length+' mod(s): '+MODS.map(m=>m.name).join(', ') : '⚠ inativo'}\n` +
+      `📊 Analytics: ${ANALYTICS_PASS ? 'ATIVO' : '⚠ INATIVO'} | Extension: ${R_EXT}/v3/key | Webhook: ${WEBHOOK_URL || 'não configurado'}\n` +
+      `🗂  Logs: retenção ${LOG_RETENTION_DAYS}d (LGPD) | máx ${LOG_MAX} em memória`
+    );
 
     const safeHandler = (req, res) => {
       handleRequest(req, res).catch(err => {
