@@ -161,6 +161,33 @@ function saveKey(code) {
   return Promise.resolve();
 }
 
+async function activateDeferredKey(code) {
+  if (!keys[code]?.expireDuration) return false;
+  const expiresAt   = new Date(Date.now() + keys[code].expireDuration).toISOString();
+  const activatedAt = new Date().toISOString();
+  const db = await getMongoDb();
+  const result = await db.collection('store').updateOne(
+    { _id: 'keys', [`data.${code}.expiresAt`]: null },
+    { $set: {
+        [`data.${code}.expiresAt`]:   expiresAt,
+        [`data.${code}.activatedAt`]: activatedAt,
+        updatedAt: new Date(),
+    }}
+  );
+  if (result.modifiedCount === 0) {
+    // Outro processo já ativou (corrida) — recarrega o estado real do DB
+    const fresh = await db.collection('store').findOne({ _id: 'keys' });
+    if (fresh?.data?.[code]) keys[code] = sanitizeKeyRecord(fresh.data[code]);
+    // Retorna true somente se expiresAt foi gravado por alguém (não perdemos a ativação)
+    return !!keys[code]?.expiresAt;
+  }
+  // Gravação confirmada — atualiza in-memory
+  keys[code].expiresAt   = expiresAt;
+  keys[code].activatedAt = activatedAt;
+  invalidateKeysHtmlCache();
+  return true;
+}
+
 async function deleteKeyFromDb(code) {
   try {
     const db = await getMongoDb();
@@ -3964,10 +3991,33 @@ async function handleRequest(req, res) {
       keys[keyCode].uses = keys[keyCode].phones.length;
     }
 
-    if (keys[keyCode].expireDuration && !keys[keyCode].expiresAt && keys[keyCode].phones.length >= 1) {
-      const exp = new Date(Date.now() + keys[keyCode].expireDuration);
-      keys[keyCode].expiresAt   = exp.toISOString();
-      keys[keyCode].activatedAt = new Date().toISOString();
+    // ATIVAÇÃO ATÔMICA: chaves com "Aguardando 1º uso" precisam gravar expiresAt no
+    // MongoDB ANTES de responder ao cliente. saveKey() é debounced (2s) e fire-and-forget —
+    // se o processo morrer antes, o expiresAt nunca é persistido e a chave fica
+    // eternamente em "aguardando", permitindo uso ilimitado. activateDeferredKey() usa
+    // updateOne com filtro { expiresAt: null } (atômico) e só retorna true após o
+    // MongoDB confirmar modifiedCount >= 1.
+    if (keys[keyCode].expireDuration && !keys[keyCode].expiresAt) {
+      try {
+        const activated = await activateDeferredKey(keyCode);
+        if (!activated) {
+          sendJson(res, {
+            authError: 'activationFailed',
+            authErrorMessage: 'Falha ao registrar ativação. Tente novamente.',
+            isLoggedIn: false,
+          }, 503);
+          addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'activation_failed' }).catch(()=>{});
+          return;
+        }
+      } catch (e) {
+        console.error('[CRITICAL] activateDeferredKey falhou:', e.message);
+        sendJson(res, {
+          authError: 'activationFailed',
+          authErrorMessage: 'Erro interno ao ativar chave. Tente novamente.',
+          isLoggedIn: false,
+        }, 503);
+        return;
+      }
     }
 
     keys[keyCode].lastUsed   = new Date().toISOString();
@@ -3981,7 +4031,7 @@ async function handleRequest(req, res) {
 
     const _action = isNewPhone ? 'login_ok' : 'relogin_ok';
     addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: _action }).catch(()=>{});
-    saveKey(keyCode).catch(()=>{});
+    saveKey(keyCode).catch(()=>{}); // não-crítico: lastUsed/lastIp/wppVersion
     return;
   }
 
