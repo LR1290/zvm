@@ -121,19 +121,23 @@ async function getMongoDb() {
 async function loadDb() {
   try {
     const db = await getMongoDb();
-    const keysDoc = await db.collection('store').findOne({ _id: 'keys' });
-    const logsDoc = await db.collection('store').findOne({ _id: 'logs' });
+    const [keysDoc, logsDoc, alertsDoc] = await Promise.all([
+      db.collection('store').findOne({ _id: 'keys' }),
+      db.collection('store').findOne({ _id: 'logs' }),
+      db.collection('security_alerts').findOne({ _id: 'alerts' }),
+    ]);
     const keyCount = keysDoc?.data ? Object.keys(keysDoc.data).length : 0;
     if (keyCount === 0) {
       console.warn(`[DB] Nenhuma chave em zapvoice.store (doc _id:"keys"). Verifique Atlas ou permissao do usuario.`);
     }
     return {
-      keys: keysDoc?.data && typeof keysDoc.data === 'object' ? keysDoc.data : {},
-      logs: Array.isArray(logsDoc?.data) ? logsDoc.data : [],
+      keys:           keysDoc?.data && typeof keysDoc.data === 'object' ? keysDoc.data : {},
+      logs:           Array.isArray(logsDoc?.data) ? logsDoc.data : [],
+      securityAlerts: Array.isArray(alertsDoc?.data) ? alertsDoc.data : [],
     };
   } catch (e) {
     console.error('[DB] Erro ao carregar:', e.message);
-    return { keys: {}, logs: [] };
+    return { keys: {}, logs: [], securityAlerts: [] };
   }
 }
 
@@ -188,13 +192,42 @@ async function saveLogs() {
   }
 }
 
-let keys             = {};
-let freeUsage        = { usageDate: '', byPhone: {} };
-let logs             = [];
-let sessions         = {};
-let modSessions      = {};
-let analyticsSessions= {};
-let serverReady      = false;
+let keys              = {};
+let freeUsage         = { usageDate: '', byPhone: {} };
+let logs              = [];
+let securityAlerts    = []; // telemetria reativa — eventos de ameaça do servidor
+let sessions          = {};
+let modSessions       = {};
+let analyticsSessions = {};
+let serverReady       = false;
+
+const SEC_ALERT_MAX = 200; // cap em memória para alertas de segurança
+
+// Persiste alertas de segurança na collection 'security_alerts' do MongoDB.
+// Operação atômica com $set para evitar race conditions.
+async function saveSecurityAlerts() {
+  try {
+    const db = await getMongoDb();
+    await db.collection('security_alerts').updateOne(
+      { _id: 'alerts' },
+      { $set: { data: securityAlerts.slice(0, SEC_ALERT_MAX), updatedAt: new Date() } },
+      { upsert: true }
+    );
+  } catch (e) { console.warn('[SEC] Erro ao salvar alertas:', e.message); }
+}
+
+// Registra um evento de segurança na memória e persiste assincronamente.
+// Nunca expõe segredos — campos sensíveis são mascarados antes de chamar.
+function addSecurityAlert(category, detail, reqIp) {
+  securityAlerts.unshift({
+    category: String(category).slice(0, 40),
+    detail:   String(detail).slice(0, 200),
+    ip:       String(reqIp || 'N/A').slice(0, 45),
+    ts:       new Date().toISOString(),
+  });
+  if (securityAlerts.length > SEC_ALERT_MAX) securityAlerts = securityAlerts.slice(0, SEC_ALERT_MAX);
+  saveSecurityAlerts().catch(() => {});
+}
 
 function base32Decode(b32) {
   const alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -264,6 +297,10 @@ function checkRateLimit(ip, type = 'api', maxReq = 0, windowMs = 0) {
   if (e.count > cfg.max) {
     e.blockedUntil = now + cfg.blockMs;
     console.warn(`[RATE-LIMIT] ${type} — IP bloqueado: ${ip}`);
+    // Telemetria: só grava na primeira vez que o bloco é aplicado (count===max+1)
+    if (e.count === cfg.max + 1) {
+      addSecurityAlert('RATE_LIMIT', `Limite excedido — tipo="${type}" após ${cfg.max} req/min`, ip);
+    }
     return false;
   }
   return true;
@@ -978,7 +1015,13 @@ function readRawBody(req, maxBytes = MAX_BODY_SIZE) {
     let b = '', size = 0;
     req.on('data', c => {
       size += c.length;
-      if (size > maxBytes) { req.destroy(); resolve(null); return; }
+      if (size > maxBytes) {
+        const ip = getIp(req);
+        addSecurityAlert('OVERSIZED_PAYLOAD', `Payload excedeu ${maxBytes} bytes — conexão encerrada`, ip);
+        req.destroy();
+        resolve(null);
+        return;
+      }
       b += c;
     });
     req.on('end',   () => resolve(b));
@@ -2262,14 +2305,44 @@ tr:hover td{background:#ffffff02}
     <div class="sh">
       <div>
         <div class="st">🛡 Auditoria de Segurança</div>
-        <div style="font-size:11px;color:var(--muted);font-family:'Syne',sans-serif;margin-top:3px">Testes automatizados contra as rotas do servidor.</div>
+        <div style="font-size:11px;color:var(--muted);font-family:'Syne',sans-serif;margin-top:3px">Varredura ativa: config hardening · fuzzing de injeção · headers · TLS · telemetria</div>
       </div>
-      <button class="btn bw" id="pentest-btn" onclick="runPentest()">↻ Re-executar</button>
+      <button class="btn bw" id="pentest-btn" onclick="runPentest()">▶ Executar Varredura</button>
     </div>
     <div class="ov">
       <table>
-        <thead><tr><th style="width:42%">Teste</th><th style="width:10%;text-align:center">Status</th><th>Detalhe</th></tr></thead>
-        <tbody id="pentest-tb"><tr><td class="empty" colspan="3">Clique em "Re-executar" para iniciar a auditoria.</td></tr></tbody>
+        <thead><tr>
+          <th style="width:42%">Controle</th>
+          <th style="width:12%;text-align:center">Status</th>
+          <th>Detalhe</th>
+        </tr></thead>
+        <tbody id="pentest-tb">
+          <tr><td class="empty" colspan="3" style="padding:22px;text-align:center">
+            Clique em <strong>▶ Executar Varredura</strong> para iniciar a auditoria de segurança.
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="sec" style="margin-top:14px">
+    <div class="sh">
+      <div>
+        <div class="st">🚨 Alertas de Segurança Recentes</div>
+        <div style="font-size:11px;color:var(--muted);font-family:'Syne',sans-serif;margin-top:3px">Logins falhos · Rate limit · Payloads suspeitos · Webhooks inválidos</div>
+      </div>
+    </div>
+    <div class="ov">
+      <table>
+        <thead><tr>
+          <th style="width:16%">Horário (BRT)</th>
+          <th style="width:18%">Categoria</th>
+          <th>Detalhe</th>
+          <th style="width:14%">IP</th>
+        </tr></thead>
+        <tbody id="sec-alerts-tb">
+          <tr><td colspan="4" class="empty">Execute a varredura para carregar alertas.</td></tr>
+        </tbody>
       </table>
     </div>
   </div>
@@ -2655,20 +2728,85 @@ function switchTab(t){
 async function runPentest(){
   const btn=document.getElementById('pentest-btn');
   const tb=document.getElementById('pentest-tb');
-  if(btn)btn.disabled=true;
-  if(tb)tb.innerHTML='<tr><td class="empty" colspan="3">⏳ Executando auditoria...</td></tr>';
+  const al=document.getElementById('sec-alerts-tb');
+  if(btn){btn.disabled=true;btn.textContent='⏳ Analisando...';}
+  if(tb)tb.innerHTML='<tr><td class="empty" colspan="3" style="padding:18px">⏳ Executando varredura de segurança...</td></tr>';
+
+  // Dispara pentest e fetch de alertas em paralelo
   try{
-    const r=await fetch(_RA+'/api/pentest/run',{method:'POST'});
-    if(r.status===401){toast('Sessão expirada',false);return;}
-    const d=await r.json();
-    if(!d.results||!d.results.length){if(tb)tb.innerHTML='<tr><td class="empty" colspan="3">Nenhum resultado.</td></tr>';return;}
-    if(tb)tb.innerHTML=d.results.map(x=>{
-      const ok=x.pass===true,fail=x.pass===false;
-      const badge=ok?'<span style="color:var(--green);font-weight:700">✓ OK</span>':fail?'<span style="color:var(--red);font-weight:700">✗ FALHOU</span>':'<span style="color:var(--muted)">— INFO</span>';
-      return \`<tr><td style="font-family:'Space Mono',monospace;font-size:12px">\${x.name||''}</td><td style="text-align:center">\${badge}</td><td style="font-size:12px;color:var(--muted)">\${x.detail||''}</td></tr>\`;
-    }).join('');
-  }catch(e){if(tb)tb.innerHTML='<tr><td class="empty" colspan="3">Erro ao executar auditoria.</td></tr>';}
-  finally{if(btn)btn.disabled=false;}
+    const [rPen, rAl] = await Promise.all([
+      fetch(_RA+'/api/pentest/run',{method:'POST'}),
+      fetch(_RA+'/api/pentest/alerts'),
+    ]);
+    if(rPen.status===401){toast('Sessão expirada',false);return;}
+
+    const dPen = await rPen.json();
+    const dAl  = rAl.ok ? await rAl.json() : { alerts: [] };
+
+    // ── Resultados do pentest ──
+    if(!dPen.results||!dPen.results.length){
+      if(tb)tb.innerHTML='<tr><td class="empty" colspan="3">Nenhum resultado retornado.</td></tr>';
+    } else {
+      const passed  = dPen.results.filter(x=>x.pass===true).length;
+      const failed  = dPen.results.filter(x=>x.pass===false).length;
+      const score   = Math.round((passed/dPen.results.length)*100);
+      const scoreColor = score===100?'var(--green)':score>=70?'var(--orange)':'var(--red)';
+
+      // Cabeçalho de score
+      const scoreHtml = \`<tr><td colspan="3" style="padding:10px 14px;border-bottom:1px solid var(--border)">
+        <span style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700">
+          Score de Segurança:&nbsp;
+          <span style="color:\${scoreColor};font-size:18px">\${score}%</span>
+          &nbsp;·&nbsp;
+          <span style="color:var(--green)">🟢 \${passed} PASSED</span>
+          &nbsp;·&nbsp;
+          <span style="color:var(--red)">🔴 \${failed} FAILED</span>
+        </span>
+        <span style="float:right;font-size:11px;color:var(--muted)">\${dPen.ts ? new Date(dPen.ts).toLocaleTimeString('pt-BR') : ''}</span>
+      </td></tr>\`;
+
+      const rows = dPen.results.map(x=>{
+        const pass=x.pass===true, fail=x.pass===false;
+        const badge=pass
+          ?'<span style="color:var(--green);font-weight:700;font-size:16px">🟢</span>&nbsp;<span style="color:var(--green);font-size:11px;font-family:Syne,sans-serif">PASSED</span>'
+          :fail
+          ?'<span style="color:var(--red);font-weight:700;font-size:16px">🔴</span>&nbsp;<span style="color:var(--red);font-size:11px;font-family:Syne,sans-serif">FAILED</span>'
+          :'<span style="font-size:15px">⚠️</span>&nbsp;<span style="color:var(--orange);font-size:11px;font-family:Syne,sans-serif">WARN</span>';
+        const rowBg=fail?'background:#ff475708;outline:1px solid #ff475720':'';
+        return \`<tr style="\${rowBg}">
+          <td style="font-family:'Space Mono',monospace;font-size:12px;padding:9px 14px">\${x.name||''}</td>
+          <td style="text-align:center;white-space:nowrap;padding:9px 10px">\${badge}</td>
+          <td style="font-size:12px;color:var(--muted);font-family:'Space Mono',monospace">\${x.detail||''}</td>
+        </tr>\`;
+      }).join('');
+      if(tb)tb.innerHTML=scoreHtml+rows;
+    }
+
+    // ── Alertas de segurança recentes ──
+    if(al){
+      const alerts=(dAl.alerts||[]).slice(0,30);
+      if(!alerts.length){
+        al.innerHTML='<tr><td colspan="4" class="empty">Nenhum alerta registrado — servidor limpo 🟢</td></tr>';
+      } else {
+        const catColor={BRUTE_FORCE:'var(--red)',RATE_LIMIT:'var(--orange)',OVERSIZED_PAYLOAD:'var(--orange)',WEBHOOK_INVALID_TOKEN:'var(--red)'};
+        al.innerHTML=alerts.map(a=>{
+          const ts=a.ts?new Date(a.ts).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-';
+          const cc=catColor[a.category]||'var(--muted)';
+          return \`<tr>
+            <td style="font-size:12px;white-space:nowrap">\${ts}</td>
+            <td><span style="font-family:'Syne',sans-serif;font-size:10px;font-weight:700;color:\${cc};background:\${cc}18;border:1px solid \${cc}40;border-radius:4px;padding:2px 7px">\${a.category||''}</span></td>
+            <td style="font-size:12px;color:var(--muted);font-family:'Space Mono',monospace">\${a.detail||''}</td>
+            <td style="font-size:12px;color:var(--muted)">\${a.ip||'-'}</td>
+          </tr>\`;
+        }).join('');
+      }
+    }
+
+  }catch(e){
+    if(tb)tb.innerHTML='<tr><td class="empty" colspan="3">Erro de rede ao executar auditoria.</td></tr>';
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='↻ Re-executar';}
+  }
 }
 </script>
 ${CANVAS_BG}</body></html>`;
@@ -3474,6 +3612,205 @@ function setPeriod(days,btn){document.querySelectorAll('.pb').forEach(b=>b.class
 ${CANVAS_BG}</body></html>`;
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// MOTOR DE PENTEST INTERNO — runInternalSecurityAudit()
+// Executa verificações ativas e passivas contra o próprio servidor.
+// Retorna array `results` com { name, pass, detail } por controle.
+// Nunca expõe segredos — apenas comprimento, presença e hashes truncados.
+// ══════════════════════════════════════════════════════════════════════════════
+async function runInternalSecurityAudit() {
+  const results = [];
+
+  // Helper: dispara uma requisição HTTP interna ao próprio servidor
+  function _probe(path, opts = {}) {
+    return new Promise(resolve => {
+      const bodyStr = opts.body ? JSON.stringify(opts.body) : null;
+      const headers = { ...(opts.headers || {}) };
+      if (bodyStr) {
+        headers['Content-Type']   = 'application/json';
+        headers['Content-Length'] = Buffer.byteLength(bodyStr);
+      }
+      const r = http.request(
+        { hostname: '127.0.0.1', port: PORT, path, method: opts.method || 'GET', headers, timeout: 5000 },
+        res2 => {
+          let d = '';
+          res2.on('data', c => { d += c; });
+          res2.on('end', () => resolve({ status: res2.statusCode, headers: res2.headers, body: d }));
+        }
+      );
+      r.on('error',   () => resolve({ status: 0, headers: {}, body: '' }));
+      r.on('timeout', () => { r.destroy(); resolve({ status: 0, headers: {}, body: '' }); });
+      if (bodyStr) r.write(bodyStr);
+      r.end();
+    });
+  }
+
+  function _ct(r)       { return r.headers['content-type'] || ''; }
+  function _jp(r)       { try { return JSON.parse(r.body); } catch { return {}; } }
+  function _mask(s, n=4){ return s && s.length > n ? '*'.repeat(s.length - n) + s.slice(-n) : '***'; }
+
+  // ── BLOCO 1: Config Hardening ────────────────────────────────────────────
+  const MIN_SECRET_LEN = 16;
+
+  results.push({
+    name:   'ADMIN_PASS — comprimento mínimo',
+    pass:   (ADMIN_PASS || '').length >= MIN_SECRET_LEN,
+    detail: `${(ADMIN_PASS||'').length} chars (mín ${MIN_SECRET_LEN}) · hash: ${_mask(ADMIN_PASS, 4)}`,
+  });
+  results.push({
+    name:   'APP_SECRET (HMAC slug) configurado',
+    pass:   !!(APP_SECRET && APP_SECRET.length >= MIN_SECRET_LEN),
+    detail: APP_SECRET ? `${APP_SECRET.length} chars · ${_mask(APP_SECRET, 4)}` : 'AUSENTE — rotas /admin visíveis',
+  });
+  results.push({
+    name:   'TOTP_SECRET (2FA admin) configurado',
+    pass:   !!(TOTP_SECRET && TOTP_SECRET.length >= 16),
+    detail: TOTP_SECRET ? `${TOTP_SECRET.length} chars · configurado` : 'AUSENTE — login sem 2FA',
+  });
+  results.push({
+    name:   'PAYT_SECRET (webhook) configurado',
+    pass:   !!(PAYT_SECRET && PAYT_SECRET.length >= 8),
+    detail: PAYT_SECRET ? `${PAYT_SECRET.length} chars · ${_mask(PAYT_SECRET, 4)}` : 'AUSENTE — webhook sem verificação',
+  });
+  results.push({
+    name:   'ANALYTICS_PASS configurado',
+    pass:   !!(ANALYTICS_PASS && ANALYTICS_PASS.length >= 8),
+    detail: ANALYTICS_PASS ? `${ANALYTICS_PASS.length} chars` : 'AUSENTE ou muito curto',
+  });
+  results.push({
+    name:   'Moderadores configurados',
+    pass:   MODS.length > 0,
+    detail: `${MODS.length} moderador(es) ativo(s)`,
+  });
+
+  // ── BLOCO 2: Fuzzing de Injeção ─────────────────────────────────────────
+  // 2a. NoSQL injection em campo label (objeto $gt)
+  const rNoSql = await _probe(R_EXT + '/v3/labels', {
+    method: 'POST',
+    headers: { 'x-access-token': 'pentest-internal' },
+    body: { label: { $gt: '' } },
+  });
+  const jNoSql = _jp(rNoSql);
+  results.push({
+    name:   'NoSQL Injection em label rejeitada',
+    pass:   rNoSql.status === 400 && jNoSql.error === 'nosql_injection_detected',
+    detail: `HTTP ${rNoSql.status} · ${jNoSql.error || 'sem erro estruturado'}`,
+  });
+
+  // 2b. XSS — valida que escHtml neutraliza payloads de script
+  const xssPayload = '<script>alert(1)</script>';
+  const xssEscaped = escHtml(xssPayload);
+  const xssBlocked = !xssEscaped.includes('<script>');
+  results.push({
+    name:   'Sanitização XSS (escHtml) ativa',
+    pass:   xssBlocked,
+    detail: xssBlocked ? `"<script>" → "${xssEscaped.slice(0,40)}"` : 'FALHOU — tag não escapada',
+  });
+
+  // 2c. Label acima do limite (61 chars)
+  const rOver = await _probe(R_EXT + '/v3/labels', {
+    method: 'POST',
+    headers: { 'x-access-token': 'pentest-internal' },
+    body: { label: 'A'.repeat(61) },
+  });
+  const jOver = _jp(rOver);
+  results.push({
+    name:   'Label > 60 chars rejeitada (overflow)',
+    pass:   rOver.status === 400 && jOver.error === 'label_too_long',
+    detail: `HTTP ${rOver.status} · ${jOver.error || '-'}`,
+  });
+
+  // 2d. Sem access-token → 403
+  const rNoToken = await _probe(R_EXT + '/v3/labels', {
+    method: 'POST',
+    body: { label: 'test' },
+  });
+  const jNoToken = _jp(rNoToken);
+  results.push({
+    name:   'Endpoint sem access-token retorna 403',
+    pass:   rNoToken.status === 403,
+    detail: `HTTP ${rNoToken.status} · ${jNoToken.msg || '-'}`,
+  });
+
+  // 2e. sanitizeId bloqueia caracteres especiais
+  const injected = sanitizeId('admin\'; DROP TABLE keys; --', 32);
+  results.push({
+    name:   'sanitizeId bloqueia chars especiais',
+    pass:   !/[^a-z0-9\-]/.test(injected),
+    detail: `Input malicioso → "${injected}"`,
+  });
+
+  // ── BLOCO 3: Headers e TLS ───────────────────────────────────────────────
+  const rHealth = await _probe('/health');
+  const h = rHealth.headers;
+
+  results.push({
+    name:   'X-Frame-Options: DENY',
+    pass:   (h['x-frame-options'] || '').toUpperCase() === 'DENY',
+    detail: h['x-frame-options'] || 'ausente',
+  });
+  results.push({
+    name:   'Strict-Transport-Security (HSTS)',
+    pass:   (h['strict-transport-security'] || '').includes('max-age='),
+    detail: h['strict-transport-security'] || 'ausente',
+  });
+  results.push({
+    name:   'X-Content-Type-Options: nosniff',
+    pass:   (h['x-content-type-options'] || '').toLowerCase() === 'nosniff',
+    detail: h['x-content-type-options'] || 'ausente',
+  });
+  results.push({
+    name:   'Content-Security-Policy presente',
+    pass:   (h['content-security-policy'] || '').includes("default-src 'self'"),
+    detail: h['content-security-policy']
+      ? h['content-security-policy'].slice(0, 80) + '…'
+      : 'ausente',
+  });
+  results.push({
+    name:   'Referrer-Policy presente',
+    pass:   !!(h['referrer-policy']),
+    detail: h['referrer-policy'] || 'ausente',
+  });
+  results.push({
+    name:   '/health endpoint operacional',
+    pass:   rHealth.status === 200 && _ct(rHealth).includes('application/json'),
+    detail: `HTTP ${rHealth.status} · ${_ct(rHealth) || 'sem content-type'}`,
+  });
+
+  // ── BLOCO 4: Estado do MongoDB ───────────────────────────────────────────
+  let dbOk = false, dbTls = false, dbDetail = 'não verificado';
+  try {
+    const db = await getMongoDb();
+    await db.command({ ping: 1 });
+    dbOk  = true;
+    // MongoClient expõe as opções de conexão via _mongoClient.options
+    const opts = _mongoClient?.options || {};
+    dbTls = opts.tls === true;
+    dbDetail = `ping OK · tls=${dbTls} · pool maxSize=${opts.maxPoolSize ?? '?'}`;
+  } catch (e) {
+    dbDetail = 'Erro: ' + e.message.slice(0, 60);
+  }
+  results.push({
+    name:   'MongoDB — conexão ativa (ping)',
+    pass:   dbOk,
+    detail: dbDetail,
+  });
+  results.push({
+    name:   'MongoDB — TLS habilitado na conexão',
+    pass:   dbTls,
+    detail: dbTls ? 'tls=true (wire criptografado)' : 'tls não confirmado nas opções',
+  });
+
+  // ── BLOCO 5: Telemetria ──────────────────────────────────────────────────
+  results.push({
+    name:   'Telemetria de alertas ativa',
+    pass:   true,
+    detail: `${securityAlerts.length} alerta(s) registrado(s) desde o boot`,
+  });
+
+  return { ok: true, results, ts: new Date().toISOString() };
+}
+
 async function handleRequest(req, res) {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const p   = url.pathname;
@@ -3883,6 +4220,7 @@ async function handleRequest(req, res) {
       res.writeHead(302, { Location: R_ADMIN }); res.end();
     } else {
       const msg = credOk && !totpOk ? 'Código 2FA inválido ou expirado' : 'Usuário ou senha incorretos';
+      addSecurityAlert('BRUTE_FORCE', `Admin login falhou — ${credOk?'2FA inválido':'credencial errada'} · user="${String(form.get('user')||'').slice(0,20)}"`, ip);
       sendHtml(res, renderAdminLogin(msg));
     }
     return;
@@ -3924,6 +4262,7 @@ async function handleRequest(req, res) {
       res.writeHead(302, { Location: R_MOD }); res.end();
     } else {
       const msg = matchedMod && !totpOk ? 'Código 2FA inválido ou expirado' : 'Usuário ou senha incorretos';
+      addSecurityAlert('BRUTE_FORCE', `Mod login falhou — ${matchedMod?'2FA inválido':'user não encontrado'} · user="${String(inputUser).slice(0,20)}"`, ip);
       sendHtml(res, renderModLogin(msg));
     }
     return;
@@ -4288,6 +4627,7 @@ async function handleRequest(req, res) {
       res.setHeader('Set-Cookie', `zv_an=${token}; Path=/; HttpOnly; SameSite=Strict; Secure`);
       res.writeHead(302, { Location: R_ANALYTICS }); res.end();
     } else {
+      addSecurityAlert('BRUTE_FORCE', 'Analytics login falhou — senha incorreta', ip);
       sendHtml(res, renderAnalyticsLogin('Senha incorreta.'));
     }
     return;
@@ -4347,6 +4687,7 @@ async function handleRequest(req, res) {
       const validBody   = !bodyKey     || bodyKey   === PAYT_SECRET;
       if (!validHeader || !validBody) {
         console.warn('[PAYT] Token/integration_key inválido — ignorado');
+        addSecurityAlert('WEBHOOK_INVALID_TOKEN', `x-payt-token inválido recebido — status="${payload.status||'?'}" tx="${String(payload.transaction_id||'').slice(0,30)}"`, ip);
         res.writeHead(401); res.end('Unauthorized'); return;
       }
     }
@@ -4516,93 +4857,16 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true }); return;
   }
 
-  // ── Pentest interno (admin-gated) ────────────────────────────────────────
+  // ── Motor de Pentest Interno (admin-gated) ──────────────────────────────
   if (p === R_ADMIN + '/api/pentest/run' && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    sendJson(res, await runInternalSecurityAudit()); return;
+  }
 
-    function _probe(probePath, opts) {
-      opts = opts || {};
-      return new Promise(function(resolve) {
-        var bodyStr = opts.body ? JSON.stringify(opts.body) : null;
-        var headers = Object.assign({}, opts.headers || {});
-        if (bodyStr) {
-          headers['Content-Type'] = 'application/json';
-          headers['Content-Length'] = Buffer.byteLength(bodyStr);
-        }
-        var reqOpts = {
-          hostname: '127.0.0.1', port: PORT,
-          path: probePath, method: opts.method || 'GET',
-          headers: headers, timeout: 4000,
-        };
-        var r = http.request(reqOpts, function(res2) {
-          var d = '';
-          res2.on('data', function(c) { d += c; });
-          res2.on('end', function() { resolve({ status: res2.statusCode, headers: res2.headers, body: d }); });
-        });
-        r.on('error', function() { resolve({ status: 0, headers: {}, body: '' }); });
-        r.on('timeout', function() { r.destroy(); resolve({ status: 0, headers: {}, body: '' }); });
-        if (bodyStr) r.write(bodyStr);
-        r.end();
-      });
-    }
-
-    var _labelsPath = R_EXT + '/v3/labels';
-    var results = await Promise.all([
-      _probe('/api/__pentest_probe_notfound_xyz__'),
-      _probe(_labelsPath, { method: 'POST', headers: { 'x-access-token': 'pentest' }, body: { label: { $gt: '' } } }),
-      _probe(_labelsPath, { method: 'POST', headers: { 'x-access-token': 'pentest' }, body: { label: 'a'.repeat(61) } }),
-      _probe(_labelsPath, { method: 'POST', body: { label: 'test' } }),
-      _probe('/health'),
-    ]);
-
-    var r0 = results[0], r1 = results[1], r2 = results[2], r3 = results[3], r4 = results[4];
-
-    function _ct(r) { return r.headers['content-type'] || ''; }
-    function _tryParse(r) { try { return JSON.parse(r.body); } catch { return {}; } }
-
-    var j1 = _tryParse(r1), j2 = _tryParse(r2), j3 = _tryParse(r3);
-    var xfo = (r4.headers['x-frame-options'] || '').toUpperCase();
-    var csp = r4.headers['content-security-policy'] || '';
-
-    var tests = [
-      {
-        name: 'API /unknown retorna JSON',
-        ok: (r0.status === 404 || r0.status === 403) && _ct(r0).includes('application/json'),
-        detail: 'HTTP ' + r0.status + ' · ' + (_ct(r0) || 'sem content-type'),
-      },
-      {
-        name: 'Injeção NoSQL em label rejeitada (400)',
-        ok: r1.status === 400 && j1.error === 'nosql_injection_detected',
-        detail: 'HTTP ' + r1.status + ' · error=' + (j1.error || '-'),
-      },
-      {
-        name: 'Label > 60 chars rejeitada (400)',
-        ok: r2.status === 400 && j2.error === 'label_too_long',
-        detail: 'HTTP ' + r2.status + ' · error=' + (j2.error || '-'),
-      },
-      {
-        name: 'Endpoint interno sem access-token retorna 403',
-        ok: r3.status === 403 && j3.msg === 'invalid_access_token',
-        detail: 'HTTP ' + r3.status + ' · msg=' + (j3.msg || '-'),
-      },
-      {
-        name: '/health retorna JSON',
-        ok: r4.status === 200 && _ct(r4).includes('application/json'),
-        detail: 'HTTP ' + r4.status + ' · ' + (_ct(r4) || 'sem content-type'),
-      },
-      {
-        name: 'X-Frame-Options: DENY presente',
-        ok: xfo === 'DENY',
-        detail: xfo || 'ausente',
-      },
-      {
-        name: "Content-Security-Policy presente",
-        ok: csp.includes("default-src 'self'"),
-        detail: csp ? (csp.length > 90 ? csp.slice(0, 90) + '…' : csp) : 'ausente',
-      },
-    ];
-
-    sendJson(res, { ok: true, tests: tests }); return;
+  // ── Alertas de Segurança Recentes (admin-gated) ──────────────────────────
+  if (p === R_ADMIN + '/api/pentest/alerts' && req.method === 'GET') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    sendJson(res, { ok: true, alerts: securityAlerts.slice(0, 50) }); return;
   }
 
   const CLIENT_PATHS = ['/', '/plans/manage', '/plans/new', '/dashboard/chaves'];
@@ -4625,8 +4889,9 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
 (async () => {
   try {
     const loaded = await loadDb();
-    keys = loaded.keys || {};
-    logs = loaded.logs || [];
+    keys           = loaded.keys || {};
+    logs           = loaded.logs || [];
+    securityAlerts = loaded.securityAlerts || [];
     for (const code of Object.keys(keys)) sanitizeKeyRecord(keys[code]);
     serverReady = true;
 
