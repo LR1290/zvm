@@ -2067,8 +2067,23 @@ tr:hover td{background:#ffffff02}
 .hdr-meta{font-size:11px;color:var(--muted);font-family:'Syne',sans-serif;margin-right:6px}
 .acts{display:flex;flex-wrap:wrap;gap:3px;max-width:240px}
 .filter-count{font-size:11px;color:var(--muted);font-family:'Syne',sans-serif;padding:0 16px 8px}
+/* Hover sidebar */
+.admin-wrap{display:flex;min-height:calc(100vh - 57px);align-items:flex-start}
+.admin-content{flex:1;min-width:0;padding:22px 24px}
+.rsidebar{width:44px;flex-shrink:0;background:var(--card);border-right:1px solid var(--border);position:sticky;top:57px;height:calc(100vh - 57px);display:flex;flex-direction:column;overflow:hidden;transition:width .22s cubic-bezier(.4,0,.2,1);z-index:40}
+.rsidebar:hover{width:160px}
+.rsb-title{font-family:'Syne',sans-serif;font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;padding:14px 12px 8px;border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden;opacity:0;transition:opacity .15s}
+.rsidebar:hover .rsb-title{opacity:1}
+.rtab{display:flex;align-items:center;gap:10px;width:100%;padding:13px 12px;background:transparent;border:none;border-left:3px solid transparent;color:var(--muted);font-family:'Syne',sans-serif;font-size:11px;font-weight:700;text-align:left;cursor:pointer;transition:background .15s,color .15s,border-color .15s;white-space:nowrap;overflow:hidden}
+.rtab:hover{background:#00ff8708;color:var(--text);border-left-color:#00ff8730}
+.rtab.active{background:#00ff8712;color:var(--green);border-left-color:var(--green)}
+.rtab-icon{font-size:15px;flex-shrink:0;line-height:1}
+.rtab-label{opacity:0;transition:opacity .15s;font-size:11px}
+.rsidebar:hover .rtab-label{opacity:1}
+.sec-panel{display:none}
+.sec-panel.active{display:block}
 @media(max-width:1300px){.stats{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:750px){.stats{grid-template-columns:1fr 1fr};main{padding:14px 12px};.acts{max-width:160px}}
+@media(max-width:750px){.stats{grid-template-columns:1fr 1fr};.admin-content{padding:14px 12px};.acts{max-width:160px};.rsidebar{display:none}}
 </style>
 </head>
 <body>
@@ -2081,7 +2096,14 @@ tr:hover td{background:#ffffff02}
     <a href="${R_ADMIN}/logout" class="out">↩ Sair</a>
   </div>
 </header>
-<main>
+<div class="admin-wrap">
+<nav class="rsidebar" id="rsidebar">
+  <div class="rsb-title">Navegação</div>
+  <button class="rtab active" data-tab="keys" onclick="switchTab('keys')"><span class="rtab-icon">🔑</span><span class="rtab-label">Chaves</span></button>
+  <button class="rtab" data-tab="logs" onclick="switchTab('logs')"><span class="rtab-icon">📋</span><span class="rtab-label">Logs</span></button>
+  <button class="rtab" data-tab="audit" onclick="switchTab('audit')"><span class="rtab-icon">🛡</span><span class="rtab-label">Auditoria</span></button>
+</nav>
+<div class="admin-content">
   <div class="alert-strip" id="urgent-alert">
     <span>⚠️</span>
     <span id="urgent-alert-text">${expiredCount>0?`<strong>${expiredCount} expirada(s)</strong>`:''}${expiredCount>0&&expiringSoon>0?' · ':''}${expiringSoon>0?`<strong>${expiringSoon} expirando em ${EXPIRY_WARN_HOURS}h</strong>`:''}</span>
@@ -2095,6 +2117,7 @@ tr:hover td{background:#ffffff02}
     <div class="sc"><div class="sc-icon">📋</div><div class="n" id="s-logs">${stats.totalLogs}</div><div class="l">Logs</div></div>
   </div>
 
+  <div class="sec-panel active" data-panel="keys">
   <div class="sec">
     <div class="sh">
       <div class="st">🔑 Chaves de Acesso</div>
@@ -2145,7 +2168,9 @@ tr:hover td{background:#ffffff02}
       </table>
     </div>
   </div>
+  </div>
 
+  <div class="sec-panel" data-panel="logs">
   <div class="sec">
     <div class="sh">
       <div class="st">📋 Log de Acessos <span style="font-size:13px;color:var(--muted);font-weight:400">retidos por ${LOG_RETENTION_DAYS} dias (LGPD)</span></div>
@@ -2164,7 +2189,28 @@ tr:hover td{background:#ffffff02}
       </table>
     </div>
   </div>
-</main>
+  </div>
+
+  <div class="sec-panel" data-panel="audit">
+  <div class="sec" id="pentest-sec">
+    <div class="sh">
+      <div>
+        <div class="st">🛡 Auditoria de Segurança</div>
+        <div style="font-size:11px;color:var(--muted);font-family:'Syne',sans-serif;margin-top:3px">Testes automatizados contra as rotas do servidor.</div>
+      </div>
+      <button class="btn bw" id="pentest-btn" onclick="runPentest()">↻ Re-executar</button>
+    </div>
+    <div class="ov">
+      <table>
+        <thead><tr><th style="width:42%">Teste</th><th style="width:10%;text-align:center">Status</th><th>Detalhe</th></tr></thead>
+        <tbody id="pentest-tb"><tr><td class="empty" colspan="3">Clique em "Re-executar" para iniciar a auditoria.</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+  </div>
+
+</div><!-- /admin-content -->
+</div><!-- /admin-wrap -->
 
 <!-- Modals -->
 <div class="modal-bg" id="renewModal"><div class="modal">
@@ -2532,6 +2578,32 @@ async function exportCSV(){
 }
 const lr0=document.getElementById('last-refresh');if(lr0)lr0.textContent='Carregado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 filterKeys();
+
+function switchTab(t){
+  document.querySelectorAll('.rtab').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
+  document.querySelectorAll('.sec-panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===t));
+  try{localStorage.setItem('zvmTab',t);}catch(e){}
+}
+(function(){switchTab(localStorage.getItem('zvmTab')||'keys');})();
+
+async function runPentest(){
+  const btn=document.getElementById('pentest-btn');
+  const tb=document.getElementById('pentest-tb');
+  if(btn)btn.disabled=true;
+  if(tb)tb.innerHTML='<tr><td class="empty" colspan="3">⏳ Executando auditoria...</td></tr>';
+  try{
+    const r=await fetch(_RA+'/api/pentest/run',{method:'POST'});
+    if(r.status===401){toast('Sessão expirada',false);return;}
+    const d=await r.json();
+    if(!d.results||!d.results.length){if(tb)tb.innerHTML='<tr><td class="empty" colspan="3">Nenhum resultado.</td></tr>';return;}
+    if(tb)tb.innerHTML=d.results.map(x=>{
+      const ok=x.pass===true,fail=x.pass===false;
+      const badge=ok?'<span style="color:var(--green);font-weight:700">✓ OK</span>':fail?'<span style="color:var(--red);font-weight:700">✗ FALHOU</span>':'<span style="color:var(--muted)">— INFO</span>';
+      return \`<tr><td style="font-family:'Space Mono',monospace;font-size:12px">\${x.name||''}</td><td style="text-align:center">\${badge}</td><td style="font-size:12px;color:var(--muted)">\${x.detail||''}</td></tr>\`;
+    }).join('');
+  }catch(e){if(tb)tb.innerHTML='<tr><td class="empty" colspan="3">Erro ao executar auditoria.</td></tr>';}
+  finally{if(btn)btn.disabled=false;}
+}
 </script>
 ${CANVAS_BG}</body></html>`;
 }
