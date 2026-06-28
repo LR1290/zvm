@@ -769,29 +769,6 @@ function getKeyValiditySortKey(k) {
   return Number.MAX_SAFE_INTEGER;
 }
 
-const SUSPECT_CLEAR_MS = 172800000;
-
-function dayAgoIso() {
-  return new Date(Date.now() - 86400000).toISOString();
-}
-
-function recentKeyLogs(code) {
-  const since = dayAgoIso();
-  return logs.filter(l => l.keyCode === code && l.timestamp > since);
-}
-
-function getSuspectMeta(code, k) {
-  const clearedAt = k?.suspectClearedAt ? new Date(k.suspectClearedAt) : null;
-  if (clearedAt && (Date.now() - clearedAt.getTime()) < SUSPECT_CLEAR_MS) {
-    return { isSuspect: false, recentIpCount: 0 };
-  }
-  const recentIps = new Set(recentKeyLogs(code).filter(l => l.ip).map(l => l.ip));
-  return { isSuspect: recentIps.size > 3, recentIpCount: recentIps.size };
-}
-
-function isKeySuspect(code, k) {
-  return getSuspectMeta(code, k).isSuspect;
-}
 
 function getKeyStats() {
   const all = Object.values(keys);
@@ -800,7 +777,6 @@ function getKeyStats() {
     activeKeys: all.filter(k => k.active && !isKeyExpired(k)).length,
     expiredKeys: all.filter(k => isKeyExpired(k)).length,
     warnKeys: all.filter(k => k.active && isKeyExpiringSoon(k)).length,
-    suspectKeys: Object.entries(keys).filter(([code, k]) => isKeySuspect(code, k)).length,
     totalLogs: logs.length,
   };
 }
@@ -1972,7 +1948,7 @@ const RENDER_MAX_KEYS = 300;
 
 function buildKeysHtml() {
   let entries = Object.entries(keys);
-  if (!entries.length) return `<tr><td colspan="12" class="empty">Nenhuma chave cadastrada</td></tr>`;
+  if (!entries.length) return `<tr><td colspan="13" class="empty">Nenhuma chave cadastrada</td></tr>`;
 
   // Ordena por createdAt desc para exibir as mais recentes primeiro quando truncado
   if (entries.length > RENDER_MAX_KEYS) {
@@ -1988,7 +1964,7 @@ function buildKeysHtml() {
   }
 
   const truncWarning = Object.keys(keys).length > RENDER_MAX_KEYS
-    ? `<tr><td colspan="12" style="text-align:center;padding:8px;font-size:11px;color:var(--orange);font-family:'Syne',sans-serif">⚠ Exibindo ${RENDER_MAX_KEYS} de ${Object.keys(keys).length} chaves (mais recentes). Use a busca para localizar outras.</td></tr>`
+    ? `<tr><td colspan="13" style="text-align:center;padding:8px;font-size:12px;color:var(--orange);font-family:'Syne',sans-serif">⚠ Exibindo ${RENDER_MAX_KEYS} de ${Object.keys(keys).length} chaves (mais recentes). Use a busca para localizar outras.</td></tr>`
     : '';
 
   return truncWarning + entries.map(([code, k]) => {
@@ -1996,20 +1972,17 @@ function buildKeysHtml() {
     const warnSoon = isKeyExpiringSoon(k);
     const keyLogs  = logByKey.get(code) || [];
     const uniqueIps = new Set(keyLogs.filter(l => l.ip).map(l => l.ip)).size;
-    const { isSuspect, recentIpCount } = getSuspectMeta(code, k);
 
-    const rowStyle = isSuspect ? ' style="background:#ff000008;outline:1px solid #ff475720"'
-      : warnSoon && !expired ? ' style="background:#ff860010"' : '';
-    const suspectBadge = isSuspect
-      ? `<span title="${recentIpCount} IPs nas últimas 24h" style="color:#ff4757;font-size:13px;margin-left:4px">⚠ SUSPEITA</span>` : '';
+    const rowStyle = warnSoon && !expired ? ' style="background:#ff860010"' : '';
     const deferredAttr = (!k.expiresAt && k.expireDuration) ? '1' : '0';
     const dispStatus   = getKeyDisplayStatus(k);
     const zsOn         = !!(k.modules && k.modules.zapSaver);
 
     return `
-<tr data-code="${escHtml(code)}" data-expires-at="${escHtml(k.expiresAt || '')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-lastused="${escHtml(k.lastUsed||'')}" data-suspect="${isSuspect?'1':''}"` + rowStyle + `>
+<tr data-code="${escHtml(code)}" data-expires-at="${escHtml(k.expiresAt || '')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-lastused="${escHtml(k.lastUsed||'')}"` + rowStyle + `>
+  <td style="width:36px;padding:8px 6px"><input type="checkbox" class="key-cb" data-code="${escHtml(code)}" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)"></td>
   <td><span class="kc">${escHtml(code)}</span></td>
-  <td>${escHtml(k.label)}${suspectBadge}${zsOn?'<span title="ZapSaver ativo" style="color:#4f8ef7;font-size:11px;margin-left:4px">💾</span>':''}</td>
+  <td>${escHtml(k.label)}${zsOn?'<span title="ZapSaver ativo" style="color:#4f8ef7;font-size:13px;margin-left:4px">💾</span>':''}</td>
   <td>${renderKeyStatusBadge(k)}</td>
   <td>${formatValidityCell(k)}</td>
   <td><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
@@ -2026,7 +1999,6 @@ function buildKeysHtml() {
     <button class="bs bg" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">Renomear</button>
     ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Números</button>`:''}
     <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
-    ${isSuspect?`<button class="bs bsusp" onclick="clearSuspect('${escHtml(code)}')">🕵️ Suspeita</button>`:''}
     <button class="bs ${zsOn?'bg':'bw'}" title="ZapSaver" onclick="toggleModule('${escHtml(code)}','zapSaver',${zsOn?'false':'true'})">💾</button>
     <button class="bs" style="background:#7c3aed18;color:#9b59b6;border:1px solid #7c3aed30" data-code="${escHtml(code)}" data-label="${escHtml(k.label||'')}" data-modnote="${escHtml((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1]||'')}" onclick="openAssignModFromEl(this)">👮</button>
   </div></td>
@@ -2069,7 +2041,7 @@ function buildLogsHtml(arr) {
 
 function renderAdminDashboard() {
   const stats = getKeyStats();
-  const { expiredKeys: expiredCount, warnKeys: expiringSoon, suspectKeys } = stats;
+  const { expiredKeys: expiredCount, warnKeys: expiringSoon } = stats;
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -2081,10 +2053,12 @@ function renderAdminDashboard() {
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --green:#00ff87;--dark:#080810;--card:#0f0f1a;--card2:#13131f;
-  --border:#1c1c2e;--border2:#252538;--text:#e2e2f0;--muted:#5a5a7a;
-  --red:#ff4757;--yellow:#ffd32a;--orange:#ff8600;--blue:#4f8ef7;--purple:#9b59b6;
+  --green:#00ff66;--dark:#060608;--card:#0d0d16;--card2:#111119;
+  --border:#1a1a2c;--border2:#232336;--text:#e8e8f4;--muted:#545470;
+  --red:#ff3a4a;--yellow:#ffd32a;--orange:#ff8600;--blue:#4f8ef7;--purple:#9b59b6;
   --radius:10px;--radius-sm:6px;
+  --glow-green:0 0 18px #00ff6640,0 0 40px #00ff6620;
+  --glow-green-sm:0 0 10px #00ff6650;
 }
 body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
 header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040}
@@ -2094,13 +2068,13 @@ main{position:relative;z-index:1}
 a.out{color:var(--muted);font-size:13px;text-decoration:none;padding:6px 14px;border:1px solid var(--border2);border-radius:var(--radius-sm);transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
 a.out:hover{color:var(--red);border-color:var(--red)}
 main{padding:22px 24px;max-width:1800px;margin:0 auto}
-.stats{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px}
 .sc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;position:relative;overflow:hidden;transition:border-color .2s,transform .15s;cursor:default}
 .sc:hover{border-color:var(--border2);transform:translateY(-1px)}
 .sc.warn-card{border-color:#ff860050;background:#ff860008}
 .sc.danger-card{border-color:#ff475750;background:#ff475708}
 .sc-icon{position:absolute;right:14px;top:14px;font-size:22px;opacity:.15}
-.sc .n{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:var(--green);line-height:1.1}
+.sc .n{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:var(--green);line-height:1.1;text-shadow:var(--glow-green-sm)}
 .sc.warn-card .n{color:var(--orange)}
 .sc.danger-card .n{color:var(--red)}
 .sc .l{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.3px;margin-top:5px;font-family:'Syne',sans-serif}
@@ -2122,13 +2096,13 @@ main{padding:22px 24px;max-width:1800px;margin:0 auto}
 .fi-lbl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;padding-left:2px;font-family:'Syne',sans-serif}
 .fi-num{width:56px;text-align:center}
 .fi-sep{width:1px;height:28px;background:var(--border2);margin:0 3px;flex-shrink:0;align-self:flex-end;margin-bottom:2px}
-.btn{padding:7px 12px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;transition:all .18s;white-space:nowrap;letter-spacing:.3px}
-.bp{background:var(--green);color:#000;box-shadow:0 0 12px #00ff8740}
-.bp:hover{box-shadow:0 4px 20px #00ff8760;opacity:.9}
+.btn{padding:7px 14px;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;transition:all .18s;white-space:nowrap;letter-spacing:.3px}
+.bp{background:var(--green);color:#000;box-shadow:0 0 14px #00ff6650,0 2px 8px #00000060}
+.bp:hover{box-shadow:var(--glow-green);transform:translateY(-1px)}
 .bw{background:#ffd32a12;color:var(--yellow);border:1px solid #ffd32a35}
 .br{background:#ff475712;color:var(--red);border:1px solid #ff475735}
 .bcsv{background:#4f8ef712;color:var(--blue);border:1px solid #4f8ef735}
-.bs{padding:3px 8px;border:none;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;margin-right:2px;transition:all .15s;white-space:nowrap}
+.bs{padding:4px 9px;border:none;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;margin-right:2px;transition:all .15s;white-space:nowrap}
 .bs:hover{opacity:1;transform:translateY(-1px)}
 .bg{background:#00ff8712;color:var(--green);border:1px solid #00ff8730}
 .bg:hover{background:#00ff8722;border-color:#00ff8760}
@@ -2137,15 +2111,15 @@ main{padding:22px 24px;max-width:1800px;margin:0 auto}
 .bsusp{background:#ff475712;color:var(--red);border:1px solid #ff475730}
 .ov{overflow-x:auto}
 table{width:100%;border-collapse:collapse}
-th{padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap;background:var(--card2);cursor:pointer;user-select:none;font-family:'Syne',sans-serif}
+th{padding:9px 10px;text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap;background:var(--card2);cursor:pointer;user-select:none;font-family:'Syne',sans-serif}
 th:hover{color:var(--text)}
 th.asc::after{content:' ▲';color:var(--green);font-size:12px}
 th.desc::after{content:' ▼';color:var(--green);font-size:12px}
-td{padding:7px 10px;font-size:11px;border-bottom:1px solid #14141f;vertical-align:middle}
+td{padding:8px 10px;font-size:14px;border-bottom:1px solid #14141f;vertical-align:middle}
 tr:last-child td{border-bottom:none}
-tr:hover td{background:#ffffff02}
-.kc{color:var(--green);font-size:12px;letter-spacing:.3px}
-.badge{padding:2px 7px;border-radius:3px;font-size:11px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;font-family:'Syne',sans-serif}
+tr:hover td{background:#ffffff03}
+.kc{color:var(--green);font-size:14px;letter-spacing:.3px;text-shadow:var(--glow-green-sm)}
+.badge{padding:3px 8px;border-radius:3px;font-size:13px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;font-family:'Syne',sans-serif}
 .on{background:#00ff8718;color:var(--green);border:1px solid #00ff8730}
 .off{background:#ff475718;color:var(--red);border:1px solid #ff475730}
 .re{background:#4f8ef718;color:var(--blue)}
@@ -2180,13 +2154,13 @@ tr:hover td{background:#ffffff02}
 .rsidebar:hover .rsb-title{opacity:1}
 .rtab{display:flex;align-items:center;gap:10px;width:100%;padding:13px 12px;background:transparent;border:none;border-left:3px solid transparent;color:var(--muted);font-family:'Syne',sans-serif;font-size:11px;font-weight:700;text-align:left;cursor:pointer;transition:background .15s,color .15s,border-color .15s;white-space:nowrap;overflow:hidden}
 .rtab:hover{background:#00ff8708;color:var(--text);border-left-color:#00ff8730}
-.rtab.active{background:#00ff8712;color:var(--green);border-left-color:var(--green)}
+.rtab.active{background:#00ff6615;color:var(--green);border-left-color:var(--green);box-shadow:inset 3px 0 12px #00ff6625}
 .rtab-icon{font-size:15px;flex-shrink:0;line-height:1}
 .rtab-label{opacity:0;transition:opacity .15s;font-size:11px}
 .rsidebar:hover .rtab-label{opacity:1}
 .sec-panel{display:none}
 .sec-panel.active{display:block}
-@media(max-width:1300px){.stats{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:1100px){.stats{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:750px){.stats{grid-template-columns:1fr 1fr};.admin-content{padding:14px 12px};.acts{max-width:160px};.rsidebar{display:none}}
 </style>
 </head>
@@ -2217,7 +2191,6 @@ tr:hover td{background:#ffffff02}
     <div class="sc"><div class="sc-icon">✅</div><div class="n" id="s-active">${stats.activeKeys}</div><div class="l">Ativas</div></div>
     <div class="sc ${expiredCount>0?'expired-card':''}"><div class="sc-icon">⛔</div><div class="n" id="s-expired" style="${expiredCount>0?'color:var(--red)':''}">${expiredCount}</div><div class="l">Expiradas</div></div>
     <div class="sc ${expiringSoon>0?'warn-card':''}"><div class="sc-icon">⏰</div><div class="n" id="s-warn" style="${expiringSoon>0?'color:var(--orange)':''}">${expiringSoon}</div><div class="l">Expirando (${EXPIRY_WARN_HOURS}h)</div></div>
-    <div class="sc ${suspectKeys>0?'danger-card':''}"><div class="sc-icon">🕵️</div><div class="n" id="s-suspect" style="${suspectKeys>0?'color:var(--red)':''}">${suspectKeys}</div><div class="l">Suspeitas</div></div>
     <div class="sc"><div class="sc-icon">📋</div><div class="n" id="s-logs">${stats.totalLogs}</div><div class="l">Logs</div></div>
   </div>
 
@@ -2248,13 +2221,14 @@ tr:hover td{background:#ffffff02}
         <option value="expirada">Expiradas</option>
         <option value="bloqueado">Bloqueados</option>
         <option value="aguardando">Aguardando 1º uso</option>
-        <option value="suspeita">🕵️ Suspeitas</option>
       </select>
+      <button class="btn br" id="btn-delete-batch" style="display:none" onclick="deleteBatchKeys()">🗑 Excluir Selecionadas (<span id="batch-count">0</span>)</button>
     </div>
     <div class="filter-count" id="keys-filter-count"></div>
     <div class="ov">
       <table>
         <thead><tr>
+          <th style="width:36px;padding:9px 6px"><input type="checkbox" id="master-cb" title="Selecionar todas" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)" onchange="toggleAllCheckboxes(this.checked)"></th>
           <th onclick="sortKeys('code')">Chave</th>
           <th onclick="sortKeys('label')" id="th-label">Cliente</th>
           <th onclick="sortKeys('status')" id="th-status">Status</th>
@@ -2476,17 +2450,17 @@ function filterKeys(){
     const label=(row.dataset.label||'').toLowerCase();
     const phone=(row.dataset.phone||'').toLowerCase();
     const status=(row.dataset.status||'').toLowerCase();
-    const suspect=(row.dataset.suspect||'');
     const code=(row.dataset.code||'').toLowerCase();
-    const ip=(row.cells[6]||{}).textContent||'';
+    const ip=(row.cells[7]||{}).textContent||'';
     const matchQ=!q||label.includes(q)||phone.includes(q)||code.includes(q)||ip.toLowerCase().includes(q);
-    const matchSt=!st||(st==='suspeita'?suspect==='1':status===st);
+    const matchSt=!st||status===st;
     const visible=matchQ&&matchSt;
     row.style.display=visible?'':'none';
     if(visible)shown++;
   });
   const fc=document.getElementById('keys-filter-count');
   if(fc)fc.textContent=(st||q)?(shown+' de '+total+' chave(s) exibida(s)'):(total+' chave(s)');
+  updateBatchUI();
 }
 
 let _sortCol=null,_sortDir=1;
@@ -2554,7 +2528,6 @@ async function doRefresh(manual){
     }
     document.getElementById('s-logs').textContent=d.totalLogs||0;
     const sw=document.getElementById('s-warn');sw.textContent=d.warnKeys||0;sw.style.color=d.warnKeys>0?'var(--orange)':'var(--green)';sw.closest('.sc').classList.toggle('warn-card',d.warnKeys>0);
-    const ssu=document.getElementById('s-suspect');if(ssu){ssu.textContent=d.suspectKeys||0;ssu.style.color=d.suspectKeys>0?'var(--red)':'';ssu.closest('.sc').classList.toggle('danger-card',d.suspectKeys>0);}
     const alert=document.getElementById('urgent-alert'),alertTxt=document.getElementById('urgent-alert-text');
     if(alert&&alertTxt){
       const parts=[];
@@ -2589,12 +2562,37 @@ async function deleteKey(code){
   if(!confirm('Excluir chave '+code+'?'))return;
   try{const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code),{method:'DELETE'});if(r.status===401){toast('Sessão expirada',false);return;}const d=await r.json();if(d.ok){toast('Chave excluída');await doRefresh();}}catch(e){toast('Erro',false);}
 }
-async function clearSuspect(code){
-  if(!confirm('Marcar chave '+code+' como verificada e remover alerta de suspeita?'))return;
+function toggleAllCheckboxes(checked){
+  document.querySelectorAll('#kb .key-cb').forEach(cb=>{
+    if(cb.closest('tr').style.display!=='none')cb.checked=checked;
+  });
+  updateBatchUI();
+}
+function updateBatchUI(){
+  const checked=document.querySelectorAll('#kb .key-cb:checked').length;
+  const btn=document.getElementById('btn-delete-batch');
+  const cnt=document.getElementById('batch-count');
+  if(btn){btn.style.display=checked>0?'':'none';}
+  if(cnt)cnt.textContent=checked;
+  const masterCb=document.getElementById('master-cb');
+  if(masterCb){
+    const all=document.querySelectorAll('#kb .key-cb:not([style*="display:none"])');
+    const visibleAll=[...document.querySelectorAll('#kb tr[data-label]')].filter(r=>r.style.display!=='none').map(r=>r.querySelector('.key-cb')).filter(Boolean);
+    const allChecked=visibleAll.length>0&&visibleAll.every(cb=>cb.checked);
+    masterCb.checked=allChecked;
+    masterCb.indeterminate=!allChecked&&checked>0;
+  }
+}
+document.getElementById('kb').addEventListener('change',function(e){if(e.target.classList.contains('key-cb'))updateBatchUI();});
+async function deleteBatchKeys(){
+  const codes=[...document.querySelectorAll('#kb .key-cb:checked')].map(cb=>cb.dataset.code).filter(Boolean);
+  if(!codes.length)return;
+  if(!confirm('Excluir '+codes.length+' chave(s) selecionada(s)? Esta ação é irreversível.'))return;
   try{
-    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/clear-suspect',{method:'POST'});
+    const r=await fetch(_RA+'/api/keys/batch',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({codes})});
+    if(r.status===401){toast('Sessão expirada',false);return;}
     const d=await r.json();
-    if(d.ok){toast('✅ Alerta removido — chave marcada como verificada');await doRefresh();}
+    if(d.ok){toast('🗑 '+d.deleted+' chave(s) excluída(s)');await doRefresh();}
     else toast('Erro: '+(d.error||'?'),false);
   }catch(e){toast('Erro de rede',false);}
 }
@@ -4469,14 +4467,18 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true }); return;
   }
 
-  const codeClearSuspect = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/clear-suspect$`));
-  if (codeClearSuspect && req.method === 'POST') {
+  if (p === R_ADMIN+'/api/keys/batch' && req.method === 'DELETE') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const kCs = await adminGetKey(codeClearSuspect);
-    if (!kCs) { sendJson(res, { error: 'not found' }, 404); return; }
-    kCs.suspectClearedAt = new Date().toISOString();
-    saveKey(codeClearSuspect);
-    sendJson(res, { ok: true }); return;
+    const body = await parseBody(req);
+    const rawCodes = Array.isArray(body.codes) ? body.codes : [];
+    if (!rawCodes.length) { sendJson(res, { error: 'nenhum código enviado' }, 400); return; }
+    const validCodes = rawCodes.map(c => sanitizeId(String(c || ''), 40)).filter(c => c && keys[c]);
+    for (const c of validCodes) {
+      delete keys[c];
+      await deleteKeyFromDb(c);
+    }
+    invalidateKeysHtmlCache();
+    sendJson(res, { ok: true, deleted: validCodes.length }); return;
   }
 
   const codeNote = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/note$`));
