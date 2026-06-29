@@ -225,6 +225,7 @@ let sessions          = {};
 let modSessions       = {};
 let analyticsSessions = {};
 let serverReady       = false;
+let _httpServer       = null;
 
 const SEC_ALERT_MAX = 200; // cap em memória para alertas de segurança
 
@@ -1030,6 +1031,9 @@ function readRawBody(req, maxBytes = MAX_BODY_SIZE) {
 // Sanitiza IDs/códigos de chave: apenas a-z0-9 e hífen, max 40 chars
 // Impede NoSQL injection via injeção de objeto ($where, $regex, etc.)
 function sanitizeId(s, maxLen = 40) {
+  // Flattens arrays/objects to string first (parameter pollution guard)
+  if (Array.isArray(s)) s = s[0];
+  if (s !== null && typeof s === 'object') s = '';
   return String(s || '').toLowerCase().replace(/[^a-z0-9\-]/g, '').slice(0, maxLen);
 }
 
@@ -2010,7 +2014,7 @@ function buildKeysHtml() {
 
     return `
 <tr data-code="${escHtml(code)}" data-expires-at="${escHtml(k.expiresAt || '')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-lastused="${escHtml(k.lastUsed||'')}"` + rowStyle + `>
-  <td style="width:34px;padding:7px 6px"><input type="checkbox" class="key-cb" data-code="${escHtml(code)}" style="width:13px;height:13px;cursor:pointer;accent-color:var(--g)"></td>
+  <td style="width:34px;padding:3px 6px"><input type="checkbox" class="key-cb" data-code="${escHtml(code)}" style="width:13px;height:13px;cursor:pointer;accent-color:var(--g)"></td>
   <td><span class="kc">${escHtml(code)}</span></td>
   <td>${escHtml(k.label)}${zsOn?'<span title="ZapSaver ativo" style="color:#4f8ef7;font-size:13px;margin-left:4px">💾</span>':''}</td>
   <td>${renderKeyStatusBadge(k)}</td>
@@ -2176,7 +2180,7 @@ a.out:hover{color:var(--red);border-color:var(--red-brd)}
 .bcsv{background:#5b8cf710;color:var(--blue);border:1px solid #5b8cf728}
 .bcsv:hover{background:#5b8cf718}
 /* ── Row action buttons ── */
-.bs{padding:3px 8px;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600;margin-right:2px;transition:all .15s;white-space:nowrap;letter-spacing:.1px}
+.bs{padding:2px 6px;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600;margin-right:1px;transition:all .15s;white-space:nowrap;letter-spacing:.1px}
 .bs:hover{transform:translateY(-1px)}
 .bg{background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd)}
 .bg:hover{background:#00d97e18;border-color:#00d97e50}
@@ -2215,7 +2219,7 @@ td.td-status{white-space:nowrap;overflow:hidden}
 .wl{background:var(--org-bg);color:var(--orange);border:1px solid var(--org-brd)}
 /* ── Misc ── */
 .empty{text-align:center;color:var(--tx3);padding:36px!important;font-size:13px}
-.acts{display:flex;flex-wrap:wrap;gap:3px;max-width:260px}
+.acts{display:flex;flex-wrap:wrap;gap:2px;max-width:none}
 .note-cell{cursor:pointer;max-width:130px}
 .note-cell:hover .note-preview{color:var(--g)}
 .note-preview{color:var(--tx3);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:120px}
@@ -2371,7 +2375,7 @@ td.td-status{white-space:nowrap;overflow:hidden}
     <div class="sh">
       <div>
         <div class="st"><span class="st-accent">🛡</span> Auditoria de Segurança</div>
-        <div style="font-size:11px;color:var(--tx3);margin-top:2px">Config hardening · fuzzing NoSQL · headers · TLS · telemetria</div>
+        <div style="font-size:11px;color:var(--tx3);margin-top:2px">Config hardening · fuzzing NoSQL · headers · TLS · telemetria · CORS/leakage · cookies · batch guard</div>
       </div>
       <button class="btn bw" id="pentest-btn" onclick="runPentest()">▶ Executar Varredura</button>
     </div>
@@ -3864,8 +3868,8 @@ async function runInternalSecurityAudit() {
   });
   results.push({
     name:   '/health endpoint operacional',
-    pass:   rHealth.status === 200 && _ct(rHealth).includes('application/json'),
-    detail: `HTTP ${rHealth.status} · ${_ct(rHealth) || 'sem content-type'}`,
+    pass:   rHealth.status === 200,
+    detail: `HTTP ${rHealth.status} · ${_ct(rHealth) || 'sem content-type'} · body="${rHealth.body.slice(0,10)}"`,
   });
 
   // ── BLOCO 4: Estado do MongoDB ───────────────────────────────────────────
@@ -4000,6 +4004,18 @@ async function handleRequest(req, res) {
   const p   = url.pathname;
   const ip  = getIp(req);
 
+  // /health — responde antes de qualquer middleware (rate limit, CORS, slug)
+  // UptimeRobot e Render healthcheck nunca devem ser bloqueados
+  if (p === '/health' && req.method === 'GET') {
+    res.writeHead(200, {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    res.end('ok');
+    return;
+  }
+
   const _corsH = {
     'Access-Control-Allow-Origin':  (()=>{
       const o=req.headers.origin||'';
@@ -4025,11 +4041,6 @@ async function handleRequest(req, res) {
     if (p === '/admin' || p.startsWith('/admin/')) { res.writeHead(404); res.end('Not found'); return; }
     if (p === '/mod'  || p.startsWith('/mod/'))   { res.writeHead(404); res.end('Not found'); return; }
     if (p === '/analytics' || p.startsWith('/analytics/')) { res.writeHead(404); res.end('Not found'); return; }
-  }
-
-  if (p === '/health' && req.method === 'GET') {
-    res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});
-    res.end(JSON.stringify({status:'ok',uptime:Math.floor(process.uptime())})); return;
   }
 
   if ((p === R_EXT+'/auth/' || p === R_EXT+'/auth') && req.method === 'GET') {
@@ -5090,9 +5101,24 @@ async function handleRequest(req, res) {
 
 async function gracefulShutdown(signal) {
   console.log(`[${signal}] Encerrando servidor graciosamente...`);
+  // Janela de segurança: força saída após 10s caso o dreno trave
+  const forceExit = setTimeout(() => {
+    console.error('[SHUTDOWN] Timeout de 10s atingido — saída forçada');
+    process.exit(1);
+  }, 10_000).unref();
+
+  // Para de aceitar novas conexões e drena keep-alives imediatamente
+  if (_httpServer) {
+    _httpServer.closeAllConnections?.();   // Node 18.2+ / 26 — fecha conexões ociosas
+    await new Promise(resolve => _httpServer.close(resolve));
+    console.log('[SHUTDOWN] HTTP server drenado');
+  }
+
   try {
     if (_mongoClient) { await _mongoClient.close(); console.log('[SHUTDOWN] MongoDB desconectado'); }
   } catch(e) { console.error('[SHUTDOWN] Erro ao fechar MongoDB:', e.message); }
+
+  clearTimeout(forceExit);
   process.exit(0);
 }
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
@@ -5129,6 +5155,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     const server = http.createServer(safeHandler);
     server.keepAliveTimeout = 65000; // acima dos 60s do LB do Render
     server.headersTimeout   = 66000;
+    _httpServer = server;
     server.listen(PORT, () => {
       console.log(`🚀 Servidor ouvindo na porta ${PORT}`);
       setInterval(() => {
