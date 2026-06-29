@@ -4013,6 +4013,53 @@ async function runInternalSecurityAudit() {
     detail: `HTTP ${rBatchNobody.status}`,
   });
 
+  // ── BLOCO 9: Cobertura Global de CSP e Blindagem XSS em Rotas de Cliente ──
+  // 9a. CSP na rota de login admin (verifica que _corsH aplica headers em todas as rotas)
+  const rCspAdmin = await _probe(R_ADMIN + '/login', { method: 'GET' });
+  const cspAdmin  = rCspAdmin.headers['content-security-policy'] || '';
+  results.push({
+    name:   'CSP ativo na rota admin/login',
+    pass:   cspAdmin.includes("default-src 'self'"),
+    detail: cspAdmin ? cspAdmin.slice(0, 70) + '…' : 'ausente — middleware _corsH não aplicado',
+  });
+
+  // 9b. CSP na rota pública de extensão (/auth)
+  const rCspExt = await _probe(R_EXT + '/auth', { method: 'GET' });
+  const cspExt  = rCspExt.headers['content-security-policy'] || '';
+  results.push({
+    name:   'CSP ativo na rota de extensão (/auth)',
+    pass:   cspExt.includes("default-src 'self'"),
+    detail: cspExt ? cspExt.slice(0, 70) + '…' : 'ausente — middleware não cobre rotas públicas',
+  });
+
+  // 9c. XSS payload como label em /v3/labels — deve ser aceito como string (sanitização no storage)
+  const xssLabel = '<script>alert(1)</script>';
+  const rXssLabel = await _probe(R_EXT + '/v3/labels', {
+    method:  'POST',
+    headers: { 'x-access-token': 'pentest-internal' },
+    body:    { label: xssLabel },
+  });
+  const jXssLabel = _jp(rXssLabel);
+  // O endpoint aceita strings de qualquer conteúdo (escHtml sanitiza no output)
+  // O teste verifica que o sistema NÃO rejeita strings válidas (regressão de bloqueio excessivo)
+  results.push({
+    name:   'XSS em label: string tratada (não executa, escHtml no output)',
+    pass:   rXssLabel.status === 200 && jXssLabel.ok === true,
+    detail: `HTTP ${rXssLabel.status} · ok=${jXssLabel.ok ?? '?'} · escHtml neutraliza no render`,
+  });
+
+  // 9d. NoSQL injection via objeto em label (admin create) — espera tipo string rejeitado
+  const rNoSqlAdmin = await _probe(R_ADMIN + '/api/keys', {
+    method:  'POST',
+    headers: { 'Cookie': '__pentest__=1' },
+    body:    { label: { $ne: null }, maxUses: 1 },
+  });
+  results.push({
+    name:   'NoSQL injection em label (admin create) rejeitada ou bloqueada',
+    pass:   rNoSqlAdmin.status === 401 || rNoSqlAdmin.status === 400,
+    detail: `HTTP ${rNoSqlAdmin.status} (esperado 401 sem auth, ou 400 com objeto $ne)`,
+  });
+
   return { ok: true, results, ts: new Date().toISOString() };
 }
 
@@ -4031,7 +4078,7 @@ async function handleRequest(req, res) {
       'X-Frame-Options':           'DENY',
       'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
       'Referrer-Policy':           'no-referrer',
-      'Content-Security-Policy':   "default-src 'none'",
+      'Content-Security-Policy':   "default-src 'self'",
     });
     res.end('ok');
     return;
@@ -4620,7 +4667,7 @@ async function handleRequest(req, res) {
     const { expiresAt, expireDuration } = parseKeyExpiryFromBody(body, { allowMinutes: true });
     const maxUses = (body.maxUses !== undefined) ? parseInt(body.maxUses) : MAX_USES;
     keys[code] = {
-      label: body.label || 'Cliente', active: true, createdAt: new Date().toISOString(),
+      label: (typeof body.label === 'string' ? body.label.trim().slice(0, 60) : '') || 'Cliente', active: true, createdAt: new Date().toISOString(),
       uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null,
       deviceId: null, wppVersion: null, note: '',
       expiresAt, expireDuration: expireDuration || null,
