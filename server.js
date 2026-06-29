@@ -2193,11 +2193,11 @@ a.out:hover{color:var(--red);border-color:var(--red-brd)}
 .ov{overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 220px);position:relative;z-index:1}
 table{width:100%;border-collapse:collapse;table-layout:fixed}
 thead{position:sticky;top:0;z-index:10}
-th{padding:5px 8px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;color:var(--tx3);border-bottom:1px solid var(--brd);white-space:nowrap;overflow:hidden;background:#000;cursor:pointer;user-select:none;transition:color .15s}
+th{padding:3px 8px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;color:var(--tx3);border-bottom:1px solid var(--brd);white-space:nowrap;overflow:hidden;background:#000;cursor:pointer;user-select:none;transition:color .15s}
 th:hover{color:var(--tx)}
 th.asc::after{content:' ▲';color:var(--g);font-size:9px}
 th.desc::after{content:' ▼';color:var(--g);font-size:9px}
-td{padding:4px 8px;font-size:12px;border-bottom:1px solid var(--brd);vertical-align:middle;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0}
+td{padding:2px 8px;font-size:12px;border-bottom:1px solid var(--brd);vertical-align:middle;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0}
 tr:last-child td{border-bottom:none}
 tr:nth-child(even) td{background:#ffffff04}
 tr:hover td{background:#ffffff07}
@@ -2207,7 +2207,7 @@ td.td-acts{white-space:normal;overflow:visible;max-width:none;padding:4px 5px}
 td.td-note{max-width:120px}
 td.td-status{white-space:nowrap;overflow:hidden}
 /* ── Badges ── */
-.badge{display:inline-block;padding:2px 6px;border-radius:3px;font-size:11px;font-weight:600;letter-spacing:.3px;text-transform:uppercase}
+.badge{display:inline-block;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600;letter-spacing:.3px;text-transform:uppercase}
 .on{background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd)}
 .off{background:var(--red-bg);color:var(--red);border:1px solid var(--red-brd)}
 .re{background:#5b8cf710;color:var(--blue);border:1px solid #5b8cf728}
@@ -2827,6 +2827,7 @@ async function clearSecurityAlerts(){
   }catch(e){toast('Erro de rede',false);}
 }
 async function runPentest(){
+  const _esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   const btn=document.getElementById('pentest-btn');
   const tb=document.getElementById('pentest-tb');
   const al=document.getElementById('sec-alerts-tb');
@@ -2875,9 +2876,9 @@ async function runPentest(){
           :'<span style="font-size:15px">⚠️</span>&nbsp;<span style="color:var(--orange);font-size:11px;font-family:Syne,sans-serif">WARN</span>';
         const rowBg=fail?'background:#ff475708;border-left:2px solid #ff475740':'border-left:2px solid transparent';
         return \`<tr style="\${rowBg}">
-          <td style="font-family:'Space Mono',monospace;font-size:12px;padding:7px 12px">\${x.name||''}</td>
-          <td style="text-align:center;white-space:nowrap;padding:7px 10px">\${badge}</td>
-          <td style="font-size:12px;color:var(--tx2);font-family:'Space Mono',monospace;padding:7px 12px">\${x.detail||''}</td>
+          <td style="font-family:'Space Mono',monospace;font-size:12px;padding:5px 12px">\${_esc(x.name)}</td>
+          <td style="text-align:center;white-space:nowrap;padding:5px 10px">\${badge}</td>
+          <td style="font-size:12px;color:var(--tx2);font-family:'Space Mono',monospace;padding:5px 12px">\${_esc(x.detail)}</td>
         </tr>\`;
       }).join('');
       if(tb)tb.innerHTML=scoreHtml+rows;
@@ -3806,7 +3807,7 @@ async function runInternalSecurityAudit() {
   results.push({
     name:   'Sanitização XSS (escHtml) ativa',
     pass:   xssBlocked,
-    detail: xssBlocked ? `"<script>" → "${xssEscaped.slice(0,40)}"` : 'FALHOU — tag não escapada',
+    detail: xssBlocked ? `&lt;script&gt; → "${xssEscaped.slice(0,40)}"` : 'FALHOU — tag não escapada',
   });
 
   // 2c. Label acima do limite (61 chars)
