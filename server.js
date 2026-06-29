@@ -41,7 +41,7 @@ if (!MONGODB_URI) {
 
 const FULL_PERMISSIONS = [
   'create_flow','massive_dispatching','schedule_item',
-  'send_flow','send_funnel','send_trigger'
+  'send_flow','send_funnel','send_trigger','zapsaver'
 ];
 const USAGE_LIMITS = {
   audio:        { sent:0, max:-1 }, bulkMessages: { sent:0, max:-1 },
@@ -80,7 +80,8 @@ const MONGODB_DB = (() => {
   return 'zapvoice';
 })();
 const MAX_USES = 3;
-const DEFAULT_MODULES = {};
+const AVAILABLE_MODULES = ['zapSaver'];
+const DEFAULT_MODULES = Object.fromEntries(AVAILABLE_MODULES.map(m => [m, false]));
 
 let _mongoClient = null;
 let _mongoDb     = null;
@@ -852,6 +853,12 @@ function logActionBadgeClass(action) {
   if (action === 'login_blocked') return 'off';
   if (action === 'warn_limit') return 'wl';
   return 'warn';
+}
+
+function translateLogAction(action) {
+  if (action === 'renewed')    return 'RENOVADA';
+  if (action === 'warn_limit') return 'AVISO DE LIMITE';
+  return action;
 }
 
 function getIp(req) {
@@ -2011,11 +2018,12 @@ function buildKeysHtml() {
     const rowStyle = warnSoon && !expired ? ' style="background:#ff860010"' : '';
     const deferredAttr = (!k.expiresAt && k.expireDuration) ? '1' : '0';
     const dispStatus   = getKeyDisplayStatus(k);
+    const zsOn         = !!(k.modules && k.modules.zapSaver);
 
     return `<tr data-code="${escHtml(code)}" data-expires-at="${escHtml(k.expiresAt || '')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-lastused="${escHtml(k.lastUsed||'')}"${rowStyle}>
 <td style="width:34px;padding:3px 6px"><input type="checkbox" class="key-cb" data-code="${escHtml(code)}" style="width:13px;height:13px;cursor:pointer;accent-color:var(--g)"></td>
 <td><span class="kc">${escHtml(code)}</span></td>
-<td>${escHtml(k.label)}</td>
+<td>${escHtml(k.label)}${zsOn?'<span title="ZapSaver ativo" style="color:#4f8ef7;font-size:11px;margin-left:4px">💾</span>':''}</td>
 <td>${renderKeyStatusBadge(k)}</td>
 <td>${formatValidityCell(k)}</td>
 <td><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
@@ -2031,6 +2039,7 @@ function buildKeysHtml() {
 <button class="bs bg" title="Renomear" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">✏</button>
 ${(k.phones||[]).length>0?`<button class="bs bd" title="Números (${(k.phones||[]).length})" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">📱</button>`:''}
 <button class="bs bd" title="Excluir" onclick="deleteKey('${escHtml(code)}')">🗑</button>
+<button class="bs ${zsOn?'bg':'bw'}" title="${zsOn?'ZapSaver ativo — clique para desativar':'ZapSaver inativo — clique para ativar'}" onclick="toggleModule('${escHtml(code)}','zapSaver',${zsOn?'false':'true'})">💾</button>
 <button class="bs" style="background:#7c3aed18;color:#a78bfa;border:1px solid #7c3aed28" title="Moderador" data-code="${escHtml(code)}" data-label="${escHtml(k.label||'')}" data-modnote="${escHtml((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1]||'')}" onclick="openAssignModFromEl(this)">👮</button>
 </div></td>
 </tr>`;
@@ -2057,7 +2066,7 @@ function buildLogsHtml(arr) {
     const tsDisplay = tsDate && !isNaN(tsDate)
       ? tsDate.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
       : escHtml(tsRaw || '—');
-    return `<tr><td>${tsDisplay}</td><td><span class="kc" style="font-size:11px">${escHtml(l.keyCode||'-')}</span></td><td>${escHtml(l.label||'-')}</td><td>${escHtml(l.phone||'-')}</td><td>${escHtml(l.ip||'-')}</td><td><span class="badge ${logActionBadgeClass(l.action)}">${escHtml(l.action)}</span></td></tr>`;
+    return `<tr><td>${tsDisplay}</td><td><span class="kc" style="font-size:11px">${escHtml(l.keyCode||'-')}</span></td><td>${escHtml(l.label||'-')}</td><td>${escHtml(l.phone||'-')}</td><td>${escHtml(l.ip||'-')}</td><td><span class="badge ${logActionBadgeClass(l.action)}">${escHtml(translateLogAction(l.action))}</span></td></tr>`;
   }).join('');
 }
 
@@ -2151,12 +2160,12 @@ a.out:hover{color:var(--red);border-color:var(--red-brd)}
 .fi-num{width:52px;text-align:center}
 .fi-sep{width:1px;height:24px;background:var(--brd2);margin:0 2px;flex-shrink:0;align-self:flex-end;margin-bottom:2px}
 /* ── Search bar ── */
-.search-bar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:6px 12px;background:var(--s2);border-bottom:1px solid var(--brd)}
+.search-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 14px;background:var(--s2);border-bottom:1px solid var(--brd)}
 .search-bar input{padding:6px 10px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;flex:1;min-width:160px;transition:border-color .18s}
 .search-bar input:focus{border-color:var(--g)}
 .search-bar select{padding:5px 8px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;cursor:pointer;min-width:160px;transition:border-color .18s}
 .search-bar select:focus{border-color:var(--g)}
-.filter-count{font-size:11px;color:var(--tx3);padding:3px 12px 3px}
+.filter-count{font-size:11px;color:var(--tx3);padding:4px 14px}
 /* ── Buttons ── */
 .btn{padding:6px 12px;border:none;border-radius:var(--r-sm);cursor:pointer;font-weight:600;font-size:12px;transition:all .18s;white-space:nowrap;letter-spacing:.1px}
 .bp{background:var(--g);color:#000814}
@@ -2184,21 +2193,21 @@ a.out:hover{color:var(--red);border-color:var(--red-brd)}
 .ov{overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 220px);position:relative;z-index:1}
 table{width:100%;border-collapse:collapse;table-layout:fixed}
 thead{position:sticky;top:0;z-index:10}
-th{padding:5px 5px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;color:var(--tx3);border-bottom:1px solid var(--brd);white-space:nowrap;overflow:hidden;background:#000;cursor:pointer;user-select:none;transition:color .15s}
+th{padding:5px 8px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;color:var(--tx3);border-bottom:1px solid var(--brd);white-space:nowrap;overflow:hidden;background:#000;cursor:pointer;user-select:none;transition:color .15s}
 th:hover{color:var(--tx)}
 th.asc::after{content:' ▲';color:var(--g);font-size:9px}
 th.desc::after{content:' ▼';color:var(--g);font-size:9px}
-td{padding:3px 5px;font-size:12px;border-bottom:1px solid var(--brd);vertical-align:middle;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0}
+td{padding:4px 8px;font-size:12px;border-bottom:1px solid var(--brd);vertical-align:middle;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0}
 tr:last-child td{border-bottom:none}
 tr:nth-child(even) td{background:#ffffff04}
 tr:hover td{background:#ffffff07}
-.kc{color:var(--g);font-size:11px;letter-spacing:0;font-family:'JetBrains Mono','Fira Code','Cascadia Code',monospace;display:block;overflow:hidden;text-overflow:ellipsis}
+.kc{color:var(--g);font-size:12px;letter-spacing:0;font-family:'JetBrains Mono','Fira Code','Cascadia Code',monospace;display:block;overflow:hidden;text-overflow:ellipsis}
 /* Células que precisam de wrap normal (ações, badges) */
-td.td-acts{white-space:normal;overflow:visible;max-width:none;padding:3px 4px}
+td.td-acts{white-space:normal;overflow:visible;max-width:none;padding:4px 5px}
 td.td-note{max-width:120px}
 td.td-status{white-space:nowrap;overflow:hidden}
 /* ── Badges ── */
-.badge{display:inline-block;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600;letter-spacing:.3px;text-transform:uppercase}
+.badge{display:inline-block;padding:2px 6px;border-radius:3px;font-size:11px;font-weight:600;letter-spacing:.3px;text-transform:uppercase}
 .on{background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd)}
 .off{background:var(--red-bg);color:var(--red);border:1px solid var(--red-brd)}
 .re{background:#5b8cf710;color:var(--blue);border:1px solid #5b8cf728}
@@ -2301,16 +2310,16 @@ td.td-status{white-space:nowrap;overflow:hidden}
       <table style="min-width:760px">
         <colgroup>
           <col style="width:28px">
+          <col style="width:13%">
           <col style="width:12%">
-          <col style="width:9%">
-          <col style="width:6%">
           <col style="width:7%">
-          <col style="width:4%">
           <col style="width:9%">
-          <col style="width:8%">
+          <col style="width:5%">
+          <col style="width:10%">
           <col style="width:9%">
           <col style="width:9%">
-          <col style="width:6%">
+          <col style="width:9%">
+          <col style="width:7%">
           <col style="width:auto">
         </colgroup>
         <thead><tr>
@@ -2365,7 +2374,7 @@ td.td-status{white-space:nowrap;overflow:hidden}
       </div>
       <button class="btn bw" id="pentest-btn" onclick="runPentest()">▶ Executar Varredura</button>
     </div>
-    <div class="ov">
+    <div class="ov" style="max-height:none;overflow-y:visible">
       <table>
         <thead><tr>
           <th style="width:42%">Controle</th>
@@ -2788,6 +2797,14 @@ async function saveNote(){
 async function exportCSV(){
   try{const r=await fetch(_RA+'/api/export/csv');if(r.status===401){toast('Sessão expirada',false);return;}const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='zvm-chaves-'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(url);toast('CSV exportado!');}catch(e){toast('Erro ao exportar',false);}
 }
+async function toggleModule(code,module,enabled){
+  try{
+    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/modules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({module,enabled: enabled==='true'||enabled===true})});
+    const d=await r.json();
+    if(d.ok){toast(d.enabled?'ZapSaver ativado 💾':'ZapSaver desativado');await doRefresh();}
+    else toast('Erro: '+(d.error||'?'),false);
+  }catch(e){toast('Erro de rede',false);}
+}
 const lr0=document.getElementById('last-refresh');if(lr0)lr0.textContent='Carregado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 filterKeys();
 
@@ -2834,33 +2851,33 @@ async function runPentest(){
       const passed  = dPen.results.filter(x=>x.pass===true).length;
       const failed  = dPen.results.filter(x=>x.pass===false).length;
       const score   = Math.round((passed/dPen.results.length)*100);
-      const scoreColor = score===100?'var(--green)':score>=70?'var(--orange)':'var(--red)';
+      const scoreColor = score===100?'var(--g)':score>=70?'var(--orange)':'var(--red)';
 
       // Cabeçalho de score
-      const scoreHtml = \`<tr><td colspan="3" style="padding:10px 14px;border-bottom:1px solid var(--border)">
+      const scoreHtml = \`<tr><td colspan="3" style="padding:10px 14px;border-bottom:1px solid var(--brd)">
         <span style="font-family:'Syne',sans-serif;font-size:13px;font-weight:700">
           Score de Segurança:&nbsp;
           <span style="color:\${scoreColor};font-size:18px">\${score}%</span>
           &nbsp;·&nbsp;
-          <span style="color:var(--green)">🟢 \${passed} PASSED</span>
+          <span style="color:var(--g)">🟢 \${passed} PASSED</span>
           &nbsp;·&nbsp;
           <span style="color:var(--red)">🔴 \${failed} FAILED</span>
         </span>
-        <span style="float:right;font-size:11px;color:var(--muted)">\${dPen.ts ? new Date(dPen.ts).toLocaleTimeString('pt-BR') : ''}</span>
+        <span style="float:right;font-size:11px;color:var(--tx3)">\${dPen.ts ? new Date(dPen.ts).toLocaleTimeString('pt-BR') : ''}</span>
       </td></tr>\`;
 
       const rows = dPen.results.map(x=>{
         const pass=x.pass===true, fail=x.pass===false;
         const badge=pass
-          ?'<span style="color:var(--green);font-weight:700;font-size:16px">🟢</span>&nbsp;<span style="color:var(--green);font-size:11px;font-family:Syne,sans-serif">PASSED</span>'
+          ?'<span style="color:var(--g);font-weight:700;font-size:16px">🟢</span>&nbsp;<span style="color:var(--g);font-size:11px;font-family:Syne,sans-serif">PASSED</span>'
           :fail
           ?'<span style="color:var(--red);font-weight:700;font-size:16px">🔴</span>&nbsp;<span style="color:var(--red);font-size:11px;font-family:Syne,sans-serif">FAILED</span>'
           :'<span style="font-size:15px">⚠️</span>&nbsp;<span style="color:var(--orange);font-size:11px;font-family:Syne,sans-serif">WARN</span>';
-        const rowBg=fail?'background:#ff475708;outline:1px solid #ff475720':'';
+        const rowBg=fail?'background:#ff475708;border-left:2px solid #ff475740':'border-left:2px solid transparent';
         return \`<tr style="\${rowBg}">
-          <td style="font-family:'Space Mono',monospace;font-size:12px;padding:9px 14px">\${x.name||''}</td>
-          <td style="text-align:center;white-space:nowrap;padding:9px 10px">\${badge}</td>
-          <td style="font-size:12px;color:var(--muted);font-family:'Space Mono',monospace">\${x.detail||''}</td>
+          <td style="font-family:'Space Mono',monospace;font-size:12px;padding:7px 12px">\${x.name||''}</td>
+          <td style="text-align:center;white-space:nowrap;padding:7px 10px">\${badge}</td>
+          <td style="font-size:12px;color:var(--tx2);font-family:'Space Mono',monospace;padding:7px 12px">\${x.detail||''}</td>
         </tr>\`;
       }).join('');
       if(tb)tb.innerHTML=scoreHtml+rows;
@@ -4789,9 +4806,24 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true, logsHtml: buildLogsHtml(filtered) }); return;
   }
 
+  const codeModules = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/modules$`));
+  if (codeModules && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const kMod = await adminGetKey(codeModules);
+    if (!kMod) { sendJson(res, { error: 'not found' }, 404); return; }
+    const body = await parseBody(req);
+    const moduleName = sanitizeId(String(body.module || ''), 20);
+    const enabled    = !!body.enabled;
+    if (!AVAILABLE_MODULES.includes(moduleName)) { sendJson(res, { error: 'modulo_invalido', module: moduleName }, 400); return; }
+    if (!kMod.modules) kMod.modules = { ...DEFAULT_MODULES };
+    kMod.modules[moduleName] = enabled;
+    saveKey(codeModules);
+    sendJson(res, { ok: true, module: moduleName, enabled, modules: kMod.modules }); return;
+  }
+
   if (p === R_ADMIN+'/api/export/csv' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const header = 'Chave,Cliente,Status,Validade,Usos,Telefone,Último IP,Último Acesso,Criada em,Expira em,Nota';
+    const header = 'Chave,Cliente,Status,Validade,Usos,Telefone,Último IP,Último Acesso,Criada em,Expira em,ZapSaver,Nota';
     const rows = Object.entries(keys).map(([code, k]) => {
       const stLabel = getKeyDisplayStatus(k).toUpperCase();
       const cols = [
@@ -4802,6 +4834,7 @@ async function handleRequest(req, res) {
         k.lastUsed ? new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}) : '',
         new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}),
         k.expiresAt ? new Date(k.expiresAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}) : 'Sem expiração',
+        (k.modules && k.modules.zapSaver) ? 'SIM' : 'NAO',
         (k.note||'').replace(/,/g,';')
       ];
       return cols.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',');
