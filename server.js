@@ -226,6 +226,7 @@ let modSessions       = {};
 let analyticsSessions = {};
 let serverReady       = false;
 let _httpServer       = null;
+let _pingInterval     = null;
 
 const SEC_ALERT_MAX = 200; // cap em memória para alertas de segurança
 
@@ -245,10 +246,13 @@ async function saveSecurityAlerts() {
 // Registra um evento de segurança na memória e persiste assincronamente.
 // Nunca expõe segredos — campos sensíveis são mascarados antes de chamar.
 function addSecurityAlert(category, detail, reqIp) {
+  // Ignora alertas originados do próprio servidor (pentest interno / self-ping)
+  const normalizedIp = String(reqIp || '');
+  if (normalizedIp === '127.0.0.1' || normalizedIp === '::ffff:127.0.0.1' || normalizedIp === '::1') return;
   securityAlerts.unshift({
     category: String(category).slice(0, 40),
     detail:   String(detail).slice(0, 200),
-    ip:       String(reqIp || 'N/A').slice(0, 45),
+    ip:       normalizedIp.slice(0, 45) || 'N/A',
     ts:       new Date().toISOString(),
   });
   if (securityAlerts.length > SEC_ALERT_MAX) securityAlerts = securityAlerts.slice(0, SEC_ALERT_MAX);
@@ -1950,30 +1954,28 @@ function formatValidityCell(k) {
     const parts = [];
     if (d > 0) parts.push(d + 'd');
     if (h > 0) parts.push(h + 'h');
-    return `<span class="badge" style="background:#4f8ef722;color:var(--blue);border:1px solid #4f8ef744">⏱ Ao 1º uso</span>` +
-      `<br><span style="font-size:12px;color:var(--muted)">${parts.join(' ') || '—'}</span>`;
+    return `<span class="badge" style="background:#4f8ef722;color:var(--blue);border:1px solid #4f8ef744;white-space:nowrap">⏱ ${parts.join(' ') || '—'} ao 1º uso</span>`;
   }
   if (!k.expiresAt) {
-    return `<span class="badge on" style="opacity:.85">∞ Sem expiração</span>`;
+    return `<span class="badge on" style="opacity:.85;white-space:nowrap">∞ Sem exp.</span>`;
   }
   const exp = new Date(k.expiresAt);
   const expStr = exp.toLocaleString('pt-BR', {
     timeZone: 'America/Sao_Paulo',
-    day: '2-digit', month: '2-digit', year: 'numeric',
+    day: '2-digit', month: '2-digit',
     hour: '2-digit', minute: '2-digit',
   });
   if (expired) {
-    return `<span class="badge off">EXPIRADA</span><br><span style="font-size:12px;color:var(--red)">${expStr}</span>`;
+    return `<span class="badge off" title="${exp.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}">EXP ${expStr}</span>`;
   }
   const diffH = hoursUntilExpiry(k);
   const diffD = daysUntilExpiry(k);
   const remain = diffH < 1
-    ? Math.max(0, Math.floor((exp - Date.now()) / 60000)) + ' min'
+    ? Math.max(0, Math.floor((exp - Date.now()) / 60000)) + 'min'
     : diffH < 24
-      ? diffH + ' h'
-      : diffD + ' d' + (diffH % 24 ? ' ' + (diffH % 24) + 'h' : '');
-  return `<span class="badge ${warnSoon ? 'wl' : 'on'}" style="${warnSoon ? '' : 'background:#00ff8722;color:var(--green);border:1px solid #00ff8744'}">${remain} restantes</span>` +
-    `<br><span style="font-size:12px;color:${warnSoon ? 'var(--orange)' : 'var(--green)'}">até ${expStr}</span>`;
+      ? diffH + 'h'
+      : diffD + 'd' + (diffH % 24 ? (diffH % 24) + 'h' : '');
+  return `<span class="badge ${warnSoon ? 'wl' : 'on'}" style="${warnSoon ? '' : 'background:#00e67618;color:var(--g);border:1px solid #00e67630'};white-space:nowrap" title="até ${expStr}">${remain}</span>`;
 }
 
 // Limita renderização síncrona para proteger o event loop sob grandes volumes.
@@ -2021,20 +2023,20 @@ function buildKeysHtml() {
   <td>${formatValidityCell(k)}</td>
   <td><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
   <td>${escHtml(k.lastPhone||'-')}</td>
-  <td title="${uniqueIps} IPs únicos registrados">${escHtml(k.lastIp||'-')} ${uniqueIps>1?`<span style="color:var(--muted);font-size:13px">(+${uniqueIps-1})</span>`:''}</td>
+  <td title="${uniqueIps} IP(s) únicos">${escHtml(k.lastIp||'-')}${uniqueIps>1?` <span style="color:var(--tx3);font-size:10px">+${uniqueIps-1}</span>`:''}</td>
   <td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
   <td>${new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</td>
   <td>${escHtml(k.wppVersion||'-')}</td>
   <td class="note-cell td-note" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${k.note&&k.note.startsWith('[Mod:')?'<span style=\"color:#5b8cf7;font-size:11px\">'+escHtml(k.note)+'</span>':escHtml(k.note||'')||'<span style=\"color:var(--tx3)\">—</span>'}</span></td>
   <td class="td-acts"><div class="acts">
-    <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
-    <button class="bs bg" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">+ Tempo</button>
-    <button class="bs bg" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${Number.isFinite(k.maxUses)?k.maxUses:MAX_USES})">Usos</button>
-    <button class="bs bg" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">Renomear</button>
-    ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Números</button>`:''}
-    <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
+    <button class="bs ${k.active?'bd':'bg'}" title="${k.active?'Bloquear':'Liberar'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'🔒':'✅'}</button>
+    <button class="bs bg" title="+ Tempo" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">⏱</button>
+    <button class="bs bg" title="Editar Usos" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${Number.isFinite(k.maxUses)?k.maxUses:MAX_USES})">#</button>
+    <button class="bs bg" title="Renomear" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">✏</button>
+    ${(k.phones||[]).length>0?`<button class="bs bd" title="Números (${(k.phones||[]).length})" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">📱</button>`:''}
+    <button class="bs bd" title="Excluir" onclick="deleteKey('${escHtml(code)}')">🗑</button>
     <button class="bs ${zsOn?'bg':'bw'}" title="ZapSaver" onclick="toggleModule('${escHtml(code)}','zapSaver',${zsOn?'false':'true'})">💾</button>
-    <button class="bs" style="background:#7c3aed18;color:#a78bfa;border:1px solid #7c3aed28" data-code="${escHtml(code)}" data-label="${escHtml(k.label||'')}" data-modnote="${escHtml((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1]||'')}" onclick="openAssignModFromEl(this)">👮</button>
+    <button class="bs" style="background:#7c3aed18;color:#a78bfa;border:1px solid #7c3aed28" title="Moderador" data-code="${escHtml(code)}" data-label="${escHtml(k.label||'')}" data-modnote="${escHtml((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1]||'')}" onclick="openAssignModFromEl(this)">👮</button>
   </div></td>
 </tr>`;
   }).join('');
@@ -2219,7 +2221,7 @@ td.td-status{white-space:nowrap;overflow:hidden}
 .wl{background:var(--org-bg);color:var(--orange);border:1px solid var(--org-brd)}
 /* ── Misc ── */
 .empty{text-align:center;color:var(--tx3);padding:36px!important;font-size:13px}
-.acts{display:flex;flex-wrap:wrap;gap:2px;max-width:none}
+.acts{display:flex;flex-wrap:nowrap;gap:2px;max-width:none}
 .note-cell{cursor:pointer;max-width:130px}
 .note-cell:hover .note-preview{color:var(--g)}
 .note-preview{color:var(--tx3);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:120px}
@@ -5101,19 +5103,25 @@ async function handleRequest(req, res) {
 
 async function gracefulShutdown(signal) {
   console.log(`[${signal}] Encerrando servidor graciosamente...`);
-  // Janela de segurança: força saída após 10s caso o dreno trave
-  const forceExit = setTimeout(() => {
-    console.error('[SHUTDOWN] Timeout de 10s atingido — saída forçada');
-    process.exit(1);
-  }, 10_000).unref();
 
-  // Para de aceitar novas conexões e drena keep-alives imediatamente
+  // 1. Para o timer de keep-alive para não criar conexões novas durante o dreno
+  if (_pingInterval) { clearInterval(_pingInterval); _pingInterval = null; }
+
+  // 2. Janela de segurança: força saída após 8s caso o dreno trave
+  const forceExit = setTimeout(() => {
+    console.error('[SHUTDOWN] Timeout de 8s — saída forçada');
+    process.exit(1);
+  }, 8_000).unref();
+
+  // 3. Para de aceitar novas conexões e força fechamento de sockets ociosos
   if (_httpServer) {
-    _httpServer.closeAllConnections?.();   // Node 18.2+ / 26 — fecha conexões ociosas
+    _httpServer.closeAllConnections?.();    // Node 18.2+: drena keep-alives imediatamente
+    _httpServer.closeIdleConnections?.();   // Node 18.2+: sockets em wait sem request ativo
     await new Promise(resolve => _httpServer.close(resolve));
     console.log('[SHUTDOWN] HTTP server drenado');
   }
 
+  // 4. Fecha pool do MongoDB — somente após HTTP drenar
   try {
     if (_mongoClient) { await _mongoClient.close(); console.log('[SHUTDOWN] MongoDB desconectado'); }
   } catch(e) { console.error('[SHUTDOWN] Erro ao fechar MongoDB:', e.message); }
@@ -5158,14 +5166,15 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     _httpServer = server;
     server.listen(PORT, () => {
       console.log(`🚀 Servidor ouvindo na porta ${PORT}`);
-      setInterval(() => {
+      _pingInterval = setInterval(() => {
         const req = http.request(
-          { hostname: 'localhost', port: PORT, path: '/health', method: 'GET' },
+          { hostname: '127.0.0.1', port: PORT, path: '/health', method: 'GET' },
           res => { res.resume(); }
         );
         req.on('error', () => {});
         req.end();
-      }, 8 * 60 * 1000);  // 480 000 ms = 8 min (Render free dorme após ~14min)
+      }, 8 * 60 * 1000);
+      _pingInterval.unref(); // Não bloqueia event loop no shutdown
     });
   } catch (e) {
     console.error('❌ Falha ao iniciar:', e.message);
