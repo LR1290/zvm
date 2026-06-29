@@ -2151,12 +2151,12 @@ a.out:hover{color:var(--red);border-color:var(--red-brd)}
 .fi-num{width:52px;text-align:center}
 .fi-sep{width:1px;height:24px;background:var(--brd2);margin:0 2px;flex-shrink:0;align-self:flex-end;margin-bottom:2px}
 /* ── Search bar ── */
-.search-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:9px 16px;background:var(--s2);border-bottom:1px solid var(--brd)}
+.search-bar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:6px 12px;background:var(--s2);border-bottom:1px solid var(--brd)}
 .search-bar input{padding:6px 10px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;flex:1;min-width:160px;transition:border-color .18s}
 .search-bar input:focus{border-color:var(--g)}
 .search-bar select{padding:5px 8px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;cursor:pointer;min-width:160px;transition:border-color .18s}
 .search-bar select:focus{border-color:var(--g)}
-.filter-count{font-size:11px;color:var(--tx3);padding:5px 16px 6px}
+.filter-count{font-size:11px;color:var(--tx3);padding:3px 12px 3px}
 /* ── Buttons ── */
 .btn{padding:6px 12px;border:none;border-radius:var(--r-sm);cursor:pointer;font-weight:600;font-size:12px;transition:all .18s;white-space:nowrap;letter-spacing:.1px}
 .bp{background:var(--g);color:#000814}
@@ -2168,7 +2168,7 @@ a.out:hover{color:var(--red);border-color:var(--red-brd)}
 .bcsv{background:#5b8cf710;color:var(--blue);border:1px solid #5b8cf728}
 .bcsv:hover{background:#5b8cf718}
 /* ── Row action buttons ── */
-.bs{padding:2px 6px;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600;margin-right:1px;transition:all .15s;white-space:nowrap;letter-spacing:.1px}
+.bs{padding:1px 5px;border:none;border-radius:3px;cursor:pointer;font-size:11px;font-weight:600;margin-right:1px;transition:all .15s;white-space:nowrap;letter-spacing:0}
 .bs:hover{transform:translateY(-1px)}
 .bg{background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd)}
 .bg:hover{background:#00d97e18;border-color:#00d97e50}
@@ -2184,21 +2184,21 @@ a.out:hover{color:var(--red);border-color:var(--red-brd)}
 .ov{overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 220px);position:relative;z-index:1}
 table{width:100%;border-collapse:collapse;table-layout:fixed}
 thead{position:sticky;top:0;z-index:10}
-th{padding:6px 8px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--tx3);border-bottom:1px solid var(--brd);white-space:nowrap;overflow:hidden;background:#000;cursor:pointer;user-select:none;transition:color .15s}
+th{padding:5px 5px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;color:var(--tx3);border-bottom:1px solid var(--brd);white-space:nowrap;overflow:hidden;background:#000;cursor:pointer;user-select:none;transition:color .15s}
 th:hover{color:var(--tx)}
-th.asc::after{content:' ▲';color:var(--g);font-size:10px}
-th.desc::after{content:' ▼';color:var(--g);font-size:10px}
-td{padding:4px 8px;font-size:12px;border-bottom:1px solid var(--brd);vertical-align:middle;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0}
+th.asc::after{content:' ▲';color:var(--g);font-size:9px}
+th.desc::after{content:' ▼';color:var(--g);font-size:9px}
+td{padding:3px 5px;font-size:12px;border-bottom:1px solid var(--brd);vertical-align:middle;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0}
 tr:last-child td{border-bottom:none}
 tr:nth-child(even) td{background:#ffffff04}
 tr:hover td{background:#ffffff07}
-.kc{color:var(--g);font-size:12px;letter-spacing:.2px;font-family:'JetBrains Mono','Fira Code','Cascadia Code',monospace;display:block;overflow:hidden;text-overflow:ellipsis}
+.kc{color:var(--g);font-size:11px;letter-spacing:0;font-family:'JetBrains Mono','Fira Code','Cascadia Code',monospace;display:block;overflow:hidden;text-overflow:ellipsis}
 /* Células que precisam de wrap normal (ações, badges) */
-td.td-acts{white-space:normal;overflow:visible;max-width:none;padding:5px 8px}
+td.td-acts{white-space:normal;overflow:visible;max-width:none;padding:3px 4px}
 td.td-note{max-width:120px}
 td.td-status{white-space:nowrap;overflow:hidden}
 /* ── Badges ── */
-.badge{display:inline-block;padding:2px 7px;border-radius:3px;font-size:11px;font-weight:600;letter-spacing:.4px;text-transform:uppercase}
+.badge{display:inline-block;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600;letter-spacing:.3px;text-transform:uppercase}
 .on{background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd)}
 .off{background:var(--red-bg);color:var(--red);border:1px solid var(--red-brd)}
 .re{background:#5b8cf710;color:var(--blue);border:1px solid #5b8cf728}
@@ -2298,19 +2298,19 @@ td.td-status{white-space:nowrap;overflow:hidden}
     </div>
     <div class="filter-count" id="keys-filter-count"></div>
     <div class="ov">
-      <table style="min-width:820px">
+      <table style="min-width:760px">
         <colgroup>
-          <col style="width:32px">
-          <col style="width:14%">
-          <col style="width:11%">
-          <col style="width:7%">
+          <col style="width:28px">
+          <col style="width:12%">
           <col style="width:9%">
-          <col style="width:5%">
-          <col style="width:10%">
-          <col style="width:9%">
-          <col style="width:11%">
-          <col style="width:10%">
+          <col style="width:6%">
           <col style="width:7%">
+          <col style="width:4%">
+          <col style="width:9%">
+          <col style="width:8%">
+          <col style="width:9%">
+          <col style="width:9%">
+          <col style="width:6%">
           <col style="width:auto">
         </colgroup>
         <thead><tr>
