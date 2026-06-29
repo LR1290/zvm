@@ -1765,14 +1765,14 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:10px 2
 .portal-tagline{font-size:9px;color:var(--tx3);text-align:center;letter-spacing:3px;text-transform:uppercase;margin-bottom:0;position:relative;z-index:1}
 .portal-divider{height:1px;background:linear-gradient(90deg,transparent,var(--brd2),transparent);margin:20px 0;position:relative;z-index:1}
 .field-label{display:block;font-size:9px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;position:relative;z-index:1}
-#key-input{width:100%;padding:13px 16px;background:#000;border:1.5px solid var(--brd2);border-radius:var(--r);color:var(--g);font-family:'Space Mono',monospace;font-size:14px;font-weight:700;outline:none;letter-spacing:3px;transition:border-color .2s,box-shadow .2s;text-align:center;display:block;position:relative;z-index:1}
-#key-input::placeholder{color:var(--tx3);letter-spacing:1px;font-size:11px;font-weight:400}
-#key-input:focus{border-color:var(--g);box-shadow:0 0 0 3px #00ff8710}
-.key-hint-txt{font-size:10px;color:var(--tx3);margin:6px 0 18px;text-align:center;letter-spacing:.5px;position:relative;z-index:1}
-.err{background:#ff47570d;border:1px solid #ff475738;border-radius:8px;color:#ff7080;padding:10px 14px;font-size:12px;margin-bottom:14px;line-height:1.5;position:relative;z-index:1}
-#check-btn{width:100%;padding:13px;background:var(--g);border:none;border-radius:var(--r);color:#000;font-family:'Syne',sans-serif;font-weight:800;font-size:14px;cursor:pointer;transition:all .2s;letter-spacing:.3px;position:relative;z-index:1}
-#check-btn:hover:not(:disabled){opacity:.9;box-shadow:0 6px 28px #00ff8748;transform:translateY(-1px)}
-#check-btn:disabled{opacity:.35;cursor:not-allowed;transform:none;box-shadow:none}
+#key-input{width:100%;padding:18px 20px;background:#000;border:1.5px solid var(--brd2);border-radius:var(--r);color:var(--g);font-family:'Space Mono',monospace;font-size:16px;font-weight:700;outline:none;letter-spacing:4px;transition:border-color .2s,box-shadow .2s;text-align:center;display:block;position:relative;z-index:1}
+#key-input::placeholder{color:var(--tx3);letter-spacing:1px;font-size:12px;font-weight:400}
+#key-input:focus{border-color:var(--g);box-shadow:0 0 0 3px #00ff8714,0 0 16px #00ff8710}
+.key-hint-txt{font-size:10px;color:var(--tx3);margin:8px 0 20px;text-align:center;letter-spacing:.5px;position:relative;z-index:1}
+.err{background:#ff47570d;border:1px solid #ff475738;border-radius:8px;color:#ff7080;padding:11px 14px;font-size:12px;margin-bottom:16px;line-height:1.5;position:relative;z-index:1}
+#check-btn{width:100%;padding:16px;background:#000;border:1.5px solid var(--g);border-radius:var(--r);color:var(--g);font-family:'Syne',sans-serif;font-weight:800;font-size:12px;cursor:pointer;transition:all .22s;letter-spacing:2.5px;text-transform:uppercase;position:relative;z-index:1}
+#check-btn:hover:not(:disabled){background:var(--g);color:#000;box-shadow:0 0 28px #00ff8748,0 6px 20px #00ff8730;transform:translateY(-1px)}
+#check-btn:disabled{opacity:.3;cursor:not-allowed;transform:none;box-shadow:none}
 .quick-links{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:10px;position:relative;z-index:1}
 .quick-link{display:block;padding:9px 4px;background:#000;border:1px solid var(--brd);border-radius:var(--r);color:var(--tx3);font-size:10px;font-weight:700;text-align:center;text-decoration:none;transition:all .15s;letter-spacing:.3px}
 .quick-link:hover{border-color:var(--g);color:var(--g)}
@@ -2936,188 +2936,165 @@ function renderPlanosPage() {
   const cards = PLANOS.map(p => {
     const comingSoon = p.link === '#';
     return `<div class="plan-card${p.highlight?' hl':''}">
-  ${p.highlight?'<div class="pop-badge">⚡ Mais popular</div>':''}
+  ${p.highlight?'<div class="pop-badge">⚡ Popular</div>':''}
   <div class="plan-top">
     <div class="plan-icon">${p.icon}</div>
     <div class="plan-name">${p.label}</div>
+    <div class="plan-desc">${p.desc}</div>
     <div class="plan-sub">${p.devices} número${p.devices>1?'s':''} de WhatsApp</div>
   </div>
   <div class="plan-pricing">
-    ${p.oldPrice?`<div class="old-price">R$ ${p.oldPrice}</div>`:''}
+    ${p.oldPrice?`<div class="old-price">R$ ${p.oldPrice}/mês</div>`:'<div class="old-price" style="visibility:hidden">—</div>'}
     <div class="plan-price"><span class="cur">R$</span><span class="val">${p.price}</span><span class="per">/mês</span></div>
     <div class="per-device">R$ ${p.perDevice} por número</div>
   </div>
   <div class="plan-divider"></div>
   <ul class="plan-features">
-    <li>✅ Até ${p.devices} número(s) de WhatsApp</li>
-    <li>✅ 30 dias de acesso</li>
-    <li>✅ Todos os recursos inclusos</li>
-    <li>✅ Renovação automática pelo portal</li>
+    <li><span class="ck">✓</span> Até ${p.devices} número${p.devices>1?'s':''} simultâneo${p.devices>1?'s':''}</li>
+    <li><span class="ck">✓</span> 30 dias de acesso</li>
+    <li><span class="ck">✓</span> Todos os recursos inclusos</li>
+    <li><span class="ck">✓</span> Renovação pelo portal</li>
+    <li><span class="ck">✓</span> Suporte WhatsApp</li>
   </ul>
-  <a href="${p.link}" class="plan-btn${p.highlight?' btn-hl':''}" ${comingSoon?'onclick="return false;"':'target="_blank"'}>
+  <button class="plan-btn${p.highlight?' btn-hl':''}" ${comingSoon?'disabled':''}>
     ${comingSoon?'🔒 Em breve':'💳 Assinar agora'}
-  </a>
+  </button>
 </div>`;
   }).join('');
 
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Planos e Preços</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23000000'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZV%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--card2:#13131f;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--radius:14px}
-body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden;display:flex;flex-direction:column}
-nav{display:flex;align-items:center;justify-content:space-between;padding:14px 32px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040;flex-shrink:0}
-.nav-logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:6px;letter-spacing:-0.5px}
-.nav-links{display:flex;gap:10px}
-.nav-links a{font-size:14px;color:var(--muted);text-decoration:none;padding:8px 16px;border:1px solid var(--border);border-radius:8px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700;position:relative}
-.nav-links a:hover{color:var(--green);border-color:var(--green)}
-.nav-links a.nav-active{color:var(--green)!important;border-color:#00ff8760!important;background:#00ff8712!important}
-.nav-links a.nav-active::after{content:'';position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);width:6px;height:6px;border-radius:50%;background:#00ff33;box-shadow:0 0 8px #00ff33;pointer-events:none}
-footer.zvm-footer{text-align:center;padding:18px 24px;font-size:12px;color:#4a4a6a;font-family:'Syne',sans-serif;border-top:1px solid #1c1c2e20;flex-shrink:0}
-footer.zvm-footer a{color:#5a5a8a;text-decoration:none;transition:color .2s}
-footer.zvm-footer a:hover{color:var(--green)}
-main{max-width:1060px;margin:0 auto;padding:56px 24px 80px;flex:1}
-
-/* Hero */
-.hero{text-align:center;margin-bottom:48px}
-.hero-badge{display:inline-flex;align-items:center;gap:6px;background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-size:12px;letter-spacing:2px;text-transform:uppercase;padding:5px 16px;border-radius:20px;margin-bottom:20px;font-family:'Syne',sans-serif}
+:root{--g:#00ff87;--bg:#000000;--s1:#07070f;--s2:#0d0d1a;--brd:#131320;--brd2:#1c1c2e;--tx:#e8e8f2;--tx2:#9898b8;--tx3:#52526a;--r:10px;--r-lg:16px}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--tx);font-family:'Syne',sans-serif;min-height:100vh;overflow-x:hidden;display:flex;flex-direction:column}
+nav{display:flex;align-items:center;justify-content:space-between;padding:16px 32px;border-bottom:1px solid var(--brd);background:#02020a;position:sticky;top:0;z-index:100;backdrop-filter:blur(12px);flex-shrink:0}
+.nav-logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--g);text-decoration:none;letter-spacing:1px}
+.nav-links{display:flex;gap:8px}
+.nav-links a{font-size:11px;color:var(--tx3);text-decoration:none;padding:7px 14px;border:1px solid var(--brd);border-radius:8px;transition:all .18s;font-family:'Syne',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;position:relative}
+.nav-links a:hover{color:var(--g);border-color:var(--brd2)}
+.nav-links a.nav-active{color:var(--g)!important;border-color:#00ff8745!important;background:#00ff870a!important}
+.nav-links a.nav-active::after{content:'';position:absolute;bottom:-9px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:var(--g);box-shadow:0 0 8px var(--g)}
+main{max-width:1040px;margin:0 auto;padding:60px 24px 100px;flex:1;position:relative;z-index:1}
+/* hero */
+.hero{text-align:center;margin-bottom:52px}
+.hero-badge{display:inline-flex;align-items:center;gap:6px;background:#00ff870d;border:1px solid #00ff8728;color:var(--g);font-size:10px;letter-spacing:3px;text-transform:uppercase;padding:5px 16px;border-radius:20px;margin-bottom:20px;font-family:'Space Mono',monospace}
 .hero h1{font-family:'Syne',sans-serif;font-size:clamp(28px,4vw,46px);font-weight:800;line-height:1.1;margin-bottom:14px}
-.hero h1 em{color:var(--green);font-style:normal}
-.hero-sub{color:#8a8aaa;font-size:13px;line-height:1.8;max-width:460px;margin:0 auto 28px;font-family:'Syne',sans-serif;letter-spacing:0}
-.guarantee{display:inline-flex;align-items:center;gap:20px;background:var(--card);border:1px solid var(--border);border-radius:30px;padding:10px 24px;font-size:14px;color:#8a8aaa;font-family:'Syne',sans-serif;letter-spacing:0}
-.guarantee span{display:flex;align-items:center;gap:6px}
-
-/* WIP banner */
-.wip-banner{background:#ffd32a08;border:1px solid #ffd32a25;border-radius:10px;padding:13px 20px;margin-bottom:36px;display:flex;align-items:center;gap:12px;font-size:13px;color:#c9a800;line-height:1.7;font-family:'Syne',sans-serif}
-
-/* Plans */
-.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:48px;justify-items:center}
-.plan-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px 20px 22px;text-align:center;position:relative;transition:border-color .25s,transform .2s,box-shadow .2s;display:flex;flex-direction:column;width:100%}
-.plan-card:hover{border-color:#00ff8740;transform:translateY(-4px);box-shadow:0 16px 40px #00000050}
-.plan-card.hl{border-color:#00ff8760;background:linear-gradient(165deg,#0d1a12,#0f0f1a);box-shadow:0 0 30px #00ff8715}
-.plan-card.hl:hover{box-shadow:0 16px 50px #00ff8725}
-.pop-badge{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:var(--green);color:#000;font-family:'Syne',sans-serif;font-weight:800;font-size:14px;padding:5px 18px;border-radius:20px;white-space:nowrap;letter-spacing:.3px}
-.plan-top{margin-bottom:20px}
-.plan-icon{font-size:36px;margin-bottom:10px}
-.plan-name{font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:var(--text);margin-bottom:4px}
-.plan-sub{font-size:13px;color:#8a8aaa;font-family:'Syne',sans-serif;letter-spacing:0}
-.plan-pricing{margin-bottom:18px}
-.old-price{font-size:13px;color:var(--muted);text-decoration:line-through;margin-bottom:4px}
-.plan-price{display:flex;align-items:baseline;justify-content:center;gap:3px;margin-bottom:4px}
-.cur{font-size:14px;color:var(--green);font-weight:700}
-.val{font-family:'Syne',sans-serif;font-size:34px;font-weight:800;color:var(--green);line-height:1}
-.per{font-size:14px;color:var(--muted);font-family:'Syne',sans-serif}
-.per-device{font-size:13px;color:#a0a0c0;font-family:'Syne',sans-serif;font-weight:600;margin-top:2px}
-.plan-divider{height:1px;background:var(--border);margin:16px 0}
-.plan-features{list-style:none;text-align:left;font-size:13px;color:#a0a0c0;line-height:1.5;display:flex;flex-direction:column;gap:10px;margin-bottom:20px;flex:1;font-family:'Syne',sans-serif;letter-spacing:0}
-.plan-features li{display:flex;align-items:center;gap:6px}
-.plan-btn{display:block;padding:12px;border-radius:8px;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;text-decoration:none;text-align:center;transition:all .2s;background:#1c1c2e;color:var(--muted);border:1px solid var(--border);cursor:not-allowed;opacity:.65;margin-top:auto}
-.plan-btn.btn-hl{background:var(--green);color:#000;border:none;cursor:not-allowed;opacity:.7}
-
-/* Compare */
-.compare{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:32px}
-.compare-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.5px;padding:16px 22px;border-bottom:1px solid var(--border);background:var(--card2)}
-.compare table{width:100%;border-collapse:collapse;font-size:13px;font-family:'Syne',sans-serif}
-.compare th{padding:11px 16px;text-align:center;color:#a0a0c0;border-bottom:1px solid var(--border);font-weight:600;font-size:13px;background:var(--card2);font-family:'Syne',sans-serif}
-.compare th:first-child{text-align:left}
-.compare td{padding:11px 16px;text-align:center;border-bottom:1px solid #14141f;color:var(--text)}
-.compare td:first-child{text-align:left;color:#a0a0c0;font-size:13px;font-family:'Syne',sans-serif;letter-spacing:0}
-.compare tr:last-child td{border-bottom:none}
-.compare tr:hover td{background:#ffffff02}
-.ck{color:var(--green)}
-.cx{color:#ff475760}
-
-/* Incluso */
-.includes{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:22px 26px;margin-bottom:32px}
-.inc-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:var(--green);text-transform:uppercase;letter-spacing:.5px;margin-bottom:16px}
-.inc-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.inc-item{display:flex;align-items:center;gap:12px;font-size:14px;color:#c4c4d8;line-height:1.5;font-family:'Syne',sans-serif;letter-spacing:0;font-weight:500}
-.inc-item .ic{flex-shrink:0;font-size:20px}
-
-/* FAQ */
-.faq{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:26px 28px;margin-bottom:32px}
-.faq-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.5px;margin-bottom:18px}
-.faq-item{border-bottom:1px solid var(--border);padding:13px 0}
-.faq-item:last-child{border-bottom:none;padding-bottom:0}
-.faq-q{font-size:15px;color:#e2e2f0;font-weight:700;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px;user-select:none;font-family:'Syne',sans-serif;letter-spacing:-0.2px}
-.faq-q .arr{color:var(--muted);transition:transform .2s;flex-shrink:0}
-.faq-a{font-size:14px;color:#a0a0c0;line-height:1.9;padding-top:10px;display:none;font-family:'Syne',sans-serif;letter-spacing:0;font-weight:400}
-.faq-item.open .faq-a{display:block}
-.faq-item.open .arr{transform:rotate(90deg)}
-
-/* CTA */
-.cta{background:linear-gradient(135deg,#0a1a10,#0f0f1a);border:1px solid #00ff8740;border-radius:var(--radius);padding:36px 28px;text-align:center}
-.cta h3{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--text);margin-bottom:8px}
-.cta p{color:#8a8aaa;font-size:13px;margin-bottom:22px;line-height:1.8;font-family:'Syne',sans-serif;letter-spacing:0}
-.btn-wpp{display:inline-flex;align-items:center;gap:8px;background:#25d36620;border:1px solid #25d36640;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:12px 24px;border-radius:8px;text-decoration:none;transition:all .2s}
-.btn-wpp:hover{background:#25d36630;border-color:#25d366;transform:translateY(-2px)}
-footer{text-align:center;padding:28px;font-size:13px;color:#8a8aaa;border-top:1px solid var(--border);font-family:'Syne',sans-serif}
-footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
-@media(max-width:800px){.plans{grid-template-columns:1fr 1fr}.inc-grid{grid-template-columns:1fr}}
-@media(max-width:480px){.plans{grid-template-columns:1fr}.guarantee{flex-direction:column;gap:10px}}
-</style></head><body>
+.hero h1 em{color:var(--g);font-style:normal}
+.hero-sub{color:var(--tx2);font-size:14px;line-height:1.8;max-width:460px;margin:0 auto 26px}
+.pills{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center}
+.pill{background:var(--s1);border:1px solid var(--brd2);color:var(--tx2);font-size:11px;padding:5px 14px;border-radius:20px;font-family:'Space Mono',monospace}
+/* wip */
+.wip{background:#ffd32a09;border:1px solid #ffd32a22;border-radius:var(--r);padding:12px 18px;margin-bottom:36px;display:flex;align-items:center;gap:12px;font-size:12px;color:#c9a800;font-family:'Space Mono',monospace;line-height:1.7}
+/* plans grid */
+.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:52px}
+.plan-card{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r-lg);padding:28px 18px 22px;text-align:center;position:relative;transition:border-color .22s,transform .18s,box-shadow .22s;display:flex;flex-direction:column}
+.plan-card:hover{border-color:var(--brd2);transform:translateY(-4px);box-shadow:0 16px 40px #00000060}
+.plan-card.hl{border-color:#00ff8740;background:linear-gradient(160deg,#05120a,#07070f);box-shadow:0 0 40px #00ff8710}
+.plan-card.hl:hover{box-shadow:0 16px 50px #00ff8720;border-color:#00ff8765}
+.pop-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--g);color:#000;font-family:'Syne',sans-serif;font-weight:800;font-size:10px;padding:4px 14px;border-radius:20px;white-space:nowrap;letter-spacing:1.5px;text-transform:uppercase}
+.plan-top{margin-bottom:18px}
+.plan-icon{font-size:32px;margin-bottom:10px}
+.plan-name{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:var(--tx);margin-bottom:2px}
+.plan-desc{font-size:10px;color:var(--g);font-family:'Space Mono',monospace;letter-spacing:2px;text-transform:uppercase;margin-bottom:6px}
+.plan-sub{font-size:11px;color:var(--tx3);font-family:'Space Mono',monospace}
+.plan-pricing{margin-bottom:16px}
+.old-price{font-size:11px;color:var(--tx3);text-decoration:line-through;margin-bottom:4px;font-family:'Space Mono',monospace}
+.plan-price{display:flex;align-items:baseline;justify-content:center;gap:3px;margin-bottom:3px}
+.cur{font-size:13px;color:var(--g);font-weight:700;font-family:'Syne',sans-serif}
+.val{font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:var(--g);line-height:1}
+.per{font-size:12px;color:var(--tx3);font-family:'Syne',sans-serif}
+.per-device{font-size:11px;color:var(--tx2);font-family:'Space Mono',monospace}
+.plan-divider{height:1px;background:var(--brd);margin:14px 0}
+.plan-features{list-style:none;text-align:left;font-size:12px;color:var(--tx2);line-height:1.5;display:flex;flex-direction:column;gap:8px;margin-bottom:18px;flex:1;font-family:'Syne',sans-serif}
+.plan-features li{display:flex;align-items:center;gap:8px}
+.ck{color:var(--g);flex-shrink:0;font-weight:700}
+.plan-btn{width:100%;padding:11px;border-radius:var(--r);font-family:'Syne',sans-serif;font-weight:800;font-size:10px;text-transform:uppercase;letter-spacing:2px;transition:all .2s;background:#000;color:var(--tx3);border:1.5px solid var(--brd2);cursor:not-allowed;margin-top:auto}
+.plan-btn.btn-hl{border-color:var(--g);color:var(--g)}
+/* compare */
+.compare-block{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r-lg);overflow:hidden;margin-bottom:36px}
+.block-title{padding:14px 22px;font-size:10px;font-weight:700;color:var(--g);letter-spacing:3px;text-transform:uppercase;border-bottom:1px solid var(--brd);background:var(--s2);font-family:'Space Mono',monospace}
+.compare-block table{width:100%;border-collapse:collapse;font-size:12px;font-family:'Syne',sans-serif}
+.compare-block th{padding:10px 16px;text-align:center;color:var(--tx3);border-bottom:1px solid var(--brd);font-weight:700;font-size:11px;background:var(--s2)}
+.compare-block th:first-child{text-align:left}
+.compare-block td{padding:10px 16px;text-align:center;border-bottom:1px solid var(--brd);color:var(--tx)}
+.compare-block td:first-child{text-align:left;color:var(--tx2);font-size:12px}
+.compare-block tr:last-child td{border-bottom:none}
+.compare-block tr:hover td{background:#ffffff01}
+/* includes */
+.inc-block{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r-lg);padding:24px;margin-bottom:36px}
+.inc-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+.inc-item{display:flex;align-items:flex-start;gap:10px;font-size:12px;color:var(--tx2);line-height:1.6;font-family:'Syne',sans-serif}
+.inc-item .ic{flex-shrink:0;font-size:18px;margin-top:1px}
+/* cta */
+.cta-block{background:var(--s1);border:1px solid var(--brd2);border-radius:var(--r-lg);padding:36px 28px;text-align:center;position:relative;overflow:hidden}
+.cta-block::before{content:'';position:absolute;top:-50px;left:50%;transform:translateX(-50%);width:300px;height:180px;background:radial-gradient(ellipse,#00ff870c 0%,transparent 70%);pointer-events:none}
+.cta-block h2{font-size:18px;font-weight:800;color:var(--tx);margin-bottom:8px}
+.cta-block p{color:var(--tx2);font-size:13px;line-height:1.8;margin-bottom:22px}
+.btn-wpp{display:inline-flex;align-items:center;gap:8px;background:#000;border:1.5px solid #25d366;color:#25d366;font-family:'Syne',sans-serif;font-weight:800;font-size:11px;padding:12px 22px;border-radius:var(--r);text-decoration:none;transition:all .2s;letter-spacing:2px;text-transform:uppercase}
+.btn-wpp:hover{background:#25d366;color:#000;box-shadow:0 0 24px #25d36640}
+footer{text-align:center;padding:20px 24px;font-size:11px;color:var(--tx3);font-family:'Space Mono',monospace;border-top:1px solid var(--brd);flex-shrink:0;position:relative;z-index:1}
+footer a{color:var(--tx3);text-decoration:none;transition:color .15s}
+footer a:hover{color:var(--g)}
+@media(max-width:840px){.plans{grid-template-columns:1fr 1fr}.inc-grid{grid-template-columns:1fr}}
+@media(max-width:480px){.plans{grid-template-columns:1fr}nav{padding:12px 16px}.nav-links a{padding:6px 10px;font-size:10px}main{padding:40px 16px 80px}}
+</style></head>
+<body>
 <nav>
   <a href="/" class="nav-logo">⚡ ZVM</a>
   <div class="nav-links" id="main-nav">
     <a href="/" data-navpath="/">PAINEL</a>
     <a href="/faq" data-navpath="/faq">FAQ</a>
-    <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
     <a href="/planos" data-navpath="/planos">PLANOS</a>
+    <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
     <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">SUPORTE</a>
   </div>
 </nav>
-<script>
-(function(){
-  var cp=window.location.pathname;
-  document.querySelectorAll('#main-nav a[data-navpath]').forEach(function(a){
-    if(a.getAttribute('data-navpath')===cp) a.classList.add('nav-active');
-  });
-})();
-</script>
+<script>(function(){var p=window.location.pathname;document.querySelectorAll('#main-nav a[data-navpath]').forEach(function(a){if(a.getAttribute('data-navpath')===p)a.classList.add('nav-active');});})();</script>
 <main>
-
   <div class="hero">
     <div class="hero-badge">💳 Planos e Preços</div>
     <h1>Simples, <em>transparente</em><br>e sem surpresas</h1>
-    <p class="hero-sub">Escolha o plano ideal para o seu uso. Todos incluem acesso completo à extensão ZVM por 30 dias.</p>
-    <div class="guarantee">
-      <span>✅ Sem fidelidade</span>
-      <span>⚡ Ativação imediata</span>
-      <span>💬 Suporte incluso</span>
+    <p class="hero-sub">Todos os planos incluem acesso completo ao ZVM por 30 dias.</p>
+    <div class="pills">
+      <span class="pill">✅ Sem fidelidade</span>
+      <span class="pill">⚡ Ativação imediata</span>
+      <span class="pill">💬 Suporte incluso</span>
     </div>
   </div>
 
-  <div class="wip-banner">
-    <span style="font-size:18px;flex-shrink:0">🚧</span>
-    <span><strong>Links de pagamento em breve!</strong> Os planos já estão configurados — assim que os links da Payt forem adicionados você poderá assinar direto por aqui.</span>
+  <div class="wip">
+    <span style="font-size:16px;flex-shrink:0">🚧</span>
+    <span><strong>Links de pagamento em breve.</strong> Os planos estão configurados — assim que os links da Payt forem adicionados você poderá assinar aqui.</span>
   </div>
 
   <div class="plans">${cards}</div>
 
-  <div class="compare">
-    <div class="compare-title">📊 Comparativo dos planos</div>
+  <div class="compare-block">
+    <div class="block-title">📊 Comparativo dos planos</div>
     <table>
       <thead><tr>
         <th style="text-align:left">Recurso</th>
         <th>Solo</th><th>Padrão</th><th>Pro</th><th>Empresarial</th>
       </tr></thead>
       <tbody>
-        <tr><td>Números de WhatsApp</td><td>1</td><td>3</td><td>5</td><td>10</td></tr>
+        <tr><td>Números simultâneos</td><td>1</td><td>3</td><td>5</td><td>10</td></tr>
         <tr><td>Preço mensal</td><td>R$ 24,99</td><td>R$ 29,99</td><td>R$ 39,99</td><td>R$ 59,99</td></tr>
-        <tr><td>Preço por número</td><td>R$ 24,99</td><td style="color:var(--green)">R$ 10,00</td><td style="color:var(--green)">R$ 8,00</td><td style="color:var(--green)">R$ 6,00</td></tr>
+        <tr><td>Preço por número</td><td>R$ 24,99</td><td style="color:var(--g)">R$ 10,00</td><td style="color:var(--g)">R$ 8,00</td><td style="color:var(--g)">R$ 6,00</td></tr>
         <tr><td>Todos os recursos</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
         <tr><td>Portal do cliente</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
         <tr><td>Suporte WhatsApp</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
-        <tr><td>Renovação automática</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
+        <tr><td>Renovação acumula dias</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
       </tbody>
     </table>
   </div>
 
-  <div class="includes">
-    <div class="inc-title">✅ Incluso em todos os planos</div>
+  <div class="inc-block">
+    <div class="block-title">✅ Incluso em todos os planos</div>
     <div class="inc-grid">
       <div class="inc-item"><span class="ic">⚡</span><span>Acesso completo à extensão ZVM para WhatsApp Web</span></div>
       <div class="inc-item"><span class="ic">🔄</span><span>Atualizações automáticas durante a vigência</span></div>
@@ -3130,48 +3107,15 @@ footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
     </div>
   </div>
 
-  <div class="faq">
-    <div class="faq-title">💬 Dúvidas frequentes</div>
-    <div class="faq-item">
-      <div class="faq-q">O que é um "número de WhatsApp" no plano? <span class="arr">▶</span></div>
-      <div class="faq-a">Cada número corresponde a um WhatsApp diferente que pode usar a extensão simultaneamente. No plano Padrão (3 números), por exemplo, três números distintos podem usar ao mesmo tempo. Você gerencia quais números estão ativos pelo portal do cliente.</div>
-    </div>
-    <div class="faq-item">
-      <div class="faq-q">Quando minha chave é ativada após o pagamento? <span class="arr">▶</span></div>
-      <div class="faq-a">Imediatamente após a confirmação do pagamento pela Payt. Para PIX é instantâneo. A chave já estará disponível no portal do cliente antes mesmo de você fechar a janela de confirmação.</div>
-    </div>
-    <div class="faq-item">
-      <div class="faq-q">Se eu já tenho uma chave e compro de novo, o que acontece? <span class="arr">▶</span></div>
-      <div class="faq-a">Sua chave existente é renovada automaticamente — os 30 dias são somados ao tempo que ainda resta. Você não perde nenhum dia e não precisa de uma chave nova.</div>
-    </div>
-    <div class="faq-item">
-      <div class="faq-q">Posso mudar de plano (upgrade ou downgrade)? <span class="arr">▶</span></div>
-      <div class="faq-a">Sim. Entre em contato com o suporte via WhatsApp e ajustamos o seu plano sem complicações.</div>
-    </div>
-    <div class="faq-item">
-      <div class="faq-q">O que acontece quando minha chave expira? <span class="arr">▶</span></div>
-      <div class="faq-a">A extensão para de funcionar até que você renove. Seu histórico e configurações são mantidos — basta renovar e tudo volta exatamente como estava.</div>
-    </div>
+  <div class="cta-block">
+    <h2>Ainda tem dúvidas?</h2>
+    <p>Nossa equipe está disponível para te ajudar a escolher o melhor plano.</p>
+    <a class="btn-wpp" href="https://wa.me/5521996771552?text=LR!%20Quero%20saber%20mais%20sobre%20os%20planos%20do%20ZVM." target="_blank" rel="noopener">💬 Falar com o Suporte</a>
   </div>
-
-  <div class="cta">
-    <h3>Ainda tem dúvidas?</h3>
-    <p>Nossa equipe está disponível para te ajudar a escolher o melhor plano<br>ou esclarecer qualquer questão antes de assinar.</p>
-    <a class="btn-wpp" href="https://wa.me/5521996771552?text=LR!%20Quero%20saber%20mais%20sobre%20os%20planos%20do%20ZVM." target="_blank">💬 Falar com o Suporte no WhatsApp</a>
-  </div>
-
 </main>
-<footer class="zvm-footer">
-  © ${new Date().getFullYear()} ZVM. Todos os direitos reservados. &nbsp;·&nbsp;
-  <a href="/privacidade">Privacidade</a> &nbsp;·&nbsp;
-  <a href="/faq">FAQ</a> &nbsp;·&nbsp;
-  <a href="/planos">Planos</a>
+<footer>
+  © \${new Date().getFullYear()} ZVM · <a href="/privacidade">Privacidade</a> · <a href="/faq">FAQ</a> · <a href="/planos">Planos</a>
 </footer>
-<script>
-document.querySelectorAll('.faq-item').forEach(function(item){
-  item.querySelector('.faq-q').addEventListener('click',function(){item.classList.toggle('open');});
-});
-</script>
 ${CANVAS_BG}
 </body></html>`;
 }
@@ -3180,51 +3124,65 @@ function renderFaqPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — FAQ</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23000000'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZV%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--radius:14px}
-body{background:var(--dark);color:var(--text);font-family:'Inter',sans-serif;min-height:100vh;overflow-x:hidden;display:flex;flex-direction:column}
-nav{display:flex;align-items:center;justify-content:space-between;padding:14px 32px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040;flex-shrink:0}
-.nav-logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:6px;letter-spacing:-0.5px}
-.nav-links{display:flex;gap:10px}
-.nav-links a{font-size:14px;color:var(--muted);text-decoration:none;padding:8px 16px;border:1px solid var(--border);border-radius:8px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700;position:relative}
-.nav-links a:hover{color:var(--green);border-color:var(--green)}
-.nav-links a.nav-active{color:var(--green)!important;border-color:#00ff8760!important;background:#00ff8712!important}
-.nav-links a.nav-active::after{content:'';position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);width:6px;height:6px;border-radius:50%;background:#00ff33;box-shadow:0 0 8px #00ff33;pointer-events:none}
-main{max-width:860px;margin:0 auto;padding:56px 32px 80px;width:100%;flex:1}
-.hero{text-align:center;margin-bottom:48px}
-.hero-badge{display:inline-block;background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-size:12px;letter-spacing:2px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:20px;font-family:'Syne',sans-serif}
-.hero h1{font-family:'Syne',sans-serif;font-size:clamp(26px,5vw,42px);font-weight:800;line-height:1.1;margin-bottom:14px}
-.hero h1 span{color:var(--green)}
-.hero-sub{color:#a0a0c0;font-size:15px;line-height:1.8;max-width:560px;margin:0 auto;font-family:'Syne',sans-serif}
-.video-wrap{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:28px}
-.video-label{padding:14px 20px;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--green);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:#0d0d1a}
-.video-responsive{position:relative;padding-bottom:56.25%;height:0;overflow:hidden}
-.video-responsive iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:none}
-.guide-section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:26px 28px;margin-bottom:14px;display:flex;gap:20px;align-items:flex-start}
-.guide-icon{font-size:28px;flex-shrink:0;margin-top:2px}
-.guide-title{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:var(--text);margin-bottom:14px}
-.guide-body ol,.guide-body ul{padding-left:20px}
-.guide-body li{font-size:14px;color:#b0b0c8;line-height:1.9;margin-bottom:6px;font-family:'Syne',sans-serif}
-.guide-body li:last-child{margin-bottom:0}
-.guide-body p{font-size:14px;color:#b0b0c8;line-height:1.9;margin-bottom:12px;font-family:'Syne',sans-serif}
-.guide-body strong{color:var(--text)}
-.guide-tip{margin-top:14px;background:#00ff8708;border:1px solid #00ff8720;border-radius:8px;padding:11px 16px;font-size:13px;color:#a0c8a8;font-family:'Syne',sans-serif;line-height:1.6}
-.guide-tip a{color:var(--green);text-decoration:none}
-.support-section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:32px;text-align:center;margin-top:28px}
-.support-section h2{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:var(--text);margin-bottom:8px}
-.support-section p{color:#a0a0c0;font-size:14px;line-height:1.8;margin-bottom:24px;font-family:'Syne',sans-serif}
-.support-btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
-.btn-wpp{display:inline-flex;align-items:center;gap:8px;background:#25d36620;border:1px solid #25d36640;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;padding:11px 22px;border-radius:8px;text-decoration:none;transition:all .2s}
-.btn-wpp:hover{background:#25d36630;border-color:#25d366;transform:translateY(-2px)}
-.btn-portal{display:inline-flex;align-items:center;gap:8px;background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-family:'Syne',sans-serif;font-weight:700;font-size:13px;padding:11px 22px;border-radius:8px;text-decoration:none;transition:all .2s}
-.btn-portal:hover{background:#00ff8722;border-color:var(--green);transform:translateY(-2px)}
-footer.zvm-footer{text-align:center;padding:18px 24px;font-size:12px;color:#4a4a6a;font-family:'Syne',sans-serif;border-top:1px solid #1c1c2e20;flex-shrink:0}
-footer.zvm-footer a{color:#5a5a8a;text-decoration:none;transition:color .2s}
-footer.zvm-footer a:hover{color:var(--green)}
-@media(max-width:600px){main{padding:32px 16px 60px}.guide-section{flex-direction:column;gap:12px}.guide-icon{font-size:22px}.nav-links a{padding:6px 10px;font-size:12px}}
+:root{--g:#00ff87;--bg:#000000;--s1:#07070f;--s2:#0d0d1a;--brd:#131320;--brd2:#1c1c2e;--tx:#e8e8f2;--tx2:#9898b8;--tx3:#52526a;--r:10px;--r-lg:16px}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--tx);font-family:'Syne',sans-serif;min-height:100vh;overflow-x:hidden;display:flex;flex-direction:column}
+nav{display:flex;align-items:center;justify-content:space-between;padding:16px 32px;border-bottom:1px solid var(--brd);background:#02020a;position:sticky;top:0;z-index:100;backdrop-filter:blur(12px);flex-shrink:0}
+.nav-logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--g);text-decoration:none;letter-spacing:1px}
+.nav-links{display:flex;gap:8px}
+.nav-links a{font-size:11px;color:var(--tx3);text-decoration:none;padding:7px 14px;border:1px solid var(--brd);border-radius:8px;transition:all .18s;font-family:'Syne',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;position:relative}
+.nav-links a:hover{color:var(--g);border-color:var(--brd2)}
+.nav-links a.nav-active{color:var(--g)!important;border-color:#00ff8745!important;background:#00ff870a!important}
+.nav-links a.nav-active::after{content:'';position:absolute;bottom:-9px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:var(--g);box-shadow:0 0 8px var(--g)}
+main{max-width:820px;margin:0 auto;padding:60px 28px 100px;width:100%;flex:1;position:relative;z-index:1}
+/* hero */
+.hero{text-align:center;margin-bottom:56px}
+.hero-badge{display:inline-flex;align-items:center;gap:6px;background:#00ff870d;border:1px solid #00ff8728;color:var(--g);font-size:10px;letter-spacing:3px;text-transform:uppercase;padding:5px 16px;border-radius:20px;margin-bottom:22px;font-family:'Space Mono',monospace}
+.hero h1{font-family:'Syne',sans-serif;font-size:clamp(28px,5vw,44px);font-weight:800;line-height:1.1;margin-bottom:14px;color:var(--tx)}
+.hero h1 em{color:var(--g);font-style:normal}
+.hero-sub{color:var(--tx2);font-size:14px;line-height:1.9;max-width:500px;margin:0 auto}
+/* video */
+.video-block{background:var(--s1);border:1px solid var(--brd2);border-radius:var(--r-lg);overflow:hidden;margin-bottom:40px;box-shadow:0 0 60px #00ff8706,0 8px 32px #00000060}
+.video-top{padding:14px 20px;font-size:11px;font-weight:700;color:var(--g);border-bottom:1px solid var(--brd);display:flex;align-items:center;gap:8px;letter-spacing:2px;text-transform:uppercase;background:var(--s2)}
+.video-ratio{position:relative;padding-bottom:56.25%;height:0;overflow:hidden}
+.video-ratio iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:none;display:block}
+/* accordion */
+.acc-group{margin-bottom:40px}
+.acc-label{font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--tx3);font-family:'Space Mono',monospace;margin-bottom:14px;padding-left:2px}
+.acc-item{border:1px solid var(--brd);border-radius:var(--r);margin-bottom:4px;overflow:hidden;background:var(--s1);transition:border-color .2s}
+.acc-item.open{border-color:var(--brd2)}
+.acc-item.open .acc-head{color:var(--g)}
+.acc-head{width:100%;background:none;border:none;padding:18px 22px;display:flex;align-items:center;justify-content:space-between;gap:16px;cursor:pointer;text-align:left;color:var(--tx);font-family:'Syne',sans-serif;font-size:14px;font-weight:700;transition:color .18s}
+.acc-head:hover{color:var(--g)}
+.acc-arrow{flex-shrink:0;width:22px;height:22px;border:1.5px solid var(--brd2);border-radius:50%;display:flex;align-items:center;justify-content:center;transition:all .22s;color:var(--tx3);font-size:10px}
+.acc-item.open .acc-arrow{background:var(--g);border-color:var(--g);color:#000;transform:rotate(45deg)}
+.acc-body{display:none;padding:0 22px 20px;color:var(--tx2);font-size:13px;line-height:1.9}
+.acc-item.open .acc-body{display:block}
+.acc-body ol,.acc-body ul{padding-left:18px;margin-top:8px}
+.acc-body li{margin-bottom:8px}
+.acc-body li:last-child{margin-bottom:0}
+.acc-body strong{color:var(--tx);font-weight:700}
+.acc-body code{font-family:'Space Mono',monospace;font-size:11px;color:var(--g);background:#00ff870d;border:1px solid #00ff8720;padding:1px 6px;border-radius:4px}
+.acc-tip{margin-top:14px;background:#00ff8707;border:1px solid #00ff8718;border-radius:8px;padding:10px 14px;font-size:12px;color:#80c89a;line-height:1.7}
+.acc-tip a{color:var(--g);text-decoration:none}
+/* cta */
+.cta-block{background:var(--s1);border:1px solid var(--brd2);border-radius:var(--r-lg);padding:36px 32px;text-align:center;position:relative;overflow:hidden}
+.cta-block::before{content:'';position:absolute;top:-60px;left:50%;transform:translateX(-50%);width:300px;height:200px;background:radial-gradient(ellipse,#00ff870d 0%,transparent 70%);pointer-events:none}
+.cta-block h2{font-size:18px;font-weight:800;color:var(--tx);margin-bottom:8px}
+.cta-block p{color:var(--tx2);font-size:13px;line-height:1.8;margin-bottom:24px;max-width:380px;margin-left:auto;margin-right:auto}
+.cta-btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.btn-g{display:inline-flex;align-items:center;gap:8px;background:#000;border:1.5px solid var(--g);color:var(--g);font-family:'Syne',sans-serif;font-weight:800;font-size:11px;padding:12px 22px;border-radius:var(--r);text-decoration:none;transition:all .2s;letter-spacing:2px;text-transform:uppercase}
+.btn-g:hover{background:var(--g);color:#000;box-shadow:0 0 24px #00ff8740}
+.btn-wpp{display:inline-flex;align-items:center;gap:8px;background:#000;border:1.5px solid #25d366;color:#25d366;font-family:'Syne',sans-serif;font-weight:800;font-size:11px;padding:12px 22px;border-radius:var(--r);text-decoration:none;transition:all .2s;letter-spacing:2px;text-transform:uppercase}
+.btn-wpp:hover{background:#25d366;color:#000;box-shadow:0 0 24px #25d36640}
+footer{text-align:center;padding:20px 24px;font-size:11px;color:var(--tx3);font-family:'Space Mono',monospace;border-top:1px solid var(--brd);flex-shrink:0;position:relative;z-index:1}
+footer a{color:var(--tx3);text-decoration:none;transition:color .15s}
+footer a:hover{color:var(--g)}
+@media(max-width:600px){nav{padding:12px 16px}.nav-links a{padding:6px 10px;font-size:10px}main{padding:40px 16px 80px}.acc-head{font-size:13px;padding:15px 16px}.cta-block{padding:28px 20px}.cta-btns{flex-direction:column;align-items:center}}
 </style>
 </head>
 <body>
@@ -3233,29 +3191,22 @@ footer.zvm-footer a:hover{color:var(--green)}
   <div class="nav-links" id="main-nav">
     <a href="/" data-navpath="/">PAINEL</a>
     <a href="/faq" data-navpath="/faq">FAQ</a>
-    <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
     <a href="/planos" data-navpath="/planos">PLANOS</a>
+    <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
     <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">SUPORTE</a>
   </div>
 </nav>
-<script>
-(function(){
-  var cp=window.location.pathname;
-  document.querySelectorAll('#main-nav a[data-navpath]').forEach(function(a){
-    if(a.getAttribute('data-navpath')===cp) a.classList.add('nav-active');
-  });
-})();
-</script>
+<script>(function(){var p=window.location.pathname;document.querySelectorAll('#main-nav a[data-navpath]').forEach(function(a){if(a.getAttribute('data-navpath')===p)a.classList.add('nav-active');});})();</script>
 <main>
   <div class="hero">
-    <div class="hero-badge">Central de Ajuda</div>
-    <h1>Perguntas <span>Frequentes</span></h1>
+    <div class="hero-badge">❓ Central de Ajuda</div>
+    <h1>Perguntas <em>Frequentes</em></h1>
     <p class="hero-sub">Tudo o que você precisa saber para instalar, ativar e usar o ZVM com segurança.</p>
   </div>
 
-  <div class="video-wrap">
-    <div class="video-label">🎬 Tutorial Oficial — Instalação e Ativação</div>
-    <div class="video-responsive">
+  <div class="video-block">
+    <div class="video-top">▶ Tutorial Oficial — Instalação e Ativação</div>
+    <div class="video-ratio">
       <iframe
         src="https://www.youtube-nocookie.com/embed/DZ29f5U6OF8?rel=0&modestbranding=1"
         title="ZVM Tutorial de Instalação e Ativação"
@@ -3265,71 +3216,146 @@ footer.zvm-footer a:hover{color:var(--green)}
     </div>
   </div>
 
-  <div class="guide-section">
-    <div class="guide-icon">💻</div>
-    <div style="flex:1;min-width:0">
-      <div class="guide-title">Como Instalar</div>
-      <div class="guide-body">
+  <div class="acc-group">
+    <div class="acc-label">Instalação</div>
+
+    <div class="acc-item">
+      <button class="acc-head" onclick="toggleAcc(this)">
+        <span>Como faço para instalar o ZVM?</span>
+        <span class="acc-arrow">+</span>
+      </button>
+      <div class="acc-body">
         <ol>
-          <li>Baixe o arquivo da extensão fornecido pelo suporte no WhatsApp.</li>
-          <li>Abra o <strong>Google Chrome</strong> ou <strong>Microsoft Edge</strong> e acesse <strong>chrome://extensions</strong> (ou <strong>edge://extensions</strong>).</li>
-          <li>Ative o <strong>Modo Desenvolvedor</strong> no canto superior direito da página.</li>
+          <li>Baixe o arquivo da extensão enviado pelo suporte via WhatsApp.</li>
+          <li>Abra o <strong>Google Chrome</strong> ou <strong>Microsoft Edge</strong> e acesse <code>chrome://extensions</code> (ou <code>edge://extensions</code>).</li>
+          <li>Ative o <strong>Modo Desenvolvedor</strong> no canto superior direito.</li>
           <li>Clique em <strong>"Carregar sem compactação"</strong> e selecione a pasta da extensão descompactada.</li>
-          <li>O ícone do ZVM aparecerá na barra de extensões do navegador. Pronto para ativar.</li>
+          <li>O ícone do ZVM aparecerá na barra de extensões. Pronto para ativar.</li>
         </ol>
+      </div>
+    </div>
+
+    <div class="acc-item">
+      <button class="acc-head" onclick="toggleAcc(this)">
+        <span>O ZVM funciona em qual navegador?</span>
+        <span class="acc-arrow">+</span>
+      </button>
+      <div class="acc-body">
+        <p>O ZVM é compatível com <strong>Google Chrome</strong> e <strong>Microsoft Edge</strong> (versões baseadas em Chromium). Firefox e Safari não são suportados no momento.</p>
       </div>
     </div>
   </div>
 
-  <div class="guide-section">
-    <div class="guide-icon">🔑</div>
-    <div style="flex:1;min-width:0">
-      <div class="guide-title">Como Ativar</div>
-      <div class="guide-body">
+  <div class="acc-group">
+    <div class="acc-label">Ativação</div>
+
+    <div class="acc-item">
+      <button class="acc-head" onclick="toggleAcc(this)">
+        <span>Como ativo minha chave?</span>
+        <span class="acc-arrow">+</span>
+      </button>
+      <div class="acc-body">
         <ol>
-          <li>Abra o <strong>WhatsApp Web</strong> no seu navegador com a extensão instalada.</li>
-          <li>Clique no ícone do ZVM na barra de extensões do navegador.</li>
-          <li>No campo <strong>"Chave de Ativação"</strong>, cole exatamente a chave recebida após a compra (formato: <code style="color:var(--green);font-size:12px">zv-xxxxx-xxxxx-xxxxx</code>).</li>
-          <li>Clique em <strong>Ativar</strong>. O servidor validará a chave em segundos.</li>
-          <li>Após a confirmação, todos os recursos do ZVM estarão disponíveis no WhatsApp Web.</li>
+          <li>Abra o <strong>WhatsApp Web</strong> no navegador com a extensão instalada.</li>
+          <li>Clique no ícone do ZVM na barra de extensões.</li>
+          <li>Cole exatamente a chave recebida após a compra (formato: <code>zv-xxxxx-xxxxx-xxxxx</code>).</li>
+          <li>Clique em <strong>Ativar</strong>. O servidor valida em segundos.</li>
+          <li>Após confirmação, todos os recursos ficam disponíveis.</li>
         </ol>
-        <div class="guide-tip">💡 Sua chave fica vinculada ao número do WhatsApp usado no <strong>primeiro acesso</strong>. Guarde-a em local seguro — ela é pessoal e intransferível.</div>
+        <div class="acc-tip">💡 Sua chave fica vinculada ao número de WhatsApp usado no <strong>primeiro acesso</strong>. Guarde-a — ela é pessoal e intransferível.</div>
+      </div>
+    </div>
+
+    <div class="acc-item">
+      <button class="acc-head" onclick="toggleAcc(this)">
+        <span>Posso usar a mesma chave em mais de um dispositivo?</span>
+        <span class="acc-arrow">+</span>
+      </button>
+      <div class="acc-body">
+        <p>Cada chave permite um número limitado de dispositivos conforme seu plano. Verifique o limite no <a href="/" style="color:var(--g);text-decoration:none">Portal do Cliente</a>. Para liberar um dispositivo antigo, acesse o portal e remova o telefone vinculado.</p>
+      </div>
+    </div>
+
+    <div class="acc-item">
+      <button class="acc-head" onclick="toggleAcc(this)">
+        <span>Preciso consultar o status da minha licença?</span>
+        <span class="acc-arrow">+</span>
+      </button>
+      <div class="acc-body">
+        <p>Sim — acesse o <a href="/" style="color:var(--g);text-decoration:none">Portal do Cliente</a> e insira sua chave para ver data de expiração, dispositivos vinculados e status atual da licença.</p>
       </div>
     </div>
   </div>
 
-  <div class="guide-section">
-    <div class="guide-icon">🔒</div>
-    <div style="flex:1;min-width:0">
-      <div class="guide-title">Sincronização e Privacidade</div>
-      <div class="guide-body">
-        <p>O ZVM opera <strong>de forma isolada dentro do seu navegador</strong>, conectando-se diretamente ao WhatsApp Web como extensão local. Veja como funciona:</p>
-        <ul>
-          <li><strong>Isolamento total:</strong> cada aba do WhatsApp Web é independente. O ZVM não interfere em outras abas, aplicações ou dispositivos.</li>
-          <li><strong>Sem leitura de mensagens:</strong> o ZVM não acessa, armazena nem transmite o conteúdo das suas conversas, contatos ou arquivos de mídia.</li>
-          <li><strong>Dados mínimos de licenciamento:</strong> apenas seu número de telefone, IP e timestamp de acesso são registrados — exclusivamente para controle de licença (conforme a LGPD).</li>
-          <li><strong>Dados removidos automaticamente:</strong> registros de acesso são excluídos após 90 dias sem ação necessária da sua parte.</li>
-        </ul>
-        <div class="guide-tip">🔒 Leia nossa <a href="/privacidade">Política de Privacidade completa</a> para mais detalhes sobre coleta e proteção de dados.</div>
+  <div class="acc-group">
+    <div class="acc-label">Privacidade e Segurança</div>
+
+    <div class="acc-item">
+      <button class="acc-head" onclick="toggleAcc(this)">
+        <span>O ZVM lê minhas mensagens do WhatsApp?</span>
+        <span class="acc-arrow">+</span>
+      </button>
+      <div class="acc-body">
+        <p><strong>Não.</strong> O ZVM opera de forma isolada dentro do seu navegador e não acessa, armazena nem transmite o conteúdo das suas conversas, contatos ou arquivos de mídia.</p>
+        <div class="acc-tip">🔒 Apenas seu número de telefone, IP e timestamp de acesso são registrados — exclusivamente para controle de licença, conforme a LGPD.</div>
+      </div>
+    </div>
+
+    <div class="acc-item">
+      <button class="acc-head" onclick="toggleAcc(this)">
+        <span>Por quanto tempo meus dados ficam armazenados?</span>
+        <span class="acc-arrow">+</span>
+      </button>
+      <div class="acc-body">
+        <p>Registros de acesso são excluídos automaticamente após <strong>90 dias</strong> sem nenhuma ação necessária da sua parte. Consulte nossa <a href="/privacidade" style="color:var(--g);text-decoration:none">Política de Privacidade</a> para detalhes completos.</p>
       </div>
     </div>
   </div>
 
-  <div class="support-section">
+  <div class="acc-group">
+    <div class="acc-label">Renovação e Cobrança</div>
+
+    <div class="acc-item">
+      <button class="acc-head" onclick="toggleAcc(this)">
+        <span>Como renovo minha licença?</span>
+        <span class="acc-arrow">+</span>
+      </button>
+      <div class="acc-body">
+        <p>Entre em contato com o suporte via WhatsApp para renovar. A renovação mantém sua chave atual ativa sem necessidade de reativação na extensão.</p>
+      </div>
+    </div>
+
+    <div class="acc-item">
+      <button class="acc-head" onclick="toggleAcc(this)">
+        <span>O que acontece quando minha licença expira?</span>
+        <span class="acc-arrow">+</span>
+      </button>
+      <div class="acc-body">
+        <p>A extensão para de funcionar, mas seus dados de licença são preservados por <strong>90 dias</strong>. Após a renovação a chave é reativada automaticamente — sem precisar reinstalar.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="cta-block">
     <h2>Ainda tem dúvidas?</h2>
-    <p>Nossa equipe está disponível no WhatsApp para te ajudar com instalação, ativação ou qualquer outra questão.</p>
-    <div class="support-btns">
-      <a class="btn-wpp" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM." target="_blank" rel="noopener">💬 Falar com o Suporte</a>
-      <a class="btn-portal" href="/">🔑 Portal do Cliente</a>
+    <p>Nossa equipe está disponível no WhatsApp para te ajudar com instalação, ativação ou qualquer questão.</p>
+    <div class="cta-btns">
+      <a class="btn-wpp" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM." target="_blank" rel="noopener">💬 Falar com Suporte</a>
+      <a class="btn-g" href="/">🔑 Portal do Cliente</a>
     </div>
   </div>
 </main>
-<footer class="zvm-footer">
-  © ${new Date().getFullYear()} ZVM. Todos os direitos reservados. &nbsp;·&nbsp;
-  <a href="/privacidade">Privacidade</a> &nbsp;·&nbsp;
-  <a href="/faq">FAQ</a> &nbsp;·&nbsp;
-  <a href="/planos">Planos</a>
+<footer>
+  © \${new Date().getFullYear()} ZVM · <a href="/privacidade">Privacidade</a> · <a href="/faq">FAQ</a> · <a href="/planos">Planos</a>
 </footer>
+<script>
+function toggleAcc(btn){
+  var item=btn.closest('.acc-item');
+  var isOpen=item.classList.contains('open');
+  document.querySelectorAll('.acc-item.open').forEach(function(i){i.classList.remove('open');});
+  if(!isOpen)item.classList.add('open');
+}
+</script>
 ${CANVAS_BG}
 </body></html>`;
 }
@@ -3338,42 +3364,49 @@ function renderPrivacyPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Política de Privacidade</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23000000'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZV%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--radius:12px}
-body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;display:flex;flex-direction:column}
-nav{display:flex;align-items:center;justify-content:space-between;padding:14px 32px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040;flex-shrink:0}
-.nav-logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:6px;letter-spacing:-0.5px}
-.nav-links{display:flex;gap:10px}
-.nav-links a{font-size:14px;color:var(--muted);text-decoration:none;padding:8px 16px;border:1px solid var(--border);border-radius:8px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700;position:relative}
-.nav-links a:hover{color:var(--green);border-color:var(--green)}
-.nav-links a.nav-active{color:var(--green)!important;border-color:#00ff8760!important;background:#00ff8712!important}
-.nav-links a.nav-active::after{content:'';position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);width:6px;height:6px;border-radius:50%;background:#00ff33;box-shadow:0 0 8px #00ff33;pointer-events:none}
-footer.zvm-footer{text-align:center;padding:18px 24px;font-size:12px;color:#4a4a6a;font-family:'Syne',sans-serif;border-top:1px solid #1c1c2e20;flex-shrink:0}
-footer.zvm-footer a{color:#5a5a8a;text-decoration:none;transition:color .2s}
-footer.zvm-footer a:hover{color:var(--green)}
-main{max-width:720px;margin:0 auto;padding:56px 24px 80px;flex:1}
+:root{--g:#00ff87;--bg:#000000;--s1:#07070f;--s2:#0d0d1a;--brd:#131320;--brd2:#1c1c2e;--tx:#e8e8f2;--tx2:#9898b8;--tx3:#52526a;--r:10px;--r-lg:16px}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--tx);font-family:'Syne',sans-serif;min-height:100vh;overflow-x:hidden;display:flex;flex-direction:column}
+nav{display:flex;align-items:center;justify-content:space-between;padding:16px 32px;border-bottom:1px solid var(--brd);background:#02020a;position:sticky;top:0;z-index:100;backdrop-filter:blur(12px);flex-shrink:0}
+.nav-logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--g);text-decoration:none;letter-spacing:1px}
+.nav-links{display:flex;gap:8px}
+.nav-links a{font-size:11px;color:var(--tx3);text-decoration:none;padding:7px 14px;border:1px solid var(--brd);border-radius:8px;transition:all .18s;font-family:'Syne',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;position:relative}
+.nav-links a:hover{color:var(--g);border-color:var(--brd2)}
+.nav-links a.nav-active{color:var(--g)!important;border-color:#00ff8745!important;background:#00ff870a!important}
+.nav-links a.nav-active::after{content:'';position:absolute;bottom:-9px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:var(--g);box-shadow:0 0 8px var(--g)}
+main{max-width:700px;margin:0 auto;padding:60px 24px 100px;flex:1;position:relative;z-index:1}
+/* hero */
 .hero{margin-bottom:48px}
-.hero-badge{display:inline-block;background:#00ff8712;border:1px solid #00ff8730;color:var(--green);font-size:12px;letter-spacing:2px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:18px;font-family:'Syne',sans-serif}
-.hero h1{font-family:'Syne',sans-serif;font-size:clamp(24px,4vw,36px);font-weight:800;margin-bottom:12px}
-.hero-meta{font-size:13px;color:var(--muted);font-family:'Syne',sans-serif}
-.section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px 32px;margin-bottom:14px}
-.section h2{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--green);margin-bottom:14px;display:flex;align-items:center;gap:8px}
-.section p,.section li{font-size:12px;color:#b0b0c8;line-height:1.9;margin-bottom:10px}
-.section ul{padding-left:18px}
-.section li{margin-bottom:6px}
-.section li::marker{color:var(--green)}
-.section p:last-child,.section li:last-child{margin-bottom:0}
-.highlight{background:#00ff8708;border:1px solid #00ff8720;border-radius:8px;padding:14px 18px;margin-top:14px}
-.highlight p{color:var(--text);font-size:13px;margin:0;font-family:'Syne',sans-serif;line-height:1.7}
-.tag{display:inline-block;background:#1e1e2e;border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:12px;color:var(--muted);margin:2px;vertical-align:middle}
-.contact-btn{display:inline-flex;align-items:center;gap:8px;background:#25d36618;border:1px solid #25d36630;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:11px 22px;border-radius:8px;text-decoration:none;transition:all .2s;margin-top:14px}
-.contact-btn:hover{background:#25d36628;transform:translateY(-2px);box-shadow:0 6px 20px #25d36625}
-footer{text-align:center;padding:28px;font-size:13px;color:#8a8aaa;border-top:1px solid var(--border);font-family:'Syne',sans-serif}
-footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
-@media(max-width:520px){main{padding:32px 16px 60px}.section{padding:20px 18px}.header-links a{padding:5px 9px;font-size:12px}}
+.hero-badge{display:inline-flex;align-items:center;gap:6px;background:#00ff870d;border:1px solid #00ff8728;color:var(--g);font-size:10px;letter-spacing:3px;text-transform:uppercase;padding:5px 16px;border-radius:20px;margin-bottom:18px;font-family:'Space Mono',monospace}
+.hero h1{font-family:'Syne',sans-serif;font-size:clamp(24px,4vw,36px);font-weight:800;margin-bottom:10px;color:var(--tx)}
+.hero-meta{font-size:11px;color:var(--tx3);font-family:'Space Mono',monospace}
+/* sections */
+.sec{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r-lg);padding:26px 28px;margin-bottom:10px}
+.sec h2{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--g);margin-bottom:14px;display:flex;align-items:center;gap:8px;letter-spacing:2px;text-transform:uppercase}
+.sec p{font-size:13px;color:var(--tx2);line-height:1.9;margin-bottom:10px}
+.sec p:last-child{margin-bottom:0}
+.sec ul{padding-left:0;list-style:none;display:flex;flex-direction:column;gap:8px}
+.sec li{font-size:13px;color:var(--tx2);line-height:1.7;display:flex;align-items:flex-start;gap:10px}
+.sec li::before{content:'—';color:var(--g);flex-shrink:0;font-weight:700;font-family:'Space Mono',monospace;font-size:11px;margin-top:3px}
+.sec li strong{color:var(--tx);font-weight:700}
+.sec strong{color:var(--tx);font-weight:700}
+.notice{background:#00ff8707;border:1px solid #00ff8718;border-radius:8px;padding:14px 18px;margin-top:14px;font-size:12px;color:#80c89a;line-height:1.8;font-family:'Space Mono',monospace}
+.tag{display:inline-block;background:var(--s2);border:1px solid var(--brd2);border-radius:4px;padding:2px 8px;font-size:11px;color:var(--tx3);margin:2px;vertical-align:middle;font-family:'Space Mono',monospace}
+/* contact cta */
+.cta-block{background:var(--s1);border:1px solid var(--brd2);border-radius:var(--r-lg);padding:28px;text-align:center;position:relative;overflow:hidden;margin-top:10px}
+.cta-block::before{content:'';position:absolute;top:-40px;left:50%;transform:translateX(-50%);width:250px;height:160px;background:radial-gradient(ellipse,#00ff870a 0%,transparent 70%);pointer-events:none}
+.cta-block h2{font-size:15px;font-weight:800;color:var(--tx);margin-bottom:6px}
+.cta-block p{color:var(--tx2);font-size:12px;line-height:1.8;margin-bottom:18px}
+.btn-wpp{display:inline-flex;align-items:center;gap:8px;background:#000;border:1.5px solid #25d366;color:#25d366;font-family:'Syne',sans-serif;font-weight:800;font-size:11px;padding:11px 20px;border-radius:var(--r);text-decoration:none;transition:all .2s;letter-spacing:2px;text-transform:uppercase}
+.btn-wpp:hover{background:#25d366;color:#000;box-shadow:0 0 24px #25d36640}
+footer{text-align:center;padding:20px 24px;font-size:11px;color:var(--tx3);font-family:'Space Mono',monospace;border-top:1px solid var(--brd);flex-shrink:0;position:relative;z-index:1}
+footer a{color:var(--tx3);text-decoration:none;transition:color .15s}
+footer a:hover{color:var(--g)}
+@media(max-width:600px){nav{padding:12px 16px}.nav-links a{padding:6px 10px;font-size:10px}main{padding:40px 16px 80px}.sec{padding:20px 18px}}
 </style>
 </head>
 <body>
@@ -3382,45 +3415,39 @@ footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
   <div class="nav-links" id="main-nav">
     <a href="/" data-navpath="/">PAINEL</a>
     <a href="/faq" data-navpath="/faq">FAQ</a>
-    <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
     <a href="/planos" data-navpath="/planos">PLANOS</a>
+    <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
     <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">SUPORTE</a>
   </div>
 </nav>
-<script>
-(function(){
-  var cp=window.location.pathname;
-  document.querySelectorAll('#main-nav a[data-navpath]').forEach(function(a){
-    if(a.getAttribute('data-navpath')===cp) a.classList.add('nav-active');
-  });
-})();
-</script>
+<script>(function(){var p=window.location.pathname;document.querySelectorAll('#main-nav a[data-navpath]').forEach(function(a){if(a.getAttribute('data-navpath')===p)a.classList.add('nav-active');});})();</script>
 <main>
   <div class="hero">
-    <div class="hero-badge">Legal</div>
+    <div class="hero-badge">🔒 Legal / LGPD</div>
     <h1>Política de Privacidade</h1>
-    <p class="hero-meta">Última atualização: ${new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}</p>
+    <p class="hero-meta">Última atualização: \${new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}</p>
   </div>
-  <div class="section">
+
+  <div class="sec">
     <h2>📋 Visão Geral</h2>
-    <p>Esta Política descreve como o <strong style="color:var(--text)">ZVM</strong> coleta, utiliza e protege seus dados ao usar o serviço de licenciamento da extensão ZVM.</p>
-    <p>Ao ativar ou consultar sua chave de acesso, você concorda com estes termos, em conformidade com a <strong style="color:var(--text)">Lei Geral de Proteção de Dados (LGPD — Lei nº 13.709/2018)</strong>.</p>
+    <p>Esta Política descreve como o <strong>ZVM</strong> coleta, utiliza e protege seus dados ao usar o serviço de licenciamento da extensão ZVM.</p>
+    <p>Ao ativar ou consultar sua chave de acesso, você concorda com estes termos, em conformidade com a <strong>Lei Geral de Proteção de Dados (LGPD — Lei nº 13.709/2018)</strong>.</p>
   </div>
-  <div class="section">
-    <h2>🗂 Dados que Coletamos</h2>
+
+  <div class="sec">
+    <h2>🗂 Dados Coletados</h2>
     <p>Para fins exclusivos de licenciamento e controle de acesso, coletamos:</p>
     <ul>
-      <li><strong style="color:var(--text)">Chave de ativação</strong> — identificador único do seu acesso</li>
-      <li><strong style="color:var(--text)">Número de telefone</strong> — vinculado à chave para controle de dispositivos</li>
-      <li><strong style="color:var(--text)">Endereço IP</strong> — para detecção de uso indevido e segurança</li>
-      <li><strong style="color:var(--text)">Versão do WhatsApp Web</strong> — para compatibilidade técnica</li>
-      <li><strong style="color:var(--text)">Timestamps de acesso</strong> — data e hora de cada uso registrado</li>
+      <li><strong>Chave de ativação</strong> — identificador único do seu acesso</li>
+      <li><strong>Número de telefone</strong> — vinculado à chave para controle de dispositivos</li>
+      <li><strong>Endereço IP</strong> — para detecção de uso indevido e segurança</li>
+      <li><strong>Versão do WhatsApp Web</strong> — para compatibilidade técnica</li>
+      <li><strong>Timestamps de acesso</strong> — data e hora de cada uso registrado</li>
     </ul>
-    <div class="highlight">
-      <p>⚠️ <strong>Não coletamos</strong> mensagens, contatos, conversas ou qualquer conteúdo do WhatsApp. Nosso serviço não tem acesso ao conteúdo das suas comunicações.</p>
-    </div>
+    <div class="notice">⚠️ Não coletamos mensagens, contatos, conversas ou qualquer conteúdo do WhatsApp. Nosso serviço não tem acesso ao conteúdo das suas comunicações.</div>
   </div>
-  <div class="section">
+
+  <div class="sec">
     <h2>🎯 Finalidade</h2>
     <p>Os dados são usados exclusivamente para:</p>
     <ul>
@@ -3429,31 +3456,48 @@ footer a{color:#8a8aaa;text-decoration:none}footer a:hover{color:var(--green)}
       <li>Suporte técnico quando solicitado pelo usuário</li>
       <li>Controle do número de dispositivos vinculados por chave</li>
     </ul>
-    <p>Base legal: <strong style="color:var(--text)">execução de contrato</strong> (Art. 7º, V, LGPD).</p>
+    <p style="margin-top:12px">Base legal: <strong>execução de contrato</strong> (Art. 7º, V, LGPD).</p>
   </div>
-  <div class="section">
-    <h2>⏱ Retenção</h2>
-    <p>Registros de acesso são removidos automaticamente após <strong style="color:var(--text)">90 dias</strong>. Dados da chave são mantidos enquanto ela estiver ativa. Ao excluir a chave, todos os dados associados são apagados permanentemente.</p>
+
+  <div class="sec">
+    <h2>⏱ Retenção de Dados</h2>
+    <p>Registros de acesso são removidos automaticamente após <strong>90 dias</strong>. Dados da chave são mantidos enquanto ela estiver ativa. Ao excluir a chave, todos os dados associados são apagados permanentemente.</p>
   </div>
-  <div class="section">
+
+  <div class="sec">
     <h2>🔒 Segurança</h2>
-    <p>Dados armazenados no <strong style="color:var(--text)">MongoDB Atlas</strong> com criptografia AES-256 em repouso e TLS em trânsito. O painel administrativo é protegido por senha e autenticação de dois fatores (2FA).</p>
+    <p>Dados armazenados no <strong>MongoDB Atlas</strong> com criptografia AES-256 em repouso e TLS em trânsito. O painel administrativo é protegido por senha e autenticação de dois fatores (2FA).</p>
   </div>
-  <div class="section">
+
+  <div class="sec">
     <h2>🤝 Compartilhamento</h2>
-    <p>Seus dados <strong style="color:var(--text)">não são vendidos ou compartilhados</strong> com terceiros para fins comerciais. Apenas os provedores de infraestrutura têm acesso técnico:</p>
+    <p>Seus dados <strong>não são vendidos ou compartilhados</strong> com terceiros para fins comerciais. Apenas os provedores de infraestrutura têm acesso técnico:</p>
     <ul>
       <li><span class="tag">MongoDB Atlas</span> armazenamento dos dados</li>
       <li><span class="tag">Render.com</span> hospedagem do servidor</li>
     </ul>
   </div>
+
+  <div class="sec">
+    <h2>⚖️ Seus Direitos (LGPD)</h2>
+    <p>Você tem direito a:</p>
+    <ul>
+      <li>Confirmar a existência de tratamento dos seus dados</li>
+      <li>Acessar os dados que possuímos sobre você</li>
+      <li>Solicitar a exclusão ou correção dos seus dados</li>
+      <li>Revogar o consentimento a qualquer momento</li>
+    </ul>
+    <p style="margin-top:12px">Para exercer esses direitos, entre em contato via WhatsApp.</p>
+  </div>
+
+  <div class="cta-block">
+    <h2>Dúvidas sobre privacidade?</h2>
+    <p>Entre em contato com nossa equipe via WhatsApp para qualquer questão sobre seus dados.</p>
+    <a class="btn-wpp" href="https://wa.me/5521996771552?text=LR!%20Tenho%20uma%20d%C3%BAvida%20sobre%20privacidade." target="_blank" rel="noopener">💬 Falar com o Suporte</a>
   </div>
 </main>
-<footer class="zvm-footer">
-  © ${new Date().getFullYear()} ZVM. Todos os direitos reservados. &nbsp;·&nbsp;
-  <a href="/privacidade">Privacidade</a> &nbsp;·&nbsp;
-  <a href="/faq">FAQ</a> &nbsp;·&nbsp;
-  <a href="/planos">Planos</a>
+<footer>
+  © \${new Date().getFullYear()} ZVM · <a href="/privacidade">Privacidade</a> · <a href="/faq">FAQ</a> · <a href="/planos">Planos</a>
 </footer>
 ${CANVAS_BG}
 </body></html>`;
