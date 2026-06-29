@@ -1742,62 +1742,64 @@ function renderClientPortal() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Portal do Cliente</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23000000'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZV%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-:root{--green:#00ff87;--dark:#080810;--card:#0f0f1a;--border:#1c1c2e;--text:#e2e2f0;--muted:#8a8aaa;--radius:14px}
-body{background:var(--dark);min-height:100vh;display:flex;flex-direction:column;font-family:'Inter',sans-serif;overflow-x:hidden;color:var(--text)}
-nav{display:flex;align-items:center;justify-content:space-between;padding:14px 32px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040;flex-shrink:0}
-.nav-logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:6px;letter-spacing:-0.5px}
-.nav-links{display:flex;gap:10px}
-.nav-links a{font-size:14px;color:var(--muted);text-decoration:none;padding:8px 16px;border:1px solid var(--border);border-radius:8px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700;position:relative}
-.nav-links a:hover{color:var(--green);border-color:var(--green)}
-.nav-links a.nav-active{color:var(--green)!important;border-color:#00ff8760!important;background:#00ff8712!important}
-.nav-links a.nav-active::after{content:'';position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);width:6px;height:6px;border-radius:50%;background:#00ff33;box-shadow:0 0 8px #00ff33;pointer-events:none}
-.page-body{flex:1;display:flex;align-items:center;justify-content:center;padding:20px;min-height:calc(100vh - 57px);flex-direction:column}
-.form-wrap{width:100%;max-width:480px;position:relative;z-index:1;display:flex;flex-direction:column;align-items:stretch}
-.logo{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--green);margin-bottom:4px;letter-spacing:-0.5px}
-.sub{color:var(--muted);font-size:13px;letter-spacing:2px;text-transform:uppercase;margin-bottom:32px;font-family:'Syne',sans-serif}
-label{display:block;text-align:left;font-size:13px;letter-spacing:.5px;color:var(--muted);text-transform:uppercase;margin-bottom:10px;font-family:'Syne',sans-serif;font-weight:600}
-input{width:100%;padding:15px 18px;background:var(--dark);border:1.5px solid var(--border);border-radius:10px;color:var(--green);font-family:'Space Mono',monospace;font-size:16px;outline:none;letter-spacing:2px;transition:border .2s}
-input:focus{border-color:var(--green)}
-.btn{width:100%;padding:16px;background:var(--green);border:none;border-radius:10px;color:#000;font-family:'Syne',sans-serif;font-weight:800;font-size:16px;cursor:pointer;margin-top:18px;transition:all .25s}
-.btn:hover{opacity:.9;transform:translateY(-2px);box-shadow:0 8px 24px #00ff8750}
-.btn:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
-.err{background:#ff475715;border:1px solid #ff4757;border-radius:8px;color:#ff4757;padding:13px 16px;font-size:14px;margin-bottom:18px;text-align:left;font-family:'Inter',sans-serif}
-.result-wrap{width:100%;max-width:1100px;margin:0 auto;padding:24px 32px;position:relative;z-index:1;display:none}
-.panel{display:none}
-.panel.active{display:block}
-.panel-title{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--text);margin-bottom:16px;display:flex;align-items:center;gap:8px}
-.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
-.info-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 18px}
-.info-card .lbl{font-size:12px;letter-spacing:.3px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;font-family:'Syne',sans-serif;font-weight:600}
-.info-card .val{font-size:16px;color:var(--text);font-family:'Syne',sans-serif;font-weight:700}
-.badge{display:inline-block;padding:5px 14px;border-radius:20px;font-size:14px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;font-family:'Syne',sans-serif}
-.row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #1e1e2e30}
-.row:last-child{border-bottom:none}
-.row-label{font-size:14px;letter-spacing:.3px;text-transform:uppercase;color:var(--muted);font-family:'Syne',sans-serif}
-.row-val{font-size:14px;color:var(--text);text-align:right;font-family:'Syne',sans-serif;font-weight:600}
-.badge-on{background:#00ff8720;color:#00ff87;border:1px solid #00ff8740}
-.badge-off{background:#ff475720;color:#ff4757;border:1px solid #ff475740}
-.badge-warn{background:#ffa50020;color:#ffa500;border:1px solid #ffa50040}
-.badge-def{background:#6b6b8a20;color:#6b6b8a;border:1px solid #6b6b8a40}
-.hint{margin-top:22px;color:#8a8aaa;font-size:13px;line-height:1.8;font-family:'Syne',sans-serif}.hint a{color:#00ff87;text-decoration:none}
-.expire-bar-wrap{margin-top:6px;background:#1e1e2e;border-radius:6px;overflow:hidden;height:6px}
-.expire-bar{height:6px;border-radius:6px;transition:width .6s}
-.section-links{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.link-btn{padding:14px 12px;background:#0f0f1a;border:1px solid #1c1c2e;border-radius:10px;color:#e2e2f0;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;text-align:center;text-decoration:none;transition:all .2s;display:block}
-.link-btn:hover{border-color:#00ff87;color:#00ff87;transform:translateY(-2px)}
-@media(max-width:900px){.page-body{grid-template-columns:1fr}.col-left{border-right:none;border-bottom:1px solid var(--border)}.section-links{grid-template-columns:1fr 1fr}}
-.spinner{display:inline-block;width:15px;height:15px;border:2px solid #00ff8730;border-top-color:#00ff87;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px}
+:root{--g:#00ff87;--bg:#000000;--s1:#07070f;--s2:#0d0d1a;--brd:#131320;--brd2:#1c1c2e;--tx:#e8e8f2;--tx2:#9898b8;--tx3:#52526a;--r:10px;--r-lg:16px}
+body{background:var(--bg);min-height:100vh;display:flex;flex-direction:column;font-family:'Syne',sans-serif;overflow-x:hidden;color:var(--tx)}
+nav{display:flex;align-items:center;justify-content:space-between;padding:10px 24px;border-bottom:1px solid var(--brd);background:#02020a;position:sticky;top:0;z-index:50;backdrop-filter:blur(12px);flex-shrink:0}
+.nav-logo{font-size:19px;font-weight:800;color:var(--g);text-decoration:none;letter-spacing:-.5px}
+.nav-links{display:flex;gap:4px}
+.nav-links a{font-size:11px;font-weight:700;color:var(--tx3);text-decoration:none;padding:6px 12px;border:1px solid transparent;border-radius:6px;transition:all .15s;letter-spacing:.8px;text-transform:uppercase;position:relative}
+.nav-links a:hover{color:var(--g);border-color:var(--brd2)}
+.nav-links a.nav-active{color:var(--g)!important;border-color:#00ff8738!important;background:#00ff870a!important}
+.nav-links a.nav-active::after{content:'';position:absolute;bottom:-4px;left:50%;transform:translateX(-50%);width:3px;height:3px;border-radius:50%;background:var(--g);box-shadow:0 0 6px var(--g)}
+.loading-overlay{position:fixed;inset:0;background:#000;display:flex;align-items:center;justify-content:center;z-index:999}
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid #00ff8728;border-top-color:var(--g);border-radius:50%;animation:spin .65s linear infinite;vertical-align:middle;margin-right:8px}
 @keyframes spin{to{transform:rotate(360deg)}}
-.loading-overlay{position:fixed;inset:0;background:#0a0a0f;display:flex;align-items:center;justify-content:center;z-index:99}
-.privacy-note{margin-top:16px;padding:12px 16px;background:#1e1e2e30;border-radius:8px;font-size:14px;color:#a0a0c0;text-align:left;line-height:1.7;font-family:'Syne',sans-serif}
+.page-body{flex:1;display:flex;align-items:center;justify-content:center;padding:28px 20px;flex-direction:column}
+.form-wrap{width:100%;max-width:400px;background:var(--s1);border:1px solid var(--brd2);border-radius:20px;padding:36px 30px;position:relative;overflow:hidden;box-shadow:0 0 100px #00ff870a,0 20px 60px #00000080}
+.portal-glow{position:absolute;top:-80px;left:50%;transform:translateX(-50%);width:280px;height:200px;background:radial-gradient(ellipse,#00ff8710 0%,transparent 65%);pointer-events:none;z-index:0}
+.portal-logo{font-size:24px;font-weight:800;color:var(--g);text-align:center;margin-bottom:2px;letter-spacing:-.5px;position:relative;z-index:1}
+.portal-tagline{font-size:9px;color:var(--tx3);text-align:center;letter-spacing:3px;text-transform:uppercase;margin-bottom:0;position:relative;z-index:1}
+.portal-divider{height:1px;background:linear-gradient(90deg,transparent,var(--brd2),transparent);margin:20px 0;position:relative;z-index:1}
+.field-label{display:block;font-size:9px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;position:relative;z-index:1}
+#key-input{width:100%;padding:13px 16px;background:#000;border:1.5px solid var(--brd2);border-radius:var(--r);color:var(--g);font-family:'Space Mono',monospace;font-size:14px;font-weight:700;outline:none;letter-spacing:3px;transition:border-color .2s,box-shadow .2s;text-align:center;display:block;position:relative;z-index:1}
+#key-input::placeholder{color:var(--tx3);letter-spacing:1px;font-size:11px;font-weight:400}
+#key-input:focus{border-color:var(--g);box-shadow:0 0 0 3px #00ff8710}
+.key-hint-txt{font-size:10px;color:var(--tx3);margin:6px 0 18px;text-align:center;letter-spacing:.5px;position:relative;z-index:1}
+.err{background:#ff47570d;border:1px solid #ff475738;border-radius:8px;color:#ff7080;padding:10px 14px;font-size:12px;margin-bottom:14px;line-height:1.5;position:relative;z-index:1}
+#check-btn{width:100%;padding:13px;background:var(--g);border:none;border-radius:var(--r);color:#000;font-family:'Syne',sans-serif;font-weight:800;font-size:14px;cursor:pointer;transition:all .2s;letter-spacing:.3px;position:relative;z-index:1}
+#check-btn:hover:not(:disabled){opacity:.9;box-shadow:0 6px 28px #00ff8748;transform:translateY(-1px)}
+#check-btn:disabled{opacity:.35;cursor:not-allowed;transform:none;box-shadow:none}
+.quick-links{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:10px;position:relative;z-index:1}
+.quick-link{display:block;padding:9px 4px;background:#000;border:1px solid var(--brd);border-radius:var(--r);color:var(--tx3);font-size:10px;font-weight:700;text-align:center;text-decoration:none;transition:all .15s;letter-spacing:.3px}
+.quick-link:hover{border-color:var(--g);color:var(--g)}
+.privacy-note{margin-top:14px;padding:9px 12px;background:#00000060;border:1px solid var(--brd);border-radius:8px;font-size:10px;color:var(--tx3);line-height:1.6;text-align:center;position:relative;z-index:1}
 .privacy-note a{color:#4f8ef7;text-decoration:none}
-footer.zvm-footer{text-align:center;padding:18px 24px;font-size:12px;color:#4a4a6a;font-family:'Syne',sans-serif;border-top:1px solid #1c1c2e20;flex-shrink:0}
-footer.zvm-footer a{color:#5a5a8a;text-decoration:none;transition:color .2s}
-footer.zvm-footer a:hover{color:var(--green)}
+.result-wrap{width:100%;max-width:860px;margin:0 auto;padding:24px 20px;display:none}
+.result-header{display:flex;align-items:center;justify-content:space-between;background:var(--s1);border:1px solid var(--brd2);border-radius:var(--r-lg);padding:16px 20px;margin-bottom:12px;gap:12px;flex-wrap:wrap}
+.panel-title{font-size:17px;font-weight:800;color:var(--tx);letter-spacing:-.3px}
+.result-key-sub{font-size:10px;color:var(--tx3);margin-top:3px;font-family:'Space Mono',monospace;letter-spacing:1px}
+.badge{display:inline-flex;align-items:center;padding:5px 13px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;white-space:nowrap}
+.badge-on{background:#00ff8710;color:#00ff87;border:1px solid #00ff8728}
+.badge-off{background:#ff475710;color:#ff7080;border:1px solid #ff475728}
+.badge-warn{background:#ffa50010;color:#ffa500;border:1px solid #ffa50028}
+.badge-def{background:#4f8ef710;color:#4f8ef7;border:1px solid #4f8ef728}
+.info-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;margin-bottom:12px}
+.info-card{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);padding:12px 16px}
+.info-card .lbl{font-size:9px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:1.8px;margin-bottom:5px}
+.info-card .val{font-size:14px;font-weight:700;color:var(--tx);line-height:1.3;word-break:break-word}
+.expire-bar-wrap{margin-top:8px;background:var(--brd);border-radius:4px;overflow:hidden;height:3px}
+.expire-bar{height:3px;border-radius:4px;transition:width .6s}
+.section-links{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:14px}
+.link-btn{display:block;padding:11px 8px;background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);color:var(--tx2);font-size:11px;font-weight:700;text-align:center;text-decoration:none;transition:all .15s;font-family:'Syne',sans-serif}
+.link-btn:hover{border-color:var(--g);color:var(--g)}
+footer.zvm-footer{text-align:center;padding:14px 24px;font-size:11px;color:var(--tx3);border-top:1px solid var(--brd);flex-shrink:0}
+footer.zvm-footer a{color:var(--tx3);text-decoration:none;transition:color .15s}
+footer.zvm-footer a:hover{color:var(--g)}
+@media(max-width:580px){.form-wrap{padding:26px 18px}.quick-links{grid-template-columns:1fr 1fr}.result-wrap{padding:16px 12px}.section-links{grid-template-columns:1fr 1fr}.info-grid{grid-template-columns:1fr 1fr}.nav-links a{padding:5px 8px;font-size:10px}}
 </style>
 </head><body>
 <nav>
@@ -1810,60 +1812,57 @@ footer.zvm-footer a:hover{color:var(--green)}
     <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">SUPORTE</a>
   </div>
 </nav>
-<script>
-(function(){
-  var cp=window.location.pathname;
-  document.querySelectorAll('#main-nav a[data-navpath]').forEach(function(a){
-    if(a.getAttribute('data-navpath')===cp) a.classList.add('nav-active');
-  });
-})();
-</script>
+<script>(function(){var cp=window.location.pathname;document.querySelectorAll('#main-nav a[data-navpath]').forEach(function(a){if(a.getAttribute('data-navpath')===cp)a.classList.add('nav-active');});})();</script>
 <div id="loading-overlay" class="loading-overlay"><span class="spinner"></span></div>
 <div class="page-body">
   <div class="form-wrap" id="main-form-wrap">
-    <div style="background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:36px 32px;text-align:center">
-    <div class="logo">⚡ ZVM</div>
-    <div class="sub">Portal do Cliente</div>
+    <div class="portal-glow"></div>
+    <div class="portal-logo">⚡ ZVM</div>
+    <div class="portal-tagline">Portal do Cliente</div>
+    <div class="portal-divider"></div>
     <div id="form-area">
       <div id="err-box" class="err" style="display:none"></div>
-      <label>Sua Chave de Ativação</label>
+      <label class="field-label" for="key-input">Chave de Ativação</label>
       <input type="text" id="key-input" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="20" pattern="[A-Za-z0-9\-]+" inputmode="text">
-      <p style="text-align:left;font-size:13px;color:#8a8aaa;margin-top:8px;font-family:'Syne',sans-serif">Você recebeu esta chave junto com a sua compra.</p>
-      <button class="btn" id="check-btn" onclick="checkKey()">Consultar Minha Chave</button>
-      <a class="btn" href="/faq" style="display:block;margin-top:10px;background:#1e1e2e;color:#8a8aaa;font-size:14px;text-decoration:none;text-align:center;padding:13px;border-radius:10px;border:1px solid #2a2a3e;transition:border-color .2s,color .2s;font-family:'Syne',sans-serif;font-weight:700" onmouseover="this.style.borderColor='#00ff87';this.style.color='#00ff87'" onmouseout="this.style.borderColor='#2a2a3e';this.style.color='#6b6b8a'">❓ FAQ — Dúvidas Frequentes</a>
-      <a class="btn" href="/planos" style="display:block;margin-top:8px;background:#00ff8710;color:#00ff87;font-size:14px;text-decoration:none;text-align:center;padding:13px;border-radius:10px;border:1px solid #00ff8730;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700" onmouseover="this.style.background='#00ff8720';this.style.borderColor='#00ff87'" onmouseout="this.style.background='#00ff8710';this.style.borderColor='#00ff8730'">💳 Ver Planos e Preços</a>
-      <div class="privacy-note">🔒 Ao usar este serviço, você concorda com nossa <a href="/privacidade">Política de Privacidade</a> e com a coleta de dados de uso para fins de licenciamento (LGPD).</div>
+      <p class="key-hint-txt">20 caracteres · letras, números e hífens</p>
+      <button id="check-btn" onclick="checkKey()">Consultar Minha Chave</button>
+      <div class="quick-links">
+        <a class="quick-link" href="/faq">❓ FAQ</a>
+        <a class="quick-link" href="/planos">💳 Planos</a>
+        <a class="quick-link" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">💬 Suporte</a>
+      </div>
+      <div class="privacy-note">🔒 Ao usar este serviço você concorda com nossa <a href="/privacidade">Política de Privacidade</a> (LGPD).</div>
     </div>
-    <div class="hint" style="margin-top:20px;color:#a0a0c0;font-size:14px;font-family:'Syne',sans-serif;text-align:center">
-      Precisa de ajuda? <a href="/planos" style="color:var(--green)">💳 Planos</a> · <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" style="color:var(--green)">💬 Suporte</a>
-    </div>
-    </div><!-- fecha card -->
-  </div><!-- fecha form-wrap -->
+  </div>
   <div class="result-wrap" id="result-wrap">
-    <div id="result-panel" style="display:block">
-      <div class="panel-title" id="panel-name">Minha Conta</div>
-      <div class="info-grid">
-        <div class="info-card"><div class="lbl">Status</div><div class="val" id="r-status">—</div></div>
-        <div class="info-card"><div class="lbl">Dispositivos</div><div class="val" id="r-phones">—</div></div>
-        <div class="info-card" style="grid-column:span 2"><div class="lbl">Expira em</div><div class="val"><span id="r-expires">—</span><div class="expire-bar-wrap" id="r-bar-wrap" style="display:none;margin-top:10px"><div class="expire-bar" id="r-bar"></div></div></div></div>
-        <div class="info-card" id="r-act-card" style="display:none"><div class="lbl">Ativada em</div><div class="val" id="r-activated">—</div></div>
-        <div class="info-card" id="r-last-card" style="display:none"><div class="lbl">Último uso</div><div class="val" id="r-lastused">—</div></div>
+    <div class="result-header">
+      <div>
+        <div class="panel-title" id="panel-name">Minha Conta</div>
+        <div class="result-key-sub"></div>
       </div>
-      <div id="r-phone-section" style="display:none;margin-bottom:16px">
-        <div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;font-family:'Syne',sans-serif;font-weight:700">Dispositivos cadastrados</div>
-        <div id="r-phone-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px"></div>
-        <div style="font-size:13px;color:var(--muted);margin-top:12px;font-family:'Syne',sans-serif">Remova um número para liberar o slot.</div>
-      </div>
-      <div id="r-renew-banner" style="display:none;margin-bottom:20px;background:#00ff8710;border:1px solid #00ff8730;border-radius:12px;padding:18px 22px;display:flex;align-items:center;justify-content:space-between;gap:16px">
-        <div>
-          <div style="font-size:16px;color:#00ff87;font-family:'Syne',sans-serif;font-weight:800;margin-bottom:4px">🔄 Hora de renovar!</div>
-          <div style="font-size:13px;color:var(--muted)">Renove agora e o tempo é somado ao restante.</div>
-        </div>
-        <a href="/planos" style="flex-shrink:0;padding:12px 24px;background:#00ff87;color:#000;font-family:'Syne',sans-serif;font-weight:800;font-size:14px;border-radius:8px;text-decoration:none;white-space:nowrap">💳 Ver Planos</a>
-      </div>
-      <div class="section-links" id="r-links" style="margin-bottom:20px"></div>
-      <button onclick="resetPanel()" style="padding:12px 24px;background:#1e1e2e;color:var(--muted);border:1px solid var(--border);border-radius:8px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='#00ff87';this.style.color='#00ff87'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">← Consultar outra chave</button>
+      <div id="r-status"></div>
     </div>
+    <div class="info-grid">
+      <div class="info-card"><div class="lbl">Dispositivos</div><div class="val" id="r-phones">—</div></div>
+      <div class="info-card" style="grid-column:span 2"><div class="lbl">Expira em</div><div class="val"><span id="r-expires">—</span></div><div class="expire-bar-wrap" id="r-bar-wrap" style="display:none"><div class="expire-bar" id="r-bar"></div></div></div>
+      <div class="info-card" id="r-act-card" style="display:none"><div class="lbl">Ativada em</div><div class="val" id="r-activated">—</div></div>
+      <div class="info-card" id="r-last-card" style="display:none"><div class="lbl">Último Uso</div><div class="val" id="r-lastused">—</div></div>
+    </div>
+    <div id="r-phone-section" style="display:none;margin-bottom:12px;background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);padding:14px 16px">
+      <div style="font-size:9px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:1.8px;margin-bottom:10px">Dispositivos Cadastrados</div>
+      <div id="r-phone-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:7px"></div>
+      <div style="font-size:10px;color:var(--tx3);margin-top:8px">Remova um número para liberar o slot.</div>
+    </div>
+    <div id="r-renew-banner" style="display:none;margin-bottom:12px;background:#00ff870a;border:1px solid #00ff8720;border-radius:var(--r);padding:14px 18px;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:13px;color:var(--g);font-weight:800;margin-bottom:2px">🔄 Hora de renovar!</div>
+        <div style="font-size:11px;color:var(--tx3)">Renove agora e o tempo é somado ao restante.</div>
+      </div>
+      <a href="/planos" style="flex-shrink:0;padding:9px 18px;background:var(--g);color:#000;font-family:'Syne',sans-serif;font-weight:800;font-size:12px;border-radius:8px;text-decoration:none;white-space:nowrap">💳 Ver Planos</a>
+    </div>
+    <div class="section-links" id="r-links"></div>
+    <button onclick="resetPanel()" style="margin-top:4px;padding:9px 18px;background:transparent;color:var(--tx3);border:1px solid var(--brd);border-radius:var(--r);font-family:'Syne',sans-serif;font-weight:700;font-size:11px;cursor:pointer;transition:all .15s;letter-spacing:.3px" onmouseover="this.style.borderColor='var(--g)';this.style.color='var(--g)'" onmouseout="this.style.borderColor='var(--brd)';this.style.color='var(--tx3)'">← Consultar outra chave</button>
+  </div>
 </div>
 <footer class="zvm-footer">
   © ${new Date().getFullYear()} ZVM. Todos os direitos reservados. &nbsp;·&nbsp;
@@ -3257,7 +3256,12 @@ footer.zvm-footer a:hover{color:var(--green)}
   <div class="video-wrap">
     <div class="video-label">🎬 Tutorial Oficial — Instalação e Ativação</div>
     <div class="video-responsive">
-      <iframe src="https://www.youtube.com/embed/DZ29f5U6OF8" title="ZVM Tutorial de Instalação e Ativação" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+      <iframe
+        src="https://www.youtube-nocookie.com/embed/DZ29f5U6OF8?rel=0&modestbranding=1"
+        title="ZVM Tutorial de Instalação e Ativação"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowfullscreen
+        referrerpolicy="strict-origin-when-cross-origin"></iframe>
     </div>
   </div>
 
@@ -4138,7 +4142,7 @@ async function handleRequest(req, res) {
     'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
     'Referrer-Policy':              'no-referrer',
     'Permissions-Policy':           'geolocation=(), microphone=(), camera=()',
-    'Content-Security-Policy':      "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://i.ytimg.com https://www.youtube.com; connect-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; media-src https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'",
+    'Content-Security-Policy':      "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://i.ytimg.com https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; media-src https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'",
     'X-Powered-By':                 'PHP/7.4.3',
   };
   Object.entries(_corsH).forEach(([k, v]) => res.setHeader(k, v));
