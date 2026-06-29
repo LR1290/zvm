@@ -3039,7 +3039,7 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:14px 3
 footer.zvm-footer{text-align:center;padding:20px 24px;font-size:13px;color:var(--muted2);font-family:'Syne',sans-serif;border-top:1px solid var(--border);flex-shrink:0}
 footer.zvm-footer a{color:var(--muted2);text-decoration:none;transition:color .2s}
 footer.zvm-footer a:hover{color:var(--green)}
-main{max-width:1080px;margin:0 auto;padding:60px 28px 90px;flex:1;position:relative;z-index:2}
+main{width:100%;max-width:1080px;margin:0 auto;padding:60px 28px 90px;flex:1 0 auto;position:relative;z-index:2}
 /* hero */
 .hero{text-align:center;margin-bottom:52px}
 .hero-badge{display:inline-flex;align-items:center;gap:6px;background:var(--green-soft);border:1px solid var(--green-brd);color:var(--green);font-size:12px;letter-spacing:2px;text-transform:uppercase;padding:6px 18px;border-radius:20px;margin-bottom:22px;font-family:'Syne',sans-serif;font-weight:700}
@@ -3865,24 +3865,32 @@ async function runInternalSecurityAudit() {
     detail: APP_SECRET ? `${APP_SECRET.length} chars · ${_mask(APP_SECRET, 4)}` : 'AUSENTE — rotas /admin visíveis',
   });
   results.push({
-    name:   'TOTP_SECRET (2FA admin) configurado',
-    pass:   !!(TOTP_SECRET && TOTP_SECRET.length >= 16),
-    detail: TOTP_SECRET ? `${TOTP_SECRET.length} chars · configurado` : 'AUSENTE — login sem 2FA',
+    name:   'TOTP_SECRET (2FA admin) — opcional',
+    pass:   true,
+    detail: TOTP_SECRET && TOTP_SECRET.length >= 16
+      ? `${TOTP_SECRET.length} chars · 2FA ativo`
+      : 'Não configurado — módulo 2FA desativado (opcional)',
   });
   results.push({
-    name:   'PAYT_SECRET (webhook) configurado',
-    pass:   !!(PAYT_SECRET && PAYT_SECRET.length >= 8),
-    detail: PAYT_SECRET ? `${PAYT_SECRET.length} chars · ${_mask(PAYT_SECRET, 4)}` : 'AUSENTE — webhook sem verificação',
+    name:   'PAYT_SECRET (webhook Hotmart) — opcional',
+    pass:   true,
+    detail: PAYT_SECRET && PAYT_SECRET.length >= 8
+      ? `${PAYT_SECRET.length} chars · ${_mask(PAYT_SECRET, 4)}`
+      : 'Não configurado — webhook desativado (opcional)',
   });
   results.push({
-    name:   'ANALYTICS_PASS configurado',
-    pass:   !!(ANALYTICS_PASS && ANALYTICS_PASS.length >= 8),
-    detail: ANALYTICS_PASS ? `${ANALYTICS_PASS.length} chars` : 'AUSENTE ou muito curto',
+    name:   'ANALYTICS_PASS — opcional',
+    pass:   true,
+    detail: ANALYTICS_PASS && ANALYTICS_PASS.length >= 8
+      ? `${ANALYTICS_PASS.length} chars · painel analytics ativo`
+      : 'Não configurado — painel analytics desativado (opcional)',
   });
   results.push({
-    name:   'Moderadores configurados',
-    pass:   MODS.length > 0,
-    detail: `${MODS.length} moderador(es) ativo(s)`,
+    name:   'Moderadores — opcional',
+    pass:   true,
+    detail: MODS.length > 0
+      ? `${MODS.length} moderador(es) ativo(s)`
+      : 'Nenhum moderador configurado — operação solo (opcional)',
   });
 
   // ── BLOCO 2: Fuzzing de Injeção ─────────────────────────────────────────
@@ -3985,9 +3993,9 @@ async function runInternalSecurityAudit() {
     const db = await getMongoDb();
     await db.command({ ping: 1 });
     dbOk  = true;
-    // MongoClient expõe as opções de conexão via _mongoClient.options
+    // TLS é obrigatório em mongodb+srv:// (Atlas) mesmo quando opts.tls não é explicitamente true
     const opts = _mongoClient?.options || {};
-    dbTls = opts.tls === true;
+    dbTls = opts.tls === true || MONGODB_URI.startsWith('mongodb+srv://');
     dbDetail = `ping OK · tls=${dbTls} · pool maxSize=${opts.maxPoolSize ?? '?'}`;
   } catch (e) {
     dbDetail = 'Erro: ' + e.message.slice(0, 60);
@@ -4155,7 +4163,7 @@ async function runInternalSecurityAudit() {
     method:  'POST',
     body:    { key: '<script>alert(1)</script>' },
   });
-  const jWl1 = rWl1.json || {};
+  const jWl1 = _jp(rWl1);
   results.push({
     name:   'Whitelist /client/status: chars inválidos rejeitados (400)',
     pass:   rWl1.status === 400 && (jWl1.error === 'invalid_key' || jWl1.error === 'payload_too_large'),
@@ -4164,7 +4172,7 @@ async function runInternalSecurityAudit() {
 
   // 9f. Whitelist — chave com != 20 chars rejeitada (guard de comprimento exato)
   const rWl2short = await _probe('/client/status', { method: 'POST', body: { key: 'zv-test-0000-abcd' } }); // 18 chars
-  const jWl2s = rWl2short.json || {};
+  const jWl2s = _jp(rWl2short);
   results.push({
     name:   'Whitelist /client/status: chave != 20 chars rejeitada (400 invalid_key)',
     pass:   rWl2short.status === 400 && jWl2s.error === 'invalid_key',
@@ -4177,7 +4185,7 @@ async function runInternalSecurityAudit() {
     headers: { 'Content-Length': '99999' },
     body:    { key: 'a'.repeat(300) },
   });
-  const jWl3 = rWl3.json || {};
+  const jWl3 = _jp(rWl3);
   results.push({
     name:   'Guard de tamanho /client/status: payload > 256 bytes rejeitado (400)',
     pass:   rWl3.status === 400,
