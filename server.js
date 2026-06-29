@@ -1827,7 +1827,7 @@ footer.zvm-footer a:hover{color:var(--green)}
     <div id="form-area">
       <div id="err-box" class="err" style="display:none"></div>
       <label>Sua Chave de Ativação</label>
-      <input type="text" id="key-input" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="60" pattern="[A-Za-z0-9\-]+" inputmode="text">
+      <input type="text" id="key-input" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="30" pattern="[A-Za-z0-9\-]+" inputmode="text">
       <p style="text-align:left;font-size:13px;color:#8a8aaa;margin-top:8px;font-family:'Syne',sans-serif">Você recebeu esta chave junto com a sua compra.</p>
       <button class="btn" id="check-btn" onclick="checkKey()">Consultar Minha Chave</button>
       <a class="btn" href="/faq" style="display:block;margin-top:10px;background:#1e1e2e;color:#8a8aaa;font-size:14px;text-decoration:none;text-align:center;padding:13px;border-radius:10px;border:1px solid #2a2a3e;transition:border-color .2s,color .2s;font-family:'Syne',sans-serif;font-weight:700" onmouseover="this.style.borderColor='#00ff87';this.style.color='#00ff87'" onmouseout="this.style.borderColor='#2a2a3e';this.style.color='#6b6b8a'">❓ FAQ — Dúvidas Frequentes</a>
@@ -1875,7 +1875,7 @@ footer.zvm-footer a:hover{color:var(--green)}
 function fmtDate(iso){if(!iso)return'—';const d=new Date(iso);return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
 
 function fmtHours(h){if(h===null||h===undefined)return null;if(h>=48)return Math.floor(h/24)+' dias';if(h>=1)return h+'h';return'menos de 1h';}
-const _KEY_RE=/^[a-z0-9\-]{1,60}$/;
+const _KEY_RE=/^[a-z0-9\-]{1,30}$/;
 async function doCheck(key){
   const errBox=document.getElementById('err-box'),btn=document.getElementById('check-btn');
   errBox.style.display='none';
@@ -4063,28 +4063,40 @@ async function runInternalSecurityAudit() {
     detail: `HTTP ${rNoSqlAdmin.status} (esperado 401 sem auth, ou 400 com objeto $ne)`,
   });
 
-  // 9e. Whitelist de caracteres no portal do cliente (/client/status)
-  // Envia chave com caracteres proibidos — espera 400 invalid_key (bloqueada antes do DB)
+  // 9e. Whitelist de caracteres — payload XSS rejeitado (400 invalid_key)
   const rWl1 = await _probe('/client/status', {
     method:  'POST',
     body:    { key: '<script>alert(1)</script>' },
   });
   const jWl1 = rWl1.json || {};
   results.push({
-    name:   'Whitelist /client/status: payload XSS rejeitado (400 invalid_key)',
-    pass:   rWl1.status === 400 && jWl1.error === 'invalid_key',
-    detail: `HTTP ${rWl1.status} · error="${jWl1.error||'?'}" (esperado 400 + invalid_key)`,
+    name:   'Whitelist /client/status: chars inválidos rejeitados (400 invalid_key)',
+    pass:   rWl1.status === 400 && (jWl1.error === 'invalid_key' || jWl1.error === 'payload_too_large'),
+    detail: `HTTP ${rWl1.status} · error="${jWl1.error||'?'}" (esperado 400)`,
   });
 
-  // 9f. Whitelist aceita chave válida (não rejeita false-positive)
+  // 9f. Whitelist — chave alfanumérica+hífen ≤30 chars aceita (sem false-positive)
   const rWl2 = await _probe('/client/status', {
     method: 'POST',
     body:   { key: 'zv-test-0000-abcd' },
   });
   results.push({
-    name:   'Whitelist /client/status: chave alfanumérica+hífen aceita (não bloqueada)',
+    name:   'Whitelist /client/status: chave válida ≤30 chars não bloqueada',
     pass:   rWl2.status !== 400,
-    detail: `HTTP ${rWl2.status} (esperado != 400 — whitelist não rejeita formato válido)`,
+    detail: `HTTP ${rWl2.status} (esperado != 400 — formato válido passa o guard)`,
+  });
+
+  // 9g. Payload oversized rejeitado antes do parseBody (Content-Length > 256)
+  const rWl3 = await _probe('/client/status', {
+    method:  'POST',
+    headers: { 'Content-Length': '99999' },
+    body:    { key: 'a'.repeat(300) },
+  });
+  const jWl3 = rWl3.json || {};
+  results.push({
+    name:   'Guard de tamanho /client/status: payload > 256 bytes rejeitado (400)',
+    pass:   rWl3.status === 400,
+    detail: `HTTP ${rWl3.status} · error="${jWl3.error||'?'}" (esperado 400 payload_too_large ou invalid_key)`,
   });
 
   return { ok: true, results, ts: new Date().toISOString() };
@@ -4126,7 +4138,7 @@ async function handleRequest(req, res) {
     'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
     'Referrer-Policy':              'no-referrer',
     'Permissions-Policy':           'geolocation=(), microphone=(), camera=()',
-    'Content-Security-Policy':      "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-src https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'",
+    'Content-Security-Policy':      "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://i.ytimg.com; connect-src 'self'; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; media-src https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'",
     'X-Powered-By':                 'PHP/7.4.3',
   };
   Object.entries(_corsH).forEach(([k, v]) => res.setHeader(k, v));
@@ -5102,10 +5114,12 @@ async function handleRequest(req, res) {
 
   if (p === '/client/status' && req.method === 'POST') {
     if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    const _cl = parseInt(req.headers['content-length'] || '0', 10);
+    if (_cl > 256) { sendJson(res, { error: 'payload_too_large' }, 400); return; }
     const body = await parseBody(req);
     const _rawKey = typeof body.key === 'string' ? body.key : '';
-    if (!/^[a-z0-9\-]{1,60}$/i.test(_rawKey)) { sendJson(res, { error: 'invalid_key' }, 400); return; }
-    const code = sanitizeId(_rawKey, 60);
+    if (!/^[a-z0-9\-]{1,30}$/i.test(_rawKey)) { sendJson(res, { error: 'invalid_key' }, 400); return; }
+    const code = sanitizeId(_rawKey, 30);
     if (!code) { sendJson(res, { error: 'not_found' }, 404); return; }
     if (!await ensureKeyLoaded(code)) { sendJson(res, { error: 'not_found' }, 404); return; }
     const k = keys[code];
@@ -5129,10 +5143,12 @@ async function handleRequest(req, res) {
 
   if (p === '/client/remove-phone' && req.method === 'POST') {
     if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    const _clRm = parseInt(req.headers['content-length'] || '0', 10);
+    if (_clRm > 256) { sendJson(res, { error: 'payload_too_large' }, 400); return; }
     const body    = await parseBody(req);
     const _rawRmKey = typeof body.key === 'string' ? body.key : '';
-    if (!/^[a-z0-9\-]{1,60}$/i.test(_rawRmKey)) { sendJson(res, { error: 'invalid_key' }, 400); return; }
-    const keyCode = sanitizeId(_rawRmKey, 60);
+    if (!/^[a-z0-9\-]{1,30}$/i.test(_rawRmKey)) { sendJson(res, { error: 'invalid_key' }, 400); return; }
+    const keyCode = sanitizeId(_rawRmKey, 30);
     const phoneIdx = body.phoneIdx != null ? parseInt(body.phoneIdx) : -1;
     const phoneTxt = (body.phone||'').trim();
     if (!keyCode) { sendJson(res, { error: 'not_found' }, 404); return; }
