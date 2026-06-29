@@ -1827,7 +1827,7 @@ footer.zvm-footer a:hover{color:var(--green)}
     <div id="form-area">
       <div id="err-box" class="err" style="display:none"></div>
       <label>Sua Chave de Ativação</label>
-      <input type="text" id="key-input" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="30" pattern="[A-Za-z0-9\-]+" inputmode="text">
+      <input type="text" id="key-input" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="20" pattern="[A-Za-z0-9\-]+" inputmode="text">
       <p style="text-align:left;font-size:13px;color:#8a8aaa;margin-top:8px;font-family:'Syne',sans-serif">Você recebeu esta chave junto com a sua compra.</p>
       <button class="btn" id="check-btn" onclick="checkKey()">Consultar Minha Chave</button>
       <a class="btn" href="/faq" style="display:block;margin-top:10px;background:#1e1e2e;color:#8a8aaa;font-size:14px;text-decoration:none;text-align:center;padding:13px;border-radius:10px;border:1px solid #2a2a3e;transition:border-color .2s,color .2s;font-family:'Syne',sans-serif;font-weight:700" onmouseover="this.style.borderColor='#00ff87';this.style.color='#00ff87'" onmouseout="this.style.borderColor='#2a2a3e';this.style.color='#6b6b8a'">❓ FAQ — Dúvidas Frequentes</a>
@@ -1875,12 +1875,13 @@ footer.zvm-footer a:hover{color:var(--green)}
 function fmtDate(iso){if(!iso)return'—';const d=new Date(iso);return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
 
 function fmtHours(h){if(h===null||h===undefined)return null;if(h>=48)return Math.floor(h/24)+' dias';if(h>=1)return h+'h';return'menos de 1h';}
-const _KEY_RE=/^[a-z0-9\-]{1,30}$/;
+const _KEY_RE=/^[a-z0-9\-]{20}$/;
 async function doCheck(key){
+  key=(key||'').trim().toLowerCase();
   const errBox=document.getElementById('err-box'),btn=document.getElementById('check-btn');
   errBox.style.display='none';
   if(!key){errBox.textContent='⚠️ Digite sua chave de ativação.';errBox.style.display='block';return;}
-  if(!_KEY_RE.test(key)){errBox.textContent='⚠️ Chave inválida: use apenas letras, números e hífens.';errBox.style.display='block';return;}
+  if(!_KEY_RE.test(key)){errBox.textContent='⚠️ Chave inválida: deve ter exatamente 20 caracteres (letras, números e hífens).';errBox.style.display='block';return;}
   btn.disabled=true;btn.innerHTML='<span class="spinner"></span>Consultando...';
   try{
     const r=await fetch('/client/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key})});
@@ -1941,7 +1942,8 @@ async function clientRemovePhone(key,phoneIdx){
   try{var r=await fetch('/client/remove-phone',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,phoneIdx})});var d=await r.json();if(d.ok){alert('Número removido! Você pode fazer login novamente.');doCheck(key);}else alert('Erro: '+(d.error||'?'));}catch(e){alert('Erro de rede.');}
 }
 document.getElementById('key-input').addEventListener('keydown',e=>{if(e.key==='Enter')checkKey();});
-document.getElementById('key-input').addEventListener('input',function(){const v=this.value;const c=v.replace(/[^A-Za-z0-9\-]/g,'');if(c!==v)this.value=c;});
+document.getElementById('key-input').addEventListener('input',function(){const c=this.value.trim().toLowerCase().replace(/[^a-z0-9\-]/g,'').slice(0,20);if(c!==this.value)this.value=c;});
+document.getElementById('key-input').addEventListener('paste',function(e){e.preventDefault();const t=(e.clipboardData||window.clipboardData).getData('text').trim().toLowerCase().replace(/[^a-z0-9\-]/g,'').slice(0,20);this.value=t;});
 window.addEventListener('DOMContentLoaded',()=>{
   const params=new URLSearchParams(window.location.search);
   const autoKey=(params.get('key')||'').trim().toLowerCase();
@@ -4063,27 +4065,25 @@ async function runInternalSecurityAudit() {
     detail: `HTTP ${rNoSqlAdmin.status} (esperado 401 sem auth, ou 400 com objeto $ne)`,
   });
 
-  // 9e. Whitelist de caracteres — payload XSS rejeitado (400 invalid_key)
+  // 9e. Whitelist — chars inválidos rejeitados (XSS payload → 400)
   const rWl1 = await _probe('/client/status', {
     method:  'POST',
     body:    { key: '<script>alert(1)</script>' },
   });
   const jWl1 = rWl1.json || {};
   results.push({
-    name:   'Whitelist /client/status: chars inválidos rejeitados (400 invalid_key)',
+    name:   'Whitelist /client/status: chars inválidos rejeitados (400)',
     pass:   rWl1.status === 400 && (jWl1.error === 'invalid_key' || jWl1.error === 'payload_too_large'),
     detail: `HTTP ${rWl1.status} · error="${jWl1.error||'?'}" (esperado 400)`,
   });
 
-  // 9f. Whitelist — chave alfanumérica+hífen ≤30 chars aceita (sem false-positive)
-  const rWl2 = await _probe('/client/status', {
-    method: 'POST',
-    body:   { key: 'zv-test-0000-abcd' },
-  });
+  // 9f. Whitelist — chave com != 20 chars rejeitada (guard de comprimento exato)
+  const rWl2short = await _probe('/client/status', { method: 'POST', body: { key: 'zv-test-0000-abcd' } }); // 18 chars
+  const jWl2s = rWl2short.json || {};
   results.push({
-    name:   'Whitelist /client/status: chave válida ≤30 chars não bloqueada',
-    pass:   rWl2.status !== 400,
-    detail: `HTTP ${rWl2.status} (esperado != 400 — formato válido passa o guard)`,
+    name:   'Whitelist /client/status: chave != 20 chars rejeitada (400 invalid_key)',
+    pass:   rWl2short.status === 400 && jWl2s.error === 'invalid_key',
+    detail: `HTTP ${rWl2short.status} · error="${jWl2s.error||'?'}" · "zv-test-0000-abcd"=18 chars (esperado 400)`,
   });
 
   // 9g. Payload oversized rejeitado antes do parseBody (Content-Length > 256)
@@ -4138,7 +4138,7 @@ async function handleRequest(req, res) {
     'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
     'Referrer-Policy':              'no-referrer',
     'Permissions-Policy':           'geolocation=(), microphone=(), camera=()',
-    'Content-Security-Policy':      "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://i.ytimg.com; connect-src 'self'; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; media-src https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'",
+    'Content-Security-Policy':      "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://i.ytimg.com https://www.youtube.com; connect-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; media-src https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'",
     'X-Powered-By':                 'PHP/7.4.3',
   };
   Object.entries(_corsH).forEach(([k, v]) => res.setHeader(k, v));
@@ -5117,9 +5117,9 @@ async function handleRequest(req, res) {
     const _cl = parseInt(req.headers['content-length'] || '0', 10);
     if (_cl > 256) { sendJson(res, { error: 'payload_too_large' }, 400); return; }
     const body = await parseBody(req);
-    const _rawKey = typeof body.key === 'string' ? body.key : '';
-    if (!/^[a-z0-9\-]{1,30}$/i.test(_rawKey)) { sendJson(res, { error: 'invalid_key' }, 400); return; }
-    const code = sanitizeId(_rawKey, 30);
+    const _rawKey = (typeof body.key === 'string' ? body.key : '').trim().toLowerCase();
+    if (!/^[a-z0-9\-]{20}$/.test(_rawKey)) { sendJson(res, { error: 'invalid_key' }, 400); return; }
+    const code = sanitizeId(_rawKey, 20);
     if (!code) { sendJson(res, { error: 'not_found' }, 404); return; }
     if (!await ensureKeyLoaded(code)) { sendJson(res, { error: 'not_found' }, 404); return; }
     const k = keys[code];
@@ -5146,9 +5146,9 @@ async function handleRequest(req, res) {
     const _clRm = parseInt(req.headers['content-length'] || '0', 10);
     if (_clRm > 256) { sendJson(res, { error: 'payload_too_large' }, 400); return; }
     const body    = await parseBody(req);
-    const _rawRmKey = typeof body.key === 'string' ? body.key : '';
-    if (!/^[a-z0-9\-]{1,30}$/i.test(_rawRmKey)) { sendJson(res, { error: 'invalid_key' }, 400); return; }
-    const keyCode = sanitizeId(_rawRmKey, 30);
+    const _rawRmKey = (typeof body.key === 'string' ? body.key : '').trim().toLowerCase();
+    if (!/^[a-z0-9\-]{20}$/.test(_rawRmKey)) { sendJson(res, { error: 'invalid_key' }, 400); return; }
+    const keyCode = sanitizeId(_rawRmKey, 20);
     const phoneIdx = body.phoneIdx != null ? parseInt(body.phoneIdx) : -1;
     const phoneTxt = (body.phone||'').trim();
     if (!keyCode) { sendJson(res, { error: 'not_found' }, 404); return; }
