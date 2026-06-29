@@ -41,7 +41,7 @@ if (!MONGODB_URI) {
 
 const FULL_PERMISSIONS = [
   'create_flow','massive_dispatching','schedule_item',
-  'send_flow','send_funnel','send_trigger','zapsaver'
+  'send_flow','send_funnel','send_trigger'
 ];
 const USAGE_LIMITS = {
   audio:        { sent:0, max:-1 }, bulkMessages: { sent:0, max:-1 },
@@ -80,8 +80,7 @@ const MONGODB_DB = (() => {
   return 'zapvoice';
 })();
 const MAX_USES = 3;
-const AVAILABLE_MODULES = ['zapSaver'];
-const DEFAULT_MODULES = Object.fromEntries(AVAILABLE_MODULES.map(m => [m, false]));
+const DEFAULT_MODULES = {};
 
 let _mongoClient = null;
 let _mongoDb     = null;
@@ -2012,32 +2011,28 @@ function buildKeysHtml() {
     const rowStyle = warnSoon && !expired ? ' style="background:#ff860010"' : '';
     const deferredAttr = (!k.expiresAt && k.expireDuration) ? '1' : '0';
     const dispStatus   = getKeyDisplayStatus(k);
-    const zsOn         = !!(k.modules && k.modules.zapSaver);
 
-    return `
-<tr data-code="${escHtml(code)}" data-expires-at="${escHtml(k.expiresAt || '')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-lastused="${escHtml(k.lastUsed||'')}"` + rowStyle + `>
-  <td style="width:34px;padding:3px 6px"><input type="checkbox" class="key-cb" data-code="${escHtml(code)}" style="width:13px;height:13px;cursor:pointer;accent-color:var(--g)"></td>
-  <td><span class="kc">${escHtml(code)}</span></td>
-  <td>${escHtml(k.label)}${zsOn?'<span title="ZapSaver ativo" style="color:#4f8ef7;font-size:13px;margin-left:4px">💾</span>':''}</td>
-  <td>${renderKeyStatusBadge(k)}</td>
-  <td>${formatValidityCell(k)}</td>
-  <td><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
-  <td>${escHtml(k.lastPhone||'-')}</td>
-  <td title="${uniqueIps} IP(s) únicos">${escHtml(k.lastIp||'-')}${uniqueIps>1?` <span style="color:var(--tx3);font-size:10px">+${uniqueIps-1}</span>`:''}</td>
-  <td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
-  <td>${new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</td>
-  <td>${escHtml(k.wppVersion||'-')}</td>
-  <td class="note-cell td-note" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${k.note&&k.note.startsWith('[Mod:')?'<span style=\"color:#5b8cf7;font-size:11px\">'+escHtml(k.note)+'</span>':escHtml(k.note||'')||'<span style=\"color:var(--tx3)\">—</span>'}</span></td>
-  <td class="td-acts"><div class="acts">
-    <button class="bs ${k.active?'bd':'bg'}" title="${k.active?'Bloquear':'Liberar'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'🔒':'✅'}</button>
-    <button class="bs bg" title="+ Tempo" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">⏱</button>
-    <button class="bs bg" title="Editar Usos" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${Number.isFinite(k.maxUses)?k.maxUses:MAX_USES})">#</button>
-    <button class="bs bg" title="Renomear" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">✏</button>
-    ${(k.phones||[]).length>0?`<button class="bs bd" title="Números (${(k.phones||[]).length})" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">📱</button>`:''}
-    <button class="bs bd" title="Excluir" onclick="deleteKey('${escHtml(code)}')">🗑</button>
-    <button class="bs ${zsOn?'bg':'bw'}" title="ZapSaver" onclick="toggleModule('${escHtml(code)}','zapSaver',${zsOn?'false':'true'})">💾</button>
-    <button class="bs" style="background:#7c3aed18;color:#a78bfa;border:1px solid #7c3aed28" title="Moderador" data-code="${escHtml(code)}" data-label="${escHtml(k.label||'')}" data-modnote="${escHtml((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1]||'')}" onclick="openAssignModFromEl(this)">👮</button>
-  </div></td>
+    return `<tr data-code="${escHtml(code)}" data-expires-at="${escHtml(k.expiresAt || '')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-lastused="${escHtml(k.lastUsed||'')}"${rowStyle}>
+<td style="width:34px;padding:3px 6px"><input type="checkbox" class="key-cb" data-code="${escHtml(code)}" style="width:13px;height:13px;cursor:pointer;accent-color:var(--g)"></td>
+<td><span class="kc">${escHtml(code)}</span></td>
+<td>${escHtml(k.label)}</td>
+<td>${renderKeyStatusBadge(k)}</td>
+<td>${formatValidityCell(k)}</td>
+<td><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
+<td>${escHtml(k.lastPhone||'-')}</td>
+<td title="${uniqueIps} IP(s)">${escHtml(k.lastIp||'-')}${uniqueIps>1?`<span style="color:var(--tx3);font-size:10px"> +${uniqueIps-1}</span>`:''}</td>
+<td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'-'}</td>
+<td>${new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'})}</td>
+<td class="note-cell td-note" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${k.note&&k.note.startsWith('[Mod:')?'<span style="color:#5b8cf7;font-size:10px">'+escHtml(k.note)+'</span>':escHtml(k.note||'')||'<span style="color:var(--tx3)">—</span>'}</span></td>
+<td class="td-acts"><div class="acts">
+<button class="bs ${k.active?'bd':'bg'}" title="${k.active?'Bloquear':'Liberar'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'🔒':'✅'}</button>
+<button class="bs bg" title="+ Tempo" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">⏱</button>
+<button class="bs bg" title="Editar Usos" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${Number.isFinite(k.maxUses)?k.maxUses:MAX_USES})">#</button>
+<button class="bs bg" title="Renomear" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">✏</button>
+${(k.phones||[]).length>0?`<button class="bs bd" title="Números (${(k.phones||[]).length})" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">📱</button>`:''}
+<button class="bs bd" title="Excluir" onclick="deleteKey('${escHtml(code)}')">🗑</button>
+<button class="bs" style="background:#7c3aed18;color:#a78bfa;border:1px solid #7c3aed28" title="Moderador" data-code="${escHtml(code)}" data-label="${escHtml(k.label||'')}" data-modnote="${escHtml((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1]||'')}" onclick="openAssignModFromEl(this)">👮</button>
+</div></td>
 </tr>`;
   }).join('');
 }
@@ -2062,16 +2057,7 @@ function buildLogsHtml(arr) {
     const tsDisplay = tsDate && !isNaN(tsDate)
       ? tsDate.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
       : escHtml(tsRaw || '—');
-    return `
-<tr>
-  <td>${tsDisplay}</td>
-  <td><span class="kc" style="font-size:13px">${escHtml(l.keyCode||'-')}</span></td>
-  <td>${escHtml(l.label||'-')}</td>
-  <td>${escHtml(l.phone||'-')}</td>
-  <td>${escHtml(l.ip||'-')}</td>
-  <td>${escHtml(l.wppVersion||'-')}</td>
-  <td><span class="badge ${logActionBadgeClass(l.action)}">${escHtml(l.action)}</span></td>
-</tr>`;
+    return `<tr><td>${tsDisplay}</td><td><span class="kc" style="font-size:11px">${escHtml(l.keyCode||'-')}</span></td><td>${escHtml(l.label||'-')}</td><td>${escHtml(l.phone||'-')}</td><td>${escHtml(l.ip||'-')}</td><td><span class="badge ${logActionBadgeClass(l.action)}">${escHtml(l.action)}</span></td></tr>`;
   }).join('');
 }
 
@@ -2312,24 +2298,23 @@ td.td-status{white-space:nowrap;overflow:hidden}
     </div>
     <div class="filter-count" id="keys-filter-count"></div>
     <div class="ov">
-      <table style="min-width:900px">
+      <table style="min-width:820px">
         <colgroup>
-          <col style="width:36px">
-          <col style="width:13%">
-          <col style="width:10%">
-          <col style="width:7%">
+          <col style="width:32px">
+          <col style="width:14%">
           <col style="width:11%">
+          <col style="width:7%">
+          <col style="width:9%">
           <col style="width:5%">
-          <col style="width:9%">
-          <col style="width:9%">
           <col style="width:10%">
           <col style="width:9%">
-          <col style="width:6%">
+          <col style="width:11%">
+          <col style="width:10%">
           <col style="width:7%">
           <col style="width:auto">
         </colgroup>
         <thead><tr>
-          <th style="padding:8px 6px"><input type="checkbox" id="master-cb" title="Selecionar todas" style="width:13px;height:13px;cursor:pointer;accent-color:var(--g)" onchange="toggleAllCheckboxes(this.checked)"></th>
+          <th style="padding:6px 4px"><input type="checkbox" id="master-cb" title="Selecionar todas" style="width:13px;height:13px;cursor:pointer;accent-color:var(--g)" onchange="toggleAllCheckboxes(this.checked)"></th>
           <th onclick="sortKeys('code')">Chave</th>
           <th onclick="sortKeys('label')" id="th-label">Cliente</th>
           <th onclick="sortKeys('status')" id="th-status">Status</th>
@@ -2339,7 +2324,6 @@ td.td-status{white-space:nowrap;overflow:hidden}
           <th>Último IP</th>
           <th onclick="sortKeys('lastused')" id="th-lastused">Último Acesso</th>
           <th onclick="sortKeys('created')" id="th-created">Criada em</th>
-          <th>WPP</th>
           <th>Nota</th>
           <th style="cursor:default">Ações</th>
         </tr></thead>
@@ -2364,7 +2348,7 @@ td.td-status{white-space:nowrap;overflow:hidden}
     </div>
     <div class="ov">
       <table>
-        <thead><tr><th>Horário</th><th>Chave</th><th>Cliente</th><th>Telefone</th><th>IP</th><th>WPP</th><th>Ação</th></tr></thead>
+        <thead><tr><th>Horário</th><th>Chave</th><th>Cliente</th><th>Telefone</th><th>IP</th><th>Ação</th></tr></thead>
         <tbody id="lb">${buildLogsHtml()}</tbody>
       </table>
     </div>
@@ -2649,14 +2633,6 @@ async function doRefresh(manual){
 }
 setInterval(()=>doRefresh(false),120000);
 
-async function toggleModule(code,module,enabled){
-  try{
-    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/modules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({module,enabled})});
-    const d=await r.json();
-    if(d.ok){toast(enabled?'ZapSaver ativado':'ZapSaver desativado');await doRefresh();}
-    else toast('Erro: '+(d.error||'?'),false);
-  }catch(e){toast('Erro de rede',false);}
-}
 
 async function toggleKey(code){
   try{const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/toggle',{method:'POST'});if(r.status===401){toast('Sessão expirada',false);return;}const d=await r.json();if(d.ok){toast(d.active?'Chave liberada!':'Chave bloqueada!');await doRefresh();}}catch(e){toast('Erro',false);}
@@ -4434,6 +4410,7 @@ async function handleRequest(req, res) {
       crypto.timingSafeEqual(_p.length?_p:Buffer.alloc(1),_ap.length?_ap:Buffer.alloc(1));
     const totpOk = verifyTOTP(TOTP_SECRET, (form.get('totp') || '').trim());
     if (credOk && totpOk) {
+      rateLimitMap.delete(ip + ':login'); // limpa contador após login bem-sucedido
       const token = generateToken();
       sessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString() };
       res.setHeader('Set-Cookie', `zv_admin=${token}; Path=/; HttpOnly; SameSite=Strict; Secure`);
@@ -4476,6 +4453,7 @@ async function handleRequest(req, res) {
     });
     const totpOk = matchedMod ? verifyTOTP(matchedMod.totp, inputTotp) : false;
     if (matchedMod && totpOk) {
+      rateLimitMap.delete(ip + ':login');
       const token = generateToken();
       modSessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString(), modName: matchedMod.name };
       res.setHeader('Set-Cookie', `zv_mod=${token}; Path=/; HttpOnly; SameSite=Strict; Secure`);
@@ -4719,20 +4697,6 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true }); return;
   }
 
-  const codeModules = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/modules$`));
-  if (codeModules && req.method === 'POST') {
-    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const kMod = await adminGetKey(codeModules);
-    if (!kMod) { sendJson(res, { error: 'not found' }, 404); return; }
-    const body = await parseBody(req);
-    const moduleName = String(body.module || '').trim();
-    const enabled    = !!body.enabled;
-    if (!AVAILABLE_MODULES.includes(moduleName)) { sendJson(res, { error: 'modulo: '+moduleName }, 400); return; }
-    if (!kMod.modules) kMod.modules = { ...DEFAULT_MODULES };
-    kMod.modules[moduleName] = enabled;
-    saveKey(codeModules);
-    sendJson(res, { ok: true, module: moduleName, enabled, modules: kMod.modules }); return;
-  }
 
   const codeAssignMod = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/assign-mod$`));
   if (codeAssignMod && req.method === 'POST') {
@@ -4815,18 +4779,17 @@ async function handleRequest(req, res) {
 
   if (p === R_ADMIN+'/api/export/csv' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const header = 'Chave,Cliente,Status,Validade,Usos,Telefone,Último IP,WPP Version,Último Acesso,Criada em,Expira em,ZapSaver,Nota';
+    const header = 'Chave,Cliente,Status,Validade,Usos,Telefone,Último IP,Último Acesso,Criada em,Expira em,Nota';
     const rows = Object.entries(keys).map(([code, k]) => {
       const stLabel = getKeyDisplayStatus(k).toUpperCase();
       const cols = [
         code, k.label, stLabel,
         k.expiresAt ? new Date(k.expiresAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}) : (k.expireDuration ? 'Ao 1º uso' : 'Sem expiração'),
         `${(k.phones||[]).length}/${k.maxUses===-1?'Ilimitado':(k.maxUses>0?k.maxUses:MAX_USES)}`,
-        k.lastPhone||'', k.lastIp||'', k.wppVersion||'',
+        k.lastPhone||'', k.lastIp||'',
         k.lastUsed ? new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}) : '',
         new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}),
         k.expiresAt ? new Date(k.expiresAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}) : 'Sem expiração',
-        (k.modules && k.modules.zapSaver) ? 'SIM' : 'NAO',
         (k.note||'').replace(/,/g,';')
       ];
       return cols.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',');
@@ -5062,7 +5025,7 @@ async function handleRequest(req, res) {
     sendHtml(res, renderPrivacyPage()); return;
   }
 
-  // ── ZapSaver label validation endpoint ──────────────────────────────────
+  // ── Label validation endpoint (usado pelo pentest interno) ──────────────
   if (p === R_EXT + '/v3/labels' && req.method === 'POST') {
     if (!checkRateLimit(ip, 'api')) {
       sendJson(res, { ok: false, error: 'rate_limited' }, 429); return;
