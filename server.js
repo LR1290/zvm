@@ -1745,301 +1745,231 @@ function renderClientPortal() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Portal do Cliente</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23000000'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff66'%3EZV%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d14'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZV%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --g:#00ff66;--g2:#00cc52;--g3:#00ff6615;--g4:#00ff6608;
-  --bg:#000000;--c1:#03030a;--c2:#06060f;--c3:#0a0a16;
-  --brd:#0f0f1e;--brd2:#181828;--brd3:#00ff6622;
-  --tx:#f0f0ff;--tx2:#8888aa;--tx3:#44445a;
-  --red:#ff3355;--warn:#ffaa00;--blue:#4488ff;
-  --r:8px;--r-lg:14px;--r-xl:20px
+  --green:#00ff87;--green-soft:#00ff8720;--green-brd:#00ff8740;
+  --bg:#0d0d14;--card:#111118;--card2:#16161e;--card3:#1a1a26;
+  --border:#1e1e30;--border2:#28283a;
+  --text:#e8e8f4;--muted:#9494aa;--muted2:#6a6a82;
+  --red:#ff4757;--warn:#ffa500;--blue:#5588ff;
+  --radius:14px;--radius-sm:8px
 }
-::-webkit-scrollbar{width:4px}
-::-webkit-scrollbar-track{background:#000}
-::-webkit-scrollbar-thumb{background:#00ff6630;border-radius:4px}
-::-webkit-scrollbar-thumb:hover{background:#00ff6660}
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:#00ff8730;border-radius:10px}
+::-webkit-scrollbar-thumb:hover{background:#00ff8760}
 html{scroll-behavior:smooth}
-body{background:var(--bg);min-height:100vh;display:flex;flex-direction:column;font-family:'Syne',sans-serif;overflow-x:hidden;color:var(--tx);position:relative}
-
-/* ── matrix canvas bg ── */
-#mx-bg{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.18}
-
-/* ── scanline overlay ── */
-body::after{content:'';position:fixed;inset:0;z-index:1;pointer-events:none;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.15) 2px,rgba(0,0,0,.15) 4px)}
-
-/* ── nav ── */
-nav{display:flex;align-items:center;justify-content:space-between;padding:12px 28px;border-bottom:1px solid var(--brd3);background:rgba(0,0,0,.85);position:sticky;top:0;z-index:100;backdrop-filter:blur(20px);flex-shrink:0}
-.nav-logo{font-size:18px;font-weight:800;color:var(--g);text-decoration:none;letter-spacing:2px;font-family:'Space Mono',monospace;text-shadow:0 0 20px #00ff6650}
-.nav-logo span{color:var(--tx2);font-size:10px;letter-spacing:3px;display:block;margin-top:-2px;text-shadow:none}
-.nav-links{display:flex;gap:4px}
-.nav-links a{font-size:10px;font-weight:700;color:var(--tx3);text-decoration:none;padding:6px 13px;border:1px solid transparent;border-radius:6px;transition:all .18s;letter-spacing:1.5px;text-transform:uppercase;position:relative;font-family:'Space Mono',monospace}
-.nav-links a:hover{color:var(--g);border-color:var(--brd3);background:var(--g4)}
-.nav-links a.nav-active{color:var(--g)!important;border-color:var(--brd3)!important;background:var(--g4)!important;text-shadow:0 0 8px #00ff6640}
-.nav-links a.nav-active::after{content:'';position:absolute;bottom:-13px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:var(--g);box-shadow:0 0 10px var(--g),0 0 20px var(--g)}
-
-/* ── loading overlay ── */
-.loading-overlay{position:fixed;inset:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999;gap:16px}
-.loading-overlay .ld-logo{font-family:'Space Mono',monospace;font-size:28px;font-weight:700;color:var(--g);text-shadow:0 0 30px var(--g);letter-spacing:4px;animation:pulse-glow 1.4s ease-in-out infinite}
-@keyframes pulse-glow{0%,100%{text-shadow:0 0 20px #00ff6660}50%{text-shadow:0 0 40px #00ff66,0 0 60px #00ff6640}}
-.spinner{display:inline-block;width:18px;height:18px;border:2px solid #00ff6620;border-top-color:var(--g);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:8px}
+body{background:var(--bg);min-height:100vh;display:flex;flex-direction:column;font-family:'Inter','Segoe UI',sans-serif;overflow-x:hidden;color:var(--text);-webkit-font-smoothing:antialiased}
+/* nav */
+nav{display:flex;align-items:center;justify-content:space-between;padding:14px 32px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:100;box-shadow:0 2px 20px #00000060;flex-shrink:0;backdrop-filter:blur(8px)}
+.nav-logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:6px;letter-spacing:-0.5px}
+.nav-links{display:flex;gap:8px}
+.nav-links a{font-size:13px;color:var(--muted);text-decoration:none;padding:8px 15px;border:1px solid var(--border);border-radius:var(--radius-sm);transition:all .2s;font-family:'Syne',sans-serif;font-weight:700;position:relative;letter-spacing:.2px}
+.nav-links a:hover{color:var(--green);border-color:var(--green-brd);background:var(--green-soft)}
+.nav-links a.nav-active{color:var(--green)!important;border-color:var(--green-brd)!important;background:var(--green-soft)!important}
+.nav-links a.nav-active::after{content:'';position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+/* loading overlay */
+.loading-overlay{position:fixed;inset:0;background:rgba(13,13,20,.96);display:flex;align-items:center;justify-content:center;z-index:999;gap:14px;flex-direction:column}
+.ld-logo{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:var(--green);letter-spacing:-0.5px}
+.spinner{display:inline-block;width:18px;height:18px;border:2px solid var(--green-soft);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px}
 @keyframes spin{to{transform:rotate(360deg)}}
-
-/* ── main layout ── */
-.page-body{flex:1;display:flex;align-items:center;justify-content:center;padding:32px 20px;flex-direction:column;position:relative;z-index:2}
-
-/* ── form card ── */
-.form-wrap{width:100%;max-width:480px;background:rgba(3,3,10,.92);border:1px solid var(--brd3);border-radius:var(--r-xl);padding:52px 44px 44px;position:relative;overflow:hidden;backdrop-filter:blur(24px);box-shadow:0 0 0 1px #00ff6608,0 0 80px #00ff660a,0 32px 80px rgba(0,0,0,.8),inset 0 1px 0 #00ff6615}
-.form-wrap::before{content:'';position:absolute;top:-120px;left:50%;transform:translateX(-50%);width:360px;height:280px;background:radial-gradient(ellipse,#00ff6612 0%,transparent 68%);pointer-events:none;z-index:0}
-.form-wrap::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent 0%,#00ff6640 35%,#00ff66 50%,#00ff6640 65%,transparent 100%)}
-
-/* ── portal header ── */
-.portal-id{position:relative;z-index:1;text-align:center;margin-bottom:28px}
-.portal-icon{font-size:36px;margin-bottom:8px;display:block;filter:drop-shadow(0 0 12px #00ff6680)}
-.portal-name{font-family:'Space Mono',monospace;font-size:28px;font-weight:700;color:var(--g);letter-spacing:6px;text-shadow:0 0 24px #00ff6660;line-height:1}
-.portal-sub{font-size:9px;color:var(--tx3);letter-spacing:4px;text-transform:uppercase;margin-top:6px;font-family:'Space Mono',monospace}
-.portal-divider{height:1px;background:linear-gradient(90deg,transparent,var(--brd3),#00ff6628,var(--brd3),transparent);margin:0 0 28px;position:relative;z-index:1}
-
-/* ── form elements ── */
-.field-label{display:block;font-size:9px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:2.5px;margin-bottom:10px;position:relative;z-index:1;font-family:'Space Mono',monospace}
-.field-label em{color:var(--g);font-style:normal;opacity:.7}
-#key-input{width:100%;padding:22px 26px;background:#000;border:1px solid var(--brd2);border-radius:var(--r);color:var(--g);font-family:'Space Mono',monospace;font-size:19px;font-weight:700;outline:none;letter-spacing:5px;transition:border-color .22s,box-shadow .22s;text-align:center;display:block;position:relative;z-index:1;text-transform:lowercase;caret-color:var(--g)}
-#key-input::placeholder{color:var(--tx3);letter-spacing:2px;font-size:12px;font-weight:400;opacity:.6}
-#key-input:focus{border-color:var(--g);box-shadow:0 0 0 1px #00ff6618,0 0 24px #00ff660e,inset 0 0 20px #00ff6604}
-.key-hint{display:flex;align-items:center;justify-content:center;gap:6px;margin:9px 0 22px;position:relative;z-index:1}
-.key-hint-dot{width:5px;height:5px;border-radius:50%;background:var(--g);opacity:.3}
-.key-hint-txt{font-size:9px;color:var(--tx3);letter-spacing:1px;font-family:'Space Mono',monospace}
-.err{background:#ff335508;border:1px solid #ff335530;border-radius:var(--r);color:#ff6677;padding:12px 15px;font-size:12px;margin-bottom:16px;line-height:1.6;position:relative;z-index:1;font-family:'Space Mono',monospace;display:flex;align-items:flex-start;gap:8px}
-#check-btn{width:100%;padding:20px 24px;background:#000;border:1px solid var(--g);border-radius:var(--r);color:var(--g);font-family:'Space Mono',monospace;font-weight:700;font-size:13px;cursor:pointer;transition:all .25s;letter-spacing:3px;text-transform:uppercase;position:relative;z-index:1;overflow:hidden}
-#check-btn::before{content:'';position:absolute;inset:0;background:var(--g);transform:translateY(100%);transition:transform .25s ease;z-index:-1}
-#check-btn:hover:not(:disabled)::before{transform:translateY(0)}
-#check-btn:hover:not(:disabled){color:#000;box-shadow:0 0 32px #00ff6640,0 8px 24px #00ff6620;transform:translateY(-1px);border-color:var(--g)}
-#check-btn:disabled{opacity:.25;cursor:not-allowed;transform:none;box-shadow:none}
-.nav-btns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:12px;position:relative;z-index:1}
-.nav-btn{display:block;padding:13px 6px;background:#000;border:1px solid var(--brd2);border-radius:var(--r);color:var(--tx3);font-size:10px;font-weight:700;text-align:center;text-decoration:none;transition:all .18s;letter-spacing:1px;text-transform:uppercase;font-family:'Space Mono',monospace}
-.nav-btn:hover{border-color:var(--brd3);color:var(--g);background:var(--g4)}
-.lgpd-note{margin-top:14px;padding:9px 13px;border:1px solid var(--brd);border-radius:var(--r);font-size:9px;color:var(--tx3);line-height:1.7;text-align:center;position:relative;z-index:1;font-family:'Space Mono',monospace;background:var(--g4)}
-.lgpd-note a{color:var(--blue);text-decoration:none}
-.lgpd-note a:hover{color:var(--g)}
-
-/* ── result panel ── */
-.result-wrap{width:100%;max-width:900px;margin:0 auto;padding:20px;display:none}
-.result-header{display:flex;align-items:center;justify-content:space-between;background:rgba(3,3,10,.9);border:1px solid var(--brd3);border-radius:var(--r-lg);padding:18px 22px;margin-bottom:10px;gap:12px;flex-wrap:wrap;backdrop-filter:blur(16px);box-shadow:0 0 40px #00ff660a,inset 0 1px 0 #00ff6612}
-.result-header::before{content:'';position:absolute;left:0;top:0;right:0;height:1px;background:linear-gradient(90deg,transparent,#00ff6630,transparent);pointer-events:none}
-.panel-title{font-size:18px;font-weight:800;color:var(--tx);letter-spacing:-.2px;position:relative}
-.result-key-sub{font-size:9px;color:var(--tx3);margin-top:4px;font-family:'Space Mono',monospace;letter-spacing:1.5px}
-.badge{display:inline-flex;align-items:center;gap:5px;padding:5px 14px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;white-space:nowrap;font-family:'Space Mono',monospace}
-.badge-on{background:#00ff6610;color:#00ff66;border:1px solid #00ff6628;text-shadow:0 0 8px #00ff6640}
-.badge-off{background:#ff335510;color:#ff6677;border:1px solid #ff335528}
-.badge-warn{background:#ffaa0010;color:#ffaa00;border:1px solid #ffaa0028}
-.badge-def{background:#4488ff10;color:#4488ff;border:1px solid #4488ff28}
-.info-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:10px}
-.info-card{background:rgba(3,3,10,.85);border:1px solid var(--brd2);border-radius:var(--r-lg);padding:14px 18px;transition:border-color .18s;backdrop-filter:blur(8px)}
-.info-card:hover{border-color:var(--brd3)}
-.info-card .lbl{font-size:8px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:2.5px;margin-bottom:6px;font-family:'Space Mono',monospace}
-.info-card .val{font-size:14px;font-weight:800;color:var(--tx);line-height:1.3;word-break:break-word}
-.expire-bar-wrap{margin-top:10px;background:var(--brd2);border-radius:4px;overflow:hidden;height:2px}
-.expire-bar{height:2px;border-radius:4px;transition:width .7s}
-.r-devices-sec{display:none;margin-bottom:10px;background:rgba(3,3,10,.85);border:1px solid var(--brd2);border-radius:var(--r-lg);padding:16px 18px;backdrop-filter:blur(8px)}
-.r-devices-lbl{font-size:8px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:2.5px;margin-bottom:12px;font-family:'Space Mono',monospace}
-#r-phone-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:7px}
-.r-devices-hint{font-size:9px;color:var(--tx3);margin-top:10px;font-family:'Space Mono',monospace;letter-spacing:.5px}
-.renew-banner{display:none;margin-bottom:10px;background:#00ff660a;border:1px solid #00ff6622;border-radius:var(--r-lg);padding:16px 20px;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.renew-banner-title{font-size:14px;color:var(--g);font-weight:800;margin-bottom:3px;text-shadow:0 0 12px #00ff6640}
-.renew-banner-sub{font-size:10px;color:var(--tx3);font-family:'Space Mono',monospace}
-.renew-btn{flex-shrink:0;padding:10px 20px;background:#000;border:1px solid var(--g);color:var(--g);font-family:'Space Mono',monospace;font-weight:700;font-size:10px;border-radius:var(--r);text-decoration:none;white-space:nowrap;letter-spacing:2px;text-transform:uppercase;transition:all .2s}
-.renew-btn:hover{background:var(--g);color:#000;box-shadow:0 0 20px #00ff6640}
-.section-links{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:10px}
-.link-btn{display:block;padding:12px 8px;background:rgba(3,3,10,.85);border:1px solid var(--brd2);border-radius:var(--r);color:var(--tx2);font-size:10px;font-weight:700;text-align:center;text-decoration:none;transition:all .18s;font-family:'Space Mono',monospace;letter-spacing:.5px;backdrop-filter:blur(8px)}
-.link-btn:hover{border-color:var(--brd3);color:var(--g);background:var(--g4)}
-.back-btn{margin-top:6px;padding:10px 18px;background:transparent;color:var(--tx3);border:1px solid var(--brd2);border-radius:var(--r);font-family:'Space Mono',monospace;font-weight:700;font-size:10px;cursor:pointer;transition:all .18s;letter-spacing:1.5px;text-transform:uppercase}
-.back-btn:hover{border-color:var(--brd3);color:var(--g)}
-
-/* ── footer ── */
-footer{text-align:center;padding:16px 24px;font-size:10px;color:var(--tx3);border-top:1px solid var(--brd);flex-shrink:0;position:relative;z-index:2;font-family:'Space Mono',monospace;letter-spacing:.5px}
-footer a{color:var(--tx3);text-decoration:none;transition:color .15s}
-footer a:hover{color:var(--g)}
-
-@media(max-width:600px){
-  nav{padding:10px 14px}
-  .nav-links a{padding:5px 9px;font-size:9px}
-  .form-wrap{padding:32px 22px 28px;border-radius:var(--r-lg)}
-  .nav-btns{grid-template-columns:1fr 1fr}
-  .result-wrap{padding:14px 12px}
-  .section-links{grid-template-columns:1fr 1fr}
-  .info-grid{grid-template-columns:1fr 1fr}
-}
+/* page body */
+.page-body{flex:1;display:flex;align-items:center;justify-content:center;padding:32px 20px;flex-direction:column;min-height:calc(100vh - 58px - 52px)}
+/* form card */
+.form-wrap{width:100%;max-width:500px;display:flex;flex-direction:column;align-items:stretch}
+.card-inner{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:44px 40px;box-shadow:0 4px 32px #00000050,0 0 0 1px var(--border)}
+.form-logo{font-family:'Syne',sans-serif;font-size:30px;font-weight:800;color:var(--green);margin-bottom:4px;text-align:center;letter-spacing:-0.5px}
+.form-sub{color:var(--muted);font-size:13px;letter-spacing:2px;text-transform:uppercase;margin-bottom:32px;font-family:'Syne',sans-serif;text-align:center}
+.field-lbl{display:block;text-align:left;font-size:12px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-bottom:10px;font-family:'Syne',sans-serif;font-weight:700}
+#key-input{width:100%;padding:16px 20px;background:var(--bg);border:1.5px solid var(--border2);border-radius:var(--radius-sm);color:var(--green);font-family:'Space Mono',monospace;font-size:18px;outline:none;letter-spacing:2px;transition:border-color .2s,box-shadow .2s;text-align:center}
+#key-input:focus{border-color:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
+#key-input::placeholder{color:var(--muted2);letter-spacing:1px;font-size:13px}
+.key-hint{text-align:left;font-size:12px;color:var(--muted2);margin:8px 0 20px;font-family:'Syne',sans-serif}
+.err-box{background:#ff475714;border:1px solid #ff475740;border-radius:var(--radius-sm);color:#ff7080;padding:13px 16px;font-size:14px;margin-bottom:18px;font-family:'Syne',sans-serif;line-height:1.6;display:none}
+#check-btn{width:100%;padding:16px;background:var(--green);border:none;border-radius:var(--radius-sm);color:#000;font-family:'Syne',sans-serif;font-weight:800;font-size:16px;cursor:pointer;transition:all .25s;letter-spacing:.3px;margin-top:2px}
+#check-btn:hover:not(:disabled){opacity:.9;transform:translateY(-2px);box-shadow:0 8px 28px #00ff8750}
+#check-btn:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+.quick-links{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.quick-link{display:block;padding:12px;background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-family:'Syne',sans-serif;font-size:13px;font-weight:700;text-align:center;text-decoration:none;transition:all .2s}
+.quick-link:hover{border-color:var(--green-brd);color:var(--green);background:var(--green-soft)}
+.quick-link.full{grid-column:span 2}
+.privacy-note{margin-top:14px;padding:12px 16px;background:var(--card2);border-radius:var(--radius-sm);font-size:13px;color:var(--muted);text-align:left;line-height:1.7;font-family:'Syne',sans-serif}
+.privacy-note a{color:var(--blue);text-decoration:none}
+.privacy-note a:hover{color:var(--green)}
+/* result panel */
+.result-wrap{width:100%;max-width:1100px;display:none;padding:8px 0}
+.result-header{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px 26px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;box-shadow:0 2px 16px #00000040}
+.panel-title{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--text)}
+.badge{display:inline-flex;align-items:center;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;font-family:'Syne',sans-serif}
+.badge-on{background:#00ff8718;color:#00ff87;border:1px solid #00ff8740}
+.badge-off{background:#ff475718;color:#ff6070;border:1px solid #ff475740}
+.badge-warn{background:#ffa50018;color:#ffa500;border:1px solid #ffa50040}
+.badge-def{background:#5588ff18;color:#7aa0ff;border:1px solid #5588ff40}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.info-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:18px 22px}
+.info-card .lbl{font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;font-family:'Syne',sans-serif;font-weight:700}
+.info-card .val{font-size:16px;color:var(--text);font-family:'Syne',sans-serif;font-weight:700;word-break:break-word}
+.expire-bar-wrap{margin-top:8px;background:var(--border2);border-radius:4px;overflow:hidden;height:5px}
+.expire-bar{height:5px;border-radius:4px;transition:width .6s}
+.r-devices-sec{display:none;margin-bottom:12px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:18px 22px}
+.r-devices-lbl{font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-bottom:12px;font-family:'Syne',sans-serif;font-weight:700}
+#r-phone-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}
+.r-devices-hint{font-size:12px;color:var(--muted2);margin-top:10px;font-family:'Syne',sans-serif}
+.renew-banner{display:none;margin-bottom:12px;background:#00ff8710;border:1px solid #00ff8730;border-radius:var(--radius-sm);padding:18px 24px;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.renew-banner-title{font-size:17px;color:var(--green);font-family:'Syne',sans-serif;font-weight:800;margin-bottom:4px}
+.renew-banner-sub{font-size:13px;color:var(--muted);font-family:'Syne',sans-serif}
+.renew-btn{flex-shrink:0;padding:12px 26px;background:var(--green);color:#000;font-family:'Syne',sans-serif;font-weight:800;font-size:14px;border-radius:var(--radius-sm);text-decoration:none;white-space:nowrap;transition:all .2s}
+.renew-btn:hover{opacity:.9;box-shadow:0 4px 16px #00ff8750}
+.section-links{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.link-btn{padding:14px 10px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Syne',sans-serif;font-size:14px;font-weight:700;text-align:center;text-decoration:none;transition:all .2s;display:block}
+.link-btn:hover{border-color:var(--green-brd);color:var(--green);background:var(--green-soft);transform:translateY(-2px)}
+.back-btn{padding:12px 24px;background:var(--card2);color:var(--muted);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:all .2s}
+.back-btn:hover{border-color:var(--green-brd);color:var(--green)}
+/* footer */
+footer{text-align:center;padding:18px 24px;font-size:13px;color:var(--muted2);font-family:'Syne',sans-serif;border-top:1px solid var(--border);flex-shrink:0}
+footer a{color:var(--muted2);text-decoration:none;transition:color .2s}
+footer a:hover{color:var(--green)}
+@media(max-width:900px){.info-grid{grid-template-columns:1fr}.section-links{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){nav{padding:12px 16px}.nav-links a{padding:6px 10px;font-size:12px}.card-inner{padding:32px 22px}.quick-links{grid-template-columns:1fr}}
 </style>
-</head>
-<body>
-
-<canvas id="mx-bg"></canvas>
-
+</head><body>
 <nav>
-  <a href="/" class="nav-logo">ZVM<span>PORTAL DO CLIENTE</span></a>
+  <a href="/" class="nav-logo">⚡ ZVM</a>
   <div class="nav-links" id="main-nav">
     <a href="/" data-navpath="/">PAINEL</a>
     <a href="/faq" data-navpath="/faq">FAQ</a>
-    <a href="/planos" data-navpath="/planos">PLANOS</a>
     <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
+    <a href="/planos" data-navpath="/planos">PLANOS</a>
     <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">SUPORTE</a>
   </div>
 </nav>
-<script>(function(){var p=window.location.pathname;document.querySelectorAll('#main-nav a[data-navpath]').forEach(function(a){if(a.getAttribute('data-navpath')===p)a.classList.add('nav-active');});})();</script>
+<script>(function(){var cp=window.location.pathname;document.querySelectorAll('#main-nav a[data-navpath]').forEach(function(a){if(a.getAttribute('data-navpath')===cp)a.classList.add('nav-active');});})();</script>
 
 <div id="loading-overlay" class="loading-overlay">
-  <div class="ld-logo">ZVM</div>
-  <span><span class="spinner"></span><span style="font-size:11px;color:#44445a;font-family:'Space Mono',monospace;letter-spacing:2px">AUTENTICANDO...</span></span>
+  <div class="ld-logo">⚡ ZVM</div>
+  <span><span class="spinner"></span><span style="font-size:13px;color:var(--muted);font-family:'Syne',sans-serif">Verificando chave...</span></span>
 </div>
 
-<div class="page-body">
+<div class="page-body" id="page-body">
   <div class="form-wrap" id="main-form-wrap">
-    <div class="portal-id">
-      <span class="portal-icon">⚡</span>
-      <div class="portal-name">Z·V·M</div>
-      <div class="portal-sub">PORTAL DO CLIENTE</div>
-    </div>
-    <div class="portal-divider"></div>
-    <div id="form-area">
-      <div id="err-box" class="err" style="display:none"></div>
-      <label class="field-label" for="key-input">// CHAVE DE ATIVAÇÃO <em>[ 20 CHARS ]</em></label>
-      <input type="text" id="key-input" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="20" pattern="[A-Za-z0-9\-]+" inputmode="text">
-      <div class="key-hint">
-        <span class="key-hint-dot"></span>
-        <span class="key-hint-txt">20 CARACTERES · LETRAS, NÚMEROS E HÍFENS</span>
-        <span class="key-hint-dot"></span>
+    <div class="card-inner">
+      <div class="form-logo">⚡ ZVM</div>
+      <div class="form-sub">Portal do Cliente</div>
+      <div id="form-area">
+        <div id="err-box" class="err-box"></div>
+        <label class="field-lbl" for="key-input">Sua Chave de Ativação</label>
+        <input type="text" id="key-input" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="20" pattern="[A-Za-z0-9\\-]+" inputmode="text">
+        <div class="key-hint">Você recebeu esta chave junto com a sua compra.</div>
+        <button id="check-btn" onclick="checkKey()">Consultar Minha Chave</button>
+        <div class="quick-links">
+          <a class="quick-link" href="/faq">❓ FAQ — Dúvidas</a>
+          <a class="quick-link" href="/planos">💳 Ver Planos</a>
+          <a class="quick-link full" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">💬 Suporte via WhatsApp</a>
+        </div>
+        <div class="privacy-note">🔒 Ao usar este serviço, você concorda com nossa <a href="/privacidade">Política de Privacidade</a> e com a coleta de dados de uso para fins de licenciamento (LGPD).</div>
       </div>
-      <button id="check-btn" onclick="checkKey()">CONSULTAR MINHA CHAVE</button>
-      <div class="nav-btns">
-        <a class="nav-btn" href="/faq">❓ FAQ</a>
-        <a class="nav-btn" href="/planos">💳 PLANOS</a>
-        <a class="nav-btn" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">💬 SUPORTE</a>
-      </div>
-      <div class="lgpd-note">🔒 Ao usar este serviço você concorda com nossa <a href="/privacidade">Política de Privacidade</a> (LGPD).</div>
     </div>
   </div>
 
   <div class="result-wrap" id="result-wrap">
-    <div class="result-header" style="position:relative">
+    <div class="result-header">
       <div>
-        <div class="panel-title" id="panel-name">MINHA CONTA</div>
-        <div class="result-key-sub"></div>
+        <div class="panel-title" id="panel-name">Minha Conta</div>
+        <div style="font-size:12px;color:var(--muted);font-family:'Space Mono',monospace;margin-top:3px;letter-spacing:1px" id="result-key-sub"></div>
       </div>
-      <div id="r-status"></div>
+      <div id="r-status">—</div>
     </div>
     <div class="info-grid">
       <div class="info-card"><div class="lbl">Dispositivos</div><div class="val" id="r-phones">—</div></div>
-      <div class="info-card" style="grid-column:span 2"><div class="lbl">Expira em</div><div class="val"><span id="r-expires">—</span></div><div class="expire-bar-wrap" id="r-bar-wrap" style="display:none"><div class="expire-bar" id="r-bar"></div></div></div>
+      <div class="info-card" style="grid-column:span 2"><div class="lbl">Expira em</div><div class="val"><span id="r-expires">—</span><div class="expire-bar-wrap" id="r-bar-wrap" style="display:none"><div class="expire-bar" id="r-bar"></div></div></div></div>
       <div class="info-card" id="r-act-card" style="display:none"><div class="lbl">Ativada em</div><div class="val" id="r-activated">—</div></div>
-      <div class="info-card" id="r-last-card" style="display:none"><div class="lbl">Último Uso</div><div class="val" id="r-lastused">—</div></div>
+      <div class="info-card" id="r-last-card" style="display:none"><div class="lbl">Último uso</div><div class="val" id="r-lastused">—</div></div>
     </div>
     <div class="r-devices-sec" id="r-phone-section">
-      <div class="r-devices-lbl">DISPOSITIVOS CADASTRADOS</div>
+      <div class="r-devices-lbl">Dispositivos cadastrados</div>
       <div id="r-phone-list"></div>
-      <div class="r-devices-hint">// Remova um número para liberar o slot.</div>
+      <div class="r-devices-hint">Remova um número para liberar o slot.</div>
     </div>
     <div class="renew-banner" id="r-renew-banner">
       <div>
-        <div class="renew-banner-title">🔄 HORA DE RENOVAR!</div>
-        <div class="renew-banner-sub">Renove agora — o tempo restante é preservado.</div>
+        <div class="renew-banner-title">🔄 Hora de renovar!</div>
+        <div class="renew-banner-sub">Renove agora e o tempo é somado ao restante.</div>
       </div>
-      <a href="/planos" class="renew-btn">💳 VER PLANOS</a>
+      <a href="/planos" class="renew-btn">💳 Ver Planos</a>
     </div>
-    <div class="section-links" id="r-links"></div>
-    <button class="back-btn" onclick="resetPanel()">← CONSULTAR OUTRA CHAVE</button>
+    <div class="section-links" id="r-links" style="margin-bottom:12px"></div>
+    <button class="back-btn" onclick="resetPanel()">← Consultar outra chave</button>
   </div>
 </div>
 
 <footer>
-  © ${new Date().getFullYear()} ZVM &nbsp;·&nbsp; <a href="/privacidade">Privacidade</a> &nbsp;·&nbsp; <a href="/faq">FAQ</a> &nbsp;·&nbsp; <a href="/planos">Planos</a>
+  © ${new Date().getFullYear()} ZVM. Todos os direitos reservados. &nbsp;·&nbsp;
+  <a href="/privacidade">Privacidade</a> &nbsp;·&nbsp;
+  <a href="/faq">FAQ</a> &nbsp;·&nbsp;
+  <a href="/planos">Planos</a>
 </footer>
 
 <script>
-/* ── matrix rain ── */
-(function(){
-  var c=document.getElementById('mx-bg');
-  if(!c)return;
-  var ctx=c.getContext('2d');
-  var W,H,cols,drops;
-  var chars='ZVM01アイウエオカキクケコサシスセソタチツテトナニヌネノ';
-  function resize(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;cols=Math.floor(W/18);drops=drops?drops.slice(0,cols):[];while(drops.length<cols)drops.push(Math.random()*H/14|0);}
-  resize();
-  window.addEventListener('resize',resize);
-  function draw(){
-    ctx.fillStyle='rgba(0,0,0,0.06)';ctx.fillRect(0,0,W,H);
-    ctx.font='13px monospace';
-    for(var i=0;i<cols;i++){
-      var ch=chars[Math.random()*chars.length|0];
-      var x=i*18,y=drops[i]*14;
-      ctx.fillStyle=y<H*.15?'#00ff66':'#00ff6630';
-      ctx.fillText(ch,x,y);
-      if(y>H&&Math.random()>.975)drops[i]=0;
-      drops[i]++;
-    }
-  }
-  setInterval(draw,50);
-})();
-
-/* ── portal logic ── */
 function fmtDate(iso){if(!iso)return'—';const d=new Date(iso);return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
 function fmtHours(h){if(h===null||h===undefined)return null;if(h>=48)return Math.floor(h/24)+' dias';if(h>=1)return h+'h';return'menos de 1h';}
-
-const _KEY_RE=/^[a-z0-9\-]{20}$/;
+const _KEY_RE=/^[a-z0-9\\-]{20}$/;
 
 async function doCheck(key){
   key=(key||'').trim().toLowerCase();
   const errBox=document.getElementById('err-box'),btn=document.getElementById('check-btn');
   errBox.style.display='none';
-  if(!key){errBox.innerHTML='⚠ Digite sua chave de ativação.';errBox.style.display='flex';return;}
-  if(!_KEY_RE.test(key)){errBox.innerHTML='⚠ Chave inválida: exatamente 20 caracteres (letras, números e hífens).';errBox.style.display='flex';return;}
-  btn.disabled=true;btn.innerHTML='<span class="spinner"></span>AUTENTICANDO...';
+  if(!key){errBox.textContent='⚠️ Digite sua chave de ativação.';errBox.style.display='block';return;}
+  if(!_KEY_RE.test(key)){errBox.textContent='⚠️ Chave inválida: deve ter exatamente 20 caracteres (letras, números e hífens).';errBox.style.display='block';return;}
+  btn.disabled=true;btn.innerHTML='<span class="spinner"></span>Consultando...';
   try{
     const r=await fetch('/client/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key})});
     const d=await r.json();
-    if(!r.ok||d.error){errBox.innerHTML='✕ Chave não encontrada. Verifique se digitou corretamente.';errBox.style.display='flex';btn.disabled=false;btn.textContent='CONSULTAR MINHA CHAVE';return;}
+    if(!r.ok||d.error){errBox.textContent='❌ Chave não encontrada. Verifique se digitou corretamente.';errBox.style.display='block';btn.disabled=false;btn.textContent='Consultar Minha Chave';return;}
     showPanel(d,key);
-  }catch(e){errBox.innerHTML='⚠ Erro de conexão. Tente novamente.';errBox.style.display='flex';btn.disabled=false;btn.textContent='CONSULTAR MINHA CHAVE';}
+  }catch(e){errBox.textContent='⚠️ Erro de conexão. Tente novamente.';errBox.style.display='block';btn.disabled=false;btn.textContent='Consultar Minha Chave';}
 }
 
 function checkKey(){doCheck(document.getElementById('key-input').value.trim().toLowerCase());}
 
 function showPanel(d,key){
   document.getElementById('main-form-wrap').style.display='none';
-  document.getElementById('result-wrap').style.display='block';
-  document.getElementById('panel-name').textContent='// '+d.label;
+  const rw=document.getElementById('result-wrap');rw.style.display='block';
+  const pb=document.getElementById('page-body');
+  pb.style.alignItems='flex-start';pb.style.justifyContent='flex-start';pb.style.paddingTop='32px';
+  document.getElementById('panel-name').textContent='👤 '+d.label;
+  const sub=document.getElementById('result-key-sub');if(sub)sub.textContent=key;
   let badge;
-  if(d.deferred)badge='<span class="badge badge-def">// AGUARDANDO 1º USO</span>';
-  else if(!d.active&&d.expired)badge='<span class="badge badge-off">// EXPIRADA</span>';
-  else if(!d.active)badge='<span class="badge badge-off">// BLOQUEADA</span>';
-  else if(d.hoursLeft!==null&&d.hoursLeft<48)badge='<span class="badge badge-warn">// EXPIRANDO</span>';
-  else badge='<span class="badge badge-on">// ATIVA</span>';
+  if(d.deferred)badge='<span class="badge badge-def">Aguardando 1º uso</span>';
+  else if(!d.active&&d.expired)badge='<span class="badge badge-off">Expirada</span>';
+  else if(!d.active)badge='<span class="badge badge-off">Bloqueada</span>';
+  else if(d.hoursLeft!==null&&d.hoursLeft<48)badge='<span class="badge badge-warn">Expirando em breve</span>';
+  else badge='<span class="badge badge-on">Ativa ✓</span>';
   document.getElementById('r-status').innerHTML=badge;
   const maxTxt=d.maxUses===null?'∞':d.maxUses;
   document.getElementById('r-phones').textContent=d.phones+' / '+maxTxt;
   const expEl=document.getElementById('r-expires'),barWrap=document.getElementById('r-bar-wrap'),bar=document.getElementById('r-bar');
-  if(d.deferred){expEl.textContent='ATIVA AO 1º USO';barWrap.style.display='none';}
-  else if(d.expired){expEl.textContent='EXPIRADA EM '+fmtDate(d.expiresAt);barWrap.style.display='none';}
-  else if(d.expiresAt){const tl=fmtHours(d.hoursLeft);expEl.textContent=fmtDate(d.expiresAt)+(tl?' ('+tl+' RESTANTES)':'');if(d.hoursLeft!==null){barWrap.style.display='block';const pct=Math.min(100,Math.max(2,(d.hoursLeft/(24*30))*100));bar.style.width=pct+'%';bar.style.background=d.hoursLeft<24?'#ff3355':d.hoursLeft<72?'#ffaa00':'#00ff66';}}
-  else{expEl.textContent='SEM EXPIRAÇÃO';barWrap.style.display='none';}
+  if(d.deferred){expEl.textContent='Ativa ao 1º uso';barWrap.style.display='none';}
+  else if(d.expired){expEl.textContent='Expirada em '+fmtDate(d.expiresAt);barWrap.style.display='none';}
+  else if(d.expiresAt){const tl=fmtHours(d.hoursLeft);expEl.textContent=fmtDate(d.expiresAt)+(tl?' ('+tl+' restantes)':'');if(d.hoursLeft!==null){barWrap.style.display='block';const pct=Math.min(100,Math.max(2,(d.hoursLeft/(24*30))*100));bar.style.width=pct+'%';bar.style.background=d.hoursLeft<24?'#ff4757':d.hoursLeft<72?'#ffa500':'#00ff87';}}
+  else{expEl.textContent='Sem expiração';barWrap.style.display='none';}
   const actCard=document.getElementById('r-act-card'),lastCard=document.getElementById('r-last-card');
   if(d.activatedAt&&actCard){actCard.style.display='block';document.getElementById('r-activated').textContent=fmtDate(d.activatedAt);}
   if(d.lastUsed&&lastCard){lastCard.style.display='block';document.getElementById('r-lastused').textContent=fmtDate(d.lastUsed);}
-  document.getElementById('r-links').innerHTML='<a class="link-btn" href="https://app.zapvoice.com.br/dashboard/backup-fixer" target="_blank">🔧 CORRIJA BACKUPS</a><a class="link-btn" href="https://app.zapvoice.com.br/dashboard/converter" target="_blank">🎵 CONVERTA ÁUDIOS</a><a class="link-btn" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" style="border-color:#25d36640;color:#25d366">💬 SUPORTE</a>';
+  document.getElementById('r-links').innerHTML='<a class="link-btn" href="https://app.zapvoice.com.br/dashboard/backup-fixer" target="_blank">🔧 Corrija Backups</a><a class="link-btn" href="https://app.zapvoice.com.br/dashboard/converter" target="_blank">🎵 Converta Áudios</a><a class="link-btn" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" style="border-color:#25d36640;color:#25d366">💬 Suporte WhatsApp</a>';
   const renewBanner=document.getElementById('r-renew-banner');
-  if(renewBanner){const showRenew=d.expired||(d.hoursLeft!==null&&d.hoursLeft<168);renewBanner.style.display=showRenew?'flex':'none';if(d.expired){const t=renewBanner.querySelector('.renew-banner-title');if(t)t.textContent='⏰ CHAVE EXPIRADA!';}}
-  var phoneSec=document.getElementById('r-phone-section'),phoneList=document.getElementById('r-phone-list');
+  if(renewBanner){const showRenew=d.expired||(d.hoursLeft!==null&&d.hoursLeft<168);renewBanner.style.display=showRenew?'flex':'none';if(d.expired){const t=renewBanner.querySelector('.renew-banner-title');if(t)t.textContent='⏰ Chave expirada!';}}
+  const phoneSec=document.getElementById('r-phone-section'),phoneList=document.getElementById('r-phone-list');
   if(d.phoneList&&d.phoneList.length>0){
     phoneSec.style.display='block';phoneList.innerHTML='';
     d.phoneList.forEach(function(item){
       var ph=item.display||item,pidx=item.idx!=null?item.idx:-1;
       var card=document.createElement('div');
-      card.style.cssText='background:#000;border:1px solid #181828;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px';
-      var sp=document.createElement('span');sp.style.cssText='font-size:12px;font-family:Space Mono,monospace;color:#f0f0ff;font-weight:700;letter-spacing:1px';sp.textContent=ph;
-      var btn=document.createElement('button');btn.textContent='REMOVER';btn.style.cssText='padding:5px 10px;background:transparent;color:#ff3355;border:1px solid #ff335530;border-radius:6px;cursor:pointer;font-size:9px;font-family:Space Mono,monospace;font-weight:700;flex-shrink:0;letter-spacing:1px;transition:all .15s';
-      btn.addEventListener('mouseenter',function(){this.style.background='#ff3355';this.style.color='#fff';});
-      btn.addEventListener('mouseleave',function(){this.style.background='transparent';this.style.color='#ff3355';});
+      card.style.cssText='background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px';
+      var sp=document.createElement('span');sp.style.cssText='font-size:13px;font-family:monospace;color:var(--text);font-weight:700';sp.textContent=ph;
+      var btn=document.createElement('button');btn.textContent='Remover';btn.style.cssText='padding:5px 12px;background:#ff475720;color:#ff6070;border:1px solid #ff475740;border-radius:6px;cursor:pointer;font-size:12px;font-family:Syne,sans-serif;font-weight:700;flex-shrink:0;transition:all .2s';
       btn.addEventListener('click',function(){clientRemovePhone(key,pidx);});
       card.appendChild(sp);card.appendChild(btn);phoneList.appendChild(card);
     });
@@ -2047,11 +1977,15 @@ function showPanel(d,key){
 }
 
 function resetPanel(){
-  document.getElementById('main-form-wrap').style.display='flex';
+  const mfw=document.getElementById('main-form-wrap');
+  mfw.style.display='';
   document.getElementById('result-wrap').style.display='none';
+  const pb=document.getElementById('page-body');
+  pb.style.alignItems='center';pb.style.justifyContent='center';pb.style.paddingTop='';
   const actCard=document.getElementById('r-act-card'),lastCard=document.getElementById('r-last-card');
   if(actCard)actCard.style.display='none';if(lastCard)lastCard.style.display='none';
-  const btn=document.getElementById('check-btn');btn.disabled=false;btn.textContent='CONSULTAR MINHA CHAVE';
+  const btn=document.getElementById('check-btn');if(btn){btn.disabled=false;btn.textContent='Consultar Minha Chave';}
+  const errBox=document.getElementById('err-box');if(errBox)errBox.style.display='none';
   document.getElementById('form-area').style.display='block';
 }
 
@@ -2060,19 +1994,20 @@ async function clientRemovePhone(key,phoneIdx){
   try{var r=await fetch('/client/remove-phone',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,phoneIdx})});var d=await r.json();if(d.ok){alert('Número removido! Você pode fazer login novamente.');doCheck(key);}else alert('Erro: '+(d.error||'?'));}catch(e){alert('Erro de rede.');}
 }
 
-document.getElementById('key-input').addEventListener('keydown',e=>{if(e.key==='Enter')checkKey();});
-document.getElementById('key-input').addEventListener('input',function(){const c=this.value.trim().toLowerCase().replace(/[^a-z0-9\-]/g,'').slice(0,20);if(c!==this.value)this.value=c;});
-document.getElementById('key-input').addEventListener('paste',function(e){e.preventDefault();const t=(e.clipboardData||window.clipboardData).getData('text').trim().toLowerCase().replace(/[^a-z0-9\-]/g,'').slice(0,20);this.value=t;});
+document.getElementById('key-input').addEventListener('keydown',function(e){if(e.key==='Enter')checkKey();});
+document.getElementById('key-input').addEventListener('input',function(){const c=this.value.trim().toLowerCase().replace(/[^a-z0-9\\-]/g,'').slice(0,20);if(c!==this.value)this.value=c;});
+document.getElementById('key-input').addEventListener('paste',function(e){e.preventDefault();const t=(e.clipboardData||window.clipboardData).getData('text').trim().toLowerCase().replace(/[^a-z0-9\\-]/g,'').slice(0,20);this.value=t;});
 
-window.addEventListener('DOMContentLoaded',()=>{
+window.addEventListener('DOMContentLoaded',function(){
   const params=new URLSearchParams(window.location.search);
   const autoKey=(params.get('key')||'').trim().toLowerCase();
-  if(autoKey){document.getElementById('loading-overlay').style.display='flex';document.getElementById('form-area').style.display='none';doCheck(autoKey).finally(()=>{document.getElementById('loading-overlay').style.display='none';});}
+  if(autoKey){document.getElementById('loading-overlay').style.display='flex';document.getElementById('form-area').style.display='none';doCheck(autoKey).finally(function(){document.getElementById('loading-overlay').style.display='none';});}
   else document.getElementById('loading-overlay').style.display='none';
 });
 </script>
-</body></html>`;
+${CANVAS_BG}</body></html>`;
 }
+
 
 let _keysHtmlCache = null;
 let _keysHtmlCacheTs = 0;
@@ -3057,7 +2992,7 @@ function renderPlanosPage() {
   const cards = PLANOS.map(p => {
     const comingSoon = p.link === '#';
     return `<div class="plan-card${p.highlight?' hl':''}">
-  ${p.highlight?'<div class="pop-badge">⚡ Popular</div>':''}
+  ${p.highlight?'<div class="pop-badge">⚡ Mais popular</div>':''}
   <div class="plan-top">
     <div class="plan-icon">${p.icon}</div>
     <div class="plan-name">${p.label}</div>
@@ -3071,11 +3006,11 @@ function renderPlanosPage() {
   </div>
   <div class="plan-divider"></div>
   <ul class="plan-features">
-    <li><span class="ck">✓</span> Até ${p.devices} número${p.devices>1?'s':''} simultâneo${p.devices>1?'s':''}</li>
-    <li><span class="ck">✓</span> 30 dias de acesso</li>
-    <li><span class="ck">✓</span> Todos os recursos inclusos</li>
-    <li><span class="ck">✓</span> Renovação pelo portal</li>
-    <li><span class="ck">✓</span> Suporte WhatsApp</li>
+    <li>✅ Até ${p.devices} número${p.devices>1?'s':''} simultâneo${p.devices>1?'s':''}</li>
+    <li>✅ 30 dias de acesso</li>
+    <li>✅ Todos os recursos inclusos</li>
+    <li>✅ Renovação pelo portal</li>
+    <li>✅ Suporte WhatsApp</li>
   </ul>
   <button class="plan-btn${p.highlight?' btn-hl':''}" ${comingSoon?'disabled':''}>
     ${comingSoon?'🔒 Em breve':'💳 Assinar agora'}
@@ -3086,141 +3021,137 @@ function renderPlanosPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Planos e Preços</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23000000'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff66'%3EZV%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d14'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZV%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--g:#00ff66;--g2:#00cc52;--g3:#00ff6615;--g4:#00ff6608;--bg:#000000;--c1:#03030a;--c2:#06060f;--brd:#0f0f1e;--brd2:#181828;--brd3:#00ff6622;--tx:#f0f0ff;--tx2:#8888aa;--tx3:#44445a;--r:8px;--r-lg:14px}
-::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:#000}::-webkit-scrollbar-thumb{background:#00ff6630;border-radius:4px}::-webkit-scrollbar-thumb:hover{background:#00ff6660}
+:root{--green:#00ff87;--green-soft:#00ff8718;--green-brd:#00ff8740;--bg:#0d0d14;--card:#111118;--card2:#16161e;--border:#1e1e30;--border2:#28283a;--text:#e8e8f4;--muted:#9494aa;--muted2:#6a6a82;--radius:14px;--radius-sm:8px}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:#00ff8730;border-radius:10px}::-webkit-scrollbar-thumb:hover{background:#00ff8760}
 html{scroll-behavior:smooth}
-body{background:var(--bg);color:var(--tx);font-family:'Syne',sans-serif;min-height:100vh;overflow-x:hidden;display:flex;flex-direction:column;position:relative}
-body::after{content:'';position:fixed;inset:0;z-index:1;pointer-events:none;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.12) 2px,rgba(0,0,0,.12) 4px)}
-nav{display:flex;align-items:center;justify-content:space-between;padding:12px 28px;border-bottom:1px solid var(--brd3);background:rgba(0,0,0,.88);position:sticky;top:0;z-index:100;backdrop-filter:blur(20px);flex-shrink:0}
-.nav-logo{font-size:16px;font-weight:700;color:var(--g);text-decoration:none;letter-spacing:3px;font-family:'Space Mono',monospace;text-shadow:0 0 16px #00ff6640}
-.nav-links{display:flex;gap:4px}
-.nav-links a{font-size:10px;font-weight:700;color:var(--tx3);text-decoration:none;padding:6px 13px;border:1px solid transparent;border-radius:6px;transition:all .18s;letter-spacing:1.5px;text-transform:uppercase;font-family:'Space Mono',monospace;position:relative}
-.nav-links a:hover{color:var(--g);border-color:var(--brd3);background:var(--g4)}
-.nav-links a.nav-active{color:var(--g)!important;border-color:var(--brd3)!important;background:var(--g4)!important}
-.nav-links a.nav-active::after{content:'';position:absolute;bottom:-13px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:var(--g);box-shadow:0 0 10px var(--g)}
-main{max-width:1040px;margin:0 auto;padding:60px 24px 100px;flex:1;position:relative;z-index:2}
+body{background:var(--bg);color:var(--text);font-family:'Inter','Segoe UI',sans-serif;min-height:100vh;overflow-x:hidden;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased}
+nav{display:flex;align-items:center;justify-content:space-between;padding:14px 32px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:100;box-shadow:0 2px 20px #00000060;flex-shrink:0;backdrop-filter:blur(8px)}
+.nav-logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:6px;letter-spacing:-0.5px}
+.nav-links{display:flex;gap:8px}
+.nav-links a{font-size:13px;color:var(--muted);text-decoration:none;padding:8px 15px;border:1px solid var(--border);border-radius:var(--radius-sm);transition:all .2s;font-family:'Syne',sans-serif;font-weight:700;position:relative}
+.nav-links a:hover{color:var(--green);border-color:var(--green-brd);background:var(--green-soft)}
+.nav-links a.nav-active{color:var(--green)!important;border-color:var(--green-brd)!important;background:var(--green-soft)!important}
+.nav-links a.nav-active::after{content:'';position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+footer.zvm-footer{text-align:center;padding:20px 24px;font-size:13px;color:var(--muted2);font-family:'Syne',sans-serif;border-top:1px solid var(--border);flex-shrink:0}
+footer.zvm-footer a{color:var(--muted2);text-decoration:none;transition:color .2s}
+footer.zvm-footer a:hover{color:var(--green)}
+main{max-width:1080px;margin:0 auto;padding:60px 28px 90px;flex:1;position:relative;z-index:2}
 /* hero */
 .hero{text-align:center;margin-bottom:52px}
-.hero-badge{display:inline-flex;align-items:center;gap:6px;background:var(--g4);border:1px solid var(--brd3);color:var(--g);font-size:9px;letter-spacing:3px;text-transform:uppercase;padding:5px 16px;border-radius:20px;margin-bottom:20px;font-family:'Space Mono',monospace}
-.hero h1{font-family:'Syne',sans-serif;font-size:clamp(28px,4vw,46px);font-weight:800;line-height:1.1;margin-bottom:14px}
-.hero h1 em{color:var(--g);font-style:normal;text-shadow:0 0 20px #00ff6640}
-.hero-sub{color:var(--tx2);font-size:13px;line-height:1.8;max-width:460px;margin:0 auto 26px;font-family:'Space Mono',monospace}
-.pills{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center}
-.pill{background:var(--c1);border:1px solid var(--brd2);color:var(--tx2);font-size:10px;padding:5px 14px;border-radius:20px;font-family:'Space Mono',monospace}
-/* wip */
-.wip{background:#ffd32a06;border:1px solid #ffd32a18;border-radius:var(--r);padding:12px 18px;margin-bottom:36px;display:flex;align-items:center;gap:12px;font-size:11px;color:#c9a800;font-family:'Space Mono',monospace;line-height:1.7}
-/* plans grid */
-.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:48px}
-.plan-card{background:var(--c1);border:1px solid var(--brd2);border-radius:var(--r-lg);padding:34px 22px 28px;text-align:center;position:relative;transition:border-color .22s,transform .18s,box-shadow .22s;display:flex;flex-direction:column;backdrop-filter:blur(8px)}
-.plan-card:hover{border-color:var(--brd3);transform:translateY(-4px);box-shadow:0 16px 40px #00000080}
-.plan-card.hl{border-color:#00ff6635;background:linear-gradient(160deg,#03100a,#03030a);box-shadow:0 0 40px #00ff6608}
-.plan-card.hl:hover{box-shadow:0 16px 50px #00ff6618;border-color:#00ff6650}
-.pop-badge{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--g);color:#000;font-family:'Space Mono',monospace;font-weight:700;font-size:9px;padding:4px 14px;border-radius:20px;white-space:nowrap;letter-spacing:2px;text-transform:uppercase;box-shadow:0 0 12px #00ff6640}
-.plan-top{margin-bottom:16px}
-.plan-icon{font-size:28px;margin-bottom:8px}
-.plan-name{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--tx);margin-bottom:4px}
-.plan-desc{font-size:9px;color:var(--g);font-family:'Space Mono',monospace;letter-spacing:2px;text-transform:uppercase;margin-bottom:5px}
-.plan-sub{font-size:10px;color:var(--tx3);font-family:'Space Mono',monospace}
-.plan-pricing{margin-bottom:14px}
-.old-price{font-size:10px;color:var(--tx3);text-decoration:line-through;margin-bottom:3px;font-family:'Space Mono',monospace}
-.plan-price{display:flex;align-items:baseline;justify-content:center;gap:3px;margin-bottom:3px}
-.cur{font-size:12px;color:var(--g);font-weight:700;font-family:'Space Mono',monospace}
-.val{font-family:'Syne',sans-serif;font-size:40px;font-weight:800;color:var(--g);line-height:1;text-shadow:0 0 16px #00ff6630}
-.per{font-size:11px;color:var(--tx3);font-family:'Space Mono',monospace}
-.per-device{font-size:10px;color:var(--tx2);font-family:'Space Mono',monospace}
-.plan-divider{height:1px;background:var(--brd2);margin:12px 0}
-.plan-features{list-style:none;text-align:left;font-size:12px;color:var(--tx2);line-height:1.5;display:flex;flex-direction:column;gap:8px;margin-bottom:18px;flex:1;font-family:'Space Mono',monospace}
-.plan-features li{display:flex;align-items:center;gap:8px}
-.ck{color:var(--g);flex-shrink:0;font-weight:700}
-.plan-btn{width:100%;padding:14px;border-radius:var(--r);font-family:'Space Mono',monospace;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:2px;transition:all .2s;background:#000;color:var(--tx3);border:1px solid var(--brd2);cursor:not-allowed;margin-top:auto}
-.plan-btn.btn-hl{border-color:var(--g);color:var(--g);text-shadow:0 0 8px #00ff6630}
+.hero-badge{display:inline-flex;align-items:center;gap:6px;background:var(--green-soft);border:1px solid var(--green-brd);color:var(--green);font-size:12px;letter-spacing:2px;text-transform:uppercase;padding:6px 18px;border-radius:20px;margin-bottom:22px;font-family:'Syne',sans-serif;font-weight:700}
+.hero h1{font-family:'Syne',sans-serif;font-size:clamp(30px,4vw,50px);font-weight:800;line-height:1.1;margin-bottom:16px}
+.hero h1 em{color:var(--green);font-style:normal}
+.hero-sub{color:var(--muted);font-size:15px;line-height:1.8;max-width:480px;margin:0 auto 28px;font-family:'Syne',sans-serif}
+.guarantee{display:inline-flex;align-items:center;gap:22px;background:var(--card);border:1px solid var(--border);border-radius:30px;padding:12px 28px;font-size:14px;color:var(--muted);font-family:'Syne',sans-serif;flex-wrap:wrap;justify-content:center}
+.guarantee span{display:flex;align-items:center;gap:6px}
+/* wip banner */
+.wip-banner{background:#ffd32a08;border:1px solid #ffd32a22;border-radius:var(--radius-sm);padding:14px 22px;margin-bottom:40px;display:flex;align-items:center;gap:14px;font-size:14px;color:#c9a800;line-height:1.7;font-family:'Syne',sans-serif}
+/* plans */
+.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:52px}
+.plan-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:32px 20px 26px;text-align:center;position:relative;transition:border-color .25s,transform .2s,box-shadow .2s;display:flex;flex-direction:column}
+.plan-card:hover{border-color:var(--green-brd);transform:translateY(-5px);box-shadow:0 18px 44px #00000055}
+.plan-card.hl{border-color:#00ff8750;background:linear-gradient(165deg,#0d1a12,#111118);box-shadow:0 0 32px #00ff8710}
+.plan-card.hl:hover{box-shadow:0 18px 52px #00ff8720}
+.pop-badge{position:absolute;top:-14px;left:50%;transform:translateX(-50%);background:var(--green);color:#000;font-family:'Syne',sans-serif;font-weight:800;font-size:13px;padding:5px 18px;border-radius:20px;white-space:nowrap;letter-spacing:.3px;box-shadow:0 0 12px #00ff8740}
+.plan-top{margin-bottom:20px}
+.plan-icon{font-size:38px;margin-bottom:10px}
+.plan-name{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--text);margin-bottom:4px}
+.plan-desc{font-size:12px;color:var(--green);font-family:'Syne',sans-serif;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;font-weight:700}
+.plan-sub{font-size:13px;color:var(--muted);font-family:'Syne',sans-serif}
+.plan-pricing{margin-bottom:18px}
+.old-price{font-size:13px;color:var(--muted2);text-decoration:line-through;margin-bottom:4px;font-family:'Syne',sans-serif}
+.plan-price{display:flex;align-items:baseline;justify-content:center;gap:4px;margin-bottom:4px}
+.cur{font-size:15px;color:var(--green);font-weight:700;font-family:'Syne',sans-serif}
+.val{font-family:'Syne',sans-serif;font-size:42px;font-weight:800;color:var(--green);line-height:1}
+.per{font-size:14px;color:var(--muted);font-family:'Syne',sans-serif}
+.per-device{font-size:13px;color:var(--muted);font-family:'Syne',sans-serif;font-weight:600}
+.plan-divider{height:1px;background:var(--border);margin:16px 0}
+.plan-features{list-style:none;text-align:left;font-size:13px;color:var(--muted);line-height:1.5;display:flex;flex-direction:column;gap:10px;margin-bottom:20px;flex:1;font-family:'Syne',sans-serif}
+.plan-features li{display:flex;align-items:center;gap:6px}
+.plan-btn{width:100%;padding:14px;border-radius:var(--radius-sm);font-family:'Syne',sans-serif;font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:1.5px;transition:all .2s;background:var(--card2);color:var(--muted);border:1px solid var(--border);cursor:not-allowed;margin-top:auto}
+.plan-btn.btn-hl{background:var(--green);color:#000;border:none;box-shadow:0 0 20px #00ff8730;cursor:not-allowed}
 /* compare */
-.compare-block{background:var(--c1);border:1px solid var(--brd2);border-radius:var(--r-lg);overflow:hidden;margin-bottom:36px}
-.block-title{padding:12px 20px;font-size:9px;font-weight:700;color:var(--g);letter-spacing:3px;text-transform:uppercase;border-bottom:1px solid var(--brd2);background:var(--c2);font-family:'Space Mono',monospace}
-.compare-block table{width:100%;border-collapse:collapse;font-size:12px;font-family:'Space Mono',monospace}
-.compare-block th{padding:10px 16px;text-align:center;color:var(--tx3);border-bottom:1px solid var(--brd2);font-weight:700;font-size:10px;background:var(--c2)}
+.compare-block{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:36px}
+.block-title{padding:14px 22px;font-size:12px;font-weight:700;color:var(--green);letter-spacing:2px;text-transform:uppercase;border-bottom:1px solid var(--border);background:var(--card2);font-family:'Syne',sans-serif}
+.compare-block table{width:100%;border-collapse:collapse;font-size:14px;font-family:'Syne',sans-serif}
+.compare-block th{padding:12px 18px;text-align:center;color:var(--muted);border-bottom:1px solid var(--border);font-weight:700;font-size:13px;background:var(--card2)}
 .compare-block th:first-child{text-align:left}
-.compare-block td{padding:10px 16px;text-align:center;border-bottom:1px solid var(--brd2);color:var(--tx);font-size:11px}
-.compare-block td:first-child{text-align:left;color:var(--tx2)}
+.compare-block td{padding:12px 18px;text-align:center;border-bottom:1px solid var(--border2);color:var(--text)}
+.compare-block td:first-child{text-align:left;color:var(--muted);font-size:14px}
 .compare-block tr:last-child td{border-bottom:none}
-.compare-block tr:hover td{background:#ffffff01}
+.compare-block tr:hover td{background:#ffffff02}
+.ck{color:var(--green);font-weight:700}
+.cx{color:#ff475750}
 /* includes */
-.inc-block{background:var(--c1);border:1px solid var(--brd2);border-radius:var(--r-lg);padding:22px;margin-bottom:36px}
-.inc-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
-.inc-item{display:flex;align-items:flex-start;gap:10px;font-size:11px;color:var(--tx2);line-height:1.6;font-family:'Space Mono',monospace}
-.inc-item .ic{flex-shrink:0;font-size:17px;margin-top:1px}
+.includes{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px 32px;margin-bottom:36px}
+.inc-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:var(--green);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:20px}
+.inc-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.inc-item{display:flex;align-items:center;gap:14px;font-size:14px;color:var(--muted);line-height:1.5;font-family:'Syne',sans-serif;font-weight:500}
+.inc-item .ic{flex-shrink:0;font-size:22px}
 /* cta */
-.cta-block{background:var(--c1);border:1px solid var(--brd3);border-radius:var(--r-lg);padding:34px 26px;text-align:center;position:relative;overflow:hidden}
-.cta-block::before{content:'';position:absolute;top:-50px;left:50%;transform:translateX(-50%);width:300px;height:180px;background:radial-gradient(ellipse,var(--g4) 0%,transparent 70%);pointer-events:none}
-.cta-block h2{font-size:17px;font-weight:800;color:var(--tx);margin-bottom:8px}
-.cta-block p{color:var(--tx2);font-size:12px;line-height:1.8;margin-bottom:20px;font-family:'Space Mono',monospace}
-.btn-wpp{display:inline-flex;align-items:center;gap:8px;background:#000;border:1px solid #25d366;color:#25d366;font-family:'Space Mono',monospace;font-weight:700;font-size:10px;padding:12px 22px;border-radius:var(--r);text-decoration:none;transition:all .22s;letter-spacing:2px;text-transform:uppercase;position:relative;overflow:hidden}
-.btn-wpp::before{content:'';position:absolute;inset:0;background:#25d366;transform:translateY(100%);transition:transform .22s;z-index:-1}
-.btn-wpp:hover::before{transform:translateY(0)}
-.btn-wpp:hover{color:#000;box-shadow:0 0 24px #25d36640}
-footer{text-align:center;padding:18px 24px;font-size:10px;color:var(--tx3);font-family:'Space Mono',monospace;border-top:1px solid var(--brd2);flex-shrink:0;position:relative;z-index:2;letter-spacing:.5px}
-footer a{color:var(--tx3);text-decoration:none;transition:color .15s}
-footer a:hover{color:var(--g)}
-@media(max-width:840px){.plans{grid-template-columns:1fr 1fr}.inc-grid{grid-template-columns:1fr}}
-@media(max-width:480px){.plans{grid-template-columns:1fr}nav{padding:10px 14px}.nav-links a{padding:5px 9px;font-size:9px}main{padding:40px 16px 80px}}
-</style></head>
-<body>
-${CYBER_BG}
+.cta{background:linear-gradient(135deg,#0a1a12,#111118);border:1px solid #00ff8740;border-radius:var(--radius);padding:44px 32px;text-align:center}
+.cta h3{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--text);margin-bottom:10px}
+.cta p{color:var(--muted);font-size:14px;margin-bottom:26px;line-height:1.8;font-family:'Syne',sans-serif}
+.btn-wpp{display:inline-flex;align-items:center;gap:8px;background:#25d36618;border:1px solid #25d36640;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;padding:14px 28px;border-radius:var(--radius-sm);text-decoration:none;transition:all .2s}
+.btn-wpp:hover{background:#25d36628;border-color:#25d366;transform:translateY(-2px);box-shadow:0 6px 20px #25d36625}
+@media(max-width:900px){.plans{grid-template-columns:1fr 1fr}.inc-grid{grid-template-columns:1fr}}
+@media(max-width:520px){.plans{grid-template-columns:1fr}.guarantee{flex-direction:column;gap:10px}.nav-links a{padding:6px 10px;font-size:12px}}
+</style></head><body>
 <nav>
-  <a href="/" class="nav-logo">ZVM</a>
+  <a href="/" class="nav-logo">⚡ ZVM</a>
   <div class="nav-links" id="main-nav">
     <a href="/" data-navpath="/">PAINEL</a>
     <a href="/faq" data-navpath="/faq">FAQ</a>
-    <a href="/planos" data-navpath="/planos">PLANOS</a>
     <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
+    <a href="/planos" data-navpath="/planos">PLANOS</a>
     <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">SUPORTE</a>
   </div>
 </nav>
-<script>(function(){var p=window.location.pathname;document.querySelectorAll('#main-nav a[data-navpath]').forEach(function(a){if(a.getAttribute('data-navpath')===p)a.classList.add('nav-active');});})();</script>
+<script>(function(){var cp=window.location.pathname;document.querySelectorAll('#main-nav a[data-navpath]').forEach(function(a){if(a.getAttribute('data-navpath')===cp)a.classList.add('nav-active');});})();</script>
 <main>
   <div class="hero">
     <div class="hero-badge">💳 Planos e Preços</div>
     <h1>Simples, <em>transparente</em><br>e sem surpresas</h1>
-    <p class="hero-sub">Todos os planos incluem acesso completo ao ZVM por 30 dias.</p>
-    <div class="pills">
-      <span class="pill">✅ Sem fidelidade</span>
-      <span class="pill">⚡ Ativação imediata</span>
-      <span class="pill">💬 Suporte incluso</span>
+    <p class="hero-sub">Escolha o plano ideal para o seu uso. Todos incluem acesso completo à extensão ZVM por 30 dias.</p>
+    <div class="guarantee">
+      <span>✅ Sem fidelidade</span>
+      <span>⚡ Ativação imediata</span>
+      <span>💬 Suporte incluso</span>
     </div>
   </div>
 
-  <div class="wip">
-    <span style="font-size:16px;flex-shrink:0">🚧</span>
-    <span><strong>Links de pagamento em breve.</strong> Os planos estão configurados — assim que os links da Payt forem adicionados você poderá assinar aqui.</span>
+  <div class="wip-banner">
+    <span style="font-size:20px;flex-shrink:0">🚧</span>
+    <span><strong>Links de pagamento em breve!</strong> Os planos já estão configurados — assim que os links forem adicionados você poderá assinar direto por aqui.</span>
   </div>
 
   <div class="plans">${cards}</div>
 
   <div class="compare-block">
-    <div class="block-title">📊 Comparativo dos planos</div>
+    <div class="block-title">📊 Comparativo dos Planos</div>
     <table>
       <thead><tr>
-        <th style="text-align:left">Recurso</th>
+        <th>Recurso</th>
         <th>Solo</th><th>Padrão</th><th>Pro</th><th>Empresarial</th>
       </tr></thead>
       <tbody>
-        <tr><td>Números simultâneos</td><td>1</td><td>3</td><td>5</td><td>10</td></tr>
+        <tr><td>Números de WhatsApp</td><td>1</td><td>3</td><td>5</td><td>10</td></tr>
         <tr><td>Preço mensal</td><td>R$ 24,99</td><td>R$ 29,99</td><td>R$ 39,99</td><td>R$ 59,99</td></tr>
-        <tr><td>Preço por número</td><td>R$ 24,99</td><td style="color:var(--g)">R$ 10,00</td><td style="color:var(--g)">R$ 8,00</td><td style="color:var(--g)">R$ 6,00</td></tr>
+        <tr><td>Preço por número</td><td>R$ 24,99</td><td style="color:var(--green)">R$ 10,00</td><td style="color:var(--green)">R$ 8,00</td><td style="color:var(--green)">R$ 6,00</td></tr>
         <tr><td>Todos os recursos</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
         <tr><td>Portal do cliente</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
         <tr><td>Suporte WhatsApp</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
-        <tr><td>Renovação acumula dias</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
+        <tr><td>Renovação automática</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
       </tbody>
     </table>
   </div>
 
-  <div class="inc-block">
-    <div class="block-title">✅ Incluso em todos os planos</div>
+  <div class="includes">
+    <div class="inc-title">✅ Incluso em todos os planos</div>
     <div class="inc-grid">
       <div class="inc-item"><span class="ic">⚡</span><span>Acesso completo à extensão ZVM para WhatsApp Web</span></div>
       <div class="inc-item"><span class="ic">🔄</span><span>Atualizações automáticas durante a vigência</span></div>
@@ -3233,112 +3164,117 @@ ${CYBER_BG}
     </div>
   </div>
 
-  <div class="cta-block">
-    <h2>Ainda tem dúvidas?</h2>
-    <p>Nossa equipe está disponível para te ajudar a escolher o melhor plano.</p>
-    <a class="btn-wpp" href="https://wa.me/5521996771552?text=LR!%20Quero%20saber%20mais%20sobre%20os%20planos%20do%20ZVM." target="_blank" rel="noopener">💬 FALAR COM SUPORTE</a>
+  <div class="cta">
+    <h3>Ainda tem dúvidas?</h3>
+    <p>Nossa equipe está disponível para te ajudar a escolher o melhor plano<br>ou esclarecer qualquer questão antes de assinar.</p>
+    <a class="btn-wpp" href="https://wa.me/5521996771552?text=LR!%20Quero%20saber%20mais%20sobre%20os%20planos%20do%20ZVM." target="_blank" rel="noopener">💬 Falar com o Suporte no WhatsApp</a>
   </div>
 </main>
-<footer>
-  © ${new Date().getFullYear()} ZVM &nbsp;·&nbsp; <a href="/privacidade">Privacidade</a> &nbsp;·&nbsp; <a href="/faq">FAQ</a> &nbsp;·&nbsp; <a href="/planos">Planos</a>
+<footer class="zvm-footer">
+  © ${new Date().getFullYear()} ZVM. Todos os direitos reservados. &nbsp;·&nbsp;
+  <a href="/privacidade">Privacidade</a> &nbsp;·&nbsp;
+  <a href="/faq">FAQ</a> &nbsp;·&nbsp;
+  <a href="/planos">Planos</a>
 </footer>
+${CANVAS_BG}
 </body></html>`;
 }
+
 
 function renderFaqPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — FAQ</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23000000'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff66'%3EZV%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d14'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZV%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--g:#00ff66;--g2:#00cc52;--g3:#00ff6615;--g4:#00ff6608;--bg:#000000;--c1:#03030a;--c2:#06060f;--brd:#0f0f1e;--brd2:#181828;--brd3:#00ff6622;--tx:#f0f0ff;--tx2:#8888aa;--tx3:#44445a;--r:8px;--r-lg:14px}
-::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:#000}::-webkit-scrollbar-thumb{background:#00ff6630;border-radius:4px}::-webkit-scrollbar-thumb:hover{background:#00ff6660}
+:root{--green:#00ff87;--green-soft:#00ff8718;--green-brd:#00ff8740;--bg:#0d0d14;--card:#111118;--card2:#16161e;--border:#1e1e30;--border2:#28283a;--text:#e8e8f4;--muted:#9494aa;--muted2:#6a6a82;--radius:14px;--radius-sm:8px}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:#00ff8730;border-radius:10px}::-webkit-scrollbar-thumb:hover{background:#00ff8760}
 html{scroll-behavior:smooth}
-body{background:var(--bg);color:var(--tx);font-family:'Syne',sans-serif;min-height:100vh;overflow-x:hidden;display:flex;flex-direction:column;position:relative}
-body::after{content:'';position:fixed;inset:0;z-index:1;pointer-events:none;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.12) 2px,rgba(0,0,0,.12) 4px)}
-nav{display:flex;align-items:center;justify-content:space-between;padding:12px 28px;border-bottom:1px solid var(--brd3);background:rgba(0,0,0,.88);position:sticky;top:0;z-index:100;backdrop-filter:blur(20px);flex-shrink:0}
-.nav-logo{font-size:16px;font-weight:700;color:var(--g);text-decoration:none;letter-spacing:3px;font-family:'Space Mono',monospace;text-shadow:0 0 16px #00ff6640}
-.nav-links{display:flex;gap:4px}
-.nav-links a{font-size:10px;font-weight:700;color:var(--tx3);text-decoration:none;padding:6px 13px;border:1px solid transparent;border-radius:6px;transition:all .18s;letter-spacing:1.5px;text-transform:uppercase;font-family:'Space Mono',monospace;position:relative}
-.nav-links a:hover{color:var(--g);border-color:var(--brd3);background:var(--g4)}
-.nav-links a.nav-active{color:var(--g)!important;border-color:var(--brd3)!important;background:var(--g4)!important}
-.nav-links a.nav-active::after{content:'';position:absolute;bottom:-13px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:var(--g);box-shadow:0 0 10px var(--g)}
-main{max-width:920px;margin:0 auto;padding:68px 36px 100px;width:100%;flex:1;position:relative;z-index:2}
+body{background:var(--bg);color:var(--text);font-family:'Inter','Segoe UI',sans-serif;min-height:100vh;overflow-x:hidden;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased}
+nav{display:flex;align-items:center;justify-content:space-between;padding:14px 32px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:100;box-shadow:0 2px 20px #00000060;flex-shrink:0;backdrop-filter:blur(8px)}
+.nav-logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:6px;letter-spacing:-0.5px}
+.nav-links{display:flex;gap:8px}
+.nav-links a{font-size:13px;color:var(--muted);text-decoration:none;padding:8px 15px;border:1px solid var(--border);border-radius:var(--radius-sm);transition:all .2s;font-family:'Syne',sans-serif;font-weight:700;position:relative}
+.nav-links a:hover{color:var(--green);border-color:var(--green-brd);background:var(--green-soft)}
+.nav-links a.nav-active{color:var(--green)!important;border-color:var(--green-brd)!important;background:var(--green-soft)!important}
+.nav-links a.nav-active::after{content:'';position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+footer.zvm-footer{text-align:center;padding:20px 24px;font-size:13px;color:var(--muted2);font-family:'Syne',sans-serif;border-top:1px solid var(--border);flex-shrink:0}
+footer.zvm-footer a{color:var(--muted2);text-decoration:none;transition:color .2s}
+footer.zvm-footer a:hover{color:var(--green)}
+main{max-width:880px;margin:0 auto;padding:60px 32px 90px;width:100%;flex:1;position:relative;z-index:2}
 /* hero */
 .hero{text-align:center;margin-bottom:52px}
-.hero-badge{display:inline-flex;align-items:center;gap:6px;background:var(--g4);border:1px solid var(--brd3);color:var(--g);font-size:9px;letter-spacing:3px;text-transform:uppercase;padding:5px 16px;border-radius:20px;margin-bottom:20px;font-family:'Space Mono',monospace}
-.hero h1{font-family:'Syne',sans-serif;font-size:clamp(26px,5vw,42px);font-weight:800;line-height:1.1;margin-bottom:12px;color:var(--tx)}
-.hero h1 em{color:var(--g);font-style:normal;text-shadow:0 0 20px #00ff6640}
-.hero-sub{color:var(--tx2);font-size:13px;line-height:1.9;max-width:500px;margin:0 auto;font-family:'Space Mono',monospace}
+.hero-badge{display:inline-block;background:var(--green-soft);border:1px solid var(--green-brd);color:var(--green);font-size:12px;letter-spacing:2px;text-transform:uppercase;padding:6px 18px;border-radius:20px;margin-bottom:22px;font-family:'Syne',sans-serif;font-weight:700}
+.hero h1{font-family:'Syne',sans-serif;font-size:clamp(28px,5vw,46px);font-weight:800;line-height:1.1;margin-bottom:16px}
+.hero h1 span{color:var(--green)}
+.hero-sub{color:var(--muted);font-size:16px;line-height:1.8;max-width:560px;margin:0 auto;font-family:'Syne',sans-serif}
 /* video */
-.video-block{background:var(--c1);border:1px solid var(--brd2);border-radius:var(--r-lg);overflow:hidden;margin-bottom:40px;box-shadow:0 0 40px #00ff6606,0 8px 32px #00000070}
-.video-top{padding:12px 18px;font-size:10px;font-weight:700;color:var(--g);border-bottom:1px solid var(--brd2);display:flex;align-items:center;gap:8px;letter-spacing:2.5px;text-transform:uppercase;background:var(--c2);font-family:'Space Mono',monospace}
-.video-ratio{position:relative;padding-bottom:56.25%;height:0;overflow:hidden}
-.video-ratio iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:none;display:block}
-/* accordion */
-.acc-group{margin-bottom:36px}
-.acc-label{font-size:11px;letter-spacing:3px;text-transform:uppercase;color:var(--tx3);font-family:'Space Mono',monospace;margin-bottom:12px;padding-left:10px;border-left:2px solid var(--brd3)}
-.acc-item{border:1px solid var(--brd2);border-radius:var(--r);margin-bottom:3px;overflow:hidden;background:var(--c1);transition:border-color .2s}
-.acc-item.open{border-color:var(--brd3)}
-.acc-item.open .acc-head{color:var(--g)}
-.acc-head{width:100%;background:none;border:none;padding:20px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;cursor:pointer;text-align:left;color:var(--tx);font-family:'Syne',sans-serif;font-size:15px;font-weight:700;transition:color .18s}
-.acc-head:hover{color:var(--g)}
-.acc-arrow{flex-shrink:0;width:20px;height:20px;border:1px solid var(--brd2);border-radius:50%;display:flex;align-items:center;justify-content:center;transition:all .22s;color:var(--tx3);font-size:10px;font-family:'Space Mono',monospace}
-.acc-item.open .acc-arrow{background:var(--g);border-color:var(--g);color:#000;transform:rotate(45deg);box-shadow:0 0 8px #00ff6640}
-.acc-body{display:none;padding:0 24px 22px;color:var(--tx2);font-size:13px;line-height:1.9;font-family:'Space Mono',monospace}
-.acc-item.open .acc-body{display:block}
-.acc-body ol,.acc-body ul{padding-left:16px;margin-top:8px}
-.acc-body li{margin-bottom:8px}
-.acc-body li:last-child{margin-bottom:0}
-.acc-body strong{color:var(--tx);font-weight:700}
-.acc-body code{font-size:11px;color:var(--g);background:var(--g4);border:1px solid var(--brd3);padding:1px 6px;border-radius:4px}
-.acc-tip{margin-top:14px;background:var(--g4);border:1px solid var(--brd3);border-radius:var(--r);padding:10px 14px;font-size:11px;color:#70c880;line-height:1.8}
-.acc-tip a{color:var(--g);text-decoration:none}
-/* cta */
-.cta-block{background:var(--c1);border:1px solid var(--brd3);border-radius:var(--r-lg);padding:36px 32px;text-align:center;position:relative;overflow:hidden}
-.cta-block::before{content:'';position:absolute;top:-60px;left:50%;transform:translateX(-50%);width:300px;height:200px;background:radial-gradient(ellipse,var(--g4) 0%,transparent 70%);pointer-events:none}
-.cta-block h2{font-size:17px;font-weight:800;color:var(--tx);margin-bottom:8px}
-.cta-block p{color:var(--tx2);font-size:12px;line-height:1.9;margin-bottom:22px;max-width:380px;margin-left:auto;margin-right:auto;font-family:'Space Mono',monospace}
-.cta-btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
-.btn-g{display:inline-flex;align-items:center;gap:8px;background:#000;border:1px solid var(--g);color:var(--g);font-family:'Space Mono',monospace;font-weight:700;font-size:10px;padding:12px 22px;border-radius:var(--r);text-decoration:none;transition:all .22s;letter-spacing:2px;text-transform:uppercase;overflow:hidden;position:relative}
-.btn-g::before{content:'';position:absolute;inset:0;background:var(--g);transform:translateY(100%);transition:transform .22s;z-index:-1}
-.btn-g:hover::before{transform:translateY(0)}
-.btn-g:hover{color:#000;box-shadow:0 0 24px #00ff6640}
-.btn-wpp{display:inline-flex;align-items:center;gap:8px;background:#000;border:1px solid #25d366;color:#25d366;font-family:'Space Mono',monospace;font-weight:700;font-size:10px;padding:12px 22px;border-radius:var(--r);text-decoration:none;transition:all .22s;letter-spacing:2px;text-transform:uppercase;position:relative;overflow:hidden}
-.btn-wpp::before{content:'';position:absolute;inset:0;background:#25d366;transform:translateY(100%);transition:transform .22s;z-index:-1}
-.btn-wpp:hover::before{transform:translateY(0)}
-.btn-wpp:hover{color:#000;box-shadow:0 0 24px #25d36640}
-footer{text-align:center;padding:18px 24px;font-size:10px;color:var(--tx3);font-family:'Space Mono',monospace;border-top:1px solid var(--brd2);flex-shrink:0;position:relative;z-index:2;letter-spacing:.5px}
-footer a{color:var(--tx3);text-decoration:none;transition:color .15s}
-footer a:hover{color:var(--g)}
-@media(max-width:600px){nav{padding:10px 14px}.nav-links a{padding:5px 9px;font-size:9px}main{padding:40px 16px 80px}.acc-head{font-size:12px;padding:14px 14px}.cta-block{padding:24px 16px}.cta-btns{flex-direction:column;align-items:center}}
+.video-wrap{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:32px;box-shadow:0 4px 24px #00000050}
+.video-label{padding:14px 22px;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--green);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:var(--card2)}
+.video-responsive{position:relative;padding-bottom:56.25%;height:0;overflow:hidden}
+.video-responsive iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:none;display:block}
+/* guide sections */
+.guide-section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px 32px;margin-bottom:14px;display:flex;gap:22px;align-items:flex-start;transition:border-color .2s}
+.guide-section:hover{border-color:var(--border2)}
+.guide-icon{font-size:30px;flex-shrink:0;margin-top:2px}
+.guide-content{flex:1;min-width:0}
+.guide-title{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--text);margin-bottom:16px}
+.guide-body ol,.guide-body ul{padding-left:20px}
+.guide-body li{font-size:15px;color:var(--muted);line-height:1.9;margin-bottom:8px;font-family:'Syne',sans-serif}
+.guide-body li:last-child{margin-bottom:0}
+.guide-body p{font-size:15px;color:var(--muted);line-height:1.9;margin-bottom:14px;font-family:'Syne',sans-serif}
+.guide-body strong{color:var(--text);font-weight:700}
+.guide-body code{font-size:13px;color:var(--green);background:var(--green-soft);border:1px solid var(--green-brd);padding:2px 7px;border-radius:4px;font-family:'Space Mono',monospace}
+.guide-tip{margin-top:16px;background:var(--green-soft);border:1px solid var(--green-brd);border-radius:var(--radius-sm);padding:12px 16px;font-size:14px;color:#a0d8a8;font-family:'Syne',sans-serif;line-height:1.7}
+.guide-tip a{color:var(--green);text-decoration:none}
+/* accordion FAQ */
+.faq-block{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:14px}
+.faq-block-title{padding:16px 24px;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--green);letter-spacing:2px;text-transform:uppercase;border-bottom:1px solid var(--border);background:var(--card2)}
+.faq-item{border-bottom:1px solid var(--border)}
+.faq-item:last-child{border-bottom:none}
+.faq-q{width:100%;background:none;border:none;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;cursor:pointer;text-align:left;color:var(--text);font-family:'Syne',sans-serif;font-size:16px;font-weight:700;transition:color .2s;letter-spacing:-.2px}
+.faq-q:hover{color:var(--green)}
+.faq-item.open .faq-q{color:var(--green)}
+.faq-arr{flex-shrink:0;width:22px;height:22px;border:1px solid var(--border2);border-radius:50%;display:flex;align-items:center;justify-content:center;transition:all .22s;color:var(--muted);font-size:11px}
+.faq-item.open .faq-arr{background:var(--green);border-color:var(--green);color:#000;transform:rotate(45deg);box-shadow:0 0 8px #00ff8740}
+.faq-a{display:none;padding:4px 24px 20px;color:var(--muted);font-size:15px;line-height:1.9;font-family:'Syne',sans-serif}
+.faq-item.open .faq-a{display:block}
+/* support */
+.support-section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:38px 32px;text-align:center;margin-top:14px}
+.support-section h2{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--text);margin-bottom:10px}
+.support-section p{color:var(--muted);font-size:15px;line-height:1.8;margin-bottom:28px;font-family:'Syne',sans-serif}
+.support-btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.btn-wpp{display:inline-flex;align-items:center;gap:8px;background:#25d36618;border:1px solid #25d36640;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;padding:13px 24px;border-radius:var(--radius-sm);text-decoration:none;transition:all .2s}
+.btn-wpp:hover{background:#25d36628;border-color:#25d366;transform:translateY(-2px)}
+.btn-portal{display:inline-flex;align-items:center;gap:8px;background:var(--green-soft);border:1px solid var(--green-brd);color:var(--green);font-family:'Syne',sans-serif;font-weight:700;font-size:14px;padding:13px 24px;border-radius:var(--radius-sm);text-decoration:none;transition:all .2s}
+.btn-portal:hover{background:#00ff8728;border-color:var(--green);transform:translateY(-2px)}
+@media(max-width:600px){main{padding:36px 18px 70px}.guide-section{flex-direction:column;gap:14px}.guide-icon{font-size:24px}.nav-links a{padding:6px 10px;font-size:12px}.faq-q{font-size:14px;padding:16px 18px}.faq-a{padding:4px 18px 18px;font-size:14px}}
 </style>
 </head>
 <body>
-${CYBER_BG}
 <nav>
-  <a href="/" class="nav-logo">ZVM</a>
+  <a href="/" class="nav-logo">⚡ ZVM</a>
   <div class="nav-links" id="main-nav">
     <a href="/" data-navpath="/">PAINEL</a>
     <a href="/faq" data-navpath="/faq">FAQ</a>
-    <a href="/planos" data-navpath="/planos">PLANOS</a>
     <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
+    <a href="/planos" data-navpath="/planos">PLANOS</a>
     <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">SUPORTE</a>
   </div>
 </nav>
-<script>(function(){var p=window.location.pathname;document.querySelectorAll('#main-nav a[data-navpath]').forEach(function(a){if(a.getAttribute('data-navpath')===p)a.classList.add('nav-active');});})();</script>
+<script>(function(){var cp=window.location.pathname;document.querySelectorAll('#main-nav a[data-navpath]').forEach(function(a){if(a.getAttribute('data-navpath')===cp)a.classList.add('nav-active');});})();</script>
 <main>
   <div class="hero">
-    <div class="hero-badge">❓ Central de Ajuda</div>
-    <h1>Perguntas <em>Frequentes</em></h1>
+    <div class="hero-badge">Central de Ajuda</div>
+    <h1>Perguntas <span>Frequentes</span></h1>
     <p class="hero-sub">Tudo o que você precisa saber para instalar, ativar e usar o ZVM com segurança.</p>
   </div>
 
-  <div class="video-block">
-    <div class="video-top">▶ Tutorial Oficial — Instalação e Ativação</div>
-    <div class="video-ratio">
+  <div class="video-wrap">
+    <div class="video-label">🎬 Tutorial Oficial — Instalação e Ativação</div>
+    <div class="video-responsive">
       <iframe
         src="https://www.youtube-nocookie.com/embed/DZ29f5U6OF8?rel=0&modestbranding=1"
         title="ZVM Tutorial de Instalação e Ativação"
@@ -3348,230 +3284,189 @@ ${CYBER_BG}
     </div>
   </div>
 
-  <div class="acc-group">
-    <div class="acc-label">Instalação</div>
-
-    <div class="acc-item">
-      <button class="acc-head" onclick="toggleAcc(this)">
-        <span>Como faço para instalar o ZVM?</span>
-        <span class="acc-arrow">+</span>
-      </button>
-      <div class="acc-body">
+  <div class="guide-section">
+    <div class="guide-icon">💻</div>
+    <div class="guide-content">
+      <div class="guide-title">Como Instalar</div>
+      <div class="guide-body">
         <ol>
-          <li>Baixe o arquivo da extensão enviado pelo suporte via WhatsApp.</li>
+          <li>Baixe o arquivo da extensão fornecido pelo suporte no WhatsApp.</li>
           <li>Abra o <strong>Google Chrome</strong> ou <strong>Microsoft Edge</strong> e acesse <code>chrome://extensions</code> (ou <code>edge://extensions</code>).</li>
-          <li>Ative o <strong>Modo Desenvolvedor</strong> no canto superior direito.</li>
+          <li>Ative o <strong>Modo Desenvolvedor</strong> no canto superior direito da página.</li>
           <li>Clique em <strong>"Carregar sem compactação"</strong> e selecione a pasta da extensão descompactada.</li>
-          <li>O ícone do ZVM aparecerá na barra de extensões. Pronto para ativar.</li>
+          <li>O ícone do ZVM aparecerá na barra de extensões do navegador. Pronto para ativar.</li>
         </ol>
-      </div>
-    </div>
-
-    <div class="acc-item">
-      <button class="acc-head" onclick="toggleAcc(this)">
-        <span>O ZVM funciona em qual navegador?</span>
-        <span class="acc-arrow">+</span>
-      </button>
-      <div class="acc-body">
-        <p>O ZVM é compatível com <strong>Google Chrome</strong> e <strong>Microsoft Edge</strong> (versões baseadas em Chromium). Firefox e Safari não são suportados no momento.</p>
       </div>
     </div>
   </div>
 
-  <div class="acc-group">
-    <div class="acc-label">Ativação</div>
-
-    <div class="acc-item">
-      <button class="acc-head" onclick="toggleAcc(this)">
-        <span>Como ativo minha chave?</span>
-        <span class="acc-arrow">+</span>
-      </button>
-      <div class="acc-body">
+  <div class="guide-section">
+    <div class="guide-icon">🔑</div>
+    <div class="guide-content">
+      <div class="guide-title">Como Ativar</div>
+      <div class="guide-body">
         <ol>
-          <li>Abra o <strong>WhatsApp Web</strong> no navegador com a extensão instalada.</li>
-          <li>Clique no ícone do ZVM na barra de extensões.</li>
-          <li>Cole exatamente a chave recebida após a compra (formato: <code>zv-xxxxx-xxxxx-xxxxx</code>).</li>
-          <li>Clique em <strong>Ativar</strong>. O servidor valida em segundos.</li>
-          <li>Após confirmação, todos os recursos ficam disponíveis.</li>
+          <li>Abra o <strong>WhatsApp Web</strong> no seu navegador com a extensão instalada.</li>
+          <li>Clique no ícone do ZVM na barra de extensões do navegador.</li>
+          <li>No campo <strong>"Chave de Ativação"</strong>, cole exatamente a chave recebida após a compra (formato: <code>zv-xxxxx-xxxxx-xxxxx</code>).</li>
+          <li>Clique em <strong>Ativar</strong>. O servidor validará a chave em segundos.</li>
+          <li>Após a confirmação, todos os recursos do ZVM estarão disponíveis no WhatsApp Web.</li>
         </ol>
-        <div class="acc-tip">💡 Sua chave fica vinculada ao número de WhatsApp usado no <strong>primeiro acesso</strong>. Guarde-a — ela é pessoal e intransferível.</div>
-      </div>
-    </div>
-
-    <div class="acc-item">
-      <button class="acc-head" onclick="toggleAcc(this)">
-        <span>Posso usar a mesma chave em mais de um dispositivo?</span>
-        <span class="acc-arrow">+</span>
-      </button>
-      <div class="acc-body">
-        <p>Cada chave permite um número limitado de dispositivos conforme seu plano. Verifique o limite no <a href="/" style="color:var(--g);text-decoration:none">Portal do Cliente</a>. Para liberar um dispositivo antigo, acesse o portal e remova o telefone vinculado.</p>
-      </div>
-    </div>
-
-    <div class="acc-item">
-      <button class="acc-head" onclick="toggleAcc(this)">
-        <span>Preciso consultar o status da minha licença?</span>
-        <span class="acc-arrow">+</span>
-      </button>
-      <div class="acc-body">
-        <p>Sim — acesse o <a href="/" style="color:var(--g);text-decoration:none">Portal do Cliente</a> e insira sua chave para ver data de expiração, dispositivos vinculados e status atual da licença.</p>
+        <div class="guide-tip">💡 Sua chave fica vinculada ao número do WhatsApp usado no <strong>primeiro acesso</strong>. Guarde-a em local seguro — ela é pessoal e intransferível.</div>
       </div>
     </div>
   </div>
 
-  <div class="acc-group">
-    <div class="acc-label">Privacidade e Segurança</div>
-
-    <div class="acc-item">
-      <button class="acc-head" onclick="toggleAcc(this)">
-        <span>O ZVM lê minhas mensagens do WhatsApp?</span>
-        <span class="acc-arrow">+</span>
-      </button>
-      <div class="acc-body">
-        <p><strong>Não.</strong> O ZVM opera de forma isolada dentro do seu navegador e não acessa, armazena nem transmite o conteúdo das suas conversas, contatos ou arquivos de mídia.</p>
-        <div class="acc-tip">🔒 Apenas seu número de telefone, IP e timestamp de acesso são registrados — exclusivamente para controle de licença, conforme a LGPD.</div>
-      </div>
-    </div>
-
-    <div class="acc-item">
-      <button class="acc-head" onclick="toggleAcc(this)">
-        <span>Por quanto tempo meus dados ficam armazenados?</span>
-        <span class="acc-arrow">+</span>
-      </button>
-      <div class="acc-body">
-        <p>Registros de acesso são excluídos automaticamente após <strong>90 dias</strong> sem nenhuma ação necessária da sua parte. Consulte nossa <a href="/privacidade" style="color:var(--g);text-decoration:none">Política de Privacidade</a> para detalhes completos.</p>
+  <div class="guide-section">
+    <div class="guide-icon">🔒</div>
+    <div class="guide-content">
+      <div class="guide-title">Sincronização e Privacidade</div>
+      <div class="guide-body">
+        <p>O ZVM opera <strong>de forma isolada dentro do seu navegador</strong>, conectando-se diretamente ao WhatsApp Web como extensão local.</p>
+        <ul>
+          <li><strong>Isolamento total:</strong> cada aba do WhatsApp Web é independente.</li>
+          <li><strong>Sem leitura de mensagens:</strong> o ZVM não acessa, armazena nem transmite o conteúdo das suas conversas.</li>
+          <li><strong>Dados mínimos de licenciamento:</strong> apenas número de telefone, IP e timestamp de acesso — exclusivamente para controle de licença (LGPD).</li>
+          <li><strong>Dados removidos automaticamente:</strong> registros de acesso são excluídos após 90 dias.</li>
+        </ul>
+        <div class="guide-tip">🔒 Leia nossa <a href="/privacidade">Política de Privacidade completa</a> para mais detalhes sobre coleta e proteção de dados.</div>
       </div>
     </div>
   </div>
 
-  <div class="acc-group">
-    <div class="acc-label">Renovação e Cobrança</div>
-
-    <div class="acc-item">
-      <button class="acc-head" onclick="toggleAcc(this)">
-        <span>Como renovo minha licença?</span>
-        <span class="acc-arrow">+</span>
-      </button>
-      <div class="acc-body">
-        <p>Entre em contato com o suporte via WhatsApp para renovar. A renovação mantém sua chave atual ativa sem necessidade de reativação na extensão.</p>
-      </div>
+  <div class="faq-block">
+    <div class="faq-block-title">💬 Dúvidas Frequentes</div>
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggleFaq(this)">O que é um "número de WhatsApp" no plano? <span class="faq-arr">+</span></button>
+      <div class="faq-a">Cada número corresponde a um WhatsApp diferente que pode usar a extensão simultaneamente. No plano Padrão (3 números), três números distintos podem usar ao mesmo tempo. Você gerencia quais números estão ativos pelo portal do cliente.</div>
     </div>
-
-    <div class="acc-item">
-      <button class="acc-head" onclick="toggleAcc(this)">
-        <span>O que acontece quando minha licença expira?</span>
-        <span class="acc-arrow">+</span>
-      </button>
-      <div class="acc-body">
-        <p>A extensão para de funcionar, mas seus dados de licença são preservados por <strong>90 dias</strong>. Após a renovação a chave é reativada automaticamente — sem precisar reinstalar.</p>
-      </div>
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggleFaq(this)">Quando minha chave é ativada após o pagamento? <span class="faq-arr">+</span></button>
+      <div class="faq-a">Imediatamente após a confirmação do pagamento. Para PIX é instantâneo. A chave já estará disponível no portal do cliente antes mesmo de você fechar a janela de confirmação.</div>
+    </div>
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggleFaq(this)">Se eu já tenho uma chave e compro de novo, o que acontece? <span class="faq-arr">+</span></button>
+      <div class="faq-a">Sua chave existente é renovada automaticamente — os 30 dias são somados ao tempo que ainda resta. Você não perde nenhum dia e não precisa de uma chave nova.</div>
+    </div>
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggleFaq(this)">Posso mudar de plano (upgrade ou downgrade)? <span class="faq-arr">+</span></button>
+      <div class="faq-a">Sim. Entre em contato com o suporte via WhatsApp e ajustamos o seu plano sem complicações.</div>
+    </div>
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggleFaq(this)">O que acontece quando minha chave expira? <span class="faq-arr">+</span></button>
+      <div class="faq-a">A extensão para de funcionar até que você renove. Seu histórico e configurações são mantidos — basta renovar e tudo volta exatamente como estava.</div>
+    </div>
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggleFaq(this)">Como remover um número do meu plano? <span class="faq-arr">+</span></button>
+      <div class="faq-a">Acesse o Portal do Cliente, consulte sua chave e clique em "Remover" ao lado do número desejado. A remoção é instantânea e libera o slot para outro dispositivo.</div>
     </div>
   </div>
 
-  <div class="cta-block">
+  <div class="support-section">
     <h2>Ainda tem dúvidas?</h2>
-    <p>Nossa equipe está disponível no WhatsApp para te ajudar com instalação, ativação ou qualquer questão.</p>
-    <div class="cta-btns">
-      <a class="btn-wpp" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM." target="_blank" rel="noopener">💬 SUPORTE</a>
-      <a class="btn-g" href="/">⚡ PORTAL DO CLIENTE</a>
+    <p>Nossa equipe está disponível no WhatsApp para te ajudar com instalação, ativação ou qualquer outra questão.</p>
+    <div class="support-btns">
+      <a class="btn-wpp" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda%20com%20o%20ZVM." target="_blank" rel="noopener">💬 Falar com o Suporte</a>
+      <a class="btn-portal" href="/">🔑 Portal do Cliente</a>
     </div>
   </div>
 </main>
-<footer>
-  © ${new Date().getFullYear()} ZVM &nbsp;·&nbsp; <a href="/privacidade">Privacidade</a> &nbsp;·&nbsp; <a href="/faq">FAQ</a> &nbsp;·&nbsp; <a href="/planos">Planos</a>
+<footer class="zvm-footer">
+  © ${new Date().getFullYear()} ZVM. Todos os direitos reservados. &nbsp;·&nbsp;
+  <a href="/privacidade">Privacidade</a> &nbsp;·&nbsp;
+  <a href="/faq">FAQ</a> &nbsp;·&nbsp;
+  <a href="/planos">Planos</a>
 </footer>
 <script>
-function toggleAcc(btn){
-  var item=btn.closest('.acc-item');
+function toggleFaq(btn){
+  var item=btn.closest('.faq-item');
   var isOpen=item.classList.contains('open');
-  document.querySelectorAll('.acc-item.open').forEach(function(i){i.classList.remove('open');});
+  document.querySelectorAll('.faq-item.open').forEach(function(i){i.classList.remove('open');});
   if(!isOpen)item.classList.add('open');
 }
 </script>
+${CANVAS_BG}
 </body></html>`;
 }
+
 
 function renderPrivacyPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Política de Privacidade</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23000000'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff66'%3EZV%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d14'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZV%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--g:#00ff66;--g2:#00cc52;--g3:#00ff6615;--g4:#00ff6608;--bg:#000000;--c1:#03030a;--c2:#06060f;--brd:#0f0f1e;--brd2:#181828;--brd3:#00ff6622;--tx:#f0f0ff;--tx2:#8888aa;--tx3:#44445a;--r:8px;--r-lg:14px}
-::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:#000}::-webkit-scrollbar-thumb{background:#00ff6630;border-radius:4px}::-webkit-scrollbar-thumb:hover{background:#00ff6660}
+:root{--green:#00ff87;--green-soft:#00ff8718;--green-brd:#00ff8740;--bg:#0d0d14;--card:#111118;--card2:#16161e;--border:#1e1e30;--border2:#28283a;--text:#e8e8f4;--muted:#9494aa;--muted2:#6a6a82;--radius:14px;--radius-sm:8px}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:#00ff8730;border-radius:10px}::-webkit-scrollbar-thumb:hover{background:#00ff8760}
 html{scroll-behavior:smooth}
-body{background:var(--bg);color:var(--tx);font-family:'Syne',sans-serif;min-height:100vh;overflow-x:hidden;display:flex;flex-direction:column;position:relative}
-body::after{content:'';position:fixed;inset:0;z-index:1;pointer-events:none;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.12) 2px,rgba(0,0,0,.12) 4px)}
-nav{display:flex;align-items:center;justify-content:space-between;padding:12px 28px;border-bottom:1px solid var(--brd3);background:rgba(0,0,0,.88);position:sticky;top:0;z-index:100;backdrop-filter:blur(20px);flex-shrink:0}
-.nav-logo{font-size:16px;font-weight:700;color:var(--g);text-decoration:none;letter-spacing:3px;font-family:'Space Mono',monospace;text-shadow:0 0 16px #00ff6640}
-.nav-links{display:flex;gap:4px}
-.nav-links a{font-size:10px;font-weight:700;color:var(--tx3);text-decoration:none;padding:6px 13px;border:1px solid transparent;border-radius:6px;transition:all .18s;letter-spacing:1.5px;text-transform:uppercase;font-family:'Space Mono',monospace;position:relative}
-.nav-links a:hover{color:var(--g);border-color:var(--brd3);background:var(--g4)}
-.nav-links a.nav-active{color:var(--g)!important;border-color:var(--brd3)!important;background:var(--g4)!important}
-.nav-links a.nav-active::after{content:'';position:absolute;bottom:-13px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:var(--g);box-shadow:0 0 10px var(--g)}
-main{max-width:800px;margin:0 auto;padding:68px 32px 100px;flex:1;position:relative;z-index:2}
+body{background:var(--bg);color:var(--text);font-family:'Inter','Segoe UI',sans-serif;min-height:100vh;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased}
+nav{display:flex;align-items:center;justify-content:space-between;padding:14px 32px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:100;box-shadow:0 2px 20px #00000060;flex-shrink:0;backdrop-filter:blur(8px)}
+.nav-logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:6px;letter-spacing:-0.5px}
+.nav-links{display:flex;gap:8px}
+.nav-links a{font-size:13px;color:var(--muted);text-decoration:none;padding:8px 15px;border:1px solid var(--border);border-radius:var(--radius-sm);transition:all .2s;font-family:'Syne',sans-serif;font-weight:700;position:relative}
+.nav-links a:hover{color:var(--green);border-color:var(--green-brd);background:var(--green-soft)}
+.nav-links a.nav-active{color:var(--green)!important;border-color:var(--green-brd)!important;background:var(--green-soft)!important}
+.nav-links a.nav-active::after{content:'';position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+footer.zvm-footer{text-align:center;padding:20px 24px;font-size:13px;color:var(--muted2);font-family:'Syne',sans-serif;border-top:1px solid var(--border);flex-shrink:0}
+footer.zvm-footer a{color:var(--muted2);text-decoration:none;transition:color .2s}
+footer.zvm-footer a:hover{color:var(--green)}
+main{max-width:740px;margin:0 auto;padding:60px 28px 90px;flex:1;position:relative;z-index:2}
 /* hero */
-.hero{margin-bottom:44px}
-.hero-badge{display:inline-flex;align-items:center;gap:6px;background:var(--g4);border:1px solid var(--brd3);color:var(--g);font-size:9px;letter-spacing:3px;text-transform:uppercase;padding:5px 16px;border-radius:20px;margin-bottom:16px;font-family:'Space Mono',monospace}
-.hero h1{font-family:'Syne',sans-serif;font-size:clamp(28px,4vw,42px);font-weight:800;margin-bottom:10px;color:var(--tx)}
-.hero-meta{font-size:10px;color:var(--tx3);font-family:'Space Mono',monospace;letter-spacing:1px}
+.hero{margin-bottom:48px}
+.hero-badge{display:inline-flex;align-items:center;gap:6px;background:var(--green-soft);border:1px solid var(--green-brd);color:var(--green);font-size:12px;letter-spacing:2px;text-transform:uppercase;padding:6px 18px;border-radius:20px;margin-bottom:18px;font-family:'Syne',sans-serif;font-weight:700}
+.hero h1{font-family:'Syne',sans-serif;font-size:clamp(26px,4vw,40px);font-weight:800;margin-bottom:10px;color:var(--text)}
+.hero-meta{font-size:14px;color:var(--muted2);font-family:'Syne',sans-serif}
 /* sections */
-.sec{background:var(--c1);border:1px solid var(--brd2);border-radius:var(--r-lg);padding:28px 32px;margin-bottom:10px;transition:border-color .18s}
-.sec:hover{border-color:var(--brd3)}
-.sec h2{font-family:'Space Mono',monospace;font-size:12px;font-weight:700;color:var(--g);margin-bottom:14px;display:flex;align-items:center;gap:8px;letter-spacing:2.5px;text-transform:uppercase}
-.sec p{font-size:13px;color:var(--tx2);line-height:1.9;margin-bottom:12px;font-family:'Space Mono',monospace}
-.sec p:last-child{margin-bottom:0}
-.sec ul{padding-left:0;list-style:none;display:flex;flex-direction:column;gap:7px}
-.sec li{font-size:13px;color:var(--tx2);line-height:1.8;display:flex;align-items:flex-start;gap:10px;font-family:'Space Mono',monospace}
-.sec li::before{content:'//';color:var(--g);flex-shrink:0;font-weight:700;font-size:10px;margin-top:2px;opacity:.7}
-.sec li strong,.sec strong{color:var(--tx);font-weight:700}
-.notice{background:var(--g4);border:1px solid var(--brd3);border-radius:var(--r);padding:12px 16px;margin-top:12px;font-size:11px;color:#70c880;line-height:1.8;font-family:'Space Mono',monospace}
-.tag{display:inline-block;background:var(--c2);border:1px solid var(--brd2);border-radius:4px;padding:2px 8px;font-size:10px;color:var(--tx3);margin:2px;vertical-align:middle;font-family:'Space Mono',monospace}
-/* contact cta */
-.cta-block{background:var(--c1);border:1px solid var(--brd3);border-radius:var(--r-lg);padding:26px;text-align:center;position:relative;overflow:hidden;margin-top:8px}
-.cta-block::before{content:'';position:absolute;top:-40px;left:50%;transform:translateX(-50%);width:250px;height:160px;background:radial-gradient(ellipse,var(--g4) 0%,transparent 70%);pointer-events:none}
-.cta-block h2{font-size:15px;font-weight:800;color:var(--tx);margin-bottom:6px}
-.cta-block p{color:var(--tx2);font-size:11px;line-height:1.8;margin-bottom:16px;font-family:'Space Mono',monospace}
-.btn-wpp{display:inline-flex;align-items:center;gap:8px;background:#000;border:1px solid #25d366;color:#25d366;font-family:'Space Mono',monospace;font-weight:700;font-size:10px;padding:11px 20px;border-radius:var(--r);text-decoration:none;transition:all .22s;letter-spacing:2px;text-transform:uppercase;position:relative;overflow:hidden}
-.btn-wpp::before{content:'';position:absolute;inset:0;background:#25d366;transform:translateY(100%);transition:transform .22s;z-index:-1}
-.btn-wpp:hover::before{transform:translateY(0)}
-.btn-wpp:hover{color:#000;box-shadow:0 0 24px #25d36640}
-footer{text-align:center;padding:18px 24px;font-size:10px;color:var(--tx3);font-family:'Space Mono',monospace;border-top:1px solid var(--brd2);flex-shrink:0;position:relative;z-index:2;letter-spacing:.5px}
-footer a{color:var(--tx3);text-decoration:none;transition:color .15s}
-footer a:hover{color:var(--g)}
-@media(max-width:600px){nav{padding:10px 14px}.nav-links a{padding:5px 9px;font-size:9px}main{padding:40px 16px 80px}.sec{padding:18px 16px}}
+.section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px 32px;margin-bottom:12px;transition:border-color .2s}
+.section:hover{border-color:var(--border2)}
+.section h2{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:var(--green);margin-bottom:16px;display:flex;align-items:center;gap:8px;letter-spacing:.5px;text-transform:uppercase}
+.section p{font-size:15px;color:var(--muted);line-height:1.9;margin-bottom:12px;font-family:'Syne',sans-serif}
+.section p:last-child{margin-bottom:0}
+.section ul{padding-left:20px;display:flex;flex-direction:column;gap:10px}
+.section li{font-size:15px;color:var(--muted);line-height:1.8;font-family:'Syne',sans-serif}
+.section li::marker{color:var(--green)}
+.section strong{color:var(--text);font-weight:700}
+.highlight{background:var(--green-soft);border:1px solid var(--green-brd);border-radius:var(--radius-sm);padding:16px 20px;margin-top:16px}
+.highlight p{color:var(--text);font-size:14px;margin:0;font-family:'Syne',sans-serif;line-height:1.7}
+.tag{display:inline-block;background:var(--card2);border:1px solid var(--border);border-radius:4px;padding:3px 10px;font-size:13px;color:var(--muted);margin:2px;vertical-align:middle;font-family:'Space Mono',monospace}
+/* cta */
+.cta-block{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:38px 32px;text-align:center;margin-top:12px}
+.cta-block h2{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--text);margin-bottom:10px}
+.cta-block p{color:var(--muted);font-size:15px;line-height:1.8;margin-bottom:24px;font-family:'Syne',sans-serif}
+.contact-btn{display:inline-flex;align-items:center;gap:8px;background:#25d36618;border:1px solid #25d36640;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;padding:13px 26px;border-radius:var(--radius-sm);text-decoration:none;transition:all .2s}
+.contact-btn:hover{background:#25d36628;border-color:#25d366;transform:translateY(-2px);box-shadow:0 6px 20px #25d36625}
+@media(max-width:520px){main{padding:36px 18px 70px}.section{padding:22px 20px}.nav-links a{padding:6px 10px;font-size:12px}}
 </style>
 </head>
 <body>
-${CYBER_BG}
 <nav>
-  <a href="/" class="nav-logo">ZVM</a>
+  <a href="/" class="nav-logo">⚡ ZVM</a>
   <div class="nav-links" id="main-nav">
     <a href="/" data-navpath="/">PAINEL</a>
     <a href="/faq" data-navpath="/faq">FAQ</a>
-    <a href="/planos" data-navpath="/planos">PLANOS</a>
     <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
+    <a href="/planos" data-navpath="/planos">PLANOS</a>
     <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">SUPORTE</a>
   </div>
 </nav>
-<script>(function(){var p=window.location.pathname;document.querySelectorAll('#main-nav a[data-navpath]').forEach(function(a){if(a.getAttribute('data-navpath')===p)a.classList.add('nav-active');});})();</script>
+<script>(function(){var cp=window.location.pathname;document.querySelectorAll('#main-nav a[data-navpath]').forEach(function(a){if(a.getAttribute('data-navpath')===cp)a.classList.add('nav-active');});})();</script>
 <main>
   <div class="hero">
-    <div class="hero-badge">// LEGAL · LGPD</div>
+    <div class="hero-badge">Legal</div>
     <h1>Política de Privacidade</h1>
-    <p class="hero-meta">// ÚLTIMA ATUALIZAÇÃO: ${new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'}).toUpperCase()}</p>
+    <p class="hero-meta">Última atualização: ${new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}</p>
   </div>
 
-  <div class="sec">
+  <div class="section">
     <h2>📋 Visão Geral</h2>
     <p>Esta Política descreve como o <strong>ZVM</strong> coleta, utiliza e protege seus dados ao usar o serviço de licenciamento da extensão ZVM.</p>
     <p>Ao ativar ou consultar sua chave de acesso, você concorda com estes termos, em conformidade com a <strong>Lei Geral de Proteção de Dados (LGPD — Lei nº 13.709/2018)</strong>.</p>
   </div>
 
-  <div class="sec">
-    <h2>🗂 Dados Coletados</h2>
+  <div class="section">
+    <h2>🗂 Dados que Coletamos</h2>
     <p>Para fins exclusivos de licenciamento e controle de acesso, coletamos:</p>
     <ul>
       <li><strong>Chave de ativação</strong> — identificador único do seu acesso</li>
@@ -3580,10 +3475,12 @@ ${CYBER_BG}
       <li><strong>Versão do WhatsApp Web</strong> — para compatibilidade técnica</li>
       <li><strong>Timestamps de acesso</strong> — data e hora de cada uso registrado</li>
     </ul>
-    <div class="notice">⚠️ Não coletamos mensagens, contatos, conversas ou qualquer conteúdo do WhatsApp. Nosso serviço não tem acesso ao conteúdo das suas comunicações.</div>
+    <div class="highlight">
+      <p>⚠️ <strong>Não coletamos</strong> mensagens, contatos, conversas ou qualquer conteúdo do WhatsApp. Nosso serviço não tem acesso ao conteúdo das suas comunicações.</p>
+    </div>
   </div>
 
-  <div class="sec">
+  <div class="section">
     <h2>🎯 Finalidade</h2>
     <p>Os dados são usados exclusivamente para:</p>
     <ul>
@@ -3592,51 +3489,56 @@ ${CYBER_BG}
       <li>Suporte técnico quando solicitado pelo usuário</li>
       <li>Controle do número de dispositivos vinculados por chave</li>
     </ul>
-    <p style="margin-top:12px">Base legal: <strong>execução de contrato</strong> (Art. 7º, V, LGPD).</p>
+    <p>Base legal: <strong>execução de contrato</strong> (Art. 7º, V, LGPD).</p>
   </div>
 
-  <div class="sec">
-    <h2>⏱ Retenção de Dados</h2>
+  <div class="section">
+    <h2>⏱ Retenção</h2>
     <p>Registros de acesso são removidos automaticamente após <strong>90 dias</strong>. Dados da chave são mantidos enquanto ela estiver ativa. Ao excluir a chave, todos os dados associados são apagados permanentemente.</p>
   </div>
 
-  <div class="sec">
+  <div class="section">
     <h2>🔒 Segurança</h2>
     <p>Dados armazenados no <strong>MongoDB Atlas</strong> com criptografia AES-256 em repouso e TLS em trânsito. O painel administrativo é protegido por senha e autenticação de dois fatores (2FA).</p>
   </div>
 
-  <div class="sec">
+  <div class="section">
     <h2>🤝 Compartilhamento</h2>
     <p>Seus dados <strong>não são vendidos ou compartilhados</strong> com terceiros para fins comerciais. Apenas os provedores de infraestrutura têm acesso técnico:</p>
     <ul>
-      <li><span class="tag">MongoDB Atlas</span> armazenamento dos dados</li>
-      <li><span class="tag">Render.com</span> hospedagem do servidor</li>
+      <li><span class="tag">MongoDB Atlas</span> — armazenamento dos dados</li>
+      <li><span class="tag">Render.com</span> — hospedagem do servidor</li>
     </ul>
   </div>
 
-  <div class="sec">
+  <div class="section">
     <h2>⚖️ Seus Direitos (LGPD)</h2>
-    <p>Você tem direito a:</p>
+    <p>Conforme a LGPD, você tem o direito de:</p>
     <ul>
       <li>Confirmar a existência de tratamento dos seus dados</li>
       <li>Acessar os dados que possuímos sobre você</li>
       <li>Solicitar a exclusão ou correção dos seus dados</li>
       <li>Revogar o consentimento a qualquer momento</li>
     </ul>
-    <p style="margin-top:12px">Para exercer esses direitos, entre em contato via WhatsApp.</p>
+    <p style="margin-top:14px">Para exercer esses direitos, entre em contato via WhatsApp.</p>
   </div>
 
   <div class="cta-block">
     <h2>Dúvidas sobre privacidade?</h2>
     <p>Entre em contato com nossa equipe via WhatsApp para qualquer questão sobre seus dados.</p>
-    <a class="btn-wpp" href="https://wa.me/5521996771552?text=LR!%20Tenho%20uma%20d%C3%BAvida%20sobre%20privacidade." target="_blank" rel="noopener">💬 FALAR COM SUPORTE</a>
+    <a class="contact-btn" href="https://wa.me/5521996771552?text=LR!%20Tenho%20uma%20d%C3%BAvida%20sobre%20privacidade." target="_blank" rel="noopener">💬 Falar com o Suporte</a>
   </div>
 </main>
-<footer>
-  © ${new Date().getFullYear()} ZVM &nbsp;·&nbsp; <a href="/privacidade">Privacidade</a> &nbsp;·&nbsp; <a href="/faq">FAQ</a> &nbsp;·&nbsp; <a href="/planos">Planos</a>
+<footer class="zvm-footer">
+  © ${new Date().getFullYear()} ZVM. Todos os direitos reservados. &nbsp;·&nbsp;
+  <a href="/privacidade">Privacidade</a> &nbsp;·&nbsp;
+  <a href="/faq">FAQ</a> &nbsp;·&nbsp;
+  <a href="/planos">Planos</a>
 </footer>
+${CANVAS_BG}
 </body></html>`;
 }
+
 
 function renderAnalyticsLogin(error = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
