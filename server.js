@@ -746,7 +746,7 @@ function redirectExtensionCallback(res, callback, plan, keyCode) {
   }
   const title = plan === 'free' ? 'Acesso Gratuito Ativado!' : 'Chave Ativada!';
   const label = plan === 'free' ? 'Plano Gratuito' : keyCode;
-  const page = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>ZVM - Ativado</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace}.card{background:#111118;border:1px solid #00ff8740;border-radius:18px;padding:40px 36px;width:100%;max-width:420px;text-align:center}.title{font-size:22px;font-weight:800;color:#00ff87;margin-bottom:8px}.sub{color:#8a8aaa;font-size:13px;line-height:1.6;margin-bottom:20px}.key{background:#0a0a0f;border:1px solid #00ff8730;border-radius:8px;padding:10px 16px;color:#00ff87;font-size:14px;margin-bottom:20px}</style></head><body><div class="card"><div class="title">${title}</div><div class="sub">Volte ao WhatsApp Web e atualize a página.</div><div class="key">${label}</div></div><script>setTimeout(function(){window.close();},3100);</script></body></html>`;
+  const page = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>ZVM - Ativado</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace}.card{background:#111118;border:1px solid #00ff8740;border-radius:18px;padding:40px 36px;width:100%;max-width:420px;text-align:center}.title{font-size:22px;font-weight:800;color:#00ff87;margin-bottom:8px}.sub{color:#8a8aaa;font-size:13px;line-height:1.6;margin-bottom:20px}.key{background:#0a0a0f;border:1px solid #00ff8730;border-radius:8px;padding:10px 16px;color:#00ff87;font-size:14px;margin-bottom:20px}</style></head><body><div class="card"><div class="title">${escHtml(title)}</div><div class="sub">Volte ao WhatsApp Web e atualize a página.</div><div class="key">${escHtml(label)}</div></div><script>setTimeout(function(){window.close();},3100);</script></body></html>`;
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   res.end(page);
 }
@@ -4991,7 +4991,6 @@ async function handleRequest(req, res) {
     }
 
     if (payload.test === true) {
-      console.log('[PAYT] Postback de teste — ignorado');
       res.writeHead(200); res.end('test_ignored'); return;
     }
 
@@ -5024,20 +5023,18 @@ async function handleRequest(req, res) {
     const productNameLow = productNameRaw.toLowerCase();
 
     if (!approved) {
-      console.log('[PAYT] Status nao aprovado:', status, '| TX:', txId);
       if (txId) savePayment({ txId, status: status||'unknown', approved: false, clientName, clientEmail, clientPhone, productName: productNameRaw, amount, paymentMethod, keyCode: null, paidAt: new Date().toISOString(), rawStatus: status }).catch(()=>{});
       res.writeHead(200); res.end('ignored'); return;
     }
 
     if (txId) {
       if (Object.values(keys).some(k => k.note && (k.note.includes('payt_tx:'+txId) || k.note.includes('renovado_payt_tx:'+txId)))) {
-        console.log('[PAYT] Transacao ja processada (memoria):', txId);
         res.writeHead(200); res.end('ok'); return;
       }
       try {
         const _db = await getMongoDb();
         const _ex = await _db.collection('payments').findOne({ txId, approved: true });
-        if (_ex) { console.log('[PAYT] Transacao ja no banco:', txId); res.writeHead(200); res.end('ok'); return; }
+        if (_ex) { res.writeHead(200); res.end('ok'); return; }
       } catch(e) { console.warn('[PAYT] Erro idempotencia:', e.message); }
     }
 
@@ -5065,7 +5062,6 @@ async function handleRequest(req, res) {
       k.note      = k.note + (txId ? ' | renovado_payt_tx:'+txId : ' | renovado');
       saveKey(existingCode);
       await savePayment({ txId: txId||existingCode, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, keyCode:existingCode, maxUses, renewed:true, paidAt:now.toISOString(), rawStatus:status });
-      console.log('[PAYT] Chave renovada:', existingCode, '| Nova exp:', k.expiresAt);
       res.writeHead(200); res.end('ok'); return;
     }
 
@@ -5074,7 +5070,6 @@ async function handleRequest(req, res) {
     keys[code] = { label:'PAYT - '+clientName, active:true, phones:[], uses:0, maxUses, expiresAt:expires.toISOString(), expireDuration:durationMs, createdAt:now.toISOString(), lastUsed:null, lastIp:null, lastPhone:null, deviceId:null, wppVersion:null, warnCount:0, note:'Pedido automatico Payt | Email: '+clientEmail+(txId?' | payt_tx:'+txId:'') };
     saveKey(code);
     await savePayment({ txId:txId||code, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, keyCode:code, maxUses, renewed:false, paidAt:now.toISOString(), rawStatus:status });
-    console.log('[PAYT] Chave criada:', code, '| Cliente:', clientName, '| Usos:', maxUses, '| Valor: R$', amount.toFixed(2));
     res.writeHead(200); res.end('ok'); return;
   }
 
