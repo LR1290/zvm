@@ -2176,10 +2176,10 @@ a.out:hover{color:var(--red);border-color:var(--red-brd)}
 .bd:hover{background:#f0506018;border-color:#f0506060}
 .bsusp{background:var(--red-bg);color:var(--red);border:1px solid var(--red-brd)}
 /* ── Scrollbars ── */
-::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar{width:4px;height:3px}
 ::-webkit-scrollbar-track{background:#000}
-::-webkit-scrollbar-thumb{background:#00e67640;border-radius:10px}
-::-webkit-scrollbar-thumb:hover{background:#00e676}
+::-webkit-scrollbar-thumb{background:#1e1e1e;border-radius:2px}
+::-webkit-scrollbar-thumb:hover{background:#00e67660}
 /* ── Table ── */
 .ov{overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 220px);position:relative;z-index:1}
 table{width:100%;border-collapse:collapse;table-layout:fixed}
@@ -2285,7 +2285,7 @@ td.td-status{white-space:nowrap;overflow:hidden}
       </div>
     </div>
     <div class="search-bar">
-      <input type="text" id="search-input" placeholder="Buscar por nome, chave, telefone ou IP…" oninput="filterKeys()">
+      <input type="text" id="search-input" placeholder="Buscar por nome, chave, telefone ou IP…" oninput="filterKeys()" autocomplete="off" spellcheck="false">
       <select id="filter-status" onchange="filterKeys()">
         <option value="">Todos os status</option>
         <option value="ativo">Ativas</option>
@@ -2385,6 +2385,7 @@ td.td-status{white-space:nowrap;overflow:hidden}
         <div class="st"><span class="st-accent">🚨</span> Alertas de Segurança</div>
         <div style="font-size:11px;color:var(--tx3);margin-top:2px">Logins falhos · Rate limit · Payloads suspeitos · Webhooks inválidos</div>
       </div>
+      <button class="btn br" style="font-size:11px;padding:4px 10px" onclick="clearSecurityAlerts()">🗑 Limpar Logs</button>
     </div>
     <div class="ov">
       <table>
@@ -2797,6 +2798,17 @@ function switchTab(t){
 }
 (function(){switchTab(localStorage.getItem('zvmTab')||'keys');})();
 
+async function clearSecurityAlerts(){
+  try{
+    const r=await fetch(_RA+'/api/security/alerts/clear',{method:'POST'});
+    const d=await r.json();
+    if(d.ok){
+      const tb=document.getElementById('sec-alerts-tb');
+      if(tb)tb.innerHTML='<tr><td colspan="4" class="empty">Nenhum alerta registrado — servidor limpo 🟢</td></tr>';
+      toast('Logs de segurança limpos');
+    }else toast('Erro ao limpar: '+(d.error||'?'),false);
+  }catch(e){toast('Erro de rede',false);}
+}
 async function runPentest(){
   const btn=document.getElementById('pentest-btn');
   const tb=document.getElementById('pentest-tb');
@@ -5056,6 +5068,14 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true, alerts: securityAlerts.slice(0, 50) }); return;
   }
 
+  // ── Limpar Logs de Segurança (admin-gated) ────────────────────────────────
+  if (p === R_ADMIN + '/api/security/alerts/clear' && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    securityAlerts = [];
+    saveSecurityAlerts().catch(() => {});
+    sendJson(res, { ok: true }); return;
+  }
+
   const CLIENT_PATHS = ['/', '/plans/manage', '/plans/new', '/dashboard/chaves'];
   if (req.method === 'GET' && (CLIENT_PATHS.includes(p) || p.startsWith('/unauthorized') || p.startsWith('/funnels') || p.startsWith('/labels'))) {
     sendHtml(res, renderClientPortal()); return;
@@ -5099,7 +5119,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     const loaded = await loadDb();
     keys           = loaded.keys || {};
     logs           = loaded.logs || [];
-    securityAlerts = loaded.securityAlerts || [];
+    securityAlerts = []; // inicia sessão limpa — histórico preservado no Mongo via "Limpar" explícito
     for (const code of Object.keys(keys)) sanitizeKeyRecord(keys[code]);
     serverReady = true;
 
