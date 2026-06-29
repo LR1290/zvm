@@ -1767,10 +1767,10 @@ body{background:var(--bg);min-height:100vh;display:flex;flex-direction:column;fo
 nav{display:flex;align-items:center;justify-content:space-between;padding:14px 32px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:100;box-shadow:0 2px 20px #00000060;flex-shrink:0;backdrop-filter:blur(8px)}
 .nav-logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:6px;letter-spacing:-0.5px}
 .nav-links{display:flex;gap:8px}
-.nav-links a{font-size:13px;color:var(--muted);text-decoration:none;padding:8px 15px;border:1px solid var(--border);border-radius:var(--radius-sm);transition:all .2s;font-family:'Syne',sans-serif;font-weight:700;position:relative;letter-spacing:.2px}
+.nav-links a{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);text-decoration:none;padding:8px 15px;border:1px solid var(--border);border-radius:var(--radius-sm);transition:all .2s;font-family:'Syne',sans-serif;font-weight:700;position:relative;letter-spacing:.2px}
 .nav-links a:hover{color:var(--green);border-color:var(--green-brd);background:var(--green-soft)}
 .nav-links a.nav-active{color:var(--green)!important;border-color:var(--green-brd)!important;background:var(--green-soft)!important}
-.nav-links a.nav-active::after{content:'';position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+.nav-links a.nav-active::after{display:none}.nav-links a.nav-active::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 10px #00ff8780;flex-shrink:0}
 /* loading overlay */
 .loading-overlay{position:fixed;inset:0;background:rgba(13,13,20,.96);display:flex;align-items:center;justify-content:center;z-index:999;gap:14px;flex-direction:column}
 .ld-logo{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:var(--green);letter-spacing:-0.5px}
@@ -1839,7 +1839,7 @@ footer a:hover{color:var(--green)}
 <nav>
   <a href="/" class="nav-logo">⚡ ZVM</a>
   <div class="nav-links" id="main-nav">
-    <a href="/" data-navpath="/">PAINEL</a>
+    <a href="/" data-navpath="/">PORTAL</a>
     <a href="/faq" data-navpath="/faq">FAQ</a>
     <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
     <a href="/planos" data-navpath="/planos">PLANOS</a>
@@ -1938,7 +1938,7 @@ function showPanel(d,key){
   document.getElementById('main-form-wrap').style.display='none';
   const rw=document.getElementById('result-wrap');rw.style.display='block';
   const pb=document.getElementById('page-body');
-  pb.style.alignItems='flex-start';pb.style.justifyContent='flex-start';pb.style.paddingTop='32px';
+  pb.style.justifyContent='flex-start';pb.style.paddingTop='40px';
   document.getElementById('panel-name').textContent='👤 '+d.label;
   const sub=document.getElementById('result-key-sub');if(sub)sub.textContent=key;
   let badge;
@@ -1981,7 +1981,7 @@ function resetPanel(){
   mfw.style.display='';
   document.getElementById('result-wrap').style.display='none';
   const pb=document.getElementById('page-body');
-  pb.style.alignItems='center';pb.style.justifyContent='center';pb.style.paddingTop='';
+  pb.style.justifyContent='center';pb.style.paddingTop='';
   const actCard=document.getElementById('r-act-card'),lastCard=document.getElementById('r-last-card');
   if(actCard)actCard.style.display='none';if(lastCard)lastCard.style.display='none';
   const btn=document.getElementById('check-btn');if(btn){btn.disabled=false;btn.textContent='Consultar Minha Chave';}
@@ -3032,10 +3032,10 @@ body{background:var(--bg);color:var(--text);font-family:'Inter','Segoe UI',sans-
 nav{display:flex;align-items:center;justify-content:space-between;padding:14px 32px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:100;box-shadow:0 2px 20px #00000060;flex-shrink:0;backdrop-filter:blur(8px)}
 .nav-logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:6px;letter-spacing:-0.5px}
 .nav-links{display:flex;gap:8px}
-.nav-links a{font-size:13px;color:var(--muted);text-decoration:none;padding:8px 15px;border:1px solid var(--border);border-radius:var(--radius-sm);transition:all .2s;font-family:'Syne',sans-serif;font-weight:700;position:relative}
+.nav-links a{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);text-decoration:none;padding:8px 15px;border:1px solid var(--border);border-radius:var(--radius-sm);transition:all .2s;font-family:'Syne',sans-serif;font-weight:700;position:relative}
 .nav-links a:hover{color:var(--green);border-color:var(--green-brd);background:var(--green-soft)}
 .nav-links a.nav-active{color:var(--green)!important;border-color:var(--green-brd)!important;background:var(--green-soft)!important}
-.nav-links a.nav-active::after{content:'';position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+.nav-links a.nav-active::after{display:none}.nav-links a.nav-active::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 10px #00ff8780;flex-shrink:0}
 footer.zvm-footer{text-align:center;padding:20px 24px;font-size:13px;color:var(--muted2);font-family:'Syne',sans-serif;border-top:1px solid var(--border);flex-shrink:0}
 footer.zvm-footer a{color:var(--muted2);text-decoration:none;transition:color .2s}
 footer.zvm-footer a:hover{color:var(--green)}
@@ -3104,7 +3104,7 @@ main{max-width:1080px;margin:0 auto;padding:60px 28px 90px;flex:1;position:relat
 <nav>
   <a href="/" class="nav-logo">⚡ ZVM</a>
   <div class="nav-links" id="main-nav">
-    <a href="/" data-navpath="/">PAINEL</a>
+    <a href="/" data-navpath="/">PORTAL</a>
     <a href="/faq" data-navpath="/faq">FAQ</a>
     <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
     <a href="/planos" data-navpath="/planos">PLANOS</a>
@@ -3196,10 +3196,10 @@ body{background:var(--bg);color:var(--text);font-family:'Inter','Segoe UI',sans-
 nav{display:flex;align-items:center;justify-content:space-between;padding:14px 32px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:100;box-shadow:0 2px 20px #00000060;flex-shrink:0;backdrop-filter:blur(8px)}
 .nav-logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:6px;letter-spacing:-0.5px}
 .nav-links{display:flex;gap:8px}
-.nav-links a{font-size:13px;color:var(--muted);text-decoration:none;padding:8px 15px;border:1px solid var(--border);border-radius:var(--radius-sm);transition:all .2s;font-family:'Syne',sans-serif;font-weight:700;position:relative}
+.nav-links a{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);text-decoration:none;padding:8px 15px;border:1px solid var(--border);border-radius:var(--radius-sm);transition:all .2s;font-family:'Syne',sans-serif;font-weight:700;position:relative}
 .nav-links a:hover{color:var(--green);border-color:var(--green-brd);background:var(--green-soft)}
 .nav-links a.nav-active{color:var(--green)!important;border-color:var(--green-brd)!important;background:var(--green-soft)!important}
-.nav-links a.nav-active::after{content:'';position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+.nav-links a.nav-active::after{display:none}.nav-links a.nav-active::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 10px #00ff8780;flex-shrink:0}
 footer.zvm-footer{text-align:center;padding:20px 24px;font-size:13px;color:var(--muted2);font-family:'Syne',sans-serif;border-top:1px solid var(--border);flex-shrink:0}
 footer.zvm-footer a{color:var(--muted2);text-decoration:none;transition:color .2s}
 footer.zvm-footer a:hover{color:var(--green)}
@@ -3257,7 +3257,7 @@ main{max-width:880px;margin:0 auto;padding:60px 32px 90px;width:100%;flex:1;posi
 <nav>
   <a href="/" class="nav-logo">⚡ ZVM</a>
   <div class="nav-links" id="main-nav">
-    <a href="/" data-navpath="/">PAINEL</a>
+    <a href="/" data-navpath="/">PORTAL</a>
     <a href="/faq" data-navpath="/faq">FAQ</a>
     <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
     <a href="/planos" data-navpath="/planos">PLANOS</a>
@@ -3405,10 +3405,10 @@ body{background:var(--bg);color:var(--text);font-family:'Inter','Segoe UI',sans-
 nav{display:flex;align-items:center;justify-content:space-between;padding:14px 32px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:100;box-shadow:0 2px 20px #00000060;flex-shrink:0;backdrop-filter:blur(8px)}
 .nav-logo{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:6px;letter-spacing:-0.5px}
 .nav-links{display:flex;gap:8px}
-.nav-links a{font-size:13px;color:var(--muted);text-decoration:none;padding:8px 15px;border:1px solid var(--border);border-radius:var(--radius-sm);transition:all .2s;font-family:'Syne',sans-serif;font-weight:700;position:relative}
+.nav-links a{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);text-decoration:none;padding:8px 15px;border:1px solid var(--border);border-radius:var(--radius-sm);transition:all .2s;font-family:'Syne',sans-serif;font-weight:700;position:relative}
 .nav-links a:hover{color:var(--green);border-color:var(--green-brd);background:var(--green-soft)}
 .nav-links a.nav-active{color:var(--green)!important;border-color:var(--green-brd)!important;background:var(--green-soft)!important}
-.nav-links a.nav-active::after{content:'';position:absolute;bottom:-8px;left:50%;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+.nav-links a.nav-active::after{display:none}.nav-links a.nav-active::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 10px #00ff8780;flex-shrink:0}
 footer.zvm-footer{text-align:center;padding:20px 24px;font-size:13px;color:var(--muted2);font-family:'Syne',sans-serif;border-top:1px solid var(--border);flex-shrink:0}
 footer.zvm-footer a{color:var(--muted2);text-decoration:none;transition:color .2s}
 footer.zvm-footer a:hover{color:var(--green)}
@@ -3444,7 +3444,7 @@ main{max-width:740px;margin:0 auto;padding:60px 28px 90px;flex:1;position:relati
 <nav>
   <a href="/" class="nav-logo">⚡ ZVM</a>
   <div class="nav-links" id="main-nav">
-    <a href="/" data-navpath="/">PAINEL</a>
+    <a href="/" data-navpath="/">PORTAL</a>
     <a href="/faq" data-navpath="/faq">FAQ</a>
     <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
     <a href="/planos" data-navpath="/planos">PLANOS</a>
@@ -5217,7 +5217,7 @@ async function handleRequest(req, res) {
       activatedAt: k.activatedAt || null,
       lastUsed:    k.lastUsed || null,
       phones:      (k.phones || []).length,
-      phoneList:   (k.phones || []).map((ph, i) => ({ idx: i, display: ph.replace(/(\d+)(\d{4})$/, '••••$2') })),
+      phoneList:   (k.phones || []).map((ph, i) => ({ idx: i, display: ph })),
       maxUses:     k.maxUses === -1 ? null : (k.maxUses > 0 ? k.maxUses : MAX_USES),
       hoursLeft:   hoursUntilExpiry(k),
       daysLeft:    daysUntilExpiry(k),
