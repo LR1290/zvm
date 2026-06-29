@@ -227,6 +227,13 @@ let analyticsSessions = {};
 let serverReady       = false;
 let _httpServer       = null;
 let _pingInterval     = null;
+let _adminPassSalt    = null;  // gerado aleatoriamente no boot
+let _adminPassHash    = null;  // scrypt-64 derivado de ADMIN_PASS
+// Derivação imediata — scrypt é memory-hard (N=16384), derrota GPU/rainbow tables.
+// Salt aleatório por sessão: o hash não pode ser reutilizado em reinicios.
+_adminPassSalt = crypto.randomBytes(16);
+_adminPassHash = crypto.scryptSync(ADMIN_PASS, _adminPassSalt, 64, { N: 16384, r: 8, p: 1 });
+console.log('[BOOT] ADMIN_PASS derivada com scrypt-64 (N=16384) — OK');
 
 const SEC_ALERT_MAX = 200; // cap em memória para alertas de segurança
 
@@ -3756,9 +3763,11 @@ async function runInternalSecurityAudit() {
   const MIN_SECRET_LEN = 16;
 
   results.push({
-    name:   'ADMIN_PASS — comprimento mínimo',
-    pass:   (ADMIN_PASS || '').length >= MIN_SECRET_LEN,
-    detail: `${(ADMIN_PASS||'').length} chars (mín ${MIN_SECRET_LEN}) · hash: ${_mask(ADMIN_PASS, 4)}`,
+    name:   'ADMIN_PASS — hardening scrypt-64 (N=16384)',
+    pass:   !!_adminPassHash && (ADMIN_PASS || '').length >= 8,
+    detail: _adminPassHash
+      ? `scrypt-64 derivado · ${(ADMIN_PASS||'').length} chars · salt=${_adminPassSalt?.toString('hex').slice(0,8)}…`
+      : 'Hash não derivado — erro de boot',
   });
   results.push({
     name:   'APP_SECRET (HMAC slug) configurado',
@@ -4016,9 +4025,13 @@ async function handleRequest(req, res) {
   // UptimeRobot e Render healthcheck nunca devem ser bloqueados
   if (p === '/health' && req.method === 'GET') {
     res.writeHead(200, {
-      'Content-Type': 'text/plain; charset=utf-8',
-      'Cache-Control': 'no-store',
-      'X-Content-Type-Options': 'nosniff',
+      'Content-Type':              'text/plain; charset=utf-8',
+      'Cache-Control':             'no-store',
+      'X-Content-Type-Options':    'nosniff',
+      'X-Frame-Options':           'DENY',
+      'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+      'Referrer-Policy':           'no-referrer',
+      'Content-Security-Policy':   "default-src 'none'",
     });
     res.end('ok');
     return;
@@ -4433,11 +4446,16 @@ async function handleRequest(req, res) {
       sendHtml(res, renderAdminLogin(`⏳ Muitas tentativas. Aguarde ${mins} minuto(s).`), 429); return;
     }
     const form   = await parseFormBody(req);
-    const _u=Buffer.from(form.get('user')||''), _p=Buffer.from(form.get('pass')||'');
-    const _au=Buffer.from(ADMIN_USER||''), _ap=Buffer.from(ADMIN_PASS||'');
-    const credOk = _u.length===_au.length && _p.length===_ap.length &&
-      crypto.timingSafeEqual(_u.length?_u:Buffer.alloc(1),_au.length?_au:Buffer.alloc(1)) &&
-      crypto.timingSafeEqual(_p.length?_p:Buffer.alloc(1),_ap.length?_ap:Buffer.alloc(1));
+    const _u  = Buffer.from(form.get('user') || '');
+    const _au = Buffer.from(ADMIN_USER || '');
+    let credOk = false;
+    try {
+      // Deriva hash da senha submetida com o mesmo salt do boot — timing-safe
+      const _submittedHash = crypto.scryptSync(form.get('pass') || '', _adminPassSalt, 64, { N: 16384, r: 8, p: 1 });
+      credOk = _u.length === _au.length &&
+        crypto.timingSafeEqual(_u.length ? _u : Buffer.alloc(1), _au.length ? _au : Buffer.alloc(1)) &&
+        crypto.timingSafeEqual(_submittedHash, _adminPassHash);
+    } catch { credOk = false; }
     const totpOk = verifyTOTP(TOTP_SECRET, (form.get('totp') || '').trim());
     if (credOk && totpOk) {
       rateLimitMap.delete(ip + ':login'); // limpa contador após login bem-sucedido
