@@ -2203,7 +2203,7 @@ tr:nth-child(even) td{background:#ffffff04}
 tr:hover td{background:#ffffff07}
 .kc{color:var(--g);font-size:12px;letter-spacing:0;font-family:'JetBrains Mono','Fira Code','Cascadia Code',monospace;display:block;overflow:hidden;text-overflow:ellipsis}
 /* Células que precisam de wrap normal (ações, badges) */
-td.td-acts{white-space:normal;overflow:visible;max-width:none;padding:4px 5px}
+td.td-acts{white-space:normal;overflow:visible;max-width:none;min-width:170px;padding:3px 4px}
 td.td-note{max-width:120px}
 td.td-status{white-space:nowrap;overflow:hidden}
 /* ── Badges ── */
@@ -2216,7 +2216,7 @@ td.td-status{white-space:nowrap;overflow:hidden}
 .wl{background:var(--org-bg);color:var(--orange);border:1px solid var(--org-brd)}
 /* ── Misc ── */
 .empty{text-align:center;color:var(--tx3);padding:36px!important;font-size:13px}
-.acts{display:flex;flex-wrap:nowrap;gap:2px;max-width:none}
+.acts{display:flex;flex-wrap:wrap;gap:2px;max-width:none}
 .note-cell{cursor:pointer;max-width:130px}
 .note-cell:hover .note-preview{color:var(--g)}
 .note-preview{color:var(--tx3);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:120px}
@@ -2307,20 +2307,20 @@ td.td-status{white-space:nowrap;overflow:hidden}
     </div>
     <div class="filter-count" id="keys-filter-count"></div>
     <div class="ov">
-      <table style="min-width:760px">
+      <table style="min-width:1000px">
         <colgroup>
           <col style="width:28px">
-          <col style="width:13%">
-          <col style="width:12%">
-          <col style="width:7%">
-          <col style="width:9%">
-          <col style="width:5%">
+          <col style="width:11%">
           <col style="width:10%">
+          <col style="width:6%">
+          <col style="width:8%">
+          <col style="width:4%">
+          <col style="width:8%">
+          <col style="width:8%">
           <col style="width:9%">
           <col style="width:9%">
-          <col style="width:9%">
-          <col style="width:7%">
-          <col style="width:auto">
+          <col style="width:6%">
+          <col style="width:17%">
         </colgroup>
         <thead><tr>
           <th style="padding:6px 4px"><input type="checkbox" id="master-cb" title="Selecionar todas" style="width:13px;height:13px;cursor:pointer;accent-color:var(--g)" onchange="toggleAllCheckboxes(this.checked)"></th>
