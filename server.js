@@ -47,7 +47,8 @@ const USAGE_LIMITS = {
   audio:        { sent:0, max:-1 }, bulkMessages: { sent:0, max:-1 },
   document:     { sent:0, max:-1 }, flow:         { sent:0, max:-1 },
   funnel:       { sent:0, max:-1 }, media:        { sent:0, max:-1 },
-  message:      { sent:0, max:-1 }, scheduleItem: { sent:0, max:-1 }
+  message:      { sent:0, max:-1 }, scheduleItem: { sent:0, max:-1 },
+  zapsaver:     { sent:0, max:-1 },
 };
 const FREE_AUTH_KEY   = 'free';
 const FREE_PLAN_ID    = 'ZV_FREE';
@@ -60,6 +61,7 @@ const FREE_USAGE_LIMITS = {
   document: { sent: 0, max: 10 }, flow: { sent: 0, max: 0 },
   funnel: { sent: 0, max: 0 }, media: { sent: 0, max: 10 },
   message: { sent: 0, max: 20 }, scheduleItem: { sent: 0, max: 5 },
+  zapsaver: { sent: 0, max: 0 },
 };
 const AUTH_MSG = {
   BLOCKED: 'CHAVE BLOQUEADA',
@@ -68,7 +70,7 @@ const AUTH_MSG = {
 };
 const USAGE_ITEM_TYPES = [
   'audio', 'document', 'media', 'message', 'flow', 'funnel',
-  'bulkMessages', 'scheduleItem',
+  'bulkMessages', 'scheduleItem', 'zapsaver',
 ];
 const MONGODB_DB = (() => {
   const fromEnv = (process.env.MONGODB_DB || '').trim();
@@ -5010,9 +5012,11 @@ async function handleRequest(req, res) {
     const kMod = await adminGetKey(codeModules);
     if (!kMod) { sendJson(res, { error: 'not found' }, 404); return; }
     const body = await parseBody(req);
-    const moduleName = sanitizeId(String(body.module || ''), 20);
+    const moduleRaw  = String(body.module || '').slice(0, 20);
+    // Resolve case-insensitively to the canonical name stored in AVAILABLE_MODULES
+    const moduleName = AVAILABLE_MODULES.find(m => m.toLowerCase() === moduleRaw.toLowerCase()) || '';
     const enabled    = !!body.enabled;
-    if (!AVAILABLE_MODULES.includes(moduleName)) { sendJson(res, { error: 'modulo_invalido', module: moduleName }, 400); return; }
+    if (!moduleName) { sendJson(res, { error: 'modulo_invalido', module: moduleRaw }, 400); return; }
     if (!kMod.modules) kMod.modules = { ...DEFAULT_MODULES };
     kMod.modules[moduleName] = enabled;
     saveKey(codeModules);
