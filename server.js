@@ -24,6 +24,7 @@ const MONGODB_URI  = (process.env.MONGODB_URI || '').replace(/^["']|["']$/g, '')
 const APP_SECRET   = process.env.APP_SECRET   || '';
 const TOTP_SECRET  = process.env.TOTP_SECRET  || '';
 const WEBHOOK_URL  = process.env.WEBHOOK_URL  || '';
+const EXTENSION_URL = process.env.EXTENSION_URL || '';
 const EXPIRY_WARN_HOURS = Math.max(1, Math.min(720, parseInt(process.env.EXPIRY_WARN_HOURS || '48') || 48));
 
 const LOG_RETENTION_DAYS = Math.max(1, parseInt(process.env.LOG_RETENTION_DAYS || '90') || 90);
@@ -163,16 +164,15 @@ function saveKey(code) {
   return Promise.resolve();
 }
 
-function deleteKeyFromDb(code) {
+async function deleteKeyFromDb(code) {
   if (_saveDebounce.has(code)) { clearTimeout(_saveDebounce.get(code)); _saveDebounce.delete(code); }
   delete keys[code];
   invalidateKeysHtmlCache();
-  getMongoDb().then(db =>
-    db.collection('store').updateOne(
-      { _id: 'keys' },
-      { $unset: { [`data.${code}`]: '' }, $set: { updatedAt: new Date() } }
-    )
-  ).catch(e => console.error('[DB] Erro ao excluir chave:', e.message));
+  const db = await getMongoDb();
+  await db.collection('store').updateOne(
+    { _id: 'keys' },
+    { $unset: { [`data.${code}`]: '' }, $set: { updatedAt: new Date() } }
+  );
 }
 
 async function activateDeferredKey(code) {
@@ -237,6 +237,7 @@ let logs              = [];
 let securityAlerts    = []; // telemetria reativa — eventos de ameaça do servidor
 let sessions          = {};
 let modSessions       = {};
+let portalSessions    = {};
 let analyticsSessions = {};
 let serverReady       = false;
 let _httpServer       = null;
@@ -303,6 +304,14 @@ function generateTOTP(secret, window = 0) {
   const off   = hmac[hmac.length - 1] & 0xf;
   return ((hmac.readUInt32BE(off) & 0x7fffffff) % 1000000).toString().padStart(6, '0');
 }
+
+function hashPassword(pass, salt) {
+  return new Promise((res, rej) =>
+    crypto.pbkdf2(String(pass).slice(0,128), String(salt), 150000, 64, 'sha256',
+      (e, d) => e ? rej(e) : res(d.toString('hex')))
+  );
+}
+function genSalt() { return crypto.randomBytes(32).toString('hex'); }
 
 function verifyTOTP(secret, token) {
   if (!secret) return true;
@@ -375,6 +384,8 @@ setInterval(() => {
     if (now > new Date(s.expiresAt).getTime()) delete sessions[k];
   for (const [k, s] of Object.entries(modSessions))
     if (now > new Date(s.expiresAt).getTime()) delete modSessions[k];
+  for (const [k, s] of Object.entries(portalSessions))
+    if (now > new Date(s.expiresAt).getTime()) delete portalSessions[k];
   for (const [k, s] of Object.entries(analyticsSessions))
     if (now > new Date(s.expiresAt).getTime()) delete analyticsSessions[k];
 }, 60 * 60 * 1000); // 1h — sessões duram horas, limpeza não precisa ser frequente
@@ -1327,27 +1338,18 @@ a.out:hover{color:var(--red);border-color:var(--red)}
 .empty{text-align:center;color:var(--tx3);padding:28px;font-size:12px;font-family:"Syne",sans-serif}
 .notice{background:var(--g-bg);border:1px solid var(--g-brd);border-radius:var(--r);padding:10px 14px;margin-bottom:12px;display:flex;align-items:flex-start;gap:10px;font-size:12px;color:var(--tx2);line-height:1.7;font-family:"Syne",sans-serif}
 .notice strong{color:var(--g)}
-.ach-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;padding:14px}
-.ach{background:var(--bg);border:1px solid var(--brd);border-radius:var(--r);padding:14px 16px 12px;display:flex;align-items:flex-start;gap:12px;transition:all .2s;position:relative;min-width:0;min-height:72px}
+.ach-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;padding:16px}
+.ach{background:var(--bg);border:1px solid var(--brd);border-radius:var(--r);padding:16px 18px 14px;display:flex;align-items:flex-start;gap:14px;transition:all .2s;position:relative;min-width:0;min-height:86px}
 .ach.unlocked{border-color:var(--g-brd);background:var(--g-bg)}
 .ach.locked{opacity:.45;filter:grayscale(.6)}
-.ach-icon{font-size:30px;flex-shrink:0;line-height:1.2;margin-top:2px}
+.ach-icon{font-size:38px;flex-shrink:0;line-height:1.2;margin-top:2px}
 .ach-info{flex:1;min-width:0}
-.ach-name{font-family:"Syne",sans-serif;font-size:13px;font-weight:700;color:var(--tx);margin-bottom:3px;padding-right:20px}
-.ach-desc{font-size:11px;color:var(--tx3);line-height:1.5;font-family:"Syne",sans-serif}
+.ach-name{font-family:"Syne",sans-serif;font-size:15px;font-weight:700;color:var(--tx);margin-bottom:4px;padding-right:22px}
+.ach-desc{font-size:13px;color:var(--tx3);line-height:1.6;font-family:"Syne",sans-serif}
 .ach-badge{position:absolute;top:7px;right:7px;font-size:11px;line-height:1}
 .ach.unlocked .ach-badge{color:var(--g)}
 .ach.locked .ach-badge{color:var(--tx3)}
-.rank-grid{padding:12px;display:flex;flex-direction:column;gap:6px}
-.rank-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--r);background:var(--bg);border:1px solid var(--brd);transition:all .2s}
-.rank-row.me{border-color:var(--g-brd);background:var(--g-bg)}
-.rank-pos{font-family:"Syne",sans-serif;font-size:14px;font-weight:800;color:var(--tx3);width:24px;flex-shrink:0;text-align:center}
-.rank-row:nth-child(1) .rank-pos{color:#ffd32a}
-.rank-row:nth-child(2) .rank-pos{color:#a0a0b0}
-.rank-row:nth-child(3) .rank-pos{color:#cd7f32}
-.rank-name{font-family:"Syne",sans-serif;font-size:12px;font-weight:600;flex:1;color:var(--tx)}
-.rank-count{font-family:"Space Mono",monospace;font-size:12px;color:var(--g);font-weight:700}
-.rank-me-badge{font-size:9px;background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd);padding:1px 7px;border-radius:8px;font-family:"Syne",sans-serif;font-weight:700}
+.rank-grid{display:flex;flex-direction:column;overflow:hidden}
 .toast{position:fixed;bottom:18px;right:18px;padding:10px 16px;border-radius:var(--r);font-family:"Syne",sans-serif;font-weight:700;font-size:12px;display:none;z-index:999999;box-shadow:0 6px 30px #00000070}
 .modal-bg{display:none;position:fixed;inset:0;background:#00000090;z-index:99999;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
 .modal-bg.open{display:flex}
@@ -1685,9 +1687,17 @@ function renderAchievements(stats){
 function renderRanking(ranking,myName){
   const grid=document.getElementById('rank-grid');
   if(!grid)return;
-  if(!ranking.length){grid.innerHTML='<div style="padding:20px;text-align:center;color:var(--tx3);font-size:13px">Sem dados</div>';return;}
+  if(!ranking.length){grid.innerHTML='<div style="padding:28px;text-align:center;color:var(--tx3);font-size:13px;font-family:Syne,sans-serif">Sem dados de ranking ainda</div>';return;}
   const medals=['🥇','🥈','🥉'];
-  grid.innerHTML=ranking.map((r,i)=>'<div class="rank-row'+(r.name===myName?' me':'')+'"><div class="rank-pos">'+(medals[i]||('#'+(i+1)))+'</div><div class="rank-name">'+escHtml(r.name)+(r.name===myName?' <span class="rank-me-badge">Você</span>':'')+'</div><div class="rank-count">'+r.count+' chaves</div></div>').join('');
+  const maxC=Math.max(...ranking.map(r=>r.count),1);
+  grid.innerHTML='<div style="padding:8px 14px 2px;font-size:9px;color:var(--tx3);font-family:Syne,sans-serif;text-transform:uppercase;letter-spacing:1px;display:flex;justify-content:space-between"><span>Moderador</span><span>Chaves</span></div>'+
+  ranking.map((r,i)=>{
+    const isMe=r.name===myName,pct=maxC>0?Math.round(r.count/maxC*100):0;
+    const medal=medals[i]||(i+1);
+    const posC=i===0?'#ffd32a':i===1?'#a0a0b0':i===2?'#cd7f32':'var(--tx3)';
+    const rowBg=isMe?'background:var(--g-bg);border-color:var(--g-brd);':'';
+    return '<div style="display:flex;flex-direction:column;gap:4px;padding:10px 14px;border-bottom:1px solid var(--brd);'+rowBg+'">'+'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div style="display:flex;align-items:center;gap:8px;min-width:0"><span style="font-size:16px;font-weight:800;color:'+posC+';width:22px;text-align:center;flex-shrink:0">'+medal+'</span><span style="font-family:Syne,sans-serif;font-size:13px;font-weight:700;color:'+(isMe?'var(--g)':'var(--tx)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(r.name)+'</span>'+(isMe?'<span style="font-size:9px;background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd);padding:1px 6px;border-radius:8px;font-family:Syne,sans-serif;font-weight:700;flex-shrink:0">Você</span>':'')+'</div><span style="font-family:Space Mono,monospace;font-size:13px;font-weight:700;color:'+(r.count>0?'var(--g)':'var(--tx3)')+';flex-shrink:0">'+r.count+'</span></div><div style="display:flex;align-items:center;gap:6px"><div style="flex:1;height:5px;background:var(--brd);border-radius:3px;overflow:hidden"><div style="height:5px;border-radius:3px;width:'+pct+'%;background:'+(isMe?'linear-gradient(90deg,var(--g),#00ff87)':'linear-gradient(90deg,#4a4a6a,#6a6a8a)')+';transition:width .6s ease"></div></div><span style="font-size:9px;color:var(--tx3);font-family:Syne,sans-serif;width:28px;text-align:right">'+pct+'%</span></div></div>';
+  }).join('');
 }
 function updateStats(keys,myName,srvRanking){
   const now=new Date(),todayStr=now.toISOString().slice(0,10);
@@ -1822,6 +1832,201 @@ loadHistory();
 </script>
 ${CANVAS_BG}</body></html>`;
 }
+
+
+// ──────────────── PORTAL DO CLIENTE ────────────────────────────
+function renderPortalPage(body, title='ZVM — Minha Conta', extra='') {
+  const fav = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080808'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E";
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${title}</title>
+<link rel="icon" type="image/svg+xml" href="${fav}">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#080808;color:#e0e0e0;min-height:100vh;font-family:'Space Mono',monospace;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:24px 16px}
+.wrap{width:100%;max-width:440px}
+.logo{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:#00e676;text-align:center;margin-bottom:6px;letter-spacing:-1px}
+.logo-sub{text-align:center;color:#606060;font-size:11px;font-family:'Syne',sans-serif;letter-spacing:2px;text-transform:uppercase;margin-bottom:28px}
+.card{background:#0d0d0d;border:1px solid #1a1a1a;border-radius:10px;padding:28px 26px;margin-bottom:16px}
+.card-title{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:#e0e0e0;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.fi{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+.fi label{font-size:10px;color:#606060;text-transform:uppercase;letter-spacing:.5px;font-family:'Syne',sans-serif;font-weight:600}
+.fi input{padding:9px 12px;background:#080808;border:1px solid #1a1a1a;border-radius:6px;color:#e0e0e0;font-family:'Space Mono',monospace;font-size:13px;outline:none;transition:border .2s}
+.fi input:focus{border-color:#00e676}
+.fi input::placeholder{color:#404040}
+.btn{width:100%;padding:12px;background:#00e676;color:#000814;border:none;border-radius:6px;font-family:'Syne',sans-serif;font-weight:800;font-size:14px;cursor:pointer;margin-top:8px;transition:opacity .2s;letter-spacing:.3px}
+.btn:hover{opacity:.85}
+.btn-sec{background:transparent;color:#00e676;border:1px solid #00e67630;margin-top:6px}
+.btn-sec:hover{background:#00e67610;opacity:1}
+.err{background:#f0506010;border:1px solid #f0506030;border-radius:6px;color:#f05060;padding:10px 14px;font-size:12px;margin-bottom:14px;font-family:'Syne',sans-serif}
+.ok{background:#00e67610;border:1px solid #00e67630;border-radius:6px;color:#00e676;padding:10px 14px;font-size:12px;margin-bottom:14px;font-family:'Syne',sans-serif}
+.link{text-align:center;font-size:12px;color:#606060;font-family:'Syne',sans-serif;margin-top:10px}
+.link a{color:#00e676;text-decoration:none}
+.link a:hover{text-decoration:underline}
+.status-card{background:#0d0d0d;border:1px solid #1a1a1a;border-radius:10px;padding:20px}
+.status-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #111}
+.status-row:last-child{border-bottom:none}
+.status-label{font-size:11px;color:#606060;font-family:'Syne',sans-serif;text-transform:uppercase;letter-spacing:.5px}
+.status-val{font-family:'Space Mono',monospace;font-size:13px;color:#e0e0e0}
+.badge-ok{background:#00e67618;color:#00e676;border:1px solid #00e67630;padding:3px 10px;border-radius:12px;font-size:10px;font-weight:700;font-family:'Syne',sans-serif}
+.badge-err{background:#f0506010;color:#f05060;border:1px solid #f0506030;padding:3px 10px;border-radius:12px;font-size:10px;font-weight:700;font-family:'Syne',sans-serif}
+.badge-warn{background:#f0b42910;color:#f0b429;border:1px solid #f0b42930;padding:3px 10px;border-radius:12px;font-size:10px;font-weight:700;font-family:'Syne',sans-serif}
+.key-box{background:#080808;border:1px solid #1a1a1a;border-radius:6px;padding:10px 14px;font-family:'Space Mono',monospace;font-size:14px;color:#00e676;letter-spacing:1.5px;word-break:break-all;margin:8px 0}
+.dl-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px;background:#00e67615;border:1px solid #00e67630;border-radius:6px;color:#00e676;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;text-decoration:none;transition:all .2s;margin-top:10px;cursor:pointer}
+.dl-btn:hover{background:#00e67625}
+.divider{border:none;border-top:1px solid #1a1a1a;margin:14px 0}
+.nav-hdr{display:flex;align-items:center;justify-content:space-between;width:100%;max-width:440px;margin-bottom:20px}
+.nav-logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#00e676}
+.nav-out{color:#606060;font-size:11px;text-decoration:none;padding:4px 10px;border:1px solid #242424;border-radius:4px;font-family:'Syne',sans-serif;font-weight:600;transition:all .2s}
+.nav-out:hover{color:#f05060;border-color:#f05060}
+</style></head><body>
+${extra}
+${body}
+</body></html>`;
+}
+
+function renderPortalLogin(err='',redir='') {
+  const errHtml = err ? `<div class="err">⚠ ${escHtml(err)}</div>` : '';
+  const body = `
+<div class="logo">⚡ ZVM</div>
+<div class="logo-sub">Portal do Cliente</div>
+<div class="card">
+  <div class="card-title">🔐 Entrar na minha conta</div>
+  ${errHtml}
+  <form method="POST" action="/cliente/login">
+    <input type="hidden" name="redir" value="${escHtml(redir)}">
+    <div class="fi"><label>E-mail</label><input type="email" name="email" placeholder="seu@email.com" required autocomplete="email"></div>
+    <div class="fi"><label>Senha</label><input type="password" name="pass" placeholder="••••••••" required autocomplete="current-password"></div>
+    <button type="submit" class="btn">Entrar</button>
+  </form>
+</div>
+<div class="link">Ainda não tem conta? <a href="/cliente/registro">Criar conta</a></div>
+<div class="link" style="margin-top:8px">Tem uma chave? <a href="/extension/auth?callback=/">Ativar extensão</a></div>
+`;
+  return renderPortalPage(body);
+}
+
+function renderPortalRegister(err='',vals={}) {
+  const errHtml = err ? `<div class="err">⚠ ${escHtml(err)}</div>` : '';
+  const v = k => escHtml(vals[k]||'');
+  const body = `
+<div class="logo">⚡ ZVM</div>
+<div class="logo-sub">Criar Conta</div>
+<div class="card">
+  <div class="card-title">📋 Cadastro</div>
+  ${errHtml}
+  <form method="POST" action="/cliente/registro">
+    <div class="fi"><label>Nome completo</label><input type="text" name="name" placeholder="João Silva" required value="${v('name')}" maxlength="80"></div>
+    <div class="fi"><label>E-mail</label><input type="email" name="email" placeholder="seu@email.com" required value="${v('email')}" autocomplete="email"></div>
+    <div class="fi"><label>WhatsApp (com DDD)</label><input type="tel" name="phone" placeholder="11999990000" value="${v('phone')}" maxlength="20" pattern="[0-9+\s()-]{8,20}"></div>
+    <div class="fi"><label>Chave ZVM (opcional — vincule agora)</label><input type="text" name="keycode" placeholder="zv-xxxxx-xxxxx-xxxxx" value="${v('keycode')}" maxlength="30"></div>
+    <div class="fi"><label>Senha</label><input type="password" name="pass" placeholder="Mínimo 8 caracteres" required minlength="8" autocomplete="new-password"></div>
+    <div class="fi"><label>Confirmar senha</label><input type="password" name="pass2" placeholder="Repita a senha" required minlength="8" autocomplete="new-password"></div>
+    <button type="submit" class="btn">Criar Conta</button>
+  </form>
+</div>
+<div class="link">Já tem conta? <a href="/cliente">Entrar</a></div>
+`;
+  return renderPortalPage(body, 'ZVM — Criar Conta');
+}
+
+function renderPortalDashboard(user, keyData) {
+  const now = new Date();
+  let keySection = '';
+  if (keyData) {
+    const active = keyData.active && !(keyData.expiresAt && new Date(keyData.expiresAt) < now);
+    const deferred = !!(keyData.expireDuration && !keyData.expiresAt);
+    let expTxt = 'Sem expiração', expBadge = 'badge-ok';
+    if (deferred) { expTxt = 'Ativa ao 1º uso'; expBadge = 'badge-warn'; }
+    else if (keyData.expiresAt) {
+      const d = new Date(keyData.expiresAt);
+      const diffH = Math.floor((d - now) / 3600000);
+      if (diffH < 0) { expTxt = 'Expirada'; expBadge = 'badge-err'; }
+      else if (diffH < 48) { expTxt = `Expira em ${diffH < 1 ? '<1h' : diffH+'h'}`; expBadge = 'badge-warn'; }
+      else { const diffD = Math.floor(diffH/24); expTxt = `${d.toLocaleDateString('pt-BR')} (${diffD}d restantes)`; expBadge = 'badge-ok'; }
+    }
+    const zsOn = !!(keyData.modules && keyData.modules.zapSaver);
+    keySection = `
+    <div class="card-title">🔑 Minha Chave</div>
+    <div class="key-box">${escHtml(keyData.code||'')}</div>
+    <div class="status-card" style="margin-top:10px">
+      <div class="status-row"><span class="status-label">Status</span><span class="${active?'badge-ok':'badge-err'}">${active?'ATIVA':'INATIVA'}</span></div>
+      <div class="status-row"><span class="status-label">Validade</span><span class="${expBadge}" style="font-size:10px;padding:3px 8px">${escHtml(expTxt)}</span></div>
+      <div class="status-row"><span class="status-label">Dispositivos</span><span class="status-val">${(keyData.phones||[]).length}/${keyData.maxUses||1}</span></div>
+      <div class="status-row"><span class="status-label">ZapSaver PRO</span><span class="${zsOn?'badge-ok':'badge-err'}">${zsOn?'ATIVO':'INATIVO'}</span></div>
+    </div>`;
+  } else {
+    keySection = `
+    <div class="card-title">🔑 Minha Chave</div>
+    <div class="err" style="margin-bottom:0">Nenhuma chave vinculada. <a href="/cliente/vincular" style="color:#f05060">Vincular agora</a></div>`;
+  }
+  const dlSection = EXTENSION_URL ? `
+    <hr class="divider">
+    <a class="dl-btn" href="${escHtml(EXTENSION_URL)}" download>⬇ Baixar Extensão ZVM</a>` : '';
+  const body = `
+<div class="nav-hdr">
+  <div class="nav-logo">⚡ ZVM</div>
+  <a href="/cliente/logout" class="nav-out">↩ Sair</a>
+</div>
+<div class="card">
+  <div class="card-title" style="margin-bottom:4px">👤 Bem-vindo, ${escHtml(user.name.split(' ')[0])}</div>
+  <div style="font-size:11px;color:#606060;font-family:'Syne',sans-serif;margin-bottom:16px">${escHtml(user.email)}</div>
+  ${keySection}
+  ${dlSection}
+</div>
+<div class="card" style="padding:16px 20px">
+  <div class="card-title" style="font-size:13px;margin-bottom:10px">⚙ Ações</div>
+  <a href="/cliente/vincular" style="display:block;font-size:12px;color:#00e676;text-decoration:none;font-family:'Syne',sans-serif;margin-bottom:6px">🔗 Vincular / trocar chave</a>
+  <a href="/cliente/senha" style="display:block;font-size:12px;color:#a0a0a0;text-decoration:none;font-family:'Syne',sans-serif">🔒 Alterar senha</a>
+</div>
+`;
+  return renderPortalPage(body, 'ZVM — Minha Conta');
+}
+
+function renderPortalLinkKey(err='',ok='') {
+  const errHtml = err ? `<div class="err">⚠ ${escHtml(err)}</div>` : '';
+  const okHtml  = ok  ? `<div class="ok">✅ ${escHtml(ok)}</div>` : '';
+  const body = `
+<div class="nav-hdr">
+  <div class="nav-logo">⚡ ZVM</div>
+  <a href="/cliente" class="nav-out">← Voltar</a>
+</div>
+<div class="card">
+  <div class="card-title">🔗 Vincular Chave</div>
+  ${errHtml}${okHtml}
+  <p style="font-size:12px;color:#606060;font-family:'Syne',sans-serif;margin-bottom:14px;line-height:1.7">Digite o código da sua chave ZVM para vinculá-la à sua conta.</p>
+  <form method="POST" action="/cliente/vincular">
+    <div class="fi"><label>Código da Chave</label><input type="text" name="keycode" placeholder="zv-xxxxx-xxxxx-xxxxx" maxlength="30" pattern="[a-z0-9\-]+" required></div>
+    <button type="submit" class="btn">Vincular</button>
+  </form>
+</div>
+`;
+  return renderPortalPage(body, 'ZVM — Vincular Chave');
+}
+
+function renderPortalChangePwd(err='',ok='') {
+  const errHtml = err ? `<div class="err">⚠ ${escHtml(err)}</div>` : '';
+  const okHtml  = ok  ? `<div class="ok">✅ ${escHtml(ok)}</div>` : '';
+  const body = `
+<div class="nav-hdr">
+  <div class="nav-logo">⚡ ZVM</div>
+  <a href="/cliente" class="nav-out">← Voltar</a>
+</div>
+<div class="card">
+  <div class="card-title">🔒 Alterar Senha</div>
+  ${errHtml}${okHtml}
+  <form method="POST" action="/cliente/senha">
+    <div class="fi"><label>Senha atual</label><input type="password" name="old" required></div>
+    <div class="fi"><label>Nova senha</label><input type="password" name="pass" required minlength="8"></div>
+    <div class="fi"><label>Confirmar nova senha</label><input type="password" name="pass2" required minlength="8"></div>
+    <button type="submit" class="btn">Salvar</button>
+  </form>
+</div>
+`;
+  return renderPortalPage(body, 'ZVM — Alterar Senha');
+}
+// ──────────── fim portal do cliente ────────────────────────────
 
 function renderExtensionLogin({ callback, error = '', keyVal = '' }) {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
@@ -5024,7 +5229,7 @@ async function handleRequest(req, res) {
     if (!kDel) { sendJson(res, { error: 'not found' }, 404); return; }
     const isOwner = kDel.createdBy === _myName4 || ((kDel.note||'').includes('[Mod: '+_myName4+']'));
     if (!isOwner) { sendJson(res, { error: 'acesso negado' }, 403); return; }
-    deleteKeyFromDb(delCode);
+    try { await deleteKeyFromDb(delCode); } catch(e) { sendJson(res, { error: 'db_error' }, 500); return; }
     sendJson(res, { ok: true }); return;
   }
 
@@ -5181,7 +5386,7 @@ async function handleRequest(req, res) {
     const rawCodes = Array.isArray(body.codes) ? body.codes : [];
     if (!rawCodes.length) { sendJson(res, { error: 'nenhum código enviado' }, 400); return; }
     const validCodes = rawCodes.map(c => sanitizeId(String(c || ''), 40)).filter(c => c && keys[c]);
-    for (const c of validCodes) { deleteKeyFromDb(c); }
+    await Promise.all(validCodes.map(c => deleteKeyFromDb(c).catch(e => console.error('[DB] batch del:', e.message))));
     sendJson(res, { ok: true, deleted: validCodes.length }); return;
   }
 
@@ -5214,7 +5419,7 @@ async function handleRequest(req, res) {
   const codeDelete = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)$`));
   if (codeDelete && req.method === 'DELETE') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    deleteKeyFromDb(codeDelete);
+    try { await deleteKeyFromDb(codeDelete); } catch(e) { sendJson(res, { error: 'db_error' }, 500); return; }
     sendJson(res, { ok: true }); return;
   }
 
@@ -5587,6 +5792,143 @@ async function handleRequest(req, res) {
   if (req.method === 'GET' && (CLIENT_PATHS.includes(p) || p.startsWith('/unauthorized') || p.startsWith('/funnels') || p.startsWith('/labels'))) {
     sendHtml(res, renderClientPortal()); return;
   }
+
+  // ═══════════════════ PORTAL DO CLIENTE ═════════════════════
+  function isPortalSession(req) {
+    const m = (req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/);
+    if (!m) return false;
+    const s = portalSessions[m[1]];
+    return s && new Date() < new Date(s.expiresAt);
+  }
+  function getPortalUser(req) {
+    const m = (req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/);
+    return m ? portalSessions[m[1]] : null;
+  }
+
+  if (p === '/cliente' || p === '/cliente/') {
+    if (!isPortalSession(req)) { sendHtml(res, renderPortalLogin()); return; }
+    const sess = getPortalUser(req);
+    try {
+      const db = await getMongoDb();
+      const user = await db.collection('portal_users').findOne({ _id: sess.email });
+      if (!user) { res.setHeader('Set-Cookie','zv_portal=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict'); sendHtml(res, renderPortalLogin()); return; }
+      let keyData = null;
+      if (user.keyCode) {
+        await ensureKeyLoaded(user.keyCode);
+        keyData = keys[user.keyCode] ? { ...keys[user.keyCode], code: user.keyCode } : null;
+      }
+      sendHtml(res, renderPortalDashboard(user, keyData)); return;
+    } catch(e) { console.error('[Portal] dashboard:', e.message); sendHtml(res, renderPortalLogin('Erro temporário.')); return; }
+  }
+
+  if (p === '/cliente/login' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'login')) { sendHtml(res, renderPortalLogin('Muitas tentativas. Aguarde 10 minutos.'), 429); return; }
+    const form = await parseFormBody(req);
+    const email = (form.get('email')||'').toLowerCase().trim().slice(0,100);
+    const pass  = (form.get('pass')||'').slice(0,128);
+    const redir = (form.get('redir')||'').slice(0,200);
+    if (!email || !pass) { sendHtml(res, renderPortalLogin('Preencha todos os campos.')); return; }
+    try {
+      const db = await getMongoDb();
+      const user = await db.collection('portal_users').findOne({ _id: email });
+      if (!user) { sendHtml(res, renderPortalLogin('E-mail ou senha inválidos.')); return; }
+      const hash = await hashPassword(pass, user.salt);
+      if (hash !== user.passwordHash) { sendHtml(res, renderPortalLogin('E-mail ou senha inválidos.')); return; }
+      const token = generateToken();
+      portalSessions[token] = { email, name: user.name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
+      res.setHeader('Set-Cookie', `zv_portal=${token}; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=86400`);
+      const dest = redir && redir.startsWith('/') ? redir : '/cliente';
+      res.writeHead(302, { Location: dest }); res.end();
+    } catch(e) { console.error('[Portal] login:', e.message); sendHtml(res, renderPortalLogin('Erro temporário.')); return; }
+    return;
+  }
+
+  if (p === '/cliente/registro' && req.method === 'GET') { sendHtml(res, renderPortalRegister()); return; }
+
+  if (p === '/cliente/registro' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'login')) { sendHtml(res, renderPortalRegister('Muitas tentativas.'), 429); return; }
+    const form = await parseFormBody(req);
+    const name    = (form.get('name')||'').trim().slice(0,80);
+    const email   = (form.get('email')||'').toLowerCase().trim().slice(0,100);
+    const phone   = (form.get('phone')||'').replace(/\D/g,'').slice(0,20);
+    const keycode = ((form.get('keycode')||'').toLowerCase().trim()).replace(/[^a-z0-9\-_]/g,'').slice(0,30);
+    const pass    = (form.get('pass')||'').slice(0,128);
+    const pass2   = (form.get('pass2')||'').slice(0,128);
+    const vals = { name, email, phone, keycode };
+    if (!name || !email || !pass) { sendHtml(res, renderPortalRegister('Preencha nome, e-mail e senha.', vals)); return; }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { sendHtml(res, renderPortalRegister('E-mail inválido.', vals)); return; }
+    if (pass.length < 8) { sendHtml(res, renderPortalRegister('Senha: mínimo 8 caracteres.', vals)); return; }
+    if (pass !== pass2) { sendHtml(res, renderPortalRegister('As senhas não coincidem.', vals)); return; }
+    try {
+      const db = await getMongoDb();
+      const existing = await db.collection('portal_users').findOne({ _id: email });
+      if (existing) { sendHtml(res, renderPortalRegister('E-mail já cadastrado.', vals)); return; }
+      if (keycode) {
+        await ensureKeyLoaded(keycode);
+        if (!keys[keycode]) { sendHtml(res, renderPortalRegister('Chave não encontrada. Deixe em branco para vincular depois.', vals)); return; }
+      }
+      const salt = genSalt();
+      const passwordHash = await hashPassword(pass, salt);
+      await db.collection('portal_users').insertOne({ _id: email, name, email, phone: phone||null, passwordHash, salt, keyCode: keycode||null, createdAt: new Date().toISOString() });
+      const token = generateToken();
+      portalSessions[token] = { email, name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
+      res.setHeader('Set-Cookie', `zv_portal=${token}; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=86400`);
+      res.writeHead(302, { Location: '/cliente' }); res.end();
+    } catch(e) { console.error('[Portal] registro:', e.message); sendHtml(res, renderPortalRegister('Erro ao criar conta.', vals)); return; }
+    return;
+  }
+
+  if (p === '/cliente/logout') {
+    const m = (req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/);
+    if (m) delete portalSessions[m[1]];
+    res.setHeader('Set-Cookie','zv_portal=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict');
+    res.writeHead(302, { Location: '/cliente' }); res.end(); return;
+  }
+
+  if (p === '/cliente/vincular') {
+    if (!isPortalSession(req)) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
+    if (req.method === 'GET') { sendHtml(res, renderPortalLinkKey()); return; }
+    if (req.method === 'POST') {
+      const form = await parseFormBody(req);
+      const keycode = ((form.get('keycode')||'').toLowerCase().trim()).replace(/[^a-z0-9\-_]/g,'').slice(0,30);
+      if (!keycode) { sendHtml(res, renderPortalLinkKey('Informe o código da chave.')); return; }
+      await ensureKeyLoaded(keycode);
+      if (!keys[keycode]) { sendHtml(res, renderPortalLinkKey('Chave não encontrada.')); return; }
+      const sess = getPortalUser(req);
+      try {
+        const db = await getMongoDb();
+        await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { keyCode: keycode } });
+        sendHtml(res, renderPortalLinkKey('', 'Chave vinculada com sucesso!')); return;
+      } catch(e) { sendHtml(res, renderPortalLinkKey('Erro ao vincular.')); return; }
+    }
+  }
+
+  if (p === '/cliente/senha') {
+    if (!isPortalSession(req)) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
+    if (req.method === 'GET') { sendHtml(res, renderPortalChangePwd()); return; }
+    if (req.method === 'POST') {
+      const form = await parseFormBody(req);
+      const old  = (form.get('old')||'').slice(0,128);
+      const pass = (form.get('pass')||'').slice(0,128);
+      const pass2= (form.get('pass2')||'').slice(0,128);
+      if (pass.length < 8) { sendHtml(res, renderPortalChangePwd('Nova senha: mínimo 8 caracteres.')); return; }
+      if (pass !== pass2) { sendHtml(res, renderPortalChangePwd('As senhas não coincidem.')); return; }
+      const sess = getPortalUser(req);
+      try {
+        const db = await getMongoDb();
+        const user = await db.collection('portal_users').findOne({ _id: sess.email });
+        if (!user) { sendHtml(res, renderPortalChangePwd('Sessão inválida.')); return; }
+        const oldHash = await hashPassword(old, user.salt);
+        if (oldHash !== user.passwordHash) { sendHtml(res, renderPortalChangePwd('Senha atual incorreta.')); return; }
+        const salt = genSalt();
+        const passwordHash = await hashPassword(pass, salt);
+        await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { passwordHash, salt } });
+        sendHtml(res, renderPortalChangePwd('', 'Senha alterada!')); return;
+      } catch(e) { sendHtml(res, renderPortalChangePwd('Erro ao alterar senha.')); return; }
+    }
+  }
+  // ══════════════ fim portal do cliente ══════════════════════
+
 
   sendJson(res, { error: 'not_found' }, 404);
 }
