@@ -163,6 +163,18 @@ function saveKey(code) {
   return Promise.resolve();
 }
 
+function deleteKeyFromDb(code) {
+  if (_saveDebounce.has(code)) { clearTimeout(_saveDebounce.get(code)); _saveDebounce.delete(code); }
+  delete keys[code];
+  invalidateKeysHtmlCache();
+  getMongoDb().then(db =>
+    db.collection('store').updateOne(
+      { _id: 'keys' },
+      { $unset: { [`data.${code}`]: '' }, $set: { updatedAt: new Date() } }
+    )
+  ).catch(e => console.error('[DB] Erro ao excluir chave:', e.message));
+}
+
 async function activateDeferredKey(code) {
   if (!keys[code]?.expireDuration) return false;
   const expiresAt   = new Date(Date.now() + keys[code].expireDuration).toISOString();
@@ -1104,11 +1116,21 @@ function _gzipSend(res, buf, status) {
   });
 }
 
+const _SEC_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'X-XSS-Protection': '1; mode=block',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+  'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+};
+
 function sendJson(res, data, status = 200) {
   const body = JSON.stringify(data);
   const buf  = Buffer.from(body, 'utf8');
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Connection', 'keep-alive');
+  Object.entries(_SEC_HEADERS).forEach(([k,v]) => res.setHeader(k, v));
   const accept = String(res.req?.headers?.['accept-encoding'] || '');
   if (buf.length > 2048 && accept.includes('gzip')) { _gzipSend(res, buf, status); return; }
   res.writeHead(status);
@@ -1120,6 +1142,7 @@ function sendHtml(res, html, status = 200) {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Connection', 'keep-alive');
+  Object.entries(_SEC_HEADERS).forEach(([k,v]) => res.setHeader(k, v));
   if (buf.length > 4096) { _gzipSend(res, buf, status); return; }
   res.writeHead(status);
   res.end(buf);
@@ -1304,14 +1327,14 @@ a.out:hover{color:var(--red);border-color:var(--red)}
 .empty{text-align:center;color:var(--tx3);padding:28px;font-size:12px;font-family:"Syne",sans-serif}
 .notice{background:var(--g-bg);border:1px solid var(--g-brd);border-radius:var(--r);padding:10px 14px;margin-bottom:12px;display:flex;align-items:flex-start;gap:10px;font-size:12px;color:var(--tx2);line-height:1.7;font-family:"Syne",sans-serif}
 .notice strong{color:var(--g)}
-.ach-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;padding:14px}
-.ach{background:var(--bg);border:1px solid var(--brd);border-radius:var(--r);padding:12px 14px 10px;display:flex;align-items:flex-start;gap:10px;transition:all .2s;position:relative;min-width:0}
+.ach-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;padding:14px}
+.ach{background:var(--bg);border:1px solid var(--brd);border-radius:var(--r);padding:14px 16px 12px;display:flex;align-items:flex-start;gap:12px;transition:all .2s;position:relative;min-width:0;min-height:72px}
 .ach.unlocked{border-color:var(--g-brd);background:var(--g-bg)}
 .ach.locked{opacity:.45;filter:grayscale(.6)}
-.ach-icon{font-size:22px;flex-shrink:0;line-height:1.2;margin-top:1px}
+.ach-icon{font-size:30px;flex-shrink:0;line-height:1.2;margin-top:2px}
 .ach-info{flex:1;min-width:0}
-.ach-name{font-family:"Syne",sans-serif;font-size:11px;font-weight:700;color:var(--tx);margin-bottom:2px;padding-right:18px}
-.ach-desc{font-size:10px;color:var(--tx3);line-height:1.4;font-family:"Syne",sans-serif}
+.ach-name{font-family:"Syne",sans-serif;font-size:13px;font-weight:700;color:var(--tx);margin-bottom:3px;padding-right:20px}
+.ach-desc{font-size:11px;color:var(--tx3);line-height:1.5;font-family:"Syne",sans-serif}
 .ach-badge{position:absolute;top:7px;right:7px;font-size:11px;line-height:1}
 .ach.unlocked .ach-badge{color:var(--g)}
 .ach.locked .ach-badge{color:var(--tx3)}
@@ -1536,7 +1559,7 @@ function switchTab(tab){
   document.querySelectorAll('.sec-panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===tab));
 }
 
-let _allKeys=[];
+let _allKeys=[],_myModName='';
 function filterKeys(){
   const q=(document.getElementById('fq')||{}).value||'';
   const st=(document.getElementById('fst')||{}).value||'';
@@ -1563,7 +1586,7 @@ function exportCSV(){
   const csv=[hdr,...rows].join('\\n');
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;a.download='minhas-chaves-zvm.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+  const a=document.createElement('a');a.href=url;a.download='chaves-'+(_myModName||'zvm').toLowerCase().replace(/[^a-z0-9]/g,'-')+'.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
   toast('✅ CSV exportado!');
 }
 
@@ -1666,7 +1689,7 @@ function renderRanking(ranking,myName){
   const medals=['🥇','🥈','🥉'];
   grid.innerHTML=ranking.map((r,i)=>'<div class="rank-row'+(r.name===myName?' me':'')+'"><div class="rank-pos">'+(medals[i]||('#'+(i+1)))+'</div><div class="rank-name">'+escHtml(r.name)+(r.name===myName?' <span class="rank-me-badge">Você</span>':'')+'</div><div class="rank-count">'+r.count+' chaves</div></div>').join('');
 }
-function updateStats(keys,myName){
+function updateStats(keys,myName,srvRanking){
   const now=new Date(),todayStr=now.toISOString().slice(0,10);
   const total=keys.length,active=keys.filter(k=>k.active).length;
   const expired=keys.filter(k=>!k.active&&k.expiresAt&&new Date(k.expiresAt)<now).length;
@@ -1678,12 +1701,8 @@ function updateStats(keys,myName){
   document.getElementById('stat-active').textContent=active;
   document.getElementById('stat-today').textContent=today;
   document.getElementById('stat-expiring').textContent=expiring;
-  const rankMap={};
-  _MODS.forEach(m=>rankMap[m]=0);
-  if(myName&&!(myName in rankMap))rankMap[myName]=0;
-  if(myName)rankMap[myName]=total;
-  const ranking=Object.entries(rankMap).map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count);
-  const myRank=ranking.findIndex(r=>r.name===myName)+1;
+  const ranking=srvRanking&&srvRanking.length?srvRanking:[];
+  const myRank=ranking.length?ranking.findIndex(r=>r.name===myName)+1:1;
   renderRanking(ranking,myName);
   renderAchievements({total,active,expired,today,rank:myRank,zapSaverCount,withNote});
 }
@@ -1695,11 +1714,12 @@ async function loadHistory(){
     const d=await r.json();
     if(d.error==='db_error'){toast('Erro de conexão. Tente novamente.',false);return;}
     _allKeys=d.keys||[];
+    if(d.modName)_myModName=d.modName;
     const tbody=document.getElementById('hist-body');
     if(!_allKeys.length){
       const msg=d.modName?'Nenhuma chave criada por <strong>'+escHtml(d.modName)+'</strong> ainda.':'Nenhuma chave encontrada.';
       tbody.innerHTML='<tr><td colspan="8" class="empty">'+msg+'</td></tr>';
-      updateStats([],d.modName);return;
+      updateStats([],d.modName,[]);return;
     }
     const now=Date.now();let expiringSoon=0,expired=0;
     tbody.innerHTML=_allKeys.map(k=>{
@@ -1729,7 +1749,7 @@ async function loadHistory(){
       document.getElementById('alert-expiring-text').innerHTML='⚠️ '+parts.join(' e ')+'. Contate o administrador.';
     }else{alertCard.style.display='none';}
     filterKeys();
-    updateStats(_allKeys,d.modName);
+    updateStats(_allKeys,d.modName,d.ranking||[]);
   }catch(e){toast('Erro ao carregar.',false);}
 }
 
@@ -1937,7 +1957,7 @@ function renderClientPortal() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Portal do Cliente</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d14'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZV%3C/text%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d14'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -3221,7 +3241,7 @@ function renderPlanosPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Planos e Preços</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d14'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZV%3C/text%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d14'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -3385,7 +3405,7 @@ function renderFaqPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — FAQ</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d14'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZV%3C/text%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d14'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -3594,7 +3614,7 @@ function renderPrivacyPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Política de Privacidade</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d14'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZV%3C/text%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d14'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -4908,6 +4928,7 @@ async function handleRequest(req, res) {
 
   if (p === R_MOD+'/api/keys' && req.method === 'POST') {
     if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate limit' }, 429); return; }
     const _modCookie = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
     const _modSess   = _modCookie ? modSessions[_modCookie[1]] : null;
     const modName    = _modSess ? _modSess.modName : 'Moderador';
@@ -4917,7 +4938,7 @@ async function handleRequest(req, res) {
     const { expiresAt, expireDuration } = parseKeyExpiryFromBody(body);
     const maxUses = Math.max(1, parseInt(body.maxUses) || MAX_USES);
     keys[code] = {
-      label: String(body.label).trim().slice(0, 60),
+      label: String(body.label).trim().replace(/[<>"']/g, '').slice(0, 60),
       active: true, createdAt: new Date().toISOString(),
       uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null,
       deviceId: null, wppVersion: null, note: '',
@@ -4951,7 +4972,17 @@ async function handleRequest(req, res) {
           zapSaver: !!(k.modules && k.modules.zapSaver),
         }))
         .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-      sendJson(res, { ok: true, keys: myKeys, modName: myModName }); return;
+      // Compute real ranking across all mods from full DB
+      const rankMap = {};
+      MODS.forEach(m => { rankMap[m.name] = 0; });
+      Object.values(dbKeys).forEach(k => {
+        const n = k.createdBy || ((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1] || '');
+        if (n && Object.prototype.hasOwnProperty.call(rankMap, n)) rankMap[n]++;
+      });
+      const ranking = Object.entries(rankMap)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count);
+      sendJson(res, { ok: true, keys: myKeys, modName: myModName, ranking }); return;
     } catch(e) {
       console.error('[DB] my-keys:', e.message);
       sendJson(res, { error: 'db_error' }, 500); return;
@@ -4966,7 +4997,8 @@ async function handleRequest(req, res) {
     const _mc3 = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
     const _ms3 = _mc3 ? modSessions[_mc3[1]] : null;
     const _myName3 = _ms3 ? _ms3.modName : null;
-    if (_myName3 && !((keys[codeFromUrl].note||'').includes('[Mod: '+_myName3+']'))) {
+    const _noteOwner3 = keys[codeFromUrl].createdBy === _myName3 || (keys[codeFromUrl].note||'').includes('[Mod: '+_myName3+']');
+    if (_myName3 && !_noteOwner3) {
       sendJson(res, { error: 'acesso negado' }, 403); return;
     }
     const body = await parseBody(req);
@@ -4992,8 +5024,7 @@ async function handleRequest(req, res) {
     if (!kDel) { sendJson(res, { error: 'not found' }, 404); return; }
     const isOwner = kDel.createdBy === _myName4 || ((kDel.note||'').includes('[Mod: '+_myName4+']'));
     if (!isOwner) { sendJson(res, { error: 'acesso negado' }, 403); return; }
-    delete keys[delCode];
-    saveKey(delCode);
+    deleteKeyFromDb(delCode);
     sendJson(res, { ok: true }); return;
   }
 
@@ -5150,11 +5181,7 @@ async function handleRequest(req, res) {
     const rawCodes = Array.isArray(body.codes) ? body.codes : [];
     if (!rawCodes.length) { sendJson(res, { error: 'nenhum código enviado' }, 400); return; }
     const validCodes = rawCodes.map(c => sanitizeId(String(c || ''), 40)).filter(c => c && keys[c]);
-    for (const c of validCodes) {
-      delete keys[c];
-      await deleteKeyFromDb(c);
-    }
-    invalidateKeysHtmlCache();
+    for (const c of validCodes) { deleteKeyFromDb(c); }
     sendJson(res, { ok: true, deleted: validCodes.length }); return;
   }
 
@@ -5187,8 +5214,7 @@ async function handleRequest(req, res) {
   const codeDelete = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)$`));
   if (codeDelete && req.method === 'DELETE') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    delete keys[codeDelete];
-    await deleteKeyFromDb(codeDelete);
+    deleteKeyFromDb(codeDelete);
     sendJson(res, { ok: true }); return;
   }
 
