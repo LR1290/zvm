@@ -1304,17 +1304,17 @@ a.out:hover{color:var(--red);border-color:var(--red)}
 .empty{text-align:center;color:var(--tx3);padding:28px;font-size:12px;font-family:"Syne",sans-serif}
 .notice{background:var(--g-bg);border:1px solid var(--g-brd);border-radius:var(--r);padding:10px 14px;margin-bottom:12px;display:flex;align-items:flex-start;gap:10px;font-size:12px;color:var(--tx2);line-height:1.7;font-family:"Syne",sans-serif}
 .notice strong{color:var(--g)}
-.ach-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;padding:14px}
-.ach{background:var(--bg);border:1px solid var(--brd);border-radius:var(--r);padding:12px 14px;display:flex;align-items:center;gap:10px;transition:all .2s;position:relative;overflow:hidden}
+.ach-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;padding:14px}
+.ach{background:var(--bg);border:1px solid var(--brd);border-radius:var(--r);padding:12px 14px 10px;display:flex;align-items:flex-start;gap:10px;transition:all .2s;position:relative;min-width:0}
 .ach.unlocked{border-color:var(--g-brd);background:var(--g-bg)}
-.ach.locked{opacity:.4;filter:grayscale(.8)}
-.ach-icon{font-size:22px;flex-shrink:0}
+.ach.locked{opacity:.45;filter:grayscale(.6)}
+.ach-icon{font-size:22px;flex-shrink:0;line-height:1.2;margin-top:1px}
 .ach-info{flex:1;min-width:0}
-.ach-name{font-family:"Syne",sans-serif;font-size:11px;font-weight:700;color:var(--tx);margin-bottom:2px}
+.ach-name{font-family:"Syne",sans-serif;font-size:11px;font-weight:700;color:var(--tx);margin-bottom:2px;padding-right:18px}
 .ach-desc{font-size:10px;color:var(--tx3);line-height:1.4;font-family:"Syne",sans-serif}
-.ach-badge{position:absolute;top:6px;right:6px;font-size:8px;font-weight:700;font-family:"Syne",sans-serif;padding:2px 5px;border-radius:8px;text-transform:uppercase;letter-spacing:.4px}
-.ach.unlocked .ach-badge{background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd)}
-.ach.locked .ach-badge{background:#ffffff08;color:var(--tx3);border:1px solid var(--brd)}
+.ach-badge{position:absolute;top:7px;right:7px;font-size:11px;line-height:1}
+.ach.unlocked .ach-badge{color:var(--g)}
+.ach.locked .ach-badge{color:var(--tx3)}
 .rank-grid{padding:12px;display:flex;flex-direction:column;gap:6px}
 .rank-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--r);background:var(--bg);border:1px solid var(--brd);transition:all .2s}
 .rank-row.me{border-color:var(--g-brd);background:var(--g-bg)}
@@ -1387,7 +1387,6 @@ a.out:hover{color:var(--red);border-color:var(--red)}
 <nav class="rsidebar">
   <div class="rsb-title">Navegação</div>
   <button class="rtab active" data-tab="create" onclick="switchTab('create')"><span class="rtab-icon">🔑</span><span class="rtab-label">Gerar Chave</span></button>
-  <button class="rtab" data-tab="mykeys" onclick="switchTab('mykeys')"><span class="rtab-icon">📋</span><span class="rtab-label">Minhas Chaves</span></button>
   <button class="rtab" data-tab="achievements" onclick="switchTab('achievements')"><span class="rtab-icon">🏆</span><span class="rtab-label">Conquistas</span></button>
   <button class="rtab" data-tab="ranking" onclick="switchTab('ranking')"><span class="rtab-icon">📊</span><span class="rtab-label">Ranking</span></button>
 </nav>
@@ -1395,7 +1394,7 @@ a.out:hover{color:var(--red);border-color:var(--red)}
 <!-- Content -->
 <div class="mod-content">
 
-  <!-- ── GERAR CHAVE ── -->
+  <!-- ── GERAR CHAVE + MINHAS CHAVES ── -->
   <div class="sec-panel active" data-panel="create">
     <div class="notice">
       <span style="font-size:15px;flex-shrink:0">🔒</span>
@@ -1432,21 +1431,30 @@ a.out:hover{color:var(--red);border-color:var(--red)}
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- ── MINHAS CHAVES ── -->
-  <div class="sec-panel" data-panel="mykeys">
+    <!-- Keys table -->
     <div class="sec">
       <div class="sh">
-        <div class="st">📋 Chaves Criadas por Mim</div>
-        <button class="btn btn-sec" onclick="loadHistory()">↻ Atualizar</button>
+        <div class="st">📋 Minhas Chaves</div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input type="text" id="fq" placeholder="Buscar cliente/chave..." oninput="filterKeys()" style="padding:4px 8px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:11px;width:160px;font-family:'Space Mono',monospace;outline:none" onfocus="this.style.borderColor='var(--g)'" onblur="this.style.borderColor='var(--brd)'">
+          <select id="fst" onchange="filterKeys()" style="padding:4px 7px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:11px;font-family:'Syne',sans-serif;outline:none;cursor:pointer">
+            <option value="">Todos status</option>
+            <option value="ativa">Ativas</option>
+            <option value="expirada">Expiradas</option>
+            <option value="expirando">Expirando &lt;48h</option>
+            <option value="deferred">Aguardando uso</option>
+          </select>
+          <button class="btn btn-sec" style="font-size:11px;padding:4px 9px" onclick="exportCSV()">⬇ CSV</button>
+          <button class="btn btn-sec" style="font-size:11px;padding:4px 9px" onclick="loadHistory()">↻ Atualizar</button>
+        </div>
       </div>
       <div style="overflow-x:auto">
         <table class="hist-table">
           <thead><tr>
             <th>Chave</th><th>Cliente</th><th>Usos</th><th>Validade</th><th>Criada em</th><th>Nota</th><th>Status</th><th>Ações</th>
           </tr></thead>
-          <tbody id="hist-body"><tr><td colspan="8" class="empty">Clique em Atualizar para carregar</td></tr></tbody>
+          <tbody id="hist-body"><tr><td colspan="8" class="empty">Carregando...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -1455,8 +1463,20 @@ a.out:hover{color:var(--red);border-color:var(--red)}
   <!-- ── CONQUISTAS ── -->
   <div class="sec-panel" data-panel="achievements">
     <div class="sec">
-      <div class="sh"><div class="st">🏆 Conquistas</div><span id="ach-count" style="font-size:11px;color:var(--muted);font-family:'Syne',sans-serif"></span></div>
-      <div class="ach-grid" id="ach-grid"><div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Atualizando...</div></div>
+      <div class="sh">
+        <div class="st">🏆 Conquistas</div>
+        <span id="ach-count" style="font-size:11px;color:var(--tx3);font-family:'Syne',sans-serif"></span>
+      </div>
+      <div style="padding:10px 14px 4px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <span style="font-size:10px;color:var(--tx3);font-family:'Syne',sans-serif;text-transform:uppercase;letter-spacing:.5px">Progresso Geral</span>
+          <span id="ach-pct" style="font-size:10px;color:var(--g);font-family:'Syne',sans-serif;font-weight:700">0%</span>
+        </div>
+        <div style="height:4px;background:var(--brd);border-radius:2px;overflow:hidden">
+          <div id="ach-progress-bar" style="height:4px;background:linear-gradient(90deg,var(--g),#00ff87);border-radius:2px;width:0%;transition:width .6s ease"></div>
+        </div>
+      </div>
+      <div class="ach-grid" id="ach-grid"><div style="padding:20px;text-align:center;color:var(--tx3);font-size:13px">Atualizando...</div></div>
     </div>
   </div>
 
@@ -1464,7 +1484,7 @@ a.out:hover{color:var(--red);border-color:var(--red)}
   <div class="sec-panel" data-panel="ranking">
     <div class="sec">
       <div class="sh"><div class="st">📊 Ranking de Moderadores</div></div>
-      <div class="rank-grid" id="rank-grid"><div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Atualizando...</div></div>
+      <div class="rank-grid" id="rank-grid"><div style="padding:20px;text-align:center;color:var(--tx3);font-size:13px">Atualizando...</div></div>
     </div>
   </div>
 
@@ -1483,7 +1503,7 @@ a.out:hover{color:var(--red);border-color:var(--red)}
 </div></div>
 
 <div class="modal-bg" id="renameModal"><div class="modal">
-  <h3>✏️ Renomear Cliente — <span id="renameLabelPreview" style="color:var(--muted);font-weight:400;font-size:12px"></span></h3>
+  <h3>✏️ Renomear Cliente — <span id="renameLabelPreview" style="color:var(--tx3);font-weight:400;font-size:12px"></span></h3>
   <input type="hidden" id="renameCode">
   <input type="text" id="renameInput" placeholder="Novo nome do cliente" maxlength="60">
   <div class="modal-actions">
@@ -1495,7 +1515,7 @@ a.out:hover{color:var(--red);border-color:var(--red)}
 <div class="modal-bg" id="deleteModal"><div class="modal">
   <h3>🗑️ Excluir Chave</h3>
   <input type="hidden" id="deleteCode">
-  <p style="font-size:13px;color:var(--muted);margin-bottom:6px;font-family:'Syne',sans-serif">Tem certeza que deseja excluir a chave <strong id="deleteLabelPreview" style="color:var(--text)"></strong>?</p>
+  <p style="font-size:13px;color:var(--tx3);margin-bottom:6px;font-family:'Syne',sans-serif">Tem certeza que deseja excluir a chave <strong id="deleteLabelPreview" style="color:var(--tx)"></strong>?</p>
   <p style="font-size:12px;color:var(--red);font-family:'Syne',sans-serif">Esta ação é irreversível.</p>
   <div class="modal-actions">
     <button class="modal-cancel" onclick="closeDelete()">Cancelar</button>
@@ -1514,7 +1534,37 @@ function toast(msg,ok=true){const t=document.getElementById('toast');t.textConte
 function switchTab(tab){
   document.querySelectorAll('.rtab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
   document.querySelectorAll('.sec-panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===tab));
-  if(tab==='mykeys'&&document.getElementById('hist-body').textContent.trim().startsWith('Clique'))loadHistory();
+}
+
+let _allKeys=[];
+function filterKeys(){
+  const q=(document.getElementById('fq')||{}).value||'';
+  const st=(document.getElementById('fst')||{}).value||'';
+  const ql=q.toLowerCase();
+  const rows=document.querySelectorAll('#hist-body tr[data-code]');
+  rows.forEach(row=>{
+    const matchQ=!ql||(row.dataset.label||'').toLowerCase().includes(ql)||(row.dataset.code||'').toLowerCase().includes(ql);
+    const rowSt=row.dataset.st||'';
+    const matchSt=!st||rowSt===st;
+    row.style.display=(matchQ&&matchSt)?'':'none';
+  });
+}
+
+function exportCSV(){
+  if(!_allKeys.length){toast('Nenhuma chave para exportar.',false);return;}
+  const hdr='Chave,Cliente,Max Usos,Validade,Criada em,Status,Nota';
+  const rows=_allKeys.map(k=>{
+    const st=k.active?'ATIVA':'INATIVA';
+    const exp=k.deferred?'Ativa ao 1 uso':k.expiresAt?new Date(k.expiresAt).toLocaleString('pt-BR'):'Sem expiracao';
+    const created=k.createdAt?new Date(k.createdAt).toLocaleString('pt-BR'):'';
+    const note=(k.note||'').replace(/"/g,"'");
+    return [k.code,k.label,k.maxUses,exp,created,st,'"'+note+'"'].join(',');
+  });
+  const csv=[hdr,...rows].join('\\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='minhas-chaves-zvm.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+  toast('✅ CSV exportado!');
 }
 
 async function createKey(){
@@ -1551,20 +1601,26 @@ function fmtDate(iso){if(!iso)return'—';const d=new Date(iso);return d.toLocal
 function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
 const ACHIEVEMENTS=[
-  {id:'first_key',icon:'🔑',name:'Primeira Chave',desc:'Crie sua primeira chave',req:k=>k.total>=1},
-  {id:'keys_5',icon:'🎯',name:'5 Chaves',desc:'Crie 5 chaves no total',req:k=>k.total>=5},
-  {id:'keys_10',icon:'💪',name:'10 Chaves',desc:'Crie 10 chaves no total',req:k=>k.total>=10},
-  {id:'keys_25',icon:'🚀',name:'25 Chaves',desc:'Crie 25 chaves no total',req:k=>k.total>=25},
-  {id:'keys_50',icon:'⭐',name:'50 Chaves',desc:'Crie 50 chaves no total',req:k=>k.total>=50},
-  {id:'keys_100',icon:'💎',name:'100 Chaves',desc:'Crie 100 chaves no total',req:k=>k.total>=100},
-  {id:'today_3',icon:'⚡',name:'Sprint do Dia',desc:'Crie 3 chaves em um único dia',req:k=>k.today>=3},
-  {id:'today_5',icon:'🔥',name:'Em Chamas',desc:'Crie 5 chaves em um único dia',req:k=>k.today>=5},
-  {id:'today_10',icon:'🌋',name:'Imparável',desc:'Crie 10 chaves em um único dia',req:k=>k.today>=10},
-  {id:'active_10',icon:'✅',name:'10 Ativas',desc:'Tenha 10 chaves ativas ao mesmo tempo',req:k=>k.active>=10},
-  {id:'active_25',icon:'🏅',name:'25 Ativas',desc:'Tenha 25 chaves ativas ao mesmo tempo',req:k=>k.active>=25},
-  {id:'rank_1',icon:'🥇',name:'Número 1',desc:'Seja o moderador com mais chaves',req:k=>k.rank===1},
-  {id:'no_expired',icon:'🛡️',name:'Zero Expiradas',desc:'Nenhuma chave expirada (min. 5 ativas)',req:k=>k.expired===0&&k.active>=5},
+  {id:'first_key',icon:'🔑',name:'Primeira Chave',desc:'Crie sua primeira chave',max:1,val:s=>s.total},
+  {id:'keys_5',icon:'🎯',name:'5 Chaves',desc:'Crie 5 chaves no total',max:5,val:s=>s.total},
+  {id:'keys_10',icon:'💪',name:'10 Chaves',desc:'Crie 10 chaves no total',max:10,val:s=>s.total},
+  {id:'keys_25',icon:'🚀',name:'25 Chaves',desc:'Crie 25 chaves no total',max:25,val:s=>s.total},
+  {id:'keys_50',icon:'⭐',name:'50 Chaves',desc:'Crie 50 chaves no total',max:50,val:s=>s.total},
+  {id:'keys_100',icon:'💎',name:'100 Chaves',desc:'Crie 100 chaves no total',max:100,val:s=>s.total},
+  {id:'keys_200',icon:'👑',name:'200 Chaves',desc:'Crie 200 chaves no total',max:200,val:s=>s.total},
+  {id:'today_3',icon:'⚡',name:'Sprint do Dia',desc:'Crie 3 chaves em um único dia',max:3,val:s=>s.today},
+  {id:'today_5',icon:'🔥',name:'Em Chamas',desc:'Crie 5 chaves em um único dia',max:5,val:s=>s.today},
+  {id:'today_10',icon:'🌋',name:'Imparável',desc:'Crie 10 chaves em um único dia',max:10,val:s=>s.today},
+  {id:'active_5',icon:'🟢',name:'5 Ativas',desc:'Tenha 5 chaves ativas ao mesmo tempo',max:5,val:s=>s.active},
+  {id:'active_10',icon:'✅',name:'10 Ativas',desc:'Tenha 10 chaves ativas ao mesmo tempo',max:10,val:s=>s.active},
+  {id:'active_25',icon:'🏅',name:'25 Ativas',desc:'Tenha 25 chaves ativas ao mesmo tempo',max:25,val:s=>s.active},
+  {id:'active_50',icon:'🔮',name:'50 Ativas',desc:'Tenha 50 chaves ativas ao mesmo tempo',max:50,val:s=>s.active},
+  {id:'rank_1',icon:'🥇',name:'Número 1',desc:'Seja o moderador com mais chaves',max:1,val:s=>s.rank===1?1:0},
+  {id:'no_expired',icon:'🛡️',name:'Zero Expiradas',desc:'Nenhuma expirada (min. 5 ativas)',max:1,val:s=>(s.expired===0&&s.active>=5)?1:0},
+  {id:'zap_saver',icon:'💾',name:'ZapSaver Master',desc:'Crie 10 chaves com ZapSaver ativo',max:10,val:s=>s.zapSaverCount||0},
+  {id:'note_master',icon:'📝',name:'Nota Mestre',desc:'Adicione notas em 5 chaves',max:5,val:s=>s.withNote||0},
 ];
+
 let _prevUnlocked=null,_trophyQueue=[],_trophyBusy=false;
 function showTrophy(a){
   document.getElementById('tn-icon').textContent=a.icon;
@@ -1580,7 +1636,7 @@ function showTrophy(a){
 }
 function queueTrophy(a){if(_trophyBusy){_trophyQueue.push(a);return;}_trophyBusy=true;showTrophy(a);}
 function checkNewAchievements(stats){
-  const now=new Set(ACHIEVEMENTS.filter(a=>a.req(stats)).map(a=>a.id));
+  const now=new Set(ACHIEVEMENTS.filter(a=>a.val(stats)>=a.max).map(a=>a.id));
   if(_prevUnlocked===null){_prevUnlocked=now;return;}
   for(const a of ACHIEVEMENTS){if(!_prevUnlocked.has(a.id)&&now.has(a.id))queueTrophy(a);}
   _prevUnlocked=now;
@@ -1590,14 +1646,23 @@ function renderAchievements(stats){
   const grid=document.getElementById('ach-grid');
   const cel=document.getElementById('ach-count');
   if(!grid)return;
-  const unlocked=ACHIEVEMENTS.filter(a=>a.req(stats));
+  const unlocked=ACHIEVEMENTS.filter(a=>a.val(stats)>=a.max);
+  const pct=Math.round(unlocked.length/ACHIEVEMENTS.length*100);
   if(cel)cel.textContent=unlocked.length+'/'+ACHIEVEMENTS.length+' conquistadas';
-  grid.innerHTML=ACHIEVEMENTS.map(a=>{const ok=a.req(stats);return'<div class="ach '+(ok?'unlocked':'locked')+'"><div class="ach-icon">'+a.icon+'</div><div class="ach-info"><div class="ach-name">'+a.name+'</div><div class="ach-desc">'+a.desc+'</div></div><div class="ach-badge">'+(ok?'✓ Conquistada':'Bloqueada')+'</div></div>';}).join('');
+  const pb=document.getElementById('ach-progress-bar');
+  const pp=document.getElementById('ach-pct');
+  if(pb)pb.style.width=pct+'%';
+  if(pp)pp.textContent=pct+'%';
+  grid.innerHTML=ACHIEVEMENTS.map(a=>{
+    const v=Math.min(a.val(stats),a.max),ok=v>=a.max,pct2=a.max===1?100:Math.round(v/a.max*100);
+    const progBar=ok?'':'<div style="margin-top:5px;height:2px;background:var(--brd);border-radius:1px;overflow:hidden"><div style="height:2px;background:var(--g);border-radius:1px;width:'+pct2+'%;opacity:.6;transition:width .4s"></div></div><div style="font-size:9px;color:var(--tx3);margin-top:2px;font-family:Syne,sans-serif">'+v+'/'+a.max+'</div>';
+    return '<div class="ach '+(ok?'unlocked':'locked')+'"><div class="ach-icon">'+a.icon+'</div><div class="ach-info"><div class="ach-name">'+a.name+'</div><div class="ach-desc">'+a.desc+'</div>'+progBar+'</div><div class="ach-badge">'+(ok?'✓':'🔒')+'</div></div>';
+  }).join('');
 }
 function renderRanking(ranking,myName){
   const grid=document.getElementById('rank-grid');
   if(!grid)return;
-  if(!ranking.length){grid.innerHTML='<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Sem dados</div>';return;}
+  if(!ranking.length){grid.innerHTML='<div style="padding:20px;text-align:center;color:var(--tx3);font-size:13px">Sem dados</div>';return;}
   const medals=['🥇','🥈','🥉'];
   grid.innerHTML=ranking.map((r,i)=>'<div class="rank-row'+(r.name===myName?' me':'')+'"><div class="rank-pos">'+(medals[i]||('#'+(i+1)))+'</div><div class="rank-name">'+escHtml(r.name)+(r.name===myName?' <span class="rank-me-badge">Você</span>':'')+'</div><div class="rank-count">'+r.count+' chaves</div></div>').join('');
 }
@@ -1607,6 +1672,8 @@ function updateStats(keys,myName){
   const expired=keys.filter(k=>!k.active&&k.expiresAt&&new Date(k.expiresAt)<now).length;
   const today=keys.filter(k=>(k.createdAt||'').startsWith(todayStr)).length;
   const expiring=keys.filter(k=>{if(!k.expiresAt||!k.active)return false;const h=(new Date(k.expiresAt)-now)/3600000;return h>0&&h<48;}).length;
+  const zapSaverCount=keys.filter(k=>k.zapSaver).length;
+  const withNote=keys.filter(k=>k.note&&k.note.trim()).length;
   document.getElementById('stat-total').textContent=total;
   document.getElementById('stat-active').textContent=active;
   document.getElementById('stat-today').textContent=today;
@@ -1618,7 +1685,7 @@ function updateStats(keys,myName){
   const ranking=Object.entries(rankMap).map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count);
   const myRank=ranking.findIndex(r=>r.name===myName)+1;
   renderRanking(ranking,myName);
-  renderAchievements({total,active,expired,today,rank:myRank});
+  renderAchievements({total,active,expired,today,rank:myRank,zapSaverCount,withNote});
 }
 
 async function loadHistory(){
@@ -1627,29 +1694,31 @@ async function loadHistory(){
     if(r.status===401){toast('Sessão expirada. Redirecionando...',false);setTimeout(()=>location.href=_RM+'/logout',1500);return;}
     const d=await r.json();
     if(d.error==='db_error'){toast('Erro de conexão. Tente novamente.',false);return;}
+    _allKeys=d.keys||[];
     const tbody=document.getElementById('hist-body');
-    if(!d.keys||d.keys.length===0){
+    if(!_allKeys.length){
       const msg=d.modName?'Nenhuma chave criada por <strong>'+escHtml(d.modName)+'</strong> ainda.':'Nenhuma chave encontrada.';
       tbody.innerHTML='<tr><td colspan="8" class="empty">'+msg+'</td></tr>';
       updateStats([],d.modName);return;
     }
     const now=Date.now();let expiringSoon=0,expired=0;
-    tbody.innerHTML=d.keys.map(k=>{
-      let expHtml='',expClass='';
-      if(k.deferred){expHtml='<span style="color:var(--muted);font-size:11px">Ativa ao 1º uso</span>';}
+    tbody.innerHTML=_allKeys.map(k=>{
+      let expHtml='',expClass='',stTag='';
+      if(k.deferred){expHtml='<span style="color:var(--tx3);font-size:11px">Ativa ao 1º uso</span>';stTag='deferred';}
       else if(k.expiresAt){
         const expTs=new Date(k.expiresAt).getTime(),diffH=Math.floor((expTs-now)/3600000),diffD=Math.floor(diffH/24),expDate=fmtDate(k.expiresAt);
-        if(expTs<now){expired++;expHtml=expDate+'<br><span class="badge-expired">EXPIRADA</span>';expClass=' style="background:#ff000008"';}
-        else if(diffH<48){expiringSoon++;const lbl=diffH<1?'<1h':diffH<24?diffH+'h':diffD+'d';expHtml=expDate+'<br><span class="badge-exp">⚠ '+lbl+'</span>';expClass=' style="background:#ff860008"';}
-        else{const lbl=diffD>0?diffD+'d '+(diffH%24>0?(diffH%24)+'h':''):diffH+'h';expHtml=expDate+'<br><span style="color:var(--green);font-size:11px">'+lbl.trim()+' restantes</span>';}
-      }else{expHtml='<span style="color:var(--muted)">Sem expiração</span>';}
+        if(expTs<now){expired++;expHtml=expDate+'<br><span class="badge-expired">EXPIRADA</span>';expClass=' style="background:#ff000008"';stTag='expirada';}
+        else if(diffH<48){expiringSoon++;const lbl=diffH<1?'<1h':diffH<24?diffH+'h':diffD+'d';expHtml=expDate+'<br><span class="badge-exp">⚠ '+lbl+'</span>';expClass=' style="background:#ff860008"';stTag='expirando';}
+        else{const lbl=diffD>0?diffD+'d '+(diffH%24>0?(diffH%24)+'h':''):diffH+'h';expHtml=expDate+'<br><span style="color:var(--g);font-size:11px">'+lbl.trim()+' restantes</span>';stTag='ativa';}
+      }else{expHtml='<span style="color:var(--tx3)">Sem expiração</span>';stTag='ativa';}
+      if(!k.active&&stTag!=='expirada')stTag='expirada';
       const st=k.active?'<span class="badge-bon">ATIVA</span>':'<span class="badge-expired">INATIVA</span>';
       const noteClean=(k.note||'').trim();
-      const noteHtml=noteClean?'<span style="font-size:11px;color:var(--muted)">'+escHtml(noteClean)+'</span>':'<span style="color:var(--muted);font-size:11px">—</span>';
+      const noteHtml=noteClean?'<span style="font-size:11px;color:var(--tx3)">'+escHtml(noteClean)+'</span>':'<span style="color:var(--tx3);font-size:11px">—</span>';
       const acts='<button class="btn-rename" onclick="openRename(\\''+escHtml(k.code)+'\\',\\''+escHtml(k.label)+'\\')">✏ Renomear</button> '
                 +'<button class="btn-note" onclick="openModNote(\\''+escHtml(k.code)+'\\',\\''+escHtml(k.label)+'\\',\\''+escHtml(noteClean)+'\\')">📝 Nota</button> '
                 +'<button class="btn-del" onclick="openDelete(\\''+escHtml(k.code)+'\\',\\''+escHtml(k.label)+'\\')">🗑 Excluir</button>';
-      return '<tr'+expClass+'><td><span class="kc">'+escHtml(k.code)+'</span></td><td>'+escHtml(k.label)+'</td><td>'+k.maxUses+'</td><td>'+expHtml+'</td><td style="font-size:11px">'+fmtDate(k.createdAt)+'</td><td>'+noteHtml+'</td><td>'+st+'</td><td style="white-space:nowrap">'+acts+'</td></tr>';
+      return '<tr'+expClass+' data-code="'+escHtml(k.code)+'" data-label="'+escHtml(k.label)+'" data-st="'+stTag+'"><td><span class="kc">'+escHtml(k.code)+'</span></td><td>'+escHtml(k.label)+'</td><td>'+k.maxUses+'</td><td>'+expHtml+'</td><td style="font-size:11px">'+fmtDate(k.createdAt)+'</td><td>'+noteHtml+'</td><td>'+st+'</td><td style="white-space:nowrap">'+acts+'</td></tr>';
     }).join('');
     const alertCard=document.getElementById('alert-expiring');
     if(expired>0||expiringSoon>0){
@@ -1659,7 +1728,8 @@ async function loadHistory(){
       if(expiringSoon>0)parts.push('<strong>'+expiringSoon+' expirando em 48h</strong>');
       document.getElementById('alert-expiring-text').innerHTML='⚠️ '+parts.join(' e ')+'. Contate o administrador.';
     }else{alertCard.style.display='none';}
-    updateStats(d.keys,d.modName);
+    filterKeys();
+    updateStats(_allKeys,d.modName);
   }catch(e){toast('Erro ao carregar.',false);}
 }
 
@@ -1728,7 +1798,7 @@ async function doDelete(){
   }catch(e){toast('Erro de rede.',false);}
 }
 
-setTimeout(loadHistory,300);
+loadHistory();
 </script>
 ${CANVAS_BG}</body></html>`;
 }
