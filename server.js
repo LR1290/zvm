@@ -1005,9 +1005,8 @@ async function getPaymentStats() {
 
     const modStats = {};
     Object.values(keys).forEach(k => {
-      const match = (k.note||'').match(/\[Mod: ([^\]]+)\]/);
-      if (match) {
-        const name = match[1];
+      const name = k.createdBy || ((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1] || '');
+      if (name) {
         if (!modStats[name]) modStats[name] = 0;
         modStats[name]++;
       }
@@ -1218,120 +1217,157 @@ function renderModDashboard(modName = 'Moderador') {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Moderação</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
   --blue:#4f8ef7;--dark:#080810;--card:#0f0f1a;--card2:#13131f;
   --border:#1c1c2e;--border2:#252538;--text:#e2e2f0;--muted:#5a5a7a;
-  --red:#ff4757;--green:#00ff87;--radius:10px;--radius-sm:6px;
+  --red:#ff4757;--green:#00ff87;--orange:#ff8600;--r:8px;--r-sm:5px;
+  --hdr:52px;--sb-w:48px;--sb-open:178px;
 }
-body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
-header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040}
-.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--blue);display:flex;align-items:center;gap:8px;letter-spacing:-0.5px}
-main{position:relative;z-index:1}
-.badge-mod{background:#4f8ef712;border:1px solid #4f8ef730;color:var(--blue);font-size:12px;letter-spacing:0;text-transform:uppercase;padding:4px 12px;border-radius:20px;font-family:'Syne',sans-serif;font-weight:700}
+*{font-family:'Space Mono',monospace}
+body{background:var(--dark);color:var(--text);min-height:100vh;overflow-x:hidden;display:flex;flex-direction:column}
+/* Header */
+header{height:var(--hdr);display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 1px 4px #00000060,0 4px 16px #00000040}
+.logo{font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--blue);display:flex;align-items:center;gap:8px;letter-spacing:-.5px}
+.badge-mod{background:#4f8ef712;border:1px solid #4f8ef730;color:var(--blue);font-size:11px;text-transform:uppercase;padding:3px 10px;border-radius:20px;font-family:'Syne',sans-serif;font-weight:700;letter-spacing:.3px}
 .hright{display:flex;align-items:center;gap:10px}
-a.out{color:var(--muted);font-size:13px;text-decoration:none;padding:6px 14px;border:1px solid var(--border2);border-radius:var(--radius-sm);transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
+a.out{color:var(--muted);font-size:12px;text-decoration:none;padding:5px 12px;border:1px solid var(--border2);border-radius:var(--r-sm);transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
 a.out:hover{color:var(--red);border-color:var(--red)}
-main{padding:28px 32px;max-width:1200px;margin:0 auto}
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}
-.sc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:24px 26px;position:relative;overflow:hidden;transition:border-color .2s}
+/* Wrap */
+.mod-wrap{display:flex;flex:1;height:calc(100vh - var(--hdr))}
+/* Sidebar */
+.rsidebar{width:var(--sb-w);flex-shrink:0;background:rgba(8,8,8,.97);border-right:1px solid var(--border);position:sticky;top:var(--hdr);height:calc(100vh - var(--hdr));display:flex;flex-direction:column;overflow:hidden;transition:width .2s cubic-bezier(.4,0,.2,1);z-index:40}
+.rsidebar:hover{width:var(--sb-open)}
+.rsb-title{font-size:9px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1.4px;padding:14px 14px 8px;border-bottom:1px solid var(--border);white-space:nowrap;opacity:0;transition:opacity .15s;font-family:'Syne',sans-serif}
+.rsidebar:hover .rsb-title{opacity:1}
+.rtab{display:flex;align-items:center;gap:11px;width:100%;padding:11px 14px;background:transparent;border:none;border-left:2px solid transparent;color:var(--muted);font-size:12px;font-weight:600;text-align:left;cursor:pointer;transition:all .15s;white-space:nowrap;overflow:hidden;font-family:'Syne',sans-serif}
+.rtab:hover{background:#4f8ef710;color:var(--text);border-left-color:#4f8ef740}
+.rtab.active{background:#4f8ef710;color:var(--blue);border-left-color:var(--blue)}
+.rtab-icon{font-size:14px;flex-shrink:0;line-height:1;width:16px;text-align:center}
+.rtab-label{opacity:0;transition:opacity .12s}
+.rsidebar:hover .rtab-label{opacity:1}
+/* Main content */
+.mod-content{flex:1;overflow-y:auto;padding:20px 24px;min-width:0}
+/* Panels */
+.sec-panel{display:none}
+.sec-panel.active{display:block}
+/* Stats */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.sc{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;position:relative;overflow:hidden;transition:border-color .18s}
 .sc:hover{border-color:var(--border2)}
-.sc-icon{position:absolute;right:14px;top:14px;font-size:22px;opacity:.12}
-.sc .n{font-family:'Syne',sans-serif;font-size:40px;font-weight:800;color:var(--blue);line-height:1}
-.sc .l{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.5px;margin-top:6px;font-family:'Syne',sans-serif}
-.notice{background:#4f8ef708;border:1px solid #4f8ef720;border-radius:var(--radius);padding:16px 20px;margin-bottom:20px;display:flex;align-items:flex-start;gap:14px;font-size:15px;color:#a0a0c0;line-height:1.7;font-family:'Syne',sans-serif}
-.notice strong{color:var(--blue)}
-.alert-card{background:#ff860008;border:1px solid #ff860040;border-radius:var(--radius);padding:12px 18px;margin-bottom:20px;display:none;align-items:center;gap:12px;font-size:13px;color:#ff8600;font-family:'Syne',sans-serif}
-.badge-exp{background:#ff860018;color:#ff8600;border:1px solid #ff860040;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:700;font-family:'Syne',sans-serif}
-.badge-expired{background:#ff475718;color:#ff4757;border:1px solid #ff475740;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:700;font-family:'Syne',sans-serif}
-.sec{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:20px}
-.sh{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border);background:var(--card2);flex-wrap:wrap;gap:10px}
+.sc-icon{position:absolute;right:12px;top:12px;font-size:18px;opacity:.1}
+.sc .n{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:var(--blue);line-height:1}
+.sc .l{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-top:4px;font-family:'Syne',sans-serif}
+/* Alert */
+.alert-card{background:#ff860008;border:1px solid #ff860040;border-radius:var(--r);padding:10px 16px;margin-bottom:14px;display:none;align-items:center;gap:10px;font-size:12px;color:var(--orange);font-family:'Syne',sans-serif}
+/* Section */
+.sec{background:var(--card);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:14px}
+.sh{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--card2);flex-wrap:wrap;gap:8px}
 .st{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:var(--blue);display:flex;align-items:center;gap:6px}
-.form-body{padding:20px 18px}
-.form-grid{display:grid;grid-template-columns:2fr auto auto auto auto auto;gap:12px;align-items:end}
+/* Form */
+.form-body{padding:16px}
+.form-grid{display:grid;grid-template-columns:1fr auto auto auto auto;gap:10px;align-items:end}
 .fi{display:flex;flex-direction:column;gap:4px}
-.fi label{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;font-family:'Syne',sans-serif;font-weight:600}
-.fi input{padding:10px 13px;background:var(--dark);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Syne',sans-serif;font-size:14px;outline:none;transition:border .18s}
+.fi label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;font-family:'Syne',sans-serif;font-weight:600}
+.fi input{padding:7px 10px;background:var(--dark);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:'Space Mono',monospace;font-size:13px;outline:none;transition:border .18s}
 .fi input:focus{border-color:var(--blue)}
 .fi input::placeholder{color:var(--muted)}
-.fi-wide{grid-column:1}
-.fi-num input{width:70px;text-align:center}
-.btn{padding:9px 18px;background:var(--blue);color:#000;border:none;border-radius:var(--radius-sm);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;cursor:pointer;transition:all .18s;white-space:nowrap;align-self:end}
-.btn:hover{opacity:.85;transform:translateY(-1px)}
-.result-box{display:none;margin-top:18px;background:var(--dark);border:1px solid #4f8ef730;border-radius:var(--radius);padding:18px 20px}
+.fi-num input{width:60px;text-align:center}
+.btn{padding:7px 14px;border:none;border-radius:var(--r-sm);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;cursor:pointer;transition:all .18s;white-space:nowrap}
+.btn-primary{background:var(--blue);color:#000}
+.btn-primary:hover{opacity:.85;transform:translateY(-1px)}
+.btn-sec{background:#4f8ef718;color:var(--blue);border:1px solid #4f8ef730}
+.btn-sec:hover{background:#4f8ef730}
+.btn-del{background:#ff475718;color:var(--red);border:1px solid #ff475730;padding:2px 7px;font-size:11px;border-radius:3px;cursor:pointer;transition:all .15s}
+.btn-del:hover{background:#ff475730;transform:translateY(-1px)}
+.btn-rename{background:#4f8ef710;color:var(--blue);border:1px solid #4f8ef730;padding:2px 7px;font-size:11px;border-radius:3px;cursor:pointer;transition:all .15s}
+.btn-rename:hover{background:#4f8ef720;transform:translateY(-1px)}
+.btn-note{background:#00ff8710;color:var(--green);border:1px solid #00ff8730;padding:2px 7px;font-size:11px;border-radius:3px;cursor:pointer;transition:all .15s}
+.btn-note:hover{background:#00ff8720;transform:translateY(-1px)}
+/* Result */
+.result-box{display:none;margin-top:14px;background:var(--dark);border:1px solid #4f8ef730;border-radius:var(--r);padding:16px}
 .result-box.show{display:block}
-.result-label{font-size:12px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;font-family:'Syne',sans-serif}
-.result-key{font-family:'Space Mono',monospace;font-size:22px;color:var(--blue);letter-spacing:2px;word-break:break-all;margin-bottom:16px}
-.result-meta{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
-.result-tag{background:#4f8ef712;border:1px solid #4f8ef720;color:var(--blue);font-size:12px;padding:3px 10px;border-radius:20px}
-.copy-btn{padding:8px 16px;background:#4f8ef718;color:var(--blue);border:1px solid #4f8ef730;border-radius:var(--radius-sm);font-family:'Syne',sans-serif;font-weight:700;font-size:13px;cursor:pointer;transition:all .2s}
-.hist-table{width:100%;border-collapse:collapse;font-size:14px;font-family:'Syne',sans-serif}
-.hist-table th{padding:9px 12px;text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--border);background:var(--card2);font-weight:600;font-family:'Syne',sans-serif}
-.hist-table td{padding:10px 12px;border-bottom:1px solid #14141f;vertical-align:middle}
+.result-label{font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;font-family:'Syne',sans-serif}
+.result-key{font-family:'Space Mono',monospace;font-size:18px;color:var(--blue);letter-spacing:2px;word-break:break-all;margin-bottom:12px}
+.result-meta{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.result-tag{background:#4f8ef712;border:1px solid #4f8ef720;color:var(--blue);font-size:11px;padding:2px 9px;border-radius:20px;font-family:'Syne',sans-serif}
+.copy-btn{padding:6px 14px;background:#4f8ef718;color:var(--blue);border:1px solid #4f8ef730;border-radius:var(--r-sm);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;cursor:pointer;transition:all .2s}
+.copy-btn:hover{background:#4f8ef730}
+/* Table */
+.hist-table{width:100%;border-collapse:collapse;font-size:13px}
+.hist-table th{padding:7px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--border);background:var(--card2);font-weight:600;font-family:'Syne',sans-serif}
+.hist-table td{padding:8px 10px;border-bottom:1px solid #14141f;vertical-align:middle}
 .hist-table tr:last-child td{border-bottom:none}
 .hist-table tr:hover td{background:#ffffff02}
-.kc{color:var(--blue);font-size:13px;letter-spacing:.2px;font-family:'Space Mono',monospace}
-.badge{padding:2px 7px;border-radius:3px;font-size:11px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;font-family:'Syne',sans-serif}
-.bon{background:#00ff8718;color:var(--green);border:1px solid #00ff8730}
-.empty{text-align:center;color:var(--muted);padding:30px;font-size:13px;font-family:'Syne',sans-serif}
-.note-btn{padding:3px 8px;background:#4f8ef710;color:var(--blue);border:1px solid #4f8ef730;border-radius:4px;cursor:pointer;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;transition:all .15s}
-.note-btn:hover{background:#4f8ef722;border-color:var(--blue)}
-
-.ach-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;padding:18px}
-.ach{background:var(--dark);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;transition:all .2s;position:relative;overflow:hidden}
+.kc{color:var(--blue);font-size:12px;letter-spacing:.2px;font-family:'Space Mono',monospace}
+.badge-bon{background:#00ff8718;color:var(--green);border:1px solid #00ff8730;padding:2px 7px;border-radius:3px;font-size:11px;font-weight:700;font-family:'Syne',sans-serif}
+.badge-exp{background:#ff860018;color:var(--orange);border:1px solid #ff860040;padding:2px 7px;border-radius:3px;font-size:11px;font-weight:700;font-family:'Syne',sans-serif}
+.badge-expired{background:#ff475718;color:var(--red);border:1px solid #ff475740;padding:2px 7px;border-radius:3px;font-size:11px;font-weight:700;font-family:'Syne',sans-serif}
+.empty{text-align:center;color:var(--muted);padding:28px;font-size:12px;font-family:'Syne',sans-serif}
+/* Notice */
+.notice{background:#4f8ef708;border:1px solid #4f8ef720;border-radius:var(--r);padding:12px 16px;margin-bottom:14px;display:flex;align-items:flex-start;gap:12px;font-size:13px;color:#a0a0c0;line-height:1.7;font-family:'Syne',sans-serif}
+.notice strong{color:var(--blue)}
+/* Achievements */
+.ach-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;padding:14px}
+.ach{background:var(--dark);border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:flex;align-items:center;gap:10px;transition:all .2s;position:relative;overflow:hidden}
 .ach.unlocked{border-color:#4f8ef740;background:#4f8ef708}
-.ach.locked{opacity:.45;filter:grayscale(.8)}
-.ach-icon{font-size:28px;flex-shrink:0}
+.ach.locked{opacity:.4;filter:grayscale(.8)}
+.ach-icon{font-size:24px;flex-shrink:0}
 .ach-info{flex:1;min-width:0}
-.ach-name{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--text);margin-bottom:2px}
-.ach-desc{font-size:11px;color:var(--muted);line-height:1.4}
-.ach-badge{position:absolute;top:8px;right:8px;font-size:9px;font-weight:700;font-family:'Syne',sans-serif;padding:2px 6px;border-radius:10px;text-transform:uppercase;letter-spacing:.5px}
+.ach-name{font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:var(--text);margin-bottom:2px}
+.ach-desc{font-size:10px;color:var(--muted);line-height:1.4;font-family:'Syne',sans-serif}
+.ach-badge{position:absolute;top:6px;right:6px;font-size:8px;font-weight:700;font-family:'Syne',sans-serif;padding:2px 5px;border-radius:8px;text-transform:uppercase;letter-spacing:.4px}
 .ach.unlocked .ach-badge{background:#4f8ef720;color:var(--blue);border:1px solid #4f8ef740}
 .ach.locked .ach-badge{background:#ffffff08;color:var(--muted);border:1px solid var(--border)}
-
-.rank-grid{padding:18px;display:flex;flex-direction:column;gap:8px}
-.rank-row{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;background:var(--dark);border:1px solid var(--border);transition:all .2s}
+/* Ranking */
+.rank-grid{padding:14px;display:flex;flex-direction:column;gap:6px}
+.rank-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;background:var(--dark);border:1px solid var(--border);transition:all .2s}
 .rank-row.me{border-color:#4f8ef760;background:#4f8ef710}
-.rank-pos{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:var(--muted);width:28px;flex-shrink:0;text-align:center}
+.rank-pos{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:var(--muted);width:24px;flex-shrink:0;text-align:center}
 .rank-row:nth-child(1) .rank-pos{color:#ffd32a}
 .rank-row:nth-child(2) .rank-pos{color:#a0a0b0}
 .rank-row:nth-child(3) .rank-pos{color:#cd7f32}
-.rank-name{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;flex:1;color:var(--text)}
-.rank-count{font-family:'Space Mono',monospace;font-size:13px;color:var(--blue);font-weight:700}
-.rank-me-badge{font-size:10px;background:#4f8ef718;color:var(--blue);border:1px solid #4f8ef730;padding:2px 8px;border-radius:10px;font-family:'Syne',sans-serif;font-weight:700}
-.toast{position:fixed;bottom:20px;right:20px;padding:11px 18px;border-radius:var(--radius);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;display:none;z-index:999999;box-shadow:0 6px 30px #00000070}
-
+.rank-name{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;flex:1;color:var(--text)}
+.rank-count{font-family:'Space Mono',monospace;font-size:12px;color:var(--blue);font-weight:700}
+.rank-me-badge{font-size:9px;background:#4f8ef718;color:var(--blue);border:1px solid #4f8ef730;padding:1px 7px;border-radius:8px;font-family:'Syne',sans-serif;font-weight:700}
+/* Toast */
+.toast{position:fixed;bottom:18px;right:18px;padding:10px 16px;border-radius:var(--r);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;display:none;z-index:999999;box-shadow:0 6px 30px #00000070}
+/* Modal */
 .modal-bg{display:none;position:fixed;inset:0;background:#00000090;z-index:99999;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
 .modal-bg.open{display:flex}
-.modal{background:var(--card);border:1px solid var(--border2);border-radius:12px;padding:22px;width:380px;max-width:95vw;box-shadow:0 20px 60px #00000090}
+.modal{background:var(--card);border:1px solid var(--border2);border-radius:10px;padding:20px;width:360px;max-width:95vw;box-shadow:0 20px 60px #00000090}
 .modal h3{font-family:'Syne',sans-serif;font-size:14px;margin-bottom:12px;color:var(--blue)}
-.modal textarea{width:100%;background:var(--dark);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Syne',sans-serif;font-size:13px;padding:10px;outline:none;resize:vertical;min-height:90px;transition:border .2s}
+.modal input[type=text]{width:100%;padding:8px 10px;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:'Space Mono',monospace;font-size:13px;outline:none;transition:border .2s}
+.modal input[type=text]:focus{border-color:var(--blue)}
+.modal textarea{width:100%;background:var(--dark);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:'Space Mono',monospace;font-size:13px;padding:8px 10px;outline:none;resize:vertical;min-height:80px;transition:border .2s}
 .modal textarea:focus{border-color:var(--blue)}
 .modal-actions{display:flex;gap:8px;margin-top:12px;justify-content:flex-end}
-
-#trophy-notif{position:fixed;bottom:28px;right:-420px;z-index:9999999;width:360px;background:linear-gradient(135deg,#0d0d1a,#141428);border:1px solid #4f8ef750;border-radius:14px;overflow:hidden;box-shadow:0 8px 40px #00000080;transition:right .5s cubic-bezier(.34,1.56,.64,1)}
-#trophy-notif.show{right:28px}
+.modal-cancel{padding:6px 12px;background:var(--card2);color:var(--muted);border:1px solid var(--border);border-radius:5px;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;cursor:pointer}
+.modal-save{padding:6px 12px;background:var(--blue);color:#fff;border:none;border-radius:5px;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;cursor:pointer}
+.modal-danger{padding:6px 12px;background:var(--red);color:#fff;border:none;border-radius:5px;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;cursor:pointer}
+/* Trophy */
+#trophy-notif{position:fixed;bottom:28px;right:-420px;z-index:9999999;width:340px;background:linear-gradient(135deg,#0d0d1a,#141428);border:1px solid #4f8ef750;border-radius:12px;overflow:hidden;box-shadow:0 8px 40px #00000080;transition:right .5s cubic-bezier(.34,1.56,.64,1)}
+#trophy-notif.show{right:24px}
 #trophy-notif.hide{right:-420px;transition:right .4s ease-in}
-.tn-top{display:flex;align-items:center;padding:10px 14px 8px;border-bottom:1px solid #ffffff08}
-.tn-trophy-icon{font-size:11px;color:#ffd32a;font-family:'Syne',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;display:flex;align-items:center;gap:5px}
-.tn-trophy-icon::before{content:'🏆';font-size:13px}
-.tn-body{display:flex;align-items:center;gap:14px;padding:14px}
-.tn-icon{font-size:42px;flex-shrink:0;line-height:1}
+.tn-top{display:flex;align-items:center;padding:8px 12px 6px;border-bottom:1px solid #ffffff08}
+.tn-trophy-icon{font-size:10px;color:#ffd32a;font-family:'Syne',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;display:flex;align-items:center;gap:5px}
+.tn-trophy-icon::before{content:'🏆';font-size:12px}
+.tn-body{display:flex;align-items:center;gap:12px;padding:12px}
+.tn-icon{font-size:36px;flex-shrink:0;line-height:1}
 .tn-text{flex:1;min-width:0}
-.tn-label{font-size:10px;color:#4f8ef7;font-family:'Syne',sans-serif;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:3px}
-.tn-name{font-size:16px;font-weight:800;color:#fff;font-family:'Syne',sans-serif;margin-bottom:3px}
-.tn-desc{font-size:12px;color:#8a8aaa;font-family:'Syne',sans-serif}
-.tn-bar-wrap{height:3px;background:#ffffff10;margin:0 14px 14px;border-radius:2px;overflow:hidden}
+.tn-label{font-size:10px;color:#4f8ef7;font-family:'Syne',sans-serif;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:2px}
+.tn-name{font-size:14px;font-weight:800;color:#fff;font-family:'Syne',sans-serif;margin-bottom:2px}
+.tn-desc{font-size:11px;color:#8a8aaa;font-family:'Syne',sans-serif}
+.tn-bar-wrap{height:3px;background:#ffffff10;margin:0 12px 12px;border-radius:2px;overflow:hidden}
 .tn-bar{height:3px;background:linear-gradient(90deg,#4f8ef7,#00ff87);border-radius:2px;width:0;transition:width 3s linear}
-@media(max-width:1100px){.main-grid{grid-template-columns:1fr}}
 @media(max-width:900px){.stats{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:700px){.form-grid{grid-template-columns:1fr 1fr};.stats{grid-template-columns:1fr 1fr};.ach-grid{grid-template-columns:1fr}}
+@media(max-width:700px){.form-grid{grid-template-columns:1fr 1fr};.rsidebar{display:none}}
 </style>
 </head>
 <body>
-<!-- PS5 Trophy Notification -->
+<!-- Trophy Notification -->
 <div id="trophy-notif">
   <div class="tn-top"><div class="tn-trophy-icon">Conquista Desbloqueada</div></div>
   <div class="tn-body">
@@ -1346,91 +1382,131 @@ main{padding:28px 32px;max-width:1200px;margin:0 auto}
 </div>
 
 <header>
-  <div class="logo">⚡ ZVM <span class="badge-mod">${modName}</span></div>
-  <div class="hright"><a href="${R_MOD}/logout" class="out">↩ Sair</a></div>
+  <div class="logo">⚡ ZVM <span class="badge-mod">MODERADOR</span></div>
+  <div class="hright">
+    <span style="font-size:12px;color:var(--muted);font-family:'Syne',sans-serif">${modName}</span>
+    <a href="${R_MOD}/logout" class="out">↩ Sair</a>
+  </div>
 </header>
 
-<main>
-  <div class="notice">
-    <span style="font-size:16px;flex-shrink:0">🔒</span>
-    <span><strong>Acesso restrito.</strong> Este painel permite apenas a criação de novas chaves. Dados de clientes, telefones, IPs e logs de acesso não estão disponíveis para moderadores.</span>
-  </div>
+<div class="mod-wrap">
+<!-- Left Sidebar -->
+<nav class="rsidebar">
+  <div class="rsb-title">Navegação</div>
+  <button class="rtab active" data-tab="create" onclick="switchTab('create')"><span class="rtab-icon">🔑</span><span class="rtab-label">Gerar Chave</span></button>
+  <button class="rtab" data-tab="mykeys" onclick="switchTab('mykeys')"><span class="rtab-icon">📋</span><span class="rtab-label">Minhas Chaves</span></button>
+  <button class="rtab" data-tab="achievements" onclick="switchTab('achievements')"><span class="rtab-icon">🏆</span><span class="rtab-label">Conquistas</span></button>
+  <button class="rtab" data-tab="ranking" onclick="switchTab('ranking')"><span class="rtab-icon">📊</span><span class="rtab-label">Ranking</span></button>
+</nav>
 
-  <!-- Stats -->
-  <div class="stats">
-    <div class="sc"><div class="sc-icon">🔑</div><div class="n" id="stat-total">—</div><div class="l">Total de Chaves</div></div>
-    <div class="sc"><div class="sc-icon">✅</div><div class="n" id="stat-active">—</div><div class="l">Chaves Ativas</div></div>
-    <div class="sc"><div class="sc-icon">📅</div><div class="n" id="stat-today">—</div><div class="l">Criadas Hoje</div></div>
-    <div class="sc"><div class="sc-icon">⚠️</div><div class="n" id="stat-expiring" style="color:#ff8600">—</div><div class="l">Expirando em 48h</div></div>
-  </div>
+<!-- Content -->
+<div class="mod-content">
 
-  <!-- Conquistas + Ranking — movidos para sidebar direita junto com tabela -->
-
-  <div class="alert-card" id="alert-expiring">
-    <span style="font-size:18px;flex-shrink:0">⚠️</span>
-    <span id="alert-expiring-text"></span>
-  </div>
-
-  <div style="display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start">
-  <div><!-- coluna esquerda: formulário + tabela -->
-  <div class="sec">
-    <div class="sh"><div class="st">🔑 Criar Nova Chave</div></div>
-    <div class="form-body">
-      <div class="form-grid">
-        <div class="fi fi-wide">
-          <label>Nome do Cliente</label>
-          <input type="text" id="nlabel" placeholder="Ex: João Silva" autocomplete="off">
-        </div>
-        <div class="fi fi-num"><label>Dias</label><input type="number" id="ndays" placeholder="0" min="0"></div>
-        <div class="fi fi-num"><label>Horas</label><input type="number" id="nhours" placeholder="0" min="0"></div>
-        <div class="fi fi-num"><label>Usos</label><input type="number" id="nuses" placeholder="3" min="1"></div>
-        <input type="hidden" id="ndeferred" value="1">
-        <button class="btn" onclick="createKey()">+ Gerar</button>
-      </div>
-      <div class="result-box" id="result-box">
-        <div class="result-label">Chave criada com sucesso</div>
-        <div class="result-key" id="result-key"></div>
-        <div class="result-meta" id="result-meta"></div>
-        <button class="copy-btn" onclick="copyKey()">📋 Copiar Chave</button>
-      </div>
+  <!-- ── GERAR CHAVE ── -->
+  <div class="sec-panel active" data-panel="create">
+    <div class="notice">
+      <span style="font-size:15px;flex-shrink:0">🔒</span>
+      <span><strong>Acesso restrito.</strong> Apenas criação de chaves. Dados de clientes, telefones, IPs e logs não estão disponíveis.</span>
     </div>
-  </div>
-
-  <div class="sec">
-    <div class="sh">
-      <div class="st">📋 Chaves Criadas por Mim</div>
-      <button class="btn" style="background:#4f8ef718;color:var(--blue);border:1px solid #4f8ef730;font-size:13px;padding:6px 12px" onclick="loadHistory()">↻ Atualizar</button>
+    <div class="stats">
+      <div class="sc"><div class="sc-icon">🔑</div><div class="n" id="stat-total">—</div><div class="l">Total de Chaves</div></div>
+      <div class="sc"><div class="sc-icon">✅</div><div class="n" id="stat-active">—</div><div class="l">Chaves Ativas</div></div>
+      <div class="sc"><div class="sc-icon">📅</div><div class="n" id="stat-today">—</div><div class="l">Criadas Hoje</div></div>
+      <div class="sc"><div class="sc-icon">⚠️</div><div class="n" id="stat-expiring" style="color:var(--orange)">—</div><div class="l">Expirando 48h</div></div>
     </div>
-    <div style="overflow-x:auto">
-      <table class="hist-table">
-        <thead><tr>
-          <th>Chave</th><th>Cliente</th><th>Usos</th><th>Validade</th><th>Criada em</th><th>Nota</th><th>Status</th>
-        </tr></thead>
-        <tbody id="hist-body"><tr><td colspan="7" class="empty">Clique em Atualizar para carregar</td></tr></tbody>
-      </table>
-    </div>
-  </div>
-  </div><!-- fim coluna esquerda -->
-  <div><!-- coluna direita: conquistas + ranking -->
-    <div class="sec" style="margin-bottom:20px">
-      <div class="sh"><div class="st">🏆 Conquistas</div><span id="ach-count" style="font-size:11px;color:var(--muted);font-family:'Syne',sans-serif"></span></div>
-      <div class="ach-grid" id="ach-grid"><div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Clique em Atualizar para carregar</div></div>
+    <div class="alert-card" id="alert-expiring">
+      <span style="font-size:16px;flex-shrink:0">⚠️</span>
+      <span id="alert-expiring-text"></span>
     </div>
     <div class="sec">
-      <div class="sh"><div class="st">📊 Ranking</div></div>
-      <div class="rank-grid" id="rank-grid"><div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Clique em Atualizar para carregar</div></div>
+      <div class="sh"><div class="st">🔑 Criar Nova Chave</div></div>
+      <div class="form-body">
+        <div class="form-grid">
+          <div class="fi">
+            <label>Nome do Cliente</label>
+            <input type="text" id="nlabel" placeholder="Ex: João Silva" autocomplete="off">
+          </div>
+          <div class="fi"><label>Dias</label><div class="fi-num"><input type="number" id="ndays" placeholder="0" min="0"></div></div>
+          <div class="fi"><label>Horas</label><div class="fi-num"><input type="number" id="nhours" placeholder="0" min="0"></div></div>
+          <div class="fi"><label>Usos</label><div class="fi-num"><input type="number" id="nuses" placeholder="3" min="1"></div></div>
+          <button class="btn btn-primary" style="align-self:flex-end" onclick="createKey()">+ Gerar</button>
+        </div>
+        <div class="result-box" id="result-box">
+          <div class="result-label">Chave criada com sucesso</div>
+          <div class="result-key" id="result-key"></div>
+          <div class="result-meta" id="result-meta"></div>
+          <button class="copy-btn" onclick="copyKey()">📋 Copiar Chave</button>
+        </div>
+      </div>
     </div>
-  </div><!-- fim coluna direita -->
-  </div><!-- fim grid principal -->
-</main>
+  </div>
 
+  <!-- ── MINHAS CHAVES ── -->
+  <div class="sec-panel" data-panel="mykeys">
+    <div class="sec">
+      <div class="sh">
+        <div class="st">📋 Chaves Criadas por Mim</div>
+        <button class="btn btn-sec" onclick="loadHistory()">↻ Atualizar</button>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="hist-table">
+          <thead><tr>
+            <th>Chave</th><th>Cliente</th><th>Usos</th><th>Validade</th><th>Criada em</th><th>Nota</th><th>Status</th><th>Ações</th>
+          </tr></thead>
+          <tbody id="hist-body"><tr><td colspan="8" class="empty">Clique em Atualizar para carregar</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── CONQUISTAS ── -->
+  <div class="sec-panel" data-panel="achievements">
+    <div class="sec">
+      <div class="sh"><div class="st">🏆 Conquistas</div><span id="ach-count" style="font-size:11px;color:var(--muted);font-family:'Syne',sans-serif"></span></div>
+      <div class="ach-grid" id="ach-grid"><div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Atualizando...</div></div>
+    </div>
+  </div>
+
+  <!-- ── RANKING ── -->
+  <div class="sec-panel" data-panel="ranking">
+    <div class="sec">
+      <div class="sh"><div class="st">📊 Ranking de Moderadores</div></div>
+      <div class="rank-grid" id="rank-grid"><div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Atualizando...</div></div>
+    </div>
+  </div>
+
+</div><!-- fim mod-content -->
+</div><!-- fim mod-wrap -->
+
+<!-- Modals -->
 <div class="modal-bg" id="modNoteModal"><div class="modal">
   <h3>📝 Nota — <span id="modNoteLabel"></span></h3>
   <input type="hidden" id="modNoteCode">
   <textarea id="modNoteText" placeholder="Ex: Cliente preferencial, renovação pendente..."></textarea>
   <div class="modal-actions">
-    <button style="padding:7px 14px;background:#1e1e2e;color:var(--muted);border:1px solid var(--border);border-radius:6px;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;cursor:pointer" onclick="closeModNote()">Cancelar</button>
-    <button style="padding:7px 14px;background:var(--blue);color:#fff;border:none;border-radius:6px;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;cursor:pointer" onclick="saveModNote()">Salvar</button>
+    <button class="modal-cancel" onclick="closeModNote()">Cancelar</button>
+    <button class="modal-save" onclick="saveModNote()">Salvar</button>
+  </div>
+</div></div>
+
+<div class="modal-bg" id="renameModal"><div class="modal">
+  <h3>✏️ Renomear Cliente — <span id="renameLabelPreview" style="color:var(--muted);font-weight:400;font-size:12px"></span></h3>
+  <input type="hidden" id="renameCode">
+  <input type="text" id="renameInput" placeholder="Novo nome do cliente" maxlength="60">
+  <div class="modal-actions">
+    <button class="modal-cancel" onclick="closeRename()">Cancelar</button>
+    <button class="modal-save" onclick="doRename()">Salvar</button>
+  </div>
+</div></div>
+
+<div class="modal-bg" id="deleteModal"><div class="modal">
+  <h3>🗑️ Excluir Chave</h3>
+  <input type="hidden" id="deleteCode">
+  <p style="font-size:13px;color:var(--muted);margin-bottom:6px;font-family:'Syne',sans-serif">Tem certeza que deseja excluir a chave <strong id="deleteLabelPreview" style="color:var(--text)"></strong>?</p>
+  <p style="font-size:12px;color:var(--red);font-family:'Syne',sans-serif">Esta ação é irreversível.</p>
+  <div class="modal-actions">
+    <button class="modal-cancel" onclick="closeDelete()">Cancelar</button>
+    <button class="modal-danger" onclick="doDelete()">Excluir</button>
   </div>
 </div></div>
 
@@ -1441,6 +1517,12 @@ const _RM = '${R_MOD}';
 const _MODS = ${JSON.stringify(MODS.map(m => m.name))};
 
 function toast(msg,ok=true){const t=document.getElementById('toast');t.textContent=msg;t.style.background=ok?'var(--blue)':'var(--red)';t.style.color='#fff';t.style.display='block';setTimeout(()=>t.style.display='none',3200);}
+
+function switchTab(tab){
+  document.querySelectorAll('.rtab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
+  document.querySelectorAll('.sec-panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===tab));
+  if(tab==='mykeys'&&document.getElementById('hist-body').textContent.trim().startsWith('Clique'))loadHistory();
+}
 
 async function createKey(){
   const label=document.getElementById('nlabel').value.trim();
@@ -1461,7 +1543,7 @@ async function createKey(){
     document.getElementById('result-key').textContent=d.key;
     const meta=[];const exp=[];if(days>0)exp.push(days+'d');if(hours>0)exp.push(hours+'h');
     meta.push(exp.length?exp.join(' ')+' de validade':'Sem expiração');
-    meta.push(maxUses+' dispositivo(s)');meta.push('Ativa ao 1º uso');
+    meta.push(maxUses+' dispositivo(s)');meta.push('Ativa ao 1º uso');meta.push('ZapSaver ✓');
     document.getElementById('result-meta').innerHTML=meta.map(m=>'<span class="result-tag">'+m+'</span>').join('');
     document.getElementById('result-box').classList.add('show');
     ['nlabel','ndays','nhours','nuses'].forEach(id=>document.getElementById(id).value='');
@@ -1516,7 +1598,7 @@ function renderAchievements(stats){
   const cel=document.getElementById('ach-count');
   if(!grid)return;
   const unlocked=ACHIEVEMENTS.filter(a=>a.req(stats));
-  cel.textContent=unlocked.length+'/'+ACHIEVEMENTS.length+' conquistadas';
+  if(cel)cel.textContent=unlocked.length+'/'+ACHIEVEMENTS.length+' conquistadas';
   grid.innerHTML=ACHIEVEMENTS.map(a=>{const ok=a.req(stats);return'<div class="ach '+(ok?'unlocked':'locked')+'"><div class="ach-icon">'+a.icon+'</div><div class="ach-info"><div class="ach-name">'+a.name+'</div><div class="ach-desc">'+a.desc+'</div></div><div class="ach-badge">'+(ok?'✓ Conquistada':'Bloqueada')+'</div></div>';}).join('');
 }
 function renderRanking(ranking,myName){
@@ -1554,25 +1636,27 @@ async function loadHistory(){
     if(d.error==='db_error'){toast('Erro de conexão. Tente novamente.',false);return;}
     const tbody=document.getElementById('hist-body');
     if(!d.keys||d.keys.length===0){
-      const msg=d.modName?'Nenhuma chave atribuída a <strong>'+escHtml(d.modName)+'</strong> ainda.':'Nenhuma chave encontrada.';
-      tbody.innerHTML='<tr><td colspan="7" class="empty">'+msg+'</td></tr>';
+      const msg=d.modName?'Nenhuma chave criada por <strong>'+escHtml(d.modName)+'</strong> ainda.':'Nenhuma chave encontrada.';
+      tbody.innerHTML='<tr><td colspan="8" class="empty">'+msg+'</td></tr>';
       updateStats([],d.modName);return;
     }
     const now=Date.now();let expiringSoon=0,expired=0;
     tbody.innerHTML=d.keys.map(k=>{
       let expHtml='',expClass='';
-      if(k.deferred){expHtml='<span style="color:var(--muted);font-size:12px">Ativa ao 1º uso</span>';}
+      if(k.deferred){expHtml='<span style="color:var(--muted);font-size:11px">Ativa ao 1º uso</span>';}
       else if(k.expiresAt){
         const expTs=new Date(k.expiresAt).getTime(),diffH=Math.floor((expTs-now)/3600000),diffD=Math.floor(diffH/24),expDate=fmtDate(k.expiresAt);
         if(expTs<now){expired++;expHtml=expDate+'<br><span class="badge-expired">EXPIRADA</span>';expClass=' style="background:#ff000008"';}
-        else if(diffH<48){expiringSoon++;const lbl=diffH<1?'menos de 1h':diffH<24?diffH+'h restantes':diffD+'d restantes';expHtml=expDate+'<br><span class="badge-exp" style="font-size:13px">⚠ '+lbl+'</span>';expClass=' style="background:#ff860008"';}
-        else{const lbl=diffD>0?diffD+'d '+(diffH%24>0?(diffH%24)+'h':''):diffH+'h';expHtml=expDate+'<br><span style="color:var(--green);font-size:13px;font-family:Syne,sans-serif;font-weight:600">'+lbl.trim()+' restantes</span>';}
+        else if(diffH<48){expiringSoon++;const lbl=diffH<1?'<1h':diffH<24?diffH+'h':diffD+'d';expHtml=expDate+'<br><span class="badge-exp">⚠ '+lbl+'</span>';expClass=' style="background:#ff860008"';}
+        else{const lbl=diffD>0?diffD+'d '+(diffH%24>0?(diffH%24)+'h':''):diffH+'h';expHtml=expDate+'<br><span style="color:var(--green);font-size:11px">'+lbl.trim()+' restantes</span>';}
       }else{expHtml='<span style="color:var(--muted)">Sem expiração</span>';}
-      const st=k.active?'<span class="badge bon">ATIVA</span>':'<span class="badge-expired">INATIVA</span>';
-      const noteClean=(k.note||'').replace(/\[Mod:[^\]]+\]\s*/g,'').trim();
-      const noteBtn='<button class="note-btn" data-code="'+escHtml(k.code)+'" data-label="'+escHtml(k.label)+'" data-note="'+escHtml(noteClean)+'" onclick="openModNoteEl(this)" style="float:right;margin-left:6px">✏️</button>';
-      const noteHtml=noteClean?'<span style="font-size:12px;color:var(--muted);font-family:Syne,sans-serif;display:block;clear:both">'+escHtml(noteClean)+'</span>':'';
-      return '<tr'+expClass+'><td><span class="kc">'+k.code+'</span></td><td>'+escHtml(k.label)+'</td><td>'+k.maxUses+'</td><td>'+expHtml+'</td><td>'+fmtDate(k.createdAt)+'</td><td>'+noteBtn+noteHtml+'</td><td>'+st+'</td></tr>';
+      const st=k.active?'<span class="badge-bon">ATIVA</span>':'<span class="badge-expired">INATIVA</span>';
+      const noteClean=(k.note||'').trim();
+      const noteHtml=noteClean?'<span style="font-size:11px;color:var(--muted)">'+escHtml(noteClean)+'</span>':'<span style="color:var(--muted);font-size:11px">—</span>';
+      const acts='<button class="btn-rename" onclick="openRename(\''+escHtml(k.code)+'\',\''+escHtml(k.label)+'\')">✏ Renomear</button> '
+                +'<button class="btn-note" onclick="openModNote(\''+escHtml(k.code)+'\',\''+escHtml(k.label)+'\',\''+escHtml(noteClean)+'\')">📝 Nota</button> '
+                +'<button class="btn-del" onclick="openDelete(\''+escHtml(k.code)+'\',\''+escHtml(k.label)+'\')">🗑 Excluir</button>';
+      return '<tr'+expClass+'><td><span class="kc">'+escHtml(k.code)+'</span></td><td>'+escHtml(k.label)+'</td><td>'+k.maxUses+'</td><td>'+expHtml+'</td><td style="font-size:11px">'+fmtDate(k.createdAt)+'</td><td>'+noteHtml+'</td><td>'+st+'</td><td style="white-space:nowrap">'+acts+'</td></tr>';
     }).join('');
     const alertCard=document.getElementById('alert-expiring');
     if(expired>0||expiringSoon>0){
@@ -1586,7 +1670,7 @@ async function loadHistory(){
   }catch(e){toast('Erro ao carregar.',false);}
 }
 
-function openModNoteEl(el){openModNote(el.dataset.code,el.dataset.label,el.dataset.note);}
+// Note modal
 function openModNote(code,label,currentNote){
   document.getElementById('modNoteCode').value=code;
   document.getElementById('modNoteLabel').textContent=label;
@@ -1604,6 +1688,49 @@ async function saveModNote(){
     if(r.status===401){toast('Sessão expirada.',false);return;}
     const d=await r.json();
     if(d.ok){toast('✅ Nota salva!');closeModNote();await loadHistory();}
+    else toast('Erro: '+(d.error||'?'),false);
+  }catch(e){toast('Erro de rede.',false);}
+}
+
+// Rename modal
+function openRename(code,label){
+  document.getElementById('renameCode').value=code;
+  document.getElementById('renameLabelPreview').textContent=label;
+  document.getElementById('renameInput').value=label;
+  document.getElementById('renameModal').classList.add('open');
+  setTimeout(()=>{const i=document.getElementById('renameInput');i.focus();i.select();},100);
+}
+function closeRename(){document.getElementById('renameModal').classList.remove('open');}
+document.getElementById('renameModal').addEventListener('click',function(e){if(e.target===this)closeRename();});
+async function doRename(){
+  const code=document.getElementById('renameCode').value;
+  const label=document.getElementById('renameInput').value.trim();
+  if(!label){toast('Informe o nome.',false);return;}
+  try{
+    const r=await fetch(_RM+'/api/keys/'+encodeURIComponent(code)+'/rename',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label})});
+    if(r.status===401){toast('Sessão expirada.',false);return;}
+    const d=await r.json();
+    if(d.ok){toast('✅ Renomeado!');closeRename();await loadHistory();}
+    else toast('Erro: '+(d.error||'?'),false);
+  }catch(e){toast('Erro de rede.',false);}
+}
+
+// Delete modal
+function openDelete(code,label){
+  document.getElementById('deleteCode').value=code;
+  document.getElementById('deleteLabelPreview').textContent=label;
+  document.getElementById('deleteModal').classList.add('open');
+}
+function closeDelete(){document.getElementById('deleteModal').classList.remove('open');}
+document.getElementById('deleteModal').addEventListener('click',function(e){if(e.target===this)closeDelete();});
+async function doDelete(){
+  const code=document.getElementById('deleteCode').value;
+  try{
+    const r=await fetch(_RM+'/api/keys/'+encodeURIComponent(code),{method:'DELETE'});
+    if(r.status===401){toast('Sessão expirada.',false);return;}
+    if(r.status===403){toast('Acesso negado.',false);closeDelete();return;}
+    const d=await r.json();
+    if(d.ok){toast('🗑️ Chave excluída!');closeDelete();await loadHistory();}
     else toast('Erro: '+(d.error||'?'),false);
   }catch(e){toast('Erro de rede.',false);}
 }
@@ -2088,11 +2215,12 @@ function buildKeysHtml() {
     const deferredAttr = (!k.expiresAt && k.expireDuration) ? '1' : '0';
     const dispStatus   = getKeyDisplayStatus(k);
     const zsOn         = !!(k.modules && k.modules.zapSaver);
+    const createdBy    = k.createdBy || ((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1] || '');
 
-    return `<tr data-code="${escHtml(code)}" data-expires-at="${escHtml(k.expiresAt || '')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-lastused="${escHtml(k.lastUsed||'')}"${rowStyle}>
+    return `<tr data-code="${escHtml(code)}" data-expires-at="${escHtml(k.expiresAt || '')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-lastused="${escHtml(k.lastUsed||'')}" data-createdby="${escHtml(createdBy.toLowerCase())}"${rowStyle}>
 <td style="width:34px;padding:3px 6px"><input type="checkbox" class="key-cb" data-code="${escHtml(code)}" style="width:13px;height:13px;cursor:pointer;accent-color:var(--g)"></td>
 <td><span class="kc">${escHtml(code)}</span></td>
-<td>${escHtml(k.label)}${zsOn?'<span title="ZapSaver ativo" style="color:#4f8ef7;font-size:11px;margin-left:4px">💾</span>':''}</td>
+<td>${escHtml(k.label)}${zsOn?'<span title="ZapSaver ativo" style="color:#4f8ef7;font-size:11px;margin-left:4px">💾</span>':''}${createdBy?'<br><span style="font-size:10px;color:#a78bfa;opacity:.8">👮 '+escHtml(createdBy)+'</span>':''}</td>
 <td>${renderKeyStatusBadge(k)}</td>
 <td>${formatValidityCell(k)}</td>
 <td><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
@@ -2100,7 +2228,7 @@ function buildKeysHtml() {
 <td title="${uniqueIps} IP(s)">${escHtml(k.lastIp||'-')}${uniqueIps>1?`<span style="color:var(--tx3);font-size:10px"> +${uniqueIps-1}</span>`:''}</td>
 <td>${k.lastUsed?new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'-'}</td>
 <td>${new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'})}</td>
-<td class="note-cell td-note" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${k.note&&k.note.startsWith('[Mod:')?'<span style="color:#5b8cf7;font-size:10px">'+escHtml(k.note)+'</span>':escHtml(k.note||'')||'<span style="color:var(--tx3)">—</span>'}</span></td>
+<td class="note-cell td-note" data-code="${escHtml(code)}" data-note="${escHtml((k.note||'').replace(/\[Mod:[^\]]+\]\s*/g,'').trim())}"><span class="note-preview">${((k.note||'').replace(/\[Mod:[^\]]+\]\s*/g,'').trim())||'<span style="color:var(--tx3)">—</span>'}</span></td>
 <td class="td-acts"><div class="acts">
 <button class="bs ${k.active?'bd':'bg'}" title="${k.active?'Bloquear':'Liberar'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'🔒':'✅'}</button>
 <button class="bs bg" title="+ Tempo" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">⏱</button>
@@ -2109,7 +2237,7 @@ function buildKeysHtml() {
 ${(k.phones||[]).length>0?`<button class="bs bd" title="Números (${(k.phones||[]).length})" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">📱</button>`:''}
 <button class="bs bd" title="Excluir" onclick="deleteKey('${escHtml(code)}')">🗑</button>
 <button class="bs ${zsOn?'bg':'bw'}" title="${zsOn?'ZapSaver ativo — clique para desativar':'ZapSaver inativo — clique para ativar'}" onclick="toggleModule('${escHtml(code)}','zapSaver',${zsOn?'false':'true'})">💾</button>
-<button class="bs" style="background:#7c3aed18;color:#a78bfa;border:1px solid #7c3aed28" title="Moderador" data-code="${escHtml(code)}" data-label="${escHtml(k.label||'')}" data-modnote="${escHtml((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1]||'')}" onclick="openAssignModFromEl(this)">👮</button>
+<button class="bs" style="background:#7c3aed18;color:#a78bfa;border:1px solid #7c3aed28" title="Moderador" data-code="${escHtml(code)}" data-label="${escHtml(k.label||'')}" data-modnote="${escHtml(createdBy)}" onclick="openAssignModFromEl(this)">👮</button>
 </div></td>
 </tr>`;
   }).join('');
@@ -2372,6 +2500,11 @@ td.td-status{white-space:nowrap;overflow:hidden}
         <option value="bloqueado">Bloqueadas</option>
         <option value="aguardando">Aguardando 1º uso</option>
       </select>
+      <select id="filter-mod" onchange="filterKeys()" style="min-width:140px">
+        <option value="">Todos os mods</option>
+        ${MODS.map(m => `<option value="${escHtml(m.name.toLowerCase())}">${escHtml(m.name)}</option>`).join('')}
+        <option value="__admin__">Geradas pelo Admin</option>
+      </select>
       <button class="btn br" id="btn-delete-batch" style="display:none" onclick="deleteBatchKeys()">🗑 Excluir Selecionadas (<span id="batch-count">0</span>)</button>
     </div>
     <div class="filter-count" id="keys-filter-count"></div>
@@ -2610,6 +2743,7 @@ async function assignMod(code,modName){
 function filterKeys(){
   const q=(document.getElementById('search-input').value||'').toLowerCase();
   const st=document.getElementById('filter-status').value;
+  const fm=(document.getElementById('filter-mod')||{}).value||'';
   let shown=0,total=0;
   document.querySelectorAll('#kb tr[data-label]').forEach(row=>{
     total++;
@@ -2617,10 +2751,12 @@ function filterKeys(){
     const phone=(row.dataset.phone||'').toLowerCase();
     const status=(row.dataset.status||'').toLowerCase();
     const code=(row.dataset.code||'').toLowerCase();
+    const createdby=(row.dataset.createdby||'').toLowerCase();
     const ip=(row.cells[7]||{}).textContent||'';
     const matchQ=!q||label.includes(q)||phone.includes(q)||code.includes(q)||ip.toLowerCase().includes(q);
     const matchSt=!st||status===st;
-    const visible=matchQ&&matchSt;
+    const matchMod=!fm||(fm==='__admin__'?!createdby:createdby===fm);
+    const visible=matchQ&&matchSt&&matchMod;
     row.style.display=visible?'':'none';
     if(visible)shown++;
   });
@@ -4722,9 +4858,11 @@ async function handleRequest(req, res) {
       label: String(body.label).trim().slice(0, 60),
       active: true, createdAt: new Date().toISOString(),
       uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null,
-      deviceId: null, wppVersion: null, note: '[Mod: '+modName+']',
+      deviceId: null, wppVersion: null, note: '',
+      createdBy: modName,
       expiresAt, expireDuration: expireDuration || null,
       maxUses, warnCount: 0,
+      modules: { ...DEFAULT_MODULES, zapSaver: true },
     };
     saveKey(code);
     sendJson(res, { ok: true, key: code }); return;
@@ -4741,13 +4879,14 @@ async function handleRequest(req, res) {
       const dbKeys = (doc && doc.data) ? doc.data : {};
       const search = '[Mod: ' + myModName + ']';
       const myKeys = Object.entries(dbKeys)
-        .filter(([, k]) => k.note && k.note.includes(search))
+        .filter(([, k]) => k.createdBy === myModName || (k.note && k.note.includes(search)))
         .map(([code, k]) => ({
           code, label: k.label, maxUses: k.maxUses,
           active: k.active && !isKeyExpired(k),
           expiresAt: k.expiresAt || null,
           deferred: !!(k.expireDuration && !k.expiresAt),
-          createdAt: k.createdAt || '', note: k.note || '',
+          createdAt: k.createdAt || '', note: (k.note || '').replace(/\[Mod:[^\]]+\]\s*/g, '').trim(),
+          zapSaver: !!(k.modules && k.modules.zapSaver),
         }))
         .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
       sendJson(res, { ok: true, keys: myKeys, modName: myModName }); return;
@@ -4770,9 +4909,51 @@ async function handleRequest(req, res) {
     }
     const body = await parseBody(req);
     const newNote = String(body.note||'').slice(0, 400);
-    const modPrefix = ((keys[codeFromUrl].note||'').match(/^\[Mod: [^\]]+\]/) || [''])[0];
-    keys[codeFromUrl].note = (modPrefix + (newNote ? ' ' + newNote : '')).trim().slice(0, 500);
+    const existingNote = keys[codeFromUrl].note || '';
+    const modTag = (existingNote.match(/^\[Mod: [^\]]+\]/) || [''])[0];
+    keys[codeFromUrl].note = (modTag + (newNote ? (modTag ? ' ' : '') + newNote : '')).trim().slice(0, 500);
     saveKey(codeFromUrl);
+    sendJson(res, { ok: true }); return;
+  }
+
+  // Mod: delete own key
+  const _modDelMatch = p.match(new RegExp(`^${R_MOD.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}/api/keys/([a-z0-9_\\-]{1,30})$`));
+  if (_modDelMatch && req.method === 'DELETE') {
+    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const _mc4 = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+    const _ms4 = _mc4 ? modSessions[_mc4[1]] : null;
+    const _myName4 = _ms4 ? _ms4.modName : null;
+    if (!_myName4) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const delCode = decodeURIComponent(_modDelMatch[1]);
+    if (!await ensureKeyLoaded(delCode)) { sendJson(res, { error: 'not found' }, 404); return; }
+    const kDel = keys[delCode];
+    if (!kDel) { sendJson(res, { error: 'not found' }, 404); return; }
+    const isOwner = kDel.createdBy === _myName4 || ((kDel.note||'').includes('[Mod: '+_myName4+']'));
+    if (!isOwner) { sendJson(res, { error: 'acesso negado' }, 403); return; }
+    delete keys[delCode];
+    saveKey(delCode);
+    sendJson(res, { ok: true }); return;
+  }
+
+  // Mod: rename own key
+  const _modRenameMatch = p.match(new RegExp(`^${R_MOD.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}/api/keys/([a-z0-9_\\-]{1,30})/rename$`));
+  if (_modRenameMatch && req.method === 'POST') {
+    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const _mc5 = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+    const _ms5 = _mc5 ? modSessions[_mc5[1]] : null;
+    const _myName5 = _ms5 ? _ms5.modName : null;
+    if (!_myName5) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const renCode = decodeURIComponent(_modRenameMatch[1]);
+    if (!await ensureKeyLoaded(renCode)) { sendJson(res, { error: 'not found' }, 404); return; }
+    const kRen = keys[renCode];
+    if (!kRen) { sendJson(res, { error: 'not found' }, 404); return; }
+    const isOwner = kRen.createdBy === _myName5 || ((kRen.note||'').includes('[Mod: '+_myName5+']'));
+    if (!isOwner) { sendJson(res, { error: 'acesso negado' }, 403); return; }
+    const body = await parseBody(req);
+    const newLabel = String(body.label || '').trim().slice(0, 60);
+    if (!newLabel) { sendJson(res, { error: 'label obrigatório' }, 400); return; }
+    kRen.label = newLabel;
+    saveKey(renCode);
     sendJson(res, { ok: true }); return;
   }
 
@@ -4806,7 +4987,7 @@ async function handleRequest(req, res) {
       deviceId: null, wppVersion: null, note: '',
       expiresAt, expireDuration: expireDuration || null,
       maxUses: isNaN(maxUses) ? MAX_USES : maxUses, warnCount: 0,
-      modules: { ...DEFAULT_MODULES },
+      modules: { ...DEFAULT_MODULES, zapSaver: true },
     };
     saveKey(code);
     sendJson(res, { ok: true, key: code }); return;
@@ -4934,8 +5115,8 @@ async function handleRequest(req, res) {
     if (!k) { sendJson(res, { error: 'not found' }, 404); return; }
     const body    = await parseBody(req);
     const modName = String(body.modName || '').trim().slice(0, 60);
+    k.createdBy = modName || null;
     let note = (k.note || '').replace(/\[Mod: [^\]]+\]\s*/g, '').trim();
-    if (modName) note = '[Mod: ' + modName + ']' + (note ? ' ' + note : '');
     k.note = note.slice(0, 500);
     saveKey(codeAssignMod);
     sendJson(res, { ok: true, modName, note: k.note }); return;
