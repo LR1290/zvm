@@ -2528,7 +2528,7 @@ function renderPortalSetup2FA(user, pendingSecret='', err='', ok='') {
     <div class="fi"><label>Código de 6 dígitos para confirmar</label><input type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required autocomplete="one-time-code" style="letter-spacing:8px;font-size:22px;text-align:center"></div>
     <button type="submit" class="btn">Ativar 2FA</button>
   </form>
-  ` : '<div class="err">Erro ao gerar configuração. <a href="/cliente/2fa/setup">Tente novamente</a>.</div>'}
+  ` : ok ? `<div style="text-align:center;padding:12px 0"><a href="/cliente" class="btn" style="display:inline-block;padding:12px 28px;font-size:15px">← Voltar ao painel</a></div>` : '<div class="err">Erro ao gerar configuração. <a href="/cliente/2fa/setup">Tente novamente</a>.</div>'}
 </div>
 `;
   return renderPortalPage(body, 'ZVM — Segurança 2FA');
