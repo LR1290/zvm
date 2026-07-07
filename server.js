@@ -2114,7 +2114,7 @@ function renderPortalRegister(err='',vals={}) {
   return renderPortalPage(body, 'ZVM — Criar Conta');
 }
 
-function renderPortalDashboard(user, keyData) {
+function renderPortalDashboard(user, keyData, okMsg='') {
   const now = new Date();
 
   // ── Key status computation ───────────────────────────────────────
@@ -2323,6 +2323,8 @@ function renderPortalDashboard(user, keyData) {
 
 ${updateBanner}
 
+${okMsg ? `<div style="background:#00c85318;border:1px solid #00c85340;border-radius:10px;padding:12px 18px;margin-bottom:14px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;color:#00c853">✅ ${escHtml(okMsg)}</div>` : ''}
+
 <div class="profile-bar">
   <div class="profile-avatar">👤</div>
   <div>
@@ -2394,7 +2396,8 @@ ${keyData ? `
   </div>
 </div>
 `;
-  return renderPortalPage(body, 'ZVM — Minha Conta', '', true);
+  const _cleanOkScript = okMsg ? `<script>if(location.search)history.replaceState(null,'',location.pathname);<\/script>` : '';
+  return renderPortalPage(body + _cleanOkScript, 'ZVM — Minha Conta', '', true);
 }
 
 function renderPortalLinkKey(err='',ok='') {
@@ -2437,7 +2440,8 @@ function renderPortalChangePwd(err='',ok='') {
   </form>
 </div>
 `;
-  return renderPortalPage(body, 'ZVM — Alterar Senha');
+  const _cleanPwdScript = ok ? `<script>if(location.search)history.replaceState(null,'',location.pathname);<\/script>` : '';
+  return renderPortalPage(body + _cleanPwdScript, 'ZVM — Alterar Senha');
 }
 function renderPortalResetRequest(err='', ok='') {
   const errHtml = err ? `<div class="err">⚠ ${escHtml(err)}</div>` : '';
@@ -2531,7 +2535,8 @@ function renderPortalSetup2FA(user, pendingSecret='', err='', ok='') {
   ` : ok ? `<div style="text-align:center;padding:12px 0"><a href="/cliente" class="btn" style="display:inline-block;padding:12px 28px;font-size:15px">← Voltar ao painel</a></div>` : '<div class="err">Erro ao gerar configuração. <a href="/cliente/2fa/setup">Tente novamente</a>.</div>'}
 </div>
 `;
-  return renderPortalPage(body, 'ZVM — Segurança 2FA');
+  const _clean2faScript = ok ? `<script>if(location.search)history.replaceState(null,'',location.pathname);<\/script>` : '';
+  return renderPortalPage(body + _clean2faScript, 'ZVM — Segurança 2FA');
 }
 // ──────────── fim portal do cliente ────────────────────────────
 
@@ -6706,7 +6711,9 @@ async function handleRequest(req, res) {
         await ensureKeyLoaded(user.keyCode);
         keyData = keys[user.keyCode] ? { ...keys[user.keyCode], code: user.keyCode } : null;
       }
-      sendHtml(res, renderPortalDashboard(user, keyData)); return;
+      const _dashOk = url.searchParams.get('ok');
+      const _dashMsg = _dashOk === '2fa_off' ? '2FA desativado com sucesso.' : _dashOk === '1' ? 'Operação realizada com sucesso.' : '';
+      sendHtml(res, renderPortalDashboard(user, keyData, _dashMsg)); return;
     } catch(e) { console.error('[Portal] dashboard:', e.message); sendHtml(res, renderPortalLogin('Erro temporário.')); return; }
   }
 
@@ -6815,7 +6822,7 @@ async function handleRequest(req, res) {
 
   if (p === '/cliente/senha') {
     if (!isPortalSession(req)) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
-    if (req.method === 'GET') { sendHtml(res, renderPortalChangePwd()); return; }
+    if (req.method === 'GET') { const _ok=url.searchParams.get('ok'); sendHtml(res, renderPortalChangePwd(_ok?'':'',_ok?'Senha alterada com sucesso!':'')); return; }
     if (req.method === 'POST') {
       const form = await parseFormBody(req);
       const old  = (form.get('old')||'').slice(0,128);
@@ -6833,7 +6840,7 @@ async function handleRequest(req, res) {
         const salt = genSalt();
         const passwordHash = await hashPassword(pass, salt);
         await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { passwordHash, salt } });
-        sendHtml(res, renderPortalChangePwd('', 'Senha alterada!')); return;
+        res.writeHead(302, { Location: '/cliente/senha?ok=1' }); res.end(); return;
       } catch(e) { sendHtml(res, renderPortalChangePwd('Erro ao alterar senha.')); return; }
     }
   }
@@ -6923,7 +6930,7 @@ async function handleRequest(req, res) {
     try {
       const db   = await getMongoDb();
       const user = await db.collection('portal_users').findOne({ _id: sess.email });
-      if (user && user.totpSecret) { sendHtml(res, renderPortalSetup2FA(user, '', '', '')); return; }
+      const _2faOk=url.searchParams.get('ok'); if (user && user.totpSecret) { sendHtml(res, renderPortalSetup2FA(user, '', '', _2faOk?'2FA ativado com sucesso! Sua conta está protegida.':'')); return; }
       let pending = user && user.pendingTotpSecret && user.pendingTotpExpiresAt && new Date() < new Date(user.pendingTotpExpiresAt)
         ? user.pendingTotpSecret : null;
       if (!pending) {
@@ -6949,7 +6956,7 @@ async function handleRequest(req, res) {
       if (!verifyTOTP(pending, code)) { sendHtml(res, renderPortalSetup2FA(user, pending, 'Código inválido. Tente novamente.', '')); return; }
       await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { totpSecret: pending }, $unset: { pendingTotpSecret: '', pendingTotpExpiresAt: '' } });
       const updated = await db.collection('portal_users').findOne({ _id: sess.email });
-      sendHtml(res, renderPortalSetup2FA(updated, '', '', '2FA ativado com sucesso! Sua conta está protegida.')); return;
+      res.writeHead(302, { Location: '/cliente/2fa/setup?ok=ativado' }); res.end(); return;
     } catch(e) { sendHtml(res, renderPortalSetup2FA(null, '', 'Erro ao ativar 2FA.', '')); return; }
   }
 
@@ -6964,7 +6971,7 @@ async function handleRequest(req, res) {
       const user = await db.collection('portal_users').findOne({ _id: sess.email });
       if (!user || !verifyTOTP(user.totpSecret||'', code)) { sendHtml(res, renderPortalSetup2FA(user, '', 'Código 2FA inválido.', '')); return; }
       await db.collection('portal_users').updateOne({ _id: sess.email }, { $unset: { totpSecret: '', pendingTotpSecret: '', pendingTotpExpiresAt: '' } });
-      sendHtml(res, renderPortalSetup2FA({...user, totpSecret: null}, '', '', '2FA desativado com sucesso.')); return;
+      res.writeHead(302, { Location: '/cliente?ok=2fa_off' }); res.end(); return;
     } catch(e) { sendHtml(res, renderPortalSetup2FA(null, '', 'Erro ao desativar 2FA.', '')); return; }
   }
 
