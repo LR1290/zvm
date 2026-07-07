@@ -2203,6 +2203,7 @@ function renderPortalDashboard(user, keyData) {
     </details>`).join('');
 
   const hasKey = !!keyData;
+  const has2fa = !!(user && user.totpSecret);
   const firstName = escHtml(user.name.split(' ')[0]);
 
   const body = `
@@ -2371,7 +2372,7 @@ ${keyData ? `
   <a href="/cliente/vincular" class="action-btn primary">🔗 Vincular Chave</a>
   ${hasKey ? `<form method="POST" action="/cliente/desvincular" style="margin:0;display:contents" onsubmit="return confirm('Tem certeza? Isso desvinculará sua chave desta conta.')"><button type="submit" class="action-btn danger">🔓 Desvincular</button></form>` : '<span></span>'}
   <a href="/cliente/senha" class="action-btn neutral">🔒 Alterar Senha</a>
-  <a href="/cliente/2fa/setup" class="action-btn accent">🛡 Segurança 2FA</a>
+  <a href="/cliente/2fa/setup" class="action-btn accent">${has2fa ? "✅ 2FA Ativo" : "🛡 Segurança 2FA"}</a>
 </div>
 
 
