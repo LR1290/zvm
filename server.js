@@ -1266,7 +1266,7 @@ const _SEC_HEADERS = {
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
-  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://chart.googleapis.com; connect-src 'self'; frame-ancestors 'none'",
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://api.qrserver.com; connect-src 'self'; frame-ancestors 'none'",
 };
 
 function sendJson(res, data, status = 200) {
@@ -2374,7 +2374,7 @@ ${keyData ? `
   <a href="/cliente/2fa/setup" class="action-btn accent">🛡 Segurança 2FA</a>
 </div>
 
-${EXTENSION_URL ? `<a class="action-btn primary" href="${escHtml(EXTENSION_URL)}" target="_blank" rel="noopener" style="margin-bottom:16px;justify-content:center;display:flex">⬇ Baixar Extensão ZVM${EXTENSION_VERSION?' v'+escHtml(EXTENSION_VERSION):''}</a>` : ''}
+
 
 <div class="panels-grid">
   <div class="panel-box">
@@ -2520,7 +2520,7 @@ function renderPortalSetup2FA(user, pendingSecret='', err='', ok='') {
   ` : pendingSecret ? `
   <p style="font-size:12px;color:var(--tx2);font-family:'Outfit',sans-serif;margin-bottom:16px;line-height:1.7">Escaneie o QR code abaixo com <strong style="color:var(--tx)">Google Authenticator</strong> ou <strong style="color:var(--tx)">Authy</strong>, depois insira o código de 6 dígitos gerado para confirmar.</p>
   <div style="text-align:center;margin-bottom:18px">
-    <img src="https://chart.googleapis.com/chart?chs=220x220&chld=M|0&cht=qr&chl=${encodeURIComponent('otpauth://totp/ZVM:'+encodeURIComponent((user&&user.email)||'')+'?secret='+pendingSecret+'&issuer=ZVM&algorithm=SHA1&digits=6&period=30')}" alt="QR Code 2FA" style="border-radius:8px;border:2px solid var(--g-brd);width:220px;height:220px;background:#fff;padding:4px">
+    <img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&ecc=M&data=${encodeURIComponent('otpauth://totp/ZVM:'+encodeURIComponent((user&&user.email)||'')+'?secret='+pendingSecret+'&issuer=ZVM&algorithm=SHA1&digits=6&period=30')}" alt="QR Code 2FA" style="border-radius:8px;border:2px solid var(--g-brd);width:220px;height:220px;background:#fff;padding:4px">
     <p style="font-size:11px;color:var(--tx3);margin-top:10px;font-family:'Outfit',sans-serif">Escaneie com o app autenticador · Link válido por 15 minutos</p>
   </div>
   <form method="POST" action="/cliente/2fa/ativar">
