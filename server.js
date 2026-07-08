@@ -14,7 +14,7 @@ const MODS = [
   { user: process.env.MOD2_USER || '', pass: process.env.MOD2_PASS || '', totp: process.env.MOD2_TOTP || '', name: 'Simplifique' },
   { user: process.env.MOD3_USER || '', pass: process.env.MOD3_PASS || '', totp: process.env.MOD3_TOTP || '', name: 'BS'          },
   { user: process.env.MOD4_USER || '', pass: process.env.MOD4_PASS || '', totp: process.env.MOD4_TOTP || '', name: 'Acaraí'      },
-  { user: process.env.MOD5_USER || '', pass: process.env.MOD5_PASS || '', totp: process.env.MOD5_TOTP || '', name: 'Adiel'      },
+  { user: process.env.MOD5_USER || '', pass: process.env.MOD5_PASS || '', totp: process.env.MOD5_TOTP || '', name: 'Adiel'       },
   { user: process.env.MOD6_USER || '', pass: process.env.MOD6_PASS || '', totp: process.env.MOD6_TOTP || '', name: 'Arjuna'      },
 ].filter(m => m.user && m.pass);
 
@@ -88,53 +88,89 @@ const MONGODB_DB = (() => {
   return 'zapvoice';
 })();
 const MAX_USES = 3;
+const MAX_PHONES_GLOBAL = Math.max(1, parseInt(process.env.MAX_PHONES_GLOBAL || '50') || 50);
 const AVAILABLE_MODULES = ['zapSaver'];
 const DEFAULT_MODULES = Object.fromEntries(AVAILABLE_MODULES.map(m => [m, false]));
 
 let _mongoClient = null;
 let _mongoDb     = null;
+let _mongoConnecting = false;
 
 async function getMongoDb() {
-  if (_mongoDb) return _mongoDb;
-  try {
-    if (!_mongoClient) {
-      _mongoClient = new MongoClient(MONGODB_URI, {
-        serverSelectionTimeoutMS: 8000,
-        connectTimeoutMS:         8000,
-        socketTimeoutMS:          30000, // Atlas keepalive; 5 s causava timeouts sob carga
-        maxPoolSize:              10,    // Node 22 lida melhor com mais sockets paralelos
-        minPoolSize:              1,     // mantém 1 socket quente após warm-up
-        maxIdleTimeMS:            60000,
-        waitQueueTimeoutMS:       10000,
-        tls:                      true,
-        tlsAllowInvalidCertificates: false,
-        tlsAllowInvalidHostnames:    false,
-        compressors:              ['zstd', 'zlib'], // compressão wire nativa do driver 6.x
-      });
-      await _mongoClient.connect();
-      console.log('✅ MongoDB conectado');
+  if (_mongoDb) return _mongoDb; // fast path — sem ping por chamada
+  if (_mongoConnecting) {
+    for (let i = 0; i < 100; i++) {
+      await new Promise(r => setTimeout(r, 100));
+      if (_mongoDb) return _mongoDb;
     }
+    throw new Error('MongoDB: timeout aguardando conexão de outro coroutine');
+  }
+  _mongoConnecting = true;
+  try {
+    if (_mongoClient) { try { await _mongoClient.close(); } catch {} _mongoClient = null; }
+    _mongoClient = new MongoClient(MONGODB_URI, {
+      serverSelectionTimeoutMS: 8000,
+      connectTimeoutMS:         8000,
+      socketTimeoutMS:          30000,
+      maxPoolSize:              10,
+      minPoolSize:              1,
+      maxIdleTimeMS:            60000,
+      waitQueueTimeoutMS:       10000,
+      tls:                      true,
+      tlsAllowInvalidCertificates: false,
+      tlsAllowInvalidHostnames:    false,
+      compressors:              ['zstd', 'zlib'],
+    });
+    await _mongoClient.connect();
+    console.log('✅ MongoDB conectado');
     _mongoDb = _mongoClient.db(MONGODB_DB);
     return _mongoDb;
   } catch(e) {
-
     _mongoDb = null;
     _mongoClient = null;
     throw e;
+  } finally {
+    _mongoConnecting = false;
   }
 }
+
+// Health check periódico — detecta queda de conexão sem pingar no hot path
+setInterval(async () => {
+  if (!_mongoDb) return;
+  try { await _mongoDb.command({ ping: 1 }); }
+  catch { _mongoDb = null; _mongoClient = null; console.warn('[DB] Conexão perdida — reconectando na próxima operação'); }
+}, 5 * 60 * 1000);
 
 async function loadDb() {
   try {
     const db = await getMongoDb();
-    const [keysDoc, logsDoc, alertsDoc] = await Promise.all([
+    // Garante índices úteis (idempotente — não recria se já existe)
+    db.collection('mod_logs').createIndex({ ts: -1 }, { background: true }).catch(() => {});
+    db.collection('portal_users').createIndex({ keyCode: 1 }, { background: true }).catch(() => {});
+    const [keysDoc, logsDoc, alertsDoc, settingsDoc, rateBlocksDoc] = await Promise.all([
       db.collection('store').findOne({ _id: 'keys' }),
       db.collection('store').findOne({ _id: 'logs' }),
       db.collection('security_alerts').findOne({ _id: 'alerts' }),
+      db.collection('settings').findOne({ _id: 'main' }),
+      db.collection('rate_blocks').findOne({ _id: 'blocks' }),
     ]);
     const keyCount = keysDoc?.data ? Object.keys(keysDoc.data).length : 0;
     if (keyCount === 0) {
       console.warn(`[DB] Nenhuma chave em zapvoice.store (doc _id:"keys"). Verifique Atlas ou permissao do usuario.`);
+    }
+    // Restaurar blacklist de IPs
+    if (Array.isArray(settingsDoc?.ipBlacklist)) {
+      for (const ip of settingsDoc.ipBlacklist) ipBlacklist.add(ip);
+      console.log(`[BOOT] IP blacklist: ${ipBlacklist.size} entrada(s)`);
+    }
+    // Restaurar blocos de rate limit ativos
+    const now = Date.now();
+    if (rateBlocksDoc?.data && typeof rateBlocksDoc.data === 'object') {
+      for (const [k, e] of Object.entries(rateBlocksDoc.data)) {
+        if (e.blockedUntil > now) {
+          rateLimitMap.set(k, { count: e.count || 999, resetAt: e.resetAt || now, blockedUntil: e.blockedUntil });
+        }
+      }
     }
     return {
       keys:           keysDoc?.data && typeof keysDoc.data === 'object' ? keysDoc.data : {},
@@ -147,26 +183,62 @@ async function loadDb() {
   }
 }
 
+async function saveIpBlacklist() {
+  try {
+    const db = await getMongoDb();
+    await db.collection('settings').updateOne(
+      { _id: 'main' },
+      { $set: { ipBlacklist: [...ipBlacklist], updatedAt: new Date() } },
+      { upsert: true }
+    );
+  } catch (e) { console.warn('[DB] Erro ao salvar blacklist:', e.message); }
+}
+
+async function persistRateBlocks() {
+  try {
+    const now = Date.now();
+    const data = {};
+    for (const [k, e] of rateLimitMap.entries()) {
+      if (e.blockedUntil > now) data[k] = { count: e.count, resetAt: e.resetAt, blockedUntil: e.blockedUntil };
+    }
+    const db = await getMongoDb();
+    await db.collection('rate_blocks').updateOne(
+      { _id: 'blocks' },
+      { $set: { data, updatedAt: new Date() } },
+      { upsert: true }
+    );
+  } catch (e) { console.warn('[DB] Erro ao persistir rate blocks:', e.message); }
+}
+
 const _saveDebounce = new Map();
+async function _writeKeyToDb(code) {
+  if (keys[code] === undefined) return;
+  try {
+    const db = await getMongoDb();
+    await db.collection('store').updateOne(
+      { _id: 'keys' },
+      { $set: { [`data.${code}`]: keys[code], updatedAt: new Date() } },
+      { upsert: true }
+    );
+  } catch (e) {
+    console.error('[DB] Erro ao salvar chave:', e.message);
+  }
+}
 function saveKey(code) {
   if (_saveDebounce.has(code)) clearTimeout(_saveDebounce.get(code));
-  const tid = setTimeout(async () => {
-    _saveDebounce.delete(code);
-    if (keys[code] === undefined) return;
-    try {
-      const db = await getMongoDb();
-      await db.collection('store').updateOne(
-        { _id: 'keys' },
-        { $set: { [`data.${code}`]: keys[code], updatedAt: new Date() } },
-        { upsert: true }
-      );
-    } catch (e) {
-        console.error('[DB] Erro ao salvar chave:', e.message);
-    }
-  }, 2000);
+  const tid = setTimeout(() => { _saveDebounce.delete(code); _writeKeyToDb(code); }, 2000);
   _saveDebounce.set(code, tid);
   invalidateKeysHtmlCache();
   return Promise.resolve();
+}
+// Descarrega TODAS as gravações debounced pendentes imediatamente (shutdown/deploy)
+async function flushPendingSaves() {
+  const pending = [..._saveDebounce.keys()];
+  for (const tid of _saveDebounce.values()) clearTimeout(tid);
+  _saveDebounce.clear();
+  if (!pending.length) return;
+  console.log(`[SHUTDOWN] Gravando ${pending.length} chave(s) pendente(s)...`);
+  await Promise.allSettled(pending.map(c => _writeKeyToDb(c)));
 }
 
 async function deleteKeyFromDb(code) {
@@ -228,12 +300,14 @@ async function saveLogs() {
 let keys              = {};
 let freeUsage         = { usageDate: '', byPhone: {} };
 let logs              = [];
-let securityAlerts    = []; // telemetria reativa — eventos de ameaça do servidor
+let securityAlerts    = [];
 let sessions          = {};
 let modSessions       = {};
 let portalSessions    = {};
 let analyticsSessions = {};
 let serverReady       = false;
+const ipBlacklist     = new Set(); // IPs bloqueados manualmente pelo admin
+const keyFailMap      = new Map(); // { keyCode -> { count, ips: Set, firstAt } } — falhas recentes por chave
 let _httpServer       = null;
 let _pingInterval     = null;
 let _adminPassSalt    = null;  // gerado aleatoriamente no boot
@@ -273,6 +347,18 @@ function addSecurityAlert(category, detail, reqIp) {
   });
   if (securityAlerts.length > SEC_ALERT_MAX) securityAlerts = securityAlerts.slice(0, SEC_ALERT_MAX);
   saveSecurityAlerts().catch(() => {});
+}
+
+function _trackKeyFail(keyCode, ip) {
+  const now = Date.now();
+  let f = keyFailMap.get(keyCode);
+  if (!f || now - f.firstAt > 3600000) { f = { count: 0, ips: new Set(), firstAt: now }; keyFailMap.set(keyCode, f); }
+  f.count++;
+  if (ip) f.ips.add(ip);
+  if (f.count >= 10 && f.ips.size >= 3) {
+    addSecurityAlert('KEY_HAMMERING', `Chave "${keyCode}" recebeu ${f.count} falhas de ${f.ips.size} IPs distintos em 1h`, ip);
+    keyFailMap.delete(keyCode); // reset para não repetir o alerta a cada request
+  }
 }
 
 function base32Decode(b32) {
@@ -359,6 +445,7 @@ const RL_CONFIG = {
   api:          { max: 30, windowMs: 60000, blockMs:  2 * 60000 },
   ext_key:      { max: 20, windowMs: 60000, blockMs:  5 * 60000 },
   check_status: { max: 60, windowMs: 60000, blockMs: 60000 },
+  checkkey:     { max: 10, windowMs: 60000, blockMs:  5 * 60000 },
   reset:        { max: 3,  windowMs: 300000, blockMs: 30 * 60000 },
   twofa:        { max: 5,  windowMs: 60000,  blockMs: 10 * 60000 },
 };
@@ -399,7 +486,12 @@ setInterval(() => {
     if (now > e.blockedUntil && now > e.resetAt) rateLimitMap.delete(k);
   for (const [k, ts] of _dedupMap.entries())
     if (now - ts > _DEDUP_TTL_MS) _dedupMap.delete(k);
-}, 30 * 60 * 1000); // 30 min — recursos mínimos
+  // Limpar falhas de chave com mais de 1h
+  for (const [k, f] of keyFailMap.entries())
+    if (now - f.firstAt > 3600000) keyFailMap.delete(k);
+  // Persistir blocos ativos no MongoDB
+  persistRateBlocks().catch(() => {});
+}, 30 * 60 * 1000);
 
 setInterval(() => {
   const now = Date.now();
@@ -412,6 +504,43 @@ setInterval(() => {
   for (const [k, s] of Object.entries(analyticsSessions))
     if (now > new Date(s.expiresAt).getTime()) delete analyticsSessions[k];
 }, 60 * 60 * 1000); // 1h — sessões duram horas, limpeza não precisa ser frequente
+
+// Cron: marca chaves expiradas + envia aviso de "expirando em breve" a cada hora
+setInterval(async () => {
+  const now = Date.now();
+  let expired = 0;
+  for (const [code, k] of Object.entries(keys)) {
+    // Marcar expiradas
+    if (k.active && k.expiresAt && new Date(k.expiresAt).getTime() < now) {
+      keys[code].active = false;
+      saveKey(code).catch(() => {});
+      fireWebhook('key_expired', code, 'Cron de expiração');
+      expired++;
+      continue;
+    }
+    // Aviso de expiração em breve (uma única vez por ciclo)
+    if (k.active && k.expiresAt && !k.warnEmailSent && RESEND_API_KEY) {
+      const msLeft = new Date(k.expiresAt).getTime() - now;
+      if (msLeft > 0 && msLeft <= EXPIRY_WARN_HOURS * 3600000) {
+        try {
+          const _db = await getMongoDb();
+          const _pu = await _db.collection('portal_users').findOne({ keyCode: code });
+          if (_pu && _pu._id) {
+            const hoursLeft = Math.ceil(msLeft / 3600000);
+            await sendEmail({
+              to: _pu._id,
+              subject: '⚠ Sua chave ZVM expira em breve',
+              html: `<p>Olá ${escHtml(_pu.name || '')}!</p><p>Sua chave <strong>${escHtml(code)}</strong> expira em aproximadamente <strong>${hoursLeft}h</strong>.</p><p>Renove agora para não perder o acesso:</p><p><a href="${BASE_URL}/cliente" style="background:#00e676;color:#000;padding:10px 24px;border-radius:6px;text-decoration:none;font-weight:700">Acessar Portal</a></p>`,
+            });
+            keys[code].warnEmailSent = true;
+            saveKey(code).catch(() => {});
+          }
+        } catch (e) { console.warn('[CRON] Aviso expiração:', e.message); }
+      }
+    }
+  }
+  if (expired > 0) { invalidateKeysHtmlCache(); console.log(`[CRON] ${expired} chave(s) expirada(s).`); }
+}, 60 * 60 * 1000);
 
 function fireWebhook(event, keyCode, reason) {
   if (!WEBHOOK_URL) return;
@@ -443,9 +572,16 @@ function fireWebhook(event, keyCode, reason) {
 
 function generateCode() {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  const limit = 256 - (256 % chars.length); // rejection threshold to avoid modulo bias
   const seg = () => {
-    const bytes = crypto.randomBytes(5);
-    return Array.from(bytes, b => chars[b % chars.length]).join('');
+    let result = '';
+    while (result.length < 5) {
+      const bytes = crypto.randomBytes(10);
+      for (let i = 0; i < bytes.length && result.length < 5; i++) {
+        if (bytes[i] < limit) result += chars[bytes[i] % chars.length];
+      }
+    }
+    return result;
   };
   return `zv-${seg()}-${seg()}-${seg()}`;
 }
@@ -881,21 +1017,26 @@ function getSuspectMeta(code, k) {
 }
 function isKeySuspect(code, k) { return getSuspectMeta(code, k).isSuspect; }
 
+let _keyStatsCache = null;
 function getKeyStats() {
+  if (_keyStatsCache) return _keyStatsCache;
   const all = Object.values(keys);
-  return {
-    totalKeys: Object.keys(keys).length,
-    activeKeys: all.filter(k => k.active && !isKeyExpired(k)).length,
+  _keyStatsCache = {
+    totalKeys:   Object.keys(keys).length,
+    activeKeys:  all.filter(k => k.active && !isKeyExpired(k)).length,
     expiredKeys: all.filter(k => isKeyExpired(k)).length,
-    warnKeys: all.filter(k => k.active && isKeyExpiringSoon(k)).length,
-    suspectKeys: Object.entries(keys).filter(([code, k]) => isKeySuspect(code, k)).length,
-    totalLogs: logs.length,
+    warnKeys:    all.filter(k => k.active && isKeyExpiringSoon(k)).length,
+    suspectKeys:  Object.entries(keys).filter(([code, k]) => isKeySuspect(code, k)).length,
+    blockedKeys:  Object.values(keys).filter(k => !k.active && !isKeyExpired(k) && !(!k.expiresAt && k.expireDuration)).length,
+    deferredKeys: Object.values(keys).filter(k => !k.expiresAt && k.expireDuration).length,
+    totalLogs:   logs.length,
   };
+  return _keyStatsCache;
 }
 
 let _keysHtmlCache = null, _keysHtmlCacheTs = 0;
 const _KEYS_CACHE_TTL = 15000;
-function invalidateKeysHtmlCache() { _keysHtmlCache = null; _keysHtmlCacheTs = 0; }
+function invalidateKeysHtmlCache() { _keysHtmlCache = null; _keysHtmlCacheTs = 0; _keyStatsCache = null; }
 
 function formatValidityCell(k) {
   const expired = isKeyExpired(k), warnSoon = isKeyExpiringSoon(k);
@@ -915,7 +1056,7 @@ function formatValidityCell(k) {
 
 function buildKeysHtml() {
   const entries = Object.entries(keys);
-  if (!entries.length) return `<tr><td colspan="10" class="empty">Nenhuma chave cadastrada</td></tr>`;
+  if (!entries.length) return `<tr><td colspan="11" class="empty">Nenhuma chave cadastrada</td></tr>`;
   const logByKey = new Map();
   for (const l of logs) { if (!l.keyCode) continue; if (!logByKey.has(l.keyCode)) logByKey.set(l.keyCode, []); logByKey.get(l.keyCode).push(l); }
   return entries.map(([code, k]) => {
@@ -928,8 +1069,8 @@ function buildKeysHtml() {
     const deferredAttr = (!k.expiresAt && k.expireDuration) ? '1' : '0';
     const dispStatus = getKeyDisplayStatus(k);
     const zsOn = !!(k.modules && k.modules.zapSaver);
-    return `<tr data-code="${escHtml(code)}" data-expires-at="${escHtml(k.expiresAt||'')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-lastused="${escHtml(k.lastUsed||'')}" data-suspect="${isSuspect?'1':''}" data-createdby="${escHtml(((k.createdBy)||((k.note||'').match(/\[Mod: ([^\]]+)\]/)||[])[1]||'').toLowerCase())}"` + rowStyle + `>
-  <td><span class="kc">${escHtml(code)}</span></td>
+    return `<tr data-code="${escHtml(code)}" data-expires-at="${escHtml(k.expiresAt||'')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-lastused="${escHtml(k.lastUsed||'')}" data-suspect="${isSuspect?'1':''}" data-createdby="${escHtml(((k.createdBy)||((k.note||'').match(/\[Mod: ([^\]]+)\]/)||[])[1]||'').toLowerCase())}" data-plan="${escHtml((k.planId||k.plan_id||'pro').toLowerCase())}"` + rowStyle + `>
+  <td><span style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="key-cb" style="cursor:pointer;width:13px;height:13px;flex-shrink:0"><span class="kc" title="Clique para copiar" style="cursor:pointer">${escHtml(code)}</span></span></td>
   <td>${escHtml(k.label)}${suspectBadge}${zsOn?'<span title="ZapSaver ativo" style="color:#4f8ef7;font-size:11px;margin-left:4px">💾</span>':''}</td>
   <td>${renderKeyStatusBadge(k)}</td>
   <td>${formatValidityCell(k)}</td>
@@ -937,6 +1078,7 @@ function buildKeysHtml() {
   <td>${escHtml(k.lastPhone||'-')}</td>
   <td title="${uniqueIps} IPs únicos">${escHtml(k.lastIp||'-')} ${uniqueIps>1?`<span style="color:var(--muted);font-size:13px">(+${uniqueIps-1})</span>`:''}</td>
   <td>${fmtShortDate(k.lastUsed||null)}</td>
+  <td>${fmtShortDate(k.createdAt||null)}</td>
   <td class="note-cell" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${(()=>{const modPfx=k.createdBy?`<span style="color:#9b59b6;font-size:11px">[Mod: ${escHtml(k.createdBy)}]</span> `:``;const noteText=escHtml(k.note||'');return modPfx+(noteText||(!modPfx?'<span style="color:var(--muted)">—</span>':''));})()}</span></td>
   <td><div class="acts">
     <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
@@ -1015,8 +1157,10 @@ function logActionBadgeClass(action) {
 }
 
 function getIp(req) {
-  return req.headers['x-forwarded-for']?.split(',')[0]?.trim()
+  const raw = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
     || req.socket?.remoteAddress || 'N/A';
+  // Sanitiza: mantém apenas chars válidos em IPv4/IPv6 e descarta qualquer HTML/JS
+  return raw.replace(/[^0-9a-fA-F.:[\]]/g, '').slice(0, 45) || 'N/A';
 }
 
 function isAdminSession(req) {
@@ -1026,7 +1170,14 @@ function isAdminSession(req) {
   const s = sessions[match[1]];
   if (!s) return false;
   if (new Date() > new Date(s.expiresAt)) { delete sessions[match[1]]; return false; }
+  // Sliding expiry: renova por mais 8h a cada acesso autenticado
+  s.expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString();
   return true;
+}
+
+function getAdminSession(req) {
+  const match = (req.headers.cookie || '').match(/zv_admin=([a-f0-9]+)/);
+  return match ? sessions[match[1]] : null;
 }
 
 function isModSession(req) {
@@ -1034,8 +1185,10 @@ function isModSession(req) {
   const match  = cookie.match(/zv_mod=([a-f0-9]+)/);
   if (!match) return false;
   const s = modSessions[match[1]];
-  if (!s) return false; // sessão perdida (restart) — cookie inválido
+  if (!s) return false;
   if (new Date() > new Date(s.expiresAt)) { delete modSessions[match[1]]; return false; }
+  // Sliding expiry: renova por mais 8h a cada acesso autenticado
+  s.expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString();
   return true;
 }
 
@@ -1267,6 +1420,7 @@ const _SEC_HEADERS = {
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
   'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://api.qrserver.com; connect-src 'self'; frame-ancestors 'none'",
+  'Server': 'ZVM',
 };
 
 function sendJson(res, data, status = 200) {
@@ -1333,6 +1487,13 @@ async function addLog(entry) {
 
   if (logs.length > LOG_MAX) logs = logs.slice(0, LOG_MAX);
   await saveLogs();
+}
+
+async function addModLog({ mod, action, keyCode, label='', detail='' }) {
+  try {
+    const db = await getMongoDb();
+    await db.collection('mod_logs').insertOne({ ts: new Date(), mod: mod||'admin', action, keyCode: keyCode||'', label: label||'', detail: detail||'' });
+  } catch (e) { console.warn('[MOD-LOG]', e.message); }
 }
 
 const CANVAS_BG = `<canvas id="_cvs" style="position:fixed;inset:0;z-index:0;pointer-events:none"></canvas>
@@ -1424,7 +1585,7 @@ a.out:hover{color:var(--red);border-color:var(--red)}
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
 .sc{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);padding:14px 16px;position:relative;overflow:hidden;transition:border-color .18s,box-shadow .18s}
 .sc:hover{border-color:var(--brd2);box-shadow:var(--shadow)}
-.sc-icon{position:absolute;right:12px;top:12px;font-size:18px;opacity:.1}
+.sc-icon{position:absolute;right:12px;top:12px;font-size:18px;opacity:1}
 .sc .n{font-size:22px;font-weight:700;color:var(--g);line-height:1.15;font-variant-numeric:tabular-nums}
 .sc .l{color:var(--tx3);font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-top:4px;font-family:"Outfit",sans-serif;font-weight:500}
 .alert-card{background:var(--org-bg);border:1px solid var(--org-brd);border-radius:var(--r);padding:9px 14px;margin-bottom:12px;display:none;align-items:center;gap:8px;font-size:12px;color:var(--orange);font-family:"Outfit",sans-serif}
@@ -1544,6 +1705,7 @@ a.out:hover{color:var(--red);border-color:var(--red)}
 <nav class="rsidebar">
   <div class="rsb-title">Navegação</div>
   <button class="rtab active" data-tab="create" onclick="switchTab('create')"><span class="rtab-icon">🔑</span><span class="rtab-label">Gerar Chave</span></button>
+  <button class="rtab" data-tab="logs" onclick="switchTab('logs')"><span class="rtab-icon">📋</span><span class="rtab-label">Logs</span></button>
   <button class="rtab" data-tab="achievements" onclick="switchTab('achievements')"><span class="rtab-icon">🏆</span><span class="rtab-label">Conquistas</span></button>
   <button class="rtab" data-tab="ranking" onclick="switchTab('ranking')"><span class="rtab-icon">📊</span><span class="rtab-label">Ranking</span></button>
 </nav>
@@ -1560,8 +1722,11 @@ a.out:hover{color:var(--red);border-color:var(--red)}
     <div class="stats">
       <div class="sc"><div class="sc-icon">🔑</div><div class="n" id="stat-total">—</div><div class="l">Total de Chaves</div></div>
       <div class="sc"><div class="sc-icon">✅</div><div class="n" id="stat-active">—</div><div class="l">Chaves Ativas</div></div>
+      <div class="sc"><div class="sc-icon">🔒</div><div class="n" id="stat-blocked">—</div><div class="l">Bloqueadas</div></div>
+      <div class="sc"><div class="sc-icon">⏱</div><div class="n" id="stat-deferred">—</div><div class="l">Aguardando 1º uso</div></div>
       <div class="sc"><div class="sc-icon">📅</div><div class="n" id="stat-today">—</div><div class="l">Criadas Hoje</div></div>
       <div class="sc"><div class="sc-icon">⚠️</div><div class="n" id="stat-expiring" style="color:var(--orange)">—</div><div class="l">Expirando 48h</div></div>
+      <div class="sc"><div class="sc-icon">⚠️</div><div class="n" id="stat-suspect" style="color:var(--red)">—</div><div class="l">Suspeitas</div></div>
     </div>
     <div class="alert-card" id="alert-expiring">
       <span style="font-size:16px;flex-shrink:0">⚠️</span>
@@ -1577,7 +1742,10 @@ a.out:hover{color:var(--red);border-color:var(--red)}
           </div>
           <div class="fi"><label>Dias</label><div class="fi-num"><input type="number" id="ndays" placeholder="0" min="0"></div></div>
           <div class="fi"><label>Horas</label><div class="fi-num"><input type="number" id="nhours" placeholder="0" min="0"></div></div>
+          <div class="fi"><label>Min</label><div class="fi-num"><input type="number" id="nmins" placeholder="0" min="0"></div></div>
           <div class="fi"><label>Usos</label><div class="fi-num"><input type="number" id="nuses" placeholder="3" min="1"></div></div>
+          <div class="fi"><label>Qtd</label><div class="fi-num"><input type="number" id="nqty" placeholder="1" min="1" max="50" title="Quantidade de chaves a gerar"></div></div>
+          <div class="fi" style="justify-content:flex-end"><label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--tx2);white-space:nowrap;cursor:pointer;text-transform:none;letter-spacing:0"><input type="checkbox" id="ndeferred" style="accent-color:var(--g);width:13px;height:13px">⏱ Ativar ao 1º uso</label></div>
           <button class="btn btn-primary" style="align-self:flex-end" onclick="createKey()">+ Gerar</button>
         </div>
         <div class="result-box" id="result-box">
@@ -1598,20 +1766,43 @@ a.out:hover{color:var(--red);border-color:var(--red)}
           <select id="fst" onchange="filterKeys()" style="padding:4px 7px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:11px;font-family:'Outfit',sans-serif;outline:none;cursor:pointer">
             <option value="">Todos status</option>
             <option value="ativa">Ativas</option>
+            <option value="bloqueada">Bloqueadas</option>
             <option value="expirada">Expiradas</option>
             <option value="expirando">Expirando &lt;48h</option>
             <option value="deferred">Aguardando uso</option>
+            <option value="suspect">⚠ Suspeitas</option>
           </select>
           <button class="btn btn-sec" style="font-size:11px;padding:4px 9px" onclick="exportCSV()">⬇ CSV</button>
           <button class="btn btn-sec" style="font-size:11px;padding:4px 9px" onclick="loadHistory()">↻ Atualizar</button>
+          <button class="btn-del" id="btn-del-batch" style="display:none;font-size:11px;padding:4px 9px" onclick="deleteBatchModKeys()">🗑 Excluir (<span id="batch-n">0</span>)</button>
         </div>
       </div>
       <div style="overflow-x:auto">
         <table class="hist-table">
           <thead><tr>
-            <th>Chave</th><th>Cliente</th><th>Usos</th><th>Validade</th><th>Criada em</th><th>Nota</th><th>Status</th><th>Ações</th>
+            <th><span style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="master-cb" onchange="toggleAllCbs(this.checked)" style="cursor:pointer;width:13px;height:13px;flex-shrink:0">Chave</span></th><th>Cliente</th><th>Usos</th><th>Validade</th><th>Criada em</th><th>Nota</th><th>Status</th><th>Ações</th>
           </tr></thead>
           <tbody id="hist-body"><tr><td colspan="8" class="empty">Carregando...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── LOGS ── -->
+  <div class="sec-panel" data-panel="logs">
+    <div class="sec">
+      <div class="sh">
+        <div class="st">📋 Logs das Minhas Chaves</div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input type="text" id="log-fq" placeholder="Filtrar por chave/cliente..." oninput="filterModLogs()" style="padding:4px 8px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:11px;width:180px;font-family:'Space Mono',monospace;outline:none" onfocus="this.style.borderColor='var(--g)'" onblur="this.style.borderColor='var(--brd)'">
+          <button class="btn btn-sec" style="font-size:11px;padding:4px 9px" onclick="loadModLogs()">↻ Atualizar</button>
+        </div>
+      </div>
+      <div style="padding:8px 14px;font-size:11px;color:var(--tx3);border-bottom:1px solid var(--brd)">🔒 <strong style="color:var(--g)">Acesso restrito.</strong> Telefones e IPs dos clientes não são exibidos (LGPD).</div>
+      <div style="overflow-x:auto">
+        <table class="hist-table">
+          <thead><tr><th>Horário</th><th>Chave</th><th>Cliente</th><th>Ação</th></tr></thead>
+          <tbody id="modlogs-body"><tr><td colspan="4" class="empty">Carregando...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -1649,6 +1840,19 @@ a.out:hover{color:var(--red);border-color:var(--red)}
 </div><!-- fim mod-wrap -->
 
 <!-- Modals -->
+<div class="modal-bg" id="modRenewModal"><div class="modal">
+  <h3>⏱ Adicionar Tempo — <span id="modRenewLabel" style="color:var(--tx3);font-weight:400;font-size:12px"></span></h3>
+  <input type="hidden" id="modRenewCode">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:4px">
+    <div class="fi"><label>Dias</label><input type="number" id="modRenewDays" min="0" placeholder="0"></div>
+    <div class="fi"><label>Horas</label><input type="number" id="modRenewHours" min="0" placeholder="0"></div>
+  </div>
+  <div class="modal-actions">
+    <button class="modal-cancel" onclick="closeModRenew()">Cancelar</button>
+    <button class="modal-save" onclick="saveModRenew()">Adicionar</button>
+  </div>
+</div></div>
+
 <div class="modal-bg" id="modNoteModal"><div class="modal">
   <h3>📝 Nota — <span id="modNoteLabel"></span></h3>
   <input type="hidden" id="modNoteCode">
@@ -1691,6 +1895,7 @@ function toast(msg,ok=true){const t=document.getElementById('toast');t.textConte
 function switchTab(tab){
   document.querySelectorAll('.rtab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
   document.querySelectorAll('.sec-panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===tab));
+  if(tab==='logs')loadModLogs();
 }
 
 let _allKeys=[],_myModName='';
@@ -1698,11 +1903,12 @@ function filterKeys(){
   const q=(document.getElementById('fq')||{}).value||'';
   const st=(document.getElementById('fst')||{}).value||'';
   const ql=q.toLowerCase();
+  const isSuspectFilter=st==='suspect';
   const rows=document.querySelectorAll('#hist-body tr[data-code]');
   rows.forEach(row=>{
     const matchQ=!ql||(row.dataset.label||'').toLowerCase().includes(ql)||(row.dataset.code||'').toLowerCase().includes(ql);
     const rowSt=row.dataset.st||'';
-    const matchSt=!st||rowSt===st;
+    const matchSt=!st||(isSuspectFilter?row.dataset.suspect==='1':rowSt===st);
     row.style.display=(matchQ&&matchSt)?'':'none';
   });
 }
@@ -1728,31 +1934,168 @@ async function createKey(){
   const label=document.getElementById('nlabel').value.trim();
   const days=parseInt(document.getElementById('ndays').value||0);
   const hours=parseInt(document.getElementById('nhours').value||0);
+  const mins=parseInt((document.getElementById('nmins')||{}).value||0);
+  const qty=Math.min(50,Math.max(1,parseInt((document.getElementById('nqty')||{}).value||1)||1));
+  const deferred=!!(document.getElementById('ndeferred')||{}).checked;
   const _u=document.getElementById('nuses').value.trim();
   const maxUses=_u===''?3:parseInt(_u);
   if(!label){toast('Informe o nome do cliente.',false);return;}
   if(isNaN(maxUses)||maxUses<1){toast('Número de usos inválido.',false);return;}
   try{
-    const body={label,maxUses,deferred:true};
+    const body={label,maxUses,qty};
+    if(deferred)body.deferred=true;
     if(days>0)body.expireDays=days;
     if(hours>0)body.expireHours=hours;
+    if(mins>0)body.expireMinutes=mins;
     const r=await fetch(_RM+'/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(r.status===401){toast('Sessão expirada.',false);setTimeout(()=>location.href=_RM+'/logout',1500);return;}
     const d=await r.json();
     if(!d.ok){toast('Erro: '+(d.error||'desconhecido'),false);return;}
-    document.getElementById('result-key').textContent=d.key;
-    const meta=[];const exp=[];if(days>0)exp.push(days+'d');if(hours>0)exp.push(hours+'h');
+    const allKeys=d.keys&&d.keys.length?d.keys:[d.key];
+    document.getElementById('result-key').textContent=allKeys.join('  ');
+    const meta=[];const exp=[];if(days>0)exp.push(days+'d');if(hours>0)exp.push(hours+'h');if(mins>0)exp.push(mins+'min');
     meta.push(exp.length?exp.join(' ')+' de validade':'Sem expiração');
-    meta.push(maxUses+' dispositivo(s)');meta.push('Ativa ao 1º uso');meta.push('ZapSaver ✓');
+    meta.push(maxUses+' dispositivo(s)');
+    if(deferred)meta.push('Ativa ao 1º uso');
+    if(allKeys.length>1)meta.push(allKeys.length+' chaves geradas');
+    meta.push('ZapSaver ✓');
     document.getElementById('result-meta').innerHTML=meta.map(m=>'<span class="result-tag">'+m+'</span>').join('');
     document.getElementById('result-box').classList.add('show');
-    ['nlabel','ndays','nhours','nuses'].forEach(id=>document.getElementById(id).value='');
-    toast('✅ Chave criada: '+d.key);
+    ['nlabel','ndays','nhours','nmins','nuses','nqty'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+    const cb=document.getElementById('ndeferred');if(cb)cb.checked=false;
+    toast(allKeys.length>1?('✅ '+allKeys.length+' chaves criadas!'):('✅ Chave criada: '+d.key));
     await loadHistory();
   }catch(e){toast('Erro de rede.',false);}
 }
 
 function copyKey(){const key=document.getElementById('result-key').textContent;navigator.clipboard.writeText(key).then(()=>toast('Chave copiada!')).catch(()=>{const ta=document.createElement('textarea');ta.value=key;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);toast('Chave copiada!');});}
+
+// Click-to-copy nas chaves da tabela
+document.addEventListener('click',function(e){
+  const kc=e.target.closest('.kc');
+  if(!kc)return;
+  const code=kc.textContent.trim();
+  if(!code)return;
+  navigator.clipboard.writeText(code).then(function(){
+    const prev=kc.textContent;
+    kc.textContent='✓ Copiada!';
+    kc.style.color='var(--g)';
+    setTimeout(function(){kc.textContent=prev;kc.style.color='';},1400);
+  }).catch(function(){});
+});
+
+async function toggleModKey(code){
+  try{
+    const r=await fetch(_RM+'/api/keys/'+encodeURIComponent(code)+'/toggle',{method:'POST'});
+    if(r.status===401){toast('Sessão expirada.',false);return;}
+    const d=await r.json();
+    if(d.ok){toast(d.active?'✅ Chave liberada!':'🔒 Chave bloqueada!');await loadHistory();}
+    else toast('Erro: '+(d.error||'?'),false);
+  }catch(e){toast('Erro de rede.',false);}
+}
+async function clearSuspectMod(code){
+  if(!confirm('Limpar alerta de suspeita para a chave '+code+'?\\n\\nO alerta não voltará por 48h.'))return;
+  try{
+    const r=await fetch(_RM+'/api/keys/'+encodeURIComponent(code)+'/clear-suspect',{method:'POST'});
+    if(r.status===401){toast('Sessão expirada.',false);return;}
+    const d=await r.json();
+    if(d.ok){toast('Alerta de suspeita removido por 48h');await loadHistory();}
+    else toast('Erro ao limpar suspeita',false);
+  }catch(e){toast('Erro de rede.',false);}
+}
+
+// ── Seleção em lote ──
+function toggleAllCbs(checked){
+  document.querySelectorAll('#hist-body .key-cb').forEach(cb=>{
+    if(cb.closest('tr').style.display!=='none')cb.checked=checked;
+  });
+  updateBatchModUI();
+}
+function updateBatchModUI(){
+  const sel=document.querySelectorAll('#hist-body .key-cb:checked').length;
+  const btn=document.getElementById('btn-del-batch');
+  const n=document.getElementById('batch-n');
+  if(n)n.textContent=sel;
+  if(btn)btn.style.display=sel>0?'inline-block':'none';
+}
+async function deleteBatchModKeys(){
+  const codes=[...document.querySelectorAll('#hist-body .key-cb:checked')].map(cb=>cb.closest('tr').dataset.code).filter(Boolean);
+  if(!codes.length)return;
+  const labels=codes.slice(0,8).map(c=>{const tr=document.querySelector('#hist-body tr[data-code="'+c+'"]');return '• '+((tr&&tr.dataset.label)||c);});
+  const preview=labels.join('\\n')+(codes.length>8?'\\n… e mais '+(codes.length-8):'');
+  if(!confirm('Excluir '+codes.length+' chave(s)? Esta ação é irreversível.\\n\\n'+preview))return;
+  let ok=0,fail=0;
+  for(const c of codes){
+    try{
+      const r=await fetch(_RM+'/api/keys/'+encodeURIComponent(c),{method:'DELETE'});
+      const d=await r.json();
+      if(d.ok)ok++;else fail++;
+    }catch(e){fail++;}
+  }
+  toast(fail?('⚠ '+ok+' excluída(s), '+fail+' falha(s)'):('✅ '+ok+' chave(s) excluída(s)'),!fail);
+  const mcb=document.getElementById('master-cb');if(mcb)mcb.checked=false;
+  await loadHistory();
+  updateBatchModUI();
+}
+
+// ── Logs das minhas chaves ──
+let _modLogs=[];
+async function loadModLogs(){
+  const tb=document.getElementById('modlogs-body');
+  if(tb)tb.innerHTML='<tr><td colspan="4" class="empty">Carregando...</td></tr>';
+  try{
+    const r=await fetch(_RM+'/api/my-logs');
+    if(r.status===401){toast('Sessão expirada.',false);return;}
+    const d=await r.json();
+    if(!d.ok){if(tb)tb.innerHTML='<tr><td colspan="4" class="empty">Erro ao carregar logs.</td></tr>';return;}
+    _modLogs=d.logs||[];
+    renderModLogs(_modLogs);
+  }catch(e){if(tb)tb.innerHTML='<tr><td colspan="4" class="empty">Erro de rede.</td></tr>';}
+}
+function renderModLogs(list){
+  const tb=document.getElementById('modlogs-body');
+  if(!tb)return;
+  if(!list.length){tb.innerHTML='<tr><td colspan="4" class="empty">Nenhum log encontrado para suas chaves.</td></tr>';return;}
+  tb.innerHTML=list.map(l=>{
+    const _d=l.timestamp?new Date(l.timestamp):null;
+    const _mon=_d?_d.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',month:'short'}).replace('.','').toUpperCase():'';
+    const _day=_d?_d.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit'}):'';
+    const _hm=_d?_d.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit',second:'2-digit'}):'';
+    const ts=_d?(_mon+'/'+_day+', '+_hm):'-';
+    const act=(l.action||'').toUpperCase();
+    const actColor=/OK|RENEW|CREATED|ACTIVA/.test(act)?'var(--g)':/FAIL|ERROR|NOT_FOUND|EXPIRED|BLOCKED/.test(act)?'var(--red)':'var(--tx2)';
+    return '<tr><td style="font-size:11px;white-space:nowrap">'+ts+'</td><td><span class="kc" title="Clique para copiar" style="cursor:pointer">'+escHtml(l.keyCode||'')+'</span></td><td>'+escHtml(l.label||'-')+'</td><td><span style="color:'+actColor+';font-size:11px;font-weight:700">'+escHtml(act||'-')+'</span></td></tr>';
+  }).join('');
+}
+function filterModLogs(){
+  const q=((document.getElementById('log-fq')||{}).value||'').toLowerCase();
+  if(!q){renderModLogs(_modLogs);return;}
+  renderModLogs(_modLogs.filter(l=>(l.keyCode||'').toLowerCase().includes(q)||(l.label||'').toLowerCase().includes(q)));
+}
+
+function openModRenew(code,label){
+  document.getElementById('modRenewCode').value=code;
+  document.getElementById('modRenewLabel').textContent=label;
+  document.getElementById('modRenewDays').value='';
+  document.getElementById('modRenewHours').value='';
+  document.getElementById('modRenewModal').classList.add('open');
+  setTimeout(()=>document.getElementById('modRenewDays').focus(),100);
+}
+function closeModRenew(){document.getElementById('modRenewModal').classList.remove('open');}
+document.getElementById('modRenewModal').addEventListener('click',function(e){if(e.target===this)closeModRenew();});
+async function saveModRenew(){
+  const code=document.getElementById('modRenewCode').value;
+  const days=parseInt(document.getElementById('modRenewDays').value)||0;
+  const hours=parseInt(document.getElementById('modRenewHours').value)||0;
+  if(!days&&!hours){toast('Informe pelo menos 1 dia ou hora.',false);return;}
+  try{
+    const r=await fetch(_RM+'/api/keys/'+encodeURIComponent(code)+'/renew',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({days,hours})});
+    if(r.status===401){toast('Sessão expirada.',false);return;}
+    const d=await r.json();
+    if(d.ok){toast('✅ Tempo adicionado!');closeModRenew();await loadHistory();}
+    else toast('Erro: '+(d.error||'?'),false);
+  }catch(e){toast('Erro de rede.',false);}
+}
 
 function fmtDate(iso){if(!iso)return'—';const d=new Date(iso);return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
 function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -1837,12 +2180,18 @@ function updateStats(keys,myName,srvRanking){
   const expired=keys.filter(k=>!k.active&&k.expiresAt&&new Date(k.expiresAt)<now).length;
   const today=keys.filter(k=>(k.createdAt||'').startsWith(todayStr)).length;
   const expiring=keys.filter(k=>{if(!k.expiresAt||!k.active)return false;const h=(new Date(k.expiresAt)-now)/3600000;return h>0&&h<48;}).length;
+  const blocked=keys.filter(k=>!k.active&&!(k.expiresAt&&new Date(k.expiresAt)<now)&&!(!k.expiresAt&&k.expireDuration)).length;
+  const deferred=keys.filter(k=>!k.expiresAt&&k.expireDuration).length;
+  const suspect=keys.filter(k=>(k.suspectFlag||k.isSuspect)).length;
   const zapSaverCount=keys.filter(k=>k.zapSaver).length;
   const withNote=keys.filter(k=>k.note&&k.note.trim()).length;
   document.getElementById('stat-total').textContent=total;
   document.getElementById('stat-active').textContent=active;
   document.getElementById('stat-today').textContent=today;
   document.getElementById('stat-expiring').textContent=expiring;
+  const elbl=document.getElementById('stat-blocked');if(elbl)elbl.textContent=blocked;
+  const eldf=document.getElementById('stat-deferred');if(eldf)eldf.textContent=deferred;
+  const elsp=document.getElementById('stat-suspect');if(elsp){elsp.textContent=suspect;elsp.style.color=suspect>0?'var(--red)':'var(--tx3)';};
   const ranking=srvRanking&&srvRanking.length?srvRanking:[];
   const myRank=ranking.length?ranking.findIndex(r=>r.name===myName)+1:1;
   renderRanking(ranking,myName);
@@ -1873,14 +2222,22 @@ async function loadHistory(){
         else if(diffH<48){expiringSoon++;const lbl=diffH<1?'<1h':diffH<24?diffH+'h':diffD+'d';expHtml=expDate+'<br><span class="badge-exp">⚠ '+lbl+'</span>';expClass=' style="background:#ff860008"';stTag='expirando';}
         else{const lbl=diffD>0?diffD+'d '+(diffH%24>0?(diffH%24)+'h':''):diffH+'h';expHtml=expDate+'<br><span style="color:var(--g);font-size:11px">'+lbl.trim()+' restantes</span>';stTag='ativa';}
       }else{expHtml='<span style="color:var(--tx3)">Sem expiração</span>';stTag='ativa';}
-      if(!k.active&&stTag!=='expirada')stTag='expirada';
+      if(!k.active&&stTag!=='expirada')stTag='bloqueada';
+      const isSusp=!!(k.suspectFlag||k.isSuspect||(k.recentIpCount&&k.recentIpCount>3));
       const st=k.active?'<span class="badge-bon">ATIVA</span>':'<span class="badge-expired">INATIVA</span>';
       const noteClean=(k.note||'').trim();
       const noteHtml=noteClean?'<span style="font-size:11px;color:var(--tx3)">'+escHtml(noteClean)+'</span>':'<span style="color:var(--tx3);font-size:11px">—</span>';
-      const acts='<button class="btn-rename" onclick="openRename(\\''+escHtml(k.code)+'\\',\\''+escHtml(k.label)+'\\')">✏ Renomear</button> '
+      const toggleLbl=k.active?'🔒 Bloquear':'✅ Liberar';
+      const toggleCls=k.active?'btn-del':'btn-rename';
+      const suspBadge=isSusp?'<span style="color:#ff4757;font-size:11px;margin-left:4px">⚠ SUSPEITA</span>':'';
+      const suspBtn=isSusp?'<button class="btn-note" onclick="clearSuspectMod(\\''+escHtml(k.code)+'\\')">🕵️ Suspeita</button> ':'';
+      const acts=suspBtn
+                +'<button class="'+toggleCls+'" onclick="toggleModKey(\\''+escHtml(k.code)+'\\')">'+toggleLbl+'</button> '
+                +'<button class="btn-note" onclick="openModRenew(\\''+escHtml(k.code)+'\\',\\''+escHtml(k.label)+'\\')">⏱ +Tempo</button> '
+                +'<button class="btn-rename" onclick="openRename(\\''+escHtml(k.code)+'\\',\\''+escHtml(k.label)+'\\')">✏ Renomear</button> '
                 +'<button class="btn-note" onclick="openModNote(\\''+escHtml(k.code)+'\\',\\''+escHtml(k.label)+'\\',\\''+escHtml(noteClean)+'\\')">📝 Nota</button> '
                 +'<button class="btn-del" onclick="openDelete(\\''+escHtml(k.code)+'\\',\\''+escHtml(k.label)+'\\')">🗑 Excluir</button>';
-      return '<tr'+expClass+' data-code="'+escHtml(k.code)+'" data-label="'+escHtml(k.label)+'" data-st="'+stTag+'"><td><span class="kc">'+escHtml(k.code)+'</span></td><td>'+escHtml(k.label)+'</td><td>'+k.maxUses+'</td><td>'+expHtml+'</td><td style="font-size:11px">'+fmtDate(k.createdAt)+'</td><td>'+noteHtml+'</td><td>'+st+'</td><td style="white-space:nowrap">'+acts+'</td></tr>';
+      return '<tr'+expClass+' data-code="'+escHtml(k.code)+'" data-label="'+escHtml(k.label)+'" data-st="'+stTag+'" data-suspect="'+(isSusp?'1':'')+'"><td><span style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="key-cb" onchange="updateBatchModUI()" style="cursor:pointer;width:13px;height:13px;flex-shrink:0"><span class="kc" title="Clique para copiar" style="cursor:pointer">'+escHtml(k.code)+'</span>'+suspBadge+'</span></td><td>'+escHtml(k.label)+'</td><td>'+k.maxUses+'</td><td>'+expHtml+'</td><td style="font-size:11px">'+fmtDate(k.createdAt)+'</td><td>'+noteHtml+'</td><td>'+st+'</td><td style="white-space:nowrap">'+acts+'</td></tr>';
     }).join('');
     const alertCard=document.getElementById('alert-expiring');
     if(expired>0||expiringSoon>0){
@@ -1891,6 +2248,7 @@ async function loadHistory(){
       document.getElementById('alert-expiring-text').innerHTML='⚠️ '+parts.join(' e ')+'. Contate o administrador.';
     }else{alertCard.style.display='none';}
     filterKeys();
+    updateBatchModUI();
     updateStats(_allKeys,d.modName,d.ranking||[]);
   }catch(e){toast('Erro ao carregar.',false);}
 }
@@ -2065,14 +2423,15 @@ ${_pwdToggleScript()}
 </body></html>`;
 }
 
-function renderPortalLogin(err='',redir='') {
+function renderPortalLogin(err='',redir='',ok='') {
   const errHtml = err ? `<div class="err">⚠ ${escHtml(err)}</div>` : '';
+  const okHtml  = ok  ? `<div class="ok">✅ ${escHtml(ok)}</div>` : '';
   const body = `
 <div class="logo">⚡ ZVM</div>
 <div class="logo-sub">Portal do Cliente</div>
 <div class="card">
   <div class="card-title">🔐 Entrar na minha conta</div>
-  ${errHtml}
+  ${errHtml}${okHtml}
   <form method="POST" action="/cliente/login">
     <input type="hidden" name="redir" value="${escHtml(redir)}">
     <div class="fi"><label>E-mail</label><input type="email" name="email" placeholder="seu@email.com" required autocomplete="email"></div>
@@ -2242,9 +2601,9 @@ function renderPortalDashboard(user, keyData, okMsg='') {
 .key-card{background:var(--bg2);border:1px solid var(--brd);border-radius:10px;margin-bottom:16px;overflow:hidden}
 .key-card-head{padding:18px 22px 14px;border-bottom:1px solid var(--brd)}
 .key-card-title{font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
-.key-display{font-family:'Space Mono',monospace;font-size:16px;color:var(--g);letter-spacing:2px;word-break:break-all;cursor:pointer;padding:12px 16px;background:#0d0d0d;border:1px solid var(--brd2);border-radius:7px;transition:border-color .2s;display:flex;align-items:center;justify-content:space-between;gap:10px}
-.key-display:hover{border-color:#00e67650}
-.key-copy-hint{font-size:11px;color:var(--tx3);font-family:'Outfit',sans-serif;white-space:nowrap;flex-shrink:0}
+.key-display{font-family:'Space Mono',monospace;font-size:16px;color:var(--g);letter-spacing:2px;word-break:break-all;cursor:pointer;padding:12px 16px;background:#00ff870a;border:1.5px solid #00ff8730;border-radius:7px;transition:all .2s;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.key-display:hover{border-color:#00ff8770;background:#00ff8714;box-shadow:0 0 12px #00ff8718}
+.key-copy-hint{font-size:11px;color:var(--g);font-family:'Outfit',sans-serif;white-space:nowrap;flex-shrink:0;font-weight:700;letter-spacing:.3px;opacity:.75}
 .key-stats{display:grid;grid-template-columns:repeat(4,1fr);padding:0}
 .key-stat{padding:16px 20px;border-right:1px solid var(--brd);display:flex;flex-direction:column;gap:5px}
 .key-stat:last-child{border-right:none}
@@ -2343,7 +2702,7 @@ ${keyData ? `
 <div class="key-card">
   <div class="key-card-head">
     <div class="key-card-title">🔑 Chave de Licença</div>
-    <div class="key-display" title="Clique para copiar" onclick="if(navigator.clipboard){navigator.clipboard.writeText('${escHtml(keyData.code||'')}');this.querySelector('.key-copy-hint').textContent='Copiado!';setTimeout(()=>this.querySelector('.key-copy-hint').textContent='Clique para copiar',2000)}">
+    <div class="key-display" title="Clique para copiar" onclick="if(navigator.clipboard){navigator.clipboard.writeText('${escHtml(keyData.code||'')}');var h=this.querySelector('.key-copy-hint');h.textContent='✓ Copiado!';h.style.opacity='1';this.style.borderColor='#00ff87';this.style.boxShadow='0 0 18px #00ff8740';setTimeout(()=>{h.textContent='Clique para copiar';h.style.opacity='';this.style.borderColor='';this.style.boxShadow='';},2000)}">
       <span>${escHtml(keyData.code||'')}</span>
       <span class="key-copy-hint">Clique para copiar</span>
     </div>
@@ -2374,8 +2733,33 @@ ${keyData ? `
   <a href="/cliente/vincular" class="action-btn primary">🔗 Vincular Chave</a>
   ${hasKey ? `<form method="POST" action="/cliente/desvincular" style="margin:0;display:contents" onsubmit="return confirm('Tem certeza? Isso desvinculará sua chave desta conta.')"><button type="submit" class="action-btn danger">🔓 Desvincular</button></form>` : '<span></span>'}
   <a href="/cliente/senha" class="action-btn neutral">🔒 Alterar Senha</a>
+  <a href="/cliente/email" class="action-btn neutral">📧 Alterar E-mail</a>
   <a href="/cliente/2fa/setup" class="action-btn accent">${has2fa ? "✅ 2FA Ativo" : "🛡 Segurança 2FA"}</a>
+  ${keyData ? `<a href="https://wa.me/5521996771552?text=${encodeURIComponent('Olá! Quero renovar minha chave ZVM: '+(keyData.code||''))}" target="_blank" rel="noopener" class="action-btn" style="background:linear-gradient(135deg,#25D36618,#128C7E18);color:#25D366;border-color:#25D36635">📲 Renovar Plano</a>` : ''}
 </div>
+
+${keyData && keyData.deviceHistory && keyData.deviceHistory.length ? `
+<div class="panel-box" style="margin-top:14px">
+  <div class="panel-hdr"><span class="panel-hdr-icon">📱</span> Dispositivos Recentes</div>
+  <div class="panel-body" style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:480px">
+      <thead><tr>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--brd);color:var(--tx2);font-weight:600">Telefone</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--brd);color:var(--tx2);font-weight:600">IP</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--brd);color:var(--tx2);font-weight:600">Versão WPP</th>
+        <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--brd);color:var(--tx2);font-weight:600">Último acesso</th>
+      </tr></thead>
+      <tbody>
+        ${keyData.deviceHistory.map(d=>`<tr>
+          <td style="padding:6px 10px;border-bottom:1px solid var(--brd2)">${escHtml(d.phone||'-')}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid var(--brd2);font-family:monospace;font-size:11px">${escHtml(d.ip||'-')}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid var(--brd2)">${escHtml(d.wppVersion||'-')}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid var(--brd2);font-size:12px;color:var(--tx2)">${d.lastSeen?new Date(d.lastSeen).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'-'}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+</div>` : ''}
 
 
 
@@ -2398,6 +2782,28 @@ ${keyData ? `
 `;
   const _cleanOkScript = okMsg ? `<script>if(location.search)history.replaceState(null,'',location.pathname);<\/script>` : '';
   return renderPortalPage(body + _cleanOkScript, 'ZVM — Minha Conta', '', true);
+}
+
+function renderPortalChangeEmail(err='', ok='') {
+  const errHtml = err ? `<div class="err">⚠ ${escHtml(err)}</div>` : '';
+  const okHtml  = ok  ? `<div class="ok">✅ ${escHtml(ok)}</div>` : '';
+  const body = `
+<div class="nav-hdr">
+  <div class="nav-logo">⚡ ZVM</div>
+  <a href="/cliente" class="nav-out">← Voltar</a>
+</div>
+<div class="card">
+  <div class="card-title">📧 Alterar E-mail</div>
+  ${errHtml}${okHtml}
+  <form method="POST" action="/cliente/email">
+    <div class="fi"><label>Novo e-mail</label><input type="email" name="newemail" required maxlength="120" autocomplete="email"></div>
+    <div class="fi"><label>Confirmar novo e-mail</label><input type="email" name="newemail2" required maxlength="120"></div>
+    <div class="fi"><label>Senha atual (para confirmar)</label><input type="password" name="pass" required></div>
+    <button type="submit" class="btn">Salvar novo e-mail</button>
+  </form>
+</div>
+`;
+  return renderPortalPage(body, 'ZVM — Alterar E-mail');
 }
 
 function renderPortalLinkKey(err='',ok='') {
@@ -2601,7 +3007,7 @@ input[type=text].key-input:focus{border-color:#00ff87}
         type="text" name="key" id="key-field" class="key-input"
         value="${escHtml(keyVal)}"
         placeholder="zv-xxxxx-xxxxx-xxxxx"
-        autocomplete="off" spellcheck="false" maxlength="20"
+        autocomplete="off" spellcheck="false" maxlength="40"
         oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9\-]/g,'').slice(0,20)"
         onpaste="var e=this;setTimeout(function(){e.value=e.value.toLowerCase().replace(/[^a-z0-9\-]/g,'').slice(0,20);},0)">
       <p class="key-hint">Você recebeu esta chave junto com a sua compra.</p>
@@ -2700,7 +3106,7 @@ a.out:hover{color:var(--red);border-color:var(--red-brd)}
 /* ── Alert strip ── */
 .alert-strip{display:flex;background:var(--org-bg);border:1px solid var(--org-brd);border-radius:var(--r);padding:9px 14px;margin-bottom:14px;align-items:center;gap:8px;font-size:12px;color:var(--orange);flex-wrap:wrap}
 /* ── Stats grid ── */
-.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
 .sc{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);padding:14px 16px;position:relative;overflow:hidden;transition:border-color .18s,box-shadow .18s;cursor:default}
 .sc:hover{border-color:var(--brd2);box-shadow:var(--shadow)}
 .sc.warn-card{border-color:var(--yel-brd);background:var(--yel-bg)}
@@ -2815,6 +3221,8 @@ td.td-status{white-space:nowrap;overflow:hidden}
   <div class="hright">
     <span class="hdr-meta" id="last-refresh">—</span>
     <span class="hdr-meta" id="hdr-users-count" title="Usuários no Portal" style="display:none;background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd);border-radius:var(--r-sm);padding:2px 8px;font-weight:700">👥 <span id="hdr-users-num">0</span></span>
+    <span id="hdr-suspect-badge" title="Chaves suspeitas — clique para filtrar" style="background:#ff475718;color:#ff4757;border:1px solid #ff475730;border-radius:var(--r-sm);padding:2px 8px;font-weight:700;font-size:11px;cursor:pointer" onclick="document.getElementById('filter-status').value='suspect';switchTab('keys');filterKeys()">⚠ <span id="hdr-suspect-num">0</span> suspeita(s)</span>
+    <span id="hdr-session-warn" style="display:none;background:#f0b42912;color:var(--orange);border:1px solid var(--org-brd);border-radius:var(--r-sm);padding:2px 8px;font-size:11px">⏱ Sessão expira em <span id="hdr-session-min">—</span> min</span>
     <button class="btn bw" onclick="doRefresh(true)">↻ Atualizar</button>
     <button class="btn bcsv" onclick="exportCSV()">⬇ CSV</button>
     <a href="${R_ADMIN}/logout" class="out">↩ Sair</a>
@@ -2827,6 +3235,7 @@ td.td-status{white-space:nowrap;overflow:hidden}
   <button class="rtab" data-tab="logs" onclick="switchTab('logs')"><span class="rtab-icon">📋</span><span class="rtab-label">Logs</span></button>
   <button class="rtab" data-tab="audit" onclick="switchTab('audit')"><span class="rtab-icon">🛡</span><span class="rtab-label">Auditoria</span></button>
   <button class="rtab" data-tab="users" onclick="switchTab('users')"><span class="rtab-icon">👥</span><span class="rtab-label">Usuários</span></button>
+  <button class="rtab" data-tab="security" onclick="switchTab('security')"><span class="rtab-icon">🔒</span><span class="rtab-label">Segurança</span></button>
 </nav>
 <div class="admin-content">
 
@@ -2837,9 +3246,12 @@ td.td-status{white-space:nowrap;overflow:hidden}
 
   <div class="stats">
     <div class="sc"><div class="sc-icon">🔑</div><div class="n" id="s-total">${stats.totalKeys}</div><div class="l">Total</div></div>
-    <div class="sc"><div class="sc-icon">✅</div><div class="n" id="s-active">${stats.activeKeys}</div><div class="l">Ativas</div></div>
-    <div class="sc${expiredCount>0?' expired-card':''}"><div class="sc-icon">⛔</div><div class="n" id="s-expired">${expiredCount}</div><div class="l">Expiradas</div></div>
-    <div class="sc${expiringSoon>0?' warn-card':''}"><div class="sc-icon">⏰</div><div class="n" id="s-warn">${expiringSoon}</div><div class="l">Expirando (${EXPIRY_WARN_HOURS}h)</div></div>
+    <div class="sc" style="cursor:pointer" onclick="document.getElementById('filter-status').value='ativo';filterKeys()" title="Filtrar ativas"><div class="sc-icon">✅</div><div class="n" id="s-active">${stats.activeKeys}</div><div class="l">Ativas</div></div>
+    <div class="sc" style="cursor:pointer" onclick="document.getElementById('filter-status').value='bloqueado';filterKeys()" title="Filtrar bloqueadas"><div class="sc-icon">🔒</div><div class="n" id="s-blocked">${stats.blockedKeys}</div><div class="l">Bloqueadas</div></div>
+    <div class="sc" style="cursor:pointer" onclick="document.getElementById('filter-status').value='aguardando';filterKeys()" title="Filtrar aguardando 1º uso"><div class="sc-icon">⏱</div><div class="n" id="s-deferred">${stats.deferredKeys}</div><div class="l">Aguardando 1º uso</div></div>
+    <div class="sc${expiredCount>0?' expired-card':''}" style="cursor:pointer" onclick="document.getElementById('filter-status').value='expirada';filterKeys()" title="Filtrar expiradas"><div class="sc-icon">⛔</div><div class="n" id="s-expired">${expiredCount}</div><div class="l">Expiradas</div></div>
+    <div class="sc${expiringSoon>0?' warn-card':''}" style="cursor:pointer" onclick="document.getElementById('filter-status').value='expirando';filterKeys()" title="Filtrar expirando em breve"><div class="sc-icon">⏰</div><div class="n" id="s-warn">${expiringSoon}</div><div class="l">Expirando (${EXPIRY_WARN_HOURS}h)</div></div>
+    <div class="sc" style="cursor:pointer" onclick="document.getElementById('filter-status').value='suspect';filterKeys()" title="Filtrar suspeitas"><div class="sc-icon">⚠️</div><div class="n" id="s-suspect" style="${stats.suspectKeys>0?'color:var(--red)':''}">${stats.suspectKeys}</div><div class="l">Suspeitas</div></div>
     <div class="sc"><div class="sc-icon">📋</div><div class="n" id="s-logs">${stats.totalLogs}</div><div class="l">Logs</div></div>
   </div>
 
@@ -2859,7 +3271,8 @@ td.td-status{white-space:nowrap;overflow:hidden}
         <div class="fi-sep"></div>
         <div class="fi-col"><span class="fi-lbl">Usos</span><input type="number" id="nuses" class="fi-num" placeholder="3" min="-1" style="width:56px"></div>
         <div class="fi-col" style="justify-content:flex-end;padding-bottom:1px"><label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--tx2);white-space:nowrap;cursor:pointer"><input type="checkbox" id="ndeferred" style="accent-color:var(--g);width:13px;height:13px">⏱ Ativar ao 1º uso</label></div>
-        <button class="btn bp" onclick="generateKey()">+ Gerar Chave</button>
+        <input type="number" id="batch-qty" min="1" max="50" value="1" style="width:58px;padding:6px 8px;border:1px solid var(--brd);border-radius:6px;background:var(--bg);color:var(--tx);font-size:13px" title="Quantidade de chaves a gerar">
+<button class="btn bp" onclick="generateKey()">+ Gerar Chave(s)</button>
       </div>
     </div>
     <div class="search-bar">
@@ -2871,30 +3284,38 @@ td.td-status{white-space:nowrap;overflow:hidden}
         <option value="expirada">Expiradas</option>
         <option value="bloqueado">Bloqueadas</option>
         <option value="aguardando">Aguardando 1º uso</option>
+        <option value="suspect">⚠ Suspeitas</option>
       </select>
       <select id="filter-mod" onchange="filterKeys()" style="min-width:140px">
         <option value="">Todos os mods</option>
         ${MODS.map(m => `<option value="${escHtml(m.name.toLowerCase())}">${escHtml(m.name)}</option>`).join('')}
       </select>
+      <select id="filter-plan" onchange="filterKeys()" style="min-width:120px">
+        <option value="">Todos os planos</option>
+        <option value="pro">Pro</option>
+        <option value="basic">Básico</option>
+        <option value="free">Free</option>
+      </select>
       <button class="btn br" id="btn-delete-batch" style="display:none" onclick="deleteBatchKeys()">🗑 Excluir Selecionadas (<span id="batch-count">0</span>)</button>
     </div>
     <div class="filter-count" id="keys-filter-count"></div>
     <div class="ov">
-      <table style="min-width:1000px">
+      <table style="min-width:1100px">
         <colgroup>
-          <col style="width:13%">
-          <col style="width:10%">
-          <col style="width:6%">
-          <col style="width:10%">
-          <col style="width:4%">
-          <col style="width:9%">
+          <col style="width:11%">
           <col style="width:8%">
+          <col style="width:6%">
           <col style="width:9%">
+          <col style="width:4%">
+          <col style="width:8%">
+          <col style="width:6%">
           <col style="width:7%">
-          <col style="width:18%">
+          <col style="width:7%">
+          <col style="width:5%">
+          <col style="width:16%">
         </colgroup>
         <thead><tr>
-          <th onclick="sortKeys('code')">Chave</th>
+          <th onclick="sortKeys('code')"><span style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="master-cb" onchange="toggleAllCheckboxes(this.checked)" style="cursor:pointer;width:13px;height:13px;flex-shrink:0">CHAVE</span></th>
           <th onclick="sortKeys('label')" id="th-label">Cliente</th>
           <th onclick="sortKeys('status')" id="th-status">Status</th>
           <th onclick="sortKeys('validity')" id="th-validity">Validade</th>
@@ -2902,11 +3323,25 @@ td.td-status{white-space:nowrap;overflow:hidden}
           <th onclick="sortKeys('phone')" id="th-phone">Telefone</th>
           <th>Último IP</th>
           <th onclick="sortKeys('lastused')" id="th-lastused">Último Acesso</th>
+          <th onclick="sortKeys('created')" id="th-created">Criado em</th>
           <th>Nota</th>
           <th style="cursor:default">Ações</th>
         </tr></thead>
         <tbody id="kb">${getKeysHtmlCached()}</tbody>
       </table>
+    </div>
+  </div>
+  </div>
+
+  <!-- ── PAINEL HISTÓRICO MODS ── -->
+  <div class="sec-panel" data-panel="logs">
+  <div class="sec">
+    <div class="sh">
+      <div class="st"><span class="st-accent">📋</span> Histórico de Ações dos Moderadores</div>
+      <button class="btn br" style="font-size:12px" onclick="loadModLogs()">↻ Carregar</button>
+    </div>
+    <div id="mod-logs-body" style="margin-top:10px;max-height:360px;overflow-y:auto;font-size:13px">
+      <p style="color:var(--muted);padding:8px">Clique em "Carregar" para ver o histórico de ações.</p>
     </div>
   </div>
   </div>
@@ -2963,7 +3398,10 @@ td.td-status{white-space:nowrap;overflow:hidden}
         <div class="st"><span class="st-accent">🚨</span> Alertas de Segurança</div>
         <div style="font-size:11px;color:var(--tx3);margin-top:2px">Logins falhos · Rate limit · Payloads suspeitos · Webhooks inválidos</div>
       </div>
-      <button class="btn br" style="font-size:11px;padding:4px 10px" onclick="clearSecurityAlerts()">🗑 Limpar Logs</button>
+      <div style="display:flex;gap:8px">
+        <a href="${R_ADMIN}/api/mod-logs/csv" class="btn bw" style="font-size:11px;padding:4px 10px;text-decoration:none" download>⬇ Exportar Audit CSV</a>
+        <button class="btn br" style="font-size:11px;padding:4px 10px" onclick="clearSecurityAlerts()">🗑 Limpar Logs</button>
+      </div>
     </div>
     <div class="ov">
       <table>
@@ -2977,6 +3415,41 @@ td.td-status{white-space:nowrap;overflow:hidden}
           <tr><td colspan="4" class="empty">Execute a varredura para carregar alertas.</td></tr>
         </tbody>
       </table>
+    </div>
+  </div>
+  </div>
+
+  <!-- ── PAINEL SEGURANÇA ── -->
+  <div class="sec-panel" data-panel="security">
+  <div class="sec">
+    <div class="sh">
+      <div>
+        <div class="st"><span class="st-accent">🔒</span> Blacklist de IPs</div>
+        <div style="font-size:11px;color:var(--tx3);margin-top:2px">IPs bloqueados permanentemente em todas as requisições</div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input type="text" id="ip-bl-input" placeholder="Ex: 1.2.3.4" style="padding:5px 9px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;width:155px" onkeydown="if(event.key==='Enter')addToBlacklist()">
+        <button class="btn bp" style="font-size:12px;padding:5px 12px" onclick="addToBlacklist()">+ Bloquear IP</button>
+      </div>
+    </div>
+    <div class="ov">
+      <table>
+        <thead><tr><th>IP Bloqueado</th><th style="width:120px;text-align:center">Ação</th></tr></thead>
+        <tbody id="ip-bl-tb"><tr><td colspan="2" class="empty">Nenhum IP bloqueado</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="sec" style="margin-top:12px">
+    <div class="sh">
+      <div>
+        <div class="st"><span class="st-accent">🔐</span> 2FA dos Moderadores</div>
+        <div style="font-size:11px;color:var(--tx3);margin-top:2px">QR codes para configurar TOTP em apps como Google Authenticator</div>
+      </div>
+      <button class="btn bw" style="font-size:12px;padding:5px 12px" onclick="loadTotpSetup()">↻ Carregar</button>
+    </div>
+    <div class="ov" id="totp-setup-body" style="padding:14px">
+      <p style="color:var(--tx3);font-size:12px">Clique em <strong>↻ Carregar</strong> para ver o status de 2FA de cada moderador.</p>
     </div>
   </div>
   </div>
@@ -3144,6 +3617,8 @@ function filterKeys(){
   const q=(document.getElementById('search-input').value||'').toLowerCase();
   const st=document.getElementById('filter-status').value;
   const fm=(document.getElementById('filter-mod')||{}).value||'';
+  const fp=(document.getElementById('filter-plan')||{}).value||'';
+  const isSuspectFilter=st==='suspect';
   let shown=0,total=0;
   document.querySelectorAll('#kb tr[data-label]').forEach(row=>{
     total++;
@@ -3152,16 +3627,18 @@ function filterKeys(){
     const status=(row.dataset.status||'').toLowerCase();
     const code=(row.dataset.code||'').toLowerCase();
     const createdby=(row.dataset.createdby||'').toLowerCase();
+    const plan=(row.dataset.plan||'').toLowerCase();
     const ip=(row.cells[7]||{}).textContent||'';
     const matchQ=!q||label.includes(q)||phone.includes(q)||code.includes(q)||ip.toLowerCase().includes(q);
-    const matchSt=!st||status===st;
+    const matchSt=!st||(isSuspectFilter?row.dataset.suspect==='1':status===st);
     const matchMod=!fm||(fm==='__admin__'?!createdby:createdby===fm);
-    const visible=matchQ&&matchSt&&matchMod;
+    const matchPlan=!fp||plan===fp;
+    const visible=matchQ&&matchSt&&matchMod&&matchPlan;
     row.style.display=visible?'':'none';
     if(visible)shown++;
   });
   const fc=document.getElementById('keys-filter-count');
-  if(fc)fc.textContent=(st||q)?(shown+' de '+total+' chave(s) exibida(s)'):(total+' chave(s)');
+  if(fc)fc.textContent=(st||q||fm||fp)?(shown+' de '+total+' chave(s) exibida(s)'):(total+' chave(s)');
   updateBatchUI();
 }
 
@@ -3195,29 +3672,45 @@ async function generateKey(){
   const mins=parseInt(document.getElementById('nmins').value||0);
   const _u=document.getElementById('nuses').value.trim();
   const maxUses=_u===''?3:parseInt(_u);
+  const qty=Math.min(50,Math.max(1,parseInt(document.getElementById('batch-qty')?.value||'1',10)));
   if(!label){toast('Informe o nome do cliente',false);return;}
   if(isNaN(maxUses)){toast('❌ Usos inválido',false);return;}
+  const baseBody={maxUses};
+  if(days>0)baseBody.expireDays=days;if(hours>0)baseBody.expireHours=hours;if(mins>0)baseBody.expireMinutes=mins;
+  const def=document.getElementById('ndeferred');if(def&&def.checked)baseBody.deferred=true;
+  const generated=[];
   try{
-    const body={label,maxUses};
-    if(days>0)body.expireDays=days;if(hours>0)body.expireHours=hours;if(mins>0)body.expireMinutes=mins;
-    const def=document.getElementById('ndeferred');if(def&&def.checked)body.deferred=true;
-    const r=await fetch(_RA+'/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href=_RA,1500);return;}
-    const d=await r.json();
-    if(d.ok){
+    for(let i=0;i<qty;i++){
+      const lbl=qty>1?label+' #'+(i+1):label;
+      const r=await fetch(_RA+'/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...baseBody,label:lbl})});
+      if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href=_RA,1500);return;}
+      const d=await r.json();
+      if(d.ok)generated.push({label:lbl,code:d.key});
+      else{toast('❌ Erro na chave '+(i+1)+': '+(d.error||'?'),false);break;}
+    }
+    if(!generated.length)return;
+    if(qty===1){
       const exp=[];if(days>0)exp.push(days+'d');if(hours>0)exp.push(hours+'h');if(mins>0)exp.push(mins+'min');
-      toast('✅ '+d.key+(exp.length?' · '+exp.join(' '):' · sem expiração')+' · '+(maxUses===-1?'∞ usos':maxUses+' uso(s)'));
-      ['nlabel','ndays','nhours','nmins','nuses'].forEach(id=>document.getElementById(id).value='');
-      if(document.getElementById('ndeferred'))document.getElementById('ndeferred').checked=false;
-      await doRefresh();
-    }else toast('❌ Erro: '+(d.error||'desconhecido'),false);
+      toast('✅ '+generated[0].code+(exp.length?' · '+exp.join(' '):' · sem expiração')+' · '+(maxUses===-1?'∞ usos':maxUses+' uso(s)'));
+    } else {
+      toast('✅ '+generated.length+' chaves geradas! Download CSV iniciado.');
+      const csv='Cliente,Chave\\n'+generated.map(c=>'"'+c.label.replace(/"/g,'""')+'","'+c.code+'"').join('\\n');
+      const a=document.createElement('a');
+      a.href='data:text/csv;charset=utf-8,﻿'+encodeURIComponent(csv);
+      a.download='chaves_'+new Date().toISOString().slice(0,10)+'.csv';
+      document.body.appendChild(a);a.click();document.body.removeChild(a);
+    }
+    ['nlabel','ndays','nhours','nmins','nuses'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+    if(def)def.checked=false;
+    const bq=document.getElementById('batch-qty');if(bq)bq.value='1';
+    await doRefresh();
   }catch(e){toast('❌ Erro de rede',false);}
 }
 
 async function doRefresh(manual){
   try{
     const r=await fetch(_RA+'/api/data');
-    if(r.status===401){if(manual)toast('Sessão expirada',false);return;}
+    if(r.status===401){toast('⏱ Sessão expirada — redirecionando...',false);setTimeout(()=>location.href=_RA,1800);return;}
     const d=await r.json();if(d.error)return;
     document.getElementById('s-total').textContent=d.totalKeys||0;
     document.getElementById('s-active').textContent=d.activeKeys||0;
@@ -3230,6 +3723,9 @@ async function doRefresh(manual){
     }
     document.getElementById('s-logs').textContent=d.totalLogs||0;
     const sw=document.getElementById('s-warn');sw.textContent=d.warnKeys||0;sw.style.color=d.warnKeys>0?'var(--orange)':'var(--green)';sw.closest('.sc').classList.toggle('warn-card',d.warnKeys>0);
+    const sbl=document.getElementById('s-blocked');if(sbl)sbl.textContent=d.blockedKeys||0;
+    const sdf=document.getElementById('s-deferred');if(sdf)sdf.textContent=d.deferredKeys||0;
+    const ssp=document.getElementById('s-suspect');if(ssp){ssp.textContent=d.suspectKeys||0;ssp.style.color=(d.suspectKeys||0)>0?'var(--red)':'';};
     const alert=document.getElementById('urgent-alert'),alertTxt=document.getElementById('urgent-alert-text');
     if(alert&&alertTxt){
       const parts=[];
@@ -3242,15 +3738,112 @@ async function doRefresh(manual){
     document.getElementById('lb').innerHTML=d.logsHtml||'';
     const lr=document.getElementById('last-refresh');
     if(lr)lr.textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    // Badge de chaves suspeitas no header
+    const suspN=d.suspectKeys||0;
+    const sb=document.getElementById('hdr-suspect-badge'),sbn=document.getElementById('hdr-suspect-num');
+    if(sb&&sbn){sbn.textContent=suspN;sb.style.opacity=suspN>0?'1':'0.45';sb.style.pointerEvents=suspN>0?'auto':'none';}
     filterKeys();
     if(manual)toast('Painel atualizado');
   }catch(e){console.error('Refresh error',e);if(manual)toast('Erro ao atualizar',false);}
 }
 setInterval(()=>doRefresh(false),120000);
 
+// Click-to-copy nas chaves da tabela
+document.addEventListener('click',function(e){
+  const kc=e.target.closest('.kc');
+  if(!kc)return;
+  const code=kc.textContent.trim();
+  if(!code)return;
+  navigator.clipboard.writeText(code).then(function(){
+    const prev=kc.textContent;
+    kc.textContent='✓ Copiada!';
+    kc.style.color='var(--g)';
+    setTimeout(function(){kc.textContent=prev;kc.style.color='';},1400);
+  }).catch(function(){});
+});
+
+// Aviso de sessão expirando
+fetch(_RA+'/api/session-info').then(function(r){return r.ok?r.json():null;}).then(function(d){
+  if(!d||!d.expiresAt)return;
+  var _sessExp=d.expiresAt;
+  var checkExpiry=function(){
+    var msLeft=new Date(_sessExp)-Date.now();
+    var warn=document.getElementById('hdr-session-warn'),wmin=document.getElementById('hdr-session-min');
+    if(!warn||!wmin)return;
+    if(msLeft<=600000&&msLeft>0){warn.style.display='inline-flex';wmin.textContent=Math.ceil(msLeft/60000);}
+    else{warn.style.display='none';}
+  };
+  checkExpiry();
+  setInterval(checkExpiry,30000);
+}).catch(function(){});
+
+// IP Blacklist
+async function loadBlacklist(){
+  try{
+    const r=await fetch(_RA+'/api/ip-blacklist');
+    if(!r.ok)return;
+    const d=await r.json();
+    const tb=document.getElementById('ip-bl-tb');
+    if(!tb)return;
+    if(!d.ips||!d.ips.length){tb.innerHTML='<tr><td colspan="2" class="empty">Nenhum IP bloqueado</td></tr>';return;}
+    tb.innerHTML='';
+    d.ips.forEach(function(ip){
+      const tr=document.createElement('tr');
+      const td1=document.createElement('td');td1.style.cssText='font-family:monospace;font-size:13px';td1.textContent=ip;
+      const td2=document.createElement('td');td2.style.textAlign='center';
+      const btn=document.createElement('button');btn.className='bs bd';btn.style.cssText='font-size:11px;padding:3px 8px';btn.textContent='Remover';
+      btn.onclick=function(){removeFromBlacklist(ip);};
+      td2.appendChild(btn);tr.appendChild(td1);tr.appendChild(td2);tb.appendChild(tr);
+    });
+  }catch{}
+}
+async function addToBlacklist(){
+  const inp=document.getElementById('ip-bl-input');
+  const ip=(inp&&inp.value||'').trim();
+  if(!ip){toast('Informe um IP.',false);return;}
+  const r=await fetch(_RA+'/api/ip-blacklist/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ip})});
+  const d=await r.json();
+  if(d.ok){inp.value='';toast('IP bloqueado: '+ip);loadBlacklist();}else toast('Erro: '+(d.error||'?'),false);
+}
+async function removeFromBlacklist(ip){
+  if(!confirm('Remover '+ip+' da blacklist?'))return;
+  const r=await fetch(_RA+'/api/ip-blacklist/remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ip})});
+  const d=await r.json();
+  if(d.ok){toast('IP removido.');loadBlacklist();}else toast('Erro',false);
+}
+
+// TOTP Setup
+async function loadTotpSetup(){
+  const body=document.getElementById('totp-setup-body');
+  if(!body)return;
+  body.innerHTML='<p style="color:var(--tx3);font-size:12px">Carregando...</p>';
+  try{
+    const r=await fetch(_RA+'/api/mods/totp-setup');
+    const d=await r.json();
+    if(!d.ok||!d.mods){body.innerHTML='<p style="color:var(--red);font-size:12px">Erro ao carregar.</p>';return;}
+    body.innerHTML='<div style="display:flex;flex-wrap:wrap;gap:16px;padding:4px">'+d.mods.map(m=>{
+      const status=m.hasTotp?'<span style="color:var(--g);font-size:11px">✅ 2FA ativo</span>':'<span style="color:var(--orange);font-size:11px">⚠ Sem 2FA</span>';
+      const qr=m.hasTotp&&m.qrUrl?'<img src="'+m.qrUrl+'" alt="QR" style="display:block;margin-top:8px;border-radius:6px;border:1px solid var(--brd)" width="140" height="140">'
+        :'<p style="font-size:11px;color:var(--tx3);margin-top:8px">Configure MOD_TOTP no .env para ativar</p>';
+      return '<div style="background:var(--bg);border:1px solid var(--brd);border-radius:8px;padding:14px;min-width:160px"><div style="font-weight:700;margin-bottom:4px">'+m.name+'</div><div style="font-size:11px;color:var(--tx3);margin-bottom:6px">'+m.user+'</div>'+status+qr+'</div>';
+    }).join('')+'</div>';
+  }catch{body.innerHTML='<p style="color:var(--red);font-size:12px">Erro de conexão.</p>';}
+}
+
+
 
 async function toggleKey(code){
   try{const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/toggle',{method:'POST'});if(r.status===401){toast('Sessão expirada',false);return;}const d=await r.json();if(d.ok){toast(d.active?'Chave liberada!':'Chave bloqueada!');await doRefresh();}}catch(e){toast('Erro',false);}
+}
+async function clearSuspect(code){
+  if(!confirm('Limpar alerta de suspeita para a chave '+code+'?\\n\\nO alerta não voltará por 48h.'))return;
+  try{
+    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/clear-suspect',{method:'POST'});
+    if(r.status===401){toast('Sessão expirada',false);return;}
+    const d=await r.json();
+    if(d.ok){toast('Alerta de suspeita removido por 48h');await doRefresh();}
+    else toast('Erro ao limpar suspeita',false);
+  }catch(e){toast('Erro',false);}
 }
 async function deleteKey(code){
   if(!confirm('Excluir chave '+code+'?'))return;
@@ -3279,9 +3872,12 @@ function updateBatchUI(){
 }
 document.getElementById('kb').addEventListener('change',function(e){if(e.target.classList.contains('key-cb'))updateBatchUI();});
 async function deleteBatchKeys(){
-  const codes=[...document.querySelectorAll('#kb .key-cb:checked')].map(cb=>cb.dataset.code).filter(Boolean);
+  const rows=[...document.querySelectorAll('#kb .key-cb:checked')].map(cb=>cb.closest('tr')).filter(Boolean);
+  const codes=rows.map(r=>r.dataset.code).filter(Boolean);
   if(!codes.length)return;
-  if(!confirm('Excluir '+codes.length+' chave(s) selecionada(s)? Esta ação é irreversível.'))return;
+  const labels=rows.map(r=>r.dataset.label||r.dataset.code).slice(0,8);
+  const preview=labels.join('\\n') + (codes.length>8?'\\n… e mais '+(codes.length-8):'');
+  if(!confirm('Excluir '+codes.length+' chave(s)? Esta ação é irreversível.\\n\\n'+preview))return;
   try{
     const r=await fetch(_RA+'/api/keys/batch',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({codes})});
     if(r.status===401){toast('Sessão expirada',false);return;}
@@ -3289,6 +3885,35 @@ async function deleteBatchKeys(){
     if(d.ok){toast('🗑 '+d.deleted+' chave(s) excluída(s)');await doRefresh();}
     else toast('Erro: '+(d.error||'?'),false);
   }catch(e){toast('Erro de rede',false);}
+}
+
+async function loadModLogs(){
+  const el=document.getElementById('mod-logs-body');
+  if(!el)return;
+  el.innerHTML='<p style="color:var(--muted);padding:8px">Carregando…</p>';
+  try{
+    const r=await fetch(_RA+'/api/mod-logs');
+    if(r.status===401){el.innerHTML='<p style="color:red">Sessão expirada.</p>';return;}
+    const d=await r.json();
+    if(!d.logs||!d.logs.length){el.innerHTML='<p style="color:var(--muted);padding:8px">Nenhuma ação registrada ainda.</p>';return;}
+    const lbl={key_created:'✅ Criou',key_deleted:'🗑 Deletou',key_enabled:'🟢 Ativou',key_disabled:'🔴 Desativou'};
+    const _eh=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    el.innerHTML='<table style="width:100%;border-collapse:collapse"><thead><tr>'
+      +'<th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--brd);font-size:11px;color:var(--muted)">Data</th>'
+      +'<th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--brd);font-size:11px;color:var(--muted)">Mod</th>'
+      +'<th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--brd);font-size:11px;color:var(--muted)">Ação</th>'
+      +'<th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--brd);font-size:11px;color:var(--muted)">Chave</th>'
+      +'<th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--brd);font-size:11px;color:var(--muted)">Cliente</th>'
+      +'</tr></thead><tbody>'
+      +d.logs.map(l=>'<tr>'
+        +'<td style="padding:4px 8px;border-bottom:1px solid var(--brd2);font-size:12px">'+new Date(l.ts).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})+'</td>'
+        +'<td style="padding:4px 8px;border-bottom:1px solid var(--brd2);font-size:12px">'+_eh(l.mod)+'</td>'
+        +'<td style="padding:4px 8px;border-bottom:1px solid var(--brd2);font-size:12px">'+(lbl[l.action]||l.action)+'</td>'
+        +'<td style="padding:4px 8px;border-bottom:1px solid var(--brd2);font-family:monospace;font-size:11px">'+_eh(l.keyCode)+'</td>'
+        +'<td style="padding:4px 8px;border-bottom:1px solid var(--brd2);font-size:12px">'+_eh(l.label)+'</td>'
+        +'</tr>').join('')
+      +'</tbody></table>';
+  }catch(e){el.innerHTML='<p style="color:red;padding:8px">Erro ao carregar.</p>';}
 }
 
 async function filterLog(){
@@ -3418,13 +4043,14 @@ function switchTab(t){
   document.querySelectorAll('.sec-panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===t));
   try{localStorage.setItem('zvmTab',t);}catch(e){}
   if(t==='users')loadUsers();
+  if(t==='security')loadBlacklist();
 }
 (function(){switchTab(localStorage.getItem('zvmTab')||'keys');})();
 
 let _usersData=[];
 async function loadUsers(){
   const tb=document.getElementById('users-tb');
-  if(tb)tb.innerHTML='<tr><td colspan="7" class="empty">Carregando...</td></tr>';
+  if(tb)tb.innerHTML='<tr><td colspan="8" class="empty">Carregando...</td></tr>';
   try{
     const r=await fetch(_RA+'/api/portal-users');
     if(r.status===401){toast('Sessão expirada',false);return;}
@@ -3432,7 +4058,7 @@ async function loadUsers(){
     if(!d.ok){toast('Erro ao carregar usuários',false);return;}
     _usersData=d.users||[];
     renderUsersTable(_usersData);
-  }catch(e){if(tb)tb.innerHTML='<tr><td colspan="7" class="empty">Erro de rede ao carregar usuários.</td></tr>';}
+  }catch(e){if(tb)tb.innerHTML='<tr><td colspan="8" class="empty">Erro de rede ao carregar usuários.</td></tr>';}
 }
 function renderUsersTable(list){
   const tb=document.getElementById('users-tb');
@@ -3450,8 +4076,9 @@ function renderUsersTable(list){
   tb.innerHTML=list.map(u=>{
     const created=u.createdAt?new Date(u.createdAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'-';
     const lastLogin=u.lastLogin?new Date(u.lastLogin).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'-';
-    const name=u.name||u.displayName||'-';
-    const email=u._id||u.email||'-';
+    const _eu=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const name=_eu(u.name||u.displayName||'-');
+    const email=_eu(u._id||u.email||'-');
     const phone=u.phone?'<span style="font-family:var(--mono);font-size:13px">'+u.phone+'</span>':'<span style="color:var(--tx3)">—</span>';
     const key=u.keyCode?'<span class="kc" style="font-size:12px">'+u.keyCode+'</span>':'<span style="color:var(--tx3)">—</span>';
     const plan=u.plan?'<span style="color:var(--g);font-weight:700;font-size:12px">'+u.plan.toUpperCase()+'</span>':'<span style="color:var(--tx3)">—</span>';
@@ -3562,9 +4189,9 @@ async function runPentest(){
           const cc=catColor[a.category]||'var(--muted)';
           return \`<tr>
             <td style="font-size:12px;white-space:nowrap">\${ts}</td>
-            <td><span style="font-family:'Outfit',sans-serif;font-size:10px;font-weight:700;color:\${cc};background:\${cc}18;border:1px solid \${cc}40;border-radius:4px;padding:2px 7px">\${a.category||''}</span></td>
-            <td style="font-size:12px;color:var(--muted);font-family:'Space Mono',monospace">\${a.detail||''}</td>
-            <td style="font-size:12px;color:var(--muted)">\${a.ip||'-'}</td>
+            <td><span style="font-family:'Outfit',sans-serif;font-size:10px;font-weight:700;color:\${cc};background:\${cc}18;border:1px solid \${cc}40;border-radius:4px;padding:2px 7px">\${_esc(a.category||'')}</span></td>
+            <td style="font-size:12px;color:var(--muted);font-family:'Space Mono',monospace">\${_esc(a.detail||'')}</td>
+            <td style="font-size:12px;color:var(--muted)">\${_esc(a.ip||'-')}</td>
           </tr>\`;
         }).join('');
       }
@@ -3618,7 +4245,7 @@ const _FAV = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewB
 const _GFONTS = '<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Outfit:wght@400;500;600;700;800;900&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">';
 
 function _pwdToggleScript(){
-  return `<script>(function(){var EYE='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';var EYE_OFF='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';function addEye(inp){var w=document.createElement('div');w.style.cssText='position:relative;display:block';inp.parentNode.insertBefore(w,inp);w.appendChild(inp);inp.style.paddingRight='40px';inp.style.boxSizing='border-box';var btn=document.createElement('button');btn.type='button';btn.setAttribute('aria-label','Mostrar/ocultar senha');btn.style.cssText='position:absolute;right:9px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#6b7280;padding:2px;line-height:0;transition:color .15s;z-index:2';btn.innerHTML=EYE;btn.addEventListener('mouseenter',function(){this.style.color='#00e676'});btn.addEventListener('mouseleave',function(){this.style.color='#6b7280'});btn.addEventListener('click',function(e){e.preventDefault();var show=inp.type==='password';inp.type=show?'text':'password';btn.innerHTML=show?EYE_OFF:EYE;inp.focus();});w.appendChild(btn);}function init(){document.querySelectorAll('input[type="password"]').forEach(addEye);}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',init);}else{init();}})();</script>`;
+  return `<script>(function(){var EYE='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';var EYE_OFF='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';function addEye(inp){var cs=window.getComputedStyle(inp);var mb=cs.marginBottom||'0px';var w=document.createElement('div');w.style.cssText='position:relative;display:block;margin-bottom:'+mb;inp.style.marginBottom='0';inp.parentNode.insertBefore(w,inp);w.appendChild(inp);inp.style.paddingRight='40px';inp.style.width='100%';inp.style.boxSizing='border-box';var btn=document.createElement('button');btn.type='button';btn.setAttribute('aria-label','Mostrar/ocultar senha');btn.style.cssText='position:absolute;right:9px;top:0;bottom:0;margin:auto;height:20px;display:flex;align-items:center;background:none;border:none;cursor:pointer;color:#6b7280;padding:0;line-height:0;transition:color .15s;z-index:2';btn.innerHTML=EYE;btn.addEventListener('mouseenter',function(){this.style.color='#00e676'});btn.addEventListener('mouseleave',function(){this.style.color='#6b7280'});btn.addEventListener('click',function(e){e.preventDefault();var show=inp.type==='password';inp.type=show?'text':'password';btn.innerHTML=show?EYE_OFF:EYE;inp.focus();});w.appendChild(btn);}function init(){document.querySelectorAll('input[type="password"]').forEach(addEye);}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',init);}else{init();}})();</script>`;
 }
 
 function _sharedCss() {
@@ -3795,6 +4422,23 @@ ${_sharedCss()}
 .testi-avatar{width:38px;height:38px;border-radius:50%;background:var(--g-soft);border:1.5px solid var(--g-brd);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;color:var(--g);flex-shrink:0}
 .testi-name{font-weight:700;font-size:14px}
 .testi-role{font-size:12px;color:var(--tx3)}
+/* ── SOBRE MIM ── */
+.about-card{max-width:760px;margin:0 auto;background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r-lg);padding:40px;position:relative;overflow:hidden}
+.about-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--g),transparent)}
+.about-head{display:flex;align-items:center;gap:18px;margin-bottom:22px}
+.about-avatar{width:64px;height:64px;border-radius:50%;background:var(--g-soft);border:2px solid var(--g-brd);display:flex;align-items:center;justify-content:center;font-family:'Orbitron',sans-serif;font-weight:900;font-size:22px;color:var(--g);flex-shrink:0}
+.about-name{font-size:20px;font-weight:900;letter-spacing:-.5px}
+.about-role{font-size:13px;color:var(--g);font-weight:700;text-transform:uppercase;letter-spacing:1.5px;margin-top:3px}
+.about-bio{font-size:15px;color:var(--tx2);line-height:1.75;margin-bottom:28px}
+.about-projects{display:flex;flex-direction:column;gap:10px}
+.about-proj{display:flex;align-items:center;gap:16px;padding:16px 18px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r);transition:all .2s}
+.about-proj:hover{border-color:var(--g-brd);transform:translateX(4px);background:var(--g-soft)}
+.about-proj-icon{font-size:24px;flex-shrink:0}
+.about-proj-name{font-size:15px;font-weight:800}
+.about-proj-desc{font-size:13px;color:var(--tx3);margin-top:2px;line-height:1.5}
+.about-proj-arrow{margin-left:auto;color:var(--g);font-weight:900;font-size:18px;flex-shrink:0;opacity:.5;transition:opacity .2s}
+.about-proj:hover .about-proj-arrow{opacity:1}
+@media(max-width:560px){.about-card{padding:26px 20px}.about-proj{gap:12px}}
 /* ── FINAL CTA ── */
 .fcta{text-align:center;padding:100px 48px;background:radial-gradient(ellipse 70% 60% at 50% 100%,#00ff870a,transparent 70%);border-top:1px solid var(--brd);position:relative;overflow:hidden}
 .fcta h2{font-size:clamp(28px,5vw,54px);font-weight:900;letter-spacing:-1.5px;margin-bottom:18px}
@@ -3817,28 +4461,27 @@ ${_sharedCss()}
 
 <!-- ═══ HERO ═══ -->
 <section class="hero">
-  <div class="hero-eyebrow"><span class="hero-eyebrow-dot"></span>Extensão Chrome · Ativação Imediata</div>
-  <h1>Automatize<br><em>WhatsApp</em><span>de áudios a mídias, em segundos</span></h1>
-  <p class="hero-sub">Dispare mensagens de voz, textos e mídias para milhares de contatos. Anti-ban integrado, multi-dispositivo e sem complicação.</p>
+  <div class="hero-eyebrow"><span class="hero-eyebrow-dot"></span>Extensão Chrome · 100% das avaliações com 5 estrelas</div>
+  <h1>Enquanto você digita,<br><em>seu concorrente</em><span>já mandou áudio pra 1.000 clientes</span></h1>
+  <p class="hero-sub">O ZVM dispara mensagens de voz, textos e mídias em massa no WhatsApp — com anti-ban integrado e ativação em 5 minutos. Sua lista esfriando é dinheiro evaporando.</p>
   <div class="hero-ctas">
-    <a href="https://wa.me/5521996771552?text=LR!%20Quero%20come%C3%A7ar%20com%20o%20ZVM%20agora" target="_blank" rel="noopener" class="btn-primary">💬 Quero começar agora</a>
-    <a href="/planos" class="btn-ghost">Ver planos e preços →</a>
+    <a href="https://wa.me/5521996771552?text=LR!%20Quero%20come%C3%A7ar%20com%20o%20ZVM%20agora" target="_blank" rel="noopener" class="btn-primary">🚀 Quero disparar hoje</a>
+    <a href="/planos" class="btn-ghost">Ver planos a partir de R$24,99 →</a>
   </div>
   <div class="trust-pills">
-    <span class="trust-pill"><span class="trust-pill-icon">✓</span> Ativação em 5 minutos</span>
-    <span class="trust-pill"><span class="trust-pill-icon">✓</span> A partir de R$24,99/mês</span>
-    <span class="trust-pill"><span class="trust-pill-icon">✓</span> Anti-ban integrado</span>
-    <span class="trust-pill"><span class="trust-pill-icon">✓</span> Suporte via WhatsApp</span>
-    <span class="trust-pill"><span class="trust-pill-icon">✓</span> Sem mensalidade oculta</span>
+    <span class="trust-pill"><span class="trust-pill-icon">✓</span> Chave entregue na hora</span>
+    <span class="trust-pill"><span class="trust-pill-icon">✓</span> Anti-ban que protege seu número</span>
+    <span class="trust-pill"><span class="trust-pill-icon">✓</span> Suporte humano no WhatsApp</span>
+    <span class="trust-pill"><span class="trust-pill-icon">✓</span> Sem contrato, sem pegadinha</span>
   </div>
 </section>
 
-<!-- ═══ TRUST PILLS ═══ -->
+<!-- ═══ STATS ═══ -->
 <div class="stats-bar">
-  <div class="stat-item"><div class="stat-num">30</div><div class="stat-lbl">Dias de acesso</div></div>
-  <div class="stat-item"><div class="stat-num">99.9%</div><div class="stat-lbl">Uptime</div></div>
-  <div class="stat-item"><div class="stat-num">4</div><div class="stat-lbl">Planos disponíveis</div></div>
-  <div class="stat-item"><div class="stat-num">24/7</div><div class="stat-lbl">Suporte via WhatsApp</div></div>
+  <div class="stat-item"><div class="stat-num">5×</div><div class="stat-lbl">Mais abertura que texto</div></div>
+  <div class="stat-item"><div class="stat-num">5min</div><div class="stat-lbl">Da compra ao 1º disparo</div></div>
+  <div class="stat-item"><div class="stat-num">99.9%</div><div class="stat-lbl">Uptime do sistema</div></div>
+  <div class="stat-item"><div class="stat-num">5★</div><div class="stat-lbl">Em 100% das avaliações</div></div>
 </div>
 
 <!-- ═══ COMO FUNCIONA ═══ -->
@@ -3846,26 +4489,27 @@ ${_sharedCss()}
 <div class="sw">
   <div class="sh">
     <div class="sh-tag">Como funciona</div>
-    <h2 class="sh-title">Do zero ao disparo<br>em 3 passos simples</h2>
+    <h2 class="sh-title">Hoje você compra.<br>Hoje você dispara.</h2>
+    <p class="sh-sub">Sem reunião de onboarding, sem semana de implantação. Três passos e sua campanha está no ar.</p>
   </div>
   <div class="steps">
     <div class="step">
       <span class="step-icon">🛒</span>
       <div class="step-n">Passo 01</div>
-      <div class="step-title">Escolha seu plano</div>
-      <p class="step-desc">Planos a partir de R$24,99/mês com 30 dias de acesso. Receba sua chave de ativação instantaneamente via WhatsApp após a compra.</p>
+      <div class="step-title">Escolha o plano e receba a chave</div>
+      <p class="step-desc">A partir de R$24,99/mês. Pagou, recebeu — sua chave de ativação chega na hora pelo WhatsApp. Zero burocracia.</p>
     </div>
     <div class="step">
       <span class="step-icon">⚙️</span>
       <div class="step-n">Passo 02</div>
-      <div class="step-title">Instale a extensão</div>
-      <p class="step-desc">Adicione o ZVM ao Chrome em segundos. Ative com sua chave pessoal e conecte o WhatsApp ao painel. Sem instalações complexas.</p>
+      <div class="step-title">Cole a chave na extensão</div>
+      <p class="step-desc">Adicione o ZVM ao Chrome, cole sua chave e conecte o WhatsApp. Se você sabe copiar e colar, você sabe usar o ZVM.</p>
     </div>
     <div class="step">
       <span class="step-icon">🚀</span>
       <div class="step-n">Passo 03</div>
-      <div class="step-title">Dispare em escala</div>
-      <p class="step-desc">Configure campanhas de áudio, texto ou mídia. Escolha os contatos, defina o intervalo e deixe o ZVM trabalhar por você 24/7.</p>
+      <div class="step-title">Dispare e vá cuidar do resto</div>
+      <p class="step-desc">Áudio, texto ou mídia para toda a lista, com intervalos inteligentes anti-ban. O ZVM trabalha — você só responde os interessados.</p>
     </div>
   </div>
 </div>
@@ -3876,19 +4520,18 @@ ${_sharedCss()}
 <div class="sw">
   <div class="sh">
     <div class="sh-tag">Recursos</div>
-    <h2 class="sh-title">Tudo que você precisa,<br>nada que você não precisa</h2>
-    <p class="sh-sub">Ferramentas diretas ao ponto para quem precisa de resultado real.</p>
+    <h2 class="sh-title">Feito para vender,<br>não para enfeitar dashboard</h2>
+    <p class="sh-sub">Cada recurso existe por um motivo: colocar sua mensagem na frente do cliente sem colocar seu número em risco.</p>
   </div>
   <div class="feats">
-    <div class="fc"><span class="fc-icon">🎙️</span><div><div class="fc-name">Áudios em Massa</div><p class="fc-desc">Grave um áudio e dispare para milhares. Taxa de abertura até 5× maior que mensagens de texto.</p></div></div>
-    <div class="fc"><span class="fc-icon">📱</span><div><div class="fc-name">Multi-Dispositivo</div><p class="fc-desc">Gerencie múltiplos números em um único painel. Ideal para equipes de vendas, suporte e closers.</p></div></div>
-    <div class="fc"><span class="fc-icon">🛡️</span><div><div class="fc-name">Anti-Ban Avançado</div><p class="fc-desc">Intervalos inteligentes, rotação de padrões e proteção nativa mantêm seu número seguro.</p></div></div>
-    <div class="fc"><span class="fc-icon">📊</span><div><div class="fc-name">Analytics em Tempo Real</div><p class="fc-desc">Saiba quantos receberam, abriram e responderam. Otimize campanhas com dados reais.</p></div></div>
-    <div class="fc"><span class="fc-icon">⚡</span><div><div class="fc-name">Atualizações Automáticas</div><p class="fc-desc">Sempre na versão mais recente. Compatível com todas as atualizações do WhatsApp. Zero interrupções.</p></div></div>
-    <div class="fc"><span class="fc-icon">🔑</span><div><div class="fc-name">Licença Segura</div><p class="fc-desc">Acesso vinculado ao seu dispositivo com chave HMAC. Controle total de quem usa sua licença.</p></div></div>
-    <div class="fc"><span class="fc-icon">📤</span><div><div class="fc-name">Exportação de Contatos</div><p class="fc-desc">Exporte listas por etiqueta do WhatsApp Business. Filtre e segmente campanhas com precisão.</p></div></div>
-    <div class="fc"><span class="fc-icon">🗓️</span><div><div class="fc-name">Agendamento</div><p class="fc-desc">Programe disparos para o melhor horário. Automatize follow-ups e sequências de nutrição.</p></div></div>
-    <div class="fc"><span class="fc-icon">🔔</span><div><div class="fc-name">Portal do Cliente</div><p class="fc-desc">Acompanhe status da chave, dispositivos vinculados e renovações direto pelo portal online.</p></div></div>
+    <div class="fc"><span class="fc-icon">🎙️</span><div><div class="fc-name">Áudios em Massa</div><p class="fc-desc">Áudio é aberto até 5× mais que texto. Grave uma vez, dispare para milhares — sua voz vendendo em escala.</p></div></div>
+    <div class="fc"><span class="fc-icon">🛡️</span><div><div class="fc-name">Anti-Ban Avançado</div><p class="fc-desc">Intervalos inteligentes e rotação de padrões. Um número banido é uma carteira de clientes perdida — aqui isso não acontece por descuido.</p></div></div>
+    <div class="fc"><span class="fc-icon">📱</span><div><div class="fc-name">Multi-Dispositivo</div><p class="fc-desc">Até 10 números num painel só. Sua equipe inteira disparando sem trocar de aba, de conta ou de computador.</p></div></div>
+    <div class="fc"><span class="fc-icon">⚡</span><div><div class="fc-name">Atualizações Automáticas</div><p class="fc-desc">O WhatsApp muda toda semana; o ZVM acompanha. Você nunca acorda com a ferramenta quebrada no meio da campanha.</p></div></div>
+    <div class="fc"><span class="fc-icon">🔑</span><div><div class="fc-name">Licença Segura</div><p class="fc-desc">Chave HMAC vinculada ao seu dispositivo. Ninguém usa o que você pagou — e você vê cada dispositivo conectado.</p></div></div>
+    <div class="fc"><span class="fc-icon">📤</span><div><div class="fc-name">Exportação de Contatos</div><p class="fc-desc">Exporte listas por etiqueta do WhatsApp Business e segmente na precisão. Mensagem certa para a lista certa.</p></div></div>
+    <div class="fc"><span class="fc-icon">🗓️</span><div><div class="fc-name">Agendamento</div><p class="fc-desc">Programe o disparo para a hora que seu cliente responde. Follow-up automático enquanto você dorme.</p></div></div>
+    <div class="fc"><span class="fc-icon">🔔</span><div><div class="fc-name">Portal do Cliente</div><p class="fc-desc">Status da chave, dispositivos e renovação num portal só seu. Controle total sem depender de suporte.</p></div></div>
   </div>
 </div>
 </div>
@@ -3898,8 +4541,8 @@ ${_sharedCss()}
 <div class="sw">
   <div class="sh">
     <div class="sh-tag">Planos e Preços</div>
-    <h2 class="sh-title">Escolha o plano ideal<br>para o seu volume</h2>
-    <p class="sh-sub">Todos os planos incluem acesso completo aos recursos, 30 dias de acesso e suporte via WhatsApp. Sem contrato.</p>
+    <h2 class="sh-title">Menos que uma pizza.<br>Retorno de um vendedor extra.</h2>
+    <p class="sh-sub">Acesso completo em todos os planos: mesmos recursos, mesmo anti-ban, mesmo suporte. Você só escolhe quantos números vai colocar para trabalhar. Sem contrato, cancele quando quiser.</p>
   </div>
   <div class="plans">
     <div class="pc">
@@ -4026,10 +4669,56 @@ ${_sharedCss()}
 </div>
 </div>
 
+<!-- ═══ SOBRE MIM ═══ -->
+<div style="background:var(--bg)">
+<div class="sw">
+  <div class="sh">
+    <div class="sh-tag">Quem constrói o ZVM</div>
+    <h2 class="sh-title">Feito por quem vive<br>de código difícil</h2>
+  </div>
+  <div class="about-card">
+    <div class="about-head">
+      <div class="about-avatar" id="about-avatar-lr">LR</div>
+      <div>
+        <div class="about-name">LR1290 — Desenvolvedor</div>
+        <div class="about-role">Engenharia reversa · Mods · Automação</div>
+      </div>
+    </div>
+    <p class="about-bio">Antes do ZVM, meu passatempo era abrir software que ninguém deveria abrir: destravei 60FPS num jogo de PS3 na base da engenharia reversa, construí um mod menu completo pra GTA V e testo jogos antes de irem ao mercado. O ZVM nasceu dessa mesma mentalidade — se o WhatsApp muda, eu adapto antes de você perceber. Sua campanha roda no que eu construo, e eu não construo coisa que cai.</p>
+    <div class="about-projects">
+      <a href="https://trickymadness.com" target="_blank" rel="noopener" class="about-proj">
+        <span class="about-proj-icon">🎮</span>
+        <div>
+          <div class="about-proj-name">Beta Tester — Tricky Madness</div>
+          <div class="about-proj-desc">Teste e feedback de gameplay no desenvolvimento do jogo</div>
+        </div>
+        <span class="about-proj-arrow">→</span>
+      </a>
+      <a href="https://archive.org/details/ssx-2012-60fps-eboot-all-versions-ps-3.7z" target="_blank" rel="noopener" class="about-proj">
+        <span class="about-proj-icon">🏂</span>
+        <div>
+          <div class="about-proj-name">SSX 2012 — Patch 60FPS (PS3)</div>
+          <div class="about-proj-desc">Engenharia reversa do executável para dobrar o framerate do jogo</div>
+        </div>
+        <span class="about-proj-arrow">→</span>
+      </a>
+      <a href="https://www.youtube.com/watch?v=NROunpBpkgA" target="_blank" rel="noopener" class="about-proj">
+        <span class="about-proj-icon">🚗</span>
+        <div>
+          <div class="about-proj-name">Mod Menu — GTA V</div>
+          <div class="about-proj-desc">Mod menu próprio com injeção nativa — demonstração no YouTube</div>
+        </div>
+        <span class="about-proj-arrow">→</span>
+      </a>
+    </div>
+  </div>
+</div>
+</div>
+
 <!-- ═══ FINAL CTA ═══ -->
 <div class="fcta">
-  <h2>Pronto para <em>escalar</em><br>no WhatsApp?</h2>
-  <p>Fale com a gente agora. Em menos de 5 minutos você já está disparando campanhas.</p>
+  <h2>Cada dia sem automação<br>é <em>lista esfriando</em></h2>
+  <p>Seu cliente vai receber um áudio hoje. A única dúvida é se vai ser o seu ou o do concorrente. Me chama — em 5 minutos sua chave está ativa.</p>
   <a href="https://wa.me/5521996771552?text=LR!%20Quero%20come%C3%A7ar%20com%20o%20ZVM%20agora" target="_blank" rel="noopener" class="wa-btn">
     <svg class="wa-icon" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
     Falar no WhatsApp agora
@@ -4237,7 +4926,7 @@ a{text-decoration:none;color:inherit}
     </div>
     <div class="lookup-body">
       <label class="field-lbl" for="key-input">Código da chave de ativação</label>
-      <input type="text" id="key-input" class="key-inp" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="20" oninput="this.value=this.value.replace(/[^a-z0-9\-]/gi,'').toLowerCase()">
+      <input type="text" id="key-input" class="key-inp" placeholder="zv-xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false" maxlength="40" oninput="this.value=this.value.replace(/[^a-z0-9\-]/gi,'').toLowerCase().slice(0,20)" onpaste="var el=this;setTimeout(function(){el.value=el.value.replace(/[^a-z0-9\-]/gi,'').toLowerCase().slice(0,20);},0)">
       <p class="key-hint">📦 Formato: <strong>zv-xxxxx-xxxxx-xxxxx</strong> (20 caracteres). Não há diferença entre maiúsculas e minúsculas.</p>
       <div class="err-box" id="err-box"></div>
       <button class="check-btn" id="check-btn" onclick="checkKey()">🔍 Consultar Minha Chave</button>
@@ -5463,19 +6152,36 @@ async function handleRequest(req, res) {
   const p   = url.pathname;
   const ip  = getIp(req);
 
-  // /health — responde antes de qualquer middleware (rate limit, CORS, slug)
-  // UptimeRobot e Render healthcheck nunca devem ser bloqueados
+  // IP blacklist manual — bloqueio imediato antes de qualquer processamento
+  if (ipBlacklist.has(ip)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain', 'Server': 'ZVM' });
+    res.end('403 Forbidden');
+    return;
+  }
+
+  // /robots.txt — bloqueia crawlers e indexadores de todas as rotas
+  if (p === '/robots.txt' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=86400' });
+    res.end('User-agent: *\nDisallow: /\n');
+    return;
+  }
+
+  // /health — resposta mínima para UptimeRobot/Render (sem diagnóstico interno)
   if (p === '/health' && req.method === 'GET') {
-    res.writeHead(200, {
-      'Content-Type':              'text/plain; charset=utf-8',
-      'Cache-Control':             'no-store',
-      'X-Content-Type-Options':    'nosniff',
-      'X-Frame-Options':           'DENY',
-      'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
-      'Referrer-Policy':           'no-referrer',
-      'Content-Security-Policy':   "default-src 'self'",
-    });
-    res.end('ok');
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ..._SEC_HEADERS });
+    res.end(JSON.stringify({ ok: true, ts: new Date().toISOString() }));
+    return;
+  }
+
+  if (p === '/status' && req.method === 'GET') {
+    let dbOk = false;
+    try { const _sd = await getMongoDb(); await _sd.command({ ping: 1 }); dbOk = true; } catch {}
+    const upSec = Math.floor(process.uptime());
+    const upStr = upSec < 60 ? upSec + 's' : upSec < 3600 ? Math.floor(upSec/60) + 'm' : Math.floor(upSec/3600) + 'h ' + Math.floor((upSec%3600)/60) + 'm';
+    const stats = getKeyStats();
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="60"><title>ZVM — Status</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace;color:#e0e0e0}.card{background:#111118;border:1px solid #1a1a2e;border-radius:16px;padding:36px 32px;width:100%;max-width:480px}.logo{font-size:22px;font-weight:800;color:#00e676;margin-bottom:4px;letter-spacing:-0.5px}h1{font-size:13px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:28px}.row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #1a1a2e;font-size:13px}.row:last-child{border-bottom:none}.label{color:#888}.value{font-weight:700;color:#e0e0e0}.ok{color:#00e676}.fail{color:#f05060}.ts{font-size:11px;color:#444;margin-top:20px;text-align:right}</style></head><body><div class="card"><div class="logo">⚡ ZVM</div><h1>Status do Serviço</h1><div class="row"><span class="label">API</span><span class="value ok">● Operacional</span></div><div class="row"><span class="label">Banco de Dados</span><span class="value ${dbOk?'ok':'fail'}">${dbOk?'● Conectado':'● Desconectado'}</span></div><div class="row"><span class="label">Uptime</span><span class="value">${upStr}</span></div><div class="row"><span class="label">Chaves Ativas</span><span class="value">${stats.activeKeys}</span></div><div class="row"><span class="label">Total de Chaves</span><span class="value">${stats.totalKeys}</span></div><div class="ts">Atualizado: ${new Date().toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</div></div></body></html>`;
+    res.writeHead(dbOk ? 200 : 503, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', ..._SEC_HEADERS });
+    res.end(html);
     return;
   }
 
@@ -5597,6 +6303,7 @@ async function handleRequest(req, res) {
     if (!keys[keyCode].active) {
       sendJson(res, { authError: 'keyBlocked', reason: 'blocked', isLoggedIn: false, data: { message: `${AUTH_MSG.BLOCKED}. Chave bloqueada.`, permissions: [] } }, 403);
       addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'login_blocked' }).catch(()=>{});
+      _trackKeyFail(keyCode, ip);
       return;
     }
 
@@ -5625,8 +6332,22 @@ async function handleRequest(req, res) {
         saveKey(keyCode).catch(()=>{});
         return;
       }
+      // Teto global de segurança — independente de maxUses por chave
+      if (keys[keyCode].phones.length >= MAX_PHONES_GLOBAL) {
+        addSecurityAlert('PHONE_CAP', `Chave atingiu teto global de ${MAX_PHONES_GLOBAL} telefones`, ip);
+        sendJson(res, { authError: 'phoneLimitGlobal', isLoggedIn: false, data: { message: 'Limite máximo de dispositivos atingido.', permissions: [] } }, 403);
+        return;
+      }
       keys[keyCode].phones.push(phone);
       keys[keyCode].uses = keys[keyCode].phones.length;
+      // Persiste imediatamente — saveKey() é debounced (2s) e se o processo morrer antes o phone se perde
+      try {
+        const _db = await getMongoDb();
+        await _db.collection('store').updateOne(
+          { _id: 'keys' },
+          { $push: { [`data.${keyCode}.phones`]: phone }, $set: { [`data.${keyCode}.uses`]: keys[keyCode].uses, updatedAt: new Date() } }
+        );
+      } catch (_e) { saveKey(keyCode).catch(() => {}); }
     }
 
     // ATIVAÇÃO ATÔMICA: chaves com "Aguardando 1º uso" precisam gravar expiresAt no
@@ -5663,6 +6384,13 @@ async function handleRequest(req, res) {
     keys[keyCode].wppVersion = wppVersion;
     if (hasPhone) keys[keyCode].lastPhone = phone;
     if (deviceId) keys[keyCode].deviceId  = deviceId;
+    // Histórico de dispositivos (máx 20, deduplicado por ip+phone)
+    if (!keys[keyCode].deviceHistory) keys[keyCode].deviceHistory = [];
+    const _dhKey = (ip||'')+'|'+(hasPhone?phone:'-');
+    const _dhIdx = keys[keyCode].deviceHistory.findIndex(d => d.k === _dhKey);
+    const _dhEntry = { k: _dhKey, ip: ip||'-', phone: hasPhone?phone:'-', wppVersion, lastSeen: new Date().toISOString() };
+    if (_dhIdx >= 0) keys[keyCode].deviceHistory[_dhIdx] = _dhEntry;
+    else { keys[keyCode].deviceHistory.unshift(_dhEntry); if (keys[keyCode].deviceHistory.length > 20) keys[keyCode].deviceHistory.pop(); }
 
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     sendJson(res, getAuthData(keyCode, body.userName || ''));
@@ -5901,8 +6629,11 @@ async function handleRequest(req, res) {
     const totpOk = verifyTOTP(TOTP_SECRET, (form.get('totp') || '').trim());
     if (credOk && totpOk) {
       rateLimitMap.delete(ip + ':login'); // limpa contador após login bem-sucedido
+      // Rotação de sessão: invalida token anterior para prevenir session fixation
+      const _oldMatch = (req.headers.cookie||'').match(/zv_admin=([a-f0-9]+)/);
+      if (_oldMatch) delete sessions[_oldMatch[1]];
       const token = generateToken();
-      sessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString() };
+      sessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString(), ip, loginAt: new Date().toISOString() };
       res.setHeader('Set-Cookie', `zv_admin=${token}; Path=/; HttpOnly; SameSite=Strict; Secure`);
       res.writeHead(302, { Location: R_ADMIN }); res.end();
     } else {
@@ -5935,19 +6666,23 @@ async function handleRequest(req, res) {
     const inputUser   = form.get('user') || '';
     const inputPass   = form.get('pass') || '';
     const inputTotp   = (form.get('totp') || '').trim();
-    const matchedMod = MODS.find(m => {
+    let matchedMod = null;
+    for (const m of MODS) {
       try {
         const bu = Buffer.from(m.user), bi = Buffer.from(inputUser);
         const bp = Buffer.from(m.pass), bip = Buffer.from(inputPass);
-        return bu.length === bi.length && bp.length === bip.length &&
-          crypto.timingSafeEqual(bu, bi) && crypto.timingSafeEqual(bp, bip);
-      } catch { return false; }
-    });
+        const userMatch = bu.length === bi.length && bu.length > 0 && crypto.timingSafeEqual(bu, bi);
+        const passMatch = bp.length === bip.length && bp.length > 0 && crypto.timingSafeEqual(bp, bip);
+        if (userMatch && passMatch && !matchedMod) matchedMod = m;
+      } catch { /* continue */ }
+    }
     const totpOk = matchedMod ? verifyTOTP(matchedMod.totp, inputTotp) : false;
     if (matchedMod && totpOk) {
       rateLimitMap.delete(ip + ':login');
+      const _oldModMatch = (req.headers.cookie||'').match(/zv_mod=([a-f0-9]+)/);
+      if (_oldModMatch) delete modSessions[_oldModMatch[1]];
       const token = generateToken();
-      modSessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString(), modName: matchedMod.name };
+      modSessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString(), modName: matchedMod.name, ip, loginAt: new Date().toISOString() };
       res.setHeader('Set-Cookie', `zv_mod=${token}; Path=/; HttpOnly; SameSite=Strict; Secure`);
       res.writeHead(302, { Location: R_MOD }); res.end();
     } else {
@@ -5979,21 +6714,28 @@ async function handleRequest(req, res) {
     const modName    = _modSess ? _modSess.modName : 'Moderador';
     const body = await parseBody(req);
     if (!body.label || !String(body.label).trim()) { sendJson(res, { error: 'label obrigatório' }, 400); return; }
-    const code = generateCode();
-    const { expiresAt, expireDuration } = parseKeyExpiryFromBody(body);
+    const qty = Math.min(50, Math.max(1, parseInt(body.qty) || 1));
+    const { expiresAt, expireDuration } = parseKeyExpiryFromBody(body, { allowMinutes: true });
     const maxUses = Math.max(1, parseInt(body.maxUses) || MAX_USES);
-    keys[code] = {
-      label: String(body.label).trim().replace(/[<>"']/g, '').slice(0, 60),
-      active: true, createdAt: new Date().toISOString(),
-      uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null,
-      deviceId: null, wppVersion: null, note: '',
-      createdBy: modName,
-      expiresAt, expireDuration: expireDuration || null,
-      maxUses, warnCount: 0,
-      modules: { ...DEFAULT_MODULES, zapSaver: true },
-    };
-    saveKey(code);
-    sendJson(res, { ok: true, key: code }); return;
+    const label = String(body.label).trim().replace(/[<>"']/g, '').slice(0, 60);
+    const createdCodes = [];
+    for (let qi = 0; qi < qty; qi++) {
+      const code = generateCode();
+      keys[code] = {
+        label: qty > 1 ? `${label} #${qi+1}` : label,
+        active: true, createdAt: new Date().toISOString(),
+        uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null,
+        deviceId: null, wppVersion: null, note: '',
+        createdBy: modName,
+        expiresAt, expireDuration: expireDuration || null,
+        maxUses, warnCount: 0,
+        modules: { ...DEFAULT_MODULES, zapSaver: true },
+      };
+      saveKey(code);
+      createdCodes.push(code);
+    }
+    addModLog({ mod: modName, action: 'key_created', keyCode: createdCodes.join(', ').slice(0,120), label, detail: qty > 1 ? `${qty} chaves` : undefined }).catch(()=>{});
+    sendJson(res, { ok: true, key: createdCodes[0], keys: createdCodes }); return;
   }
 
   if (p === R_MOD+'/api/my-keys' && req.method === 'GET') {
@@ -6015,6 +6757,7 @@ async function handleRequest(req, res) {
           deferred: !!(k.expireDuration && !k.expiresAt),
           createdAt: k.createdAt || '', note: (k.note || '').replace(/\[Mod:[^\]]+\]\s*/g, '').trim(),
           zapSaver: !!(k.modules && k.modules.zapSaver),
+          isSuspect: isKeySuspect(code, k),
         }))
         .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
       // Compute real ranking across all mods from full DB
@@ -6032,6 +6775,23 @@ async function handleRequest(req, res) {
       console.error('[DB] my-keys:', e.message);
       sendJson(res, { error: 'db_error' }, 500); return;
     }
+  }
+
+  // Mod: logs de acesso das PRÓPRIAS chaves — sem telefone, sem IP (LGPD/acesso restrito)
+  if (p === R_MOD+'/api/my-logs' && req.method === 'GET') {
+    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const _mcL = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+    const myModNameL = (_mcL && modSessions[_mcL[1]]) ? modSessions[_mcL[1]].modName : null;
+    if (!myModNameL) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const searchL = '[Mod: ' + myModNameL + ']';
+    const myCodes = new Set(Object.entries(keys)
+      .filter(([, k]) => k.createdBy === myModNameL || (k.note && k.note.includes(searchL)))
+      .map(([code]) => code));
+    const myLogs = logs
+      .filter(l => l.keyCode && myCodes.has(l.keyCode))
+      .slice(0, 200)
+      .map(l => ({ timestamp: l.timestamp, keyCode: l.keyCode, label: l.label || '', action: l.action || '' }));
+    sendJson(res, { ok: true, logs: myLogs }); return;
   }
 
   if (p.startsWith(R_MOD+'/api/keys/') && p.endsWith('/note') && req.method === 'POST') {
@@ -6053,6 +6813,74 @@ async function handleRequest(req, res) {
     keys[codeFromUrl].note = (modTag + (newNote ? (modTag ? ' ' : '') + newNote : '')).trim().slice(0, 500);
     saveKey(codeFromUrl);
     sendJson(res, { ok: true }); return;
+  }
+
+  // Mod: toggle (block/unblock) own key
+  const _modToggleMatch = p.match(new RegExp(`^${R_MOD.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}/api/keys/([a-z0-9_\\-]{1,30})/toggle$`));
+  if (_modToggleMatch && req.method === 'POST') {
+    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const _mcT = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+    const _msT = _mcT ? modSessions[_mcT[1]] : null;
+    const _myNameT = _msT ? _msT.modName : null;
+    if (!_myNameT) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const togCode = sanitizeId(decodeURIComponent(_modToggleMatch[1]), 30);
+    if (!await ensureKeyLoaded(togCode)) { sendJson(res, { error: 'not found' }, 404); return; }
+    const kTog = keys[togCode];
+    if (!kTog) { sendJson(res, { error: 'not found' }, 404); return; }
+    const isOwnerT = kTog.createdBy === _myNameT || ((kTog.note||'').includes('[Mod: '+_myNameT+']'));
+    if (!isOwnerT) { sendJson(res, { error: 'acesso negado' }, 403); return; }
+    kTog.active = !kTog.active;
+    saveKey(togCode);
+    addModLog({ mod: _myNameT, action: kTog.active ? 'key_enabled' : 'key_disabled', keyCode: togCode, label: kTog.label }).catch(()=>{});
+    sendJson(res, { ok: true, active: kTog.active }); return;
+  }
+
+  // Mod: clear suspect flag on own key
+  const _modCsMatch = p.match(new RegExp(`^${R_MOD.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}/api/keys/([a-z0-9_\\-]{1,30})/clear-suspect$`));
+  if (_modCsMatch && req.method === 'POST') {
+    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const _mcCs = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+    const _msCs = _mcCs ? modSessions[_mcCs[1]] : null;
+    const _myNameCs = _msCs ? _msCs.modName : null;
+    if (!_myNameCs) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const csCode = sanitizeId(decodeURIComponent(_modCsMatch[1]), 30);
+    if (!await ensureKeyLoaded(csCode)) { sendJson(res, { error: 'not found' }, 404); return; }
+    const kCs = keys[csCode];
+    if (!kCs) { sendJson(res, { error: 'not found' }, 404); return; }
+    const isOwnerCs = kCs.createdBy === _myNameCs || ((kCs.note||'').includes('[Mod: '+_myNameCs+']'));
+    if (!isOwnerCs) { sendJson(res, { error: 'acesso negado' }, 403); return; }
+    kCs.suspectClearedAt = new Date().toISOString();
+    saveKey(csCode);
+    addModLog({ mod: _myNameCs, action: 'suspect_cleared', keyCode: csCode, label: kCs.label }).catch(()=>{});
+    sendJson(res, { ok: true }); return;
+  }
+
+  // Mod: renew (add time) to own key
+  const _modRenewMatch = p.match(new RegExp(`^${R_MOD.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}/api/keys/([a-z0-9_\\-]{1,30})/renew$`));
+  if (_modRenewMatch && req.method === 'POST') {
+    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const _mcRw = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+    const _msRw = _mcRw ? modSessions[_mcRw[1]] : null;
+    const _myNameRw = _msRw ? _msRw.modName : null;
+    if (!_myNameRw) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const rwCode = sanitizeId(decodeURIComponent(_modRenewMatch[1]), 30);
+    if (!await ensureKeyLoaded(rwCode)) { sendJson(res, { error: 'not found' }, 404); return; }
+    const kRw = keys[rwCode];
+    if (!kRw) { sendJson(res, { error: 'not found' }, 404); return; }
+    const isOwnerRw = kRw.createdBy === _myNameRw || ((kRw.note||'').includes('[Mod: '+_myNameRw+']'));
+    if (!isOwnerRw) { sendJson(res, { error: 'acesso negado' }, 403); return; }
+    const bodyRw = await parseBody(req);
+    const days = parseInt(bodyRw.days||0), hours = parseInt(bodyRw.hours||0);
+    if (!days && !hours) { sendJson(res, { error: 'nenhum tempo informado' }, 400); return; }
+    const addMs = ((days*1440)+(hours*60))*60000;
+    const base = (kRw.expiresAt && !isKeyExpired(kRw)) ? new Date(kRw.expiresAt).getTime() : Date.now();
+    kRw.expiresAt = new Date(base+addMs).toISOString();
+    kRw.expireDuration = null;
+    kRw.active = true;
+    kRw.warnEmailSent = false;
+    saveKey(rwCode);
+    addModLog({ mod: _myNameRw, action: 'key_renewed', keyCode: rwCode, label: kRw.label, detail: `+${days}d${hours}h` }).catch(()=>{});
+    sendJson(res, { ok: true, expiresAt: kRw.expiresAt }); return;
   }
 
   // Mod: delete own key
@@ -6104,6 +6932,90 @@ async function handleRequest(req, res) {
   }
   const RA = R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+  // /status — diagnóstico completo do servidor (admin-gated, substitui /health público)
+  if (p === R_ADMIN+'/status' && req.method === 'GET') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const uptimeSec = Math.floor(process.uptime());
+    let dbStatus = 'unknown';
+    try { const _sdb = await getMongoDb(); await _sdb.command({ ping: 1 }); dbStatus = 'connected'; } catch { dbStatus = 'disconnected'; }
+    sendJson(res, {
+      ok: true, db: dbStatus, uptime: uptimeSec, ts: new Date().toISOString(),
+      keys: Object.keys(keys).length, activeSessions: Object.keys(sessions).length,
+      modSessions: Object.keys(modSessions).length, portalSessions: Object.keys(portalSessions).length,
+      logs: logs.length, securityAlerts: securityAlerts.length,
+    }); return;
+  }
+
+  // ── IP Blacklist ──────────────────────────────────────────────────────────────
+  if (p === R_ADMIN+'/api/ip-blacklist' && req.method === 'GET') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    sendJson(res, { ok: true, ips: [...ipBlacklist] }); return;
+  }
+  if (p === R_ADMIN+'/api/ip-blacklist/add' && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const _b = await parseBody(req);
+    const _ip = String(_b.ip || '').trim().slice(0, 45);
+    if (!_ip) { sendJson(res, { error: 'ip_required' }, 400); return; }
+    ipBlacklist.add(_ip);
+    await saveIpBlacklist();
+    addModLog({ mod: 'admin', action: 'ip_blacklist_add', keyCode: '-', label: '-', detail: _ip }).catch(()=>{});
+    sendJson(res, { ok: true, ips: [...ipBlacklist] }); return;
+  }
+  if (p === R_ADMIN+'/api/ip-blacklist/remove' && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const _b = await parseBody(req);
+    const _ip = String(_b.ip || '').trim().slice(0, 45);
+    ipBlacklist.delete(_ip);
+    await saveIpBlacklist();
+    addModLog({ mod: 'admin', action: 'ip_blacklist_remove', keyCode: '-', label: '-', detail: _ip }).catch(()=>{});
+    sendJson(res, { ok: true, ips: [...ipBlacklist] }); return;
+  }
+
+  // ── Exportar Mod Logs CSV ────────────────────────────────────────────────────
+  if (p === R_ADMIN+'/api/mod-logs/csv' && req.method === 'GET') {
+    if (!isAdminSession(req)) { res.writeHead(401); res.end('Unauthorized'); return; }
+    try {
+      const db = await getMongoDb();
+      const rows = await db.collection('mod_logs').find({}).sort({ ts: -1 }).limit(5000).toArray();
+      const esc = v => '"' + String(v||'').replace(/"/g, '""') + '"';
+      const lines = ['Data,Mod,Ação,Chave,Label,Detalhe'];
+      for (const r of rows) {
+        lines.push([
+          esc(new Date(r.ts).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})),
+          esc(r.mod), esc(r.action), esc(r.keyCode), esc(r.label), esc(r.detail)
+        ].join(','));
+      }
+      const csv = lines.join('\r\n');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="mod-logs-${new Date().toISOString().slice(0,10)}.csv"`);
+      Object.entries(_SEC_HEADERS).forEach(([k,v]) => res.setHeader(k, v));
+      res.writeHead(200);
+      res.end('﻿' + csv); // BOM para Excel reconhecer UTF-8
+    } catch (e) { sendJson(res, { error: e.message }, 500); }
+    return;
+  }
+
+  // ── TOTP Setup para Mods ─────────────────────────────────────────────────────
+  if (p === R_ADMIN+'/api/mods/totp-setup' && req.method === 'GET') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const setups = MODS.map(m => ({
+      name: m.name,
+      user: m.user,
+      hasTotp: !!m.totp,
+      qrUrl: m.totp
+        ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`otpauth://totp/ZVM:${encodeURIComponent(m.user)}?secret=${m.totp}&issuer=ZVM`)}`
+        : null,
+    }));
+    sendJson(res, { ok: true, mods: setups }); return;
+  }
+
+  // ── Session info (para warning de expiração no frontend) ─────────────────────
+  if (p === R_ADMIN+'/api/session-info' && req.method === 'GET') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const s = getAdminSession(req);
+    sendJson(res, { ok: true, expiresAt: s?.expiresAt || null }); return;
+  }
+
   if (p === R_ADMIN+'/api/data' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     sendJson(res, {
@@ -6147,6 +7059,7 @@ async function handleRequest(req, res) {
       modules: { ...DEFAULT_MODULES, zapSaver: true },
     };
     saveKey(code);
+    addModLog({ mod: 'admin', action: 'key_created', keyCode: code, label: keys[code].label }).catch(()=>{});
     sendJson(res, { ok: true, key: code }); return;
   }
 
@@ -6158,7 +7071,19 @@ async function handleRequest(req, res) {
     k.active = !k.active;
     saveKey(codeToggle);
     if (!k.active) fireWebhook('key_blocked', codeToggle, 'Bloqueio manual pelo admin');
+    addModLog({ mod: 'admin', action: k.active ? 'key_enabled' : 'key_disabled', keyCode: codeToggle, label: k.label }).catch(()=>{});
     sendJson(res, { ok: true, active: k.active }); return;
+  }
+
+  const codeClearSuspect = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/clear-suspect$`));
+  if (codeClearSuspect && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const kCs = await adminGetKey(codeClearSuspect);
+    if (!kCs) { sendJson(res, { error: 'not found' }, 404); return; }
+    kCs.suspectClearedAt = new Date().toISOString();
+    saveKey(codeClearSuspect);
+    addModLog({ mod: 'admin', action: 'suspect_cleared', keyCode: codeClearSuspect, label: kCs.label }).catch(()=>{});
+    sendJson(res, { ok: true }); return;
   }
 
   const codeRenew = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/renew$`));
@@ -6175,8 +7100,10 @@ async function handleRequest(req, res) {
     kRenew.expiresAt = new Date(base+addMs).toISOString();
     kRenew.expireDuration = null;
     kRenew.active = true;
+    kRenew.warnEmailSent = false;
     saveKey(codeRenew);
     await addLog({ keyCode: codeRenew, label: kRenew.label, phone: '-', ip, wppVersion: '-', action: 'renewed' });
+    addModLog({ mod: 'admin', action: 'key_renewed', keyCode: codeRenew, label: kRenew.label, detail: `+${days}d${hours}h${mins}m` }).catch(()=>{});
     sendJson(res, { ok: true, expiresAt: kRenew.expiresAt }); return;
   }
 
@@ -6190,6 +7117,7 @@ async function handleRequest(req, res) {
     if (isNaN(maxUses) || maxUses < -1) { sendJson(res, { error: 'invalid' }, 400); return; }
     kMu.maxUses = maxUses;
     saveKey(codeMaxUses);
+    addModLog({ mod: 'admin', action: 'key_maxuses', keyCode: codeMaxUses, label: kMu.label, detail: `maxUses=${maxUses}` }).catch(()=>{});
     sendJson(res, { ok: true, maxUses }); return;
   }
 
@@ -6203,6 +7131,7 @@ async function handleRequest(req, res) {
     if (!label) { sendJson(res, { error: 'label vazio' }, 400); return; }
     kLbl.label = label;
     saveKey(codeLabel).catch(()=>{});
+    addModLog({ mod: 'admin', action: 'key_renamed', keyCode: codeLabel, label, detail: `→ ${label}` }).catch(()=>{});
     sendJson(res, { ok: true, label }); return;
   }
 
@@ -6246,6 +7175,7 @@ async function handleRequest(req, res) {
     if (!rawCodes.length) { sendJson(res, { error: 'nenhum código enviado' }, 400); return; }
     const validCodes = rawCodes.map(c => sanitizeId(String(c || ''), 40)).filter(c => c && keys[c]);
     await Promise.all(validCodes.map(c => deleteKeyFromDb(c).catch(e => console.error('[DB] batch del:', e.message))));
+    addModLog({ mod: 'admin', action: 'key_batch_deleted', keyCode: '-', label: '-', detail: `${validCodes.length} chave(s): ${validCodes.slice(0,5).join(', ')}` }).catch(()=>{});
     sendJson(res, { ok: true, deleted: validCodes.length }); return;
   }
 
@@ -6272,13 +7202,16 @@ async function handleRequest(req, res) {
     let note = (k.note || '').replace(/\[Mod: [^\]]+\]\s*/g, '').trim();
     k.note = note.slice(0, 500);
     saveKey(codeAssignMod);
+    addModLog({ mod: 'admin', action: 'key_assign_mod', keyCode: codeAssignMod, label: k.label, detail: modName || '(removido)' }).catch(()=>{});
     sendJson(res, { ok: true, modName, note: k.note }); return;
   }
 
   const codeDelete = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)$`));
   if (codeDelete && req.method === 'DELETE') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const _delLabel = keys[codeDelete]?.label || '';
     try { await deleteKeyFromDb(codeDelete); } catch(e) { sendJson(res, { error: 'db_error' }, 500); return; }
+    addModLog({ mod: 'admin', action: 'key_deleted', keyCode: codeDelete, label: _delLabel }).catch(()=>{});
     sendJson(res, { ok: true }); return;
   }
 
@@ -6307,6 +7240,16 @@ async function handleRequest(req, res) {
     }
     await saveLogs();
     sendJson(res, { ok: true, remaining: logs.length }); return;
+  }
+
+  if (p === R_ADMIN+'/api/mod-logs' && req.method === 'GET') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    try {
+      const _mlDb = await getMongoDb();
+      const _mlLogs = await _mlDb.collection('mod_logs').find({}).sort({ ts: -1 }).limit(200).toArray();
+      sendJson(res, { logs: _mlLogs });
+    } catch(e) { sendJson(res, { error: e.message }, 500); }
+    return;
   }
 
   if (p === R_ADMIN+'/api/logs' && req.method === 'GET') {
@@ -6450,9 +7393,9 @@ async function handleRequest(req, res) {
     if (PAYT_SECRET) {
       const headerToken = req.headers['x-payt-token'] || req.headers['x-webhook-token'] || '';
       const bodyKey     = payload.integration_key || '';
-      const validHeader = !headerToken || headerToken === PAYT_SECRET;
-      const validBody   = !bodyKey     || bodyKey   === PAYT_SECRET;
-      if (!validHeader || !validBody) {
+      const validHeader = !!headerToken && headerToken === PAYT_SECRET;
+      const validBody   = !!bodyKey     && bodyKey   === PAYT_SECRET;
+      if (!validHeader && !validBody) {
         console.warn('[PAYT] Token/integration_key inválido — ignorado');
         addSecurityAlert('WEBHOOK_INVALID_TOKEN', `x-payt-token inválido recebido — status="${payload.status||'?'}" tx="${String(payload.transaction_id||'').slice(0,30)}"`, ip);
         res.writeHead(401); res.end('Unauthorized'); return;
@@ -6635,8 +7578,11 @@ async function handleRequest(req, res) {
     if (!checkRateLimit(ip, 'api')) {
       sendJson(res, { ok: false, error: 'rate_limited' }, 429); return;
     }
-    const accessToken = (req.headers['x-access-token'] || '').trim();
-    if (!accessToken) {
+    const accessToken = (req.headers['x-access-token'] || '').trim().toLowerCase().slice(0, 64);
+    const _raddr = req.socket?.remoteAddress || '';
+    const _isLoopback = _raddr === '127.0.0.1' || _raddr === '::1' || _raddr === '::ffff:127.0.0.1';
+    const _isPentestInternal = _isLoopback && accessToken === 'pentest-internal';
+    if (!accessToken || (!keys[accessToken]?.active && !_isPentestInternal)) {
       sendJson(res, { ok: false, msg: 'invalid_access_token' }, 403); return;
     }
     const body = await parseBody(req);
@@ -6717,7 +7663,10 @@ async function handleRequest(req, res) {
     } catch(e) { console.error('[Portal] dashboard:', e.message); sendHtml(res, renderPortalLogin('Erro temporário.')); return; }
   }
 
-  if (p === '/cliente/login' && req.method === 'GET') { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
+  if (p === '/cliente/login' && req.method === 'GET') {
+    const _loginMsg = url.searchParams.get('msg');
+    if (_loginMsg === 'email_changed') { sendHtml(res, renderPortalLogin('', '', 'E-mail alterado com sucesso! Faça login com o novo e-mail.')); return; }
+    res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
 
   if (p === '/cliente/login' && req.method === 'POST') {
     if (!checkRateLimit(ip, 'login')) { sendHtml(res, renderPortalLogin('Muitas tentativas. Aguarde 10 minutos.'), 429); return; }
@@ -6734,10 +7683,11 @@ async function handleRequest(req, res) {
       const _ha = Buffer.from(hash, 'hex'), _hb = Buffer.from(user.passwordHash || '', 'hex');
       const passOk = _ha.length === _hb.length && _ha.length > 0 && crypto.timingSafeEqual(_ha, _hb);
       if (!passOk) { sendHtml(res, renderPortalLogin('E-mail ou senha inválidos.')); return; }
+      db.collection('portal_users').updateOne({ _id: email }, { $set: { lastLogin: new Date().toISOString() } }).catch(()=>{});
       if (user.totpSecret) {
         const pendingToken = generateToken();
         portalSessions[pendingToken] = { email, name: user.name, pending2fa: true, redir: redir||'', expiresAt: new Date(Date.now()+5*60*1000).toISOString() };
-        res.setHeader('Set-Cookie', `zv_portal=${pendingToken}; Path=/; HttpOnly; SameSite=Strict; Max-Age=300`);
+        res.setHeader('Set-Cookie', `zv_portal=${pendingToken}; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=300`);
         res.writeHead(302, { Location: '/cliente/2fa/verificar' }); res.end();
       } else {
         const token = generateToken();
@@ -6820,6 +7770,41 @@ async function handleRequest(req, res) {
     res.writeHead(302, { Location: '/cliente' }); res.end(); return;
   }
 
+  if (p === '/cliente/email') {
+    if (!isPortalSession(req)) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
+    if (req.method === 'GET') { sendHtml(res, renderPortalChangeEmail()); return; }
+    if (req.method === 'POST') {
+      const sess = getPortalUser(req);
+      const form = await parseFormBody(req);
+      const newemail  = (form.get('newemail')||'').toLowerCase().trim().slice(0,120);
+      const newemail2 = (form.get('newemail2')||'').toLowerCase().trim().slice(0,120);
+      const pass = (form.get('pass')||'').slice(0,128);
+      if (!newemail || !newemail2 || !pass) { sendHtml(res, renderPortalChangeEmail('Preencha todos os campos.')); return; }
+      if (newemail !== newemail2) { sendHtml(res, renderPortalChangeEmail('Os e-mails não coincidem.')); return; }
+      if (newemail === sess.email) { sendHtml(res, renderPortalChangeEmail('O novo e-mail é igual ao atual.')); return; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newemail)) { sendHtml(res, renderPortalChangeEmail('E-mail inválido.')); return; }
+      try {
+        const db = await getMongoDb();
+        const user = await db.collection('portal_users').findOne({ _id: sess.email });
+        if (!user) { sendHtml(res, renderPortalChangeEmail('Sessão inválida. Faça login novamente.')); return; }
+        const hash = await hashPassword(pass, user.salt);
+        const _ha = Buffer.from(hash,'hex'), _hb = Buffer.from(user.passwordHash||'','hex');
+        const passOk = _ha.length===_hb.length && _ha.length>0 && crypto.timingSafeEqual(_ha,_hb);
+        if (!passOk) { sendHtml(res, renderPortalChangeEmail('Senha incorreta.')); return; }
+        const exists = await db.collection('portal_users').findOne({ _id: newemail });
+        if (exists) { sendHtml(res, renderPortalChangeEmail('Este e-mail já está cadastrado.')); return; }
+        const newUser = { ...user, _id: newemail };
+        await db.collection('portal_users').insertOne(newUser);
+        await db.collection('portal_users').deleteOne({ _id: sess.email });
+        // Revogar sessão atual
+        const _cookie = (req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/);
+        if (_cookie) delete portalSessions[_cookie[1]];
+        res.setHeader('Set-Cookie','zv_portal=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict');
+        res.writeHead(302, { Location: '/cliente/login?msg=email_changed' }); res.end(); return;
+      } catch(e) { console.error('[Portal] email change:', e.message); sendHtml(res, renderPortalChangeEmail('Erro interno. Tente novamente.')); return; }
+    }
+  }
+
   if (p === '/cliente/senha') {
     if (!isPortalSession(req)) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
     if (req.method === 'GET') { const _ok=url.searchParams.get('ok'); sendHtml(res, renderPortalChangePwd(_ok?'':'',_ok?'Senha alterada com sucesso!':'')); return; }
@@ -6836,7 +7821,9 @@ async function handleRequest(req, res) {
         const user = await db.collection('portal_users').findOne({ _id: sess.email });
         if (!user) { sendHtml(res, renderPortalChangePwd('Sessão inválida.')); return; }
         const oldHash = await hashPassword(old, user.salt);
-        if (oldHash !== user.passwordHash) { sendHtml(res, renderPortalChangePwd('Senha atual incorreta.')); return; }
+        const _oa = Buffer.from(oldHash, 'hex'), _ob = Buffer.from(user.passwordHash || '', 'hex');
+        const oldOk = _oa.length === _ob.length && _oa.length > 0 && crypto.timingSafeEqual(_oa, _ob);
+        if (!oldOk) { sendHtml(res, renderPortalChangePwd('Senha atual incorreta.')); return; }
         const salt = genSalt();
         const passwordHash = await hashPassword(pass, salt);
         await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { passwordHash, salt } });
@@ -7001,7 +7988,11 @@ async function gracefulShutdown(signal) {
     console.log('[SHUTDOWN] HTTP server drenado');
   }
 
-  // 4. Fecha pool do MongoDB — somente após HTTP drenar
+  // 4. Descarrega gravações pendentes (debounce) ANTES de fechar o Mongo —
+  //    sem isso, alterações feitas até 2s antes do shutdown são perdidas
+  try { await flushPendingSaves(); } catch(e) { console.error('[SHUTDOWN] Erro ao gravar pendências:', e.message); }
+
+  // 5. Fecha pool do MongoDB — somente após HTTP drenar e pendências gravarem
   try {
     if (_mongoClient) { await _mongoClient.close(); console.log('[SHUTDOWN] MongoDB desconectado'); }
   } catch(e) { console.error('[SHUTDOWN] Erro ao fechar MongoDB:', e.message); }
