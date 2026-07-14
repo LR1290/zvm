@@ -4,6 +4,7 @@ const https  = require('https');
 const crypto = require('crypto');
 const zlib   = require('zlib');
 const { MongoClient } = require('mongodb');
+try { require('dotenv').config(); } catch (_) { /* opcional */ }
 
 const PORT         = process.env.PORT         || 3000;
 const ADMIN_USER   = process.env.ADMIN_USER;
@@ -1018,20 +1019,26 @@ function getSuspectMeta(code, k) {
 function isKeySuspect(code, k) { return getSuspectMeta(code, k).isSuspect; }
 
 let _keyStatsCache = null;
-function getKeyStats() {
-  if (_keyStatsCache) return _keyStatsCache;
-  const all = Object.values(keys);
-  _keyStatsCache = {
-    totalKeys:   Object.keys(keys).length,
-    activeKeys:  all.filter(k => k.active && !isKeyExpired(k)).length,
-    expiredKeys: all.filter(k => isKeyExpired(k)).length,
-    warnKeys:    all.filter(k => k.active && isKeyExpiringSoon(k)).length,
-    suspectKeys:  Object.entries(keys).filter(([code, k]) => isKeySuspect(code, k)).length,
-    blockedKeys:  Object.values(keys).filter(k => !k.active && !isKeyExpired(k) && !(!k.expiresAt && k.expireDuration)).length,
-    deferredKeys: Object.values(keys).filter(k => !k.expiresAt && k.expireDuration).length,
-    totalLogs:   logs.length,
+// srcKeys/srcLogs permitem calcular stats de um mapa alternativo (ex.: chaves WSM/watidy).
+// Sem argumentos = usa o mapa global (ZVM/zapvoice) com cache.
+function getKeyStats(srcKeys, srcLogs) {
+  const useGlobal = (srcKeys === undefined);
+  if (useGlobal && _keyStatsCache) return _keyStatsCache;
+  const k  = srcKeys || keys;
+  const lg = srcLogs || logs;
+  const all = Object.values(k);
+  const stats = {
+    totalKeys:   Object.keys(k).length,
+    activeKeys:  all.filter(x => x.active && !isKeyExpired(x)).length,
+    expiredKeys: all.filter(x => isKeyExpired(x)).length,
+    warnKeys:    all.filter(x => x.active && isKeyExpiringSoon(x)).length,
+    suspectKeys:  Object.entries(k).filter(([code, x]) => isKeySuspect(code, x)).length,
+    blockedKeys:  all.filter(x => !x.active && !isKeyExpired(x) && !(!x.expiresAt && x.expireDuration)).length,
+    deferredKeys: all.filter(x => !x.expiresAt && x.expireDuration).length,
+    totalLogs:   lg.length,
   };
-  return _keyStatsCache;
+  if (useGlobal) _keyStatsCache = stats;
+  return stats;
 }
 
 let _keysHtmlCache = null, _keysHtmlCacheTs = 0;
@@ -1054,11 +1061,14 @@ function formatValidityCell(k) {
   return `<span class="badge ${warnSoon?'wl':'on'}" style="${warnSoon?'':'background:#00ff8722;color:var(--green);border:1px solid #00ff8744'}">${remain} restantes</span><br><span style="font-size:12px;color:${warnSoon?'var(--orange)':'var(--green)'}">até ${expStr}</span>`;
 }
 
-function buildKeysHtml() {
-  const entries = Object.entries(keys);
+// srcKeys/srcLogs permitem renderizar a tabela de um mapa alternativo (ex.: chaves WSM/watidy).
+function buildKeysHtml(srcKeys, srcLogs) {
+  const _keys = srcKeys || keys;
+  const _logs = srcLogs || logs;
+  const entries = Object.entries(_keys);
   if (!entries.length) return `<tr><td colspan="11" class="empty">Nenhuma chave cadastrada</td></tr>`;
   const logByKey = new Map();
-  for (const l of logs) { if (!l.keyCode) continue; if (!logByKey.has(l.keyCode)) logByKey.set(l.keyCode, []); logByKey.get(l.keyCode).push(l); }
+  for (const l of _logs) { if (!l.keyCode) continue; if (!logByKey.has(l.keyCode)) logByKey.set(l.keyCode, []); logByKey.get(l.keyCode).push(l); }
   return entries.map(([code, k]) => {
     const expired = isKeyExpired(k), warnSoon = isKeyExpiringSoon(k);
     const keyLogs = logByKey.get(code) || [];
@@ -3044,8 +3054,11 @@ input[type=text].key-input:focus{border-color:#00ff87}
 ${CANVAS_BG}</body></html>`;
 }
 
-function renderAdminDashboard() {
-  const stats = getKeyStats();
+// opts permite injetar dados de outro banco (ex.: WSM/watidy). Sem opts = ZVM/zapvoice global.
+function renderAdminDashboard(opts = {}) {
+  const stats = opts.stats || getKeyStats();
+  const _keysHtml = (opts.keysHtml != null) ? opts.keysHtml : getKeysHtmlCached();
+  const _logsHtml = (opts.logsHtml != null) ? opts.logsHtml : buildLogsHtml();
   const { expiredKeys: expiredCount, warnKeys: expiringSoon } = stats;
 
   return `<!DOCTYPE html>
@@ -3327,7 +3340,7 @@ td.td-status{white-space:nowrap;overflow:hidden}
           <th>Nota</th>
           <th style="cursor:default">Ações</th>
         </tr></thead>
-        <tbody id="kb">${getKeysHtmlCached()}</tbody>
+        <tbody id="kb">${_keysHtml}</tbody>
       </table>
     </div>
   </div>
@@ -3362,7 +3375,7 @@ td.td-status{white-space:nowrap;overflow:hidden}
     <div class="ov">
       <table>
         <thead><tr><th>Horário</th><th>Chave</th><th>Cliente</th><th>Telefone</th><th>IP</th><th>Ação</th></tr></thead>
-        <tbody id="lb">${buildLogsHtml()}</tbody>
+        <tbody id="lb">${_logsHtml}</tbody>
       </table>
     </div>
   </div>
@@ -4426,7 +4439,8 @@ ${_sharedCss()}
 .about-card{max-width:760px;margin:0 auto;background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r-lg);padding:40px;position:relative;overflow:hidden}
 .about-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--g),transparent)}
 .about-head{display:flex;align-items:center;gap:18px;margin-bottom:22px}
-.about-avatar{width:64px;height:64px;border-radius:50%;background:var(--g-soft);border:2px solid var(--g-brd);display:flex;align-items:center;justify-content:center;font-family:'Orbitron',sans-serif;font-weight:900;font-size:22px;color:var(--g);flex-shrink:0}
+.about-avatar{width:64px;height:64px;border-radius:50%;background:var(--g-soft);border:2px solid var(--g-brd);display:flex;align-items:center;justify-content:center;font-family:'Orbitron',sans-serif;font-weight:900;font-size:22px;color:var(--g);flex-shrink:0;overflow:hidden}
+.about-avatar img{width:100%;height:100%;object-fit:cover;display:block}
 .about-name{font-size:20px;font-weight:900;letter-spacing:-.5px}
 .about-role{font-size:13px;color:var(--g);font-weight:700;text-transform:uppercase;letter-spacing:1.5px;margin-top:3px}
 .about-bio{font-size:15px;color:var(--tx2);line-height:1.75;margin-bottom:28px}
@@ -4678,13 +4692,13 @@ ${_sharedCss()}
   </div>
   <div class="about-card">
     <div class="about-head">
-      <div class="about-avatar" id="about-avatar-lr">LR</div>
+      <div class="about-avatar" id="about-avatar-lr"><img src="data:image/png;base64,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" alt="LR1290"></div>
       <div>
         <div class="about-name">LR1290 — Desenvolvedor</div>
         <div class="about-role">Engenharia reversa · Mods · Automação</div>
       </div>
     </div>
-    <p class="about-bio">Antes do ZVM, meu passatempo era abrir software que ninguém deveria abrir: destravei 60FPS num jogo de PS3 na base da engenharia reversa, construí um mod menu completo pra GTA V e testo jogos antes de irem ao mercado. O ZVM nasceu dessa mesma mentalidade — se o WhatsApp muda, eu adapto antes de você perceber. Sua campanha roda no que eu construo, e eu não construo coisa que cai.</p>
+    <p class="about-bio">Sou o LR1290 — programador por obsessão, não por profissão. Minha escola foi a engenharia reversa: destravei 60FPS em jogo de PS3 mexendo direto no executável, criei um mod menu com injeção nativa pro GTA V e ajudo a testar jogos antes de chegarem ao mercado. Foi essa bagagem que virou o ZVM: uma ferramenta construída por quem entende o WhatsApp por dentro. Quando algo muda na plataforma, eu já adaptei antes de você notar — porque quem vive de código difícil não deixa ferramenta cair.</p>
     <div class="about-projects">
       <a href="https://trickymadness.com" target="_blank" rel="noopener" class="about-proj">
         <span class="about-proj-icon">🎮</span>
@@ -6147,6 +6161,2020 @@ async function runInternalSecurityAudit() {
   return { ok: true, results, ts: new Date().toISOString() };
 }
 
+
+// ═══════════════════════════════════════════════════════════════
+// WSM MODULE (WSM) — namespace /WSM com banco e estado próprios
+// ZVM continua intacto em "/" (banco: MONGODB_DB). O WSM usa
+// WSM_MONGODB_DB (default "watidy") na MESMA conexão Mongo.
+// ═══════════════════════════════════════════════════════════════
+const WSM = (() => {
+  const WSM_DB_NAME = (process.env.WSM_MONGODB_DB || 'watidy').trim();
+  const ACCESS_TOKEN = process.env.WSM_ACCESS_TOKEN || process.env.ACCESS_TOKEN || '';
+  const criptKey = ACCESS_TOKEN || 'ffce211a-7b07-4d91-ba5d-c40bb4034a83';
+  const WPP_VERSION = '1.11';
+  const REMOTE_CODE_VERSION = '1.0.41';
+  const chromeStoreId = process.env.WSM_CHROME_STORE_ID || 'gjlfpggiddcminhebiejofeglfjmleli';
+  const wlId = process.env.WSM_WL_ID || 'watidy';
+  const installUrl   = process.env.WSM_INSTALL_URL   || '/WSM/obrigado-pela-instalacao';
+  const uninstallUrl = process.env.WSM_UNINSTALL_URL || '/WSM/ate-mais';
+
+  // ── Slug admin próprio do WSM (separado do ZVM) ──
+  const _wsmSecret = process.env.WSM_APP_SECRET || APP_SECRET;
+  const _wsmDeriveSlug = seed =>
+    _wsmSecret
+      ? crypto.createHmac('sha256', _wsmSecret).update('wsm-' + seed).digest('hex').slice(0, 14)
+      : null;
+  const WSM_R_ADMIN = (s => s ? '/' + s : '/wsm-admin')(_wsmDeriveSlug('admin-panel'));
+
+  // ── Estado próprio do WSM ──
+  let db = null;
+  let keys = {};
+  let keysLoaded = false;
+  let changelog = [];
+  let _changelogLoaded = false;
+
+  async function getDb() {
+    if (db) return db;
+    await getMongoDb();               // garante _mongoClient conectado (conexão compartilhada)
+    db = _mongoClient.db(WSM_DB_NAME);
+    return db;
+  }
+  async function ensureKeyLoaded() {  // sombra da global — carrega o mapa inteiro do banco WSM
+    if (keysLoaded) return;
+    try {
+      const d = await getDb();
+      const doc = await d.collection('store').findOne({ _id: 'keys' });
+      keys = (doc && doc.data && typeof doc.data === 'object') ? doc.data : {};
+      keysLoaded = true;
+      console.log('[WSM] ' + Object.keys(keys).length + ' chave(s) carregada(s) de ' + WSM_DB_NAME + '.store');
+    } catch (e) { console.error('[WSM] load keys:', e.message); }
+  }
+  async function saveKeyNow(code) {
+    const d = await getDb();
+    await d.collection('store').updateOne(
+      { _id: 'keys' },
+      { $set: { ['data.' + code]: keys[code], updatedAt: new Date() } },
+      { upsert: true }
+    );
+  }
+  function saveKey(code) {            // sombra da global saveKey do ZVM
+    saveKeyNow(code).catch(e => console.error('[WSM] save key:', e.message));
+    return Promise.resolve();
+  }
+  async function deleteKey(code) {
+    delete keys[code];
+    const d = await getDb();
+    await d.collection('store').updateOne(
+      { _id: 'keys' },
+      { $unset: { ['data.' + code]: '' }, $set: { updatedAt: new Date() } }
+    );
+  }
+  async function ensureChangelog() {
+    if (_changelogLoaded) return;
+    try {
+      const d = await getDb();
+      const doc = await d.collection('store').findOne({ _id: 'changelog' });
+      if (Array.isArray(doc?.data)) changelog = doc.data;
+      _changelogLoaded = true;
+    } catch (e) { console.warn('[WSM] changelog load:', e.message); }
+  }
+  async function saveChangelog() {
+    try {
+      const d = await getDb();
+      await d.collection('store').updateOne(
+        { _id: 'changelog' },
+        { $set: { _id: 'changelog', data: changelog, updatedAt: new Date() } },
+        { upsert: true }
+      );
+    } catch (e) { console.error('[WSM] changelog save:', e.message); }
+  }
+  function genWsmKey() {
+    const seg = () => crypto.randomBytes(4).toString('hex').slice(0, 5);
+    let code;
+    do { code = 'wt-' + seg() + '-' + seg() + '-' + seg(); } while (keys[code]);
+    return code;
+  }
+
+  // ── WSM DOM Config ──────────────────────────────────────────────────────────
+  const DOM_DEFAULTS = {
+    "app":                    { "model": "querySelector",    "selector": ["#app"] },
+    "afiliadoMain":           { "model": "querySelector",    "selector": ["body > div"] },
+    "paneSide":               { "model": "Element",          "selector": "#pane-side" },
+    "waPage":                 { "model": "querySelector",    "selector": ["div.two"] },
+    "two":                    { "model": "Element",          "selector": "two" },
+    "menuLateral":            { "model": "querySelector",    "selector": ["div.two > div:nth-child(5)"] },
+    "closeChat":              { "model": "Element",          "selector": "x10l6tqk" },
+    "chatListInput":          { "model": "querySelector",    "selector": [".lexical-rich-text-input > div"] },
+    "searchInput":            { "model": "querySelector",    "selector": ["[data-icon='search']"] },
+    "downAba":                { "model": "querySelector",    "selector": ["header > div > div > div > div > span > div > div:nth-child(1)", "header > div._ak0w"] },
+    "chatListHeader":         { "model": "querySelector",    "selector": ["header > header > div > span > div"] },
+    "searchCamp":             { "model": "querySelector",    "selector": ["#side div[data-testid='chat-list-search-container']"] },
+    "chatName":               { "model": "querySelector",    "selector": ["#main > header > div.x78zum5 > div > div > div > div"] },
+    "menuVertical":           { "model": "querySelector",    "selector": ["#main ._amm9", "#main .x1n2onr6.x1vjfegm.x1cqoux5.x14yy4lh"] },
+    "menuHorizontal":         { "model": "querySelector",    "selector": ["#main > header > div.x1c4vz4f > div"] },
+    "menuFooter":             { "model": "querySelector",    "selector": ["footer ._ak1m"] },
+    "respostaRapida":         { "model": "querySelector",    "selector": ["footer > div"] },
+    "footerTextArea":         { "model": "querySelector",    "selector": ["footer div[contenteditable=true]"] },
+    "mainAudio":              { "model": "querySelector",    "selector": ["footer > div.copyable-area > div"] },
+    "assChat":                { "model": "querySelector",    "selector": ["#main > div.x1n2onr6.x1vjfegm.x1cqoux5.x14yy4lh"] },
+    "assInput":               { "model": "querySelector",    "selector": ["#main > footer > div.copyable-area > div > span > div > div > div"] },
+    "assBtn":                 { "model": "querySelector",    "selector": ["#main > footer > div.copyable-area > div > span > div > div > div > div:nth-child(6)"] },
+    "assEmoji":               { "model": "querySelector",    "selector": ["#main > footer > div.copyable-area > div > span > div > div._ak1m > div > button[tabindex='-1']"] },
+    "assCitacao":             { "model": "querySelector",    "selector": ["footer div.x9f619.x1okw0bk > button > div > div > div:nth-child(1)"] },
+    "listMensages":           { "model": "querySelector",    "selector": ["div[data-scrolltracepolicy='wa.web.conversation.messages']"] },
+    "allMensages":            { "model": "querySelectorAll", "selector": ["#main div > div[data-id]"] },
+    "assistenteChat":         { "model": "querySelector",    "selector": ["#main > footer"] },
+    "trasferidos":            { "model": "querySelector",    "selector": ["#side div[tabindex='-1']"] },
+    "notification":           { "model": "querySelector",    "selector": ["#side > div:nth-child(2)"] },
+    "quotedMsg":              { "model": "querySelector",    "selector": ["#main > footer > div.x10l6tqk.x13vifvy.x1o0tod.xh8yej3 > div > div > div > span > div"] },
+    "listChats":              { "model": "querySelector",    "selector": ["#pane-side > div > div > div"] },
+    "listChatsUsers":         { "model": "querySelectorAll", "selector": ["#pane-side > div > div > div > div  div[aria-selected]", "#pane-side > div > div > div div[role='button'] > div"] },
+    "listChatAtendimento":    { "model": "Element",          "selector": "div div[data-testid='cell-frame-secondary'] div[role='gridcell']" },
+    "insertAtendente":        { "model": "Element",          "selector": "x10l6tqk xh8yej3 x1g42fcv" },
+    "updateChatList":         { "model": "querySelector",    "selector": ["#side div._ai04 > button"] },
+    "chatList":               { "model": "querySelector",    "selector": ["div.two > div._aigw"] },
+    "observerFooter":         { "model": "querySelector",    "selector": ["#main > span:nth-child(8)", "#main > :last-child"] },
+    "observerFooterNewModel": { "model": "querySelector",    "selector": ["#main > span:nth-child(7)", "#main > span:nth-child(8)", "#main > span:nth-child(9)"] },
+    "whatsModal":             { "model": "querySelector",    "selector": ["#app > div > div > span:nth-child(3)"] },
+    "whats":                  { "model": "querySelector",    "selector": ["#app > div > div.x78zum5.xdt5ytf.x5yr21d > div > header > div > div:nth-child(2) > div", "header > div > div:nth-child(2) > div"] },
+    "actionMonitor":          { "model": "querySelector",    "selector": ["#main header"] },
+    "footerIconsLeft":        { "model": "querySelector",    "selector": ["#main > footer > div.copyable-area > div > span > div > div > div"] },
+    "side":                   { "model": "querySelector",    "selector": ["#side"] },
+    "chatFilters":            { "model": "querySelectorAll", "selector": ["#side > div[aria-label='chat-list-filters'] button"] },
+    "theme":                  { "model": "querySelector",    "selector": [".os-win"] }
+  };
+  
+  function buildConfigJson() {
+    return {
+      remote_code: {
+        version: REMOTE_CODE_VERSION,
+        ambiente: 'production',
+        url: '/WSM/api/code?version=' + REMOTE_CODE_VERSION,
+      },
+      dom_selector: DOM_DEFAULTS,
+    };
+  }
+  
+  function wppUpdate() {
+    return { success: true, version: WPP_VERSION, update: false, message: 'WSM server — modulo atualizado' };
+  }
+  
+  function requireAccessToken(req) {
+    const token = (req.headers['access-token'] || '').trim();
+    return token === criptKey;
+  }
+  
+  function parseBearer(req) {
+    const auth = req.headers['authorization'] || '';
+    const m = auth.match(/^Bearer\s+(.+)$/i);
+    return m ? m[1].trim() : '';
+  }
+  
+  function normKey(raw) {
+    return String(raw || '').trim().toLowerCase().slice(0, 48);
+  }
+  
+  function _synthRec(k, kv) {
+    return {
+      code: k, label: kv.label || k, active: kv.active !== false,
+      premium: !!kv.premium, expiresAt: kv.expiresAt || null,
+      phones: Array.isArray(kv.phones) ? kv.phones : [],
+      uses: kv.uses || 0, maxUses: kv.maxUses != null ? kv.maxUses : -1,
+      email: k, bearer_token: k, access_token_plugin: k,
+      user_id: 0, createdAt: kv.createdAt || new Date().toISOString(),
+      lastPhone: kv.lastPhone || '', lastIp: kv.lastIp || '', lastUsed: kv.lastUsed || null,
+    };
+  }
+  
+  async function findKeyByBearer(bearer) {
+    const b = String(bearer || '').trim();
+    if (!b) return null;
+    // Chaves do admin estao em keys[] — compara HMAC derivado ou codigo direto
+    const _sec = APP_SECRET || criptKey || 'wt-secret';
+    for (const [k, kv] of Object.entries(keys)) {
+      const exp = crypto.createHmac('sha256', _sec).update(k).digest('hex').slice(0, 40);
+      if (exp === b || k === b) return _synthRec(k, kv);
+    }
+    await getDb(); if (!db) return null;
+    try {
+      return await db.collection('licenses').findOne({
+        $or: [{ bearer: b }, { code: normKey(b) }, { access_token_plugin: b }, { bearer_token: b }],
+      });
+    } catch (err) {
+      console.error('[WSM] findKeyByBearer:', err.message);
+      return null;
+    }
+  }
+  
+  async function findLicenseByCode(code) {
+    const k = normKey(code);
+    if (!k) return null;
+    // Chaves do admin/mod estao em keys[] (store.keys), nao em licenses
+    await ensureKeyLoaded(k);
+    if (keys[k]) return _synthRec(k, keys[k]);
+    await getDb(); if (!db) return null;
+    try {
+      return await db.collection('licenses').findOne({ code: k });
+    } catch (err) {
+      console.error('[WSM] findLicenseByCode:', err.message);
+      return null;
+    }
+  }
+  
+  async function updateLicense(code, patch) {
+    const k = normKey(code);
+    // Sincroniza keys[] quando a chave esta la
+    if (k && keys[k]) { Object.assign(keys[k], patch); saveKey(k); }
+    await getDb(); if (!db) return false;
+    try {
+      await db.collection('licenses').updateOne({ code: k }, { $set: patch });
+      return true;
+    } catch (err) {
+      console.error('[WSM] updateLicense:', err.message);
+      return false;
+    }
+  }
+  
+  async function getOrCreateFreeKey(extensionId, ip) {
+    const seed = String(extensionId || ip || 'anonymous');
+    const code = normKey('wt-free-' + crypto.createHash('sha256').update(seed).digest('hex').slice(0, 16));
+    const existing = await findLicenseByCode(code);
+    if (existing) return { code, rec: existing };
+    const now = new Date().toISOString();
+    const rec = {
+      code, bearer: code, user_id: 0, label: 'Usuario Gratuito',
+      email: code, active: true, premium: false,
+      expiresAt: null, expireDays: 0, maxUses: -1, phones: [], uses: 0,
+      note: 'Auto-registro free', bearer_token: code, access_token_plugin: code,
+      createdAt: now, lastUsed: null, lastIp: null, lastPhone: null,
+    };
+    try { await db.collection('licenses').insertOne(rec); } catch (_) {}
+    return { code, rec };
+  }
+  
+  function licKeyExpired(rec) {
+    if (!rec || !rec.expiresAt) return false;
+    return new Date(rec.expiresAt) < new Date();
+  }
+  
+  function isPremiumKey(code, rec) {
+    // Chaves explicitamente marcadas como plano gratuito
+    if (code === FREE_AUTH_KEY) return false;
+    if (rec.plan_id === FREE_PLAN_ID || rec.plan_id === FREE_OWNER_ID) return false;
+    // Qualquer outra chave ativa é premium (admin cria sem o campo premium=true)
+    return true;
+  }
+  
+  function keyStatus(rec, code) {
+    if (!rec || !rec.active) return 'blocked';
+    if (licKeyExpired(rec)) return 'expired';
+    return isPremiumKey(code, rec) ? 'active' : 'free';
+  }
+  
+  function buildUserPremium(code, rec) {
+    const premium = isPremiumKey(code, rec);
+    return {
+      active: rec.active && !licKeyExpired(rec),
+      premium,
+      expiresAt: rec.expiresAt || null,
+      plan: premium ? 'pro' : 'free',
+      code,
+      // Flags de liberacao PRO: a extensao checa estes campos alem de is_premium
+      // para destravar Envio em Massa, Agente de IA e demais recursos pagos.
+      // Numa chave premium liberamos tudo (teste local no servidor).
+      teste: '0',
+      allow_env_massa: premium ? 'true' : 'false',
+      allow_ia: premium ? 'true' : 'false',
+      id_assinatura: premium ? ('wsm-' + String(code).replace(/[^a-z0-9]/gi, '').slice(0, 16)) : '',
+      data_liberacao: rec.createdAt || new Date().toISOString(),
+    };
+  }
+  
+  function keyToUser(code, rec) {
+    const phones  = Array.isArray(rec.phones)  ? rec.phones  : [];
+    const devices = Array.isArray(rec.devices) ? rec.devices : [];
+    const totalUses = phones.length + devices.filter(d => d.startsWith('ip:')).length;
+    return {
+      user_id: String(rec.user_id || 0),
+      name: rec.label || 'Usuario',
+      email: rec.email || code,
+      wl_id: wlId,
+      bearer_token: rec.bearer_token || code,
+      access_token_plugin: rec.access_token_plugin || code,
+      user_premium: buildUserPremium(code, rec),
+      dataCadastro: rec.createdAt || new Date().toISOString(),
+      whatsapp_registro: rec.lastPhone || '',
+      whatsapp_plugin: rec.lastPhone || '',
+      uses: totalUses,
+      path: '', afiliado: '', campanhaID: '', start_form: true,
+      cookies: { _fbc: '', _fbp: '', _ga: '', _ttclid: '', _ttp: '' },
+    };
+  }
+  
+  const EMPTY_AUTH_GOOGLE = { success: false, token: '', email: '', name: '' };
+  
+  async function authSuccess(code, rec) {
+    const st = keyStatus(rec, code);
+    if (st === 'blocked') return { ok: false, msg_id: 'white_label_is_bloked' };
+    if (st === 'expired') return { ok: false, msg_id: 'white_label_is_bloked' };
+    const lastUsed = new Date().toISOString();
+    await updateLicense(code, { lastUsed });
+    rec.lastUsed = lastUsed;
+    return {
+      ok: true,
+      body: {
+        success: true,
+        user: keyToUser(code, rec),
+        auth_google: EMPTY_AUTH_GOOGLE,
+        user_status: st,
+      },
+    };
+  }
+  
+  // ── WSM Install / Uninstall Pages ──────────────────────────────────────────
+  function renderInstallPage() {
+    return `<!DOCTYPE html><html lang="pt-BR"><head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WSM — Instalado com Sucesso!</title>
+  <style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0a0a;color:#fff;overflow:hidden}
+  .bg{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+  .bg span{position:absolute;border-radius:50%;opacity:.06;animation:fl 8s ease-in-out infinite}
+  .bg span:nth-child(1){width:500px;height:500px;background:#02b875;top:-150px;left:-150px;animation-delay:0s}
+  .bg span:nth-child(2){width:350px;height:350px;background:#00ff87;bottom:-100px;right:-100px;animation-delay:3s}
+  .bg span:nth-child(3){width:250px;height:250px;background:#02b875;top:60%;left:60%;animation-delay:5s}
+  @keyframes fl{0%,100%{transform:scale(1)}50%{transform:scale(1.12) translateY(-18px)}}
+  .card{position:relative;background:rgba(255,255,255,.04);backdrop-filter:blur(24px);border:1px solid rgba(2,184,117,.2);border-radius:24px;padding:48px 40px;max-width:480px;width:90%;text-align:center;box-shadow:0 32px 64px rgba(0,0,0,.6)}
+  .icon{width:76px;height:76px;margin:0 auto 22px;background:linear-gradient(135deg,#02b875,#00cc6a);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:34px;box-shadow:0 0 40px rgba(2,184,117,.45);animation:pulse 2.2s ease-in-out infinite}
+  @keyframes pulse{0%,100%{box-shadow:0 0 40px rgba(2,184,117,.45)}50%{box-shadow:0 0 65px rgba(2,184,117,.8)}}
+  h1{font-size:26px;font-weight:700;margin-bottom:8px;background:linear-gradient(90deg,#02b875,#00ff87);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .sub{color:rgba(255,255,255,.55);font-size:15px;margin-bottom:30px;line-height:1.65}
+  .steps{text-align:left;background:rgba(2,184,117,.06);border:1px solid rgba(2,184,117,.12);border-radius:14px;padding:20px;margin-bottom:28px}
+  .step{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px}
+  .step:last-child{margin-bottom:0}
+  .sn{width:26px;height:26px;min-width:26px;background:linear-gradient(135deg,#02b875,#00cc6a);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#0a0a0a}
+  .st{font-size:14px;color:rgba(255,255,255,.8);line-height:1.5}
+  .btn{display:inline-block;margin-top:4px;padding:13px 30px;background:linear-gradient(135deg,#02b875,#00cc6a);color:#0a0a0a;font-weight:700;font-size:15px;border-radius:12px;text-decoration:none;transition:transform .2s,box-shadow .2s}
+  .btn:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(2,184,117,.5)}
+  .badge{margin-top:20px;font-size:12px;color:rgba(255,255,255,.28)}
+  </style></head><body>
+  <div class="bg"><span></span><span></span><span></span></div>
+  <div class="card">
+    <div class="icon">&#10003;</div>
+    <h1>Obrigado por instalar o WSM!</h1>
+    <p class="sub">Que bom ter voce aqui. Sua extensao esta pronta.<br>Siga os passos abaixo para comecar a usar.</p>
+    <div class="steps">
+      <div class="step"><div class="sn">1</div><div class="st">Abra o <strong>WhatsApp Web</strong> no seu navegador</div></div>
+      <div class="step"><div class="sn">2</div><div class="st">Clique no icone do <strong>WSM</strong> na barra de extensoes</div></div>
+      <div class="step"><div class="sn">3</div><div class="st">Insira sua chave de ativacao e clique em <strong>Ativar Agora</strong></div></div>
+      <div class="step"><div class="sn">4</div><div class="st">Aproveite todos os recursos premium do WSM!</div></div>
+    </div>
+    <a class="btn" href="https://web.whatsapp.com" target="_blank">Abrir WhatsApp Web</a>
+    <div class="badge">WSM &mdash; Automacao inteligente para WhatsApp</div>
+  </div>
+  </body></html>`;
+  }
+  
+  function renderUninstallPage() {
+    return `<!DOCTYPE html><html lang="pt-BR"><head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WSM — Ate logo!</title>
+  <style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0a0a;color:#fff;overflow:hidden}
+  .bg{position:fixed;inset:0;pointer-events:none}
+  .dot{position:absolute;width:2px;height:2px;background:#02b875;border-radius:50%;opacity:0;animation:tw 3s ease-in-out infinite}
+  @keyframes tw{0%,100%{opacity:0;transform:scale(1)}50%{opacity:.7;transform:scale(1.8)}}
+  .card{position:relative;background:rgba(255,255,255,.04);backdrop-filter:blur(24px);border:1px solid rgba(2,184,117,.18);border-radius:24px;padding:48px 40px;max-width:480px;width:90%;text-align:center;box-shadow:0 32px 64px rgba(0,0,0,.65)}
+  .wave{font-size:54px;animation:wv 2s ease-in-out infinite;display:inline-block;transform-origin:bottom right}
+  @keyframes wv{0%,100%{transform:rotate(0)}20%{transform:rotate(-15deg)}40%{transform:rotate(10deg)}60%{transform:rotate(-10deg)}80%{transform:rotate(5deg)}}
+  h1{font-size:26px;font-weight:700;margin:18px 0 8px;background:linear-gradient(90deg,#02b875,#00ff87);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .sub{color:rgba(255,255,255,.55);font-size:15px;margin-bottom:26px;line-height:1.65}
+  .msg{background:rgba(2,184,117,.07);border-left:3px solid #02b875;border-radius:8px;padding:16px 18px;margin-bottom:26px;text-align:left;font-size:14px;color:rgba(255,255,255,.72);line-height:1.7}
+  .fb{margin-bottom:22px}
+  .fb p{font-size:13px;color:rgba(255,255,255,.45);margin-bottom:10px}
+  .sr{display:flex;gap:6px;justify-content:center}
+  .sb{font-size:28px;cursor:pointer;transition:transform .15s;filter:grayscale(1);opacity:.45}
+  .sb:hover,.sb.active{filter:none;opacity:1;transform:scale(1.2);color:#02b875}
+  .btn{display:inline-block;padding:13px 28px;background:linear-gradient(135deg,#02b875,#00cc6a);color:#0a0a0a;font-weight:700;font-size:15px;border-radius:12px;text-decoration:none;transition:transform .2s,box-shadow .2s;margin-right:8px}
+  .btn:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(2,184,117,.5)}
+  .btn-g{background:transparent;border:1px solid rgba(255,255,255,.18);color:rgba(255,255,255,.65);margin-right:0}
+  .btn-g:hover{box-shadow:0 8px 24px rgba(255,255,255,.08)}
+  .badge{margin-top:22px;font-size:12px;color:rgba(255,255,255,.22)}
+  </style></head><body>
+  <div class="bg" id="bg"></div>
+  <div class="card">
+    <div class="wave">&#128075;</div>
+    <h1>Nos vemos em breve!</h1>
+    <p class="sub">O WSM foi desinstalado do seu navegador.<br>Sentiremos sua falta por aqui.</p>
+    <div class="msg">
+      Obrigado por ter usado o WSM! Se algo nao funcionou como esperado, adorariamos saber o que aconteceu para poder melhorar. Sua opiniao e muito importante para nos.
+    </div>
+    <div class="fb">
+      <p>Como foi sua experiencia com o WSM?</p>
+      <div class="sr" id="rating">
+        <span class="sb" data-v="1">&#9733;</span>
+        <span class="sb" data-v="2">&#9733;</span>
+        <span class="sb" data-v="3">&#9733;</span>
+        <span class="sb" data-v="4">&#9733;</span>
+        <span class="sb" data-v="5">&#9733;</span>
+      </div>
+    </div>
+    <a class="btn" href="https://web.whatsapp.com" target="_blank">Reinstalar</a>
+    <a class="btn btn-g" href="mailto:suporte@watidy.com.br">Enviar Feedback</a>
+    <div class="badge">WSM &mdash; Ate a proxima!</div>
+  </div>
+  <script>
+  (function(){
+    var c=document.getElementById('bg');
+    for(var i=0;i<70;i++){
+      var d=document.createElement('div');
+      d.className='dot';
+      d.style.left=Math.random()*100+'%';
+      d.style.top=Math.random()*100+'%';
+      d.style.animationDelay=Math.random()*3+'s';
+      d.style.animationDuration=(2+Math.random()*2)+'s';
+      c.appendChild(d);
+    }
+    var btns=document.querySelectorAll('.sb');
+    btns.forEach(function(b){
+      b.addEventListener('click',function(){
+        var v=parseInt(b.dataset.v);
+        btns.forEach(function(x){x.classList.toggle('active',parseInt(x.dataset.v)<=v);});
+      });
+    });
+  })();
+  </script>
+  </body></html>`;
+  }
+  
+  // ── WSM Client Portal ───────────────────────────────────────────────────────
+  const CLIENT_PANEL_RE = /^\/([a-z0-9]{16,32})\/(auth-painel|login|recovery|auth-plugin|redirect-plugin-register|register)\/?$/i;
+  
+  function renderClientLogin(storeId) {
+    return `<!DOCTYPE html><html lang="pt-BR"><head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WSM — Portal do Cliente</title>
+  <style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace;color:#e8e8f4}.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:40px 36px;width:100%;max-width:420px;text-align:center}.logo{font-size:24px;font-weight:800;color:#00ff87;margin-bottom:8px}.sub{color:#8a8aaa;font-size:13px;margin-bottom:24px}label{display:block;text-align:left;font-size:12px;color:#8a8aaa;text-transform:uppercase;margin-bottom:8px}input{width:100%;padding:12px 14px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:8px;color:#00ff87;font-family:monospace;font-size:14px;outline:none;margin-bottom:16px}input:focus{border-color:#00ff87}.btn{width:100%;padding:14px;background:#00ff87;border:none;border-radius:8px;color:#000;font-weight:800;font-size:15px;cursor:pointer;transition:opacity .2s}.btn:hover{opacity:.85}.err{background:#ff475715;border:1px solid #ff4757;border-radius:8px;color:#ff4757;padding:11px 14px;font-size:13px;margin-bottom:14px}</style>
+  </head><body>
+  <div class="card">
+    <div class="logo">⚡ WSM</div>
+    <div class="sub">Login — Portal do Cliente</div>
+    <form method="POST" action="/WSM/${escHtml(storeId)}/login">
+      <label>Email ou Chave</label>
+      <input type="text" name="credential" autocomplete="off" placeholder="sua@chave.com ou wt-xxxxx-xxxxx-xxxxx">
+      <label>Senha</label>
+      <input type="password" name="password">
+      <button type="submit" class="btn">Entrar</button>
+    </form>
+  </div>
+  </body></html>`;
+  }
+  
+  function renderClientRecovery(storeId) {
+    return `<!DOCTYPE html><html lang="pt-BR"><head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WSM — Recuperação de Acesso</title>
+  <style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace;color:#e8e8f4}.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:40px 36px;width:100%;max-width:420px;text-align:center}.logo{font-size:24px;font-weight:800;color:#00ff87;margin-bottom:8px}.sub{color:#8a8aaa;font-size:13px;margin-bottom:24px}label{display:block;text-align:left;font-size:12px;color:#8a8aaa;text-transform:uppercase;margin-bottom:8px}input{width:100%;padding:12px 14px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:8px;color:#00ff87;font-family:monospace;font-size:14px;outline:none;margin-bottom:16px}input:focus{border-color:#00ff87}.btn{width:100%;padding:14px;background:#00ff87;border:none;border-radius:8px;color:#000;font-weight:800;font-size:15px;cursor:pointer;transition:opacity .2s}.btn:hover{opacity:.85}</style>
+  </head><body>
+  <div class="card">
+    <div class="logo">⚡ WSM</div>
+    <div class="sub">Recuperação de Acesso</div>
+    <form method="POST" action="/WSM/${escHtml(storeId)}/recovery">
+      <label>Email</label>
+      <input type="email" name="email" autocomplete="email" placeholder="seu@email.com">
+      <button type="submit" class="btn">Enviar Link</button>
+    </form>
+  </div>
+  </body></html>`;
+  }
+  
+  function renderClientRegister(storeId) {
+    return `<!DOCTYPE html><html lang="pt-BR"><head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WSM — Cadastro</title>
+  <style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace;color:#e8e8f4}.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:40px 36px;width:100%;max-width:420px;text-align:center}.logo{font-size:24px;font-weight:800;color:#00ff87;margin-bottom:8px}.sub{color:#8a8aaa;font-size:13px;margin-bottom:24px}label{display:block;text-align:left;font-size:12px;color:#8a8aaa;text-transform:uppercase;margin-bottom:8px}input{width:100%;padding:12px 14px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:8px;color:#00ff87;font-family:monospace;font-size:14px;outline:none;margin-bottom:16px}input:focus{border-color:#00ff87}.btn{width:100%;padding:14px;background:#00ff87;border:none;border-radius:8px;color:#000;font-weight:800;font-size:15px;cursor:pointer;transition:opacity .2s}.btn:hover{opacity:.85}</style>
+  </head><body>
+  <div class="card">
+    <div class="logo">⚡ WSM</div>
+    <div class="sub">Criar sua conta</div>
+    <form method="POST" action="/WSM/${escHtml(storeId)}/register">
+      <label>Nome</label>
+      <input type="text" name="name" autocomplete="name" placeholder="Seu nome">
+      <label>Email</label>
+      <input type="email" name="email" autocomplete="email" placeholder="seu@email.com">
+      <label>Senha</label>
+      <input type="password" name="password" autocomplete="new-password">
+      <button type="submit" class="btn">Criar Conta</button>
+    </form>
+  </div>
+  </body></html>`;
+  }
+
+  // "Minha Conta" (auth-painel) — painel completo do cliente autenticado PELA CHAVE
+  // (bearer_token que a extensao ja possui via ?token=). NAO exige login por email/senha.
+  function renderClientAuthPainel(storeId, token, page, rec) {
+      const st = rec ? keyStatus(rec, rec.code || '') : 'blocked';
+      const premium = rec ? buildUserPremium(rec.code || '', rec) : null;
+      const name = escHtml(rec ? (rec.label || rec.code || 'Usuário') : '—');
+      const keyCode = rec ? (rec.code || token) : token;
+      const plan = premium ? (premium.premium ? 'PREMIUM' : 'Gratuito') : '—';
+      const isPremium = premium && premium.premium;
+      const isDeferred = rec && rec.expireDuration && !rec.expiresAt;
+      const statusLabel = isDeferred ? 'Aguardando 1° uso' : (st === 'active' ? 'Ativa' : st === 'free' ? 'Gratuita' : st === 'expired' ? 'Expirada' : 'Bloqueada');
+      const statusColor = isDeferred ? '#7c6fff' : (st === 'active' || st === 'free' ? '#00e676' : st === 'expired' ? '#ffa726' : '#ef5350');
+      const statusBg = isDeferred ? 'rgba(124,111,255,0.1)' : (st === 'active' || st === 'free' ? 'rgba(0,230,118,0.1)' : st === 'expired' ? 'rgba(255,167,38,0.1)' : 'rgba(239,83,80,0.1)');
+      const expiresAt = isDeferred ? 'Ativa ao 1° uso' : (rec && rec.expiresAt ? new Date(rec.expiresAt).toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric'}) : '—');
+      const createdAt = rec && rec.createdAt ? new Date(rec.createdAt).toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
+      const phones  = rec && Array.isArray(rec.phones)  ? rec.phones  : [];
+      const devicesArr = rec && Array.isArray(rec.devices) ? rec.devices : [];
+      const lastPhone = rec && rec.lastPhone ? rec.lastPhone : phones.length > 0 ? phones[phones.length-1] : '';
+      const uses = phones.length + devicesArr.filter(d => d.startsWith('ip:')).length;
+      const maxUses = rec && rec.maxUses > 0 ? rec.maxUses : '∞';
+      const devPct = rec && rec.maxUses > 0 ? Math.min(100, Math.round((uses / rec.maxUses) * 100)) : 0;
+      const keyDisplay = escHtml(keyCode);
+      const keyMasked = keyCode.length > 12 ? escHtml(keyCode.substring(0,4)) + '••••••••' + escHtml(keyCode.substring(keyCode.length-4)) : escHtml(keyCode);
+      const avatarLetter = name && name !== '—' ? name.charAt(0).toUpperCase() : 'U';
+      const planBadge = isPremium ? '<span class="plan-badge premium">✶ PREMIUM</span>' : '<span class="plan-badge free">GRATUITO</span>';
+      const year = new Date().getFullYear();
+      const keyJs = keyCode.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    
+      const phonesHtml = phones.length === 0
+        ? '<div class="no-phones"><span>Nenhum número registrado ainda</span></div>'
+        : phones.map(function(ph){ return '<div class="phone-chip">+' + escHtml(ph) + '</div>'; }).join('');
+    
+      const devBarHtml = rec && rec.maxUses > 0
+        ? '<div class="dbw"><div class="dbl"><span>' + devPct + '% usado</span><span>' + (rec.maxUses - uses) + ' disponível</span></div><div class="db"><div class="dbf" style="width:' + devPct + '%"></div></div></div>'
+        : '';
+      const lastPhoneDisp = lastPhone ? ('+' + escHtml(lastPhone)) : '&mdash;';
+      const expClss = isDeferred ? 'purple' : '';
+    
+      const parts = [];
+      parts.push('<!DOCTYPE html><html lang="pt-BR"><head>');
+      parts.push('<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">');
+      parts.push('<title>WSM &mdash; Minha Conta</title>');
+      parts.push('<link rel="preconnect" href="https://fonts.googleapis.com">');
+      parts.push('<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>');
+      parts.push('<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Syne:wght@700;800&display=swap" rel="stylesheet">');
+      parts.push('<style>');
+      parts.push('*{box-sizing:border-box;margin:0;padding:0}');
+      parts.push(':root{');
+      parts.push('  --g:#00e676;--gd:rgba(0,230,118,.12);--gb:rgba(0,230,118,.2);');
+      parts.push('  --pu:#7c6fff;--bg:#07070f;--s1:#0d0d1a;--s2:#12121f;--s3:#17172a;');
+      parts.push('  --bd:#1c1c30;--bd2:#252540;--tx:#e4e4f0;--mu:#6e6e8e;--mu2:#454560;');
+      parts.push('  --rd:#ef5350;--am:#ffa726;--fn:"Inter",sans-serif;--fh:"Syne",sans-serif');
+      parts.push('}');
+      parts.push('body{background:var(--bg);min-height:100vh;font-family:var(--fn);color:var(--tx);-webkit-font-smoothing:antialiased;background-image:radial-gradient(ellipse 60% 40% at 50% -10%,rgba(0,230,118,.05) 0%,transparent 70%)}');
+      parts.push('::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:var(--bd);border-radius:10px}');
+      parts.push('nav{display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:60px;background:rgba(13,13,26,.85);backdrop-filter:blur(16px);border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:100}');
+      parts.push('.nb{display:flex;align-items:center;gap:10px}');
+      parts.push('.nl{width:32px;height:32px;background:var(--gd);border:1px solid var(--gb);border-radius:8px;display:flex;align-items:center;justify-content:center}');
+      parts.push('.nt{font-family:var(--fh);font-size:17px;font-weight:800;color:var(--tx);letter-spacing:-.3px}');
+      parts.push('.nt b{color:var(--g)}');
+      parts.push('.na{display:flex;align-items:center;gap:10px}');
+      parts.push('.sp{display:flex;align-items:center;gap:6px;padding:5px 12px;background:var(--gd);border:1px solid rgba(0,230,118,.15);border-radius:20px;font-size:11px;font-weight:600;color:var(--g);letter-spacing:.3px}');
+      parts.push('.sp i{width:6px;height:6px;border-radius:50%;background:var(--g);box-shadow:0 0 6px var(--g);animation:bl 2s ease-in-out infinite;font-style:normal;display:inline-block}');
+      parts.push('@keyframes bl{0%,100%{opacity:1}50%{opacity:.3}}');
+      parts.push('.blo{padding:7px 16px;background:transparent;border:1px solid var(--bd2);border-radius:8px;color:var(--mu);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--fn);transition:all .2s}');
+      parts.push('.blo:hover{border-color:var(--rd);color:var(--rd);background:rgba(239,83,80,.06)}');
+      parts.push('.wrap{max-width:900px;margin:0 auto;padding:32px 20px 60px}');
+      parts.push('.hc{position:relative;background:var(--s1);border:1px solid var(--bd);border-radius:20px;padding:32px;margin-bottom:20px;overflow:hidden}');
+      parts.push('.hc::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(0,230,118,.3),transparent)}');
+      parts.push('.hg{position:absolute;top:-60px;right:-60px;width:220px;height:220px;background:radial-gradient(circle,rgba(0,230,118,.06) 0%,transparent 70%);pointer-events:none}');
+      parts.push('.hi{display:flex;align-items:flex-start;gap:20px;position:relative}');
+      parts.push('.av{width:64px;height:64px;border-radius:16px;background:linear-gradient(135deg,rgba(0,230,118,.14),rgba(124,111,255,.1));border:1px solid var(--gb);display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-size:26px;font-weight:800;color:var(--g);flex-shrink:0}');
+      parts.push('.hb{flex:1;min-width:0}');
+      parts.push('.hn{font-family:var(--fh);font-size:24px;font-weight:800;color:var(--tx);letter-spacing:-.5px;margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}');
+      parts.push('.hk{font-family:monospace;font-size:12px;color:var(--mu);letter-spacing:1.5px;margin-bottom:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}');
+      parts.push('.hkv{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px}');
+      parts.push('.cm{background:none;border:1px solid var(--bd2);border-radius:5px;color:var(--mu);font-size:10px;padding:2px 8px;cursor:pointer;font-family:var(--fn);transition:all .15s}');
+      parts.push('.cm:hover{border-color:var(--g);color:var(--g)}');
+      parts.push('.ht{display:flex;flex-wrap:wrap;gap:8px}');
+      parts.push('.tag{display:inline-flex;align-items:center;padding:5px 13px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;border:1px solid}');
+      parts.push('.pb{display:inline-flex;align-items:center;padding:5px 13px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;border:1px solid}');
+      parts.push('.pb.pm{color:#ffd700;border-color:rgba(255,215,0,.3);background:rgba(255,215,0,.08)}');
+      parts.push('.pb.fr{color:var(--mu);border-color:var(--bd2);background:var(--s2)}');
+      parts.push('.sr{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:20px}');
+      parts.push('.sc{background:var(--s1);border:1px solid var(--bd);border-radius:12px;padding:20px 22px;transition:border-color .2s}');
+      parts.push('.sc:hover{border-color:var(--bd2)}');
+      parts.push('.si{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;margin-bottom:14px;background:var(--s2);border:1px solid var(--bd)}');
+      parts.push('.sl{font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--mu);margin-bottom:5px}');
+      parts.push('.sv{font-size:18px;font-weight:700;color:var(--tx);letter-spacing:-.3px}');
+      parts.push('.sv.sm{font-size:14px;font-family:monospace;letter-spacing:.5px}');
+      parts.push('.sv.pu{color:var(--pu)}');
+      parts.push('.dbw{margin-top:10px}');
+      parts.push('.dbl{display:flex;justify-content:space-between;font-size:11px;color:var(--mu);margin-bottom:6px}');
+      parts.push('.db{height:4px;background:var(--s3);border-radius:10px;overflow:hidden}');
+      parts.push('.dbf{height:100%;background:linear-gradient(90deg,var(--g),rgba(0,230,118,.4));border-radius:10px}');
+      parts.push('.ks{background:var(--s1);border:1px solid var(--bd);border-radius:12px;padding:22px;margin-bottom:20px}');
+      parts.push('.st{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--mu);margin-bottom:16px;display:flex;align-items:center;gap:10px}');
+      parts.push('.st::after{content:"";flex:1;height:1px;background:var(--bd)}');
+      parts.push('.kd{display:flex;align-items:center;gap:10px;background:var(--s2);border:1px solid var(--bd);border-radius:9px;padding:12px 16px}');
+      parts.push('.kt{font-family:monospace;font-size:13px;color:var(--tx);letter-spacing:1.5px;flex:1;word-break:break-all;line-height:1.6}');
+      parts.push('.cb{background:var(--s3);border:1px solid var(--bd2);border-radius:7px;color:var(--mu);font-size:12px;padding:7px 14px;cursor:pointer;font-family:var(--fn);font-weight:500;transition:all .15s;white-space:nowrap}');
+      parts.push('.cb:hover{border-color:var(--g);color:var(--g);background:var(--gd)}');
+      parts.push('.ps{background:var(--s1);border:1px solid var(--bd);border-radius:12px;padding:22px;margin-bottom:20px}');
+      parts.push('.pg{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}');
+      parts.push('.pc{background:var(--s2);border:1px solid var(--bd2);border-radius:8px;padding:7px 14px;font-size:13px;color:var(--tx);font-family:monospace;transition:border-color .15s}');
+      parts.push('.pc:hover{border-color:var(--gb)}');
+      parts.push('.np{color:var(--mu);font-size:13px;padding:4px 0}');
+      parts.push('.ft{text-align:center;padding:28px 20px 20px;font-size:12px;color:var(--mu2)}');
+      parts.push('@media(max-width:600px){.hi{flex-direction:column;gap:14px}.nt{display:none}.hn{font-size:20px}.sr{grid-template-columns:1fr 1fr}.wrap{padding:20px 14px 50px}}');
+      parts.push('</style></head><body>');
+      parts.push('<nav>');
+      parts.push('  <div class="nb">');
+      parts.push('    <div class="nl"><svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4" stroke="#00e676" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="9" stroke="#00e676" stroke-width="1.5"/></svg></div>');
+      parts.push('    <span class="nt">W<b>S</b>M</span>');
+      parts.push('  </div>');
+      parts.push('  <div class="na">');
+      parts.push('    <div class="sp"><i></i>ONLINE</div>');
+      parts.push('    <button class="blo" id="btn-sair">Sair</button>');
+      parts.push('  </div>');
+      parts.push('</nav>');
+      parts.push('<div class="wrap">');
+      parts.push('  <div class="hc">');
+      parts.push('    <div class="hg"></div>');
+      parts.push('    <div class="hi">');
+      parts.push('      <div class="av">' + avatarLetter + '</div>');
+      parts.push('      <div class="hb">');
+      parts.push('        <div class="hn">' + name + '</div>');
+      parts.push('        <div class="hk"><span class="hkv">' + keyMasked + '</span><button class="cm" id="cpb-mini">Copiar</button></div>');
+      parts.push('        <div class="ht">');
+      parts.push('          <span class="tag" style="color:' + statusColor + ';border-color:' + statusColor + ';background:' + statusBg + '">' + statusLabel + '</span>');
+      parts.push('          ' + planBadge);
+      parts.push('        </div>');
+      parts.push('      </div>');
+      parts.push('    </div>');
+      parts.push('  </div>');
+      parts.push('  <div class="sr">');
+      parts.push('    <div class="sc">');
+      parts.push('      <div class="si"><svg width="16" height="16" fill="none" stroke="#00e676" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/></svg></div>');
+      parts.push('      <div class="sl">Dispositivos</div>');
+      parts.push('      <div class="sv">' + uses + ' <span style="color:var(--mu);font-size:14px">/ ' + maxUses + '</span></div>');
+      parts.push(devBarHtml);
+      parts.push('    </div>');
+      parts.push('    <div class="sc">');
+      parts.push('      <div class="si"><svg width="16" height="16" fill="none" stroke="' + (isDeferred ? '#7c6fff' : statusColor) + '" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>');
+      parts.push('      <div class="sl">Expira em</div>');
+      parts.push('      <div class="sv sm ' + expClss + '">' + expiresAt + '</div>');
+      parts.push('    </div>');
+      parts.push('    <div class="sc">');
+      parts.push('      <div class="si"><svg width="16" height="16" fill="none" stroke="#6e6e8e" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18" stroke-linecap="round"/></svg></div>');
+      parts.push('      <div class="sl">Cadastrado em</div>');
+      parts.push('      <div class="sv sm">' + createdAt + '</div>');
+      parts.push('    </div>');
+      parts.push('    <div class="sc">');
+      parts.push('      <div class="si"><svg width="16" height="16" fill="none" stroke="#6e6e8e" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg></div>');
+      parts.push('      <div class="sl">Ultimo numero</div>');
+      parts.push('      <div class="sv sm">' + lastPhoneDisp + '</div>');
+      parts.push('    </div>');
+      parts.push('  </div>');
+      parts.push('  <div class="ks">');
+      parts.push('    <div class="st">Chave de acesso</div>');
+      parts.push('    <div class="kd">');
+      parts.push('      <div class="kt" id="key-full">' + keyDisplay + '</div>');
+      parts.push('      <button class="cb" id="cpb-main">Copiar chave</button>');
+      parts.push('    </div>');
+      parts.push('  </div>');
+      parts.push('  <div class="ps">');
+      parts.push('    <div class="st">Numeros registrados (' + phones.length + ')</div>');
+      parts.push('    <div class="pg">' + phonesHtml + '</div>');
+      parts.push('  </div>');
+      parts.push('</div>');
+      parts.push('<div class="ft">&copy; ' + year + ' WSM &middot; Todos os direitos reservados</div>');
+      parts.push('<script>');
+      parts.push('(function(){');
+      parts.push('  var KEY = document.getElementById("key-full").textContent;');
+      parts.push('  var LOGOUT = "/WSM/' + storeId + '/login";');
+      parts.push('  function doCopy(btn,orig){');
+      parts.push('    navigator.clipboard.writeText(KEY).then(function(){');
+      parts.push('      btn.textContent = "Copiado!";');
+      parts.push('      setTimeout(function(){ btn.textContent = orig; }, 1500);');
+      parts.push('    });');
+      parts.push('  }');
+      parts.push('  var m = document.getElementById("cpb-mini");');
+      parts.push('  if(m) m.addEventListener("click", function(){ doCopy(m,"Copiar"); });');
+      parts.push('  var b = document.getElementById("cpb-main");');
+      parts.push('  if(b) b.addEventListener("click", function(){ doCopy(b,"Copiar chave"); });');
+      parts.push('  var s = document.getElementById("btn-sair");');
+      parts.push('  if(s) s.addEventListener("click", function(){ window.location.href = LOGOUT; });');
+      parts.push('})();');
+      parts.push('<\/script>');
+      parts.push('</body></html>');
+      return parts.join('\n');
+    }
+
+  async function handleClientPanel(req, res, pathname, url) {
+    const m = CLIENT_PANEL_RE.exec(pathname);
+    if (!m) return false;
+    const storeId = m[1];
+    const action  = m[2].toLowerCase();
+    // "auth-painel" (Minha Conta): a extensão abre com ?token=<bearer_token> — a
+    // sessão que ela JÁ possui. Autenticamos por esse token e mostramos a conta,
+    // SEM exigir novo login (o cliente já entrou pela chave na extensão).
+    if (action === 'auth-painel' && req.method === 'GET') {
+      const token = ((url && url.searchParams && url.searchParams.get('token')) || '').trim();
+      const page  = (url && url.searchParams && url.searchParams.get('page')) || '';
+      if (token) {
+        let rec = await findKeyByBearer(token);
+        if (!rec) rec = await findLicenseByCode(token);
+        if (rec) { sendHtml(res, renderClientAuthPainel(storeId, token, page, rec)); return true; }
+      }
+      // Sem token válido → login por chave (fallback, ex.: aberto direto no navegador)
+      sendHtml(res, renderClientLogin(storeId));
+      return true;
+    }
+    if (action === 'login' || action === 'auth-painel') {
+      if (req.method === 'GET') {
+        sendHtml(res, renderClientLogin(storeId));
+        return true;
+      }
+      if (req.method === 'POST') {
+        const body = await parseBody(req);
+        const credential = normKey(body.credential || body.email || body.key || '');
+        const rec = await findLicenseByCode(credential);
+        if (!rec) {
+          sendJson(res, { success: false, msg_id: 'invalid_credential' }, 401);
+          return true;
+        }
+        const result = await authSuccess(credential, rec);
+        sendJson(res, result.ok ? result.body : { success: false, msg_id: result.msg_id });
+        return true;
+      }
+    }
+    if (action === 'recovery') {
+      sendHtml(res, renderClientRecovery(storeId));
+      return true;
+    }
+    if (action === 'register' || action === 'redirect-plugin-register') {
+      sendHtml(res, renderClientRegister(storeId));
+      return true;
+    }
+    if (action === 'auth-plugin') {
+      if (req.method === 'POST') {
+        const body = await parseBody(req);
+        const credential = normKey(body.credential || body.code || body.key || '');
+        const rec = await findLicenseByCode(credential);
+        if (!rec) { sendJson(res, { success: false, msg_id: 'invalid_credential' }, 401); return true; }
+        const result = await authSuccess(credential, rec);
+        sendJson(res, result.ok ? result.body : { success: false, msg_id: result.msg_id });
+        return true;
+      }
+      sendHtml(res, renderClientLogin(storeId));
+      return true;
+    }
+    return false;
+  }
+  
+
+  function renderChangelogPage() {
+    const entries = [...changelog].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const rows = entries.length === 0
+      ? '<div style="text-align:center;padding:40px;color:#666">Nenhuma atualização cadastrada ainda.</div>'
+      : entries.map(e => `
+        <div style="background:#1a1a2e;border:1px solid #2a2a4a;border-radius:12px;padding:24px;margin-bottom:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <span style="font-size:18px;font-weight:700;color:#3ddc84">${escHtml(e.title||'Atualização')}</span>
+            <span style="font-size:13px;color:#888;background:#111;padding:4px 10px;border-radius:20px">${escHtml(e.version||'')} — ${escHtml(e.date||'')}</span>
+          </div>
+          <ul style="margin:0;padding-left:20px;color:#ccc;line-height:1.8">
+            ${(e.items||[]).map(i=>`<li>${escHtml(i)}</li>`).join('')}
+          </ul>
+        </div>`).join('');
+    return `<!DOCTYPE html><html lang="pt-BR"><head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Atualizações — WSM</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+  <style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0d0d14;color:#e5e7eb;font-family:'Syne',sans-serif;min-height:100vh;padding:40px 20px}
+  .wrap{max-width:720px;margin:0 auto}.logo{font-size:28px;font-weight:800;color:#3ddc84;margin-bottom:8px}
+  .sub{color:#888;font-size:14px;margin-bottom:32px;border-bottom:1px solid #222;padding-bottom:20px}</style>
+  </head><body><div class="wrap">
+  <div class="logo">WSM</div>
+  <div class="sub">Histórico de Atualizações</div>
+  ${rows}
+  </div></body></html>`;
+  }
+  // ── WSM_R_MOD ──────────────────────────────────────────────────
+  const WSM_R_MOD = (s => s ? '/' + s : '/wsm-mod')(_wsmDeriveSlug('mod-panel'));
+
+  // ── WSM audit log (moderação) ──────────────────────────────────
+  let wsmLogs = [];
+  const WSM_LOG_MAX = 200;
+  function addWsmLog(entry) {
+    wsmLogs.unshift({ ts: new Date().toISOString(), ...entry });
+    if (wsmLogs.length > WSM_LOG_MAX) wsmLogs = wsmLogs.slice(0, WSM_LOG_MAX);
+  }
+
+  // ── WSM logs de LOGIN da extensão (formato do painel admin: keyCode/label/phone/ip/action) ──
+  let wsmExtLogs = [];
+  function addWsmExtLog(entry) {
+    wsmExtLogs.unshift({
+      keyCode:    String(entry.keyCode || '').slice(0, 32),
+      label:      String(entry.label || '').slice(0, 80),
+      phone:      String(entry.phone || '').slice(0, 20),
+      ip:         String(entry.ip || '').slice(0, 45),
+      wppVersion: String(entry.wppVersion || '').slice(0, 40),
+      action:     String(entry.action || 'login').slice(0, 30),
+      timestamp:  new Date().toISOString(),
+    });
+    if (wsmExtLogs.length > 500) wsmExtLogs = wsmExtLogs.slice(0, 500);
+    // persiste em watidy.store (_id:'ext_logs')
+    getDb().then(d => d.collection('store').updateOne(
+      { _id: 'ext_logs' }, { $set: { data: wsmExtLogs.slice(0, 500), updatedAt: new Date() } }, { upsert: true }
+    )).catch(() => {});
+  }
+  async function ensureExtLogsLoaded() {
+    if (wsmExtLogs.length) return;
+    try { const d = await getDb(); const doc = await d.collection('store').findOne({ _id: 'ext_logs' }); if (doc && Array.isArray(doc.data)) wsmExtLogs = doc.data; } catch {}
+  }
+
+  // ── wsmAdapt: ajusta HTML ZVM para namespace /WSM ──────────────
+  function wsmAdapt(html) {
+    const _esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const wsmAdminPath = '/WSM' + WSM_R_ADMIN;
+    const wsmModPath   = '/WSM' + WSM_R_MOD;
+    return html
+      // Branding
+      .replace(/ZVM Admin v\d+/g, 'WSM Admin')
+      .replace(/\bZVM\b/g, 'WSM')
+      .replace(/ZapVoice/g, 'WSM')
+      // Prefixo de chave zv- → wt- (placeholders, exemplos e domínio de e-mail)
+      .replace(/\bzv-xxxxx/gi, 'wt-xxxxx')
+      .replace(/@zapvoice\.com\.br/gi, '@watidy.com.br')
+      .replace(/zapvoice\.com\.br/gi, 'watidy.com.br')
+      // Substitui slugs ZVM resolvidos (action/href injetados) pelo equivalente WSM
+      // ANTES de adicionar prefixo /WSM/ para não duplicar
+      .replace(new RegExp(_esc(R_ADMIN), 'g'), wsmAdminPath)
+      .replace(new RegExp(_esc(R_MOD), 'g'), wsmModPath)
+      // Atualiza variáveis JS _RA/_RM
+      .replace(/const _RA='[^']*'/g, `const _RA='${wsmAdminPath}'`)
+      .replace(/const _RM\s*=\s*'[^']*'/g, `const _RM='${wsmModPath}'`)
+      // form actions com / raiz restantes → /WSM/
+      .replace(/action="\/(?!WSM\/|http|#)/g, 'action="/WSM/')
+      // hrefs internos restantes → /WSM/
+      .replace(/href="\/(?!WSM\/|http|\/\/|#|data:)/g, 'href="/WSM/')
+      // fetch() com / raiz → /WSM/
+      .replace(/fetch\('\/(?!WSM\/)/g, "fetch('/WSM/")
+      .replace(/fetch\(`\/(?!WSM\/)/g, 'fetch(`/WSM/')
+      .replace(/fetch\("\/(?!WSM\/)/g, 'fetch("/WSM/')
+      // JS redirects
+      .replace(/location\.href\s*=\s*'\/(?!WSM\/)/g, "location.href='/WSM/")
+      .replace(/location\.href\s*=\s*`\/(?!WSM\/)/g, 'location.href=`/WSM/');
+  }
+
+  // ── wsmLandingAdapt: substitui copy ZVM por copy WSM na landing ──
+  function wsmLandingAdapt(html) {
+    return html
+      // título e meta
+      .replace('ZVM — Automatize Mensagens de Voz no WhatsApp', 'WSM — CRM, Automações e Ferramentas de Venda no WhatsApp')
+      .replace('ZVM: extensão Chrome que automatiza áudios, textos e mídias no WhatsApp em segundos. Anti-ban integrado, multi-dispositivo e ativação imediata. A partir de R$24,99/mês.', 'WSM: CRM completo dentro do WhatsApp Web. Kanban de vendas, respostas rápidas, follow-up automático, agendamentos, fluxos de atendimento e IA. Ativação imediata.')
+      // eyebrow
+      .replace('Extensão Chrome · 100% das avaliações com 5 estrelas', 'Extensão Chrome · CRM completo dentro do WhatsApp')
+      // hero H1
+      .replace('Enquanto você digita,<br><em>seu concorrente</em><span>já mandou áudio pra 1.000 clientes</span>', 'Seu WhatsApp lota de conversa.<br><em>Quantas viram</em><span>venda de verdade?</span>')
+      // hero sub
+      .replace('O ZVM dispara mensagens de voz, textos e mídias em massa no WhatsApp — com anti-ban integrado e ativação em 5 minutos. Sua lista esfriando é dinheiro evaporando.', 'O WSM transforma seu WhatsApp Web em um CRM completo: funil Kanban, respostas rápidas, follow-up automático, agendamentos e bot de atendimento — sem sair da conversa. Lead esquecido é venda perdida.')
+      // CTA primário
+      .replace('🚀 Quero disparar hoje', '🚀 Quero organizar minhas vendas')
+      // trust pills
+      .replace('<span class="trust-pill"><span class="trust-pill-icon">✓</span> Anti-ban que protege seu número</span>', '<span class="trust-pill"><span class="trust-pill-icon">✓</span> CRM no WhatsApp, ativação na hora</span>')
+      // stat 1
+      .replace('<div class="stat-item"><div class="stat-num">5×</div><div class="stat-lbl">Mais abertura que texto</div></div>', '<div class="stat-item"><div class="stat-num">+40</div><div class="stat-lbl">Ferramentas num só painel</div></div>')
+      // steps heading
+      .replace('<h2 class="sh-title">Hoje você compra.<br>Hoje você dispara.</h2>', '<h2 class="sh-title">Hoje você ativa.<br>Hoje você organiza.</h2>')
+      .replace('<p class="sh-sub">Sem reunião de onboarding, sem semana de implantação. Três passos e sua campanha está no ar.</p>', '<p class="sh-sub">Sem reunião de onboarding, sem semana de implantação. Três passos e seu CRM está rodando dentro do WhatsApp.</p>')
+      // passo 02
+      .replace('Adicione o ZVM ao Chrome, cole sua chave e conecte o WhatsApp. Se você sabe copiar e colar, você sabe usar o ZVM.', 'Adicione o WSM ao Chrome, cole sua chave e abra o WhatsApp Web. Se você sabe copiar e colar, você sabe usar o WSM.')
+      // passo 03
+      .replace('<div class="step-title">Dispare e vá cuidar do resto</div>', '<div class="step-title">Venda com processo, não com memória</div>')
+      .replace('Áudio, texto ou mídia para toda a lista, com intervalos inteligentes anti-ban. O ZVM trabalha — você só responde os interessados.', 'Arraste leads no funil, dispare respostas rápidas, deixe o follow-up e o bot trabalharem. O WSM cuida do processo — você só fecha.')
+      // features sub
+      .replace('Cada recurso existe por um motivo: colocar sua mensagem na frente do cliente sem colocar seu número em risco.', 'Cada recurso existe por um motivo: transformar conversa solta em pipeline de vendas — direto no WhatsApp Web.')
+      // 8 feature cards
+      .replace('<div class="fc"><span class="fc-icon">🎙️</span><div><div class="fc-name">Áudios em Massa</div><p class="fc-desc">Áudio é aberto até 5× mais que texto. Grave uma vez, dispare para milhares — sua voz vendendo em escala.</p></div></div>', '<div class="fc"><span class="fc-icon">📊</span><div><div class="fc-name">CRM Kanban</div><p class="fc-desc">Arraste cada conversa pelo funil: novo lead, negociando, fechado. Seu pipeline inteiro visível sem sair do WhatsApp.</p></div></div>')
+      .replace('<div class="fc"><span class="fc-icon">🛡️</span><div><div class="fc-name">Anti-Ban Avançado</div><p class="fc-desc">Intervalos inteligentes e rotação de padrões. Um número banido é uma carteira de clientes perdida — aqui isso não acontece por descuido.</p></div></div>', '<div class="fc"><span class="fc-icon">⚡</span><div><div class="fc-name">Respostas Rápidas</div><p class="fc-desc">Texto, áudio, mídia e sequências inteiras a um clique. Pare de digitar a mesma coisa 50 vezes por dia.</p></div></div>')
+      .replace('<div class="fc"><span class="fc-icon">📱</span><div><div class="fc-name">Multi-Dispositivo</div><p class="fc-desc">Até 10 números num painel só. Sua equipe inteira disparando sem trocar de aba, de conta ou de computador.</p></div></div>', '<div class="fc"><span class="fc-icon">🔁</span><div><div class="fc-name">Follow-up Automático</div><p class="fc-desc">Lead entrou na aba, o timer começa. Sem resposta em X horas? O WSM cobra por você — e para sozinho quando o cliente responde.</p></div></div>')
+      .replace('<div class="fc"><span class="fc-icon">⚡</span><div><div class="fc-name">Atualizações Automáticas</div><p class="fc-desc">O WhatsApp muda toda semana; o ZVM acompanha. Você nunca acorda com a ferramenta quebrada no meio da campanha.</p></div></div>', '<div class="fc"><span class="fc-icon">🤖</span><div><div class="fc-name">Bot de Atendimento</div><p class="fc-desc">Fluxos por palavra-chave, menus de lista e variáveis. Seu atendimento responde em segundos, 24/7, sem perder o tom humano.</p></div></div>')
+      .replace('<div class="fc"><span class="fc-icon">📤</span><div><div class="fc-name">Exportação de Contatos</div><p class="fc-desc">Exporte listas por etiqueta do WhatsApp Business e segmente na precisão. Mensagem certa para a lista certa.</p></div></div>', '<div class="fc"><span class="fc-icon">🗓️</span><div><div class="fc-name">Agendamentos</div><p class="fc-desc">Mensagem certa na hora certa, com recorrência. Cobrança, lembrete ou promoção — programada uma vez, entregue sempre.</p></div></div>')
+      // card Agendamento → Webhooks (slot 7)
+      .replace('<div class="fc"><span class="fc-icon">🗓️</span><div><div class="fc-name">Agendamento</div><p class="fc-desc">Programe o disparo para a hora que seu cliente responde. Follow-up automático enquanto você dorme.</p></div></div>', '<div class="fc"><span class="fc-icon">🔗</span><div><div class="fc-name">Webhooks e Integrações</div><p class="fc-desc">Cada evento — lead novo, follow-up, agendamento — notifica seu sistema. CRM externo, planilha ou ERP, tudo sincronizado.</p></div></div>')
+      // Quem constrói o ZVM
+      .replace('<div class="sh-tag">Quem constrói o ZVM</div>', '<div class="sh-tag">Quem constrói o WSM</div>')
+      // CTA final
+      .replace('<h2>Cada dia sem automação<br>é <em>lista esfriando</em></h2>', '<h2>Cada lead sem resposta<br>é <em>venda escapando</em></h2>')
+      .replace('Seu cliente vai receber um áudio hoje. A única dúvida é se vai ser o seu ou o do concorrente. Me chama — em 5 minutos sua chave está ativa.', 'Seu concorrente já organizou o funil e automatizou o follow-up. Me chama — em 5 minutos sua chave está ativa e seu WhatsApp vira CRM.')
+      // plans section copy
+      .replace('Acesso completo em todos os planos: mesmos recursos, mesmo anti-ban, mesmo suporte.', 'Acesso completo em todos os planos: mesmos recursos, mesma IA, mesmo suporte.');
+  }
+
+  // ── renderWsmFaq: FAQ específico do WSM ─────────────────────
+  function renderWsmFaq() {
+    const nav = wsmAdapt(_sharedNav('/faq', null));
+    const foot = wsmAdapt(_sharedFoot());
+    return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WSM — Perguntas Frequentes</title>
+${_GFONTS}
+<style>
+${_sharedCss()}
+.page-hero{padding:80px 48px 64px;text-align:center;background:radial-gradient(ellipse 60% 40% at 50% 0%,#00ff870d,transparent 70%)}
+.page-hero-tag{display:inline-block;font-size:11px;font-weight:700;color:var(--g);letter-spacing:2px;text-transform:uppercase;padding:5px 14px;border:1px solid var(--g-brd);border-radius:99px;margin-bottom:20px}
+.page-hero h1{font-size:clamp(28px,5vw,48px);font-weight:900;letter-spacing:-1.5px;margin-bottom:16px}
+.page-hero p{font-size:15px;color:var(--tx2);max-width:460px;margin:0 auto;line-height:1.6}
+.faq-wrap{max-width:720px;margin:0 auto;padding:0 48px 96px}
+.faq-cat{margin-bottom:48px}
+.faq-cat-title{font-size:13px;font-weight:700;color:var(--g);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:20px;display:flex;align-items:center;gap:10px}
+.faq-cat-title::after{content:'';flex:1;height:1px;background:var(--g-brd)}
+details.faq-item{border-bottom:1px solid var(--brd)}
+details.faq-item summary{padding:18px 0;cursor:pointer;font-size:15px;font-weight:700;list-style:none;display:flex;justify-content:space-between;align-items:center;color:var(--tx);user-select:none;gap:16px}
+details.faq-item summary::-webkit-details-marker{display:none}
+details.faq-item summary::after{content:'›';font-size:22px;color:var(--tx3);transition:transform .25s;flex-shrink:0;line-height:1}
+details.faq-item[open] summary{color:var(--g)}
+details.faq-item[open] summary::after{transform:rotate(90deg)}
+details.faq-item p{padding:0 0 20px;font-size:15px;color:var(--tx2);line-height:1.75}
+details.faq-item code{background:var(--bg3);border:1px solid var(--brd);border-radius:4px;padding:2px 7px;font-size:13px;color:var(--g);font-family:'Space Mono',monospace}
+@media(max-width:640px){.faq-wrap,.page-hero{padding-left:24px;padding-right:24px}}
+</style></head><body>
+${nav}
+<div class="page-hero">
+  <div class="page-hero-tag">FAQ</div>
+  <h1>Perguntas Frequentes</h1>
+  <p>Encontre respostas rápidas sobre o WSM. Não achou? Fale com o suporte.</p>
+</div>
+<div class="faq-wrap">
+
+<div class="faq-cat">
+<div class="faq-cat-title">Geral</div>
+<details class="faq-item"><summary>O que é o WSM?</summary><p>O WSM é uma extensão Chrome que transforma o WhatsApp Web em um CRM completo de vendas. Com ele você organiza leads no Kanban, envia respostas rápidas, cria follow-ups automáticos, agenda mensagens, monta fluxos de atendimento com bot e conecta IA — tudo sem sair da conversa.</p></details>
+<details class="faq-item"><summary>Como funciona o sistema de licença?</summary><p>Ao contratar um plano, você recebe uma chave única (ex: <code>wt-xxxxx-xxxxx-xxxxx</code>). Ela é inserida na extensão para ativação e fica vinculada ao(s) número(s) do seu plano. Cada número de WhatsApp conectado ocupa um slot.</p></details>
+<details class="faq-item"><summary>A extensão funciona em qual navegador?</summary><p>O WSM é compatível com Google Chrome e navegadores baseados em Chromium (Edge, Brave, Opera GX). Firefox e Safari não são suportados no momento.</p></details>
+<details class="faq-item"><summary>Preciso deixar o navegador aberto para funcionar?</summary><p>Sim. A extensão opera em conjunto com o WhatsApp Web aberto no navegador. O dispositivo precisa estar conectado à internet e com o Chrome ativo durante o uso dos recursos automáticos (follow-up, bot, agendamentos).</p></details>
+</div>
+
+<div class="faq-cat">
+<div class="faq-cat-title">Recursos</div>
+<details class="faq-item"><summary>O que é o Kanban de vendas?</summary><p>É um funil visual onde cada conversa do WhatsApp vira um card. Você cria colunas (ex: Novo Lead, Negociando, Fechado, Perdido) e arrasta os contatos conforme avançam. Assim você enxerga todo o pipeline de vendas sem precisar decorar quem está em qual etapa.</p></details>
+<details class="faq-item"><summary>Como funciona o follow-up automático?</summary><p>Você define um tempo (ex: 4 horas sem resposta) e uma mensagem de follow-up. Quando o timer expira para um contato, o WSM envia a mensagem automaticamente. Se o cliente responder antes, o timer é cancelado — sem mensagem duplicada ou fora de hora.</p></details>
+<details class="faq-item"><summary>O que são as Respostas Rápidas?</summary><p>São atalhos de teclado que expandem para mensagens completas — texto, áudio, mídia ou sequências. Você configura uma vez e dispara com um clique ou digitando o atalho na conversa. Ideal para saudações, orçamentos padrão e scripts de fechamento.</p></details>
+<details class="faq-item"><summary>Posso criar um bot de atendimento?</summary><p>Sim. O WSM tem fluxos de atendimento por palavra-chave: quando o cliente manda uma palavra específica (ex: "preço", "horário"), o bot responde com o conteúdo configurado, podendo incluir menus de lista, botões e variáveis como o nome do contato.</p></details>
+<details class="faq-item"><summary>O WSM funciona com IA?</summary><p>Sim. Você pode conectar Gemini, GPT ou Groq para sugerir e reescrever respostas antes de enviar. A IA analisa o contexto da conversa e propõe respostas — você aprova ou edita antes de disparar.</p></details>
+<details class="faq-item"><summary>Como funcionam os agendamentos?</summary><p>Você programa mensagens para uma data e hora específicas, com suporte a recorrência (diário, semanal, mensal). Funciona para cobranças, lembretes de consulta, promoções de datas comemorativas ou qualquer comunicação que precise de pontualidade.</p></details>
+</div>
+
+<div class="faq-cat">
+<div class="faq-cat-title">Chaves e Ativação</div>
+<details class="faq-item"><summary>Como verifico se minha chave está ativa?</summary><p>Acesse <a href="/WSM/verificar" style="color:var(--g)">verificar chave</a> neste portal e insira o código da sua chave. O sistema retorna o status, validade, plano e dispositivos vinculados em tempo real — sem necessidade de login.</p></details>
+<details class="faq-item"><summary>Quantos números posso conectar na minha chave?</summary><p>Depende do seu plano: Solo permite 1 número, Padrão permite 3, Pro permite 5 e Empresarial permite até 10. Você pode ver e remover dispositivos vinculados na consulta da chave ou pelo portal do cliente.</p></details>
+<details class="faq-item"><summary>Posso transferir minha chave para outro dispositivo?</summary><p>Sim. Pelo portal do cliente ou na tela de verificação da chave, você pode remover um número vinculado para liberar o slot e vincular um novo número.</p></details>
+<details class="faq-item"><summary>Onde fica o campo para inserir a chave na extensão?</summary><p>Ao abrir a extensão WSM no Chrome pela primeira vez (ou após logout), há um campo "Chave de Ativação". Cole o código recebido e clique em Ativar. A chave é validada automaticamente em tempo real.</p></details>
+</div>
+
+<div class="faq-cat">
+<div class="faq-cat-title">Portal do Cliente</div>
+<details class="faq-item"><summary>Como acesso o portal do cliente?</summary><p>Clique em ENTRAR no menu de navegação. Se ainda não tem conta, clique em "Cadastrar" e crie seu acesso com e-mail e senha. Após o cadastro, vincule sua chave de licença na área do cliente.</p></details>
+<details class="faq-item"><summary>O que posso fazer no portal do cliente?</summary><p>No portal você pode: ver o status e validade da sua chave, acompanhar dispositivos vinculados, verificar o plano ativo, consultar histórico de uso e solicitar suporte — tudo sem depender do vendedor para informações básicas.</p></details>
+<details class="faq-item"><summary>Esqueci minha senha do portal. Como recupero?</summary><p>Na tela de login clique em "Esqueci a senha". Insira seu e-mail e você receberá um link de redefinição. O link expira em 30 minutos por segurança.</p></details>
+</div>
+
+</div>
+${foot}
+${CANVAS_BG}</body></html>`;
+  }
+
+  // ── Portal do Cliente WSM (banco watidy, mesmas telas do ZVM adaptadas) ──
+  // Espelha o portal global do ZVM mas usando getDb() (watidy) e as chaves WSM.
+  // Todos os redirects apontam para /WSM/cliente*; renders passam por wsmAdapt.
+  async function wsmPortal(req, res, p, url, ip) {
+    const _redir = (loc) => { res.writeHead(302, { Location: '/WSM' + loc }); res.end(); };
+    const _html  = (h, code) => sendHtml(res, wsmAdapt(h), code || 200);
+
+    // Dashboard / raiz
+    if (p === '/cliente' || p === '/cliente/') {
+      if (!isPortalSession(req)) { _html(renderPortalLogin()); return true; }
+      const sess = getPortalUser(req);
+      try {
+        const db = await getDb();
+        const user = await db.collection('portal_users').findOne({ _id: sess.email });
+        if (!user) { res.setHeader('Set-Cookie','zv_portal=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict'); _html(renderPortalLogin()); return true; }
+        let keyData = null;
+        if (user.keyCode) {
+          await ensureKeyLoaded();
+          keyData = keys[user.keyCode] ? { ...keys[user.keyCode], code: user.keyCode } : null;
+        }
+        const _ok = url.searchParams.get('ok');
+        const _msg = _ok === '2fa_off' ? '2FA desativado com sucesso.' : _ok === '1' ? 'Operação realizada com sucesso.' : '';
+        _html(renderPortalDashboard(user, keyData, _msg)); return true;
+      } catch(e) { console.error('[WSM Portal] dashboard:', e.message); _html(renderPortalLogin('Erro temporário.')); return true; }
+    }
+
+    if (p === '/cliente/login' && req.method === 'GET') {
+      const _m = url.searchParams.get('msg');
+      if (_m === 'email_changed') { _html(renderPortalLogin('', '', 'E-mail alterado com sucesso! Faça login com o novo e-mail.')); return true; }
+      _redir('/cliente'); return true;
+    }
+    if (p === '/cliente/login' && req.method === 'POST') {
+      if (!checkRateLimit(ip, 'login')) { _html(renderPortalLogin('Muitas tentativas. Aguarde 10 minutos.'), 429); return true; }
+      const form = await parseFormBody(req);
+      const email = (form.get('email')||'').toLowerCase().trim().slice(0,100);
+      const pass  = (form.get('pass')||'').slice(0,128);
+      const redir = (form.get('redir')||'').slice(0,200);
+      if (!email || !pass) { _html(renderPortalLogin('Preencha todos os campos.')); return true; }
+      try {
+        const db = await getDb();
+        const user = await db.collection('portal_users').findOne({ _id: email });
+        if (!user) { _html(renderPortalLogin('E-mail ou senha inválidos.')); return true; }
+        const hash = await hashPassword(pass, user.salt);
+        const _ha = Buffer.from(hash, 'hex'), _hb = Buffer.from(user.passwordHash || '', 'hex');
+        const passOk = _ha.length === _hb.length && _ha.length > 0 && crypto.timingSafeEqual(_ha, _hb);
+        if (!passOk) { _html(renderPortalLogin('E-mail ou senha inválidos.')); return true; }
+        db.collection('portal_users').updateOne({ _id: email }, { $set: { lastLogin: new Date().toISOString() } }).catch(()=>{});
+        if (user.totpSecret) {
+          const pendingToken = generateToken();
+          portalSessions[pendingToken] = { email, name: user.name, pending2fa: true, redir: redir||'', expiresAt: new Date(Date.now()+5*60*1000).toISOString() };
+          res.setHeader('Set-Cookie', `zv_portal=${pendingToken}; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=300`);
+          _redir('/cliente/2fa/verificar');
+        } else {
+          const token = generateToken();
+          portalSessions[token] = { email, name: user.name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
+          res.setHeader('Set-Cookie', `zv_portal=${token}; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=86400`);
+          const dest = redir && redir.startsWith('/') ? redir : '/cliente';
+          _redir(dest);
+        }
+      } catch(e) { console.error('[WSM Portal] login:', e.message); _html(renderPortalLogin('Erro temporário.')); }
+      return true;
+    }
+
+    if (p === '/cliente/registro' && req.method === 'GET') { _html(renderPortalRegister()); return true; }
+    if (p === '/cliente/registro' && req.method === 'POST') {
+      if (!checkRateLimit(ip, 'login')) { _html(renderPortalRegister('Muitas tentativas.'), 429); return true; }
+      const form = await parseFormBody(req);
+      const name    = (form.get('name')||'').trim().slice(0,80);
+      const email   = (form.get('email')||'').toLowerCase().trim().slice(0,100);
+      const phone   = (form.get('phone')||'').replace(/\D/g,'').slice(0,20);
+      const keycode = ((form.get('keycode')||'').toLowerCase().trim()).replace(/[^a-z0-9\-_]/g,'').slice(0,30);
+      const pass    = (form.get('pass')||'').slice(0,128);
+      const pass2   = (form.get('pass2')||'').slice(0,128);
+      const vals = { name, email, phone, keycode };
+      if (!name || !email || !pass) { _html(renderPortalRegister('Preencha nome, e-mail e senha.', vals)); return true; }
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { _html(renderPortalRegister('E-mail inválido.', vals)); return true; }
+      if (pass.length < 8) { _html(renderPortalRegister('Senha: mínimo 8 caracteres.', vals)); return true; }
+      if (pass !== pass2) { _html(renderPortalRegister('As senhas não coincidem.', vals)); return true; }
+      try {
+        const db = await getDb();
+        const existing = await db.collection('portal_users').findOne({ _id: email });
+        if (existing) { _html(renderPortalRegister('E-mail já cadastrado.', vals)); return true; }
+        if (keycode) {
+          await ensureKeyLoaded();
+          if (!keys[keycode]) { _html(renderPortalRegister('Chave não encontrada. Deixe em branco para vincular depois.', vals)); return true; }
+        }
+        const salt = genSalt();
+        const passwordHash = await hashPassword(pass, salt);
+        await db.collection('portal_users').insertOne({ _id: email, name, email, phone: phone||null, passwordHash, salt, keyCode: keycode||null, createdAt: new Date().toISOString() });
+        const token = generateToken();
+        portalSessions[token] = { email, name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
+        res.setHeader('Set-Cookie', `zv_portal=${token}; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=86400`);
+        _redir('/cliente');
+      } catch(e) { console.error('[WSM Portal] registro:', e.message); _html(renderPortalRegister('Erro ao criar conta.', vals)); }
+      return true;
+    }
+
+    if (p === '/cliente/logout') {
+      const m = (req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/);
+      if (m) delete portalSessions[m[1]];
+      res.setHeader('Set-Cookie','zv_portal=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict');
+      _redir('/cliente'); return true;
+    }
+
+    if (p === '/cliente/vincular') {
+      if (!isPortalSession(req)) { _redir('/cliente'); return true; }
+      if (req.method === 'GET') { _html(renderPortalLinkKey()); return true; }
+      if (req.method === 'POST') {
+        const form = await parseFormBody(req);
+        const keycode = ((form.get('keycode')||'').toLowerCase().trim()).replace(/[^a-z0-9\-_]/g,'').slice(0,30);
+        if (!keycode) { _html(renderPortalLinkKey('Informe o código da chave.')); return true; }
+        await ensureKeyLoaded();
+        if (!keys[keycode]) { _html(renderPortalLinkKey('Chave não encontrada.')); return true; }
+        const sess = getPortalUser(req);
+        try {
+          const db = await getDb();
+          await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { keyCode: keycode } });
+          _redir('/cliente'); return true;
+        } catch(e) { _html(renderPortalLinkKey('Erro ao vincular.')); return true; }
+      }
+    }
+
+    if (p === '/cliente/desvincular' && req.method === 'POST') {
+      if (!isPortalSession(req)) { _redir('/cliente'); return true; }
+      const sess = getPortalUser(req);
+      try {
+        const db = await getDb();
+        await db.collection('portal_users').updateOne({ _id: sess.email }, { $unset: { keyCode: '' } });
+      } catch(e) { /* falha silenciosa */ }
+      _redir('/cliente'); return true;
+    }
+
+    if (p === '/cliente/email') {
+      if (!isPortalSession(req)) { _redir('/cliente'); return true; }
+      if (req.method === 'GET') { _html(renderPortalChangeEmail()); return true; }
+      if (req.method === 'POST') {
+        const sess = getPortalUser(req);
+        const form = await parseFormBody(req);
+        const newemail  = (form.get('newemail')||'').toLowerCase().trim().slice(0,120);
+        const newemail2 = (form.get('newemail2')||'').toLowerCase().trim().slice(0,120);
+        const pass = (form.get('pass')||'').slice(0,128);
+        if (!newemail || !newemail2 || !pass) { _html(renderPortalChangeEmail('Preencha todos os campos.')); return true; }
+        if (newemail !== newemail2) { _html(renderPortalChangeEmail('Os e-mails não coincidem.')); return true; }
+        if (newemail === sess.email) { _html(renderPortalChangeEmail('O novo e-mail é igual ao atual.')); return true; }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newemail)) { _html(renderPortalChangeEmail('E-mail inválido.')); return true; }
+        try {
+          const db = await getDb();
+          const user = await db.collection('portal_users').findOne({ _id: sess.email });
+          if (!user) { _html(renderPortalChangeEmail('Sessão inválida. Faça login novamente.')); return true; }
+          const hash = await hashPassword(pass, user.salt);
+          const _ha = Buffer.from(hash,'hex'), _hb = Buffer.from(user.passwordHash||'','hex');
+          const passOk = _ha.length===_hb.length && _ha.length>0 && crypto.timingSafeEqual(_ha,_hb);
+          if (!passOk) { _html(renderPortalChangeEmail('Senha incorreta.')); return true; }
+          const exists = await db.collection('portal_users').findOne({ _id: newemail });
+          if (exists) { _html(renderPortalChangeEmail('Este e-mail já está cadastrado.')); return true; }
+          const newUser = { ...user, _id: newemail };
+          await db.collection('portal_users').insertOne(newUser);
+          await db.collection('portal_users').deleteOne({ _id: sess.email });
+          const _cookie = (req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/);
+          if (_cookie) delete portalSessions[_cookie[1]];
+          res.setHeader('Set-Cookie','zv_portal=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict');
+          _redir('/cliente/login?msg=email_changed'); return true;
+        } catch(e) { console.error('[WSM Portal] email change:', e.message); _html(renderPortalChangeEmail('Erro interno. Tente novamente.')); return true; }
+      }
+    }
+
+    if (p === '/cliente/senha') {
+      if (!isPortalSession(req)) { _redir('/cliente'); return true; }
+      if (req.method === 'GET') { const _ok=url.searchParams.get('ok'); _html(renderPortalChangePwd('', _ok?'Senha alterada com sucesso!':'')); return true; }
+      if (req.method === 'POST') {
+        const form = await parseFormBody(req);
+        const old  = (form.get('old')||'').slice(0,128);
+        const pass = (form.get('pass')||'').slice(0,128);
+        const pass2= (form.get('pass2')||'').slice(0,128);
+        if (pass.length < 8) { _html(renderPortalChangePwd('Nova senha: mínimo 8 caracteres.')); return true; }
+        if (pass !== pass2) { _html(renderPortalChangePwd('As senhas não coincidem.')); return true; }
+        const sess = getPortalUser(req);
+        try {
+          const db = await getDb();
+          const user = await db.collection('portal_users').findOne({ _id: sess.email });
+          if (!user) { _html(renderPortalChangePwd('Sessão inválida.')); return true; }
+          const oldHash = await hashPassword(old, user.salt);
+          const _oa = Buffer.from(oldHash, 'hex'), _ob = Buffer.from(user.passwordHash || '', 'hex');
+          const oldOk = _oa.length === _ob.length && _oa.length > 0 && crypto.timingSafeEqual(_oa, _ob);
+          if (!oldOk) { _html(renderPortalChangePwd('Senha atual incorreta.')); return true; }
+          const salt = genSalt();
+          const passwordHash = await hashPassword(pass, salt);
+          await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { passwordHash, salt } });
+          _redir('/cliente/senha?ok=1'); return true;
+        } catch(e) { _html(renderPortalChangePwd('Erro ao alterar senha.')); return true; }
+      }
+    }
+
+    if (p === '/cliente/recuperar') {
+      if (req.method === 'GET') { _html(renderPortalResetRequest()); return true; }
+      if (req.method === 'POST') {
+        if (!checkRateLimit(ip, 'reset')) { _html(renderPortalResetRequest('Muitas tentativas. Aguarde 30 minutos.'), 429); return true; }
+        const form  = await parseFormBody(req);
+        const email = (form.get('email')||'').toLowerCase().trim().slice(0,100);
+        if (!email) { _html(renderPortalResetRequest('Informe seu e-mail.')); return true; }
+        const okMsg = RESEND_API_KEY
+          ? 'Se este e-mail estiver cadastrado, você receberá o link de recuperação em instantes. Verifique também o spam.'
+          : 'Se este e-mail estiver cadastrado, um link de recuperação foi gerado. Entre em contato com o suporte via WhatsApp para recebê-lo.';
+        try {
+          const db   = await getDb();
+          const user = await db.collection('portal_users').findOne({ _id: email });
+          if (user) {
+            const token     = generateToken();
+            const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+            await db.collection('password_resets').deleteMany({ email });
+            await db.collection('password_resets').insertOne({ _id: token, email, expiresAt });
+            const resetUrl = BASE_URL + '/WSM/cliente/redefinir?token=' + token;
+            console.log('[WSM Portal] Reset token gerado para', email, '→', resetUrl);
+            if (RESEND_API_KEY) { const sent = await sendPasswordResetEmail(email, resetUrl); if (!sent) console.warn('[WSM Portal] Falha ao enviar email de reset para', email); }
+          }
+          _html(renderPortalResetRequest('', okMsg)); return true;
+        } catch(e) { console.error('[WSM Portal] reset:', e.message); _html(renderPortalResetRequest('Erro temporário.')); return true; }
+      }
+    }
+
+    if (p === '/cliente/redefinir') {
+      const token = (url.searchParams.get('token')||'').replace(/[^a-f0-9]/g,'').slice(0,64);
+      if (req.method === 'GET') {
+        if (!token) { _redir('/cliente/recuperar'); return true; }
+        _html(renderPortalResetForm('', '', token)); return true;
+      }
+      if (req.method === 'POST') {
+        const form  = await parseFormBody(req);
+        const tk    = (form.get('token')||'').replace(/[^a-f0-9]/g,'').slice(0,64);
+        const pass  = (form.get('pass')||'').slice(0,128);
+        const pass2 = (form.get('pass2')||'').slice(0,128);
+        if (pass.length < 8) { _html(renderPortalResetForm('Senha: mínimo 8 caracteres.', '', tk)); return true; }
+        if (pass !== pass2)  { _html(renderPortalResetForm('As senhas não coincidem.', '', tk)); return true; }
+        try {
+          const db   = await getDb();
+          const rec  = await db.collection('password_resets').findOne({ _id: tk });
+          if (!rec || new Date() > new Date(rec.expiresAt)) { _html(renderPortalResetForm('Link expirado ou inválido. Solicite um novo.', '', '')); return true; }
+          const salt = genSalt();
+          const passwordHash = await hashPassword(pass, salt);
+          await db.collection('portal_users').updateOne({ _id: rec.email }, { $set: { passwordHash, salt } });
+          await db.collection('password_resets').deleteOne({ _id: tk });
+          _html(renderPortalResetForm('', 'Senha redefinida com sucesso!', '')); return true;
+        } catch(e) { _html(renderPortalResetForm('Erro temporário.', '', tk)); return true; }
+      }
+    }
+
+    if (p === '/cliente/2fa/verificar') {
+      const sess = getPortalUser(req);
+      if (!sess || !sess.pending2fa) { _redir('/cliente'); return true; }
+      if (req.method === 'GET') { _html(renderPortal2FAVerify()); return true; }
+      if (req.method === 'POST') {
+        if (!checkRateLimit(ip, 'twofa')) { _html(renderPortal2FAVerify('Muitas tentativas. Aguarde 10 minutos.'), 429); return true; }
+        const form = await parseFormBody(req);
+        const code = (form.get('code')||'').trim();
+        try {
+          const db   = await getDb();
+          const user = await db.collection('portal_users').findOne({ _id: sess.email });
+          if (!user || !verifyTOTP(user.totpSecret, code)) { addSecurityAlert('BRUTE_FORCE', '2FA falhou para ' + sess.email, ip); _html(renderPortal2FAVerify('Código inválido. Tente novamente.')); return true; }
+          const m = (req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/);
+          if (m) portalSessions[m[1]] = { email: sess.email, name: sess.name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
+          res.setHeader('Set-Cookie', `zv_portal=${m[1]}; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=86400`);
+          const dest = sess.redir && sess.redir.startsWith('/') ? sess.redir : '/cliente';
+          _redir(dest);
+        } catch(e) { _html(renderPortal2FAVerify('Erro temporário.')); }
+        return true;
+      }
+    }
+
+    if (p === '/cliente/2fa/setup') {
+      if (!isPortalSession(req)) { _redir('/cliente'); return true; }
+      const sess = getPortalUser(req);
+      try {
+        const db   = await getDb();
+        const user = await db.collection('portal_users').findOne({ _id: sess.email });
+        const _2faOk=url.searchParams.get('ok'); if (user && user.totpSecret) { _html(renderPortalSetup2FA(user, '', '', _2faOk?'2FA ativado com sucesso! Sua conta está protegida.':'')); return true; }
+        let pending = user && user.pendingTotpSecret && user.pendingTotpExpiresAt && new Date() < new Date(user.pendingTotpExpiresAt)
+          ? user.pendingTotpSecret : null;
+        if (!pending) {
+          pending = genTotpSecret();
+          await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { pendingTotpSecret: pending, pendingTotpExpiresAt: new Date(Date.now() + 15 * 60000) } });
+        }
+        _html(renderPortalSetup2FA(user, pending, '', '')); return true;
+      } catch(e) { _html(renderPortalSetup2FA(null, '', 'Erro ao carregar configuração.', '')); return true; }
+    }
+
+    if (p === '/cliente/2fa/ativar' && req.method === 'POST') {
+      if (!isPortalSession(req)) { _redir('/cliente'); return true; }
+      if (!checkRateLimit(ip, 'twofa')) { _html(renderPortalSetup2FA(null, '', 'Muitas tentativas. Aguarde 10 minutos.', ''), 429); return true; }
+      const sess = getPortalUser(req);
+      const form = await parseFormBody(req);
+      const code = (form.get('code')||'').trim();
+      try {
+        const db   = await getDb();
+        const user = await db.collection('portal_users').findOne({ _id: sess.email });
+        const pending = user && user.pendingTotpSecret && user.pendingTotpExpiresAt && new Date() < new Date(user.pendingTotpExpiresAt)
+          ? user.pendingTotpSecret : null;
+        if (!pending) { _html(renderPortalSetup2FA(user, '', 'Sessão expirada. Tente novamente.', '')); return true; }
+        if (!verifyTOTP(pending, code)) { _html(renderPortalSetup2FA(user, pending, 'Código inválido. Tente novamente.', '')); return true; }
+        await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { totpSecret: pending }, $unset: { pendingTotpSecret: '', pendingTotpExpiresAt: '' } });
+        _redir('/cliente/2fa/setup?ok=ativado'); return true;
+      } catch(e) { _html(renderPortalSetup2FA(null, '', 'Erro ao ativar 2FA.', '')); return true; }
+    }
+
+    if (p === '/cliente/2fa/desativar' && req.method === 'POST') {
+      if (!isPortalSession(req)) { _redir('/cliente'); return true; }
+      if (!checkRateLimit(ip, 'twofa')) { _html(renderPortalSetup2FA(null, '', 'Muitas tentativas. Aguarde.', ''), 429); return true; }
+      const sess = getPortalUser(req);
+      const form = await parseFormBody(req);
+      const code = (form.get('code')||'').trim();
+      try {
+        const db   = await getDb();
+        const user = await db.collection('portal_users').findOne({ _id: sess.email });
+        if (!user || !verifyTOTP(user.totpSecret||'', code)) { _html(renderPortalSetup2FA(user, '', 'Código 2FA inválido.', '')); return true; }
+        await db.collection('portal_users').updateOne({ _id: sess.email }, { $unset: { totpSecret: '', pendingTotpSecret: '', pendingTotpExpiresAt: '' } });
+        _redir('/cliente?ok=2fa_off'); return true;
+      } catch(e) { _html(renderPortalSetup2FA(null, '', 'Erro ao desativar 2FA.', '')); return true; }
+    }
+
+    return false;
+  }
+
+  // ── Router do namespace /WSM (p já vem SEM o prefixo) ──
+  async function route(req, res, p, url, ip) {
+    // ══ Portal do Cliente WSM (/cliente*) ══════════════════════════
+    if (p === '/cliente' || p.startsWith('/cliente/')) {
+      if (await wsmPortal(req, res, p, url, ip)) return;
+    }
+    // ══ Páginas públicas WSM ══════════════════════════════════════
+    if (p === '/' || p === '') { sendHtml(res, wsmAdapt(wsmLandingAdapt(renderLandingPage(isPortalSession(req) ? getPortalUser(req) : null)))); return; }
+    if (p === '/planos' && req.method === 'GET')     { sendHtml(res, wsmAdapt(renderPlanosPage())); return; }
+    if (p === '/faq' && req.method === 'GET')        { sendHtml(res, renderWsmFaq()); return; }
+    if (p === '/privacidade' && req.method === 'GET'){ sendHtml(res, wsmAdapt(renderPrivacyPage())); return; }
+
+    // ══ Admin WSM ════════════════════════════════════════════════
+    if (p === WSM_R_ADMIN + '/login' && req.method === 'POST') {
+      if (!checkRateLimit(ip, 'login')) {
+        const mins = getRateLimitWait(ip, 'login');
+        sendHtml(res, wsmAdapt(renderAdminLogin(`⏳ Muitas tentativas. Aguarde ${mins} minuto(s).`)), 429); return;
+      }
+      const form = await parseFormBody(req);
+      const _u  = Buffer.from(form.get('user') || '');
+      const _au = Buffer.from(ADMIN_USER || '');
+      let credOk = false;
+      try {
+        const _h = crypto.scryptSync(form.get('pass') || '', _adminPassSalt, 64, { N: 16384, r: 8, p: 1 });
+        credOk = _u.length === _au.length &&
+          crypto.timingSafeEqual(_u.length ? _u : Buffer.alloc(1), _au.length ? _au : Buffer.alloc(1)) &&
+          crypto.timingSafeEqual(_h, _adminPassHash);
+      } catch { credOk = false; }
+      const totpOk = verifyTOTP(TOTP_SECRET, (form.get('totp') || '').trim());
+      if (credOk && totpOk) {
+        rateLimitMap.delete(ip + ':login');
+        const _old = (req.headers.cookie || '').match(/zv_admin=([a-f0-9]+)/);
+        if (_old) delete sessions[_old[1]];
+        const token = generateToken();
+        sessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString(), ip, loginAt: new Date().toISOString() };
+        res.setHeader('Set-Cookie', `zv_admin=${token}; Path=/; HttpOnly; SameSite=Strict; Secure`);
+        res.writeHead(302, { Location: '/WSM' + WSM_R_ADMIN }); res.end();
+      } else {
+        const msg = credOk ? 'Código 2FA inválido ou expirado' : 'Usuário ou senha incorretos';
+        sendHtml(res, wsmAdapt(renderAdminLogin(msg)));
+      }
+      return;
+    }
+    if (p === WSM_R_ADMIN + '/logout') {
+      res.setHeader('Set-Cookie', 'zv_admin=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict; Secure');
+      res.writeHead(302, { Location: '/WSM' + WSM_R_ADMIN }); res.end(); return;
+    }
+    if (p === WSM_R_ADMIN || p === WSM_R_ADMIN + '/') {
+      if (!isAdminSession(req)) { sendHtml(res, wsmAdapt(renderAdminLogin())); return; }
+      await ensureKeyLoaded();
+      await ensureExtLogsLoaded();
+      // Renderiza o dashboard com as chaves e logs do banco WSM (watidy), não do ZVM (zapvoice)
+      sendHtml(res, wsmAdapt(renderAdminDashboard({
+        stats:    getKeyStats(keys, wsmExtLogs),
+        keysHtml: buildKeysHtml(keys, wsmExtLogs),
+        logsHtml: buildLogsHtml(wsmExtLogs),
+      }))); return;
+    }
+
+    // ══ Mod WSM ══════════════════════════════════════════════════
+    if (p === WSM_R_MOD + '/login' && req.method === 'POST') {
+      if (MODS.length === 0) { res.writeHead(404); res.end('Not found'); return; }
+      if (!checkRateLimit(ip, 'login')) {
+        const mins = getRateLimitWait(ip, 'login');
+        sendHtml(res, wsmAdapt(renderModLogin(`⏳ Muitas tentativas. Aguarde ${mins} minuto(s).`)), 429); return;
+      }
+      const form = await parseFormBody(req);
+      const inputUser = (form.get('user') || '');
+      const inputPass = form.get('pass') || '';
+      const inputTotp = (form.get('totp') || '').trim();
+      let matchedMod = null;
+      for (const m of MODS) {
+        try {
+          const bu = Buffer.from(m.user), bi = Buffer.from(inputUser);
+          const bp = Buffer.from(m.pass), bip = Buffer.from(inputPass);
+          const userMatch = bu.length === bi.length && bu.length > 0 && crypto.timingSafeEqual(bu, bi);
+          const passMatch = bp.length === bip.length && bp.length > 0 && crypto.timingSafeEqual(bp, bip);
+          if (userMatch && passMatch && !matchedMod) matchedMod = m;
+        } catch { /* continue */ }
+      }
+      const totpOk = matchedMod ? verifyTOTP(matchedMod.totp, inputTotp) : false;
+      if (matchedMod && totpOk) {
+        rateLimitMap.delete(ip + ':login');
+        const token = generateToken();
+        modSessions[token] = { mod: matchedMod.name, modName: matchedMod.name, expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString(), ip };
+        res.setHeader('Set-Cookie', `zv_mod=${token}; Path=/; HttpOnly; SameSite=Strict; Secure`);
+        res.writeHead(302, { Location: '/WSM' + WSM_R_MOD }); res.end();
+      } else {
+        sendHtml(res, wsmAdapt(renderModLogin('Usuário, senha ou 2FA incorretos.')));
+      }
+      return;
+    }
+    if (p === WSM_R_MOD + '/logout') {
+      const _tok = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+      if (_tok) delete modSessions[_tok[1]];
+      res.setHeader('Set-Cookie', 'zv_mod=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict; Secure');
+      res.writeHead(302, { Location: '/WSM' + WSM_R_MOD }); res.end(); return;
+    }
+    if (p === WSM_R_MOD || p === WSM_R_MOD + '/') {
+      if (MODS.length === 0) { res.writeHead(404); res.end('Not found'); return; }
+      const _tok = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+      const modSess = _tok && modSessions[_tok[1]];
+      if (!modSess || new Date(modSess.expiresAt) < new Date()) { sendHtml(res, wsmAdapt(renderModLogin())); return; }
+      sendHtml(res, wsmAdapt(renderModDashboard(modSess.mod))); return;
+    }
+    // Mod API routes WSM
+    if (p === WSM_R_MOD + '/api/my-logs' && req.method === 'GET') {
+      const _tok = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+      const ms = _tok && modSessions[_tok[1]];
+      if (!ms || new Date(ms.expiresAt) < new Date()) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+      sendJson(res, { ok: true, logs: wsmLogs.slice(0, 100) }); return;
+    }
+    if (p === WSM_R_MOD + '/api/my-keys' && req.method === 'GET') {
+      const _tok = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+      const ms = _tok && modSessions[_tok[1]];
+      if (!ms || new Date(ms.expiresAt) < new Date()) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+      await ensureKeyLoaded();
+      const list = Object.entries(keys).map(([code, kv]) => ({ code, ...kv }));
+      sendJson(res, { ok: true, keys: list, total: list.length }); return;
+    }
+    if (p === WSM_R_MOD + '/api/keys' && req.method === 'POST') {
+      const _tok = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+      const ms = _tok && modSessions[_tok[1]];
+      if (!ms || new Date(ms.expiresAt) < new Date()) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+      await ensureKeyLoaded();
+      const body = await parseBody(req);
+      const code = genWsmKey();
+      const now = new Date();
+      const expireDays = parseInt(body.expireDays, 10) || 0;
+      keys[code] = {
+        label: String(body.label || 'Cliente WSM').slice(0, 60),
+        active: true, premium: body.premium !== false,
+        phones: [], uses: 0,
+        maxUses: body.maxUses != null ? parseInt(body.maxUses, 10) || -1 : -1,
+        expiresAt: expireDays > 0 ? new Date(now.getTime() + expireDays * 864e5).toISOString() : null,
+        createdAt: now.toISOString(), lastUsed: null, lastIp: null, lastPhone: null,
+        note: String(body.note || '').slice(0, 200), createdBy: ms.mod,
+      };
+      await saveKeyNow(code);
+      addWsmLog({ action: 'CREATE_KEY', code, mod: ms.mod, ip });
+      sendJson(res, { ok: true, code, key: keys[code] }); return;
+    }
+    {
+      const _wsmToggle = p.match(new RegExp(`^${WSM_R_MOD.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}/api/keys/([a-z0-9_\\-]{1,48})/toggle$`));
+      if (_wsmToggle) {
+        const _tok = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+        const ms = _tok && modSessions[_tok[1]];
+        if (!ms || new Date(ms.expiresAt) < new Date()) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+        await ensureKeyLoaded();
+        const code = normKey(_wsmToggle[1]);
+        if (!keys[code]) { sendJson(res, { error: 'not_found' }, 404); return; }
+        keys[code].active = !keys[code].active;
+        await saveKeyNow(code);
+        addWsmLog({ action: keys[code].active ? 'ACTIVATE_KEY' : 'BLOCK_KEY', code, mod: ms.mod, ip });
+        sendJson(res, { ok: true, active: keys[code].active }); return;
+      }
+    }
+    {
+      const _wsmNote = p.match(new RegExp(`^${WSM_R_MOD.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}/api/keys/([a-z0-9_\\-]{1,48})/note$`));
+      if (_wsmNote && req.method === 'POST') {
+        const _tok = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+        const ms = _tok && modSessions[_tok[1]];
+        if (!ms || new Date(ms.expiresAt) < new Date()) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+        await ensureKeyLoaded();
+        const code = normKey(_wsmNote[1]);
+        if (!keys[code]) { sendJson(res, { error: 'not_found' }, 404); return; }
+        const body = await parseBody(req);
+        keys[code].note = String(body.note || '').slice(0, 200);
+        await saveKeyNow(code);
+        sendJson(res, { ok: true }); return;
+      }
+    }
+    {
+      const _wsmRename = p.match(new RegExp(`^${WSM_R_MOD.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}/api/keys/([a-z0-9_\\-]{1,48})/rename$`));
+      if (_wsmRename && req.method === 'POST') {
+        const _tok = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+        const ms = _tok && modSessions[_tok[1]];
+        if (!ms || new Date(ms.expiresAt) < new Date()) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+        await ensureKeyLoaded();
+        const code = normKey(_wsmRename[1]);
+        if (!keys[code]) { sendJson(res, { error: 'not_found' }, 404); return; }
+        const body = await parseBody(req);
+        keys[code].label = String(body.label || '').trim().slice(0, 60) || keys[code].label;
+        await saveKeyNow(code);
+        sendJson(res, { ok: true, label: keys[code].label }); return;
+      }
+    }
+    {
+      const _wsmDel = p.match(new RegExp(`^${WSM_R_MOD.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}/api/keys/([a-z0-9_\\-]{1,48})$`));
+      if (_wsmDel && req.method === 'DELETE') {
+        const _tok = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+        const ms = _tok && modSessions[_tok[1]];
+        if (!ms || new Date(ms.expiresAt) < new Date()) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+        await ensureKeyLoaded();
+        const code = normKey(_wsmDel[1]);
+        if (!keys[code]) { sendJson(res, { error: 'not_found' }, 404); return; }
+        await deleteKey(code);
+        addWsmLog({ action: 'DELETE_KEY', code, mod: ms.mod, ip });
+        sendJson(res, { ok: true }); return;
+      }
+    }
+
+    if (p === '/health' && req.method === 'GET') { sendJson(res, { ok: true, tool: 'WSM', ts: new Date().toISOString() }); return; }
+    if (p === '/verificar' && req.method === 'GET') { sendHtml(res, wsmAdapt(renderClientPortal(isPortalSession(req) ? getPortalUser(req) : null))); return; }
+    // compat com patch antigo /portal?key=
+    if ((p === '/portal' || p === '/portal/') && req.method === 'GET') {
+      res.writeHead(302, { Location: '/WSM/verificar' + (url.search || '') }); res.end(); return;
+    }
+
+    // ══ Ativação da extensão via web (/extension/auth) ═══════════
+    if ((p === '/extension/auth/' || p === '/extension/auth') && req.method === 'GET') {
+      const callback = url.searchParams.get('callback') || '';
+      sendHtml(res, wsmAdapt(renderExtensionLogin({ callback }))); return;
+    }
+    if (p === '/extension/auth/verify' && req.method === 'POST') {
+      if (!checkRateLimit(ip, 'login')) {
+        const mins = getRateLimitWait(ip, 'login');
+        sendHtml(res, wsmAdapt(renderExtensionLogin({ callback: '', error: `⏳ Muitas tentativas. Aguarde ${mins} minuto(s).` })), 429); return;
+      }
+      const form     = await parseFormBody(req);
+      const mode     = (form.get('mode') || '').trim().toLowerCase();
+      const keyCode  = sanitizeId(form.get('key'), 32);
+      const callback = form.get('callback') || '';
+      if (mode === 'free') { redirectExtensionCallback(res, callback, 'free'); return; }
+      if (!keyCode) { sendHtml(res, wsmAdapt(renderExtensionLogin({ callback, error: '❌ Digite sua chave de ativação.' }))); return; }
+      await ensureKeyLoaded();
+      if (!keys[keyCode]) {
+        sendHtml(res, wsmAdapt(renderExtensionLogin({ callback, keyVal: keyCode, error: '❌ Chave não encontrada. Verifique ou entre em contato com o vendedor.' }))); return;
+      }
+      if (licKeyExpired(keys[keyCode])) {
+        keys[keyCode].active = false; await saveKeyNow(keyCode);
+        sendHtml(res, wsmAdapt(renderExtensionLogin({ callback, keyVal: keyCode, error: '⏰ Chave expirada. Renove sua chave para continuar.' }))); return;
+      }
+      if (keys[keyCode].active === false) {
+        sendHtml(res, wsmAdapt(renderExtensionLogin({ callback, keyVal: keyCode, error: '🚫 Chave bloqueada. Contate o vendedor.' }))); return;
+      }
+      keys[keyCode].lastUsed = new Date().toISOString(); keys[keyCode].lastIp = ip; await saveKeyNow(keyCode);
+      redirectExtensionCallback(res, callback, 'pro', keyCode); return;
+    }
+
+    if (p === '/client/status' && req.method === 'POST') {
+      if (!checkRateLimit(ip, 'api')) { sendJson(res, { ok: false, error: 'rate_limited' }, 429); return; }
+      const body = await parseBody(req);
+      const k = normKey(body.key || body.chave || '');
+      await ensureKeyLoaded();
+      const kv = keys[k];
+      if (!k || !kv) { sendJson(res, { ok: false }); return; }
+      sendJson(res, {
+        ok: true, label: kv.label || k, active: kv.active !== false && !licKeyExpired(kv),
+        premium: kv.premium !== false, expiresAt: kv.expiresAt || null,
+        phones: Array.isArray(kv.phones) ? kv.phones : [],
+        uses: kv.uses || 0, maxUses: kv.maxUses != null ? kv.maxUses : -1,
+        lastUsed: kv.lastUsed || null,
+      }); return;
+    }
+    if (p === '/client/remove-phone' && req.method === 'POST') {
+      if (!checkRateLimit(ip, 'api')) { sendJson(res, { ok: false, error: 'rate_limited' }, 429); return; }
+      const body = await parseBody(req);
+      const k = normKey(body.key || '');
+      const idx = parseInt(body.phoneIdx, 10);
+      await ensureKeyLoaded();
+      const kv = keys[k];
+      if (!kv || !Array.isArray(kv.phones) || isNaN(idx) || idx < 0 || idx >= kv.phones.length) {
+        sendJson(res, { ok: false, error: 'not_found' }); return;
+      }
+      kv.phones.splice(idx, 1);
+      await saveKeyNow(k);
+      sendJson(res, { ok: true }); return;
+    }
+
+    // ── Administração de chaves WSM (slug próprio WSM_R_ADMIN) ──
+    if (p === WSM_R_ADMIN + '/api/keys' && req.method === 'GET') {
+      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+      await ensureKeyLoaded();
+      sendJson(res, { ok: true, db: WSM_DB_NAME, total: Object.keys(keys).length, keys }); return;
+    }
+    if (p === WSM_R_ADMIN + '/api/keys' && req.method === 'POST') {
+      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+      await ensureKeyLoaded();
+      const body = await parseBody(req);
+      const code = genWsmKey();
+      const now = new Date();
+      const expireDays = parseInt(body.expireDays, 10) || 0;
+      keys[code] = {
+        label: String(body.label || 'Cliente WSM').slice(0, 60),
+        active: true, premium: body.premium !== false,
+        phones: [], uses: 0,
+        maxUses: body.maxUses != null ? parseInt(body.maxUses, 10) || -1 : -1,
+        expiresAt: expireDays > 0 ? new Date(now.getTime() + expireDays * 864e5).toISOString() : null,
+        createdAt: now.toISOString(), lastUsed: null, lastIp: null, lastPhone: null,
+        note: String(body.note || '').slice(0, 200),
+      };
+      await saveKeyNow(code);
+      sendJson(res, { ok: true, code, key: keys[code] }); return;
+    }
+    // ── Ações por chave (toggle/renew/rename/note/max-uses/phones/...) ──
+    //    DEVE vir antes do DELETE/PATCH genéricos, senão o /phones é interceptado.
+    {
+      const _actRe = new RegExp('^' + WSM_R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '/api/keys/([^/]+)/([a-z-]+)$');
+      const _act = p.match(_actRe);
+      if (_act) {
+        if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+        await ensureKeyLoaded();
+        const code = normKey(decodeURIComponent(_act[1]));
+        const action = _act[2];
+        const k = keys[code];
+
+        if (action === 'phones' && req.method === 'GET') {
+          if (!k) { sendJson(res, { error: 'not found' }, 404); return; }
+          sendJson(res, { ok: true, phones: k.phones || [] }); return;
+        }
+        if (action === 'phones' && req.method === 'DELETE') {
+          if (!k) { sendJson(res, { error: 'not found' }, 404); return; }
+          const body = await parseBody(req);
+          if (body.all) { k.phones = []; k.uses = 0; k.lastPhone = null; }
+          else if (body.phone) {
+            k.phones = (k.phones || []).filter(ph => ph !== body.phone);
+            k.uses = k.phones.length;
+            if (k.lastPhone === body.phone) k.lastPhone = k.phones.length ? k.phones[k.phones.length - 1] : null;
+          } else { sendJson(res, { error: 'informe phone ou all:true' }, 400); return; }
+          await saveKeyNow(code);
+          sendJson(res, { ok: true, phones: k.phones }); return;
+        }
+        if (req.method === 'POST') {
+          if (action === 'clear-suspect') { sendJson(res, { ok: true }); return; }
+          if (!k) { sendJson(res, { error: 'not found' }, 404); return; }
+          const body = await parseBody(req);
+          if (action === 'toggle') { k.active = !k.active; await saveKeyNow(code); sendJson(res, { ok: true, active: k.active }); return; }
+          if (action === 'rename' || action === 'label') { k.label = String(body.label || '').trim().slice(0, 60) || k.label; await saveKeyNow(code); sendJson(res, { ok: true, label: k.label }); return; }
+          if (action === 'note') { k.note = String(body.note || '').slice(0, 200); await saveKeyNow(code); sendJson(res, { ok: true }); return; }
+          if (action === 'max-uses') { const mu = parseInt(body.maxUses, 10); k.maxUses = isNaN(mu) ? -1 : mu; await saveKeyNow(code); sendJson(res, { ok: true, maxUses: k.maxUses }); return; }
+          if (action === 'modules') { k.modules = { ...(k.modules || {}), ...(body.modules || (body.module ? { [body.module]: body.value } : {})) }; await saveKeyNow(code); sendJson(res, { ok: true, modules: k.modules }); return; }
+          if (action === 'assign-mod') { k.createdBy = String(body.mod || body.modName || '').slice(0, 40); await saveKeyNow(code); sendJson(res, { ok: true }); return; }
+          if (action === 'renew') {
+            const days = parseInt(body.days, 10) || 0, hours = parseInt(body.hours, 10) || 0, mins = parseInt(body.mins != null ? body.mins : body.minutes, 10) || 0;
+            const ms = ((days * 1440) + (hours * 60) + mins) * 60000;
+            const base = (k.expiresAt && new Date(k.expiresAt) > new Date()) ? new Date(k.expiresAt).getTime() : Date.now();
+            k.expiresAt = new Date(base + ms).toISOString();
+            k.active = true;
+            await saveKeyNow(code);
+            sendJson(res, { ok: true, expiresAt: k.expiresAt }); return;
+          }
+          sendJson(res, { ok: false, error: 'acao_desconhecida' }, 400); return;
+        }
+      }
+    }
+    if (p.startsWith(WSM_R_ADMIN + '/api/keys/') && req.method === 'DELETE') {
+      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+      await ensureKeyLoaded();
+      const code = normKey(decodeURIComponent(p.slice((WSM_R_ADMIN + '/api/keys/').length)));
+      if (!keys[code]) { sendJson(res, { ok: false, error: 'not_found' }, 404); return; }
+      await deleteKey(code);
+      sendJson(res, { ok: true, removed: code }); return;
+    }
+    if (p.startsWith(WSM_R_ADMIN + '/api/keys/') && req.method === 'PATCH') {
+      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+      await ensureKeyLoaded();
+      const code = normKey(decodeURIComponent(p.slice((WSM_R_ADMIN + '/api/keys/').length)));
+      if (!keys[code]) { sendJson(res, { ok: false, error: 'not_found' }, 404); return; }
+      const body = await parseBody(req);
+      if (body.active !== undefined)  keys[code].active  = !!body.active;
+      if (body.label !== undefined)   keys[code].label   = String(body.label).slice(0, 60);
+      if (body.maxUses !== undefined) keys[code].maxUses = parseInt(body.maxUses, 10) || -1;
+      if (body.expiresAt !== undefined) keys[code].expiresAt = body.expiresAt || null;
+      await saveKeyNow(code);
+      sendJson(res, { ok: true, key: keys[code] }); return;
+    }
+    // ── Changelog WSM (admin) ──
+    if (p === WSM_R_ADMIN + '/api/changelog' && req.method === 'GET') {
+      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+      await ensureChangelog();
+      sendJson(res, { ok: true, changelog }); return;
+    }
+    if (p === WSM_R_ADMIN + '/api/changelog' && req.method === 'POST') {
+      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+      await ensureChangelog();
+      const body = await parseBody(req);
+      const title = String(body.title || '').trim().slice(0, 120);
+      const items = (Array.isArray(body.items) ? body.items : String(body.items || '').split('\n'))
+        .map(i => String(i).trim()).filter(Boolean).slice(0, 50);
+      if (!title || items.length === 0) { sendJson(res, { error: 'title e items obrigatórios' }, 400); return; }
+      const entry = {
+        id: Date.now().toString(36), title,
+        version: String(body.version || '').trim().slice(0, 20),
+        date: String(body.date || new Date().toISOString().slice(0, 10)).trim(),
+        items, createdAt: new Date().toISOString(),
+      };
+      changelog.unshift(entry);
+      if (changelog.length > 100) changelog = changelog.slice(0, 100);
+      await saveChangelog();
+      sendJson(res, { ok: true, entry }); return;
+    }
+    if (p.startsWith(WSM_R_ADMIN + '/api/changelog/') && req.method === 'DELETE') {
+      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+      await ensureChangelog();
+      const id = p.slice((WSM_R_ADMIN + '/api/changelog/').length);
+      const before = changelog.length;
+      changelog = changelog.filter(e => e.id !== id);
+      await saveChangelog();
+      sendJson(res, { ok: true, removed: before - changelog.length }); return;
+    }
+
+    // ── WSM Admin: endpoints extras (status, data, session-info, ip-blacklist, logs, portal-users) ──
+    if (p === WSM_R_ADMIN + '/status' && req.method === 'GET') {
+      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+      await ensureKeyLoaded();
+      let dbStatus = 'unknown';
+      try { const _sdb = await getDb(); await _sdb.command({ ping: 1 }); dbStatus = 'connected'; } catch { dbStatus = 'disconnected'; }
+      sendJson(res, {
+        ok: true, db: dbStatus, uptime: Math.floor(process.uptime()), ts: new Date().toISOString(),
+        keys: Object.keys(keys).length,
+        activeSessions: Object.keys(sessions).length,
+        modSessions: Object.keys(modSessions).length,
+        portalSessions: typeof portalSessions !== 'undefined' ? Object.keys(portalSessions).length : 0,
+        logs: wsmLogs.length, securityAlerts: 0,
+      }); return;
+    }
+    if (p === WSM_R_ADMIN + '/api/session-info' && req.method === 'GET') {
+      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+      const s = getAdminSession(req);
+      sendJson(res, { ok: true, expiresAt: s?.expiresAt || null }); return;
+    }
+    if (p === WSM_R_ADMIN + '/api/data' && req.method === 'GET') {
+      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+      await ensureKeyLoaded();
+      await ensureExtLogsLoaded();
+      // Estatísticas, tabela e logs renderizados a partir do banco WSM (watidy)
+      sendJson(res, {
+        ...getKeyStats(keys, wsmExtLogs),
+        keysHtml: buildKeysHtml(keys, wsmExtLogs),
+        logsHtml: buildLogsHtml(wsmExtLogs),
+      }); return;
+    }
+    // ── Auditoria de segurança (varredura interna) ──
+    if (p === WSM_R_ADMIN + '/api/pentest/run' && req.method === 'POST') {
+      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+      sendJson(res, await runInternalSecurityAudit()); return;
+    }
+    if (p === WSM_R_ADMIN + '/api/pentest/alerts' && req.method === 'GET') {
+      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+      sendJson(res, { ok: true, alerts: [] }); return;
+    }
+    if (p === WSM_R_ADMIN + '/api/ip-blacklist' && req.method === 'GET') {
+      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+      sendJson(res, { ok: true, ips: [] }); return;
+    }
+    if (p === WSM_R_ADMIN + '/api/ip-blacklist/add' && req.method === 'POST') {
+      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+      sendJson(res, { ok: true, ips: [] }); return;
+    }
+    if (p === WSM_R_ADMIN + '/api/ip-blacklist/remove' && req.method === 'POST') {
+      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+      sendJson(res, { ok: true, ips: [] }); return;
+    }
+    if (p === WSM_R_ADMIN + '/api/portal-users' && req.method === 'GET') {
+      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+      try {
+        const _wdb = await getDb();
+        const users = await _wdb.collection('portal_users').find({}, { projection: { passwordHash:0, salt:0 } }).sort({ createdAt: -1 }).toArray();
+        await Promise.all(users.filter(u => u.keyCode).map(u => ensureKeyLoaded().catch(()=>{})));
+        const enriched = users.map(u => {
+          const k = u.keyCode ? keys[u.keyCode] : null;
+          return { ...u, plan: k ? (k.planId || k.label || null) : null };
+        });
+        sendJson(res, { ok: true, users: enriched }); return;
+      } catch(e) { sendJson(res, { error: 'db_error', detail: e.message }, 500); return; }
+    }
+    if ((p === WSM_R_ADMIN + '/api/logs' || p === WSM_R_ADMIN + '/api/mod-logs') && req.method === 'GET') {
+      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+      sendJson(res, { ok: true, logs: wsmLogs }); return;
+    }
+    // Limpar log de acessos (botão "Limpar Log" do painel) — corrige "Erro ao limpar"
+    if (p === WSM_R_ADMIN + '/api/logs' && req.method === 'DELETE') {
+      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+      await ensureExtLogsLoaded();
+      const body = await parseBody(req);
+      if (body && body.date) wsmExtLogs = wsmExtLogs.filter(l => !String(l.timestamp || '').startsWith(body.date));
+      else wsmExtLogs = [];
+      getDb().then(d => d.collection('store').updateOne(
+        { _id: 'ext_logs' }, { $set: { data: wsmExtLogs.slice(0, 500), updatedAt: new Date() } }, { upsert: true }
+      )).catch(() => {});
+      sendJson(res, { ok: true }); return;
+    }
+    // Limpar alertas de segurança (painel de auditoria)
+    if (p === WSM_R_ADMIN + '/api/security/alerts/clear' && req.method === 'POST') {
+      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+      sendJson(res, { ok: true }); return;
+    }
+    if (p === WSM_R_ADMIN + '/api/mod-logs/csv' && req.method === 'GET') {
+      if (!isAdminSession(req)) { res.writeHead(401); res.end('Unauthorized'); return; }
+      const esc = v => '"' + String(v||'').replace(/"/g, '""') + '"';
+      const lines = ['Data,Mod,Ação,Chave,Detalhe'];
+      for (const r of wsmLogs) {
+        lines.push([
+          esc(new Date(r.ts).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})),
+          esc(r.mod), esc(r.action), esc(r.code||r.keyCode||'-'), esc(r.detail||'-')
+        ].join(','));
+      }
+      const csv = lines.join('\r\n');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="wsm-logs-${new Date().toISOString().slice(0,10)}.csv"`);
+      res.writeHead(200); res.end('﻿' + csv); return;
+    }
+
+  if ((p === '/install' || p === '/bem-vindo' || p === '/obrigado-pela-instalacao') && req.method === 'GET') {
+    sendHtml(res, renderInstallPage()); return;
+  }
+  if ((p === '/obrigado' || p === '/desinstalado' || p === '/ate-logo' || p === '/ate-mais') && req.method === 'GET') {
+    sendHtml(res, renderUninstallPage()); return;
+  }
+
+  // ── WSM Client Panel ──────────────────────────────────────────────────────
+  if (await handleClientPanel(req, res, p, url)) return;
+
+  // ── WSM Extension API ─────────────────────────────────────────────────────
+  if (p.startsWith('/api/urls/install/') || p === '/api/urls/install') {
+    // A extensão abre esta URL em nova aba (chrome.tabs.create) ao instalar,
+    // por isso precisa ser ABSOLUTA (caminho relativo não abre).
+    let _url = installUrl;
+    if (!/^https?:\/\//.test(_url)) {
+      const _proto = (req.headers['x-forwarded-proto'] || '').split(',')[0].trim() || (req.socket && req.socket.encrypted ? 'https' : 'http');
+      _url = _proto + '://' + (req.headers.host || 'localhost:3000') + _url;
+    }
+    sendJson(res, { success: true, url: _url }); return;
+  }
+  if (p.startsWith('/api/urls/uninstall/') || p === '/api/urls/uninstall') {
+    res.writeHead(302, { Location: '/WSM/ate-mais' }); res.end(); return;
+  }
+  if ((p === '/api/urls/update' || p === '/api/services/update') && (req.method === 'GET' || req.method === 'POST')) {
+    sendJson(res, wppUpdate()); return;
+  }
+  if (p.startsWith('/api/urls/active-notes/') && req.method === 'GET') {
+    sendJson(res, { success: true, path_note_update: { redirect: false } }); return;
+  }
+  if (p.startsWith('/api/urls/notes/') && req.method === 'GET') {
+    sendHtml(res, (await ensureChangelog(), renderChangelogPage())); return;
+  }
+  if (p === '/api/external/is_instaled' && req.method === 'POST') {
+    sendJson(res, { success: true }); return;
+  }
+  if (p === '/api/external/ping' && req.method === 'GET') {
+    sendJson(res, { success: true, server: 'watidy', version: '1.0.0' }); return;
+  }
+  if (p === '/api/code' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=3600' });
+    res.end('/* WSM remote code stub */\n'); return;
+  }
+  if (p === '/_/') {
+    sendJson(res, buildConfigJson()); return;
+  }
+
+  if (p.startsWith('/api/services/initial-data') && req.method === 'GET') {
+    sendJson(res, {
+      success: true,
+      webhooks: [],
+      meet: {},
+      urls: {},
+      migration: {},
+      meta_oficial_config: {},
+      customization: { name: wlId, primary_color: '#3ddc84' },
+    }); return;
+  }
+  if (p.startsWith('/api/notify/get/') && req.method === 'GET') {
+    // A extensao busca notificacoes/avisos direto na wascript (nao redirecionamos
+    // api/notify). Aqui so devolvemos vazio para nao injetar nada.
+    sendJson(res, { success: true, notify: [] }); return;
+  }
+
+  // ── Validation (sem access-token — guards executam primeiro) ────────────────
+  if (p.startsWith('/api/auth/validation/') && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'api')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
+
+    // Guard 1: tamanho via header — não consome o stream
+    const cl = parseInt(req.headers['content-length'] || '0', 10);
+    if (cl > 250) { sendJson(res, { success: false, msg_id: 'login_not_fund' }, 400); return; }
+
+    // Guard 2: parse do body (stream intacto)
+    const body = await parseBody(req);
+
+    // Guard 3: extrair e sanitizar chave
+    let chave = String(body.chave || body.access_token_plugin || body.senha || body.email || '').trim().replace(/\s+/g, '-');
+    if (chave.length !== 20) { sendJson(res, { success: false, msg_id: 'login_not_fund' }, 400); return; }
+    if (!/^[a-zA-Z0-9-]+$/.test(chave)) { sendJson(res, { success: false, msg_id: 'login_not_fund' }, 400); return; }
+    chave = chave.toLowerCase();
+
+    // ── Login Gratuito: chave fixa especial -> conta FREE (sem premium). O botao
+    //    "Login Gratuito" da extensao envia esta chave para logar sem custo.
+    if (chave === 'wt-gratis-free-login') {
+      const freeRec = {
+        code: chave, label: 'Usuario Gratuito', active: true, premium: false,
+        expiresAt: null, phones: [], uses: 0, maxUses: -1,
+        email: chave, bearer_token: chave, access_token_plugin: chave,
+        user_id: 0, createdAt: new Date().toISOString(), plan_id: FREE_PLAN_ID,
+      };
+      const rFree = await authSuccess(chave, freeRec);
+      sendJson(res, rFree.ok ? rFree.body : { success: false, msg_id: rFree.msg_id }); return;
+    }
+
+    const telefone = String(body.telefone || body.phone || body.whatsapp || '').trim().replace(/\D/g, '').slice(0, 20);
+
+    // ── Persistência — schema EN (keys[] gerenciado pelo painel admin) ──
+    await ensureKeyLoaded(chave);
+    let rec = null;
+    if (keys[chave]) {
+      const kv = keys[chave];
+      const maxUses = kv.maxUses != null ? kv.maxUses : -1;
+      const curUses = typeof kv.uses === 'number' ? kv.uses : 0;
+      if (maxUses > 0 && curUses >= maxUses && telefone && Array.isArray(kv.phones) && !kv.phones.includes(telefone) && kv.phones.length >= maxUses) {
+        sendJson(res, { success: false, msg_id: 'white_label_is_bloked' }); return;
+      }
+      kv.uses = curUses + 1;
+      kv.lastIp = ip;
+      kv.lastUsed = new Date().toISOString();
+      if (telefone) {
+        kv.lastPhone = telefone;
+        if (!Array.isArray(kv.phones)) kv.phones = [];
+        if (!kv.phones.includes(telefone) && (maxUses <= 0 || kv.phones.length < maxUses)) kv.phones.push(telefone);
+      }
+      saveKey(chave);
+      rec = _synthRec(chave, kv);
+    } else {
+      rec = await findLicenseByCode(chave);
+    }
+    if (!rec) { sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' }); return; }
+    const result = await authSuccess(chave, rec);
+    if (!result.ok) {
+      addWsmExtLog({ keyCode: chave, label: (keys[chave] && keys[chave].label) || '', phone: telefone || '-', ip, wppVersion: body.wppVersion || '-', action: result.msg_id === 'white_label_is_bloked' ? 'login_blocked' : 'invalid' });
+      sendJson(res, { success: false, msg_id: result.msg_id }); return;
+    }
+    // Log de login bem-sucedido para o painel WSM
+    addWsmExtLog({ keyCode: chave, label: (keys[chave] && keys[chave].label) || (rec && rec.label) || '', phone: telefone || '-', ip, wppVersion: body.wppVersion || '-', action: 'login' });
+    sendJson(res, result.body); return;
+  }
+
+  // Routes requiring access-token (chromeStoreId suffix accepted but not validated)
+  if (p.startsWith('/api/auth/') || p.startsWith('/api/user/') || p.startsWith('/api/services/') || p.startsWith('/api/notify/')) {
+    if (!requireAccessToken(req)) { sendJson(res, { success: false, msg_id: 'invalid_access_token' }, 403); return; }
+
+    if (p.startsWith('/api/auth/login-bearer/') && req.method === 'GET') {
+      if (!checkRateLimit(ip, 'api')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
+      const bearer = parseBearer(req);
+      const rec = await findKeyByBearer(bearer);
+      if (!rec) { sendJson(res, { success: false, msg_id: 'invalid_token' }); return; }
+      const result = await authSuccess(rec.code || '', rec);
+      if (!result.ok) { sendJson(res, { success: false, msg_id: result.msg_id }); return; }
+      sendJson(res, result.body); return;
+    }
+
+    if (p.startsWith('/api/auth/register-free/') && req.method === 'POST') {
+      if (!checkRateLimit(ip, 'api')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
+      const body = await parseBody(req);
+      const { code, rec } = await getOrCreateFreeKey(body.extension_id || body.device_id, ip);
+      const result = await authSuccess(code, rec);
+      if (!result.ok) { sendJson(res, { success: false, msg_id: result.msg_id }); return; }
+      sendJson(res, result.body); return;
+    }
+
+  }
+
+      // POST /api/user/update — client-side profile update (name, whatsapp_plugin)
+    if (p === '/api/user/update' && req.method === 'POST') {
+      if (!checkRateLimit(ip, 'api')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
+      const keyCode = normKey(parseBearer(req));
+      if (!keyCode) { sendJson(res, { success: false, msg_id: 'no_token' }, 401); return; }
+      const rec = await findLicenseByCode(keyCode);
+      if (!rec || !rec.active) { sendJson(res, { success: false, msg_id: 'invalid_token' }, 401); return; }
+      const body = await parseBody(req);
+      const update = {};
+      const newName = String(body.full_name || body.name || '').trim().slice(0, 80);
+      if (newName) update.label = newName;
+      const wp = String(body.whatsapp_plugin || body.whatsapp || '').trim().replace(/\D/g, '').slice(0, 20);
+      if (wp) { update.lastPhone = wp; update.lastUsed = new Date().toISOString(); }
+      if (Object.keys(update).length === 0) { sendJson(res, { success: false, msg_id: 'no_fields' }, 400); return; }
+      await updateLicense(keyCode, update);
+      sendJson(res, { success: true, name: newName || undefined }); return;
+    }
+
+    // POST /api/client/phone — register WhatsApp phone used on login
+    if (p === '/api/client/phone' && req.method === 'POST') {
+      if (!requireAccessToken(req)) { sendJson(res, { success: false, msg_id: 'invalid_access_token' }, 403); return; }
+      const keyCode = normKey(parseBearer(req));
+      if (!keyCode) { sendJson(res, { success: false, msg_id: 'no_token' }, 401); return; }
+      const rec = await findLicenseByCode(keyCode);
+      if (!rec || !rec.active) { sendJson(res, { success: false, msg_id: 'invalid_token' }, 401); return; }
+      const body = await parseBody(req);
+      const phone = String(body.phone || body.whatsapp || body.telefone || '').trim().replace(/\D/g, '').slice(0, 20);
+      if (!phone) { sendJson(res, { success: false, msg_id: 'invalid_phone' }, 400); return; }
+      const phones = Array.isArray(rec.phones) ? rec.phones : [];
+      if (!phones.includes(phone)) {
+        const maxUses = rec.maxUses != null ? rec.maxUses : -1;
+        if (maxUses > 0 && phones.length >= maxUses) { sendJson(res, { success: false, msg_id: 'limit_reached' }, 403); return; }
+        phones.push(phone);
+        await updateLicense(keyCode, { phones, uses: phones.length, lastPhone: phone, lastIp: ip });
+      } else {
+        await updateLicense(keyCode, { lastPhone: phone, lastIp: ip });
+      }
+      sendJson(res, { success: true }); return;
+    }
+
+    // Bloqueia /admin e /wsm-admin diretos quando slug está ativo
+    if (_wsmSecret && (p === '/admin' || p.startsWith('/admin/') || p === '/wsm-admin' || p.startsWith('/wsm-admin/'))) {
+      res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('Not found'); return;
+    }
+
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('WSM: rota não encontrada');
+  }
+
+  return { route, adminSlug: () => WSM_R_ADMIN, modSlug: () => WSM_R_MOD };
+})();
+// ═══════════ FIM WSM MODULE ═══════════
+
 async function handleRequest(req, res) {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const p   = url.pathname;
@@ -6192,7 +8220,9 @@ async function handleRequest(req, res) {
       return o||'*';
     })(),
     'Access-Control-Allow-Methods': 'POST,GET,OPTIONS,DELETE',
-    'Access-Control-Allow-Headers': 'Content-Type,x-app-date,x-app-sig,x-app-ts',
+    // Inclui os headers que a extensão WSM/WaTiDy envia (access-token, Accept, Authorization),
+    // senão o preflight CORS falha e a extensão mostra "Erro no servidor de autenticação".
+    'Access-Control-Allow-Headers': 'Content-Type,Accept,access-token,x-access-token,Authorization,x-app-date,x-app-sig,x-app-ts',
     'Access-Control-Max-Age':       '86400',
     'Vary':                         'Origin',
     'X-Content-Type-Options':       'nosniff',
@@ -6205,6 +8235,14 @@ async function handleRequest(req, res) {
   };
   Object.entries(_corsH).forEach(([k, v]) => res.setHeader(k, v));
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+
+  // ═══ Namespace WSM (WSM) — /WSM/* com banco e endpoints próprios ═══
+  if (/^\/wsm(\/|$)/i.test(p)) {
+    const wsmPath = p.replace(/^\/wsm/i, '') || '/';
+    await WSM.route(req, res, wsmPath, url, ip);
+    return;
+  }
+
 
   if (APP_SECRET) {
     if (p === '/admin' || p.startsWith('/admin/')) { res.writeHead(404); res.end('Not found'); return; }
@@ -8015,7 +10053,8 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
       `✅ zvm-lr1290 v10 — porta ${PORT}\n` +
       `🍃 MongoDB: zapvoice.store | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}\n` +
       `🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | 2FA: ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | Payt: ${PAYT_SECRET ? 'ATIVO' : '⚠ INATIVO'}\n` +
-      `🔑 Admin: ${R_ADMIN} | User: ${ADMIN_USER}\n` +
+      `🔑 Admin ZVM: ${R_ADMIN} | User: ${ADMIN_USER}\n` +
+      `🔑 Admin WSM: /WSM${WSM.adminSlug()} | Mod WSM: /WSM${WSM.modSlug()} (banco: ${process.env.WSM_MONGODB_DB || 'watidy'})\n` +
       `👮 Mod:   ${MODS.length > 0 ? R_MOD+' | '+MODS.length+' mod(s): '+MODS.map(m=>m.name).join(', ') : '⚠ inativo'}\n` +
       `📊 Analytics: ${ANALYTICS_PASS ? 'ATIVO' : '⚠ INATIVO'} | Extension: ${R_EXT}/v3/key | Webhook: ${WEBHOOK_URL || 'não configurado'}\n` +
       `🗂  Logs: retenção ${LOG_RETENTION_DAYS}d (LGPD) | máx ${LOG_MAX} em memória`
@@ -8035,6 +10074,18 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     server.keepAliveTimeout = 65000; // acima dos 60s do LB do Render
     server.headersTimeout   = 66000;
     _httpServer = server;
+    // Erro amigável quando a porta já está em uso (evita stack trace confuso de EADDRINUSE)
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`\n❌ A porta ${PORT} já está sendo usada por outro programa.`);
+        console.error(`   Feche o outro servidor OU rode este em outra porta, ex.:`);
+        console.error(`   set PORT=3001 && node ZVMeWSM.js   (Windows CMD)`);
+        console.error(`   $env:PORT=3001; node ZVMeWSM.js    (PowerShell)\n`);
+      } else {
+        console.error('❌ Erro no servidor HTTP:', err.message);
+      }
+      process.exit(1);
+    });
     server.listen(PORT, () => {
       console.log(`🚀 Servidor ouvindo na porta ${PORT}`);
       _pingInterval = setInterval(() => {
