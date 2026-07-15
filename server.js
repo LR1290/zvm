@@ -3,6 +3,8 @@ const http   = require('http');
 const https  = require('https');
 const crypto = require('crypto');
 const zlib   = require('zlib');
+const fs     = require('fs');
+const path   = require('path');
 const { MongoClient } = require('mongodb');
 try { require('dotenv').config(); } catch (_) { /* opcional */ }
 
@@ -7465,6 +7467,39 @@ ${CANVAS_BG}</body></html>`;
 
   // ── Router do namespace /WSM (p já vem SEM o prefixo) ──
   async function route(req, res, p, url, ip) {
+    // ══ Agente IA — páginas estáticas salvas de ia.wascript.com.br ═══════
+    if (p === '/ia' || p.startsWith('/ia/') || p === '/ia/') {
+      const _iaBase = path.join(__dirname, 'ia');
+      const _iaSub  = p.replace(/^\/ia/, '') || '/';
+      const _iaRaw  = path.join(_iaBase, _iaSub);
+      // Proteção contra path traversal
+      if (!_iaRaw.startsWith(_iaBase)) { res.writeHead(403); res.end('Forbidden'); return; }
+      const _iaCandidates = [
+        _iaRaw,
+        path.join(_iaRaw, 'index.html'),
+        _iaRaw + '.html',
+      ];
+      for (const _fp of _iaCandidates) {
+        try {
+          const _stat = fs.statSync(_fp);
+          if (_stat.isFile()) {
+            const _ext  = path.extname(_fp).toLowerCase();
+            const _mime = { '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript',
+                            '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg',
+                            '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2' };
+            res.writeHead(200, {
+              'Content-Type': (_mime[_ext] || 'application/octet-stream') + (_ext === '.html' ? '; charset=utf-8' : ''),
+              'Cache-Control': _ext === '.html' ? 'no-cache' : 'public, max-age=86400',
+              ..._SEC_HEADERS,
+            });
+            fs.createReadStream(_fp).pipe(res);
+            return;
+          }
+        } catch (_) {}
+      }
+      res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('404 — página não encontrada'); return;
+    }
+
     // ══ Portal do Cliente WSM (/cliente*) ══════════════════════════
     if (p === '/cliente' || p.startsWith('/cliente/')) {
       if (await wsmPortal(req, res, p, url, ip)) return;
