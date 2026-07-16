@@ -35,6 +35,138 @@ const EMAIL_FROM        = process.env.EMAIL_FROM    || 'ZVM <noreply@zvm.app>';
 const EXTENSION_VERSION = process.env.EXTENSION_VERSION || '';
 const EXTENSION_CHANGELOG = process.env.EXTENSION_CHANGELOG || '';
 
+// ── Proxy WaTiDy (ia.wascript.com.br) ──────────────────────────────────────
+// Credenciais da conta WaTiDy do operador (admin do painel ia.wascript.com.br)
+// WASCRIPT_USER + WASCRIPT_PASS  → login automático + renovação de nonce a cada 11h
+// WASCRIPT_COOKIE (opcional)     → cookie de sessão manual (sobrescreve login automático)
+const WASCRIPT_USER   = process.env.WASCRIPT_USER   || '';
+const WASCRIPT_PASS   = process.env.WASCRIPT_PASS   || '';
+const WASCRIPT_COOKIE = process.env.WASCRIPT_COOKIE || '';
+const WASCRIPT_BASE   = (process.env.WASCRIPT_BASE  || 'https://ia.wascript.com.br').replace(/\/$/, '');
+// Ações que o proxy encaminha para a wascript; as demais ficam mockadas na guarda
+const WASCRIPT_PROXY_ACTIONS = new Set([
+  'papo_get_user_instances','papo_create_instance','papo_delete_instance',
+  'papo_disconnect_instance','papo_get_instance_qr','papo_get_instance_status',
+  'papo_fetch_instance_payload','papo_recreate_progress','papo_update_instance_profile',
+  'papo_update_instance_profile_picture','recriar_instancia',
+]);
+
+// Cache da sessão wascript (cookie + nonce)
+const _wsc = { cookie: WASCRIPT_COOKIE, nonce: '', expiresAt: 0 };
+
+function _httpsReq(opts, body) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(opts, res => {
+      const chunks = [];
+      res.on('data', d => chunks.push(d));
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks).toString() }));
+    });
+    req.on('error', reject);
+    if (body) req.write(body);
+    req.end();
+  });
+}
+
+async function _wscLogin() {
+  if (!WASCRIPT_USER || !WASCRIPT_PASS) return false;
+  try {
+    // 1. POST wp-login.php
+    const loginBody = 'log=' + encodeURIComponent(WASCRIPT_USER) +
+      '&pwd=' + encodeURIComponent(WASCRIPT_PASS) +
+      '&rememberme=forever&redirect_to=%2Fminha-conta%2Finstancia-wa%2F&wp-submit=Log+In';
+    const loginRes = await _httpsReq({
+      hostname: new URL(WASCRIPT_BASE).hostname,
+      path: '/wp-login.php',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(loginBody),
+        'User-Agent': 'Mozilla/5.0 (compatible; ZVM-proxy/1.0)',
+      },
+    }, loginBody);
+    // Coleta cookies do Set-Cookie
+    const rawCookies = loginRes.headers['set-cookie'] || [];
+    const cookieMap = {};
+    for (const sc of rawCookies) {
+      const m = sc.match(/^([^=]+)=([^;]*)/);
+      if (m) cookieMap[m[1].trim()] = m[2].trim();
+    }
+    if (!Object.keys(cookieMap).length) { console.warn('[wsc] Login falhou (sem cookies)'); return false; }
+    _wsc.cookie = Object.entries(cookieMap).map(([k,v]) => `${k}=${v}`).join('; ');
+    // 2. GET página instancia-wa para extrair nonce
+    const pageRes = await _httpsReq({
+      hostname: new URL(WASCRIPT_BASE).hostname,
+      path: '/minha-conta/instancia-wa/',
+      method: 'GET',
+      headers: { 'Cookie': _wsc.cookie, 'User-Agent': 'Mozilla/5.0 (compatible; ZVM-proxy/1.0)' },
+    }, null);
+    const nonceMatch = pageRes.body.match(/papo_nonce\s*=\s*["']([a-f0-9]+)["']/);
+    _wsc.nonce = nonceMatch ? nonceMatch[1] : '';
+    _wsc.expiresAt = Date.now() + 11 * 3600 * 1000;
+    console.log(`[wsc] Sessão renovada. Nonce: ${_wsc.nonce ? _wsc.nonce.slice(0,4)+'****' : '(vazio)'}`);
+    return true;
+  } catch (e) {
+    console.error('[wsc] Erro ao renovar sessão:', e.message);
+    return false;
+  }
+}
+
+async function _wscEnsureSession() {
+  if (WASCRIPT_COOKIE) return true; // cookie manual; não faz login automático
+  if (_wsc.cookie && _wsc.nonce && Date.now() < _wsc.expiresAt) return true;
+  return _wscLogin();
+}
+
+async function _wscProxy(req, res) {
+  if (!WASCRIPT_USER && !WASCRIPT_COOKIE) {
+    res.writeHead(503, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: false, data: 'Proxy ia.wascript não configurado. Defina WASCRIPT_USER+WASCRIPT_PASS ou WASCRIPT_COOKIE.' }));
+    return;
+  }
+  const ok = await _wscEnsureSession();
+  if (!ok) {
+    res.writeHead(502, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: false, data: 'Não foi possível autenticar com ia.wascript.com.br.' }));
+    return;
+  }
+  // Lê o body da requisição original
+  const rawBody = await new Promise(resolve => {
+    const chunks = [];
+    req.on('data', d => chunks.push(d));
+    req.on('end', () => resolve(Buffer.concat(chunks).toString()));
+  });
+  // Substitui o nonce pelo nonce válido da sessão (apenas quando usa login automático)
+  let proxyBody = rawBody;
+  if (!WASCRIPT_COOKIE && _wsc.nonce) {
+    proxyBody = rawBody
+      .replace(/(?:^|&)_ajax_nonce=[^&]*/g, '')
+      .replace(/(?:^|&)nonce=[^&]*/g, '');
+    proxyBody += (proxyBody ? '&' : '') + '_ajax_nonce=' + _wsc.nonce + '&nonce=' + _wsc.nonce;
+  }
+  const cookie = WASCRIPT_COOKIE || _wsc.cookie;
+  try {
+    const proxyRes = await _httpsReq({
+      hostname: new URL(WASCRIPT_BASE).hostname,
+      path: '/wp-admin/admin-ajax.php',
+      method: 'POST',
+      headers: {
+        'Content-Type': req.headers['content-type'] || 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(proxyBody),
+        'Cookie': cookie,
+        'User-Agent': 'Mozilla/5.0 (compatible; ZVM-proxy/1.0)',
+        'Origin': WASCRIPT_BASE,
+        'Referer': WASCRIPT_BASE + '/minha-conta/instancia-wa/',
+      },
+    }, proxyBody);
+    res.writeHead(proxyRes.status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(proxyRes.body);
+  } catch (e) {
+    console.error('[wsc] Erro no proxy:', e.message);
+    res.writeHead(502, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: false, data: 'Erro no proxy: ' + e.message }));
+  }
+}
+
 const LOG_RETENTION_DAYS = Math.max(1, parseInt(process.env.LOG_RETENTION_DAYS || '90') || 90);
 
 const LOG_MAX = Math.min(parseInt(process.env.LOG_MAX || '500'), 2000);
@@ -7467,6 +7599,19 @@ ${CANVAS_BG}</body></html>`;
 
   // ── Router do namespace /WSM (p já vem SEM o prefixo) ──
   async function route(req, res, p, url, ip) {
+    // ══ Proxy AJAX para ia.wascript.com.br ════════════════════════════════
+    if (p === '/ia-ajax' && req.method === 'POST') {
+      await _wscProxy(req, res); return;
+    }
+    // ══ CORS preflight para /ia-ajax ══════════════════════════════════════
+    if (p === '/ia-ajax' && req.method === 'OPTIONS') {
+      res.writeHead(204, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, X-WSM-Key',
+      });
+      res.end(); return;
+    }
     // ══ Agente IA — páginas estáticas salvas de ia.wascript.com.br ═══════
     if (p === '/ia' || p.startsWith('/ia/') || p === '/ia/') {
       const _iaBase = path.join(__dirname, 'ia');
@@ -7474,6 +7619,15 @@ ${CANVAS_BG}</body></html>`;
       const _iaRaw  = path.join(_iaBase, _iaSub);
       // Proteção contra path traversal
       if (!_iaRaw.startsWith(_iaBase)) { res.writeHead(403); res.end('Forbidden'); return; }
+      // Redirect: diretório sem barra final → adiciona / para que ./page-style.css resolva certo
+      if (!p.endsWith('/')) {
+        try {
+          if (fs.statSync(_iaRaw).isDirectory()) {
+            res.writeHead(301, { 'Location': '/WSM' + p + '/', ..._SEC_HEADERS });
+            res.end(); return;
+          }
+        } catch (_) {}
+      }
       const _iaCandidates = [
         _iaRaw,
         path.join(_iaRaw, 'index.html'),
@@ -7486,7 +7640,10 @@ ${CANVAS_BG}</body></html>`;
             const _ext  = path.extname(_fp).toLowerCase();
             const _mime = { '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript',
                             '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg',
-                            '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2' };
+                            '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp',
+                            '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
+                            '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf',
+                            '.otf': 'font/otf', '.eot': 'application/vnd.ms-fontobject' };
             res.writeHead(200, {
               'Content-Type': (_mime[_ext] || 'application/octet-stream') + (_ext === '.html' ? '; charset=utf-8' : ''),
               'Cache-Control': _ext === '.html' ? 'no-cache' : 'public, max-age=86400',
