@@ -35,137 +35,173 @@ const EMAIL_FROM        = process.env.EMAIL_FROM    || 'ZVM <noreply@zvm.app>';
 const EXTENSION_VERSION = process.env.EXTENSION_VERSION || '';
 const EXTENSION_CHANGELOG = process.env.EXTENSION_CHANGELOG || '';
 
-// ── Proxy WaTiDy (ia.wascript.com.br) ──────────────────────────────────────
-// Credenciais da conta WaTiDy do operador (admin do painel ia.wascript.com.br)
-// WASCRIPT_USER + WASCRIPT_PASS  → login automático + renovação de nonce a cada 11h
-// WASCRIPT_COOKIE (opcional)     → cookie de sessão manual (sobrescreve login automático)
-const WASCRIPT_USER   = process.env.WASCRIPT_USER   || '';
-const WASCRIPT_PASS   = process.env.WASCRIPT_PASS   || '';
-const WASCRIPT_COOKIE = process.env.WASCRIPT_COOKIE || '';
-const WASCRIPT_BASE   = (process.env.WASCRIPT_BASE  || 'https://ia.wascript.com.br').replace(/\/$/, '');
-// Ações que o proxy encaminha para a wascript; as demais ficam mockadas na guarda
-const WASCRIPT_PROXY_ACTIONS = new Set([
-  'papo_get_user_instances','papo_create_instance','papo_delete_instance',
-  'papo_disconnect_instance','papo_get_instance_qr','papo_get_instance_status',
-  'papo_fetch_instance_payload','papo_recreate_progress','papo_update_instance_profile',
-  'papo_update_instance_profile_picture','recriar_instancia',
-]);
+// ── Ponte extensao WSM <-> paginas /ia (servida em /WSM/ia-bridge.js) ──
+// Detecta a extensao via externally_connectable e conecta o WhatsApp por ela;
+// tambem neutraliza as chamadas AJAX antigas do wascript para nao gerar 404.
+const IA_BRIDGE_JS = `(function(){
+  if (window.__wsmExtBridge) return; window.__wsmExtBridge = true;
+  var EXT_ID = 'gjlfpggiddcminhebiejofeglfjmleli';
+  var WA_URL = 'https://web.whatsapp.com/';
+  var IS_INSTANCIA = location.pathname.indexOf('/instancia-wa') >= 0;
+  var extState = 'checking'; // checking | ready | absent
 
-// Cache da sessão wascript (cookie + nonce)
-const _wsc = { cookie: WASCRIPT_COOKIE, nonce: '', expiresAt: 0 };
-
-function _httpsReq(opts, body) {
-  return new Promise((resolve, reject) => {
-    const req = https.request(opts, res => {
-      const chunks = [];
-      res.on('data', d => chunks.push(d));
-      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks).toString() }));
+  // ---- Mensageria com a extensao (externally_connectable) ----
+  function extSend(msg, cb){
+    try{
+      if (!(window.chrome && chrome.runtime && chrome.runtime.sendMessage)){ if (cb) cb(null); return; }
+      var done = false;
+      var t = setTimeout(function(){ if (!done){ done = true; if (cb) cb(null); } }, 2000);
+      chrome.runtime.sendMessage(EXT_ID, msg, function(resp){
+        if (done) return; done = true; clearTimeout(t);
+        if (chrome.runtime.lastError){ if (cb) cb(null); return; }
+        if (cb) cb(resp || null);
+      });
+    }catch(e){ if (cb) cb(null); }
+  }
+  function detectExt(cb){
+    extSend({ action: 'is_instaled' }, function(resp){
+      extState = (resp && resp.success) ? 'ready' : 'absent';
+      if (cb) cb(extState);
     });
-    req.on('error', reject);
-    if (body) req.write(body);
-    req.end();
-  });
-}
-
-async function _wscLogin() {
-  if (!WASCRIPT_USER || !WASCRIPT_PASS) return false;
-  try {
-    // 1. POST wp-login.php
-    const loginBody = 'log=' + encodeURIComponent(WASCRIPT_USER) +
-      '&pwd=' + encodeURIComponent(WASCRIPT_PASS) +
-      '&rememberme=forever&redirect_to=%2Fminha-conta%2Finstancia-wa%2F&wp-submit=Log+In';
-    const loginRes = await _httpsReq({
-      hostname: new URL(WASCRIPT_BASE).hostname,
-      path: '/wp-login.php',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Content-Length': Buffer.byteLength(loginBody),
-        'User-Agent': 'Mozilla/5.0 (compatible; ZVM-proxy/1.0)',
-      },
-    }, loginBody);
-    // Coleta cookies do Set-Cookie
-    const rawCookies = loginRes.headers['set-cookie'] || [];
-    const cookieMap = {};
-    for (const sc of rawCookies) {
-      const m = sc.match(/^([^=]+)=([^;]*)/);
-      if (m) cookieMap[m[1].trim()] = m[2].trim();
+  }
+  function openWhatsApp(){
+    if (extState === 'ready'){
+      extSend({ action: 'open_whatsapp' }, function(){});
+    } else {
+      window.open(WA_URL, '_blank');
     }
-    if (!Object.keys(cookieMap).length) { console.warn('[wsc] Login falhou (sem cookies)'); return false; }
-    _wsc.cookie = Object.entries(cookieMap).map(([k,v]) => `${k}=${v}`).join('; ');
-    // 2. GET página instancia-wa para extrair nonce
-    const pageRes = await _httpsReq({
-      hostname: new URL(WASCRIPT_BASE).hostname,
-      path: '/minha-conta/instancia-wa/',
-      method: 'GET',
-      headers: { 'Cookie': _wsc.cookie, 'User-Agent': 'Mozilla/5.0 (compatible; ZVM-proxy/1.0)' },
-    }, null);
-    const nonceMatch = pageRes.body.match(/papo_nonce\s*=\s*["']([a-f0-9]+)["']/);
-    _wsc.nonce = nonceMatch ? nonceMatch[1] : '';
-    _wsc.expiresAt = Date.now() + 11 * 3600 * 1000;
-    console.log(`[wsc] Sessão renovada. Nonce: ${_wsc.nonce ? _wsc.nonce.slice(0,4)+'****' : '(vazio)'}`);
-    return true;
-  } catch (e) {
-    console.error('[wsc] Erro ao renovar sessão:', e.message);
-    return false;
   }
-}
 
-async function _wscEnsureSession() {
-  if (WASCRIPT_COOKIE) return true; // cookie manual; não faz login automático
-  if (_wsc.cookie && _wsc.nonce && Date.now() < _wsc.expiresAt) return true;
-  return _wscLogin();
-}
+  if (!IS_INSTANCIA){ detectExt(); return; }
 
-async function _wscProxy(req, res) {
-  if (!WASCRIPT_USER && !WASCRIPT_COOKIE) {
-    res.writeHead(503, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: false, data: 'Proxy ia.wascript não configurado. Defina WASCRIPT_USER+WASCRIPT_PASS ou WASCRIPT_COOKIE.' }));
-    return;
+  // ---- 1. Neutraliza as chamadas AJAX antigas do wascript (sem 404, sem erro vermelho) ----
+  function isBlocked(url){
+    url = String(url || '');
+    return url.indexOf('ia.wascript.com.br') >= 0 || url.indexOf('/WSM/ia-ajax') >= 0 || url.indexOf('admin-ajax.php') >= 0;
   }
-  const ok = await _wscEnsureSession();
-  if (!ok) {
-    res.writeHead(502, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: false, data: 'Não foi possível autenticar com ia.wascript.com.br.' }));
-    return;
+  function actionOf(body){
+    try{
+      if (body && typeof FormData !== 'undefined' && body instanceof FormData){ return body.get('action') || ''; }
+      if (body && typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams){ return body.get('action') || ''; }
+      var s = String(body || '');
+      var parts = s.split('&');
+      for (var i = 0; i < parts.length; i++){
+        var kv = parts[i].split('=');
+        if (kv[0] === 'action'){ return decodeURIComponent((kv[1] || '').split('+').join(' ')); }
+      }
+      return '';
+    }catch(e){ return ''; }
   }
-  // Lê o body da requisição original
-  const rawBody = await new Promise(resolve => {
-    const chunks = [];
-    req.on('data', d => chunks.push(d));
-    req.on('end', () => resolve(Buffer.concat(chunks).toString()));
-  });
-  // Substitui o nonce pelo nonce válido da sessão (apenas quando usa login automático)
-  let proxyBody = rawBody;
-  if (!WASCRIPT_COOKIE && _wsc.nonce) {
-    proxyBody = rawBody
-      .replace(/(?:^|&)_ajax_nonce=[^&]*/g, '')
-      .replace(/(?:^|&)nonce=[^&]*/g, '');
-    proxyBody += (proxyBody ? '&' : '') + '_ajax_nonce=' + _wsc.nonce + '&nonce=' + _wsc.nonce;
+  function localData(action){
+    switch (action){
+      case 'papo_get_user_plan_info': return { success: true, data: { can_create: true, plan_name: 'WSM' } };
+      case 'papo_get_user_instances': return { success: true, data: [] };
+      case 'papo_get_instance_status': return { success: true, data: { status: 'connecting' } };
+      case 'papo_create_instance': openWhatsApp(); return { success: true, data: { instance_id: 'ext', instance_name: 'WhatsApp' } };
+      case 'papo_get_instance_qr': openWhatsApp(); return { success: true, data: { qr_code: '' } };
+      case 'papo_disconnect_instance':
+      case 'papo_delete_instance': return { success: true, data: {} };
+      default: return { success: true, data: [] };
+    }
   }
-  const cookie = WASCRIPT_COOKIE || _wsc.cookie;
-  try {
-    const proxyRes = await _httpsReq({
-      hostname: new URL(WASCRIPT_BASE).hostname,
-      path: '/wp-admin/admin-ajax.php',
-      method: 'POST',
-      headers: {
-        'Content-Type': req.headers['content-type'] || 'application/x-www-form-urlencoded',
-        'Content-Length': Buffer.byteLength(proxyBody),
-        'Cookie': cookie,
-        'User-Agent': 'Mozilla/5.0 (compatible; ZVM-proxy/1.0)',
-        'Origin': WASCRIPT_BASE,
-        'Referer': WASCRIPT_BASE + '/minha-conta/instancia-wa/',
-      },
-    }, proxyBody);
-    res.writeHead(proxyRes.status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-    res.end(proxyRes.body);
-  } catch (e) {
-    console.error('[wsc] Erro no proxy:', e.message);
-    res.writeHead(502, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: false, data: 'Erro no proxy: ' + e.message }));
+
+  var _fetch = window.fetch;
+  window.fetch = function(u, o){
+    var url = (u && u.url) ? u.url : u;
+    if (isBlocked(url)){
+      var d = localData(actionOf(o && o.body));
+      return Promise.resolve(new Response(JSON.stringify(d), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    }
+    return _fetch.apply(this, arguments);
+  };
+  var _xopen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(m, u){ this.__wsmB = isBlocked(u); return _xopen.apply(this, arguments); };
+  var _xsend = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.send = function(body){
+    var x = this;
+    if (this.__wsmB){
+      var rt = JSON.stringify(localData(actionOf(body)));
+      Object.defineProperty(x, 'readyState', { value: 4, configurable: true });
+      Object.defineProperty(x, 'status', { value: 200, configurable: true });
+      Object.defineProperty(x, 'responseText', { value: rt, configurable: true });
+      Object.defineProperty(x, 'response', { value: rt, configurable: true });
+      x.getResponseHeader = function(h){ return (String(h).toLowerCase() === 'content-type') ? 'application/json' : null; };
+      setTimeout(function(){
+        if (x.onreadystatechange) x.onreadystatechange();
+        if (x.onload) x.onload();
+        try{ x.dispatchEvent(new Event('readystatechange')); }catch(e){}
+        try{ x.dispatchEvent(new ProgressEvent('load')); }catch(e){}
+      }, 0);
+      return;
+    }
+    return _xsend.apply(this, arguments);
+  };
+
+  // ---- 2. Roteia o botao "Nova Instancia" para abrir o WhatsApp via extensao ----
+  document.addEventListener('click', function(e){
+    var el = e.target && e.target.closest ? e.target.closest('#create-new-instance') : null;
+    if (el){ e.preventDefault(); e.stopImmediatePropagation(); openWhatsApp(); }
+  }, true);
+
+  // ---- 3. Card de conexao WSM ----
+  function cardHtml(){
+    var badge, sub, btn;
+    if (extState === 'ready'){
+      badge = 'Extensao WSM conectada';
+      sub = 'Clique em Conectar para abrir o WhatsApp Web e ler o QR Code com o seu celular.';
+      btn = 'Conectar WhatsApp';
+    } else if (extState === 'absent'){
+      badge = 'Extensao WSM nao detectada';
+      sub = 'Instale ou ative a extensao WSM no Chrome e recarregue esta pagina.';
+      btn = 'Abrir WhatsApp Web';
+    } else {
+      badge = 'Verificando extensao...';
+      sub = 'Aguarde um instante.';
+      btn = 'Conectar WhatsApp';
+    }
+    var dot = 'wsm-cc__dot' + (extState === 'ready' ? ' wsm-cc__dot--ok' : (extState === 'absent' ? ' wsm-cc__dot--off' : ''));
+    return '<div class="wsm-cc__row"><div class="wsm-cc__status"><span class="' + dot + '"></span>' + badge + '</div>'
+      + '<button type="button" id="wsm-cc-btn" class="wsm-cc__btn">' + btn + '</button></div>'
+      + '<p class="wsm-cc__sub">' + sub + '</p>';
   }
-}
+  var cardEl = null;
+  function ensureCard(){
+    var anchor = document.getElementById('instances-grid') || document.querySelector('.papo-instances-panel') || document.querySelector('.instances-grid');
+    if (!anchor || !anchor.parentNode) return;
+    if (!cardEl || !cardEl.parentNode){
+      cardEl = document.createElement('div');
+      cardEl.className = 'wsm-cc';
+      anchor.parentNode.insertBefore(cardEl, anchor);
+    }
+    cardEl.innerHTML = cardHtml();
+    var b = document.getElementById('wsm-cc-btn');
+    if (b) b.onclick = function(){ openWhatsApp(); };
+  }
+  function injectStyle(){
+    if (document.getElementById('wsm-cc-style')) return;
+    var s = document.createElement('style'); s.id = 'wsm-cc-style';
+    s.textContent = '.wsm-cc{background:#fff;border:1px solid #e3e8ef;border-radius:14px;padding:16px 18px;margin:0 0 16px;box-shadow:0 1px 2px rgba(16,24,40,.05)}'
+      + '.wsm-cc__row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}'
+      + '.wsm-cc__status{font-weight:600;font-size:14px;color:#101828;display:flex;align-items:center;gap:8px}'
+      + '.wsm-cc__dot{width:9px;height:9px;border-radius:50%;background:#98a2b3;display:inline-block}'
+      + '.wsm-cc__dot--ok{background:#12b76a;box-shadow:0 0 0 3px rgba(18,183,106,.15)}'
+      + '.wsm-cc__dot--off{background:#f04438;box-shadow:0 0 0 3px rgba(240,68,56,.15)}'
+      + '.wsm-cc__btn{background:#25d366;color:#fff;border:0;border-radius:10px;padding:10px 18px;font-weight:700;font-size:14px;cursor:pointer}'
+      + '.wsm-cc__btn:hover{filter:brightness(.96)}'
+      + '.wsm-cc__sub{margin:10px 0 0;font-size:12.5px;color:#667085}';
+    document.head.appendChild(s);
+  }
+  function boot(){
+    injectStyle();
+    ensureCard();
+    detectExt(function(){ ensureCard(); });
+    var tries = 0;
+    var iv = setInterval(function(){ ensureCard(); if (++tries > 20) clearInterval(iv); }, 500);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+`;
 
 const LOG_RETENTION_DAYS = Math.max(1, parseInt(process.env.LOG_RETENTION_DAYS || '90') || 90);
 
@@ -7599,20 +7635,12 @@ ${CANVAS_BG}</body></html>`;
 
   // ── Router do namespace /WSM (p já vem SEM o prefixo) ──
   async function route(req, res, p, url, ip) {
-    // ══ Proxy AJAX para ia.wascript.com.br ════════════════════════════════
-    if (p === '/ia-ajax' && req.method === 'POST') {
-      await _wscProxy(req, res); return;
+    // Bridge JS da extensao WSM (injetado nas paginas /ia)
+    if (p === '/ia-bridge.js') {
+      res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache', ..._SEC_HEADERS });
+      res.end(IA_BRIDGE_JS); return;
     }
-    // ══ CORS preflight para /ia-ajax ══════════════════════════════════════
-    if (p === '/ia-ajax' && req.method === 'OPTIONS') {
-      res.writeHead(204, {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, X-WSM-Key',
-      });
-      res.end(); return;
-    }
-    // ══ Agente IA — páginas estáticas salvas de ia.wascript.com.br ═══════
+    // Paginas estaticas do Agente IA (salvas de ia.wascript.com.br)
     if (p === '/ia' || p.startsWith('/ia/') || p === '/ia/') {
       const _iaBase = path.join(__dirname, 'ia');
       const _iaSub  = p.replace(/^\/ia/, '') || '/';
@@ -7649,7 +7677,14 @@ ${CANVAS_BG}</body></html>`;
               'Cache-Control': _ext === '.html' ? 'no-cache' : 'public, max-age=86400',
               ..._SEC_HEADERS,
             });
-            fs.createReadStream(_fp).pipe(res);
+            if (_ext === '.html') {
+              let _html = fs.readFileSync(_fp, 'utf8');
+              const _tag = '\n<script src="/WSM/ia-bridge.js"></script>\n';
+              _html = /<\/body>/i.test(_html) ? _html.replace(/<\/body>/i, _tag + '</body>') : _html + _tag;
+              res.end(_html);
+            } else {
+              fs.createReadStream(_fp).pipe(res);
+            }
             return;
           }
         } catch (_) {}
