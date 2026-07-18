@@ -43,7 +43,9 @@ const IA_BRIDGE_JS = `(function(){
   var EXT_ID = 'gjlfpggiddcminhebiejofeglfjmleli';
   var WA_URL = 'https://web.whatsapp.com/';
   var IS_INSTANCIA = location.pathname.indexOf('/instancia-wa') >= 0;
-  var extState = 'checking'; // checking | ready | absent
+  var extState = 'checking';                       // checking | ready | absent
+  var waSt = { connected: false, phone: '', waOpen: false };
+  var fastUntil = 0;
 
   // ---- Mensageria com a extensao (externally_connectable) ----
   function extSend(msg, cb){
@@ -64,17 +66,29 @@ const IA_BRIDGE_JS = `(function(){
       if (cb) cb(extState);
     });
   }
+  function getWaStatus(cb){
+    extSend({ action: 'get_wa_status' }, function(resp){
+      if (resp && resp.success){
+        waSt = { connected: !!resp.connected, phone: resp.phone || '', waOpen: !!resp.waOpen };
+      }
+      if (cb) cb(waSt);
+    });
+  }
   function openWhatsApp(){
-    if (extState === 'ready'){
-      extSend({ action: 'open_whatsapp' }, function(){});
-    } else {
-      window.open(WA_URL, '_blank');
-    }
+    if (extState === 'ready'){ extSend({ action: 'open_whatsapp' }, function(){}); }
+    else { window.open(WA_URL, '_blank'); }
+    fastUntil = Date.now() + 40000;                // acompanha a conexao mais de perto por 40s
+  }
+  function fmtPhone(p){
+    p = String(p || '');
+    var out = '';
+    for (var i = 0; i < p.length; i++){ var ch = p.charCodeAt(i); if (ch >= 48 && ch <= 57) out += p.charAt(i); }
+    return out ? '+' + out : '';
   }
 
   if (!IS_INSTANCIA){ detectExt(); return; }
 
-  // ---- 1. Neutraliza as chamadas AJAX antigas do wascript (sem 404, sem erro vermelho) ----
+  // ---- 1. Neutraliza as chamadas AJAX antigas do wascript (sem 404/503, sem erro) ----
   function isBlocked(url){
     url = String(url || '');
     return url.indexOf('ia.wascript.com.br') >= 0 || url.indexOf('/WSM/ia-ajax') >= 0 || url.indexOf('admin-ajax.php') >= 0;
@@ -96,7 +110,7 @@ const IA_BRIDGE_JS = `(function(){
     switch (action){
       case 'papo_get_user_plan_info': return { success: true, data: { can_create: true, plan_name: 'WSM' } };
       case 'papo_get_user_instances': return { success: true, data: [] };
-      case 'papo_get_instance_status': return { success: true, data: { status: 'connecting' } };
+      case 'papo_get_instance_status': return { success: true, data: { status: waSt.connected ? 'connected' : 'connecting' } };
       case 'papo_create_instance': openWhatsApp(); return { success: true, data: { instance_id: 'ext', instance_name: 'WhatsApp' } };
       case 'papo_get_instance_qr': openWhatsApp(); return { success: true, data: { qr_code: '' } };
       case 'papo_disconnect_instance':
@@ -144,25 +158,30 @@ const IA_BRIDGE_JS = `(function(){
   }, true);
 
   // ---- 3. Card de conexao WSM ----
+  function row(dot, text, btn){
+    var cls = 'wsm-cc__dot' + (dot ? ' wsm-cc__dot--' + dot : '');
+    return '<div class="wsm-cc__row"><div class="wsm-cc__status"><span class="' + cls + '"></span>' + text + '</div>'
+      + '<button type="button" id="wsm-cc-btn" class="wsm-cc__btn">' + btn + '</button></div>';
+  }
+  function sub(text){ return '<p class="wsm-cc__sub">' + text + '</p>'; }
   function cardHtml(){
-    var badge, sub, btn;
-    if (extState === 'ready'){
-      badge = 'Extensao WSM conectada';
-      sub = 'Clique em Conectar para abrir o WhatsApp Web e ler o QR Code com o seu celular.';
-      btn = 'Conectar WhatsApp';
-    } else if (extState === 'absent'){
-      badge = 'Extensao WSM nao detectada';
-      sub = 'Instale ou ative a extensao WSM no Chrome e recarregue esta pagina.';
-      btn = 'Abrir WhatsApp Web';
-    } else {
-      badge = 'Verificando extensao...';
-      sub = 'Aguarde um instante.';
-      btn = 'Conectar WhatsApp';
+    if (extState === 'absent'){
+      return row('off', 'Extensao WSM nao detectada', 'Abrir WhatsApp Web')
+        + sub('Instale ou ative a extensao WSM no Chrome e recarregue esta pagina.');
     }
-    var dot = 'wsm-cc__dot' + (extState === 'ready' ? ' wsm-cc__dot--ok' : (extState === 'absent' ? ' wsm-cc__dot--off' : ''));
-    return '<div class="wsm-cc__row"><div class="wsm-cc__status"><span class="' + dot + '"></span>' + badge + '</div>'
-      + '<button type="button" id="wsm-cc-btn" class="wsm-cc__btn">' + btn + '</button></div>'
-      + '<p class="wsm-cc__sub">' + sub + '</p>';
+    if (extState !== 'ready'){
+      return row('', 'Verificando extensao...', 'Conectar WhatsApp') + sub('Aguarde um instante.');
+    }
+    if (waSt.connected && waSt.phone){
+      return row('ok', 'WhatsApp conectado &nbsp;<strong>' + fmtPhone(waSt.phone) + '</strong>', 'Abrir WhatsApp')
+        + sub('Seu WhatsApp esta conectado a extensao. A IA ja pode responder por ele.');
+    }
+    if (waSt.waOpen){
+      return row('warn', 'WhatsApp Web aberto', 'Abrir WhatsApp')
+        + sub('Se ainda nao conectou, escaneie o QR Code na aba do WhatsApp Web.');
+    }
+    return row('', 'Extensao WSM conectada', 'Conectar WhatsApp')
+      + sub('Clique em Conectar para abrir o WhatsApp Web e ler o QR Code com o seu celular.');
   }
   var cardEl = null;
   function ensureCard(){
@@ -183,20 +202,29 @@ const IA_BRIDGE_JS = `(function(){
     s.textContent = '.wsm-cc{background:#fff;border:1px solid #e3e8ef;border-radius:14px;padding:16px 18px;margin:0 0 16px;box-shadow:0 1px 2px rgba(16,24,40,.05)}'
       + '.wsm-cc__row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}'
       + '.wsm-cc__status{font-weight:600;font-size:14px;color:#101828;display:flex;align-items:center;gap:8px}'
-      + '.wsm-cc__dot{width:9px;height:9px;border-radius:50%;background:#98a2b3;display:inline-block}'
+      + '.wsm-cc__dot{width:9px;height:9px;border-radius:50%;background:#98a2b3;display:inline-block;flex-shrink:0}'
       + '.wsm-cc__dot--ok{background:#12b76a;box-shadow:0 0 0 3px rgba(18,183,106,.15)}'
+      + '.wsm-cc__dot--warn{background:#f79009;box-shadow:0 0 0 3px rgba(247,144,9,.15)}'
       + '.wsm-cc__dot--off{background:#f04438;box-shadow:0 0 0 3px rgba(240,68,56,.15)}'
       + '.wsm-cc__btn{background:#25d366;color:#fff;border:0;border-radius:10px;padding:10px 18px;font-weight:700;font-size:14px;cursor:pointer}'
       + '.wsm-cc__btn:hover{filter:brightness(.96)}'
       + '.wsm-cc__sub{margin:10px 0 0;font-size:12.5px;color:#667085}';
     document.head.appendChild(s);
   }
+  function tick(){
+    getWaStatus(function(){ ensureCard(); });
+  }
   function boot(){
     injectStyle();
     ensureCard();
-    detectExt(function(){ ensureCard(); });
-    var tries = 0;
-    var iv = setInterval(function(){ ensureCard(); if (++tries > 20) clearInterval(iv); }, 500);
+    detectExt(function(){ ensureCard(); tick(); });
+    var slow = 0;
+    setInterval(function(){
+      // acompanha de perto logo apos "Conectar"; caso contrario, a cada ~6s
+      if (Date.now() < fastUntil) { tick(); }
+      else if ((++slow % 3) === 0) { tick(); }
+      ensureCard();
+    }, 2000);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
@@ -881,31 +909,48 @@ function findKeyCodeByManager(keysMap, managerId, phone) {
   }
   return fallback;
 }
-async function ensureKeyLoaded(keyCode) {
-  if (!keyCode) return false;
+// Distingue "chave nao existe" de "nao deu para verificar" (banco fora do ar /
+// queda de conexao). Tratar os dois como iguais desloga clientes de chave ATIVA
+// a cada blip de rede — o logout so pode acontecer com certeza (ver /v3/key).
+//   { found: true }                  -> chave existe e esta carregada em keys[]
+//   { found: false, dbError: false } -> banco respondeu: a chave realmente nao existe
+//   { found: false, dbError: true }  -> banco inacessivel: estado DESCONHECIDO
+async function ensureKeyLoadedEx(keyCode) {
+  if (!keyCode) return { found: false, dbError: false };
   if (keys[keyCode]) {
     sanitizeKeyRecord(keys[keyCode]);
-    return true;
+    return { found: true, dbError: false };
   }
   try {
     const db = await getMongoDb();
     const doc = await db.collection('store').findOne({ _id: 'keys' });
     if (doc?.data?.[keyCode]) {
       keys[keyCode] = sanitizeKeyRecord(doc.data[keyCode]);
-      return true;
+      return { found: true, dbError: false };
     }
     if (doc?.data && typeof doc.data === 'object') {
       const norm = keyCode.replace(/\s/g, '');
       for (const [code, val] of Object.entries(doc.data)) {
         if (code === keyCode || code.replace(/\s/g, '') === norm) {
           keys[code] = sanitizeKeyRecord(val);
-          return true;
+          return { found: true, dbError: false };
         }
       }
     }
-  } catch (_) { /* continua */ }
-  if (keys[keyCode]) sanitizeKeyRecord(keys[keyCode]);
-  return !!keys[keyCode];
+    return { found: false, dbError: false };   // consultado com sucesso: nao existe
+  } catch (err) {
+    // Cache em memoria salva a sessao quando o banco cai depois do 1o login
+    if (keys[keyCode]) {
+      sanitizeKeyRecord(keys[keyCode]);
+      return { found: true, dbError: false };
+    }
+    console.error('[auth] banco inacessivel ao validar chave (nao desloga):', err.message);
+    return { found: false, dbError: true };    // estado desconhecido
+  }
+}
+// Compat: chamadas que so precisam do booleano continuam funcionando.
+async function ensureKeyLoaded(keyCode) {
+  return (await ensureKeyLoadedEx(keyCode)).found;
 }
 async function adminGetKey(code) {
   if (!code) return null;
@@ -1599,7 +1644,7 @@ const _SEC_HEADERS = {
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
-  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://api.qrserver.com; connect-src 'self'; frame-ancestors 'none'",
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https://api.qrserver.com https://pps.whatsapp.net; connect-src 'self'; frame-ancestors 'none'",
   'Server': 'ZVM',
 };
 
@@ -6360,6 +6405,7 @@ const WSM = (() => {
   let db = null;
   let keys = {};
   let keysLoaded = false;
+  let keysLoadError = false;   // true = banco inacessivel (estado desconhecido, nao desloga)
   let changelog = [];
   let _changelogLoaded = false;
 
@@ -6370,14 +6416,20 @@ const WSM = (() => {
     return db;
   }
   async function ensureKeyLoaded() {  // sombra da global — carrega o mapa inteiro do banco WSM
-    if (keysLoaded) return;
+    if (keysLoaded) { keysLoadError = false; return; }
     try {
       const d = await getDb();
       const doc = await d.collection('store').findOne({ _id: 'keys' });
       keys = (doc && doc.data && typeof doc.data === 'object') ? doc.data : {};
       keysLoaded = true;
+      keysLoadError = false;
       console.log('[WSM] ' + Object.keys(keys).length + ' chave(s) carregada(s) de ' + WSM_DB_NAME + '.store');
-    } catch (e) { console.error('[WSM] load keys:', e.message); }
+    } catch (e) {
+      // Banco inacessivel: marca o estado como DESCONHECIDO. A validacao nao pode
+      // responder "token invalido" nesse caso, senao desloga chaves ATIVAS.
+      keysLoadError = true;
+      console.error('[WSM] load keys:', e.message);
+    }
   }
   async function saveKeyNow(code) {
     const d = await getDb();
@@ -8313,7 +8365,15 @@ ${CANVAS_BG}</body></html>`;
     } else {
       rec = await findLicenseByCode(chave);
     }
-    if (!rec) { sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' }); return; }
+    if (!rec) {
+      // So dizemos "token invalido" (o que desloga a extensao) quando o banco
+      // respondeu de verdade. Se ele estava inacessivel, o estado e DESCONHECIDO:
+      // devolvemos erro temporario para a extensao tentar de novo sem deslogar.
+      if (keysLoadError || !keysLoaded) {
+        sendJson(res, { success: false, msg_id: 'validation_unavailable', retryable: true }, 503); return;
+      }
+      sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' }); return;
+    }
     const result = await authSuccess(chave, rec);
     if (!result.ok) {
       addWsmExtLog({ keyCode: chave, label: (keys[chave] && keys[chave].label) || '', phone: telefone || '-', ip, wppVersion: body.wppVersion || '-', action: result.msg_id === 'white_label_is_bloked' ? 'login_blocked' : 'invalid' });
@@ -8503,7 +8563,14 @@ async function handleRequest(req, res) {
       sendHtml(res, renderExtensionLogin({ callback, error: '❌ Digite sua chave de ativação.' }));
       return;
     }
-    if (!await ensureKeyLoaded(keyCode)) {
+    const _lg = await ensureKeyLoadedEx(keyCode);
+    if (_lg.dbError) {
+      // Nao acusar "chave inexistente" durante uma queda do banco: o cliente
+      // acharia que perdeu a licenca e abriria chamado. Pedimos nova tentativa.
+      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '⏳ Instabilidade momentânea no servidor. Tente novamente em alguns segundos.' }));
+      return;
+    }
+    if (!_lg.found) {
       await addLog({ keyCode, label: '-', phone: '-', ip, wppVersion: '-', action: 'key_not_found' });
       sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '❌ Chave não encontrada. Verifique ou entre em contato com o vendedor.' }));
       return;
@@ -8552,7 +8619,18 @@ async function handleRequest(req, res) {
       sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada.', isLoggedIn: false });
       return;
     }
-    if (!await ensureKeyLoaded(keyCode)) {
+    const _load = await ensureKeyLoadedEx(keyCode);
+    if (_load.dbError) {
+      // Banco/rede indisponivel: NAO sabemos se a chave e valida, entao NAO
+      // deslogamos. Respondemos erro temporario (sem isLoggedIn:false) — a
+      // extensao trata 5xx como falha de rede e tenta de novo, mantendo a sessao.
+      // Sem isto, uma queda de <1min desloga todos os numeros de chaves ATIVAS.
+      // Corpo NEUTRO de proposito: sem authError/authErrorMessage/isLoggedIn, para
+      // que a extensao nao interprete como veredito de autenticacao.
+      sendJson(res, { error: 'temporarily_unavailable', retryable: true }, 503);
+      return;
+    }
+    if (!_load.found) {
       sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada. Contate o vendedor.', isLoggedIn: false });
       addLog({ keyCode, label: '-', phone, ip, wppVersion, action: 'key_not_found' }).catch(()=>{});
       return;
@@ -8678,7 +8756,13 @@ async function handleRequest(req, res) {
       sendJson(res, { active: true, expiringSoon: false, hoursLeft: null, modules: { ...DEFAULT_MODULES }, ts: Date.now() });
       return;
     }
-    if (!await ensureKeyLoaded(keyCode)) {
+    const _cs = await ensureKeyLoadedEx(keyCode);
+    if (_cs.dbError) {
+      // Mesma politica das linhas acima: em caso de duvida NAO desativamos.
+      // Banco inacessivel != chave inexistente — desativar aqui desloga chave ATIVA.
+      sendJson(res, { active: true }); return;
+    }
+    if (!_cs.found) {
       sendJson(res, { active: false, reason: 'not_found' }); return;
     }
     if (isKeyExpired(keys[keyCode])) {
@@ -9886,8 +9970,11 @@ async function handleRequest(req, res) {
       const body = await parseBody(req);
       const code = (body.code || '').trim().toLowerCase().slice(0, 64);
       if (!code) { sendJson(res, { valid: false, error: 'Código não informado.' }); return; }
-      const found = await ensureKeyLoaded(code);
-      if (!found) { sendJson(res, { valid: false }); return; }
+      const _ck = await ensureKeyLoadedEx(code);
+      // Banco fora do ar: nao afirmar que a chave e invalida (o cliente veria
+      // "chave invalida" durante uma queda). Devolve erro temporario.
+      if (_ck.dbError) { sendJson(res, { error: 'temporarily_unavailable', retryable: true }, 503); return; }
+      if (!_ck.found) { sendJson(res, { valid: false }); return; }
       const k = keys[code] || {};
       const now = Date.now();
       const expired = k.expiresAt ? new Date(k.expiresAt).getTime() < now : false;
