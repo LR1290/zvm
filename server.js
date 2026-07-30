@@ -7,6 +7,7 @@ const fs     = require('fs');
 const path   = require('path');
 const { MongoClient } = require('mongodb');
 try { require('dotenv').config(); } catch (_) { /* opcional */ }
+const { sendPasswordResetEmail, sendKeyDeliveryEmail } = require('./mailer');
 
 const PORT         = process.env.PORT         || 3000;
 const ADMIN_USER   = process.env.ADMIN_USER;
@@ -573,24 +574,6 @@ function base32Decode(b32) {
   return Buffer.from(out);
 }
 
-function sendPasswordResetEmail(to, resetUrl) {
-  return new Promise(resolve => {
-    if (!RESEND_API_KEY) { resolve(false); return; }
-    const body = JSON.stringify({
-      from: EMAIL_FROM, to: [to],
-      subject: 'Redefinição de senha — ZVM',
-      html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;background:#0d0d0d;color:#e0e0e0;border-radius:10px;padding:28px 24px"><h2 style="color:#00e676;margin:0 0 16px">⚡ ZVM — Redefinição de senha</h2><p style="margin:0 0 20px;color:#aaa;line-height:1.7">Você solicitou a redefinição da sua senha. Clique no botão abaixo para criar uma nova senha. O link é válido por <strong style="color:#fff">1 hora</strong>.</p><a href="${resetUrl}" style="display:inline-block;background:#00e676;color:#000;font-weight:700;padding:12px 28px;border-radius:6px;text-decoration:none;font-size:14px">Redefinir minha senha</a><p style="margin:20px 0 0;font-size:12px;color:#666">Se você não solicitou a redefinição, ignore este e-mail. Sua senha não será alterada.</p><hr style="border:none;border-top:1px solid #1a1a1a;margin:20px 0"><p style="font-size:11px;color:#444;margin:0">ZVM · Automação Profissional para WhatsApp</p></div>`
-    });
-    const req = https.request({
-      hostname: 'api.resend.com', path: '/emails', method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
-    }, r => { r.resume(); resolve(r.statusCode < 300); });
-    req.on('error', () => resolve(false));
-    req.setTimeout(8000, () => { req.destroy(); resolve(false); });
-    req.write(body); req.end();
-  });
-}
-
 function base32Encode(buf) {
   const alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
   let bits = 0, val = 0, out = '';
@@ -768,6 +751,14 @@ function fireWebhook(event, keyCode, reason) {
     req.on('timeout', () => { req.destroy(); console.warn('[WEBHOOK] Timeout'); });
     req.write(data); req.end();
   } catch (e) { console.warn('[WEBHOOK] Falha:', e.message); }
+}
+
+function planLabelForMaxUses(n) {
+  if (n === 1) return 'Solo';
+  if (n === 3) return 'Padrão';
+  if (n === 5) return 'Pro';
+  if (n === 10) return 'Empresarial';
+  return `${n} número(s)`;
 }
 
 function generateCode() {
@@ -9758,13 +9749,16 @@ async function handleRequest(req, res) {
     catch { try { payload = Object.fromEntries(new URLSearchParams(rawBody).entries()); } catch { res.writeHead(400); res.end('Bad Request'); return; } }
 
     if (SALE_WEBHOOK_SECRET) {
+      const authHeader  = req.headers['authorization'] || '';
+      const bearerToken = (authHeader.match(/^Bearer\s+(.+)$/i) || [])[1] || '';
       const headerToken = req.headers['x-webhook-token'] || req.headers['x-payt-token'] || '';
       const bodyKey     = payload.integration_key || '';
+      const validBearer = !!bearerToken && bearerToken === SALE_WEBHOOK_SECRET;
       const validHeader = !!headerToken && headerToken === SALE_WEBHOOK_SECRET;
       const validBody   = !!bodyKey     && bodyKey   === SALE_WEBHOOK_SECRET;
-      if (!validHeader && !validBody) {
+      if (!validBearer && !validHeader && !validBody) {
         console.warn('[SALE] Token/integration_key inválido — ignorado');
-        addSecurityAlert('WEBHOOK_INVALID_TOKEN', `x-webhook-token inválido recebido — status="${payload.status||'?'}" tx="${String(payload.transaction_id||'').slice(0,30)}"`, ip);
+        addSecurityAlert('WEBHOOK_INVALID_TOKEN', `token inválido recebido — status="${payload.status||'?'}" tx="${String(payload.transaction_id||'').slice(0,30)}"`, ip);
         res.writeHead(401); res.end('Unauthorized'); return;
       }
     }
@@ -9854,6 +9848,7 @@ async function handleRequest(req, res) {
       // Sync portal_users record with renewed key
       if (clientEmail) { getMongoDb().then(d=>d.collection('portal_users').updateOne({_id:clientEmail.toLowerCase()},{$set:{keyCode:existingCode}})).catch(e=>console.warn('[SALE] portal sync:',e.message)); }
       console.log('[SALE] Chave renovada:', existingCode, 'email:', clientEmail);
+      if (clientEmail) sendKeyDeliveryEmail(clientEmail, { code:existingCode, planLabel:planLabelForMaxUses(maxUses), maxUses, expiresAt:k.expiresAt, renewed:true, baseUrl:BASE_URL }).catch(e=>console.warn('[MAILER] envio chave renovada:',e.message));
       res.writeHead(200); res.end('ok'); return;
     }
 
@@ -9865,6 +9860,7 @@ async function handleRequest(req, res) {
     // Link to portal_users if registered with same email
     if (clientEmail) { getMongoDb().then(d=>d.collection('portal_users').updateOne({_id:clientEmail.toLowerCase()},{$set:{keyCode:code}})).catch(e=>console.warn('[SALE] portal link:',e.message)); }
     console.log('[SALE] Nova chave gerada:', code, 'email:', clientEmail);
+    if (clientEmail) sendKeyDeliveryEmail(clientEmail, { code, planLabel:planLabelForMaxUses(maxUses), maxUses, expiresAt:expires.toISOString(), renewed:false, baseUrl:BASE_URL }).catch(e=>console.warn('[MAILER] envio chave nova:',e.message));
     res.writeHead(200); res.end('ok'); return;
   }
 
@@ -9923,6 +9919,7 @@ async function handleRequest(req, res) {
       saveKey(existingCode);
       await savePayment({ txId: txId||existingCode, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, keyCode:existingCode, maxUses, renewed:true, paidAt:now.toISOString(), rawStatus:'approved' });
       console.log('[PARTNER] Chave renovada:', existingCode, 'email:', clientEmail);
+      sendKeyDeliveryEmail(clientEmail, { code:existingCode, planLabel:planLabelForMaxUses(maxUses), maxUses, expiresAt:k.expiresAt, renewed:true, baseUrl:BASE_URL }).catch(e=>console.warn('[MAILER] envio chave renovada:',e.message));
       sendJson(res, { ok: true, renewed: true, code: existingCode, expiresAt: k.expiresAt, maxUses });
       return;
     }
@@ -9934,6 +9931,7 @@ async function handleRequest(req, res) {
     await savePayment({ txId:txId||code, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, keyCode:code, maxUses, renewed:false, paidAt:now.toISOString(), rawStatus:'approved' });
     if (clientEmail) { getMongoDb().then(d=>d.collection('portal_users').updateOne({_id:clientEmail},{$set:{keyCode:code}},{upsert:false})).catch(e=>console.warn('[PARTNER] portal link:',e.message)); }
     console.log('[PARTNER] Nova chave gerada:', code, 'email:', clientEmail);
+    sendKeyDeliveryEmail(clientEmail, { code, planLabel:planLabelForMaxUses(maxUses), maxUses, expiresAt:expires.toISOString(), renewed:false, baseUrl:BASE_URL }).catch(e=>console.warn('[MAILER] envio chave nova:',e.message));
     sendJson(res, { ok: true, renewed: false, code, expiresAt: expires.toISOString(), maxUses });
     return;
   }
