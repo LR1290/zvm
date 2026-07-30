@@ -753,6 +753,31 @@ function fireWebhook(event, keyCode, reason) {
   } catch (e) { console.warn('[WEBHOOK] Falha:', e.message); }
 }
 
+// Extrai dados de origem/rastreamento de um payload de webhook ou API, se existirem
+// (utm_source/utm_medium/utm_campaign, src, referrer). Não depende de nenhum campo
+// específico — plataformas diferentes usam nomes diferentes, então tenta várias.
+function extractTracking(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  const t = payload.tracking || payload.utm || {};
+  const src  = payload.utm_source   || t.utm_source   || payload.src    || payload.source || '';
+  const med  = payload.utm_medium   || t.utm_medium   || '';
+  const camp = payload.utm_campaign || t.utm_campaign || '';
+  const ref  = payload.referrer || payload.referer || payload.ref || '';
+  const out = {};
+  if (src)         out.src      = String(src).slice(0, 40);
+  if (med)         out.medium   = String(med).slice(0, 40);
+  if (camp)        out.campaign = String(camp).slice(0, 40);
+  if (ref && !src) out.ref      = String(ref).slice(0, 60);
+  if (!Object.keys(out).length) return null;
+  out.compact = [
+    out.src      ? 'origem:'  +out.src      : null,
+    out.medium   ? 'meio:'    +out.medium   : null,
+    out.campaign ? 'campanha:'+out.campaign : null,
+    out.ref      ? 'ref:'     +out.ref      : null,
+  ].filter(Boolean).join(' · ');
+  return out;
+}
+
 function planLabelForMaxUses(n) {
   if (n === 1) return 'Solo';
   if (n === 3) return 'Padrão';
@@ -5770,7 +5795,7 @@ async function renderAnalyticsDashboard() {
   const byMethodJson = JSON.stringify(stats?.byMethod  || []);
 
   const paymentsRows = payments.length ? payments.map(p => {
-    const rowSearch = [p.clientName,p.clientEmail,p.productName,p.keyCode,p.paymentMethod].join('|').toLowerCase();
+    const rowSearch = [p.clientName,p.clientEmail,p.productName,p.keyCode,p.paymentMethod,p.tracking?.compact].join('|').toLowerCase();
     return `<tr data-row="${escH(rowSearch)}" data-paid="${escH(p.paidAt||'')}">
   <td>${fmtDate(p.paidAt)}</td>
   <td>${escH(p.clientName)}</td>
@@ -5779,8 +5804,13 @@ async function renderAnalyticsDashboard() {
   <td style="color:${p.approved?'#00ff87':'#ff4757'};font-weight:700">${fmtBRL(p.amount)}</td>
   <td><span class="badge ${p.approved?'bon':'boff'}">${p.approved?'APROVADO':'REJEITADO'}</span></td>
   <td style="color:#4f8ef7;font-size:12px">${escH(p.keyCode||'-')}</td>
+  <td>${
+    p.tracking && (p.tracking.src||p.tracking.medium||p.tracking.campaign||p.tracking.ref)
+      ? `<div class="trk">${p.tracking.src?`<span class="trk-chip trk-src">🎯 ${escH(p.tracking.src)}</span>`:''}${p.tracking.medium?`<span class="trk-chip trk-med">📡 ${escH(p.tracking.medium)}</span>`:''}${p.tracking.campaign?`<span class="trk-chip trk-camp">📣 ${escH(p.tracking.campaign)}</span>`:''}${(!p.tracking.src&&p.tracking.ref)?`<span class="trk-chip trk-ref">🔗 ${escH(p.tracking.ref)}</span>`:''}</div>`
+      : `<span style="color:var(--muted);font-size:13px">—</span>`
+  }</td>
 </tr>`;
-  }).join('') : '<tr><td colspan="7" class="empty">Nenhum pagamento registrado ainda.<br>Configure o webhook de vendas apontando para /sale/webhook</td></tr>';
+  }).join('') : '<tr><td colspan="8" class="empty">Nenhum pagamento registrado ainda.<br>Configure o webhook de vendas apontando para /sale/webhook</td></tr>';
 
   const topClientsRows = (stats?.topClients||[]).map(c =>
     `<tr><td>${escH(c._id)}</td><td style="text-align:center;color:#00ff87;font-weight:700">${c.count}</td><td style="text-align:right;color:#00ff87">${fmtBRL(c.total)}</td></tr>`
@@ -5797,7 +5827,7 @@ async function renderAnalyticsDashboard() {
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Outfit:wght@400;500;600;700;800;900&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--gold:#00ff87;--dark:#080810;--card:#0f0f1a;--card2:#13131f;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--green:#00ff87;--red:#ff4757;--blue:#4f8ef7;--radius:10px}
+:root{--gold:#00ff87;--dark:#080810;--card:#0f0f1a;--card2:#13131f;--border:#1c1c2e;--text:#e2e2f0;--muted:#5a5a7a;--green:#00ff87;--red:#ff4757;--blue:#4f8ef7;--purple:#c084fc;--radius:14px;--shadow:0 8px 28px #00000045}
 body{background:var(--dark);color:var(--text);font-family:'Outfit',sans-serif;font-size:14px;min-height:100vh}
 header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000040}
 .logo{font-family:'Orbitron',sans-serif;font-size:17px;font-weight:900;color:var(--green);display:flex;align-items:center;gap:8px;letter-spacing:1px}
@@ -5808,8 +5838,8 @@ main{padding:22px 24px;max-width:1600px;margin:0 auto;position:relative;z-index:
 /* Stats grid */
 .stats{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px}
 .stats2{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
-.sc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;position:relative;overflow:hidden;transition:border-color .2s}
-.sc:hover{border-color:#00ff8730}
+.sc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;position:relative;overflow:hidden;transition:all .2s;box-shadow:var(--shadow)}
+.sc:hover{border-color:#00ff8740;transform:translateY(-2px)}
 .sc-icon{position:absolute;right:12px;top:12px;font-size:20px;opacity:.12}
 .sc .n{font-family:'Outfit',sans-serif;font-size:26px;font-weight:800;color:var(--green);line-height:1.1}
 .sc .n.green{color:var(--green)}
@@ -5820,10 +5850,16 @@ main{padding:22px 24px;max-width:1600px;margin:0 auto;position:relative;z-index:
 /* Charts */
 .charts{display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:16px}
 .charts3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:16px}
-.chart-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px}
+.chart-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
 .chart-title{font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;color:var(--green);margin-bottom:14px;display:flex;align-items:center;gap:6px}
 /* Sections */
-.sec{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:14px}
+.sec{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:14px;box-shadow:var(--shadow)}
+.trk{display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+.trk-chip{display:inline-flex;align-items:center;gap:5px;font-family:'Outfit',sans-serif;font-size:12.5px;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap;line-height:1.5}
+.trk-src{background:#00ff8715;color:var(--green);border:1px solid #00ff8730}
+.trk-med{background:#4f8ef715;color:var(--blue);border:1px solid #4f8ef730}
+.trk-camp{background:#c084fc15;color:var(--purple);border:1px solid #c084fc30}
+.trk-ref{background:#ffffff0a;color:var(--muted);border:1px solid var(--border)}
 .sh{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--card2);flex-wrap:wrap;gap:8px}
 .st{font-family:'Outfit',sans-serif;font-weight:700;font-size:14px;color:var(--green)}
 .sh input{padding:6px 10px;background:var(--dark);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Outfit',sans-serif;font-size:13px;outline:none;width:200px}
@@ -5950,7 +5986,7 @@ tr:hover td{background:#ffffff02}
     </div>
     <div class="ov">
       <table>
-        <thead><tr><th>Data</th><th>Cliente</th><th>Email</th><th>Produto</th><th>Valor</th><th>Status</th><th>Chave</th></tr></thead>
+        <thead><tr><th>Data</th><th>Cliente</th><th>Email</th><th>Produto</th><th>Valor</th><th>Status</th><th>Chave</th><th>Origem</th></tr></thead>
         <tbody id="payments-body">${paymentsRows}</tbody>
       </table>
     </div>
@@ -9794,9 +9830,10 @@ async function handleRequest(req, res) {
     }
     const paymentMethod  = payload.payment_method || payload.charge_type || payload.method || payload.payment_type || '-';
     const productNameLow = productNameRaw.toLowerCase();
+    const tracking = extractTracking(payload);
 
     if (!approved) {
-      if (txId) savePayment({ txId, status: status||'unknown', approved: false, clientName, clientEmail, clientPhone, productName: productNameRaw, amount, paymentMethod, keyCode: null, paidAt: new Date().toISOString(), rawStatus: status }).catch(()=>{});
+      if (txId) savePayment({ txId, status: status||'unknown', approved: false, clientName, clientEmail, clientPhone, productName: productNameRaw, amount, paymentMethod, tracking, keyCode: null, paidAt: new Date().toISOString(), rawStatus: status }).catch(()=>{});
       res.writeHead(200); res.end('ignored'); return;
     }
 
@@ -9828,7 +9865,7 @@ async function handleRequest(req, res) {
       // Fallback: scan note field
       if (!existingCode) {
         existingCode = Object.keys(keys).find(c => {
-          const emailMatch = (keys[c].note||'').match(/Email: ([^s|]+)/);
+          const emailMatch = (keys[c].note||'').match(/Email: (\S+)/);
           return emailMatch && emailMatch[1].toLowerCase() === clientEmail.toLowerCase() && keys[c].active;
         });
       }
@@ -9842,9 +9879,9 @@ async function handleRequest(req, res) {
       const base = (k.expiresAt && new Date(k.expiresAt) > now) ? new Date(k.expiresAt) : now;
       k.expiresAt = new Date(base.getTime() + durationMs).toISOString();
       k.active    = true;
-      k.note      = k.note + (txId ? ' | renovado_sale_tx:'+txId : ' | renovado');
+      k.note      = k.note + (txId ? '\nrenovado_sale_tx:'+txId : '\nrenovado');
       saveKey(existingCode);
-      await savePayment({ txId: txId||existingCode, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, keyCode:existingCode, maxUses, renewed:true, paidAt:now.toISOString(), rawStatus:status });
+      await savePayment({ txId: txId||existingCode, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, tracking, keyCode:existingCode, maxUses, renewed:true, paidAt:now.toISOString(), rawStatus:status });
       // Sync portal_users record with renewed key
       if (clientEmail) { getMongoDb().then(d=>d.collection('portal_users').updateOne({_id:clientEmail.toLowerCase()},{$set:{keyCode:existingCode}})).catch(e=>console.warn('[SALE] portal sync:',e.message)); }
       console.log('[SALE] Chave renovada:', existingCode, 'email:', clientEmail);
@@ -9854,9 +9891,9 @@ async function handleRequest(req, res) {
 
     const code    = generateCode();
     const expires = new Date(now.getTime() + durationMs);
-    keys[code] = { label:'Venda - '+clientName, active:true, phones:[], uses:0, maxUses, expiresAt:expires.toISOString(), expireDuration:durationMs, createdAt:now.toISOString(), lastUsed:null, lastIp:null, lastPhone:null, deviceId:null, wppVersion:null, warnCount:0, note:'Pedido automatico | Email: '+clientEmail+(txId?' | sale_tx:'+txId:'') };
+    keys[code] = { label:'Venda - '+clientName, active:true, phones:[], uses:0, maxUses, expiresAt:expires.toISOString(), expireDuration:durationMs, createdAt:now.toISOString(), lastUsed:null, lastIp:null, lastPhone:null, deviceId:null, wppVersion:null, warnCount:0, note:['Pedido automatico','Email: '+clientEmail,txId?'sale_tx:'+txId:null,tracking?'Origem: '+tracking.compact:null].filter(Boolean).join('\n') };
     saveKey(code);
-    await savePayment({ txId:txId||code, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, keyCode:code, maxUses, renewed:false, paidAt:now.toISOString(), rawStatus:status });
+    await savePayment({ txId:txId||code, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, tracking, keyCode:code, maxUses, renewed:false, paidAt:now.toISOString(), rawStatus:status });
     // Link to portal_users if registered with same email
     if (clientEmail) { getMongoDb().then(d=>d.collection('portal_users').updateOne({_id:clientEmail.toLowerCase()},{$set:{keyCode:code}})).catch(e=>console.warn('[SALE] portal link:',e.message)); }
     console.log('[SALE] Nova chave gerada:', code, 'email:', clientEmail);
@@ -9886,6 +9923,7 @@ async function handleRequest(req, res) {
     const txId = String(body.transactionId || body.transaction_id || '').trim().slice(0, 120);
     const amount = parseFloat(String(body.amount || 0).replace(',', '.')) || 0;
     const paymentMethod = String(body.paymentMethod || body.payment_method || 'partner').slice(0, 40);
+    const tracking = extractTracking(body);
 
     if (!clientEmail) { sendJson(res, { error: 'clientEmail_required' }, 400); return; }
 
@@ -9915,9 +9953,9 @@ async function handleRequest(req, res) {
       const base = (k.expiresAt && new Date(k.expiresAt) > now) ? new Date(k.expiresAt) : now;
       k.expiresAt = new Date(base.getTime() + durationMs).toISOString();
       k.active = true;
-      k.note = k.note + (txId ? ' | renovado_sale_tx:'+txId : ' | renovado');
+      k.note = k.note + (txId ? '\nrenovado_sale_tx:'+txId : '\nrenovado');
       saveKey(existingCode);
-      await savePayment({ txId: txId||existingCode, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, keyCode:existingCode, maxUses, renewed:true, paidAt:now.toISOString(), rawStatus:'approved' });
+      await savePayment({ txId: txId||existingCode, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, tracking, keyCode:existingCode, maxUses, renewed:true, paidAt:now.toISOString(), rawStatus:'approved' });
       console.log('[PARTNER] Chave renovada:', existingCode, 'email:', clientEmail);
       sendKeyDeliveryEmail(clientEmail, { code:existingCode, planLabel:planLabelForMaxUses(maxUses), maxUses, expiresAt:k.expiresAt, renewed:true, baseUrl:BASE_URL, extensionUrl:EXTENSION_URL }).catch(e=>console.warn('[MAILER] envio chave renovada:',e.message));
       sendJson(res, { ok: true, renewed: true, code: existingCode, expiresAt: k.expiresAt, maxUses });
@@ -9926,9 +9964,9 @@ async function handleRequest(req, res) {
 
     const code = generateCode();
     const expires = new Date(now.getTime() + durationMs);
-    keys[code] = { label:'Parceiro - '+clientName, active:true, phones:[], uses:0, maxUses, expiresAt:expires.toISOString(), expireDuration:durationMs, createdAt:now.toISOString(), lastUsed:null, lastIp:null, lastPhone:null, deviceId:null, wppVersion:null, warnCount:0, note:'Pedido via API de parceiro | Email: '+clientEmail+(txId?' | sale_tx:'+txId:'') };
+    keys[code] = { label:'Parceiro - '+clientName, active:true, phones:[], uses:0, maxUses, expiresAt:expires.toISOString(), expireDuration:durationMs, createdAt:now.toISOString(), lastUsed:null, lastIp:null, lastPhone:null, deviceId:null, wppVersion:null, warnCount:0, note:['Pedido via API de parceiro','Email: '+clientEmail,txId?'sale_tx:'+txId:null,tracking?'Origem: '+tracking.compact:null].filter(Boolean).join('\n') };
     saveKey(code);
-    await savePayment({ txId:txId||code, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, keyCode:code, maxUses, renewed:false, paidAt:now.toISOString(), rawStatus:'approved' });
+    await savePayment({ txId:txId||code, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, tracking, keyCode:code, maxUses, renewed:false, paidAt:now.toISOString(), rawStatus:'approved' });
     if (clientEmail) { getMongoDb().then(d=>d.collection('portal_users').updateOne({_id:clientEmail},{$set:{keyCode:code}},{upsert:false})).catch(e=>console.warn('[PARTNER] portal link:',e.message)); }
     console.log('[PARTNER] Nova chave gerada:', code, 'email:', clientEmail);
     sendKeyDeliveryEmail(clientEmail, { code, planLabel:planLabelForMaxUses(maxUses), maxUses, expiresAt:expires.toISOString(), renewed:false, baseUrl:BASE_URL, extensionUrl:EXTENSION_URL }).catch(e=>console.warn('[MAILER] envio chave nova:',e.message));
