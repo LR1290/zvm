@@ -9848,7 +9848,7 @@ async function handleRequest(req, res) {
       // Sync portal_users record with renewed key
       if (clientEmail) { getMongoDb().then(d=>d.collection('portal_users').updateOne({_id:clientEmail.toLowerCase()},{$set:{keyCode:existingCode}})).catch(e=>console.warn('[SALE] portal sync:',e.message)); }
       console.log('[SALE] Chave renovada:', existingCode, 'email:', clientEmail);
-      if (clientEmail) sendKeyDeliveryEmail(clientEmail, { code:existingCode, planLabel:planLabelForMaxUses(maxUses), maxUses, expiresAt:k.expiresAt, renewed:true, baseUrl:BASE_URL }).catch(e=>console.warn('[MAILER] envio chave renovada:',e.message));
+      if (clientEmail) sendKeyDeliveryEmail(clientEmail, { code:existingCode, planLabel:planLabelForMaxUses(maxUses), maxUses, expiresAt:k.expiresAt, renewed:true, baseUrl:BASE_URL, extensionUrl:EXTENSION_URL }).catch(e=>console.warn('[MAILER] envio chave renovada:',e.message));
       res.writeHead(200); res.end('ok'); return;
     }
 
@@ -9860,7 +9860,7 @@ async function handleRequest(req, res) {
     // Link to portal_users if registered with same email
     if (clientEmail) { getMongoDb().then(d=>d.collection('portal_users').updateOne({_id:clientEmail.toLowerCase()},{$set:{keyCode:code}})).catch(e=>console.warn('[SALE] portal link:',e.message)); }
     console.log('[SALE] Nova chave gerada:', code, 'email:', clientEmail);
-    if (clientEmail) sendKeyDeliveryEmail(clientEmail, { code, planLabel:planLabelForMaxUses(maxUses), maxUses, expiresAt:expires.toISOString(), renewed:false, baseUrl:BASE_URL }).catch(e=>console.warn('[MAILER] envio chave nova:',e.message));
+    if (clientEmail) sendKeyDeliveryEmail(clientEmail, { code, planLabel:planLabelForMaxUses(maxUses), maxUses, expiresAt:expires.toISOString(), renewed:false, baseUrl:BASE_URL, extensionUrl:EXTENSION_URL }).catch(e=>console.warn('[MAILER] envio chave nova:',e.message));
     res.writeHead(200); res.end('ok'); return;
   }
 
@@ -9919,7 +9919,7 @@ async function handleRequest(req, res) {
       saveKey(existingCode);
       await savePayment({ txId: txId||existingCode, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, keyCode:existingCode, maxUses, renewed:true, paidAt:now.toISOString(), rawStatus:'approved' });
       console.log('[PARTNER] Chave renovada:', existingCode, 'email:', clientEmail);
-      sendKeyDeliveryEmail(clientEmail, { code:existingCode, planLabel:planLabelForMaxUses(maxUses), maxUses, expiresAt:k.expiresAt, renewed:true, baseUrl:BASE_URL }).catch(e=>console.warn('[MAILER] envio chave renovada:',e.message));
+      sendKeyDeliveryEmail(clientEmail, { code:existingCode, planLabel:planLabelForMaxUses(maxUses), maxUses, expiresAt:k.expiresAt, renewed:true, baseUrl:BASE_URL, extensionUrl:EXTENSION_URL }).catch(e=>console.warn('[MAILER] envio chave renovada:',e.message));
       sendJson(res, { ok: true, renewed: true, code: existingCode, expiresAt: k.expiresAt, maxUses });
       return;
     }
@@ -9931,7 +9931,7 @@ async function handleRequest(req, res) {
     await savePayment({ txId:txId||code, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, keyCode:code, maxUses, renewed:false, paidAt:now.toISOString(), rawStatus:'approved' });
     if (clientEmail) { getMongoDb().then(d=>d.collection('portal_users').updateOne({_id:clientEmail},{$set:{keyCode:code}},{upsert:false})).catch(e=>console.warn('[PARTNER] portal link:',e.message)); }
     console.log('[PARTNER] Nova chave gerada:', code, 'email:', clientEmail);
-    sendKeyDeliveryEmail(clientEmail, { code, planLabel:planLabelForMaxUses(maxUses), maxUses, expiresAt:expires.toISOString(), renewed:false, baseUrl:BASE_URL }).catch(e=>console.warn('[MAILER] envio chave nova:',e.message));
+    sendKeyDeliveryEmail(clientEmail, { code, planLabel:planLabelForMaxUses(maxUses), maxUses, expiresAt:expires.toISOString(), renewed:false, baseUrl:BASE_URL, extensionUrl:EXTENSION_URL }).catch(e=>console.warn('[MAILER] envio chave nova:',e.message));
     sendJson(res, { ok: true, renewed: false, code, expiresAt: expires.toISOString(), maxUses });
     return;
   }
