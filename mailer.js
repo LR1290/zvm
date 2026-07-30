@@ -31,18 +31,79 @@ function _send(subject, to, html) {
   });
 }
 
-function _wrap(title, bodyHtml) {
-  return `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;background:#0d0d0d;color:#e0e0e0;border-radius:10px;padding:28px 24px">` +
-    `<h2 style="color:#00e676;margin:0 0 16px">⚡ ${title}</h2>${bodyHtml}` +
-    `<hr style="border:none;border-top:1px solid #1a1a1a;margin:20px 0">` +
-    `<p style="font-size:11px;color:#444;margin:0">ZVM · Automação Profissional para WhatsApp</p></div>`;
+// ── Design compartilhado (tabelas p/ compatibilidade com Gmail/Outlook) ──
+const BG      = '#08110d';
+const CARD    = '#0f1712';
+const CARD2   = '#141d17';
+const BORDER  = '#1e2b23';
+const PRIMARY = '#00e676';
+const TEXT    = '#eef2f0';
+const DIM     = '#8a9992';
+const MUTED   = '#4d5952';
+
+function _shell({ eyebrow, title, bodyHtml, footNote }) {
+  return `<!DOCTYPE html><html lang="pt-BR"><body style="margin:0;padding:0;background:${BG};">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${BG};padding:32px 16px;">
+    <tr><td align="center">
+      <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;">
+        <tr><td align="center" style="padding-bottom:22px;">
+          <span style="font-family:Arial,sans-serif;font-size:15px;font-weight:900;color:${PRIMARY};letter-spacing:1px;">⚡ ZVM</span>
+        </td></tr>
+        <tr><td style="background:${CARD};border:1px solid ${BORDER};border-radius:16px;padding:0;overflow:hidden;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="height:3px;background:linear-gradient(90deg,transparent,${PRIMARY},transparent);font-size:0;line-height:0;">&nbsp;</td></tr></table>
+          <div style="padding:32px 30px 30px;font-family:Arial,Helvetica,sans-serif;">
+            ${eyebrow ? `<div style="display:inline-block;font-size:11px;font-weight:800;color:${PRIMARY};letter-spacing:1.5px;text-transform:uppercase;background:rgba(0,230,118,.1);border:1px solid rgba(0,230,118,.25);border-radius:99px;padding:5px 12px;margin-bottom:16px;">${eyebrow}</div>` : ''}
+            <h1 style="margin:0 0 18px;font-size:22px;font-weight:900;color:${TEXT};letter-spacing:-.3px;line-height:1.3;">${title}</h1>
+            ${bodyHtml}
+          </div>
+        </td></tr>
+        <tr><td style="padding:24px 12px 0;text-align:center;font-family:Arial,sans-serif;">
+          <p style="margin:0 0 6px;font-size:12px;color:${MUTED};">${footNote || 'Dúvidas? Responda este e-mail ou chame no suporte via WhatsApp.'}</p>
+          <p style="margin:0;font-size:11px;color:${MUTED};">ZVM · Automação Profissional para WhatsApp</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+  </body></html>`;
+}
+
+function _button(href, label) {
+  return `<table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="border-radius:10px;background:${PRIMARY};">
+    <a href="${href}" style="display:inline-block;padding:14px 30px;font-family:Arial,sans-serif;font-size:14.5px;font-weight:800;color:#04150b;text-decoration:none;letter-spacing:.2px;">${label}</a>
+  </td></tr></table>`;
+}
+
+function _buttonOutline(href, label) {
+  return `<table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="border-radius:10px;border:1.5px solid ${BORDER};">
+    <a href="${href}" style="display:inline-block;padding:12.5px 26px;font-family:Arial,sans-serif;font-size:14px;font-weight:700;color:${TEXT};text-decoration:none;letter-spacing:.2px;">${label}</a>
+  </td></tr></table>`;
+}
+
+function _buttonRow(buttons) {
+  // buttons: array of pre-rendered <table> button snippets, laid side by side
+  return `<table role="presentation" cellpadding="0" cellspacing="0"><tr>${
+    buttons.map((b, i) => `<td style="${i > 0 ? 'padding-left:10px;' : ''}">${b}</td>`).join('')
+  }</tr></table>`;
+}
+
+function _featureRow(icon, title, desc) {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:12px;">
+    <tr>
+      <td width="34" valign="top" style="font-size:18px;line-height:1;padding-top:1px;">${icon}</td>
+      <td valign="top" style="font-family:Arial,sans-serif;">
+        <div style="font-size:13.5px;font-weight:800;color:${TEXT};margin-bottom:2px;">${title}</div>
+        <div style="font-size:12.5px;color:${DIM};line-height:1.6;">${desc}</div>
+      </td>
+    </tr>
+  </table>`;
 }
 
 async function sendPasswordResetEmail(to, resetUrl) {
-  const html = _wrap('ZVM — Redefinição de senha', `
-    <p style="margin:0 0 20px;color:#aaa;line-height:1.7">Você solicitou a redefinição da sua senha. Clique no botão abaixo para criar uma nova senha. O link é válido por <strong style="color:#fff">1 hora</strong>.</p>
-    <a href="${resetUrl}" style="display:inline-block;background:#00e676;color:#000;font-weight:700;padding:12px 28px;border-radius:6px;text-decoration:none;font-size:14px">Redefinir minha senha</a>
-    <p style="margin:20px 0 0;font-size:12px;color:#666">Se você não solicitou a redefinição, ignore este e-mail. Sua senha não será alterada.</p>`);
+  const body = `
+    <p style="margin:0 0 22px;font-size:14.5px;color:${DIM};line-height:1.7;">Você solicitou a redefinição da sua senha do portal ZVM. Clique no botão abaixo para criar uma nova senha — o link é válido por <strong style="color:${TEXT}">1 hora</strong>.</p>
+    ${_button(resetUrl, 'Redefinir minha senha')}
+    <p style="margin:22px 0 0;font-size:12.5px;color:${MUTED};line-height:1.6;">Se você não solicitou essa redefinição, ignore este e-mail — sua senha atual continua funcionando normalmente.</p>`;
+  const html = _shell({ eyebrow: 'Segurança da conta', title: 'Redefinir sua senha', bodyHtml: body });
   const res = await _send('Redefinição de senha — ZVM', to, html);
   return res.ok;
 }
@@ -50,24 +111,87 @@ async function sendPasswordResetEmail(to, resetUrl) {
 // Enviado quando uma compra é aprovada (webhook de venda ou API de parceiro)
 // e uma chave nova/renovada é gerada — entrega automática, sem depender
 // de um admin mandar a chave manualmente por WhatsApp.
-async function sendKeyDeliveryEmail(to, { code, planLabel, maxUses, expiresAt, renewed, baseUrl }) {
+async function sendKeyDeliveryEmail(to, { code, planLabel, maxUses, expiresAt, renewed, baseUrl, extensionUrl }) {
   const fmtDate = iso => iso ? new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '—';
   const verifyUrl = `${(baseUrl || '').replace(/\/$/, '')}/verificar`;
-  const title = renewed ? 'ZVM — Chave renovada' : 'ZVM — Sua chave de ativação';
+  const title = renewed ? 'Sua renovação foi aprovada' : 'Bem-vindo(a) ao ZVM';
   const intro = renewed
-    ? 'Sua renovação foi aprovada! Sua chave já está ativa com o novo período de acesso.'
-    : 'Sua compra foi aprovada! Aqui está sua chave de ativação — cole ela na extensão ZVM para começar.';
-  const html = _wrap(title, `
-    <p style="margin:0 0 20px;color:#aaa;line-height:1.7">${intro}</p>
-    <div style="background:#111;border:1px solid #232d28;border-radius:8px;padding:16px 18px;margin-bottom:20px">
-      <div style="font-size:11px;color:#8a9992;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Sua chave</div>
-      <div style="font-family:monospace;font-size:16px;color:#00e676;font-weight:700;word-break:break-all">${code}</div>
-    </div>
-    <p style="margin:0 0 6px;color:#ccc;font-size:14px"><strong>Plano:</strong> ${planLabel || '—'} · até ${maxUses || 1} número(s)</p>
-    <p style="margin:0 0 20px;color:#ccc;font-size:14px"><strong>Válida até:</strong> ${fmtDate(expiresAt)}</p>
-    <a href="${verifyUrl}" style="display:inline-block;background:#00e676;color:#000;font-weight:700;padding:12px 28px;border-radius:6px;text-decoration:none;font-size:14px">Verificar minha chave</a>
-    <p style="margin:20px 0 0;font-size:12px;color:#666">Cole essa chave na extensão ZVM no Chrome pra ativar. Dúvidas? Responda este e-mail ou chame no suporte via WhatsApp.</p>`);
-  const res = await _send(title, to, html);
+    ? 'Sua chave já está ativa com o novo período de acesso — nenhuma ação extra é necessária se ela já estiver configurada na extensão.'
+    : 'Sua compra foi aprovada! Sua chave de ativação já está pronta — em poucos minutos você já está disparando mensagens de voz, texto e mídia em massa no WhatsApp.';
+
+  const keyBox = `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 22px;">
+      <tr><td style="background:#04150b;border:1.5px dashed rgba(0,230,118,.45);border-radius:12px;padding:18px 20px;text-align:center;">
+        <div style="font-family:Arial,sans-serif;font-size:10.5px;color:${DIM};text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Sua chave de ativação</div>
+        <div style="font-family:'Courier New',monospace;font-size:19px;font-weight:700;color:${PRIMARY};letter-spacing:.5px;word-break:break-all;">${code}</div>
+        <div style="font-family:Arial,sans-serif;font-size:11px;color:${MUTED};margin-top:8px;">Toque e segure pra selecionar e copiar</div>
+      </td></tr>
+    </table>`;
+
+  const stats = `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 22px;">
+      <tr>
+        <td width="50%" style="background:${CARD2};border:1px solid ${BORDER};border-radius:10px 0 0 10px;border-right:none;padding:14px 16px;">
+          <div style="font-family:Arial,sans-serif;font-size:10.5px;color:${DIM};text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Plano</div>
+          <div style="font-family:Arial,sans-serif;font-size:15px;font-weight:800;color:${TEXT};">${planLabel || '—'} <span style="font-weight:400;color:${DIM};font-size:12.5px;">· ${maxUses || 1} número(s)</span></div>
+        </td>
+        <td width="50%" style="background:${CARD2};border:1px solid ${BORDER};border-radius:0 10px 10px 0;padding:14px 16px;">
+          <div style="font-family:Arial,sans-serif;font-size:10.5px;color:${DIM};text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Válida até</div>
+          <div style="font-family:Arial,sans-serif;font-size:15px;font-weight:800;color:${TEXT};">${fmtDate(expiresAt)}</div>
+        </td>
+      </tr>
+    </table>`;
+
+  const tutorialUrl = 'https://www.youtube.com/watch?v=DZ29f5U6OF8';
+
+  // Primeira compra: baixar extensão é a ação principal, com o tutorial em vídeo ao lado.
+  // A consulta da chave (/verificar) já tem sua própria seção mais abaixo — não repete o botão aqui.
+  const ctaRow = renewed
+    ? _buttonRow([_button(verifyUrl, 'Ver detalhes da chave')])
+    : (extensionUrl
+        ? _buttonRow([_button(extensionUrl, '📥 Baixar a extensão'), _buttonOutline(tutorialUrl, '▶ Ver tutorial')])
+        : _buttonRow([_button(tutorialUrl, '▶ Ver tutorial de instalação')]));
+
+  const steps = renewed ? '' : `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0 0;">
+      <tr><td style="border-top:1px solid ${BORDER};padding-top:22px;">
+        <div style="font-family:Arial,sans-serif;font-size:11px;font-weight:800;color:${DIM};text-transform:uppercase;letter-spacing:.06em;margin-bottom:16px;">Como ativar em 3 passos</div>
+      </td></tr>
+      <tr><td style="font-family:Arial,sans-serif;font-size:13.5px;color:${DIM};line-height:2;">
+        <strong style="color:${TEXT}">1.</strong> Baixe e instale a extensão ZVM no Chrome (botão acima)<br>
+        <strong style="color:${TEXT}">2.</strong> Abra o WhatsApp Web, cole a chave acima no campo de ativação<br>
+        <strong style="color:${TEXT}">3.</strong> Conecte seu WhatsApp e comece a disparar
+      </td></tr>
+    </table>`;
+
+  const portalSection = `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0 0;">
+      <tr><td style="border-top:1px solid ${BORDER};padding-top:22px;">
+        <div style="font-family:Arial,sans-serif;font-size:11px;font-weight:800;color:${DIM};text-transform:uppercase;letter-spacing:.06em;margin-bottom:16px;">Gerencie sua chave a qualquer momento</div>
+      </td></tr>
+      <tr><td>
+        ${_featureRow('📅', 'Validade e status', 'Consulte quando sua chave vence e se ela está ativa, sem precisar de login.')}
+        ${_featureRow('📱', 'Dispositivos conectados', 'Veja quais números estão usando sua chave e remova algum pra liberar espaço.')}
+        ${_featureRow('🔁', 'Renovação', 'Renove direto pelo portal quando o período estiver acabando.')}
+      </td></tr>
+      <tr><td style="padding-top:6px;">${_buttonOutline(verifyUrl, 'Acessar /verificar →')}</td></tr>
+    </table>`;
+
+  const body = `
+    <p style="margin:0 0 22px;font-size:14.5px;color:${DIM};line-height:1.7;">${intro}</p>
+    ${keyBox}
+    ${stats}
+    ${ctaRow}
+    ${steps}
+    ${portalSection}`;
+
+  const html = _shell({
+    eyebrow: renewed ? 'Renovação confirmada' : 'Pagamento aprovado',
+    title,
+    bodyHtml: body,
+    footNote: 'Dúvidas sobre a ativação? Responda este e-mail ou chame no suporte via WhatsApp.'
+  });
+  const res = await _send(renewed ? 'ZVM — Chave renovada' : 'ZVM — Sua chave de ativação', to, html);
   return res.ok;
 }
 
