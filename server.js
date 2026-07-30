@@ -21,7 +21,8 @@ const MODS = [
   { user: process.env.MOD6_USER || '', pass: process.env.MOD6_PASS || '', totp: process.env.MOD6_TOTP || '', name: 'Arjuna'      },
 ].filter(m => m.user && m.pass);
 
-const PAYT_SECRET  = process.env.PAYT_SECRET  || '';
+const SALE_WEBHOOK_SECRET = process.env.SALE_WEBHOOK_SECRET || '';
+const PARTNER_API_TOKEN   = process.env.PARTNER_API_TOKEN   || '';
 const ANALYTICS_PASS = process.env.ANALYTICS_PASS || '';
 const MONGODB_URI  = (process.env.MONGODB_URI || '').replace(/^["']|["']$/g, '');
 const APP_SECRET   = process.env.APP_SECRET   || '';
@@ -1557,7 +1558,7 @@ async function getPaymentStats() {
 }
 
 const MAX_BODY_SIZE     = 64  * 1024; // 64 KB — API interna (keys/usage)
-const WEBHOOK_BODY_SIZE = 256 * 1024; // 256 KB — webhooks externos (PayT)
+const WEBHOOK_BODY_SIZE = 256 * 1024; // 256 KB — webhooks externos de venda
 
 // Coleta raw string com hard-limit; retorna null se exceder (req.destroy() encerra conexão)
 function readRawBody(req, maxBytes = MAX_BODY_SIZE) {
@@ -1644,7 +1645,9 @@ const _SEC_HEADERS = {
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
-  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https://api.qrserver.com https://pps.whatsapp.net; connect-src 'self'; frame-ancestors 'none'",
+  // frame-src/media-src precisam citar o YouTube: sem eles o iframe do tutorial cai
+  // no default-src 'self' e o navegador bloqueia com ERR_BLOCKED_BY_CSP.
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https://api.qrserver.com https://pps.whatsapp.net https://i.ytimg.com; connect-src 'self'; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; media-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'",
   'Server': 'ZVM',
 };
 
@@ -4560,7 +4563,7 @@ function renderLandingPage(portalUser = null) {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Automatize Mensagens de Voz no WhatsApp</title>
-<meta name="description" content="ZVM: extensão Chrome que automatiza áudios, textos e mídias no WhatsApp em segundos. Anti-ban integrado, multi-dispositivo e ativação imediata. A partir de R$24,99/mês.">
+<meta name="description" content="ZVM: extensão Chrome que automatiza áudios, textos e mídias no WhatsApp em segundos. Anti-ban integrado, multi-dispositivo e ativação imediata. A partir de R$39,90/mês.">
 <link rel="icon" type="image/svg+xml" href="${_FAV}">
 ${_GFONTS}
 <style>
@@ -4695,7 +4698,7 @@ ${_sharedCss()}
   <p class="hero-sub">O ZVM dispara mensagens de voz, textos e mídias em massa no WhatsApp — com anti-ban integrado e ativação em 5 minutos. Sua lista esfriando é dinheiro evaporando.</p>
   <div class="hero-ctas">
     <a href="https://wa.me/5521996771552?text=LR!%20Quero%20come%C3%A7ar%20com%20o%20ZVM%20agora" target="_blank" rel="noopener" class="btn-primary">🚀 Quero disparar hoje</a>
-    <a href="/planos" class="btn-ghost">Ver planos a partir de R$24,99 →</a>
+    <a href="/planos" class="btn-ghost">Ver planos a partir de R$39,90 →</a>
   </div>
   <div class="trust-pills">
     <span class="trust-pill"><span class="trust-pill-icon">✓</span> Chave entregue na hora</span>
@@ -4726,7 +4729,7 @@ ${_sharedCss()}
       <span class="step-icon">🛒</span>
       <div class="step-n">Passo 01</div>
       <div class="step-title">Escolha o plano e receba a chave</div>
-      <p class="step-desc">A partir de R$24,99/mês. Pagou, recebeu — sua chave de ativação chega na hora pelo WhatsApp. Zero burocracia.</p>
+      <p class="step-desc">A partir de R$39,90/mês. Pagou, recebeu — sua chave de ativação chega na hora pelo WhatsApp. Zero burocracia.</p>
     </div>
     <div class="step">
       <span class="step-icon">⚙️</span>
@@ -4779,9 +4782,9 @@ ${_sharedCss()}
       <div class="pc-name">Solo</div>
       <div class="pc-sub">Para uso pessoal</div>
       <div class="pc-devices">1 número de WhatsApp</div>
-      <div class="pc-old"></div>
-      <div class="pc-price"><sup>R$</sup>24<sup style="font-size:22px">,99</sup><sub>/mês</sub></div>
-      <div class="pc-per">R$24,99 por número</div>
+      <div class="pc-old">R$59,90/mês</div>
+      <div class="pc-price"><sup>R$</sup>39<sup style="font-size:22px">,90</sup><sub>/mês</sub></div>
+      <div class="pc-per">R$39,90 por número</div>
       <div class="pc-div"></div>
       <ul class="pc-feats">
         <li>Até 1 número simultâneo</li>
@@ -4798,9 +4801,9 @@ ${_sharedCss()}
       <div class="pc-name">Padrão</div>
       <div class="pc-sub">O mais escolhido</div>
       <div class="pc-devices">3 números de WhatsApp</div>
-      <div class="pc-old">R$44,99/mês</div>
-      <div class="pc-price"><sup>R$</sup>29<sup style="font-size:22px">,99</sup><sub>/mês</sub></div>
-      <div class="pc-per">R$10,00 por número</div>
+      <div class="pc-old">R$89,90/mês</div>
+      <div class="pc-price"><sup>R$</sup>59<sup style="font-size:22px">,90</sup><sub>/mês</sub></div>
+      <div class="pc-per">R$19,97 por número</div>
       <div class="pc-div"></div>
       <ul class="pc-feats">
         <li>Até 3 números simultâneos</li>
@@ -4816,9 +4819,9 @@ ${_sharedCss()}
       <div class="pc-name">Pro</div>
       <div class="pc-sub">Para equipes</div>
       <div class="pc-devices">5 números de WhatsApp</div>
-      <div class="pc-old">R$79,99/mês</div>
-      <div class="pc-price"><sup>R$</sup>39<sup style="font-size:22px">,99</sup><sub>/mês</sub></div>
-      <div class="pc-per">R$8,00 por número</div>
+      <div class="pc-old">R$149,90/mês</div>
+      <div class="pc-price"><sup>R$</sup>94<sup style="font-size:22px">,90</sup><sub>/mês</sub></div>
+      <div class="pc-per">R$18,98 por número</div>
       <div class="pc-div"></div>
       <ul class="pc-feats">
         <li>Até 5 números simultâneos</li>
@@ -4834,9 +4837,9 @@ ${_sharedCss()}
       <div class="pc-name">Empresarial</div>
       <div class="pc-sub">Escala total</div>
       <div class="pc-devices">10 números de WhatsApp</div>
-      <div class="pc-old">R$149,99/mês</div>
-      <div class="pc-price"><sup>R$</sup>59<sup style="font-size:22px">,99</sup><sub>/mês</sub></div>
-      <div class="pc-per">R$6,00 por número</div>
+      <div class="pc-old">R$269,90/mês</div>
+      <div class="pc-price"><sup>R$</sup>169<sup style="font-size:22px">,90</sup><sub>/mês</sub></div>
+      <div class="pc-per">R$16,99 por número</div>
       <div class="pc-div"></div>
       <ul class="pc-feats">
         <li>Até 10 números simultâneos</li>
@@ -4913,13 +4916,21 @@ ${_sharedCss()}
         <div class="about-role">Engenharia reversa · Mods · Automação</div>
       </div>
     </div>
-    <p class="about-bio">Sou o LR1290 — programador por obsessão, não por profissão. Minha escola foi a engenharia reversa: destravei 60FPS em jogo de PS3 mexendo direto no executável, criei um mod menu com injeção nativa pro GTA V e ajudo a testar jogos antes de chegarem ao mercado. Foi essa bagagem que virou o ZVM: uma ferramenta construída por quem entende o WhatsApp por dentro. Quando algo muda na plataforma, eu já adaptei antes de você notar — porque quem vive de código difícil não deixa ferramenta cair.</p>
+    <p class="about-bio">Sou o LR1290, engenheiro focado em engenharia reversa e automação. É essa bagagem — anos destrinchando executáveis e binários que ninguém documentou — que sustenta o ZVM: quando o WhatsApp muda algo por baixo dos panos, eu já sei mexer lá dentro. Trabalho mais recente: 14 anos depois do lançamento, destravei um painel de debug escondido no código do SSX 2012 (PS3) que libera as fases ocultas do jogo.</p>
     <div class="about-projects">
-      <a href="https://trickymadness.com" target="_blank" rel="noopener" class="about-proj">
-        <span class="about-proj-icon">🎮</span>
+      <a href="https://www.reddit.com/r/SSX/comments/1uxuatc/enough_memes_major_ssx_2012_modding_advancements/" target="_blank" rel="noopener" class="about-proj">
+        <span class="about-proj-icon">🔓</span>
         <div>
-          <div class="about-proj-name">Beta Tester — Tricky Madness</div>
-          <div class="about-proj-desc">Teste e feedback de gameplay no desenvolvimento do jogo</div>
+          <div class="about-proj-name">SSX 2012 — Painel de Debug Oculto</div>
+          <div class="about-proj-desc">14 anos depois, destravei o menu de debug escondido no código e liberei as fases ocultas — post completo no r/SSX</div>
+        </div>
+        <span class="about-proj-arrow">→</span>
+      </a>
+      <a href="https://www.youtube.com/watch?v=uzizjVPHsao" target="_blank" rel="noopener" class="about-proj">
+        <span class="about-proj-icon">🎬</span>
+        <div>
+          <div class="about-proj-name">SSX 2012 — Vídeo da Descoberta</div>
+          <div class="about-proj-desc">Gravação mostrando o painel de debug e as fases ocultas sendo acessadas</div>
         </div>
         <span class="about-proj-arrow">→</span>
       </a>
@@ -5457,9 +5468,9 @@ ${_sharedNav('/planos', portalUser)}
       <div class="price-tier">Solo</div>
       <div class="price-sub">Para uso pessoal</div>
       <div class="price-devices">1 número de WhatsApp</div>
-      <div class="price-old"></div>
-      <div class="price-val"><sup>R$</sup>24<sup style="font-size:20px">,99</sup><sub>/mês</sub></div>
-      <div class="price-per">R$24,99 por número</div>
+      <div class="price-old">R$59,90/mês</div>
+      <div class="price-val"><sup>R$</sup>39<sup style="font-size:20px">,90</sup><sub>/mês</sub></div>
+      <div class="price-per">R$39,90 por número</div>
       <div class="price-divider"></div>
       <ul class="price-feats">
         <li><span class="chk">✓</span>Até 1 número simultâneo</li>
@@ -5476,9 +5487,9 @@ ${_sharedNav('/planos', portalUser)}
       <div class="price-tier">Padrão</div>
       <div class="price-sub">O mais escolhido</div>
       <div class="price-devices">3 números de WhatsApp</div>
-      <div class="price-old">R$44,99/mês</div>
-      <div class="price-val"><sup>R$</sup>29<sup style="font-size:20px">,99</sup><sub>/mês</sub></div>
-      <div class="price-per">R$10,00 por número</div>
+      <div class="price-old">R$89,90/mês</div>
+      <div class="price-val"><sup>R$</sup>59<sup style="font-size:20px">,90</sup><sub>/mês</sub></div>
+      <div class="price-per">R$19,97 por número</div>
       <div class="price-divider"></div>
       <ul class="price-feats">
         <li><span class="chk">✓</span>Até 3 números simultâneos</li>
@@ -5494,9 +5505,9 @@ ${_sharedNav('/planos', portalUser)}
       <div class="price-tier">Pro</div>
       <div class="price-sub">Para equipes</div>
       <div class="price-devices">5 números de WhatsApp</div>
-      <div class="price-old">R$79,99/mês</div>
-      <div class="price-val"><sup>R$</sup>39<sup style="font-size:20px">,99</sup><sub>/mês</sub></div>
-      <div class="price-per">R$8,00 por número</div>
+      <div class="price-old">R$149,90/mês</div>
+      <div class="price-val"><sup>R$</sup>94<sup style="font-size:20px">,90</sup><sub>/mês</sub></div>
+      <div class="price-per">R$18,98 por número</div>
       <div class="price-divider"></div>
       <ul class="price-feats">
         <li><span class="chk">✓</span>Até 5 números simultâneos</li>
@@ -5512,9 +5523,9 @@ ${_sharedNav('/planos', portalUser)}
       <div class="price-tier">Empresarial</div>
       <div class="price-sub">Escala total</div>
       <div class="price-devices">10 números de WhatsApp</div>
-      <div class="price-old">R$149,99/mês</div>
-      <div class="price-val"><sup>R$</sup>59<sup style="font-size:20px">,99</sup><sub>/mês</sub></div>
-      <div class="price-per">R$6,00 por número</div>
+      <div class="price-old">R$269,90/mês</div>
+      <div class="price-val"><sup>R$</sup>169<sup style="font-size:20px">,90</sup><sub>/mês</sub></div>
+      <div class="price-per">R$16,99 por número</div>
       <div class="price-divider"></div>
       <ul class="price-feats">
         <li><span class="chk">✓</span>Até 10 números simultâneos</li>
@@ -5607,7 +5618,7 @@ ${_sharedNav('/faq', portalUser)}
   </div>
   <div class="faq-cat">
     <div class="faq-cat-title">Planos e Pagamentos</div>
-    <details class="faq-item"><summary>Quais planos estão disponíveis?</summary><p>Temos 4 planos: <strong>Solo</strong> (R$24,99/mês · 1 número), <strong>Padrão</strong> (R$29,99/mês · 3 números), <strong>Pro</strong> (R$39,99/mês · 5 números) e <strong>Empresarial</strong> (R$59,99/mês · 10 números). Todos incluem acesso completo a todos os recursos por 30 dias. <a href="/planos" style="color:var(--g);font-weight:700">Ver detalhes completos →</a></p></details>
+    <details class="faq-item"><summary>Quais planos estão disponíveis?</summary><p>Temos 4 planos: <strong>Solo</strong> (R$39,90/mês · 1 número), <strong>Padrão</strong> (R$59,90/mês · 3 números), <strong>Pro</strong> (R$94,90/mês · 5 números) e <strong>Empresarial</strong> (R$169,90/mês · 10 números). Todos incluem acesso completo a todos os recursos por 30 dias. <a href="/planos" style="color:var(--g);font-weight:700">Ver detalhes completos →</a></p></details>
     <details class="faq-item"><summary>Quais formas de pagamento são aceitas?</summary><p>Aceitamos PIX e transferência bancária. Após o pagamento confirmado, a chave é ativada em até alguns minutos via WhatsApp.</p></details>
     <details class="faq-item"><summary>Posso cancelar meu plano?</summary><p>Sim. Não há fidelidade ou contrato mínimo. O cancelamento é feito via suporte e a chave é desativada ao fim do período vigente — você não perde o acesso pelo qual já pagou.</p></details>
     <details class="faq-item"><summary>A renovação é automática?</summary><p>Não. A renovação é manual e pode ser feita pelo portal do cliente ou via suporte. Você receberá um aviso próximo ao vencimento. O tempo restante da chave anterior é somado ao novo período em renovações antecipadas.</p></details>
@@ -5778,7 +5789,7 @@ async function renderAnalyticsDashboard() {
   <td><span class="badge ${p.approved?'bon':'boff'}">${p.approved?'APROVADO':'REJEITADO'}</span></td>
   <td style="color:#4f8ef7;font-size:12px">${escH(p.keyCode||'-')}</td>
 </tr>`;
-  }).join('') : '<tr><td colspan="7" class="empty">Nenhum pagamento registrado ainda.<br>Configure o webhook da Payt apontando para /payt/webhook</td></tr>';
+  }).join('') : '<tr><td colspan="7" class="empty">Nenhum pagamento registrado ainda.<br>Configure o webhook de vendas apontando para /sale/webhook</td></tr>';
 
   const topClientsRows = (stats?.topClients||[]).map(c =>
     `<tr><td>${escH(c._id)}</td><td style="text-align:center;color:#00ff87;font-weight:700">${c.count}</td><td style="text-align:right;color:#00ff87">${fmtBRL(c.total)}</td></tr>`
@@ -6053,11 +6064,18 @@ async function runInternalSecurityAudit() {
       : 'Não configurado — módulo 2FA desativado (opcional)',
   });
   results.push({
-    name:   'PAYT_SECRET (webhook Hotmart) — opcional',
+    name:   'SALE_WEBHOOK_SECRET (webhook de vendas) — opcional',
     pass:   true,
-    detail: PAYT_SECRET && PAYT_SECRET.length >= 8
-      ? `${PAYT_SECRET.length} chars · ${_mask(PAYT_SECRET, 4)}`
-      : 'Não configurado — webhook desativado (opcional)',
+    detail: SALE_WEBHOOK_SECRET && SALE_WEBHOOK_SECRET.length >= 8
+      ? `${SALE_WEBHOOK_SECRET.length} chars · ${_mask(SALE_WEBHOOK_SECRET, 4)}`
+      : 'Não configurado — webhook aceita qualquer origem (opcional, mas recomendado)',
+  });
+  results.push({
+    name:   'PARTNER_API_TOKEN (API de parceiro) — opcional',
+    pass:   true,
+    detail: PARTNER_API_TOKEN && PARTNER_API_TOKEN.length >= 8
+      ? `${PARTNER_API_TOKEN.length} chars · ${_mask(PARTNER_API_TOKEN, 4)}`
+      : 'Não configurado — endpoint /api/partner/* desativado',
   });
   results.push({
     name:   'ANALYTICS_PASS — opcional',
@@ -7250,7 +7268,7 @@ const WSM = (() => {
     return html
       // título e meta
       .replace('ZVM — Automatize Mensagens de Voz no WhatsApp', 'WSM — CRM, Automações e Ferramentas de Venda no WhatsApp')
-      .replace('ZVM: extensão Chrome que automatiza áudios, textos e mídias no WhatsApp em segundos. Anti-ban integrado, multi-dispositivo e ativação imediata. A partir de R$24,99/mês.', 'WSM: CRM completo dentro do WhatsApp Web. Kanban de vendas, respostas rápidas, follow-up automático, agendamentos, fluxos de atendimento e IA. Ativação imediata.')
+      .replace('ZVM: extensão Chrome que automatiza áudios, textos e mídias no WhatsApp em segundos. Anti-ban integrado, multi-dispositivo e ativação imediata. A partir de R$39,90/mês.', 'WSM: CRM completo dentro do WhatsApp Web. Kanban de vendas, respostas rápidas, follow-up automático, agendamentos, fluxos de atendimento e IA. Ativação imediata.')
       // eyebrow
       .replace('Extensão Chrome · 100% das avaliações com 5 estrelas', 'Extensão Chrome · CRM completo dentro do WhatsApp')
       // hero H1
@@ -9731,7 +9749,7 @@ async function handleRequest(req, res) {
     sendJson(res, stats || {}); return;
   }
 
-  if (p === '/payt/webhook' && req.method === 'POST') {
+  if ((p === '/sale/webhook' || p === '/payt/webhook') && req.method === 'POST') {
     const rawBody = await readRawBody(req, WEBHOOK_BODY_SIZE);
     if (rawBody === null) { res.writeHead(413); res.end('Payload Too Large'); return; }
 
@@ -9739,14 +9757,14 @@ async function handleRequest(req, res) {
     try { payload = JSON.parse(rawBody); }
     catch { try { payload = Object.fromEntries(new URLSearchParams(rawBody).entries()); } catch { res.writeHead(400); res.end('Bad Request'); return; } }
 
-    if (PAYT_SECRET) {
-      const headerToken = req.headers['x-payt-token'] || req.headers['x-webhook-token'] || '';
+    if (SALE_WEBHOOK_SECRET) {
+      const headerToken = req.headers['x-webhook-token'] || req.headers['x-payt-token'] || '';
       const bodyKey     = payload.integration_key || '';
-      const validHeader = !!headerToken && headerToken === PAYT_SECRET;
-      const validBody   = !!bodyKey     && bodyKey   === PAYT_SECRET;
+      const validHeader = !!headerToken && headerToken === SALE_WEBHOOK_SECRET;
+      const validBody   = !!bodyKey     && bodyKey   === SALE_WEBHOOK_SECRET;
       if (!validHeader && !validBody) {
-        console.warn('[PAYT] Token/integration_key inválido — ignorado');
-        addSecurityAlert('WEBHOOK_INVALID_TOKEN', `x-payt-token inválido recebido — status="${payload.status||'?'}" tx="${String(payload.transaction_id||'').slice(0,30)}"`, ip);
+        console.warn('[SALE] Token/integration_key inválido — ignorado');
+        addSecurityAlert('WEBHOOK_INVALID_TOKEN', `x-webhook-token inválido recebido — status="${payload.status||'?'}" tx="${String(payload.transaction_id||'').slice(0,30)}"`, ip);
         res.writeHead(401); res.end('Unauthorized'); return;
       }
     }
@@ -9789,20 +9807,21 @@ async function handleRequest(req, res) {
     }
 
     if (txId) {
-      if (Object.values(keys).some(k => k.note && (k.note.includes('payt_tx:'+txId) || k.note.includes('renovado_payt_tx:'+txId)))) {
+      if (Object.values(keys).some(k => k.note && (k.note.includes('payt_tx:'+txId) || k.note.includes('renovado_payt_tx:'+txId) || k.note.includes('sale_tx:'+txId) || k.note.includes('renovado_sale_tx:'+txId)))) {
         res.writeHead(200); res.end('ok'); return;
       }
       try {
         const _db = await getMongoDb();
         const _ex = await _db.collection('payments').findOne({ txId, approved: true });
         if (_ex) { res.writeHead(200); res.end('ok'); return; }
-      } catch(e) { console.warn('[PAYT] Erro idempotencia:', e.message); }
+      } catch(e) { console.warn('[SALE] Erro idempotencia:', e.message); }
     }
 
     let maxUses = 3;
-    if      (productNameLow.match(/\b1\b|individual|solo|basico|starter/)) maxUses = 1;
-    else if (productNameLow.match(/\b5\b|multi|team|equipe|avancado/))     maxUses = 5;
-    else if (productNameLow.match(/\b3\b|trio|standard|padrao/))           maxUses = 3;
+    if      (productNameLow.match(/\b1\b|individual|solo|basico|starter/))        maxUses = 1;
+    else if (productNameLow.match(/\b10\b|empresarial|enterprise|escala/))        maxUses = 10;
+    else if (productNameLow.match(/\b5\b|multi|team|equipe|avancado|pro\b/))      maxUses = 5;
+    else if (productNameLow.match(/\b3\b|trio|standard|padrao/))                  maxUses = 3;
 
     let existingCode = null;
     if (clientEmail) {
@@ -9811,7 +9830,7 @@ async function handleRequest(req, res) {
         const _pdb = await getMongoDb();
         const _pu = await _pdb.collection('portal_users').findOne({ _id: clientEmail.toLowerCase() });
         if (_pu && _pu.keyCode && keys[_pu.keyCode]) existingCode = _pu.keyCode;
-      } catch(e) { console.warn('[PAYT] portal_users lookup:', e.message); }
+      } catch(e) { console.warn('[SALE] portal_users lookup:', e.message); }
       // Fallback: scan note field
       if (!existingCode) {
         existingCode = Object.keys(keys).find(c => {
@@ -9829,24 +9848,117 @@ async function handleRequest(req, res) {
       const base = (k.expiresAt && new Date(k.expiresAt) > now) ? new Date(k.expiresAt) : now;
       k.expiresAt = new Date(base.getTime() + durationMs).toISOString();
       k.active    = true;
-      k.note      = k.note + (txId ? ' | renovado_payt_tx:'+txId : ' | renovado');
+      k.note      = k.note + (txId ? ' | renovado_sale_tx:'+txId : ' | renovado');
       saveKey(existingCode);
       await savePayment({ txId: txId||existingCode, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, keyCode:existingCode, maxUses, renewed:true, paidAt:now.toISOString(), rawStatus:status });
       // Sync portal_users record with renewed key
-      if (clientEmail) { getMongoDb().then(d=>d.collection('portal_users').updateOne({_id:clientEmail.toLowerCase()},{$set:{keyCode:existingCode}})).catch(e=>console.warn('[PAYT] portal sync:',e.message)); }
-      console.log('[PAYT] Chave renovada:', existingCode, 'email:', clientEmail);
+      if (clientEmail) { getMongoDb().then(d=>d.collection('portal_users').updateOne({_id:clientEmail.toLowerCase()},{$set:{keyCode:existingCode}})).catch(e=>console.warn('[SALE] portal sync:',e.message)); }
+      console.log('[SALE] Chave renovada:', existingCode, 'email:', clientEmail);
       res.writeHead(200); res.end('ok'); return;
     }
 
     const code    = generateCode();
     const expires = new Date(now.getTime() + durationMs);
-    keys[code] = { label:'PAYT - '+clientName, active:true, phones:[], uses:0, maxUses, expiresAt:expires.toISOString(), expireDuration:durationMs, createdAt:now.toISOString(), lastUsed:null, lastIp:null, lastPhone:null, deviceId:null, wppVersion:null, warnCount:0, note:'Pedido automatico Payt | Email: '+clientEmail+(txId?' | payt_tx:'+txId:'') };
+    keys[code] = { label:'Venda - '+clientName, active:true, phones:[], uses:0, maxUses, expiresAt:expires.toISOString(), expireDuration:durationMs, createdAt:now.toISOString(), lastUsed:null, lastIp:null, lastPhone:null, deviceId:null, wppVersion:null, warnCount:0, note:'Pedido automatico | Email: '+clientEmail+(txId?' | sale_tx:'+txId:'') };
     saveKey(code);
     await savePayment({ txId:txId||code, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, keyCode:code, maxUses, renewed:false, paidAt:now.toISOString(), rawStatus:status });
     // Link to portal_users if registered with same email
-    if (clientEmail) { getMongoDb().then(d=>d.collection('portal_users').updateOne({_id:clientEmail.toLowerCase()},{$set:{keyCode:code}})).catch(e=>console.warn('[PAYT] portal link:',e.message)); }
-    console.log('[PAYT] Nova chave gerada:', code, 'email:', clientEmail);
+    if (clientEmail) { getMongoDb().then(d=>d.collection('portal_users').updateOne({_id:clientEmail.toLowerCase()},{$set:{keyCode:code}})).catch(e=>console.warn('[SALE] portal link:',e.message)); }
+    console.log('[SALE] Nova chave gerada:', code, 'email:', clientEmail);
     res.writeHead(200); res.end('ok'); return;
+  }
+
+  // ─── API de parceiro (Bearer PARTNER_API_TOKEN) ───
+  // Permite que um sistema externo autorizado gere/renove chaves e consulte status,
+  // sem depender de um gateway de pagamento específico.
+  if (p === '/api/partner/keys' && req.method === 'POST') {
+    if (!PARTNER_API_TOKEN) { sendJson(res, { error: 'partner_api_disabled' }, 503); return; }
+    const authHeader = req.headers['authorization'] || '';
+    const token = (authHeader.match(/^Bearer\s+(.+)$/i) || [])[1] || '';
+    if (token !== PARTNER_API_TOKEN) {
+      addSecurityAlert('WEBHOOK_INVALID_TOKEN', 'Bearer inválido em /api/partner/keys', ip);
+      sendJson(res, { error: 'unauthorized' }, 401); return;
+    }
+    if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+
+    const body = await parseBody(req);
+    const clientName    = String(body.clientName || body.customer_name || 'Cliente').slice(0, 120);
+    const clientEmail   = String(body.clientEmail || body.customer_email || '').trim().toLowerCase().slice(0, 160);
+    const clientPhone   = String(body.clientPhone || body.customer_phone || '').slice(0, 40);
+    const productNameRaw = String(body.productName || body.plan || '').slice(0, 120);
+    const productNameLow = productNameRaw.toLowerCase();
+    const txId = String(body.transactionId || body.transaction_id || '').trim().slice(0, 120);
+    const amount = parseFloat(String(body.amount || 0).replace(',', '.')) || 0;
+    const paymentMethod = String(body.paymentMethod || body.payment_method || 'partner').slice(0, 40);
+
+    if (!clientEmail) { sendJson(res, { error: 'clientEmail_required' }, 400); return; }
+
+    let maxUses = 3;
+    if      (productNameLow.match(/\b1\b|individual|solo|basico|starter/))   maxUses = 1;
+    else if (productNameLow.match(/\b10\b|empresarial|enterprise|escala/))   maxUses = 10;
+    else if (productNameLow.match(/\b5\b|multi|team|equipe|avancado|pro\b/)) maxUses = 5;
+    else if (productNameLow.match(/\b3\b|trio|standard|padrao/))             maxUses = 3;
+    if (Number.isInteger(body.maxUses) && body.maxUses > 0) maxUses = body.maxUses;
+
+    if (txId && Object.values(keys).some(k => k.note && (k.note.includes('sale_tx:'+txId) || k.note.includes('renovado_sale_tx:'+txId)))) {
+      sendJson(res, { ok: true, duplicate: true }); return;
+    }
+
+    let existingCode = null;
+    try {
+      const _pdb = await getMongoDb();
+      const _pu = await _pdb.collection('portal_users').findOne({ _id: clientEmail });
+      if (_pu && _pu.keyCode && keys[_pu.keyCode]) existingCode = _pu.keyCode;
+    } catch (e) { console.warn('[PARTNER] portal_users lookup:', e.message); }
+
+    const now = new Date();
+    const durationMs = 31 * 24 * 60 * 60 * 1000;
+
+    if (existingCode) {
+      const k = keys[existingCode];
+      const base = (k.expiresAt && new Date(k.expiresAt) > now) ? new Date(k.expiresAt) : now;
+      k.expiresAt = new Date(base.getTime() + durationMs).toISOString();
+      k.active = true;
+      k.note = k.note + (txId ? ' | renovado_sale_tx:'+txId : ' | renovado');
+      saveKey(existingCode);
+      await savePayment({ txId: txId||existingCode, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, keyCode:existingCode, maxUses, renewed:true, paidAt:now.toISOString(), rawStatus:'approved' });
+      console.log('[PARTNER] Chave renovada:', existingCode, 'email:', clientEmail);
+      sendJson(res, { ok: true, renewed: true, code: existingCode, expiresAt: k.expiresAt, maxUses });
+      return;
+    }
+
+    const code = generateCode();
+    const expires = new Date(now.getTime() + durationMs);
+    keys[code] = { label:'Parceiro - '+clientName, active:true, phones:[], uses:0, maxUses, expiresAt:expires.toISOString(), expireDuration:durationMs, createdAt:now.toISOString(), lastUsed:null, lastIp:null, lastPhone:null, deviceId:null, wppVersion:null, warnCount:0, note:'Pedido via API de parceiro | Email: '+clientEmail+(txId?' | sale_tx:'+txId:'') };
+    saveKey(code);
+    await savePayment({ txId:txId||code, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, keyCode:code, maxUses, renewed:false, paidAt:now.toISOString(), rawStatus:'approved' });
+    if (clientEmail) { getMongoDb().then(d=>d.collection('portal_users').updateOne({_id:clientEmail},{$set:{keyCode:code}},{upsert:false})).catch(e=>console.warn('[PARTNER] portal link:',e.message)); }
+    console.log('[PARTNER] Nova chave gerada:', code, 'email:', clientEmail);
+    sendJson(res, { ok: true, renewed: false, code, expiresAt: expires.toISOString(), maxUses });
+    return;
+  }
+
+  if (p.startsWith('/api/partner/keys/') && req.method === 'GET') {
+    if (!PARTNER_API_TOKEN) { sendJson(res, { error: 'partner_api_disabled' }, 503); return; }
+    const authHeader = req.headers['authorization'] || '';
+    const token = (authHeader.match(/^Bearer\s+(.+)$/i) || [])[1] || '';
+    if (token !== PARTNER_API_TOKEN) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+
+    const code = sanitizeId(p.slice('/api/partner/keys/'.length).trim().toLowerCase(), 20);
+    if (!code || !await ensureKeyLoaded(code)) { sendJson(res, { error: 'not_found' }, 404); return; }
+    const k = keys[code];
+    sendJson(res, {
+      code,
+      label: k.label || null,
+      active: k.active && !isKeyExpired(k),
+      expired: isKeyExpired(k),
+      expiresAt: k.expiresAt || null,
+      maxUses: k.maxUses === -1 ? null : (k.maxUses > 0 ? k.maxUses : MAX_USES),
+      phones: (k.phones || []).length,
+      createdAt: k.createdAt || null,
+    });
+    return;
   }
 
   if (p === '/client/status' && req.method === 'POST') {
@@ -10366,7 +10478,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     console.log(
       `✅ zvm-lr1290 v10 — porta ${PORT}\n` +
       `🍃 MongoDB: zapvoice.store | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}\n` +
-      `🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | 2FA: ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | Payt: ${PAYT_SECRET ? 'ATIVO' : '⚠ INATIVO'}\n` +
+      `🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | 2FA: ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | Webhook Vendas: ${SALE_WEBHOOK_SECRET ? 'ATIVO' : '⚠ INATIVO'} | Partner API: ${PARTNER_API_TOKEN ? 'ATIVO' : '⚠ INATIVO'}\n` +
       `🔑 Admin ZVM: ${R_ADMIN} | User: ${ADMIN_USER}\n` +
       `🔑 Admin WSM: /WSM${WSM.adminSlug()} | Mod WSM: /WSM${WSM.modSlug()} (banco: ${process.env.WSM_MONGODB_DB || 'watidy'})\n` +
       `👮 Mod:   ${MODS.length > 0 ? R_MOD+' | '+MODS.length+' mod(s): '+MODS.map(m=>m.name).join(', ') : '⚠ inativo'}\n` +
