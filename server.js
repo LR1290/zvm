@@ -957,6 +957,7 @@ const RL_CONFIG = {
   twofa:        { max: 5,  windowMs: 60000,  blockMs: 10 * 60000 },
   cakto:        { max: 30, windowMs: 60000,  blockMs:  5 * 60000 },
   analytics_lab:{ max: 20, windowMs: 60000,  blockMs:  5 * 60000 },
+  analytics_purge:{ max: 5, windowMs: 60000, blockMs: 10 * 60000 }, // operação destrutiva — bem mais restrito que o resto do Lab
 };
 
 function checkRateLimit(ip, type = 'api', maxReq = 0, windowMs = 0) {
@@ -2137,7 +2138,7 @@ async function processCommercialSale(sale, plan, deps = {}) {
   try {
     const delivered = await deliveryMailer(clientEmail, {
       code: keyCode, planLabel: plan.shortName, maxUses: plan.maxUses,
-      expiresAt: keyStore[keyCode].expiresAt, renewed,
+      expiresAt: keyStore[keyCode].expiresAt, renewed, durationDays: plan.durationDays,
       baseUrl: BASE_URL, extensionUrl: EXTENSION_URL,
       ctaPath: '/cliente', // fluxo Cakto/standalone - legado (sale/payt webhook, partner API) continua em /verificar
     });
@@ -2165,6 +2166,64 @@ function _findSandboxKeyByEmail(email) {
     const noteEmail = (_simKeyStore[code]?.note || '').match(/Email: (\S+)/)?.[1] || '';
     return noteEmail.toLowerCase() === target;
   }) || null;
+}
+
+// ── Limpeza de histórico do Analytics ───────────────────────────────────
+// Fonte única e ÚNICA verdade sobre "o que é dado comercial do Analytics":
+// auditoria (getPaymentStats/getPayments/export CSV acima) confirmou que
+// receita, vendas, gráficos, ranking de produto/cliente, retenção/churn de
+// pagamento e o contador de simulações vêm TODOS só de `payments`. Nenhuma
+// outra collection alimenta o Analytics — então o allowlist abaixo é
+// deliberadamente uma collection só. Nunca aceitar nome de collection nem
+// filtro vindo do navegador: o cliente manda só `mode`, essa tabela decide
+// o filtro real. Adicionar uma collection nova aqui exige decisão explícita
+// nesta rodada seguinte, nunca implícita.
+const ANALYTICS_PURGE_FILTERS = Object.freeze({
+  test: Object.freeze({ testMode: true }),
+  real: Object.freeze({ testMode: { $ne: true } }),
+  all:  Object.freeze({}),
+});
+
+// Núcleo testável (deps.db injetável, mesmo padrão de simulateCommercialSale)
+// — as rotas HTTP abaixo só cuidam de auth/CSRF/rate-limit e chamam isto.
+async function previewAnalyticsPurge(mode, deps = {}) {
+  if (!Object.prototype.hasOwnProperty.call(ANALYTICS_PURGE_FILTERS, mode)) {
+    const e = new Error('invalid_mode'); e.code = 'invalid_mode'; throw e;
+  }
+  const db = deps.db || await getMongoDb();
+  const [testRecords, realRecords, totalRecords] = await Promise.all([
+    db.collection('payments').countDocuments(ANALYTICS_PURGE_FILTERS.test),
+    db.collection('payments').countDocuments(ANALYTICS_PURGE_FILTERS.real),
+    db.collection('payments').countDocuments(ANALYTICS_PURGE_FILTERS.all),
+  ]);
+  const scoped = mode === 'test' ? testRecords : mode === 'real' ? realRecords : totalRecords;
+  return { mode, scoped, testRecords, realRecords, totalRecords };
+}
+
+async function executeAnalyticsPurge({ mode, confirmText, expectedCount }, deps = {}) {
+  if (!Object.prototype.hasOwnProperty.call(ANALYTICS_PURGE_FILTERS, mode)) {
+    const e = new Error('invalid_mode'); e.code = 'invalid_mode'; throw e;
+  }
+  // "Somente testes" libera com só o clique do botão. Real/all exigem a
+  // confirmação digitada — validada aqui, não só na UI: um POST direto sem
+  // passar pela tela tem que continuar bloqueado.
+  if (mode !== 'test' && String(confirmText || '') !== 'APAGAR HISTORICO') {
+    const e = new Error('confirmation_required'); e.code = 'confirmation_required'; throw e;
+  }
+  const filter = ANALYTICS_PURGE_FILTERS[mode];
+  const db = deps.db || await getMongoDb();
+  // Proteção contra exclusão acidental: reconta bem antes do deleteMany e
+  // compara com o que o preview mostrou pro admin. Se mudou nesse meio-tempo
+  // (ex.: uma venda real chegou), aborta em vez de apagar um total diferente
+  // do que foi mostrado.
+  const before = await db.collection('payments').countDocuments(filter);
+  const expected = Number(expectedCount);
+  if (Number.isFinite(expected) && expected !== before) {
+    const e = new Error('count_changed'); e.code = 'count_changed'; e.before = before; throw e;
+  }
+  const result = await db.collection('payments').deleteMany(filter);
+  const after = await db.collection('payments').countDocuments(filter);
+  return { deletedCount: result.deletedCount, verifiedEmpty: after === 0 };
 }
 
 function resolveLabPlan(planId) {
@@ -8318,7 +8377,7 @@ async function renderAnalyticsDashboard() {
       : `<span style="color:var(--muted);font-size:13px">—</span>`
   }</td>
 </tr>`;
-  }).join('') : '<tr><td colspan="8" class="empty">Nenhum pagamento registrado ainda.<br>Configure o webhook de vendas apontando para /sale/webhook</td></tr>';
+  }).join('') : '<tr><td colspan="8" class="empty">Nenhuma venda registrada ainda.<br><span style="opacity:.75">Novas vendas aparecerão aqui automaticamente.</span></td></tr>';
 
   const topClientsRows = (stats?.topClients||[]).map(c =>
     `<tr><td>${escH(c._id)}</td><td style="text-align:center;color:#00ff87;font-weight:700">${c.count}</td><td style="text-align:right;color:#00ff87">${fmtBRL(c.total)}</td></tr>`
@@ -8393,6 +8452,34 @@ tr:hover td{background:#ffffff02}
 .lab-banner{display:flex;align-items:center;gap:10px;background:#f0b42912;border:1px solid #f0b42940;border-radius:10px;padding:12px 16px;margin-bottom:14px;font-family:'Outfit',sans-serif;font-size:13px;color:#f0b429;font-weight:700}
 .lab-toggle{background:#f0b42918;color:#f0b429;border:1px solid #f0b42940}
 .lab-toggle:hover{background:#f0b42928}
+/* Limpeza de histórico do Analytics */
+.bpurge{background:#ff475718;color:var(--red);border:1px solid #ff475740}
+.bpurge:hover{background:#ff475728}
+.purge-dialog{position:fixed;inset:0;margin:auto;width:min(540px,calc(100% - 28px));max-height:min(88vh,calc(100% - 32px));overflow:auto;border:1px solid var(--border);border-radius:var(--radius);padding:0;background:var(--card);color:var(--text);box-shadow:var(--shadow)}
+.purge-dialog::backdrop{background:rgba(2,4,10,.78);backdrop-filter:blur(6px)}
+.purge-inner{padding:26px}
+.purge-inner h2{font-size:20px;font-weight:900;margin-bottom:10px;font-family:'Outfit',sans-serif}
+.purge-inner>p{font-size:13.5px;color:var(--muted);line-height:1.6;margin-bottom:18px;font-family:'Outfit',sans-serif}
+.purge-opt{display:block;border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;cursor:pointer;transition:all .18s;font-family:'Outfit',sans-serif}
+.purge-opt:hover{border-color:#ff475740}
+.purge-opt.selected{border-color:#ff475760;background:#ff475710}
+.purge-opt input{margin-right:8px}
+.purge-opt-title{font-weight:800;font-size:14px}
+.purge-opt-desc{font-size:12.5px;color:var(--muted);margin-top:4px;line-height:1.5}
+.purge-preview{margin-top:16px;padding:14px 16px;background:var(--card2);border:1px solid var(--border);border-radius:10px;font-size:13.5px;font-family:'Outfit',sans-serif;color:var(--text)}
+.purge-preview strong{color:var(--red)}
+.purge-warn{margin-top:12px;padding:12px 14px;background:#ff475712;border:1px solid #ff475740;border-radius:8px;color:var(--red);font-size:13px;font-weight:700;font-family:'Outfit',sans-serif;line-height:1.5}
+.purge-confirm-label{font-size:12px;color:var(--muted);display:block;margin-top:14px;font-family:'Outfit',sans-serif}
+.purge-confirm-input{width:100%;padding:10px 12px;margin-top:8px;background:var(--dark);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:monospace;font-size:14px}
+.purge-confirm-input:focus{outline:none;border-color:var(--red)}
+.purge-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:22px}
+.purge-cancel{background:transparent;color:var(--muted);border:1px solid var(--border);padding:11px 16px;border-radius:8px;cursor:pointer;font:800 14px 'Outfit',sans-serif}
+.purge-exec{background:var(--red);color:#fff;border:1px solid var(--red);padding:11px 18px;border-radius:8px;cursor:pointer;font:800 14px 'Outfit',sans-serif;transition:opacity .18s}
+.purge-exec:disabled{opacity:.35;cursor:not-allowed}
+.purge-result{margin-top:16px;padding:14px 16px;border-radius:10px;font-size:13.5px;font-family:'Outfit',sans-serif;line-height:1.6}
+.purge-result.ok{background:#00ff8712;border:1px solid #00ff8740;color:var(--green)}
+.purge-result.err{background:#ff475712;border:1px solid #ff475740;color:var(--red)}
+@media(prefers-reduced-motion:reduce){.purge-exec,.bpurge{transition:none}}
 .lab-body{display:none;padding:18px 16px;border-top:1px solid var(--border)}
 .lab-body.open{display:block}
 .lab-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
@@ -8426,6 +8513,7 @@ tr:hover td{background:#ffffff02}
   <div style="display:flex;gap:10px;align-items:center">
     <button class="btn lab-toggle" onclick="toggleLab()">🧪 Laboratório de Testes</button>
     <a href="${R_ANALYTICS}/export/csv" class="btn bcsv">⬇ CSV</a>
+    <button class="btn bpurge" onclick="purgeOpen()">🗑 Limpar dados</button>
     <a href="${R_ANALYTICS}/logout" class="out">↩ Sair</a>
   </div>
 </header>
@@ -8507,6 +8595,39 @@ tr:hover td{background:#ffffff02}
       </div>
     </div>
   </div>
+
+  <dialog class="purge-dialog" id="purge-dialog" aria-labelledby="purge-title">
+    <div class="purge-inner">
+      <h2 id="purge-title">Limpar histórico do Analytics</h2>
+      <p>Esta ferramenta remove somente registros comerciais exibidos no Analytics. Licenças, clientes e configurações do sistema não serão alterados.</p>
+      <label class="purge-opt" data-mode="test">
+        <input type="radio" name="purge-mode" value="test" checked onchange="purgeModeChanged()">
+        <span class="purge-opt-title">Apagar somente testes</span>
+        <div class="purge-opt-desc">Remove só os registros marcados como teste (testMode:true) — inclui as simulações do Laboratório.</div>
+      </label>
+      <label class="purge-opt" data-mode="real">
+        <input type="radio" name="purge-mode" value="real" onchange="purgeModeChanged()">
+        <span class="purge-opt-title">Apagar somente registros reais</span>
+        <div class="purge-opt-desc">Remove os pagamentos hoje classificados como vendas reais.</div>
+      </label>
+      <label class="purge-opt" data-mode="all">
+        <input type="radio" name="purge-mode" value="all" onchange="purgeModeChanged()">
+        <span class="purge-opt-title">Zerar todo o histórico comercial</span>
+        <div class="purge-opt-desc">Remove testes + reais do Analytics. Não toca licenças, contas nem configurações.</div>
+      </label>
+      <div class="purge-preview" id="purge-preview">Carregando prévia...</div>
+      <div class="purge-warn" id="purge-warn" style="display:none">Esses registros são classificados atualmente como vendas reais. A exclusão é permanente.</div>
+      <div id="purge-confirm-wrap" style="display:none">
+        <label class="purge-confirm-label" for="purge-confirm-input">Digite <strong>APAGAR HISTORICO</strong> para liberar o botão:</label>
+        <input type="text" class="purge-confirm-input" id="purge-confirm-input" autocomplete="off" oninput="purgeConfirmInputChanged()">
+      </div>
+      <div id="purge-result"></div>
+      <div class="purge-actions">
+        <button type="button" class="purge-cancel" onclick="purgeCancel()">Cancelar</button>
+        <button type="button" class="purge-exec" id="purge-exec-btn" onclick="purgeExecute()" disabled>Apagar definitivamente</button>
+      </div>
+    </div>
+  </dialog>
 
   <!-- Gráficos principais -->
   <div class="charts">
@@ -8799,6 +8920,109 @@ async function labEmailSend(btn){
     else{labRenderStatus(status,d.reason?{short:'❌ Erro retornado pelo serviço de e-mail.',detail:d.reason}:labErrorMessage(r.status,d));}
   }catch(e){labRenderStatus(status,{short:'❌ Erro de conexão com o servidor.',detail:null});}
   finally{if(btn)btn.disabled=false;}
+}
+
+// ── Limpeza de histórico do Analytics ────────────────────────────────
+const PURGE_CONFIRM_PHRASE='APAGAR HISTORICO';
+let _purgeLastPreview=null; // { mode, scoped, testRecords, realRecords, totalRecords }
+
+function purgeCurrentMode(){
+  const el=document.querySelector('input[name="purge-mode"]:checked');
+  return el?el.value:'test';
+}
+
+function purgeOpen(){
+  const d=document.getElementById('purge-dialog');
+  if(d.showModal)d.showModal();else d.setAttribute('open','');
+  purgeModeChanged();
+}
+
+function purgeCancel(){
+  document.getElementById('purge-dialog').close();
+}
+
+function purgeModeChanged(){
+  const mode=purgeCurrentMode();
+  document.querySelectorAll('.purge-opt').forEach(function(el){el.classList.toggle('selected',el.dataset.mode===mode);});
+  const warn=document.getElementById('purge-warn'),confirmWrap=document.getElementById('purge-confirm-wrap'),
+    confirmInput=document.getElementById('purge-confirm-input'),btn=document.getElementById('purge-exec-btn'),
+    result=document.getElementById('purge-result');
+  result.innerHTML='';
+  confirmInput.value='';
+  if(mode==='test'){
+    warn.style.display='none';
+    confirmWrap.style.display='none';
+    btn.disabled=true; // reabilitado quando o preview carregar (não instantâneo — evita clique antes de saber quantos registros existem)
+  } else {
+    warn.style.display='block';
+    confirmWrap.style.display='block';
+    btn.disabled=true;
+  }
+  purgeFetchPreview(mode);
+}
+
+function purgeConfirmInputChanged(){
+  const mode=purgeCurrentMode();
+  if(mode==='test')return; // botão já é liberado só pelo preview nesse modo
+  const ok=document.getElementById('purge-confirm-input').value===PURGE_CONFIRM_PHRASE;
+  document.getElementById('purge-exec-btn').disabled=!ok||!_purgeLastPreview||_purgeLastPreview.mode!==mode;
+}
+
+async function purgeFetchPreview(mode){
+  const box=document.getElementById('purge-preview');
+  box.textContent='Carregando prévia...';
+  _purgeLastPreview=null;
+  document.getElementById('purge-exec-btn').disabled=true;
+  try{
+    const r=await fetch('${R_ANALYTICS}/api/purge/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mode})});
+    const d=await r.json();
+    if(!r.ok){labRenderStatus(box,labErrorMessage(r.status,d));return;}
+    _purgeLastPreview=d;
+    const label={test:'de teste',real:'reais',all:'no total (testes + reais)'}[mode]||'';
+    box.innerHTML='Serão removidos <strong>'+d.scoped+'</strong> registro'+(d.scoped===1?'':'s')+' '+label+'.'
+      +'<br><span style="color:var(--muted);font-size:12px">payments: '+d.totalRecords+' no total · '+d.testRecords+' de teste · '+d.realRecords+' reais</span>';
+    if(mode==='test'){
+      document.getElementById('purge-exec-btn').disabled=d.scoped===0;
+    } else {
+      purgeConfirmInputChanged();
+    }
+  }catch(e){labRenderStatus(box,{short:'❌ Erro de conexão com o servidor.',detail:null});}
+}
+
+async function purgeExecute(){
+  const mode=purgeCurrentMode();
+  const btn=document.getElementById('purge-exec-btn');
+  if(btn.disabled)return; // guarda contra duplo clique
+  if(!_purgeLastPreview||_purgeLastPreview.mode!==mode){alert('Prévia desatualizada — feche e abra a ferramenta de novo.');return;}
+  const body={mode:mode,expectedCount:_purgeLastPreview.scoped};
+  if(mode!=='test')body.confirmText=document.getElementById('purge-confirm-input').value;
+  btn.disabled=true;const originalLabel=btn.textContent;btn.textContent='Processando...';
+  const result=document.getElementById('purge-result');
+  result.innerHTML='';
+  try{
+    const r=await fetch('${R_ANALYTICS}/api/purge/execute',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(!r.ok){
+      if(d.error==='count_changed'){
+        labRenderStatus(result,{short:'❌ A contagem mudou desde a prévia — atualizando...',detail:null});
+        result.className='purge-result err';
+        setTimeout(function(){purgeFetchPreview(mode);},1200);
+      } else {
+        labRenderStatus(result,labErrorMessage(r.status,d));
+        result.className='purge-result err';
+      }
+      return;
+    }
+    result.className='purge-result ok';
+    result.textContent='✅ '+d.totalDeleted+' registro'+(d.totalDeleted===1?'':'s')+' removido'+(d.totalDeleted===1?'':'s')+'. Atualizando o painel...';
+    document.querySelectorAll('.purge-opt input,#purge-confirm-input,.purge-cancel').forEach(function(el){el.disabled=true;});
+    setTimeout(function(){ window.location.href='${R_ANALYTICS}'; },1600);
+  }catch(e){
+    labRenderStatus(result,{short:'❌ Erro de conexão com o servidor.',detail:null});
+    result.className='purge-result err';
+  }finally{
+    if(btn.isConnected&&!result.classList.contains('ok')){btn.disabled=false;btn.textContent=originalLabel;}
+  }
 }
 </script>
 ${CANVAS_BG}</body></html>`;
@@ -12730,7 +12954,7 @@ async function handleRequest(req, res) {
       if (template === 'delivery_new') {
         built = buildKeyDeliveryEmail({ code: 'ZV-DEMO-0000-0000', planLabel: 'Padrão', maxUses: 3, expiresAt: sampleExpiresAt, renewed: false, baseUrl: BASE_URL, extensionUrl: EXTENSION_URL, ctaPath: '/cliente' });
       } else if (template === 'delivery_renewal') {
-        built = buildKeyDeliveryEmail({ code: 'ZV-DEMO-0000-0000', planLabel: 'Padrão', maxUses: 3, expiresAt: sampleExpiresAt, renewed: true, baseUrl: BASE_URL, extensionUrl: EXTENSION_URL, ctaPath: '/cliente' });
+        built = buildKeyDeliveryEmail({ code: 'ZV-DEMO-0000-0000', planLabel: 'Padrão', maxUses: 3, expiresAt: sampleExpiresAt, renewed: true, durationDays: 30, baseUrl: BASE_URL, extensionUrl: EXTENSION_URL, ctaPath: '/cliente' });
       } else if (template === 'expiry_warning') {
         built = buildKeyExpiryWarningEmail({ code: 'ZV-DEMO-0000-0000', hoursLeft: 48, planLabel: 'Padrão', maxUses: 3, expiresAt: new Date(Date.now() + 48 * 3600000).toISOString(), baseUrl: BASE_URL, ctaPath: '/cliente' });
       } else if (template === 'password_reset') {
@@ -12749,6 +12973,44 @@ async function handleRequest(req, res) {
     // reason vem só de mailer.js: mensagem de validação do Resend, "RESEND_API_KEY
     // não configurado" ou erro de rede — nunca a API key nem outro segredo.
     sendJson(res, { ok: result.ok, reason: result.ok ? null : result.reason }); return;
+  }
+
+  // ── Limpeza de histórico do Analytics ─────────────────────────────────
+  // mode é a ÚNICA entrada de negócio aceita do navegador — o filtro real
+  // vem sempre de ANALYTICS_PURGE_FILTERS (definido só no servidor, ver
+  // comentário lá). Nenhuma rota aqui aceita nome de collection nem filtro
+  // do cliente. GET nunca chega nestas rotas (ambas exigem POST). A lógica
+  // de negócio mora em previewAnalyticsPurge/executeAnalyticsPurge (testável
+  // com deps.db mockado) — aqui só auth/CSRF/rate-limit e tradução de erro.
+  if (p === R_ANALYTICS+'/api/purge/preview' && req.method === 'POST') {
+    if (!isAnalyticsSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
+    if (!checkRateLimit(ip, 'analytics_purge')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    const body = await parseBody(req);
+    try {
+      const preview = await previewAnalyticsPurge(String(body.mode || ''));
+      console.log('[ANALYTICS][PURGE][PREVIEW]', `mode=${preview.mode}`, `scoped=${preview.scoped}`);
+      sendJson(res, { ...preview, collections: { payments: preview.totalRecords } }); return;
+    } catch (e) { sendJson(res, { error: e.code || 'preview_failed' }, e.code === 'invalid_mode' ? 400 : 500); return; }
+  }
+
+  if (p === R_ANALYTICS+'/api/purge/execute' && req.method === 'POST') {
+    if (!isAnalyticsSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
+    if (!checkRateLimit(ip, 'analytics_purge')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    const body = await parseBody(req);
+    const mode = String(body.mode || '');
+    try {
+      const { deletedCount, verifiedEmpty } = await executeAnalyticsPurge({ mode, confirmText: body.confirmText, expectedCount: body.expectedCount });
+      // Log só com contagens — nunca e-mail, chave, txId ou qualquer campo
+      // do documento removido.
+      console.log('[ANALYTICS][PURGE]', `mode=${mode}`, `deleted=${deletedCount}`, `verifiedEmpty=${verifiedEmpty}`);
+      if (!verifiedEmpty) console.error('[ANALYTICS][PURGE] verificação pós-exclusão encontrou registros restantes no escopo — investigar', `mode=${mode}`);
+      sendJson(res, { ok: true, deleted: { payments: deletedCount }, totalDeleted: deletedCount, verifiedEmpty }); return;
+    } catch (e) {
+      const statusByCode = { invalid_mode: 400, confirmation_required: 400, count_changed: 409 };
+      sendJson(res, { error: e.code || 'purge_failed', before: e.before }, statusByCode[e.code] || 500); return;
+    }
   }
 
   if (p === '/cakto/webhook' && req.method === 'POST') {
@@ -13680,6 +13942,9 @@ module.exports.__test = Object.freeze({
   requireSameOriginPost,
   simulateCommercialSale,
   resolveLabPlan,
+  previewAnalyticsPurge,
+  executeAnalyticsPurge,
+  ANALYTICS_PURGE_FILTERS,
   getPaymentStats,
   hashPassword,
   verifyPortalPassword,
