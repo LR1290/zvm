@@ -1062,8 +1062,27 @@ function normalizePlanName(value) {
   return safeScalar(value, 120).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
+// Canoniza uma checkoutUrl da Cakto pra comparação: origin + pathname (sem
+// barra final), IGNORANDO query string e hash. Achado real do dry_run: a
+// Cakto manda a URL de checkout com parâmetros de UTM anexados
+// (?utm_source=...&utm_medium=...), e a versão antiga desta função só
+// removia a barra final — a mesma checkout oficial com UTM nunca casava
+// com ZVM_PLANS. Comparar origin+pathname (não só pathname) evita aceitar
+// host arbitrário como se fosse checkout Cakto válido: a igualdade final em
+// resolveCaktoPlan ainda é contra os 4 checkoutUrls reais em ZVM_PLANS, um
+// host diferente simplesmente não bate.
 function normalizeCheckoutUrl(value) {
-  return safeScalar(value, 300).replace(/\/$/, '');
+  const raw = safeScalar(value, 300);
+  if (!raw) return '';
+  try {
+    const u = new URL(raw);
+    const pathname = u.pathname.replace(/\/$/, '') || '/';
+    return `${u.origin}${pathname}`;
+  } catch {
+    // Não é uma URL absoluta (ex.: string relativa/vazia/malformada) —
+    // mantém o comportamento anterior como fallback seguro.
+    return raw.replace(/\/$/, '');
+  }
 }
 
 function normalizeCaktoPurchase(payload) {
@@ -1835,6 +1854,24 @@ function isPortalSession(req) {
 function getPortalUser(req) {
   const m = (req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/);
   return m ? portalSessions[m[1]] : null;
+}
+
+// Defesa em profundidade contra CSRF nos POSTs autenticados via cookie
+// (portal/admin/mod/analytics). SameSite=Strict já bloqueia a esmagadora
+// maioria dos casos; isto cobre navegadores antigos/extensões que não
+// respeitam SameSite. NÃO aplicar a webhooks externos (Cakto/sale/payt)
+// nem a APIs de extensão — esses são legitimamente cross-origin.
+function requireSameOriginPost(req) {
+  const site = String(req.headers['sec-fetch-site'] || '').toLowerCase();
+  if (site) return site === 'same-origin' || site === 'none';
+  const hostOf = (h) => { try { return new URL(h).host; } catch { return ''; } };
+  const expectedHost = req.headers.host || '';
+  if (!expectedHost) return false;
+  const origin = req.headers.origin;
+  if (origin) return hostOf(origin) === expectedHost;
+  const referer = req.headers.referer;
+  if (referer) return hostOf(referer) === expectedHost;
+  return false;
 }
 
 function isAnalyticsSession(req) {
@@ -3500,8 +3537,8 @@ function renderStandalonePortalLogin(err = '', redir = '', ok = '') {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Entrar</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
 <style>${_sharedCss()}${_standaloneCss()}${_authShellCss()}</style></head>
-<body>${_sharedNav({ activePath: '', portalUser: null, showBack: false })}
-<main class="auth-shell">
+<body>${_sharedNav({ variant: 'auth' })}
+<main id="main-content" class="auth-shell">
   <div class="auth-promo" aria-hidden="true">
     <div class="auth-promo-inner">
       <div class="auth-eyebrow">Portal do Cliente</div>
@@ -3542,8 +3579,8 @@ function renderStandalonePortalRegister(err = '', vals = {}, redir = '') {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Criar Conta</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
 <style>${_sharedCss()}${_standaloneCss()}${_authShellCss()}</style></head>
-<body>${_sharedNav({ activePath: '', portalUser: null, showBack: false })}
-<main class="auth-shell">
+<body>${_sharedNav({ variant: 'auth' })}
+<main id="main-content" class="auth-shell">
   <div class="auth-promo" aria-hidden="true">
     <div class="auth-promo-inner">
       <div class="auth-eyebrow">Criar conta</div>
@@ -3640,8 +3677,8 @@ function renderStandalone2FAVerify(err = '') {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Verificação em Duas Etapas</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
 <style>${_sharedCss()}${_standaloneCss()}${_authShellCss()}</style></head>
-<body>${_sharedNav({ activePath: '', portalUser: null, showBack: false })}
-<main class="auth-shell">
+<body>${_sharedNav({ variant: 'auth' })}
+<main id="main-content" class="auth-shell">
   ${_securityPromo('Portal do Cliente', 'Proteja sua conta <em>ZVM</em>')}
   <div class="auth-form-wrap">
     <div class="auth-form-card">
@@ -3705,7 +3742,7 @@ function renderStandaloneSetup2FA(user, pendingSecret = '', err = '', ok = '') {
 <title>ZVM — Segurança 2FA</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
 <style>${_sharedCss()}${_standaloneCss()}${_authShellCss()}</style></head>
 <body>${_sharedNav({ activePath: '', portalUser: user || null, showBack: false })}
-<main class="auth-shell">
+<main id="main-content" class="auth-shell">
   ${_securityPromo('Segurança', 'Proteja sua conta <em>ZVM</em>')}
   <div class="auth-form-wrap">
     <div class="auth-form-card">
@@ -3725,7 +3762,7 @@ ${_authSubmitLockScript()}
 // servindo o WSM legado via wsmPortal(), intocadas). Contrato
 // preservado: mesmos endpoints, mesmos name= de campo, mesma sessão/
 // validação/rate-limit — só a view muda.
-function renderStandalonePortalLinkKey(err = '', ok = '') {
+function renderStandalonePortalLinkKey(err = '', ok = '', portalUser = null) {
   const errHtml = err ? `<div class="auth-alert err" role="alert">⚠ ${escHtml(err)}</div>` : '';
   const okHtml = ok ? `<div class="auth-alert ok" role="status">✅ ${escHtml(ok)}</div>` : '';
   const benefitsHtml = [
@@ -3738,8 +3775,8 @@ function renderStandalonePortalLinkKey(err = '', ok = '') {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Vincular Chave</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
 <style>${_sharedCss()}${_standaloneCss()}${_authShellCss()}</style></head>
-<body>${_sharedNav({ activePath: '', portalUser: null, showBack: false })}
-<main class="auth-shell">
+<body>${_sharedNav({ activePath: '', portalUser: portalUser || null, showBack: false })}
+<main id="main-content" class="auth-shell">
   <div class="auth-promo" aria-hidden="true">
     <div class="auth-promo-inner">
       <div class="auth-eyebrow">Portal do Cliente</div>
@@ -3767,15 +3804,15 @@ ${_authSubmitLockScript()}
 </body></html>`;
 }
 
-function renderStandalonePortalChangePwd(err = '', ok = '') {
+function renderStandalonePortalChangePwd(err = '', ok = '', portalUser = null) {
   const errHtml = err ? `<div class="auth-alert err" role="alert">⚠ ${escHtml(err)}</div>` : '';
   const okHtml = ok ? `<div class="auth-alert ok" role="status">✅ ${escHtml(ok)}</div>` : '';
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Alterar Senha</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
 <style>${_sharedCss()}${_standaloneCss()}${_authShellCss()}</style></head>
-<body>${_sharedNav({ activePath: '', portalUser: null, showBack: false })}
-<main class="auth-shell">
+<body>${_sharedNav({ activePath: '', portalUser: portalUser || null, showBack: false })}
+<main id="main-content" class="auth-shell">
   ${_securityPromo('Segurança', 'Proteja sua conta <em>ZVM</em>')}
   <div class="auth-form-wrap">
     <div class="auth-form-card">
@@ -3801,7 +3838,7 @@ ${_authSubmitLockScript()}
 </body></html>`;
 }
 
-function renderStandalonePortalChangeEmail(err = '', ok = '') {
+function renderStandalonePortalChangeEmail(err = '', ok = '', portalUser = null) {
   const errHtml = err ? `<div class="auth-alert err" role="alert">⚠ ${escHtml(err)}</div>` : '';
   const okHtml = ok ? `<div class="auth-alert ok" role="status">✅ ${escHtml(ok)}</div>` : '';
   const benefitsHtml = [
@@ -3814,8 +3851,8 @@ function renderStandalonePortalChangeEmail(err = '', ok = '') {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Alterar E-mail</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
 <style>${_sharedCss()}${_standaloneCss()}${_authShellCss()}</style></head>
-<body>${_sharedNav({ activePath: '', portalUser: null, showBack: false })}
-<main class="auth-shell">
+<body>${_sharedNav({ activePath: '', portalUser: portalUser || null, showBack: false })}
+<main id="main-content" class="auth-shell">
   <div class="auth-promo" aria-hidden="true">
     <div class="auth-promo-inner">
       <div class="auth-eyebrow">Conta</div>
@@ -3839,6 +3876,90 @@ function renderStandalonePortalChangeEmail(err = '', ok = '') {
         <button type="submit" class="auth-submit">Salvar novo e-mail<span class="auth-spinner" aria-hidden="true"></span></button>
       </form>
       <div class="auth-switch"><a href="/cliente">← Voltar ao painel</a></div>
+    </div>
+  </div>
+</main>
+${_standaloneFoot()}
+${_pwdToggleScript()}
+${_authSubmitLockScript()}
+</body></html>`;
+}
+
+// ── Recuperação de senha standalone (mesmo auth-shell, nav mínima).
+// renderPortalResetRequest/renderPortalResetForm continuam servindo o WSM
+// legado via wsmPortal(), intocadas. Contrato preservado: mesmos endpoints,
+// mesmos name= de campo (email; token/pass/pass2), mesma mensagem de que a
+// recuperação é manual (o admin envia o link por WhatsApp — não é um fluxo
+// automatizado por e-mail, isso não muda aqui).
+function renderStandalonePortalResetRequest(err = '', ok = '') {
+  const errHtml = err ? `<div class="auth-alert err" role="alert">⚠ ${escHtml(err)}</div>` : '';
+  const okHtml = ok ? `<div class="auth-alert ok" role="status">✅ ${escHtml(ok)}</div>` : '';
+  const benefitsHtml = AUTH_BENEFITS.map(([icon, text]) => `<li><span class="auth-benefit-icon" aria-hidden="true">${icon}</span><span>${text}</span></li>`).join('');
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZVM — Recuperar Senha</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
+<style>${_sharedCss()}${_standaloneCss()}${_authShellCss()}</style></head>
+<body>${_sharedNav({ variant: 'auth' })}
+<main id="main-content" class="auth-shell">
+  <div class="auth-promo" aria-hidden="true">
+    <div class="auth-promo-inner">
+      <div class="auth-eyebrow">Portal do Cliente</div>
+      <h1>Recupere o acesso à sua <em>conta</em></h1>
+      <p class="auth-promo-sub">Informe o e-mail da sua conta ZVM para receber instruções de redefinição de senha.</p>
+      <ul class="auth-benefits">${benefitsHtml}</ul>
+    </div>
+  </div>
+  <div class="auth-form-wrap">
+    <div class="auth-form-card">
+      <div class="auth-form-brand">${renderStandaloneBrand('auth')}</div>
+      <h2>Esqueci minha senha</h2>
+      ${errHtml}${okHtml}
+      ${ok ? '' : `
+      <p class="auth-form-hint">Um link de recuperação será gerado — o administrador envia via WhatsApp.</p>
+      <form method="POST" action="/cliente/recuperar">
+        <div class="auth-field"><label for="reset-email">E-mail</label><input id="reset-email" type="email" name="email" placeholder="seu@email.com" required autocomplete="email"></div>
+        <button type="submit" class="auth-submit">Gerar link de recuperação<span class="auth-spinner" aria-hidden="true"></span></button>
+      </form>`}
+      <div class="auth-switch"><a href="/cliente">← Voltar ao login</a></div>
+    </div>
+  </div>
+</main>
+${_standaloneFoot()}
+${_authSubmitLockScript()}
+</body></html>`;
+}
+
+function renderStandalonePortalResetForm(err = '', ok = '', token = '') {
+  const errHtml = err ? `<div class="auth-alert err" role="alert">⚠ ${escHtml(err)}</div>` : '';
+  const okHtml = ok ? `<div class="auth-alert ok" role="status">✅ ${escHtml(ok)}</div>` : '';
+  const benefitsHtml = AUTH_BENEFITS.map(([icon, text]) => `<li><span class="auth-benefit-icon" aria-hidden="true">${icon}</span><span>${text}</span></li>`).join('');
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZVM — Redefinir Senha</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
+<style>${_sharedCss()}${_standaloneCss()}${_authShellCss()}</style></head>
+<body>${_sharedNav({ variant: 'auth' })}
+<main id="main-content" class="auth-shell">
+  <div class="auth-promo" aria-hidden="true">
+    <div class="auth-promo-inner">
+      <div class="auth-eyebrow">Portal do Cliente</div>
+      <h1>Defina uma nova <em>senha</em></h1>
+      <p class="auth-promo-sub">Escolha uma senha forte para proteger o acesso à sua conta ZVM.</p>
+      <ul class="auth-benefits">${benefitsHtml}</ul>
+    </div>
+  </div>
+  <div class="auth-form-wrap">
+    <div class="auth-form-card">
+      <div class="auth-form-brand">${renderStandaloneBrand('auth')}</div>
+      <h2>Redefinir senha</h2>
+      ${errHtml}${okHtml}
+      ${ok ? `<div class="auth-switch" style="margin-top:0"><a href="/cliente">Entrar agora →</a></div>` : `
+      <form method="POST" action="/cliente/redefinir">
+        <input type="hidden" name="token" value="${escHtml(token)}">
+        <div class="auth-field"><label for="reset-pass">Nova senha</label><input id="reset-pass" type="password" name="pass" required minlength="8" placeholder="Mínimo 8 caracteres" autocomplete="new-password"></div>
+        <div class="auth-field"><label for="reset-pass2">Confirmar senha</label><input id="reset-pass2" type="password" name="pass2" required minlength="8" placeholder="Repita a senha" autocomplete="new-password"></div>
+        <button type="submit" class="auth-submit">Salvar nova senha<span class="auth-spinner" aria-hidden="true"></span></button>
+      </form>
+      <div class="auth-switch"><a href="/cliente">← Voltar ao login</a></div>`}
     </div>
   </div>
 </main>
@@ -6274,7 +6395,20 @@ function _sharedNav(options = '', legacyPortalUser = null) {
   </nav>`;
   }
 
-  const { activePath = '', portalUser = null, showBack = false } = options || {};
+  const { activePath = '', portalUser = null, showBack = false, variant = '' } = options || {};
+
+  // Nav mínima pro fluxo de autenticação deslogado (login/registro/recuperar/
+  // redefinir/2FA-verificar): só a marca, sem FAQ/Planos/Suporte/Entrar/
+  // Cadastrar competindo com o formulário. Cada página já tem seus próprios
+  // links funcionais (criar conta, entrar, esqueci minha senha, cancelar)
+  // dentro do próprio card — nada foi removido, só não duplicado aqui em
+  // cima. Área LOGADA (2FA setup, dashboard) continua usando a nav cheia.
+  if (variant === 'auth') {
+    return `<a class="skip-link" href="#main-content">Pular para o conteúdo</a><nav class="znav standalone-nav znav-auth" aria-label="Navegação">
+  <a href="/" class="znav-brand">${renderStandaloneBrand('nav')}</a>
+</nav>`;
+  }
+
   const links = [
     ...(showBack ? [['/', '← VOLTAR']] : []),
     ['/faq', 'FAQ'],
@@ -6292,7 +6426,7 @@ function _sharedNav(options = '', legacyPortalUser = null) {
       <span class="nav-account-avatar">${escHtml((portalUser.name||'?')[0].toUpperCase())}</span>
       <span class="nav-account-name">${escHtml(portalUser.name||portalUser.email||'Minha Conta')}</span>
     </a>` : `<a href="/cliente" class="nav-login">ENTRAR</a><a href="/cliente/registro" class="nav-cta">CADASTRAR</a>`;
-  return `<nav class="znav standalone-nav" aria-label="Navegação principal">
+  return `<a class="skip-link" href="#main-content">Pular para o conteúdo</a><nav class="znav standalone-nav" aria-label="Navegação principal">
   <a href="/" class="znav-brand"${activePath==='/'?' aria-current="page"':''}>${renderStandaloneBrand('nav')}</a>
   <button class="nav-menu-toggle" type="button" aria-expanded="false" aria-controls="zvm-nav-links" aria-label="Abrir menu"><span></span><span></span><span></span></button>
   <div class="znav-links" id="zvm-nav-links">${linksHtml}${accountHtml}</div>
@@ -6305,6 +6439,8 @@ function _standaloneCss() {
   :focus-visible{outline:2px solid var(--primary);outline-offset:3px}
   button,a{touch-action:manipulation}
   #_cvs{opacity:.5}
+  .skip-link{position:absolute;left:-9999px;top:0;z-index:9999;padding:12px 20px;background:var(--primary);color:#04140c;font-weight:800;border-radius:0 0 8px 0;text-decoration:none}
+  .skip-link:focus{left:0}
   .zvm-brand-logo{object-fit:contain;display:block;width:auto}
   .zvm-brand-nav{height:44px}
   .zvm-brand-auth{height:130px}
@@ -7455,7 +7591,7 @@ function renderPlanosPage(portalUser = null) {
 <title>ZVM — Planos e Preços</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
 <style>${_sharedCss()}${_standaloneCss()}
 .page-hero{padding:clamp(64px,9vw,112px) 24px 54px;text-align:center;background:radial-gradient(ellipse 60% 70% at 50% 0%,rgba(139,92,246,.12),transparent 68%)}
-.page-hero-tag{display:inline-flex;align-items:center;gap:8px;font:700 11px 'Space Mono',monospace;color:var(--g);letter-spacing:1.8px;text-transform:uppercase;margin-bottom:18px}.page-hero-tag::before{content:'';width:26px;height:1px;background:var(--g)}
+.page-hero-tag{display:inline-flex;align-items:center;gap:8px;font:700 11px 'Space Mono',monospace;color:var(--g);letter-spacing:1.8px;text-transform:uppercase;margin-bottom:18px}
 .page-hero h1{font-size:clamp(34px,5vw,58px);font-weight:900;letter-spacing:-2px;line-height:1.02;margin-bottom:16px}.page-hero h1 span{color:var(--g)}
 .page-hero p{font-size:16px;color:var(--tx2);max-width:620px;margin:auto;line-height:1.7}
 .plans-wrap{padding:0 40px 96px;max-width:1220px;margin:auto}.purchase-note{display:flex;align-items:center;justify-content:center;gap:10px;max-width:760px;margin:0 auto 34px;padding:12px 18px;border:1px solid var(--brd);border-radius:var(--r);background:var(--bg2);color:var(--tx2);font-size:14px}.purchase-note strong{color:var(--tx)}
@@ -7469,7 +7605,7 @@ function renderPlanosPage(portalUser = null) {
 @media(max-width:1050px){.pricing-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:620px){.plans-wrap{padding:0 16px 72px}.pricing-grid{grid-template-columns:1fr}.page-hero{padding:58px 18px 42px}.purchase-note{align-items:flex-start}.modal-actions{flex-direction:column-reverse}.modal-actions button,.modal-actions a{width:100%}}
 @media(prefers-reduced-motion:reduce){.price-card,.plan-btn,.need-opt span,.modal-actions button,.modal-actions a{transition:none}}
 </style></head><body>${_sharedNav({activePath:'/planos',portalUser,showBack:true})}
-<main><header class="page-hero"><div class="page-hero-tag">Licenças ZVM</div><h1>Escolha seu <span>ritmo de operação</span></h1><p>Todos os planos têm os mesmos recursos. O limite muda apenas conforme a quantidade de números conectados.</p></header>
+<main id="main-content"><header class="page-hero"><div class="page-hero-tag">Licenças ZVM</div><h1>Escolha seu <span>ritmo de operação</span></h1><p>Todos os planos têm os mesmos recursos. O limite muda apenas conforme a quantidade de números conectados.</p></header>
 <div class="plans-wrap">${needPicker}${buyerBox}${purchaseNote}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section><p class="plans-footnote">Precisa de mais números? <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20um%20plano%20customizado" target="_blank" rel="noopener noreferrer">Converse com o suporte</a></p></div></main>
 <dialog class="checkout-dialog" aria-labelledby="checkout-title"><div class="dialog-inner">${modalContent}</div></dialog>${_standaloneFoot()}
 <script>(function(){
@@ -7670,7 +7806,10 @@ ${CANVAS_BG}
 function applyStandaloneFrame(html, { activePath = '', portalUser = null, showBack = true } = {}) {
   return html
     .replace('</style></head>', `${_standaloneCss()}</style></head>`)
-    .replace(/<nav class="znav">[\s\S]*?<\/nav>/, _sharedNav({ activePath, portalUser, showBack }))
+    // Marcador de destino do skip-link: renderPrivacyPage/renderLandingPage
+    // (WSM, INTOCADOS) não usam <main>, então o alvo #main-content é injetado
+    // aqui, na única costura standalone-only já existente (troca da nav).
+    .replace(/<nav class="znav">[\s\S]*?<\/nav>/, _sharedNav({ activePath, portalUser, showBack }) + '<div id="main-content"></div>')
     .replace(/<footer class="zfooter">[\s\S]*?<\/footer>/, _standaloneFoot());
 }
 
@@ -7741,7 +7880,13 @@ function renderStandaloneLandingPage(portalUser = null) {
     // Transparência: os depoimentos são reais, mas anteriores à marca ZVM
     // atual (evolução do mesmo produto/vendedor). Uma linha deixa isso
     // claro sem reescrever nem uma palavra dos textos originais.
-    .replace('<h2 class="sh-title">Quem usa, aprova</h2>', '<h2 class="sh-title">Quem usa, aprova</h2>\n    <p class="sh-sub">Avaliações reais de clientes, coletadas ao longo da evolução do produto.</p>');
+    .replace('<h2 class="sh-title">Quem usa, aprova</h2>', '<h2 class="sh-title">Quem usa, aprova</h2>\n    <p class="sh-sub">Avaliações reais de clientes, coletadas ao longo da evolução do produto.</p>')
+    // Uniformização tipográfica (só standalone, renderLandingPage/WSM
+    // intocada): .fc-desc é o texto de corpo de cada card de recurso, mas
+    // estava em 14px — menor que o próprio heading do card (.fc-name, 16px)
+    // e abaixo da referência de /privacidade (16px/1.8). Só esse ponto
+    // precisava de ajuste; hero/steps/pricing já estavam na faixa certa.
+    .replace('</style></head>', '.fc-desc{font-size:16px;line-height:1.8}</style></head>');
   return _standaloneLandingPricing(_stripLegacyReviewScreenshot(html));
 }
 
@@ -7758,7 +7903,7 @@ function renderStandaloneFaqPage(portalUser = null) {
   const content = groups.map(([title, items]) => `<section class="faq-group"><h2>${title}</h2>${items.map(([q,a])=>`<details class="faq-item"><summary>${q}</summary><p>${a}</p></details>`).join('')}</section>`).join('');
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ZVM — Perguntas Frequentes</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}<style>${_sharedCss()}${_standaloneCss()}
   .faq-hero{max-width:760px;margin:auto;padding:86px 24px 42px;text-align:center}.faq-kicker{font:700 11px 'Space Mono',monospace;color:var(--g);letter-spacing:2px;text-transform:uppercase}.faq-hero h1{font-size:clamp(34px,6vw,58px);letter-spacing:-2px;margin:13px 0}.faq-hero p{color:var(--tx2);line-height:1.7}.faq-wrap{max-width:820px;margin:auto;padding:0 24px 92px}.faq-group{margin-top:42px}.faq-group h2{font-size:15px;color:var(--g);letter-spacing:.8px;text-transform:uppercase;margin-bottom:10px}.faq-item{border-bottom:1px solid var(--brd)}.faq-item summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;gap:16px;padding:19px 0;font-weight:750}.faq-item summary::-webkit-details-marker{display:none}.faq-item summary::after{content:'+';font-family:'Space Mono',monospace;color:var(--tx3)}.faq-item[open] summary{color:var(--g)}.faq-item[open] summary::after{content:'−';color:var(--g)}.faq-item p{padding:0 28px 20px 0;color:var(--tx2);line-height:1.75}.faq-support{margin-top:44px;padding:24px;border:1px solid var(--brd);border-radius:var(--r-lg);background:linear-gradient(135deg,var(--bg2),rgba(139,92,246,.07));display:flex;justify-content:space-between;align-items:center;gap:20px}.faq-support p{color:var(--tx2);margin-top:4px}.faq-support a{flex-shrink:0;padding:12px 18px;border:1px solid var(--g-brd);border-radius:8px;color:var(--g);font-weight:800}@media(max-width:600px){.faq-support{align-items:flex-start;flex-direction:column}.faq-support a{width:100%;text-align:center}}
-  </style></head><body>${_sharedNav({activePath:'/faq',portalUser,showBack:true})}<main><header class="faq-hero"><div class="faq-kicker">Central de respostas</div><h1>Ajuda sem rodeios</h1><p>Compra, entrega, validade e dispositivos explicados de forma direta.</p></header><div class="faq-wrap">${content}<aside class="faq-support"><div><strong>Não encontrou sua resposta?</strong><p>O WhatsApp continua disponível como canal de suporte.</p></div><a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener noreferrer">Falar com suporte</a></aside></div></main>${_standaloneFoot()}</body></html>`;
+  </style></head><body>${_sharedNav({activePath:'/faq',portalUser,showBack:true})}<main id="main-content"><header class="faq-hero"><div class="faq-kicker">Central de respostas</div><h1>Ajuda sem rodeios</h1><p>Compra, entrega, validade e dispositivos explicados de forma direta.</p></header><div class="faq-wrap">${content}<aside class="faq-support"><div><strong>Não encontrou sua resposta?</strong><p>O WhatsApp continua disponível como canal de suporte.</p></div><a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener noreferrer">Falar com suporte</a></aside></div></main>${_standaloneFoot()}</body></html>`;
 }
 
 // Tipografia do corpo do documento (renderPrivacyPage, WSM-compartilhada)
@@ -8169,9 +8314,13 @@ async function runInternalSecurityAudit() {
   results.push({
     name:   'SALE_WEBHOOK_SECRET (webhook de vendas) — opcional',
     pass:   true,
+    // O handler de /sale/webhook e /payt/webhook é fail-closed: sem o
+    // segredo configurado, o endpoint responde 503 e recusa qualquer POST
+    // (nunca "aceita qualquer origem"). Diagnóstico corrigido pra refletir
+    // o código real, não o comportamento antigo antes do fail-closed.
     detail: SALE_WEBHOOK_SECRET && SALE_WEBHOOK_SECRET.length >= 8
       ? `${SALE_WEBHOOK_SECRET.length} chars · ${_mask(SALE_WEBHOOK_SECRET, 4)}`
-      : 'Não configurado — webhook aceita qualquer origem (opcional, mas recomendado)',
+      : 'Não configurado — webhook fail-closed (503, recusa todo POST) até ser definido (opcional, mas recomendado)',
   });
   results.push({
     name:   'PARTNER_API_TOKEN (API de parceiro) — opcional',
@@ -10655,7 +10804,7 @@ async function handleRequest(req, res) {
   // Rota top-level, independente do /WSM/ia (outra pasta, outra lógica de
   // bridge JS) — path traversal bloqueado com o mesmo padrão de comparação
   // por prefixo+separador usado ali.
-  if ((p === '/static' || p.startsWith('/static/')) && req.method === 'GET') {
+  if ((p === '/static' || p.startsWith('/static/')) && (req.method === 'GET' || req.method === 'HEAD')) {
     const _staticBase = path.resolve(__dirname, 'static');
     const _staticSub  = p.replace(/^\/static/, '') || '/';
     const _staticRaw  = path.resolve(_staticBase, '.' + (_staticSub.startsWith('/') ? _staticSub : '/' + _staticSub));
@@ -10666,6 +10815,7 @@ async function handleRequest(req, res) {
         const _ext  = path.extname(_staticRaw).toLowerCase();
         const _mime = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.ico': 'image/x-icon' };
         res.writeHead(200, { 'Content-Type': _mime[_ext] || 'application/octet-stream', 'Cache-Control': 'public, max-age=604800, immutable', ..._SEC_HEADERS });
+        if (req.method === 'HEAD') { res.end(); return; }
         fs.createReadStream(_staticRaw).pipe(res);
         return;
       }
@@ -10674,12 +10824,16 @@ async function handleRequest(req, res) {
   }
 
   if (p === '/status' && req.method === 'GET') {
+    // Página pública de status operacional — propositalmente NÃO revela
+    // métricas de negócio (contagem de chaves ativas/totais) nem estado
+    // detalhado do Mongo. Isso já é servido só pro admin autenticado em
+    // R_ADMIN+'/status'. /health continua a checagem mínima pro Render/
+    // UptimeRobot, sem nenhuma dependência deste endpoint.
     let dbOk = false;
     try { const _sd = await getMongoDb(); await _sd.command({ ping: 1 }); dbOk = true; } catch {}
     const upSec = Math.floor(process.uptime());
     const upStr = upSec < 60 ? upSec + 's' : upSec < 3600 ? Math.floor(upSec/60) + 'm' : Math.floor(upSec/3600) + 'h ' + Math.floor((upSec%3600)/60) + 'm';
-    const stats = getKeyStats();
-    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="60"><title>ZVM — Status</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace;color:#e0e0e0}.card{background:#111118;border:1px solid #1a1a2e;border-radius:16px;padding:36px 32px;width:100%;max-width:480px}.logo{font-size:22px;font-weight:800;color:#00e676;margin-bottom:4px;letter-spacing:-0.5px}h1{font-size:13px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:28px}.row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #1a1a2e;font-size:13px}.row:last-child{border-bottom:none}.label{color:#888}.value{font-weight:700;color:#e0e0e0}.ok{color:#00e676}.fail{color:#f05060}.ts{font-size:11px;color:#444;margin-top:20px;text-align:right}</style></head><body><div class="card"><div class="logo">⚡ ZVM</div><h1>Status do Serviço</h1><div class="row"><span class="label">API</span><span class="value ok">● Operacional</span></div><div class="row"><span class="label">Banco de Dados</span><span class="value ${dbOk?'ok':'fail'}">${dbOk?'● Conectado':'● Desconectado'}</span></div><div class="row"><span class="label">Uptime</span><span class="value">${upStr}</span></div><div class="row"><span class="label">Chaves Ativas</span><span class="value">${stats.activeKeys}</span></div><div class="row"><span class="label">Total de Chaves</span><span class="value">${stats.totalKeys}</span></div><div class="ts">Atualizado: ${new Date().toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</div></div></body></html>`;
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="60"><title>ZVM — Status</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace;color:#e0e0e0}.card{background:#111118;border:1px solid #1a1a2e;border-radius:16px;padding:36px 32px;width:100%;max-width:480px}.logo{font-size:22px;font-weight:800;color:#00e676;margin-bottom:4px;letter-spacing:-0.5px}h1{font-size:13px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:28px}.row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #1a1a2e;font-size:13px}.row:last-child{border-bottom:none}.label{color:#888}.value{font-weight:700;color:#e0e0e0}.ok{color:#00e676}.fail{color:#f05060}.ts{font-size:11px;color:#444;margin-top:20px;text-align:right}</style></head><body><div class="card"><div class="logo">⚡ ZVM</div><h1>Status do Serviço</h1><div class="row"><span class="label">API</span><span class="value ok">● Operacional</span></div><div class="row"><span class="label">Banco de Dados</span><span class="value ${dbOk?'ok':'fail'}">${dbOk?'● Conectado':'● Desconectado'}</span></div><div class="row"><span class="label">Uptime</span><span class="value">${upStr}</span></div><div class="ts">Atualizado: ${new Date().toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</div></div></body></html>`;
     res.writeHead(dbOk ? 200 : 503, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', ..._SEC_HEADERS });
     res.end(html);
     return;
@@ -10689,7 +10843,20 @@ async function handleRequest(req, res) {
     'Access-Control-Allow-Origin':  (()=>{
       const o=req.headers.origin||'';
       if(p.startsWith(R_ADMIN)||p.startsWith(R_MOD)||(R_ANALYTICS&&p.startsWith(R_ANALYTICS))){return 'null';}
-      return o||'*';
+      // /WSM/* é o namespace legado — comportamento de CORS preservado
+      // exatamente como estava, sem tocar (fora de escopo desta rodada).
+      if (/^\/wsm(\/|$)/i.test(p)) return o || '*';
+      // CORS permissivo só nos namespaces com consumidor cross-origin real e
+      // mapeado: extensão ZVM (chrome-extension://), API de parceiro e os
+      // webhooks (que não dependem de CORS de navegador pra funcionar, mas
+      // preservam o header por compatibilidade com testes/monitoramento
+      // externos). O portal público (HTML/JSON do site) não tem consumidor
+      // cross-origin conhecido — 'null' aqui replica o mesmo padrão já usado
+      // pra bloquear admin/mod/analytics acima.
+      const isCrossOriginNamespace = p.startsWith(R_EXT) || p.startsWith('/api/partner')
+        || p === '/cakto/webhook' || p === '/sale/webhook' || p === '/payt/webhook';
+      if (isCrossOriginNamespace) return o || '*';
+      return 'null';
     })(),
     'Access-Control-Allow-Methods': 'POST,GET,OPTIONS,DELETE',
     // Inclui os headers que a extensão WSM/WaTiDy envia (access-token, Accept, Authorization),
@@ -10703,7 +10870,6 @@ async function handleRequest(req, res) {
     'Referrer-Policy':              'no-referrer',
     'Permissions-Policy':           'geolocation=(), microphone=(), camera=()',
     'Content-Security-Policy':      "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://i.ytimg.com https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; media-src https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'",
-    'X-Powered-By':                 'PHP/7.4.3',
   };
   Object.entries(_corsH).forEach(([k, v]) => res.setHeader(k, v));
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
@@ -11265,6 +11431,7 @@ async function handleRequest(req, res) {
 
   if (p === R_MOD+'/api/keys' && req.method === 'POST') {
     if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
     if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate limit' }, 429); return; }
     const _modCookie = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
     const _modSess   = _modCookie ? modSessions[_modCookie[1]] : null;
@@ -11353,6 +11520,7 @@ async function handleRequest(req, res) {
 
   if (p.startsWith(R_MOD+'/api/keys/') && p.endsWith('/note') && req.method === 'POST') {
     if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
     const codeFromUrl = sanitizeId(decodeURIComponent(p.slice((R_MOD+'/api/keys/').length, -'/note'.length)), 30);
     if (!codeFromUrl) { sendJson(res, { error: 'not found' }, 404); return; }
     if (!await ensureKeyLoaded(codeFromUrl)) { sendJson(res, { error: 'not found' }, 404); return; }
@@ -11514,6 +11682,7 @@ async function handleRequest(req, res) {
   }
   if (p === R_ADMIN+'/api/ip-blacklist/add' && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
     const _b = await parseBody(req);
     const _ip = String(_b.ip || '').trim().slice(0, 45);
     if (!_ip) { sendJson(res, { error: 'ip_required' }, 400); return; }
@@ -11524,6 +11693,7 @@ async function handleRequest(req, res) {
   }
   if (p === R_ADMIN+'/api/ip-blacklist/remove' && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
     const _b = await parseBody(req);
     const _ip = String(_b.ip || '').trim().slice(0, 45);
     ipBlacklist.delete(_ip);
@@ -11607,6 +11777,7 @@ async function handleRequest(req, res) {
 
   if (p === R_ADMIN+'/api/keys' && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
     const body = await parseBody(req);
     const code = generateCode();
     const { expiresAt, expireDuration } = parseKeyExpiryFromBody(body, { allowMinutes: true });
@@ -11731,6 +11902,7 @@ async function handleRequest(req, res) {
 
   if (p === R_ADMIN+'/api/keys/batch' && req.method === 'DELETE') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
     const body = await parseBody(req);
     const rawCodes = Array.isArray(body.codes) ? body.codes : [];
     if (!rawCodes.length) { sendJson(res, { error: 'nenhum código enviado' }, 400); return; }
@@ -11778,6 +11950,7 @@ async function handleRequest(req, res) {
 
   if (p === R_ADMIN+'/api/logs' && req.method === 'DELETE') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
     const body = await parseBody(req);
     if (body.date !== undefined) {
       // Valida formato estritamente: YYYY-MM-DD (10 chars). String vazia ou objeto
@@ -12088,7 +12261,7 @@ async function handleRequest(req, res) {
     await savePayment({ txId:txId||code, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, tracking, keyCode:code, maxUses, renewed:false, paidAt:now.toISOString(), rawStatus:status });
     // Link to portal_users if registered with same email
     if (clientEmail) { getMongoDb().then(d=>d.collection('portal_users').updateOne({_id:clientEmail.toLowerCase()},{$set:{keyCode:code}})).catch(e=>console.warn('[SALE] portal link:',e.message)); }
-    console.log('[SALE] Nova chave gerada:', code, 'email:', clientEmail);
+    console.log('[SALE] Nova chave gerada:', code, 'email:', maskEmail(clientEmail));
     if (clientEmail) sendKeyDeliveryEmail(clientEmail, { code, planLabel:planLabelForMaxUses(maxUses), maxUses, expiresAt:expires.toISOString(), renewed:false, baseUrl:BASE_URL, extensionUrl:EXTENSION_URL }).catch(e=>console.warn('[MAILER] envio chave nova:',e.message));
     res.writeHead(200); res.end('ok'); return;
   }
@@ -12160,7 +12333,7 @@ async function handleRequest(req, res) {
     saveKey(code);
     await savePayment({ txId:txId||code, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, tracking, keyCode:code, maxUses, renewed:false, paidAt:now.toISOString(), rawStatus:'approved' });
     if (clientEmail) { getMongoDb().then(d=>d.collection('portal_users').updateOne({_id:clientEmail},{$set:{keyCode:code}},{upsert:false})).catch(e=>console.warn('[PARTNER] portal link:',e.message)); }
-    console.log('[PARTNER] Nova chave gerada:', code, 'email:', clientEmail);
+    console.log('[PARTNER] Nova chave gerada:', code, 'email:', maskEmail(clientEmail));
     sendKeyDeliveryEmail(clientEmail, { code, planLabel:planLabelForMaxUses(maxUses), maxUses, expiresAt:expires.toISOString(), renewed:false, baseUrl:BASE_URL, extensionUrl:EXTENSION_URL }).catch(e=>console.warn('[MAILER] envio chave nova:',e.message));
     sendJson(res, { ok: true, renewed: false, code, expiresAt: expires.toISOString(), maxUses });
     return;
@@ -12425,6 +12598,12 @@ async function handleRequest(req, res) {
       if (keycode) {
         await ensureKeyLoaded(keycode);
         if (!keys[keycode]) { sendHtml(res, renderStandalonePortalRegister('Chave não encontrada. Deixe em branco para vincular depois.', vals, redir)); return; }
+        // Guarda de aplicação: uma licença comercial pertence a uma única conta
+        // do portal. Sem isto, a mesma keyCode poderia ser vinculada a vários
+        // portal_users simultaneamente (cada um veria/gerenciaria a licença do
+        // outro). Checagem em tempo de escrita — não depende de índice único.
+        const alreadyLinked = await db.collection('portal_users').findOne({ keyCode: keycode });
+        if (alreadyLinked) { sendHtml(res, renderStandalonePortalRegister('Esta chave já está vinculada a outra conta. Entre em contato com o suporte se isso for um engano.', vals, redir)); return; }
       }
       const salt = genSalt();
       const passwordHash = await hashPassword(pass, salt);
@@ -12446,24 +12625,32 @@ async function handleRequest(req, res) {
 
   if (p === '/cliente/vincular') {
     if (!isPortalSession(req)) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
-    if (req.method === 'GET') { sendHtml(res, renderStandalonePortalLinkKey()); return; }
+    if (req.method === 'GET') { sendHtml(res, renderStandalonePortalLinkKey('', '', getPortalUser(req))); return; }
     if (req.method === 'POST') {
+      if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
+      const sess = getPortalUser(req);
       const form = await parseFormBody(req);
       const keycode = ((form.get('keycode')||'').toLowerCase().trim()).replace(/[^a-z0-9\-_]/g,'').slice(0,30);
-      if (!keycode) { sendHtml(res, renderStandalonePortalLinkKey('Informe o código da chave.')); return; }
+      if (!keycode) { sendHtml(res, renderStandalonePortalLinkKey('Informe o código da chave.', '', sess)); return; }
       await ensureKeyLoaded(keycode);
-      if (!keys[keycode]) { sendHtml(res, renderStandalonePortalLinkKey('Chave não encontrada.')); return; }
-      const sess = getPortalUser(req);
+      if (!keys[keycode]) { sendHtml(res, renderStandalonePortalLinkKey('Chave não encontrada.', '', sess)); return; }
       try {
         const db = await getMongoDb();
+        // Guarda de aplicação: uma licença comercial pertence a uma única conta
+        // do portal. Sem isto, dois portal_users diferentes poderiam vincular a
+        // mesma keyCode simultaneamente (cada um veria/gerenciaria a licença do
+        // outro). Checagem em tempo de escrita — não depende de índice único.
+        const alreadyLinked = await db.collection('portal_users').findOne({ keyCode: keycode, _id: { $ne: sess.email } });
+        if (alreadyLinked) { sendHtml(res, renderStandalonePortalLinkKey('Esta chave já está vinculada a outra conta. Entre em contato com o suporte se isso for um engano.', '', sess)); return; }
         await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { keyCode: keycode } });
         res.writeHead(302, { Location: '/cliente' }); res.end(); return;
-      } catch(e) { sendHtml(res, renderStandalonePortalLinkKey('Erro ao vincular.')); return; }
+      } catch(e) { sendHtml(res, renderStandalonePortalLinkKey('Erro ao vincular.', '', sess)); return; }
     }
   }
 
   if (p === '/cliente/desvincular' && req.method === 'POST') {
     if (!isPortalSession(req)) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
+    if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
     const sess = getPortalUser(req);
     try {
       const db = await getMongoDb();
@@ -12474,6 +12661,7 @@ async function handleRequest(req, res) {
 
   if (p === '/cliente/dispositivos/remover' && req.method === 'POST') {
     if (!isPortalSession(req)) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
+    if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
     const sess = getPortalUser(req);
     const form = await parseFormBody(req);
     const indexRaw = String(form.get('index') || '');
@@ -12496,27 +12684,28 @@ async function handleRequest(req, res) {
 
   if (p === '/cliente/email') {
     if (!isPortalSession(req)) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
-    if (req.method === 'GET') { sendHtml(res, renderStandalonePortalChangeEmail()); return; }
+    if (req.method === 'GET') { sendHtml(res, renderStandalonePortalChangeEmail('', '', getPortalUser(req))); return; }
     if (req.method === 'POST') {
+      if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
       const sess = getPortalUser(req);
       const form = await parseFormBody(req);
       const newemail  = (form.get('newemail')||'').toLowerCase().trim().slice(0,120);
       const newemail2 = (form.get('newemail2')||'').toLowerCase().trim().slice(0,120);
       const pass = (form.get('pass')||'').slice(0,128);
-      if (!newemail || !newemail2 || !pass) { sendHtml(res, renderStandalonePortalChangeEmail('Preencha todos os campos.')); return; }
-      if (newemail !== newemail2) { sendHtml(res, renderStandalonePortalChangeEmail('Os e-mails não coincidem.')); return; }
-      if (newemail === sess.email) { sendHtml(res, renderStandalonePortalChangeEmail('O novo e-mail é igual ao atual.')); return; }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newemail)) { sendHtml(res, renderStandalonePortalChangeEmail('E-mail inválido.')); return; }
+      if (!newemail || !newemail2 || !pass) { sendHtml(res, renderStandalonePortalChangeEmail('Preencha todos os campos.', '', sess)); return; }
+      if (newemail !== newemail2) { sendHtml(res, renderStandalonePortalChangeEmail('Os e-mails não coincidem.', '', sess)); return; }
+      if (newemail === sess.email) { sendHtml(res, renderStandalonePortalChangeEmail('O novo e-mail é igual ao atual.', '', sess)); return; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newemail)) { sendHtml(res, renderStandalonePortalChangeEmail('E-mail inválido.', '', sess)); return; }
       try {
         const db = await getMongoDb();
         const user = await db.collection('portal_users').findOne({ _id: sess.email });
-        if (!user) { sendHtml(res, renderStandalonePortalChangeEmail('Sessão inválida. Faça login novamente.')); return; }
+        if (!user) { sendHtml(res, renderStandalonePortalChangeEmail('Sessão inválida. Faça login novamente.', '', sess)); return; }
         const hash = await hashPassword(pass, user.salt);
         const _ha = Buffer.from(hash,'hex'), _hb = Buffer.from(user.passwordHash||'','hex');
         const passOk = _ha.length===_hb.length && _ha.length>0 && crypto.timingSafeEqual(_ha,_hb);
-        if (!passOk) { sendHtml(res, renderStandalonePortalChangeEmail('Senha incorreta.')); return; }
+        if (!passOk) { sendHtml(res, renderStandalonePortalChangeEmail('Senha incorreta.', '', sess)); return; }
         const exists = await db.collection('portal_users').findOne({ _id: newemail });
-        if (exists) { sendHtml(res, renderStandalonePortalChangeEmail('Este e-mail já está cadastrado.')); return; }
+        if (exists) { sendHtml(res, renderStandalonePortalChangeEmail('Este e-mail já está cadastrado.', '', sess)); return; }
         const newUser = { ...user, _id: newemail };
         await db.collection('portal_users').insertOne(newUser);
         await db.collection('portal_users').deleteOne({ _id: sess.email });
@@ -12525,46 +12714,47 @@ async function handleRequest(req, res) {
         if (_cookie) delete portalSessions[_cookie[1]];
         res.setHeader('Set-Cookie','zv_portal=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict');
         res.writeHead(302, { Location: '/cliente/login?msg=email_changed' }); res.end(); return;
-      } catch(e) { console.error('[Portal] email change:', e.message); sendHtml(res, renderStandalonePortalChangeEmail('Erro interno. Tente novamente.')); return; }
+      } catch(e) { console.error('[Portal] email change:', e.message); sendHtml(res, renderStandalonePortalChangeEmail('Erro interno. Tente novamente.', '', sess)); return; }
     }
   }
 
   if (p === '/cliente/senha') {
     if (!isPortalSession(req)) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
-    if (req.method === 'GET') { const _ok=url.searchParams.get('ok'); sendHtml(res, renderStandalonePortalChangePwd(_ok?'':'',_ok?'Senha alterada com sucesso!':'')); return; }
+    if (req.method === 'GET') { const _ok=url.searchParams.get('ok'); sendHtml(res, renderStandalonePortalChangePwd(_ok?'':'',_ok?'Senha alterada com sucesso!':'', getPortalUser(req))); return; }
     if (req.method === 'POST') {
+      if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
+      const sess = getPortalUser(req);
       const form = await parseFormBody(req);
       const old  = (form.get('old')||'').slice(0,128);
       const pass = (form.get('pass')||'').slice(0,128);
       const pass2= (form.get('pass2')||'').slice(0,128);
-      if (pass.length < 8) { sendHtml(res, renderStandalonePortalChangePwd('Nova senha: mínimo 8 caracteres.')); return; }
-      if (pass !== pass2) { sendHtml(res, renderStandalonePortalChangePwd('As senhas não coincidem.')); return; }
-      const sess = getPortalUser(req);
+      if (pass.length < 8) { sendHtml(res, renderStandalonePortalChangePwd('Nova senha: mínimo 8 caracteres.', '', sess)); return; }
+      if (pass !== pass2) { sendHtml(res, renderStandalonePortalChangePwd('As senhas não coincidem.', '', sess)); return; }
       try {
         const db = await getMongoDb();
         const user = await db.collection('portal_users').findOne({ _id: sess.email });
-        if (!user) { sendHtml(res, renderStandalonePortalChangePwd('Sessão inválida.')); return; }
+        if (!user) { sendHtml(res, renderStandalonePortalChangePwd('Sessão inválida.', '', sess)); return; }
         const oldHash = await hashPassword(old, user.salt);
         const _oa = Buffer.from(oldHash, 'hex'), _ob = Buffer.from(user.passwordHash || '', 'hex');
         const oldOk = _oa.length === _ob.length && _oa.length > 0 && crypto.timingSafeEqual(_oa, _ob);
-        if (!oldOk) { sendHtml(res, renderStandalonePortalChangePwd('Senha atual incorreta.')); return; }
+        if (!oldOk) { sendHtml(res, renderStandalonePortalChangePwd('Senha atual incorreta.', '', sess)); return; }
         const salt = genSalt();
         const passwordHash = await hashPassword(pass, salt);
         await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { passwordHash, salt } });
         // Mantem a sessao atual, revoga as demais (dispositivos/invasores antigos).
         revokePortalSessions(sess.email, ((req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/)||[])[1]);
         res.writeHead(302, { Location: '/cliente/senha?ok=1' }); res.end(); return;
-      } catch(e) { sendHtml(res, renderStandalonePortalChangePwd('Erro ao alterar senha.')); return; }
+      } catch(e) { sendHtml(res, renderStandalonePortalChangePwd('Erro ao alterar senha.', '', sess)); return; }
     }
   }
   // ── Recuperação de senha ──────────────────────────────────
   if (p === '/cliente/recuperar') {
-    if (req.method === 'GET') { sendHtml(res, renderPortalResetRequest()); return; }
+    if (req.method === 'GET') { sendHtml(res, renderStandalonePortalResetRequest()); return; }
     if (req.method === 'POST') {
-      if (!checkRateLimit(ip, 'reset')) { sendHtml(res, renderPortalResetRequest('Muitas tentativas. Aguarde 30 minutos.'), 429); return; }
+      if (!checkRateLimit(ip, 'reset')) { sendHtml(res, renderStandalonePortalResetRequest('Muitas tentativas. Aguarde 30 minutos.'), 429); return; }
       const form  = await parseFormBody(req);
       const email = (form.get('email')||'').toLowerCase().trim().slice(0,100);
-      if (!email) { sendHtml(res, renderPortalResetRequest('Informe seu e-mail.')); return; }
+      if (!email) { sendHtml(res, renderStandalonePortalResetRequest('Informe seu e-mail.')); return; }
       const okMsg = RESEND_API_KEY
         ? 'Se este e-mail estiver cadastrado, você receberá o link de recuperação em instantes. Verifique também o spam.'
         : 'Se este e-mail estiver cadastrado, um link de recuperação foi gerado. Entre em contato com o suporte via WhatsApp para recebê-lo.';
@@ -12579,14 +12769,16 @@ async function handleRequest(req, res) {
           const resetUrl = BASE_URL + '/cliente/redefinir?token=' + token;
           // NUNCA logar resetUrl: o token troca a senha da conta. Logs vão para
           // agregadores/terceiros e viram um caminho direto de account takeover.
-          console.log('[Portal] Reset token gerado para', email);
+          // E-mail mascarado (maskEmail) — o log serve pra correlacionar
+          // incidentes, não precisa do endereço completo em claro.
+          console.log('[Portal] Reset token gerado para', maskEmail(email));
           if (RESEND_API_KEY) {
             const sent = await sendPasswordResetEmail(email, resetUrl);
-            if (!sent) console.warn('[Portal] Falha ao enviar email de reset para', email);
+            if (!sent) console.warn('[Portal] Falha ao enviar email de reset para', maskEmail(email));
           }
         }
-        sendHtml(res, renderPortalResetRequest('', okMsg)); return;
-      } catch(e) { console.error('[Portal] reset:', e.message); sendHtml(res, renderPortalResetRequest('Erro temporário.')); return; }
+        sendHtml(res, renderStandalonePortalResetRequest('', okMsg)); return;
+      } catch(e) { console.error('[Portal] reset:', e.message); sendHtml(res, renderStandalonePortalResetRequest('Erro temporário.')); return; }
     }
   }
 
@@ -12594,27 +12786,27 @@ async function handleRequest(req, res) {
     const token = (url.searchParams.get('token')||'').replace(/[^a-f0-9]/g,'').slice(0,64);
     if (req.method === 'GET') {
       if (!token) { res.writeHead(302, { Location: '/cliente/recuperar' }); res.end(); return; }
-      sendHtml(res, renderPortalResetForm('', '', token)); return;
+      sendHtml(res, renderStandalonePortalResetForm('', '', token)); return;
     }
     if (req.method === 'POST') {
       const form  = await parseFormBody(req);
       const tk    = (form.get('token')||'').replace(/[^a-f0-9]/g,'').slice(0,64);
       const pass  = (form.get('pass')||'').slice(0,128);
       const pass2 = (form.get('pass2')||'').slice(0,128);
-      if (pass.length < 8) { sendHtml(res, renderPortalResetForm('Senha: mínimo 8 caracteres.', '', tk)); return; }
-      if (pass !== pass2)  { sendHtml(res, renderPortalResetForm('As senhas não coincidem.', '', tk)); return; }
+      if (pass.length < 8) { sendHtml(res, renderStandalonePortalResetForm('Senha: mínimo 8 caracteres.', '', tk)); return; }
+      if (pass !== pass2)  { sendHtml(res, renderStandalonePortalResetForm('As senhas não coincidem.', '', tk)); return; }
       try {
         const db   = await getMongoDb();
         const rec  = await db.collection('password_resets').findOne({ _id: tk });
-        if (!rec || new Date() > new Date(rec.expiresAt)) { sendHtml(res, renderPortalResetForm('Link expirado ou inválido. Solicite um novo.', '', '')); return; }
+        if (!rec || new Date() > new Date(rec.expiresAt)) { sendHtml(res, renderStandalonePortalResetForm('Link expirado ou inválido. Solicite um novo.', '', '')); return; }
         const salt = genSalt();
         const passwordHash = await hashPassword(pass, salt);
         await db.collection('portal_users').updateOne({ _id: rec.email }, { $set: { passwordHash, salt } });
         // Reset de senha expulsa todas as sessoes existentes da conta.
         revokePortalSessions(rec.email);
         await db.collection('password_resets').deleteOne({ _id: tk });
-        sendHtml(res, renderPortalResetForm('', 'Senha redefinida com sucesso!', '')); return;
-      } catch(e) { sendHtml(res, renderPortalResetForm('Erro temporário.', '', tk)); return; }
+        sendHtml(res, renderStandalonePortalResetForm('', 'Senha redefinida com sucesso!', '')); return;
+      } catch(e) { sendHtml(res, renderStandalonePortalResetForm('Erro temporário.', '', tk)); return; }
     }
   }
 
@@ -12624,6 +12816,7 @@ async function handleRequest(req, res) {
     if (!sess || !sess.pending2fa) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
     if (req.method === 'GET') { sendHtml(res, renderStandalone2FAVerify()); return; }
     if (req.method === 'POST') {
+      if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
       if (!checkRateLimit(ip, 'twofa')) { sendHtml(res, renderStandalone2FAVerify('Muitas tentativas. Aguarde 10 minutos.'), 429); return; }
       const form = await parseFormBody(req);
       const code = (form.get('code')||'').trim();
@@ -12660,6 +12853,7 @@ async function handleRequest(req, res) {
 
   if (p === '/cliente/2fa/ativar' && req.method === 'POST') {
     if (!isPortalSession(req)) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
+    if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
     if (!checkRateLimit(ip, 'twofa')) { sendHtml(res, renderStandaloneSetup2FA(null, '', 'Muitas tentativas. Aguarde 10 minutos.', ''), 429); return; }
     const sess = getPortalUser(req);
     const form = await parseFormBody(req);
@@ -12679,6 +12873,7 @@ async function handleRequest(req, res) {
 
   if (p === '/cliente/2fa/desativar' && req.method === 'POST') {
     if (!isPortalSession(req)) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
+    if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
     if (!checkRateLimit(ip, 'twofa')) { sendHtml(res, renderStandaloneSetup2FA(null, '', 'Muitas tentativas. Aguarde.', ''), 429); return; }
     const sess = getPortalUser(req);
     const form = await parseFormBody(req);
@@ -12753,8 +12948,12 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
       `✅ zvm-lr1290 v10 — porta ${PORT}\n` +
       `🍃 MongoDB: zapvoice.store | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}\n` +
       `🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | 2FA: ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | Webhook Vendas: ${SALE_WEBHOOK_SECRET ? 'ATIVO' : '⚠ INATIVO'} | Cakto: ${CAKTO_WEBHOOK_SECRET ? 'ATIVO' : '⚠ INATIVO'} | Partner API: ${PARTNER_API_TOKEN ? 'ATIVO' : '⚠ INATIVO'}\n` +
-      `🔑 Admin ZVM: ${R_ADMIN} | User: ${ADMIN_USER}\n` +
-      `🔑 Admin WSM: /WSM${WSM.adminSlug()} | Mod WSM: /WSM${WSM.modSlug()} (banco: ${process.env.WSM_MONGODB_DB || 'watidy'})\n` +
+      // Rota admin derivada + usuário administrativo NÃO vão pro log de boot:
+      // quem operou já tem essas duas informações a partir das próprias env
+      // vars (APP_SECRET/ADMIN_USER) — reimprimi-las só cria mais um lugar
+      // (agregador de log, dashboard do host) onde um segredo pode vazar.
+      `🔑 Admin ZVM: configurado (rota derivada de APP_SECRET)\n` +
+      `🔑 Admin WSM / Mod WSM: configurados (banco: ${process.env.WSM_MONGODB_DB || 'watidy'})\n` +
       `👮 Mod:   ${MODS.length > 0 ? R_MOD+' | '+MODS.length+' mod(s): '+MODS.map(m=>m.name).join(', ') : '⚠ inativo'}\n` +
       `📊 Analytics: ${ANALYTICS_PASS ? 'ATIVO' : '⚠ INATIVO'} | Extension: ${R_EXT}/v3/key | Webhook: ${WEBHOOK_URL || 'não configurado'}\n` +
       `🗂  Logs: retenção ${LOG_RETENTION_DAYS}d (LGPD) | máx ${LOG_MAX} em memória`
@@ -12819,6 +13018,7 @@ module.exports.__test = Object.freeze({
   _writeKeyToDbStrict,
   ZVM_PLANS,
   normalizeCaktoPurchase,
+  normalizeCheckoutUrl,
   resolveCaktoPlan,
   validateCaktoPayload,
   claimCaktoEvent,
@@ -12841,7 +13041,11 @@ module.exports.__test = Object.freeze({
   renderStandalonePortalLinkKey,
   renderStandalonePortalChangePwd,
   renderStandalonePortalChangeEmail,
+  renderStandalonePortalResetRequest,
+  renderStandalonePortalResetForm,
+  _sharedNav,
   renderStandaloneBrand,
   renderStandalone404Page,
   renderStandalone500Page,
+  requireSameOriginPost,
 });
