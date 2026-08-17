@@ -11,7 +11,10 @@ const { MongoClient } = require('mongodb');
 // nem sobrescrever nada nele. Sem a variável definida, comportamento
 // idêntico ao de sempre (carrega .env do cwd).
 try { require('dotenv').config({ path: process.env.DOTENV_CONFIG_PATH || '.env' }); } catch (_) { /* opcional */ }
-const { sendPasswordResetEmail, sendKeyDeliveryEmail, sendEmail } = require('./mailer');
+const {
+  sendPasswordResetEmail, sendKeyDeliveryEmail, sendKeyExpiryWarningEmail, sendEmail,
+  buildPasswordResetEmail, buildKeyDeliveryEmail, buildKeyExpiryWarningEmail,
+} = require('./mailer');
 
 const PORT         = process.env.PORT         || 3000;
 const ADMIN_USER   = process.env.ADMIN_USER;
@@ -735,6 +738,12 @@ let sessions          = {};
 let modSessions       = {};
 let portalSessions    = {};
 let analyticsSessions = {};
+// Sandbox isolado do Laboratório de Testes do Analytics — NUNCA é o mesmo
+// objeto que `keys` e NUNCA é persistido na coleção real `store`/`keys` do
+// Mongo. Chaves simuladas vivem só aqui (em memória, somem no restart) para
+// que processCommercialSale, ao rodar com deps isoladas, seja estruturalmente
+// incapaz de tocar uma licença comercial real por acidente.
+let _simKeyStore      = {};
 let serverReady       = false;
 const ipBlacklist     = new Set(); // IPs bloqueados manualmente pelo admin
 const keyFailMap      = new Map(); // { keyCode -> { count, ips: Set, firstAt } } — falhas recentes por chave
@@ -872,6 +881,7 @@ const RL_CONFIG = {
   reset:        { max: 3,  windowMs: 300000, blockMs: 30 * 60000 },
   twofa:        { max: 5,  windowMs: 60000,  blockMs: 10 * 60000 },
   cakto:        { max: 30, windowMs: 60000,  blockMs:  5 * 60000 },
+  analytics_lab:{ max: 20, windowMs: 60000,  blockMs:  5 * 60000 },
 };
 
 function checkRateLimit(ip, type = 'api', maxReq = 0, windowMs = 0) {
@@ -951,10 +961,9 @@ setInterval(async () => {
           const _pu = await _db.collection('portal_users').findOne({ keyCode: code });
           if (_pu && _pu._id) {
             const hoursLeft = Math.ceil(msLeft / 3600000);
-            await sendEmail({
-              to: _pu._id,
-              subject: '⚠ Sua chave ZVM expira em breve',
-              html: `<p>Olá ${escHtml(_pu.name || '')}!</p><p>Sua chave <strong>${escHtml(code)}</strong> expira em aproximadamente <strong>${hoursLeft}h</strong>.</p><p>Renove agora para não perder o acesso:</p><p><a href="${BASE_URL}/cliente" style="background:#00e676;color:#000;padding:10px 24px;border-radius:6px;text-decoration:none;font-weight:700">Acessar Portal</a></p>`,
+            await sendKeyExpiryWarningEmail(_pu._id, {
+              code, hoursLeft, planLabel: planLabelForMaxUses(k.maxUses), maxUses: k.maxUses,
+              expiresAt: k.expiresAt, baseUrl: BASE_URL, ctaPath: '/cliente',
             });
             keys[code].warnEmailSent = true;
             saveKey(code).catch(() => {});
@@ -1945,20 +1954,20 @@ async function processCommercialSale(sale, plan, deps = {}) {
     key.planId = plan.id;
     key.active = true;
     key.warnEmailSent = false;
-    key.note = [key.note || '', sale.txId ? `renovado_cakto_tx:${sale.txId}` : 'renovado_cakto'].filter(Boolean).join('\n');
+    key.note = [key.note || '', sale.txId ? `renovado_${sale.testMode ? 'simulacao' : 'cakto'}_tx:${sale.txId}` : `renovado_${sale.testMode ? 'simulacao' : 'cakto'}`].filter(Boolean).join('\n');
   } else {
     keyCode = generateCode();
     renewed = false;
     const expiresAt = new Date(now.getTime() + durationMs).toISOString();
     keyStore[keyCode] = {
-      label: `Venda Cakto - ${safeScalar(sale.clientName, 120, 'Cliente')}`,
+      label: `${sale.testMode ? '🧪 Simulação' : 'Venda Cakto'} - ${safeScalar(sale.clientName, 120, 'Cliente')}`,
       active: true, phones: [], activations: [], uses: 0,
       maxUses: plan.maxUses, planId: plan.id,
       expiresAt, expireDuration: durationMs,
       createdAt: now.toISOString(), lastUsed: null, lastIp: null,
       lastPhone: null, deviceId: null, wppVersion: null, warnCount: 0,
       tracking: sale.tracking || null,
-      note: ['Pedido Cakto', `Email: ${clientEmail}`, sale.txId ? `cakto_tx:${sale.txId}` : null, sale.tracking?.compact ? `Origem: ${sale.tracking.compact}` : null].filter(Boolean).join('\n'),
+      note: [sale.testMode ? 'Simulação (Analytics Lab)' : 'Pedido Cakto', `Email: ${clientEmail}`, sale.txId ? `cakto_tx:${sale.txId}` : null, sale.tracking?.compact ? `Origem: ${sale.tracking.compact}` : null].filter(Boolean).join('\n'),
     };
   }
 
@@ -1975,7 +1984,7 @@ async function processCommercialSale(sale, plan, deps = {}) {
   await persistKey(keyCode);
   await linkPortalUser(clientEmail, keyCode);
   await paymentSaver({
-    source: 'cakto', txId: sale.txId, refId: sale.refId || '',
+    source: sale.source || 'cakto', testMode: !!sale.testMode, txId: sale.txId, refId: sale.refId || '',
     offerId: sale.offerId || '', productId: sale.productId || '',
     checkoutUrl: sale.checkoutUrl || '', status: 'approved', approved: true,
     clientName: sale.clientName, clientEmail, clientPhone: sale.clientPhone,
@@ -1998,6 +2007,96 @@ async function processCommercialSale(sale, plan, deps = {}) {
 
   invalidateKeysHtmlCache();
   return { keyCode, renewed, expiresAt: keyStore[keyCode].expiresAt, maxUses: plan.maxUses };
+}
+
+// ── Laboratório de Testes (Analytics) ───────────────────────────────────
+// Núcleo compartilhado com o fluxo Cakto real: mesma processCommercialSale,
+// só com adapters isolados (ver _simKeyStore acima) que tornam
+// estruturalmente impossível a simulação tocar portal_users ou a coleção
+// real de chaves. planId é a ÚNICA entrada de negócio aceita do browser —
+// preço/limite/duração SEMPRE resolvem de ZVM_PLANS aqui no servidor.
+function _findSandboxKeyByEmail(email) {
+  // Mesma lógica de fallback que processCommercialSale usa quando
+  // findPortalUser não encontra nada — replicada aqui só pra o PREVIEW
+  // (sem persistir nada) reportar wouldRenew/wouldCreate de forma
+  // consistente com o que o EXECUTE realmente vai fazer.
+  const target = email.toLowerCase();
+  return Object.keys(_simKeyStore).find(code => {
+    const noteEmail = (_simKeyStore[code]?.note || '').match(/Email: (\S+)/)?.[1] || '';
+    return noteEmail.toLowerCase() === target;
+  }) || null;
+}
+
+function resolveLabPlan(planId) {
+  const plan = ZVM_PLANS[String(planId || '').toLowerCase()];
+  return plan || null;
+}
+
+async function simulateCommercialSale({ planId, name, email, phone, method, execute = false, sendRealEmail = false }) {
+  const plan = resolveLabPlan(planId);
+  if (!plan) { const e = new Error('lab_invalid_plan'); e.code = 'invalid_plan'; throw e; }
+
+  const clientEmail = safeScalar(email, 160).toLowerCase();
+  if (!clientEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clientEmail)) { const e = new Error('lab_invalid_email'); e.code = 'invalid_email'; throw e; }
+  const clientName  = safeScalar(name, 120, 'Cliente Teste');
+  const clientPhone = safeScalar(phone, 30, '');
+  const paymentMethod = ['credit_card', 'pix'].includes(method) ? method : 'pix';
+
+  const existingCode = _findSandboxKeyByEmail(clientEmail);
+  const durationMs = plan.durationDays * 24 * 60 * 60 * 1000;
+  const now = new Date();
+
+  if (!execute) {
+    // PREVIEW — só calcula, nunca persiste nem envia e-mail.
+    const wouldRenew = !!existingCode;
+    let expiresAt;
+    if (wouldRenew) {
+      const key = _simKeyStore[existingCode];
+      const currentExpiry = key.expiresAt ? new Date(key.expiresAt) : null;
+      const validExpiry = currentExpiry && Number.isFinite(currentExpiry.getTime()) && currentExpiry > now;
+      const base = validExpiry ? currentExpiry : now;
+      expiresAt = new Date(base.getTime() + durationMs).toISOString();
+    } else {
+      expiresAt = new Date(now.getTime() + durationMs).toISOString();
+    }
+    return {
+      mode: 'preview', planId: plan.id, planName: plan.name, price: plan.price,
+      maxUses: plan.maxUses, durationDays: plan.durationDays,
+      wouldRenew, wouldCreate: !wouldRenew, expiresAt,
+      paymentMethod, email: clientEmail, persisted: false, emailSent: false,
+    };
+  }
+
+  // EXECUTE — chama o MESMO núcleo comercial do Cakto real, com adapters
+  // isolados (sandbox key store, sem tocar portal_users, sem persistir na
+  // coleção real de chaves). O payment vai pra coleção real `payments`
+  // (testMode:true) — é assim que o Analytics consegue listar/filtrar a
+  // simulação sem misturá-la com receita real.
+  const txId = 'sim-' + crypto.randomBytes(12).toString('hex');
+  const sale = {
+    clientEmail, clientName, clientPhone, paymentMethod,
+    source: 'analytics_simulator', testMode: true, txId,
+    tracking: null, paidAt: now.toISOString(),
+    amount: plan.price, productName: plan.name, event: 'simulated_purchase',
+  };
+  const result = await processCommercialSale(sale, plan, {
+    keyStore: _simKeyStore,
+    db: {}, // nunca dereferenciado: os três deps abaixo cobrem todo uso de `db`
+    findPortalUser: async () => null,
+    linkPortalUser: async () => {},
+    persistKey: async () => {},
+    savePayment: payment => savePayment(payment, { strict: true }),
+    sendKeyDeliveryEmail: sendRealEmail ? sendKeyDeliveryEmail : (async () => true),
+    now,
+  });
+
+  return {
+    mode: 'execute', planId: plan.id, planName: plan.name, price: plan.price,
+    maxUses: plan.maxUses, durationDays: plan.durationDays,
+    wouldRenew: result.renewed, wouldCreate: !result.renewed, expiresAt: result.expiresAt,
+    paymentMethod, email: clientEmail, persisted: true, emailSent: !!sendRealEmail,
+    txId, keyCode: result.keyCode,
+  };
 }
 
 async function getPayments({ startDate, endDate, limit = 500 } = {}) {
@@ -2023,18 +2122,24 @@ async function getPaymentStats() {
     const now = new Date();
     const d7  = new Date(now - 7  * 86400000);
     const d30 = new Date(now - 30 * 86400000);
+    // Estatísticas comerciais principais SEMPRE excluem testMode:true — o
+    // Laboratório de Testes do Analytics não pode inflar receita/vendas
+    // reais. `real` é a base de todo $match abaixo; simCount é apurado à
+    // parte, exatamente para não se misturar com faturamento real.
+    const real = { approved: true, testMode: { $ne: true } };
 
-    const [total, last7, last30, byProduct, byDay, byHour, byMethod] = await Promise.all([
-      db.collection('payments').countDocuments({ approved: true }),
-      db.collection('payments').countDocuments({ approved: true, paidAt: { $gte: d7.toISOString() } }),
-      db.collection('payments').countDocuments({ approved: true, paidAt: { $gte: d30.toISOString() } }),
+    const [total, last7, last30, simCount, byProduct, byDay, byHour, byMethod] = await Promise.all([
+      db.collection('payments').countDocuments(real),
+      db.collection('payments').countDocuments({ ...real, paidAt: { $gte: d7.toISOString() } }),
+      db.collection('payments').countDocuments({ ...real, paidAt: { $gte: d30.toISOString() } }),
+      db.collection('payments').countDocuments({ approved: true, testMode: true }),
       db.collection('payments').aggregate([
-        { $match: { approved: true } },
+        { $match: real },
         { $group: { _id: '$productName', count: { $sum: 1 }, revenue: { $sum: '$amount' } } },
         { $sort: { count: -1 } }
       ]).toArray(),
       db.collection('payments').aggregate([
-        { $match: { approved: true, paidAt: { $gte: d30.toISOString() } } },
+        { $match: { ...real, paidAt: { $gte: d30.toISOString() } } },
         { $group: {
           _id: { $substr: ['$paidAt', 0, 10] },
           count: { $sum: 1 }, revenue: { $sum: '$amount' }
@@ -2042,29 +2147,29 @@ async function getPaymentStats() {
         { $sort: { _id: 1 } }
       ]).toArray(),
       db.collection('payments').aggregate([
-        { $match: { approved: true } },
+        { $match: real },
         { $addFields: { hour: { $substr: ['$paidAt', 11, 2] } } },
         { $group: { _id: '$hour', count: { $sum: 1 } } },
         { $sort: { _id: 1 } }
       ]).toArray(),
       db.collection('payments').aggregate([
-        { $match: { approved: true } },
+        { $match: real },
         { $group: { _id: '$paymentMethod', count: { $sum: 1 }, revenue: { $sum: '$amount' } } },
         { $sort: { count: -1 } }
       ]).toArray(),
     ]);
 
     const [revTotalArr, revLast30Arr, revLast7Arr] = await Promise.all([
-      db.collection('payments').aggregate([{ $match: { approved: true } },{ $group: { _id: null, total: { $sum: '$amount' } } }]).toArray(),
-      db.collection('payments').aggregate([{ $match: { approved: true, paidAt: { $gte: d30.toISOString() } } },{ $group: { _id: null, total: { $sum: '$amount' } } }]).toArray(),
-      db.collection('payments').aggregate([{ $match: { approved: true, paidAt: { $gte: d7.toISOString() } } },{ $group: { _id: null, total: { $sum: '$amount' } } }]).toArray(),
+      db.collection('payments').aggregate([{ $match: real },{ $group: { _id: null, total: { $sum: '$amount' } } }]).toArray(),
+      db.collection('payments').aggregate([{ $match: { ...real, paidAt: { $gte: d30.toISOString() } } },{ $group: { _id: null, total: { $sum: '$amount' } } }]).toArray(),
+      db.collection('payments').aggregate([{ $match: { ...real, paidAt: { $gte: d7.toISOString() } } },{ $group: { _id: null, total: { $sum: '$amount' } } }]).toArray(),
     ]);
     const revenueTotal   = revTotalArr[0]?.total  || 0;
     const revenueLast30  = revLast30Arr[0]?.total  || 0;
     const revenueLast7   = revLast7Arr[0]?.total   || 0;
 
     const retentionArr = await db.collection('payments').aggregate([
-      { $match: { approved: true, clientEmail: { $exists: true, $ne: '' } } },
+      { $match: { ...real, clientEmail: { $exists: true, $ne: '' } } },
       { $group: { _id: '$clientEmail', count: { $sum: 1 }, total: { $sum: '$amount' } } },
       { $sort: { count: -1 } }
     ]).toArray();
@@ -2079,7 +2184,7 @@ async function getPaymentStats() {
       return exp > d30 && exp <= now;
     });
     const renewedEmails = new Set(
-      (await db.collection('payments').find({ approved: true, paidAt: { $gte: d30.toISOString() } }).toArray())
+      (await db.collection('payments').find({ ...real, paidAt: { $gte: d30.toISOString() } }).toArray())
         .map(p => p.clientEmail).filter(Boolean)
     );
     const churnedKeys = expiredKeys.filter(k => {
@@ -2100,7 +2205,7 @@ async function getPaymentStats() {
 
     return {
       total, last7, last30, revenueTotal, revenueLast30, revenueLast7,
-      byProduct, byDay, byHour, byMethod,
+      byProduct, byDay, byHour, byMethod, simCount,
       uniqueClients, returningClients, retentionRate, topClients,
       churnedKeys, churnRate, expiredKeys: expiredKeys.length,
       byMod,
@@ -8017,13 +8122,14 @@ async function renderAnalyticsDashboard() {
 
   const paymentsRows = payments.length ? payments.map(p => {
     const rowSearch = [p.clientName,p.clientEmail,p.productName,p.keyCode,p.paymentMethod,p.tracking?.compact].join('|').toLowerCase();
-    return `<tr data-row="${escH(rowSearch)}" data-paid="${escH(p.paidAt||'')}">
+    const isTest = !!p.testMode;
+    return `<tr data-row="${escH(rowSearch)}" data-paid="${escH(p.paidAt||'')}" data-test="${isTest?1:0}">
   <td>${fmtDate(p.paidAt)}</td>
   <td>${escH(p.clientName)}</td>
   <td style="color:#6b6b8a;font-size:12px">${escH(p.clientEmail)}</td>
   <td>${escH(p.productName)}</td>
   <td style="color:${p.approved?'#00ff87':'#ff4757'};font-weight:700">${fmtBRL(p.amount)}</td>
-  <td><span class="badge ${p.approved?'bon':'boff'}">${p.approved?'APROVADO':'REJEITADO'}</span></td>
+  <td><span class="badge ${p.approved?'bon':'boff'}">${p.approved?'APROVADO':'REJEITADO'}</span>${isTest?' <span class="badge btest">🧪 TESTE</span>':''}</td>
   <td style="color:#4f8ef7;font-size:12px">${escH(p.keyCode||'-')}</td>
   <td>${
     p.tracking && (p.tracking.src||p.tracking.medium||p.tracking.campaign||p.tracking.ref)
@@ -8058,7 +8164,7 @@ a.out:hover{color:var(--red);border-color:var(--red)}
 main{padding:22px 24px;max-width:1600px;margin:0 auto;position:relative;z-index:1}
 /* Stats grid */
 .stats{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px}
-.stats2{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
+.stats2{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px}
 .sc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;position:relative;overflow:hidden;transition:all .2s;box-shadow:var(--shadow)}
 .sc:hover{border-color:#00ff8740;transform:translateY(-2px)}
 .sc-icon{position:absolute;right:12px;top:12px;font-size:20px;opacity:.12}
@@ -8100,17 +8206,44 @@ tr:hover td{background:#ffffff02}
 .badge{padding:2px 7px;border-radius:3px;font-size:11px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;font-family:'Outfit',sans-serif}
 .bon{background:#00ff8718;color:var(--green);border:1px solid #00ff8730}
 .boff{background:#ff475718;color:var(--red);border:1px solid #ff475730}
+.btest{background:#f0b42918;color:#f0b429;border:1px solid #f0b42940}
 .empty{text-align:center;color:var(--muted);padding:30px;font-size:13px;line-height:2;font-family:'Outfit',sans-serif}
+/* Laboratório de Testes */
+.lab-banner{display:flex;align-items:center;gap:10px;background:#f0b42912;border:1px solid #f0b42940;border-radius:10px;padding:12px 16px;margin-bottom:14px;font-family:'Outfit',sans-serif;font-size:13px;color:#f0b429;font-weight:700}
+.lab-toggle{background:#f0b42918;color:#f0b429;border:1px solid #f0b42940}
+.lab-toggle:hover{background:#f0b42928}
+.lab-body{display:none;padding:18px 16px;border-top:1px solid var(--border)}
+.lab-body.open{display:block}
+.lab-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.lab-field{margin-bottom:12px}
+.lab-field label{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;font-family:'Outfit',sans-serif;font-weight:700}
+.lab-field select,.lab-field input{width:100%;padding:9px 11px;background:var(--dark);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:'Outfit',sans-serif;font-size:13.5px;outline:none}
+.lab-field select:focus,.lab-field input:focus{border-color:#f0b429}
+.lab-check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);font-family:'Outfit',sans-serif;margin-bottom:14px}
+.lab-actions{display:flex;gap:10px;margin-top:6px}
+.blab{background:#f0b42918;color:#f0b429;border:1px solid #f0b42940}
+.blab:hover{background:#f0b42928}
+.blab-exec{background:#ff475718;color:var(--red);border:1px solid #ff475740}
+.blab-exec:hover{background:#ff475728}
+.bcancel{background:transparent;color:var(--muted);border:1px solid var(--border)}
+.lab-result{margin-top:16px;padding:16px;background:var(--card2);border:1px solid var(--border);border-radius:10px;font-family:'Outfit',sans-serif;font-size:13px}
+.lab-result h4{font-size:13px;color:#f0b429;margin-bottom:10px;letter-spacing:.4px;text-transform:uppercase}
+.lab-result .row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #14141f}
+.lab-result .row:last-child{border-bottom:none}
+.lab-result .row span:first-child{color:var(--muted)}
+.lab-hr{border-top:1px solid var(--border);margin:18px 0}
+.lab-iframe{width:100%;height:520px;border:1px solid var(--border);border-radius:10px;background:#fff;margin-top:12px}
 /* Retention bar */
 .ret-bar-wrap{background:#1c1c2e;border-radius:6px;height:8px;overflow:hidden;margin-top:8px}
 .ret-bar{height:8px;border-radius:6px;background:linear-gradient(90deg,#00cc6a,var(--green));transition:width .8s}
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
-@media(max-width:1200px){.stats{grid-template-columns:repeat(3,1fr)}.stats2{grid-template-columns:repeat(2,1fr)}.charts{grid-template-columns:1fr}.charts3{grid-template-columns:1fr 1fr}}
+@media(max-width:1200px){.stats{grid-template-columns:repeat(3,1fr)}.stats2{grid-template-columns:repeat(3,1fr)}.charts{grid-template-columns:1fr}.charts3{grid-template-columns:1fr 1fr}}
 @media(max-width:700px){.stats{grid-template-columns:1fr 1fr}.stats2{grid-template-columns:1fr 1fr}.two-col{grid-template-columns:1fr}.charts3{grid-template-columns:1fr};main{padding:14px 12px}}
 </style></head><body>
 <header>
   <div class="logo">⚡ ZVM <span class="badge-an">Analytics</span></div>
   <div style="display:flex;gap:10px;align-items:center">
+    <button class="btn lab-toggle" onclick="toggleLab()">🧪 Laboratório de Testes</button>
     <a href="${R_ANALYTICS}/export/csv" class="btn bcsv">⬇ CSV</a>
     <a href="${R_ANALYTICS}/logout" class="out">↩ Sair</a>
   </div>
@@ -8133,6 +8266,61 @@ tr:hover td{background:#ffffff02}
     <div class="sc"><div class="sc-icon">💳</div><div class="n blue">${escH((stats?.byMethod||[])[0]?._id)||'—'}</div><div class="l">Método + Usado</div><div class="sub-n">${(stats?.byMethod||[])[0]?.count||0} transações</div></div>
     <div class="sc"><div class="sc-icon">📉</div><div class="n ${(stats?.churnRate||0)>50?'red':(stats?.churnRate||0)>25?'gold':''}">${stats?.churnRate||0}%</div><div class="l">Taxa de Churn (30d)</div><div class="sub-n">${stats?.churnedKeys||0} de ${stats?.expiredKeys||0} expiradas</div></div>
     <div class="sc"><div class="sc-icon">⏰</div><div class="n blue">${(stats?.byHour||[]).sort((a,b)=>b.count-a.count)[0]?._id||'—'}h</div><div class="l">Horário de Pico</div><div class="sub-n">${(stats?.byHour||[]).sort((a,b)=>b.count-a.count)[0]?.count||0} vendas neste horário</div></div>
+    <div class="sc" style="border-color:#f0b42930"><div class="sc-icon">🧪</div><div class="n" style="color:#f0b429">${stats?.simCount||0}</div><div class="l">Simulações</div><div class="sub-n">Não conta como receita real</div></div>
+  </div>
+
+  <!-- Laboratório de Testes -->
+  <div class="sec" id="lab-sec">
+    <div class="sh"><div class="st">🧪 Laboratório de Testes</div></div>
+    <div class="lab-body" id="lab-body">
+      <div class="lab-banner">⚠ AMBIENTE DE TESTES — não representa uma venda real da Cakto.</div>
+      <div class="lab-grid">
+        <div>
+          <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:13px;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:.4px">Simular venda</div>
+          <div class="lab-field"><label for="lab-plan">Plano</label>
+            <select id="lab-plan">
+              <option value="solo">Solo — R$39,90 · 1 número</option>
+              <option value="padrao">Padrão — R$59,90 · 3 números</option>
+              <option value="pro">Pro — R$94,90 · 5 números</option>
+              <option value="empresarial">Empresarial — R$169,90 · 10 números</option>
+            </select>
+          </div>
+          <div class="lab-field"><label for="lab-type">Tipo</label>
+            <select id="lab-type"><option value="new">Nova licença</option><option value="renewal">Renovação</option></select>
+          </div>
+          <div class="lab-field"><label for="lab-name">Nome</label><input id="lab-name" type="text" value="Cliente Teste" maxlength="80"></div>
+          <div class="lab-field"><label for="lab-email">E-mail de teste</label><input id="lab-email" type="email" placeholder="teste@example.com" maxlength="160"></div>
+          <div class="lab-field"><label for="lab-phone">Telefone (opcional)</label><input id="lab-phone" type="text" placeholder="11999990000" maxlength="20"></div>
+          <div class="lab-field"><label for="lab-method">Método simulado</label>
+            <select id="lab-method"><option value="pix">Pix</option><option value="credit_card">Cartão de crédito</option></select>
+          </div>
+          <label class="lab-check"><input type="checkbox" id="lab-send-email"> Enviar e-mail real de teste</label>
+          <div class="lab-actions">
+            <button class="btn blab" id="lab-btn-sim" onclick="labPreview()">Simular</button>
+            <button class="btn bcancel" onclick="labCancel()">Cancelar</button>
+          </div>
+          <div id="lab-result"></div>
+        </div>
+        <div>
+          <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:13px;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:.4px">📧 Testar e-mail</div>
+          <div class="lab-field"><label for="lab-tpl">Template</label>
+            <select id="lab-tpl">
+              <option value="delivery_new">Nova licença</option>
+              <option value="delivery_renewal">Renovação</option>
+              <option value="expiry_warning">Aviso de expiração</option>
+              <option value="password_reset">Recuperação de senha</option>
+            </select>
+          </div>
+          <div class="lab-field"><label for="lab-tpl-email">Destinatário</label><input id="lab-tpl-email" type="email" placeholder="teste@example.com" maxlength="160"></div>
+          <div class="lab-actions">
+            <button class="btn blab" onclick="labEmailPreview()">Visualizar</button>
+            <button class="btn blab" onclick="labEmailSend()">Enviar teste</button>
+          </div>
+          <div id="lab-email-status" style="margin-top:10px;font-family:'Outfit',sans-serif;font-size:12.5px;color:var(--muted)"></div>
+          <iframe class="lab-iframe" id="lab-iframe" style="display:none" sandbox="" title="Preview do e-mail"></iframe>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Gráficos principais -->
@@ -8197,6 +8385,11 @@ tr:hover td{background:#ffffff02}
       <div class="st">💳 Histórico de Pagamentos</div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <input type="text" id="search" placeholder="🔍 Cliente, email, produto..." oninput="filterTable()">
+        <div class="period-btns" id="test-filter-btns">
+          <button class="pb active" onclick="setTestFilter('all',this)">Todos</button>
+          <button class="pb" onclick="setTestFilter('real',this)">Reais</button>
+          <button class="pb" onclick="setTestFilter('test',this)">Testes</button>
+        </div>
         <div class="period-btns">
           <button class="pb active" onclick="setPeriod(7,this)">7d</button>
           <button class="pb" onclick="setPeriod(30,this)">30d</button>
@@ -8246,8 +8439,114 @@ loadChart(()=>{
   new Chart(document.getElementById('chartMetodos'),{type:'pie',data:{labels:_byMethod.map(m=>m._id||'?'),datasets:[{data:_byMethod.map(m=>m.count),backgroundColor:mc,borderColor:'#0f0f1a',borderWidth:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{family:'Space Mono',size:10},boxWidth:10,padding:8}}}}});}
 });
 
-function filterTable(){const q=(document.getElementById('search').value||'').toLowerCase();document.querySelectorAll('#payments-body tr[data-row]').forEach(r=>{r.style.display=!q||r.dataset.row.includes(q)?'':'none';});}
-function setPeriod(days,btn){document.querySelectorAll('.pb').forEach(b=>b.classList.remove('active'));btn.classList.add('active');const cutoff=days?new Date(Date.now()-days*86400000).toISOString():null;document.querySelectorAll('#payments-body tr[data-paid]').forEach(r=>{r.style.display=(!cutoff||r.dataset.paid>=cutoff)?'':'none';});}
+// Um único ponto que aplica busca + período + filtro real/teste — os três
+// filtros escreviam direto em row.style.display cada um por conta própria
+// (o segundo clique sempre apagava o efeito do primeiro). Unificado aqui
+// pra combinar as três condições sem uma sobrescrever a outra.
+let _periodCutoff=null,_testFilter='all';
+function applyFilters(){
+  const q=(document.getElementById('search').value||'').toLowerCase();
+  document.querySelectorAll('#payments-body tr[data-row]').forEach(r=>{
+    const okSearch=!q||r.dataset.row.includes(q);
+    const okPeriod=!_periodCutoff||r.dataset.paid>=_periodCutoff;
+    const okTest=_testFilter==='all'||(_testFilter==='test'?r.dataset.test==='1':r.dataset.test==='0');
+    r.style.display=(okSearch&&okPeriod&&okTest)?'':'none';
+  });
+}
+function filterTable(){applyFilters();}
+function setPeriod(days,btn){btn.parentElement.querySelectorAll('.pb').forEach(b=>b.classList.remove('active'));btn.classList.add('active');_periodCutoff=days?new Date(Date.now()-days*86400000).toISOString():null;applyFilters();}
+function setTestFilter(mode,btn){btn.parentElement.querySelectorAll('.pb').forEach(b=>b.classList.remove('active'));btn.classList.add('active');_testFilter=mode;applyFilters();}
+
+// ── Laboratório de Testes ────────────────────────────────────────────
+function toggleLab(){document.getElementById('lab-body').classList.toggle('open');}
+
+function labFormData(){
+  return {
+    planId: document.getElementById('lab-plan').value,
+    type: document.getElementById('lab-type').value,
+    name: document.getElementById('lab-name').value,
+    email: document.getElementById('lab-email').value,
+    phone: document.getElementById('lab-phone').value,
+    method: document.getElementById('lab-method').value,
+  };
+}
+
+const _planLabels={solo:'Solo',padrao:'Padrão',pro:'Pro',empresarial:'Empresarial'};
+
+function renderLabResult(d,executed){
+  const box=document.getElementById('lab-result');
+  const modeLabel=d.wouldRenew?'Renovação':'Nova licença';
+  let html='<div class="lab-result"><h4>'+(executed?'✅ SIMULAÇÃO EXECUTADA':'👁 PREVIEW — nada foi gravado')+'</h4>';
+  html+='<div class="row"><span>Plano</span><span>'+(_planLabels[d.planId]||d.planId)+'</span></div>';
+  html+='<div class="row"><span>Valor</span><span>R$ '+d.price.toFixed(2).replace('.',',')+'</span></div>';
+  html+='<div class="row"><span>Dispositivos</span><span>'+d.maxUses+'</span></div>';
+  html+='<div class="row"><span>Duração</span><span>'+d.durationDays+' dias</span></div>';
+  html+='<div class="row"><span>Modo</span><span>'+modeLabel+'</span></div>';
+  html+='<div class="row"><span>Expira em</span><span>'+new Date(d.expiresAt).toLocaleDateString('pt-BR')+'</span></div>';
+  html+='<div class="row"><span>E-mail</span><span>'+(executed?(d.emailSent?'enviado':'não enviado'):'—')+'</span></div>';
+  html+='<div class="row"><span>Persistência</span><span>'+(d.persisted?'teste (testMode:true)':'preview (nada salvo)')+'</span></div>';
+  if(d.txId) html+='<div class="row"><span>Tx</span><span>'+d.txId+'</span></div>';
+  if(!executed) html+='<div class="lab-actions" style="margin-top:12px"><button class="btn blab-exec" onclick="labExecute()">▶ Executar de verdade (grava testMode:true)</button></div>';
+  html+='</div>';
+  box.innerHTML=html;
+}
+
+async function labPreview(){
+  const body=labFormData();
+  if(!body.email){alert('Informe um e-mail de teste.');return;}
+  const btn=document.getElementById('lab-btn-sim');btn.disabled=true;
+  try{
+    const r=await fetch('${R_ANALYTICS}/api/lab/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(!r.ok){alert('Erro: '+(d.error||'falha na simulação'));return;}
+    renderLabResult(d,false);
+  }catch(e){alert('Erro de conexão.');}finally{btn.disabled=false;}
+}
+
+async function labExecute(){
+  if(!confirm('Isso grava um pagamento de TESTE (testMode:true) e uma chave sandbox. Nunca toca em cliente real. Confirma?'))return;
+  const body=labFormData();
+  body.sendRealEmail=document.getElementById('lab-send-email').checked;
+  try{
+    const r=await fetch('${R_ANALYTICS}/api/lab/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(!r.ok){alert('Erro: '+(d.error||'falha ao executar'));return;}
+    renderLabResult(d,true);
+  }catch(e){alert('Erro de conexão.');}
+}
+
+function labCancel(){
+  document.getElementById('lab-result').innerHTML='';
+  document.getElementById('lab-name').value='Cliente Teste';
+  document.getElementById('lab-email').value='';
+  document.getElementById('lab-phone').value='';
+  document.getElementById('lab-send-email').checked=false;
+}
+
+async function labEmailPreview(){
+  const status=document.getElementById('lab-email-status'),frame=document.getElementById('lab-iframe');
+  status.textContent='Carregando preview...';
+  try{
+    const r=await fetch('${R_ANALYTICS}/api/lab/email-preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({template:document.getElementById('lab-tpl').value})});
+    const d=await r.json();
+    if(!r.ok){status.textContent='Erro: '+(d.error||'falha no preview');return;}
+    frame.srcdoc=d.html;frame.style.display='block';
+    status.textContent='Assunto: '+d.subject;
+  }catch(e){status.textContent='Erro de conexão.';}
+}
+
+async function labEmailSend(){
+  const status=document.getElementById('lab-email-status');
+  const email=document.getElementById('lab-tpl-email').value;
+  if(!email){alert('Informe o destinatário.');return;}
+  if(!confirm('Enviar e-mail de TESTE real para '+email+'?'))return;
+  status.textContent='Enviando...';
+  try{
+    const r=await fetch('${R_ANALYTICS}/api/lab/email-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({template:document.getElementById('lab-tpl').value,email})});
+    const d=await r.json();
+    status.textContent=(r.ok&&d.ok)?'✅ Enviado.':'❌ Falha ao enviar (verifique RESEND_API_KEY).';
+  }catch(e){status.textContent='Erro de conexão.';}
+}
 </script>
 ${CANVAS_BG}</body></html>`;
 }
@@ -12116,6 +12415,84 @@ async function handleRequest(req, res) {
     sendJson(res, stats || {}); return;
   }
 
+  // ── Laboratório de Testes (Analytics) ─────────────────────────────────
+  // Nunca reutiliza CAKTO_WEBHOOK_SECRET/SALE_WEBHOOK_SECRET/PARTNER_API_TOKEN.
+  // Autenticação é só a sessão do Analytics + CSRF same-origin + rate limit
+  // próprio. O browser manda SOMENTE planId — preço/limite/duração sempre
+  // resolvem de ZVM_PLANS no servidor (ver simulateCommercialSale).
+  if (p === R_ANALYTICS+'/api/lab/preview' && req.method === 'POST') {
+    if (!isAnalyticsSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
+    if (!checkRateLimit(ip, 'analytics_lab')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    const body = await parseBody(req);
+    try {
+      const result = await simulateCommercialSale({
+        planId: body.planId, name: body.name, email: body.email, phone: body.phone,
+        method: body.method, execute: false,
+      });
+      console.log('[LAB] preview', maskEmail(body.email || ''));
+      sendJson(res, result); return;
+    } catch (e) {
+      sendJson(res, { error: e.code || 'lab_preview_failed' }, 400); return;
+    }
+  }
+
+  if (p === R_ANALYTICS+'/api/lab/simulate' && req.method === 'POST') {
+    if (!isAnalyticsSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
+    if (!checkRateLimit(ip, 'analytics_lab')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    const body = await parseBody(req);
+    try {
+      const result = await simulateCommercialSale({
+        planId: body.planId, name: body.name, email: body.email, phone: body.phone,
+        method: body.method, execute: true, sendRealEmail: !!body.sendRealEmail,
+      });
+      console.log('[LAB] simulate', maskEmail(body.email || ''), result.txId);
+      sendJson(res, result); return;
+    } catch (e) {
+      sendJson(res, { error: e.code || 'lab_simulate_failed' }, 400); return;
+    }
+  }
+
+  if ((p === R_ANALYTICS+'/api/lab/email-preview' || p === R_ANALYTICS+'/api/lab/email-send') && req.method === 'POST') {
+    if (!isAnalyticsSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
+    if (!checkRateLimit(ip, 'analytics_lab')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    const body = await parseBody(req);
+    const template = String(body.template || '');
+    const isSend = p === R_ANALYTICS+'/api/lab/email-send';
+    // Destinatário é sempre digitado explicitamente pelo admin — nunca
+    // puxamos um cliente aleatório da base pra preview/teste de e-mail.
+    const to = safeScalar(body.email, 160).toLowerCase();
+    if (isSend && (!to || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to))) { sendJson(res, { error: 'invalid_email' }, 400); return; }
+
+    // Dados de amostra — NUNCA de um cliente real. code é obviamente fake
+    // (prefixo DEMO), token de reset nunca é gravado em password_resets.
+    const sampleExpiresAt = new Date(Date.now() + 30 * 86400000).toISOString();
+    let built;
+    try {
+      if (template === 'delivery_new') {
+        built = buildKeyDeliveryEmail({ code: 'ZV-DEMO-0000-0000', planLabel: 'Padrão', maxUses: 3, expiresAt: sampleExpiresAt, renewed: false, baseUrl: BASE_URL, extensionUrl: EXTENSION_URL, ctaPath: '/cliente' });
+      } else if (template === 'delivery_renewal') {
+        built = buildKeyDeliveryEmail({ code: 'ZV-DEMO-0000-0000', planLabel: 'Padrão', maxUses: 3, expiresAt: sampleExpiresAt, renewed: true, baseUrl: BASE_URL, extensionUrl: EXTENSION_URL, ctaPath: '/cliente' });
+      } else if (template === 'expiry_warning') {
+        built = buildKeyExpiryWarningEmail({ code: 'ZV-DEMO-0000-0000', hoursLeft: 48, planLabel: 'Padrão', maxUses: 3, expiresAt: new Date(Date.now() + 48 * 3600000).toISOString(), baseUrl: BASE_URL, ctaPath: '/cliente' });
+      } else if (template === 'password_reset') {
+        built = buildPasswordResetEmail(`${BASE_URL}/cliente/redefinir?token=demo-nao-valido`);
+      } else {
+        sendJson(res, { error: 'invalid_template' }, 400); return;
+      }
+    } catch (e) { sendJson(res, { error: 'template_build_failed' }, 500); return; }
+
+    if (!isSend) {
+      console.log('[LAB] email-preview', template);
+      sendJson(res, { subject: built.subject, html: built.html }); return;
+    }
+    const sent = await sendEmail({ to, subject: `[TESTE] ${built.subject}`, html: built.html });
+    console.log('[LAB] email-send', template, maskEmail(to), sent ? 'ok' : 'falhou');
+    sendJson(res, { ok: sent }); return;
+  }
+
   if (p === '/cakto/webhook' && req.method === 'POST') {
     await handleCaktoWebhook(req, res, url, ip);
     return;
@@ -13048,4 +13425,7 @@ module.exports.__test = Object.freeze({
   renderStandalone404Page,
   renderStandalone500Page,
   requireSameOriginPost,
+  simulateCommercialSale,
+  resolveLabPlan,
+  getPaymentStats,
 });
