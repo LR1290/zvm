@@ -37,11 +37,13 @@ const CARD    = '#0f1712';
 const CARD2   = '#141d17';
 const BORDER  = '#1e2b23';
 const PRIMARY = '#00e676';
+const WARN    = '#f0b429';
 const TEXT    = '#eef2f0';
 const DIM     = '#8a9992';
 const MUTED   = '#4d5952';
 
-function _shell({ eyebrow, title, bodyHtml, footNote }) {
+function _shell({ eyebrow, eyebrowColor, title, bodyHtml, footNote }) {
+  const accent = eyebrowColor || PRIMARY;
   return `<!DOCTYPE html><html lang="pt-BR"><body style="margin:0;padding:0;background:${BG};">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${BG};padding:32px 16px;">
     <tr><td align="center">
@@ -50,9 +52,9 @@ function _shell({ eyebrow, title, bodyHtml, footNote }) {
           <span style="font-family:Arial,sans-serif;font-size:15px;font-weight:900;color:${PRIMARY};letter-spacing:1px;">⚡ ZVM</span>
         </td></tr>
         <tr><td style="background:${CARD};border:1px solid ${BORDER};border-radius:16px;padding:0;overflow:hidden;">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="height:3px;background:linear-gradient(90deg,transparent,${PRIMARY},transparent);font-size:0;line-height:0;">&nbsp;</td></tr></table>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="height:3px;background:linear-gradient(90deg,transparent,${accent},transparent);font-size:0;line-height:0;">&nbsp;</td></tr></table>
           <div style="padding:32px 30px 30px;font-family:Arial,Helvetica,sans-serif;">
-            ${eyebrow ? `<div style="display:inline-block;font-size:11px;font-weight:800;color:${PRIMARY};letter-spacing:1.5px;text-transform:uppercase;background:rgba(0,230,118,.1);border:1px solid rgba(0,230,118,.25);border-radius:99px;padding:5px 12px;margin-bottom:16px;">${eyebrow}</div>` : ''}
+            ${eyebrow ? `<div style="display:inline-block;font-size:11px;font-weight:800;color:${accent};letter-spacing:1.5px;text-transform:uppercase;background:${accent}1a;border:1px solid ${accent}40;border-radius:99px;padding:5px 12px;margin-bottom:16px;">${eyebrow}</div>` : ''}
             <h1 style="margin:0 0 18px;font-size:22px;font-weight:900;color:${TEXT};letter-spacing:-.3px;line-height:1.3;">${title}</h1>
             ${bodyHtml}
           </div>
@@ -67,8 +69,9 @@ function _shell({ eyebrow, title, bodyHtml, footNote }) {
   </body></html>`;
 }
 
-function _button(href, label) {
-  return `<table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="border-radius:10px;background:${PRIMARY};">
+function _button(href, label, color) {
+  const bg = color || PRIMARY;
+  return `<table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="border-radius:10px;background:${bg};">
     <a href="${href}" style="display:inline-block;padding:14px 30px;font-family:Arial,sans-serif;font-size:14.5px;font-weight:800;color:#04150b;text-decoration:none;letter-spacing:.2px;">${label}</a>
   </td></tr></table>`;
 }
@@ -98,22 +101,38 @@ function _featureRow(icon, title, desc) {
   </table>`;
 }
 
-async function sendPasswordResetEmail(to, resetUrl) {
+// ── Builders: montam { subject, html } sem enviar nada. O painel de
+// Analytics (Laboratório de Testes) usa os MESMOS builders pra preview —
+// o HTML mostrado ali é byte a byte o que seria enviado, nunca uma
+// reconstrução separada que pode divergir do template real. ──
+
+function buildPasswordResetEmail(resetUrl) {
   const body = `
     <p style="margin:0 0 22px;font-size:14.5px;color:${DIM};line-height:1.7;">Você solicitou a redefinição da sua senha do portal ZVM. Clique no botão abaixo para criar uma nova senha — o link é válido por <strong style="color:${TEXT}">1 hora</strong>.</p>
     ${_button(resetUrl, 'Redefinir minha senha')}
     <p style="margin:22px 0 0;font-size:12.5px;color:${MUTED};line-height:1.6;">Se você não solicitou essa redefinição, ignore este e-mail — sua senha atual continua funcionando normalmente.</p>`;
   const html = _shell({ eyebrow: 'Segurança da conta', title: 'Redefinir sua senha', bodyHtml: body });
-  const res = await _send('Redefinição de senha — ZVM', to, html);
+  return { subject: 'Redefinição de senha — ZVM', html };
+}
+
+async function sendPasswordResetEmail(to, resetUrl) {
+  const { subject, html } = buildPasswordResetEmail(resetUrl);
+  const res = await _send(subject, to, html);
   return res.ok;
 }
 
 // Enviado quando uma compra é aprovada (webhook de venda ou API de parceiro)
 // e uma chave nova/renovada é gerada — entrega automática, sem depender
 // de um admin mandar a chave manualmente por WhatsApp.
-async function sendKeyDeliveryEmail(to, { code, planLabel, maxUses, expiresAt, renewed, baseUrl, extensionUrl }) {
+// ctaPath (opcional): destino do botão de portal. Default '/verificar'
+// preserva o comportamento de sempre pros chamadores legados (webhook de
+// venda antigo, API de parceiro) — só o fluxo Cakto/standalone passa
+// ctaPath:'/cliente' explicitamente (ver processCommercialSale). Não é uma
+// troca global: cada chamador decide o próprio destino.
+function buildKeyDeliveryEmail({ code, planLabel, maxUses, expiresAt, renewed, baseUrl, extensionUrl, ctaPath }) {
   const fmtDate = iso => iso ? new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '—';
-  const verifyUrl = `${(baseUrl || '').replace(/\/$/, '')}/verificar`;
+  const portalPath = ctaPath || '/verificar';
+  const verifyUrl = `${(baseUrl || '').replace(/\/$/, '')}${portalPath}`;
   const title = renewed ? 'Sua renovação foi aprovada' : 'Bem-vindo(a) ao ZVM';
   const intro = renewed
     ? 'Sua chave já está ativa com o novo período de acesso — nenhuma ação extra é necessária se ela já estiver configurada na extensão.'
@@ -174,7 +193,7 @@ async function sendKeyDeliveryEmail(to, { code, planLabel, maxUses, expiresAt, r
         ${_featureRow('📱', 'Dispositivos conectados', 'Veja quais números estão usando sua chave e remova algum pra liberar espaço.')}
         ${_featureRow('🔁', 'Renovação', 'Renove direto pelo portal quando o período estiver acabando.')}
       </td></tr>
-      <tr><td style="padding-top:6px;">${_buttonOutline(verifyUrl, 'Acessar /verificar →')}</td></tr>
+      <tr><td style="padding-top:6px;">${_buttonOutline(verifyUrl, portalPath === '/cliente' ? 'Acessar minha conta →' : 'Acessar /verificar →')}</td></tr>
     </table>`;
 
   const body = `
@@ -191,8 +210,93 @@ async function sendKeyDeliveryEmail(to, { code, planLabel, maxUses, expiresAt, r
     bodyHtml: body,
     footNote: 'Dúvidas sobre a ativação? Responda este e-mail ou chame no suporte via WhatsApp.'
   });
-  const res = await _send(renewed ? 'ZVM — Chave renovada' : 'ZVM — Sua chave de ativação', to, html);
+  return { subject: renewed ? 'ZVM — Chave renovada' : 'ZVM — Sua chave de ativação', html };
+}
+
+async function sendKeyDeliveryEmail(to, opts) {
+  const { subject, html } = buildKeyDeliveryEmail(opts);
+  const res = await _send(subject, to, html);
   return res.ok;
 }
 
-module.exports = { sendPasswordResetEmail, sendKeyDeliveryEmail };
+// Aviso de expiração — mesma identidade visual do e-mail de entrega/renovação,
+// com acento âmbar (WARN) no lugar do verde pra comunicar urgência sem sair
+// da linguagem visual da marca. O scheduler (checkExpiryWarnings) só troca
+// a construção do HTML por esta função — timing, EXPIRY_WARN_HOURS,
+// warnEmailSent e a regra de um aviso por ciclo continuam no chamador,
+// intocados.
+function buildKeyExpiryWarningEmail({ code, hoursLeft, planLabel, maxUses, expiresAt, baseUrl, ctaPath }) {
+  const fmtDate = iso => iso ? new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '—';
+  const portalPath = ctaPath || '/cliente';
+  const renewUrl = `${(baseUrl || '').replace(/\/$/, '')}${portalPath}`;
+  const daysLeft = Math.max(0, Math.floor((hoursLeft || 0) / 24));
+  const remainderHours = Math.max(0, Math.round((hoursLeft || 0) - daysLeft * 24));
+  const timeLeftLabel = daysLeft > 0 ? `${daysLeft}d ${remainderHours}h` : `${Math.max(1, Math.round(hoursLeft || 0))}h`;
+
+  const keyBox = `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 22px;">
+      <tr><td style="background:#1a1204;border:1.5px dashed rgba(240,180,41,.45);border-radius:12px;padding:20px 20px 18px;text-align:center;">
+        <div style="font-family:Arial,sans-serif;font-size:10.5px;color:${DIM};text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Sua chave de ativação</div>
+        <div style="font-family:'Courier New',monospace;font-size:19px;font-weight:700;color:${WARN};letter-spacing:.5px;word-break:break-all;">${code}</div>
+        <div style="display:inline-block;margin-top:12px;font-family:Arial,sans-serif;font-size:11.5px;font-weight:800;color:#1a1204;text-transform:uppercase;letter-spacing:.06em;background:${WARN};border-radius:99px;padding:5px 14px;">Restam ${timeLeftLabel}</div>
+      </td></tr>
+    </table>`;
+
+  const stats = `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 22px;">
+      <tr>
+        <td width="50%" style="background:${CARD2};border:1px solid ${BORDER};border-radius:10px 0 0 10px;border-right:none;padding:14px 16px;">
+          <div style="font-family:Arial,sans-serif;font-size:10.5px;color:${DIM};text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Plano</div>
+          <div style="font-family:Arial,sans-serif;font-size:15px;font-weight:800;color:${TEXT};">${planLabel || '—'} <span style="font-weight:400;color:${DIM};font-size:12.5px;">· ${maxUses || 1} número(s)</span></div>
+        </td>
+        <td width="50%" style="background:${CARD2};border:1px solid ${BORDER};border-radius:0 10px 10px 0;padding:14px 16px;">
+          <div style="font-family:Arial,sans-serif;font-size:10.5px;color:${DIM};text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Válida até</div>
+          <div style="font-family:Arial,sans-serif;font-size:15px;font-weight:800;color:${TEXT};">${fmtDate(expiresAt)}</div>
+        </td>
+      </tr>
+    </table>`;
+
+  const body = `
+    <p style="margin:0 0 22px;font-size:14.5px;color:${DIM};line-height:1.7;">Sua licença ZVM está perto do vencimento. Renove agora pelo portal e mantenha sua automação funcionando sem interrupção.</p>
+    ${keyBox}
+    ${stats}
+    ${_buttonRow([_button(renewUrl, 'RENOVAR MINHA LICENÇA', WARN)])}
+    <p style="margin:22px 0 0;font-size:13px;color:${TEXT};line-height:1.6;font-weight:600;">Renove antes do vencimento para continuar usando o ZVM sem interrupções.</p>
+    <p style="margin:10px 0 0;font-size:12.5px;color:${MUTED};line-height:1.6;">Depois de expirada, a chave para de funcionar até uma nova renovação — seus dispositivos vinculados continuam salvos.</p>`;
+
+  const html = _shell({
+    eyebrow: 'Aviso de expiração',
+    eyebrowColor: WARN,
+    title: 'Sua licença está expirando',
+    bodyHtml: body,
+    footNote: 'Dúvidas sobre renovação? Responda este e-mail ou chame no suporte via WhatsApp.'
+  });
+  return { subject: 'Sua licença ZVM está expirando', html };
+}
+
+async function sendKeyExpiryWarningEmail(to, opts) {
+  const { subject, html } = buildKeyExpiryWarningEmail(opts);
+  const res = await _send(subject, to, html);
+  return res.ok;
+}
+
+// Envio genérico ({ to, subject, html }) — hoje usado só pelo endpoint de
+// teste do Laboratório de Analytics (/api/lab/email-send). Retorna { ok, reason }
+// em vez de um boolean cru: o Laboratório precisa do motivo real da falha pra
+// mostrar ao admin (ex.: Resend recusando o destinatário) em vez de adivinhar
+// "verifique a API key" quando a causa é outra.
+async function sendEmail({ to, subject, html }) {
+  const addr = String(to || '').trim();
+  // Sem validação, um endereço vindo do banco/webhook chegaria cru na API do Resend.
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addr) || addr.length > 254) {
+    console.warn('[MAILER] destinatário inválido — envio abortado');
+    return { ok: false, reason: 'destinatário inválido' };
+  }
+  const res = await _send(String(subject || '(sem assunto)').slice(0, 200), addr, String(html || ''));
+  return { ok: res.ok, reason: res.ok ? null : (res.reason || 'falha desconhecida no envio') };
+}
+
+module.exports = {
+  sendPasswordResetEmail, sendKeyDeliveryEmail, sendKeyExpiryWarningEmail, sendEmail,
+  buildPasswordResetEmail, buildKeyDeliveryEmail, buildKeyExpiryWarningEmail,
+};
