@@ -42,26 +42,72 @@ const TEXT    = '#eef2f0';
 const DIM     = '#8a9992';
 const MUTED   = '#4d5952';
 
-function _shell({ eyebrow, eyebrowColor, title, bodyHtml, footNote }) {
-  const accent = eyebrowColor || PRIMARY;
-  return `<!DOCTYPE html><html lang="pt-BR"><body style="margin:0;padding:0;background:${BG};">
+// Largura alvo pro conteúdo — 680px fica no meio da faixa "premium" (680-720)
+// sem chegar perto da largura de site que quebra em Gmail/Outlook. O <table>
+// usa width E max-width juntos: Outlook (engine Word, ignora max-width) lê o
+// width="680" fixo; clientes modernos (Gmail web, Apple Mail) respeitam o
+// max-width e encolhem em telas menores. Isso sozinho já resolve mobile —
+// o <style>/@media abaixo é só o refinamento extra (padding maior e cards
+// lado a lado só quando a tela realmente permite).
+const CONTENT_WIDTH = 680;
+
+// Mesma logo oficial do portal (zvm-logo-light.png, 722×962) — nunca ⚡ ZVM
+// nem texto improvisado. URL sempre absoluta a partir do baseUrl que cada
+// caller já recebe (BASE_URL do servidor) — nunca hardcoded aqui, porque
+// e-mail não tem conceito de caminho relativo (abre fora do domínio).
+const LOGO_RATIO = 722 / 962;
+function _logoImg(baseUrl) {
+  const h = 42, w = Math.round(h * LOGO_RATIO);
+  const src = `${(baseUrl || '').replace(/\/$/, '')}/static/assets/zvm-logo-light.png`;
+  return `<img src="${src}" width="${w}" height="${h}" alt="ZVM" style="display:block;border:0;outline:none;text-decoration:none;">`;
+}
+
+function _shell({ eyebrow, eyebrowColor, title, bodyHtml, footNote, baseUrl }) {
+  const accent  = eyebrowColor || PRIMARY;
+  const base    = (baseUrl || '').replace(/\/$/, '');
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark">
+<title>ZVM</title>
+<style>
+  /* Refinamento pra clientes que suportam @media (Gmail web/app, Apple Mail,
+     Outlook novo). Outlook clássico (desktop, engine Word) ignora isto e
+     fica só com o inline abaixo — que já é seguro em qualquer largura. */
+  @media (min-width:641px){
+    .zvm-card-pad{padding:44px 48px 40px!important;}
+  }
+  @media (max-width:640px){
+    .zvm-stack{display:block!important;width:100%!important;}
+    .zvm-stack + .zvm-stack{margin-top:10px!important;border-radius:10px!important;border-left:1px solid ${BORDER}!important;}
+    .zvm-stack:first-child{border-radius:10px!important;}
+    .zvm-btn-cell{display:block!important;width:100%!important;padding:0 0 10px!important;}
+    .zvm-btn-cell:last-child{padding-bottom:0!important;}
+    .zvm-btn-cell table{width:100%!important;}
+    .zvm-btn-cell a{display:block!important;text-align:center!important;}
+  }
+</style>
+</head>
+<body style="margin:0;padding:0;background:${BG};">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${BG};padding:32px 16px;">
     <tr><td align="center">
-      <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;">
-        <tr><td align="center" style="padding-bottom:22px;">
-          <span style="font-family:Arial,sans-serif;font-size:15px;font-weight:900;color:${PRIMARY};letter-spacing:1px;">⚡ ZVM</span>
+      <table role="presentation" width="${CONTENT_WIDTH}" cellpadding="0" cellspacing="0" style="max-width:${CONTENT_WIDTH}px;width:100%;">
+        <tr><td align="center" style="padding-bottom:26px;">
+          <a href="${base}/" style="text-decoration:none;">${_logoImg(baseUrl)}</a>
         </td></tr>
         <tr><td style="background:${CARD};border:1px solid ${BORDER};border-radius:16px;padding:0;overflow:hidden;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="height:3px;background:linear-gradient(90deg,transparent,${accent},transparent);font-size:0;line-height:0;">&nbsp;</td></tr></table>
-          <div style="padding:32px 30px 30px;font-family:Arial,Helvetica,sans-serif;">
-            ${eyebrow ? `<div style="display:inline-block;font-size:11px;font-weight:800;color:${accent};letter-spacing:1.5px;text-transform:uppercase;background:${accent}1a;border:1px solid ${accent}40;border-radius:99px;padding:5px 12px;margin-bottom:16px;">${eyebrow}</div>` : ''}
-            <h1 style="margin:0 0 18px;font-size:22px;font-weight:900;color:${TEXT};letter-spacing:-.3px;line-height:1.3;">${title}</h1>
+          <div class="zvm-card-pad" style="padding:32px 28px 30px;font-family:Arial,Helvetica,sans-serif;">
+            ${eyebrow ? `<div style="display:inline-block;font-size:11px;font-weight:800;color:${accent};letter-spacing:1.5px;text-transform:uppercase;background:${accent}1a;border:1px solid ${accent}40;border-radius:99px;padding:5px 12px;margin-bottom:18px;">${eyebrow}</div>` : ''}
+            <h1 style="margin:0 0 20px;font-size:24px;font-weight:900;color:${TEXT};letter-spacing:-.3px;line-height:1.3;">${title}</h1>
             ${bodyHtml}
           </div>
         </td></tr>
-        <tr><td style="padding:24px 12px 0;text-align:center;font-family:Arial,sans-serif;">
-          <p style="margin:0 0 6px;font-size:12px;color:${MUTED};">${footNote || 'Dúvidas? Responda este e-mail ou chame no suporte via WhatsApp.'}</p>
-          <p style="margin:0;font-size:11px;color:${MUTED};">ZVM · Automação Profissional para WhatsApp</p>
+        <tr><td style="padding:28px 16px 0;text-align:center;font-family:Arial,sans-serif;">
+          <p style="margin:0 0 14px;font-size:12px;color:${MUTED};">${footNote || 'Dúvidas? Responda este e-mail ou chame no suporte via WhatsApp.'}</p>
+          <p style="margin:0 0 3px;font-size:12.5px;font-weight:800;color:${DIM};letter-spacing:.2px;">ZVM</p>
+          <p style="margin:0 0 10px;font-size:11px;color:${MUTED};">Automação inteligente para WhatsApp</p>
+          <p style="margin:0 0 10px;font-size:11px;color:${MUTED};"><a href="${base}/cliente" style="color:${MUTED};text-decoration:underline;">Portal do Cliente</a> &nbsp;·&nbsp; <a href="https://wa.me/5521996771552" style="color:${MUTED};text-decoration:underline;">Suporte</a></p>
+          <p style="margin:0;font-size:10.5px;color:${MUTED};">© ${new Date().getFullYear()} ZVM. Todos os direitos reservados.</p>
         </td></tr>
       </table>
     </td></tr>
@@ -83,9 +129,13 @@ function _buttonOutline(href, label) {
 }
 
 function _buttonRow(buttons) {
-  // buttons: array of pre-rendered <table> button snippets, laid side by side
+  // buttons: array of pre-rendered <table> button snippets, lado a lado no
+  // desktop; a classe zvm-btn-cell (ver <style> em _shell) empilha em telas
+  // ≤640px e estica cada botão pra largura total — só nos clientes que
+  // suportam @media; Outlook clássico mantém lado a lado sempre (ele não
+  // tem um cenário real de "tela estreita").
   return `<table role="presentation" cellpadding="0" cellspacing="0"><tr>${
-    buttons.map((b, i) => `<td style="${i > 0 ? 'padding-left:10px;' : ''}">${b}</td>`).join('')
+    buttons.map((b, i) => `<td class="zvm-btn-cell" style="${i > 0 ? 'padding-left:10px;' : ''}">${b}</td>`).join('')
   }</tr></table>`;
 }
 
@@ -107,12 +157,18 @@ function _featureRow(icon, title, desc) {
 // reconstrução separada que pode divergir do template real. ──
 
 function buildPasswordResetEmail(resetUrl) {
+  // Sem parâmetro baseUrl próprio (só resetUrl) — a origem pra montar a logo
+  // e os links do rodapé vem do próprio resetUrl, que já é sempre construído
+  // com BASE_URL na origem (ver chamadores em ZVMeWSM.js). Evita adicionar
+  // mais um parâmetro só pra isso.
+  let baseUrl = '';
+  try { baseUrl = new URL(resetUrl).origin; } catch (_) { /* resetUrl malformado — logo cai pro fallback do <img> quebrado, sem travar o e-mail */ }
   const body = `
-    <p style="margin:0 0 22px;font-size:14.5px;color:${DIM};line-height:1.7;">Você solicitou a redefinição da sua senha do portal ZVM. Clique no botão abaixo para criar uma nova senha — o link é válido por <strong style="color:${TEXT}">1 hora</strong>.</p>
+    <p style="margin:0 0 22px;font-size:14.5px;color:${DIM};line-height:1.7;">Recebemos uma solicitação para redefinir a senha da sua conta ZVM. Clique no botão abaixo para criar uma nova senha — o link é válido por <strong style="color:${TEXT}">1 hora</strong>.</p>
     ${_button(resetUrl, 'Redefinir minha senha')}
-    <p style="margin:22px 0 0;font-size:12.5px;color:${MUTED};line-height:1.6;">Se você não solicitou essa redefinição, ignore este e-mail — sua senha atual continua funcionando normalmente.</p>`;
-  const html = _shell({ eyebrow: 'Segurança da conta', title: 'Redefinir sua senha', bodyHtml: body });
-  return { subject: 'Redefinição de senha — ZVM', html };
+    <p style="margin:22px 0 0;font-size:12.5px;color:${MUTED};line-height:1.6;">Se você não fez esta solicitação, ignore este e-mail — sua senha atual continua funcionando normalmente.</p>`;
+  const html = _shell({ eyebrow: 'Segurança da conta', title: 'Recuperação de senha', bodyHtml: body, baseUrl });
+  return { subject: 'ZVM — Redefinição de senha', html };
 }
 
 async function sendPasswordResetEmail(to, resetUrl) {
@@ -129,13 +185,18 @@ async function sendPasswordResetEmail(to, resetUrl) {
 // venda antigo, API de parceiro) — só o fluxo Cakto/standalone passa
 // ctaPath:'/cliente' explicitamente (ver processCommercialSale). Não é uma
 // troca global: cada chamador decide o próprio destino.
-function buildKeyDeliveryEmail({ code, planLabel, maxUses, expiresAt, renewed, baseUrl, extensionUrl, ctaPath }) {
+function buildKeyDeliveryEmail({ code, planLabel, maxUses, expiresAt, renewed, durationDays, baseUrl, extensionUrl, ctaPath }) {
   const fmtDate = iso => iso ? new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '—';
   const portalPath = ctaPath || '/verificar';
   const verifyUrl = `${(baseUrl || '').replace(/\/$/, '')}${portalPath}`;
-  const title = renewed ? 'Sua renovação foi aprovada' : 'Bem-vindo(a) ao ZVM';
+  const isPortal = portalPath === '/cliente';
+  const title = renewed ? 'Sua licença foi renovada' : 'Bem-vindo(a) ao ZVM';
   const intro = renewed
-    ? 'Sua chave já está ativa com o novo período de acesso — nenhuma ação extra é necessária se ela já estiver configurada na extensão.'
+    // "durationDays" só existe quando o chamador já sabe o período do plano
+    // (fluxo Cakto/standalone) — nos fluxos legados (webhook antigo, API de
+    // parceiro) essa informação não chega até aqui, e a frase some sozinha
+    // em vez de inventar um número.
+    ? `Sua licença ZVM foi renovada com sucesso${durationDays ? ` — mais ${durationDays} dias de acesso foram adicionados` : ''}. A chave existente continua a mesma, sem precisar reconfigurar nada na extensão.`
     : 'Sua compra foi aprovada! Sua chave de ativação já está pronta — em poucos minutos você já está disparando mensagens de voz, texto e mídia em massa no WhatsApp.';
 
   const keyBox = `
@@ -150,11 +211,11 @@ function buildKeyDeliveryEmail({ code, planLabel, maxUses, expiresAt, renewed, b
   const stats = `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 22px;">
       <tr>
-        <td width="50%" style="background:${CARD2};border:1px solid ${BORDER};border-radius:10px 0 0 10px;border-right:none;padding:14px 16px;">
+        <td class="zvm-stack" width="50%" style="background:${CARD2};border:1px solid ${BORDER};border-radius:10px 0 0 10px;border-right:none;padding:14px 16px;">
           <div style="font-family:Arial,sans-serif;font-size:10.5px;color:${DIM};text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Plano</div>
           <div style="font-family:Arial,sans-serif;font-size:15px;font-weight:800;color:${TEXT};">${planLabel || '—'} <span style="font-weight:400;color:${DIM};font-size:12.5px;">· ${maxUses || 1} número(s)</span></div>
         </td>
-        <td width="50%" style="background:${CARD2};border:1px solid ${BORDER};border-radius:0 10px 10px 0;padding:14px 16px;">
+        <td class="zvm-stack" width="50%" style="background:${CARD2};border:1px solid ${BORDER};border-radius:0 10px 10px 0;padding:14px 16px;">
           <div style="font-family:Arial,sans-serif;font-size:10.5px;color:${DIM};text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Válida até</div>
           <div style="font-family:Arial,sans-serif;font-size:15px;font-weight:800;color:${TEXT};">${fmtDate(expiresAt)}</div>
         </td>
@@ -164,21 +225,21 @@ function buildKeyDeliveryEmail({ code, planLabel, maxUses, expiresAt, renewed, b
   const tutorialUrl = 'https://www.youtube.com/watch?v=DZ29f5U6OF8';
 
   // Primeira compra: baixar extensão é a ação principal, com o tutorial em vídeo ao lado.
-  // A consulta da chave (/verificar) já tem sua própria seção mais abaixo — não repete o botão aqui.
+  // A consulta da chave (portal) já tem sua própria seção mais abaixo — não repete o botão aqui.
   const ctaRow = renewed
-    ? _buttonRow([_button(verifyUrl, 'Ver detalhes da chave')])
+    ? _buttonRow([_button(verifyUrl, 'Acessar minha conta')])
     : (extensionUrl
-        ? _buttonRow([_button(extensionUrl, '📥 Baixar a extensão'), _buttonOutline(tutorialUrl, '▶ Ver tutorial')])
-        : _buttonRow([_button(tutorialUrl, '▶ Ver tutorial de instalação')]));
+        ? _buttonRow([_button(extensionUrl, 'Baixar a extensão'), _buttonOutline(tutorialUrl, 'Ver tutorial')])
+        : _buttonRow([_button(tutorialUrl, 'Ver tutorial de instalação')]));
 
   const steps = renewed ? '' : `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0 0;">
       <tr><td style="border-top:1px solid ${BORDER};padding-top:22px;">
-        <div style="font-family:Arial,sans-serif;font-size:11px;font-weight:800;color:${DIM};text-transform:uppercase;letter-spacing:.06em;margin-bottom:16px;">Como ativar em 3 passos</div>
+        <div style="font-family:Arial,sans-serif;font-size:11px;font-weight:800;color:${DIM};text-transform:uppercase;letter-spacing:.06em;margin-bottom:16px;">Como começar</div>
       </td></tr>
       <tr><td style="font-family:Arial,sans-serif;font-size:13.5px;color:${DIM};line-height:2;">
-        <strong style="color:${TEXT}">1.</strong> Baixe e instale a extensão ZVM no Chrome (botão acima)<br>
-        <strong style="color:${TEXT}">2.</strong> Abra o WhatsApp Web, cole a chave acima no campo de ativação<br>
+        <strong style="color:${TEXT}">1.</strong> Instale a extensão ZVM no Chrome (botão acima)<br>
+        <strong style="color:${TEXT}">2.</strong> Entre no WhatsApp Web e cole a chave acima no campo de ativação<br>
         <strong style="color:${TEXT}">3.</strong> Conecte seu WhatsApp e comece a disparar
       </td></tr>
     </table>`;
@@ -186,14 +247,14 @@ function buildKeyDeliveryEmail({ code, planLabel, maxUses, expiresAt, renewed, b
   const portalSection = `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0 0;">
       <tr><td style="border-top:1px solid ${BORDER};padding-top:22px;">
-        <div style="font-family:Arial,sans-serif;font-size:11px;font-weight:800;color:${DIM};text-transform:uppercase;letter-spacing:.06em;margin-bottom:16px;">Gerencie sua chave a qualquer momento</div>
+        <div style="font-family:Arial,sans-serif;font-size:11px;font-weight:800;color:${DIM};text-transform:uppercase;letter-spacing:.06em;margin-bottom:16px;">Gerencie sua licença a qualquer momento</div>
       </td></tr>
       <tr><td>
         ${_featureRow('📅', 'Validade e status', 'Consulte quando sua chave vence e se ela está ativa, sem precisar de login.')}
         ${_featureRow('📱', 'Dispositivos conectados', 'Veja quais números estão usando sua chave e remova algum pra liberar espaço.')}
         ${_featureRow('🔁', 'Renovação', 'Renove direto pelo portal quando o período estiver acabando.')}
       </td></tr>
-      <tr><td style="padding-top:6px;">${_buttonOutline(verifyUrl, portalPath === '/cliente' ? 'Acessar minha conta →' : 'Acessar /verificar →')}</td></tr>
+      <tr><td style="padding-top:6px;">${_buttonOutline(verifyUrl, isPortal ? 'Acessar Portal do Cliente →' : 'Consultar minha chave →')}</td></tr>
     </table>`;
 
   const body = `
@@ -208,9 +269,10 @@ function buildKeyDeliveryEmail({ code, planLabel, maxUses, expiresAt, renewed, b
     eyebrow: renewed ? 'Renovação confirmada' : 'Pagamento aprovado',
     title,
     bodyHtml: body,
+    baseUrl,
     footNote: 'Dúvidas sobre a ativação? Responda este e-mail ou chame no suporte via WhatsApp.'
   });
-  return { subject: renewed ? 'ZVM — Chave renovada' : 'ZVM — Sua chave de ativação', html };
+  return { subject: renewed ? 'ZVM — Renovação confirmada' : 'ZVM — Sua licença está pronta', html };
 }
 
 async function sendKeyDeliveryEmail(to, opts) {
@@ -245,11 +307,11 @@ function buildKeyExpiryWarningEmail({ code, hoursLeft, planLabel, maxUses, expir
   const stats = `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 22px;">
       <tr>
-        <td width="50%" style="background:${CARD2};border:1px solid ${BORDER};border-radius:10px 0 0 10px;border-right:none;padding:14px 16px;">
+        <td class="zvm-stack" width="50%" style="background:${CARD2};border:1px solid ${BORDER};border-radius:10px 0 0 10px;border-right:none;padding:14px 16px;">
           <div style="font-family:Arial,sans-serif;font-size:10.5px;color:${DIM};text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Plano</div>
           <div style="font-family:Arial,sans-serif;font-size:15px;font-weight:800;color:${TEXT};">${planLabel || '—'} <span style="font-weight:400;color:${DIM};font-size:12.5px;">· ${maxUses || 1} número(s)</span></div>
         </td>
-        <td width="50%" style="background:${CARD2};border:1px solid ${BORDER};border-radius:0 10px 10px 0;padding:14px 16px;">
+        <td class="zvm-stack" width="50%" style="background:${CARD2};border:1px solid ${BORDER};border-radius:0 10px 10px 0;padding:14px 16px;">
           <div style="font-family:Arial,sans-serif;font-size:10.5px;color:${DIM};text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Válida até</div>
           <div style="font-family:Arial,sans-serif;font-size:15px;font-weight:800;color:${TEXT};">${fmtDate(expiresAt)}</div>
         </td>
@@ -257,21 +319,22 @@ function buildKeyExpiryWarningEmail({ code, hoursLeft, planLabel, maxUses, expir
     </table>`;
 
   const body = `
-    <p style="margin:0 0 22px;font-size:14.5px;color:${DIM};line-height:1.7;">Sua licença ZVM está perto do vencimento. Renove agora pelo portal e mantenha sua automação funcionando sem interrupção.</p>
+    <p style="margin:0 0 22px;font-size:14.5px;color:${DIM};line-height:1.7;">Sua licença ZVM está próxima do vencimento. Renove agora pelo portal e continue usando sua automação sem interrupção.</p>
     ${keyBox}
     ${stats}
-    ${_buttonRow([_button(renewUrl, 'RENOVAR MINHA LICENÇA', WARN)])}
+    ${_buttonRow([_button(renewUrl, 'Renovar minha licença', WARN), _buttonOutline(renewUrl, 'Acessar Portal do Cliente')])}
     <p style="margin:22px 0 0;font-size:13px;color:${TEXT};line-height:1.6;font-weight:600;">Renove antes do vencimento para continuar usando o ZVM sem interrupções.</p>
     <p style="margin:10px 0 0;font-size:12.5px;color:${MUTED};line-height:1.6;">Depois de expirada, a chave para de funcionar até uma nova renovação — seus dispositivos vinculados continuam salvos.</p>`;
 
   const html = _shell({
     eyebrow: 'Aviso de expiração',
     eyebrowColor: WARN,
-    title: 'Sua licença está expirando',
+    title: 'Sua licença ZVM está próxima do vencimento',
     bodyHtml: body,
+    baseUrl,
     footNote: 'Dúvidas sobre renovação? Responda este e-mail ou chame no suporte via WhatsApp.'
   });
-  return { subject: 'Sua licença ZVM está expirando', html };
+  return { subject: 'ZVM — Sua licença vence em breve', html };
 }
 
 async function sendKeyExpiryWarningEmail(to, opts) {
