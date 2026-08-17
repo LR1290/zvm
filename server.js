@@ -6,7 +6,11 @@ const zlib   = require('zlib');
 const fs     = require('fs');
 const path   = require('path');
 const { MongoClient } = require('mongodb');
-try { require('dotenv').config(); } catch (_) { /* opcional */ }
+// DOTENV_CONFIG_PATH (convenção padrão do próprio dotenv) permite apontar
+// pra um arquivo de ambiente diferente (ex.: .env.test) sem tocar em .env
+// nem sobrescrever nada nele. Sem a variável definida, comportamento
+// idêntico ao de sempre (carrega .env do cwd).
+try { require('dotenv').config({ path: process.env.DOTENV_CONFIG_PATH || '.env' }); } catch (_) { /* opcional */ }
 const { sendPasswordResetEmail, sendKeyDeliveryEmail, sendEmail } = require('./mailer');
 
 const PORT         = process.env.PORT         || 3000;
@@ -23,6 +27,7 @@ const MODS = [
 ].filter(m => m.user && m.pass);
 
 const SALE_WEBHOOK_SECRET = process.env.SALE_WEBHOOK_SECRET || '';
+const CAKTO_WEBHOOK_SECRET = process.env.CAKTO_WEBHOOK_SECRET || '';
 const PARTNER_API_TOKEN   = process.env.PARTNER_API_TOKEN   || '';
 const ANALYTICS_PASS = process.env.ANALYTICS_PASS || '';
 const MONGODB_URI  = (process.env.MONGODB_URI || '').replace(/^["']|["']$/g, '');
@@ -36,6 +41,40 @@ const RESEND_API_KEY    = process.env.RESEND_API_KEY || '';
 const EMAIL_FROM        = process.env.EMAIL_FROM    || 'ZVM <noreply@zvm.app>';
 const EXTENSION_VERSION = process.env.EXTENSION_VERSION || '';
 const EXTENSION_CHANGELOG = process.env.EXTENSION_CHANGELOG || '';
+
+// Fonte comercial única do ZVM Standalone. IDs reais podem ser preenchidos
+// por ambiente quando forem conhecidos; valores vazios nunca participam da
+// resolução e nenhum identificador é inferido do slug do checkout.
+const ZVM_PLANS = Object.freeze({
+  solo: Object.freeze({
+    id: 'solo', name: 'ZVM Solo', shortName: 'Solo', price: 39.90,
+    maxUses: 1, durationDays: 30,
+    checkoutUrl: 'https://pay.cakto.com.br/7kzktq2_1000035',
+    offerId: process.env.CAKTO_SOLO_OFFER_ID || '',
+    productId: process.env.CAKTO_SOLO_PRODUCT_ID || '',
+  }),
+  padrao: Object.freeze({
+    id: 'padrao', name: 'ZVM Padrão', shortName: 'Padrão', price: 59.90,
+    maxUses: 3, durationDays: 30,
+    checkoutUrl: 'https://pay.cakto.com.br/spxbb8u_1030568',
+    offerId: process.env.CAKTO_PADRAO_OFFER_ID || '',
+    productId: process.env.CAKTO_PADRAO_PRODUCT_ID || '',
+  }),
+  pro: Object.freeze({
+    id: 'pro', name: 'ZVM PRO', shortName: 'Pro', price: 94.90,
+    maxUses: 5, durationDays: 30,
+    checkoutUrl: 'https://pay.cakto.com.br/3ehxsg3_1030569',
+    offerId: process.env.CAKTO_PRO_OFFER_ID || '',
+    productId: process.env.CAKTO_PRO_PRODUCT_ID || '',
+  }),
+  empresarial: Object.freeze({
+    id: 'empresarial', name: 'ZVM Empresarial', shortName: 'Empresarial', price: 169.90,
+    maxUses: 10, durationDays: 30,
+    checkoutUrl: 'https://pay.cakto.com.br/eihat4z_1030571',
+    offerId: process.env.CAKTO_EMPRESARIAL_OFFER_ID || '',
+    productId: process.env.CAKTO_EMPRESARIAL_PRODUCT_ID || '',
+  }),
+});
 
 // ── Ponte extensao WSM <-> paginas /ia (servida em /WSM/ia-bridge.js) ──
 // Detecta a extensao via externally_connectable e conecta o WhatsApp por ela;
@@ -296,6 +335,15 @@ const DEFAULT_MODULES = Object.fromEntries(AVAILABLE_MODULES.map(m => [m, false]
 let _mongoClient = null;
 let _mongoDb     = null;
 let _mongoConnecting = false;
+let _caktoIndexReady = false;
+
+// Retomada de eventos Cakto (P0) — um registro "processing" só é considerado
+// travado/abandonado depois desse tempo sem avanço (lastAttemptAt). 5min é
+// generoso o bastante pra qualquer processamento real (Mongo + e-mail, tudo
+// em milissegundos a poucos segundos) já ter terminado, e curto o bastante
+// pra não bloquear os próprios reenvios da Cakto (que chegam em minutos/
+// horas) por muito tempo caso o processo tenha realmente caído no meio.
+const CAKTO_PROCESSING_STALE_MS = 5 * 60 * 1000;
 
 async function getMongoDb() {
   if (_mongoDb) return _mongoDb; // fast path — sem ping por chamada
@@ -348,6 +396,13 @@ async function loadDb() {
     // Garante índices úteis (idempotente — não recria se já existe)
     db.collection('mod_logs').createIndex({ ts: -1 }, { background: true }).catch(() => {});
     db.collection('portal_users').createIndex({ keyCode: 1 }, { background: true }).catch(() => {});
+    try {
+      await db.collection('webhook_events').createIndex({ eventKey: 1 }, { unique: true, background: true });
+      _caktoIndexReady = true;
+    } catch (e) {
+      _caktoIndexReady = false;
+      console.error('[CAKTO] Falha ao garantir índice de idempotência:', e.message);
+    }
     const [keysDoc, logsDoc, alertsDoc, settingsDoc, rateBlocksDoc] = await Promise.all([
       db.collection('store').findOne({ _id: 'keys' }),
       db.collection('store').findOne({ _id: 'logs' }),
@@ -424,6 +479,23 @@ async function _writeKeyToDb(code) {
   } catch (e) {
     console.error('[DB] Erro ao salvar chave:', e.message);
   }
+}
+// P0 — versão "strict" de _writeKeyToDb: mesma escrita, mas PROPAGA a falha
+// em vez de engoli-la. _writeKeyToDb continua do jeito que sempre foi
+// (silenciosa) porque outros chamadores dependem disso: saveKey() é
+// debounced/fire-and-forget (um setTimeout que não tem quem capturar uma
+// rejeição) e flushPendingSaves() já trata falha via Promise.allSettled.
+// Rotas que precisam diferenciar sucesso de falha (ex.: remoção de
+// dispositivo, onde o cliente só deve ver "removido" se realmente foi
+// persistido) devem usar esta versão dentro do próprio try/catch da rota.
+async function _writeKeyToDbStrict(code, deps = {}) {
+  if (keys[code] === undefined) return;
+  const db = deps.db || await getMongoDb();
+  await db.collection('store').updateOne(
+    { _id: 'keys' },
+    { $set: { [`data.${code}`]: keys[code], updatedAt: new Date() } },
+    { upsert: true }
+  );
 }
 function saveKey(code) {
   if (_saveDebounce.has(code)) clearTimeout(_saveDebounce.get(code));
@@ -799,6 +871,7 @@ const RL_CONFIG = {
   checkkey:     { max: 10, windowMs: 60000, blockMs:  5 * 60000 },
   reset:        { max: 3,  windowMs: 300000, blockMs: 30 * 60000 },
   twofa:        { max: 5,  windowMs: 60000,  blockMs: 10 * 60000 },
+  cakto:        { max: 30, windowMs: 60000,  blockMs:  5 * 60000 },
 };
 
 function checkRateLimit(ip, type = 'api', maxReq = 0, windowMs = 0) {
@@ -974,6 +1047,115 @@ function planLabelForMaxUses(n) {
   if (n === 5) return 'Pro';
   if (n === 10) return 'Empresarial';
   return `${n} número(s)`;
+}
+
+function isPlainRecord(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function safeScalar(value, maxLength, fallback = '') {
+  if (value === null || value === undefined || typeof value === 'object') return fallback;
+  return String(value).trim().slice(0, maxLength);
+}
+
+function normalizePlanName(value) {
+  return safeScalar(value, 120).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function normalizeCheckoutUrl(value) {
+  return safeScalar(value, 300).replace(/\/$/, '');
+}
+
+function normalizeCaktoPurchase(payload) {
+  if (!isPlainRecord(payload) || !isPlainRecord(payload.data)) return null;
+  const data = payload.data;
+  const customer = isPlainRecord(data.customer) ? data.customer : {};
+  const product = isPlainRecord(data.product) ? data.product : {};
+  const offer = isPlainRecord(data.offer) ? data.offer : {};
+  const rawAmount = (typeof data.amount === 'number' || typeof data.amount === 'string') ? Number(data.amount) : 0;
+
+  return {
+    source: 'cakto',
+    event: safeScalar(payload.event, 80).toLowerCase(),
+    txId: safeScalar(data.id, 120),
+    refId: safeScalar(data.refId, 120),
+    clientName: safeScalar(customer.name, 120, 'Cliente'),
+    clientEmail: safeScalar(customer.email, 160).toLowerCase(),
+    clientPhone: safeScalar(customer.phone, 40),
+    productId: safeScalar(product.id, 120),
+    productShortId: safeScalar(product.short_id, 120),
+    productName: safeScalar(product.name, 200),
+    offerId: safeScalar(offer.id, 120),
+    offerName: safeScalar(offer.name, 200),
+    checkoutUrl: normalizeCheckoutUrl(data.checkoutUrl),
+    // amount: nenhuma conversão reais/centavos é aplicada aqui — só Number()
+    // do valor bruto. Não sabemos ainda em que unidade a Cakto realmente
+    // entrega data.amount no payload real; inventar uma transformação sem
+    // prova seria pior que não ter o dado. amountRawType existe só pro
+    // diagnóstico do dry_run (ver handleCaktoWebhook) confirmar isso com o
+    // primeiro payload de verdade.
+    amount: Number.isFinite(rawAmount) && rawAmount >= 0 ? rawAmount : 0,
+    amountRawType: typeof data.amount,
+    paymentMethod: safeScalar(data.paymentMethod, 60, '-'),
+    paidAt: safeScalar(data.paidAt, 80),
+    tracking: extractTracking(data) || extractTracking(payload),
+  };
+}
+
+function resolveCaktoPlan(purchase, plans = ZVM_PLANS) {
+  if (!purchase || typeof purchase !== 'object') return null;
+  const allPlans = Object.values(plans);
+  const byConfiguredId = (field, configField) => {
+    const received = safeScalar(purchase[field], 120);
+    if (!received) return null;
+    return allPlans.find(plan => plan[configField] && safeCompare(received, plan[configField])) || null;
+  };
+
+  const byOffer = byConfiguredId('offerId', 'offerId');
+  if (byOffer) return byOffer;
+  const byProduct = byConfiguredId('productId', 'productId');
+  if (byProduct) return byProduct;
+
+  const checkoutUrl = normalizeCheckoutUrl(purchase.checkoutUrl);
+  if (checkoutUrl) {
+    const byCheckout = allPlans.find(plan => normalizeCheckoutUrl(plan.checkoutUrl) === checkoutUrl);
+    if (byCheckout) return byCheckout;
+  }
+
+  const exactNames = [purchase.productName, purchase.offerName].map(normalizePlanName).filter(Boolean);
+  return allPlans.find(plan => {
+    const allowed = [plan.name, plan.shortName].map(normalizePlanName);
+    return exactNames.some(name => allowed.includes(name));
+  }) || null;
+}
+
+function maskEmail(email) {
+  const value = safeScalar(email, 160).toLowerCase();
+  const at = value.indexOf('@');
+  if (at <= 0) return value ? '***' : '';
+  const local = value.slice(0, at);
+  const visible = local.length > 1 ? local[0] : '*';
+  return `${visible}***${value.slice(at)}`;
+}
+
+function maskPhone(phone) {
+  const digits = safeScalar(phone, 40).replace(/\D/g, '');
+  return digits ? `***${digits.slice(-4)}` : '';
+}
+
+function safeLocalRedirect(value, fallback = '') {
+  if (typeof value !== 'string') return fallback;
+  const candidate = value.trim().slice(0, 200);
+  if (!candidate.startsWith('/') || candidate.startsWith('//') || candidate.includes('\\') || /[\u0000-\u001f]/.test(candidate)) return fallback;
+  try {
+    const base = new URL('https://zvm.local');
+    const parsed = new URL(candidate, base);
+    return parsed.origin === base.origin ? `${parsed.pathname}${parsed.search}${parsed.hash}` : fallback;
+  } catch { return fallback; }
+}
+
+function getVerifyRedirect(isLoggedIn) {
+  return isLoggedIn ? '/cliente' : '/cliente?redir=/cliente';
 }
 
 function generateCode() {
@@ -1668,11 +1850,117 @@ function clearAnalyticsCookie(res) {
   res.setHeader('Set-Cookie', 'zv_an=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict; Secure');
 }
 
-async function savePayment(payment) {
+async function savePayment(payment, { strict = false } = {}) {
   try {
     const db = await getMongoDb();
-    await db.collection('payments').insertOne({ ...payment, savedAt: new Date() });
-  } catch (e) { console.error('[DB] Erro ao salvar pagamento:', e.message); }
+    return await db.collection('payments').insertOne({ ...payment, savedAt: new Date() });
+  } catch (e) {
+    console.error('[DB] Erro ao salvar pagamento:', e.message);
+    if (strict) throw e;
+    return null;
+  }
+}
+
+async function processCommercialSale(sale, plan, deps = {}) {
+  if (!sale || !plan) throw new Error('commercial_sale_invalid');
+  const clientEmail = safeScalar(sale.clientEmail, 160).toLowerCase();
+  if (!clientEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clientEmail)) throw new Error('commercial_customer_invalid');
+
+  const keyStore = deps.keyStore || keys;
+  const db = deps.db || await getMongoDb();
+  const findPortalUser = deps.findPortalUser || (email => db.collection('portal_users').findOne({ _id: email }));
+  const linkPortalUser = deps.linkPortalUser || ((email, keyCode) => db.collection('portal_users').updateOne({ _id: email }, { $set: { keyCode } }, { upsert: false }));
+  const persistKey = deps.persistKey || (code => db.collection('store').updateOne(
+    { _id: 'keys' },
+    { $set: { [`data.${code}`]: keyStore[code], updatedAt: new Date() } },
+    { upsert: true }
+  ));
+  const paymentSaver = deps.savePayment || (payment => savePayment(payment, { strict: true }));
+  const deliveryMailer = deps.sendKeyDeliveryEmail || sendKeyDeliveryEmail;
+  const now = deps.now instanceof Date ? new Date(deps.now) : new Date();
+  const durationMs = plan.durationDays * 24 * 60 * 60 * 1000;
+
+  let existingCode = null;
+  const portalUser = await findPortalUser(clientEmail);
+  if (portalUser?.keyCode) {
+    if (!keyStore[portalUser.keyCode] && !deps.keyStore) await ensureKeyLoaded(portalUser.keyCode);
+    if (keyStore[portalUser.keyCode]) existingCode = portalUser.keyCode;
+  }
+  if (!existingCode) {
+    existingCode = Object.keys(keyStore).find(code => {
+      const noteEmail = (keyStore[code]?.note || '').match(/Email: (\S+)/)?.[1] || '';
+      return noteEmail.toLowerCase() === clientEmail;
+    }) || null;
+  }
+
+  let keyCode;
+  let renewed;
+  if (existingCode) {
+    keyCode = existingCode;
+    renewed = true;
+    const key = keyStore[keyCode];
+    const currentExpiry = key.expiresAt ? new Date(key.expiresAt) : null;
+    const validExpiry = currentExpiry && Number.isFinite(currentExpiry.getTime()) && currentExpiry > now;
+    const base = validExpiry ? currentExpiry : now;
+    key.expiresAt = new Date(base.getTime() + durationMs).toISOString();
+    key.expireDuration = durationMs;
+    key.maxUses = plan.maxUses;
+    key.planId = plan.id;
+    key.active = true;
+    key.warnEmailSent = false;
+    key.note = [key.note || '', sale.txId ? `renovado_cakto_tx:${sale.txId}` : 'renovado_cakto'].filter(Boolean).join('\n');
+  } else {
+    keyCode = generateCode();
+    renewed = false;
+    const expiresAt = new Date(now.getTime() + durationMs).toISOString();
+    keyStore[keyCode] = {
+      label: `Venda Cakto - ${safeScalar(sale.clientName, 120, 'Cliente')}`,
+      active: true, phones: [], activations: [], uses: 0,
+      maxUses: plan.maxUses, planId: plan.id,
+      expiresAt, expireDuration: durationMs,
+      createdAt: now.toISOString(), lastUsed: null, lastIp: null,
+      lastPhone: null, deviceId: null, wppVersion: null, warnCount: 0,
+      tracking: sale.tracking || null,
+      note: ['Pedido Cakto', `Email: ${clientEmail}`, sale.txId ? `cakto_tx:${sale.txId}` : null, sale.tracking?.compact ? `Origem: ${sale.tracking.compact}` : null].filter(Boolean).join('\n'),
+    };
+  }
+
+  // P0 — ordem importa pra recuperação de falha parcial: savePayment é o
+  // ÚLTIMO passo mutável antes do e-mail (tolerante a falha via try/catch
+  // abaixo) porque processCaktoPurchaseEvent usa a EXISTÊNCIA do payment
+  // como segunda camada de idempotência (existingPayment) pra decidir se
+  // uma retomada pode pular processCommercialSale inteiro. Com persistKey/
+  // linkPortalUser ANTES, "payment já existe" garante que a chave e o
+  // vínculo do portal também já existem - uma retomada nunca os pula sem
+  // que já estejam feitos. Só o e-mail pode ficar sem reenvio numa falha
+  // bem rara depois deste ponto - risco aceito (preferível a duplicar
+  // e-mail, ver relatório).
+  await persistKey(keyCode);
+  await linkPortalUser(clientEmail, keyCode);
+  await paymentSaver({
+    source: 'cakto', txId: sale.txId, refId: sale.refId || '',
+    offerId: sale.offerId || '', productId: sale.productId || '',
+    checkoutUrl: sale.checkoutUrl || '', status: 'approved', approved: true,
+    clientName: sale.clientName, clientEmail, clientPhone: sale.clientPhone,
+    productName: sale.productName || sale.offerName || plan.name,
+    amount: sale.amount, paymentMethod: sale.paymentMethod,
+    tracking: sale.tracking || null, keyCode, maxUses: plan.maxUses, renewed,
+    paidAt: Number.isFinite(new Date(sale.paidAt).getTime()) ? new Date(sale.paidAt).toISOString() : now.toISOString(),
+    rawStatus: sale.event,
+  });
+
+  try {
+    const delivered = await deliveryMailer(clientEmail, {
+      code: keyCode, planLabel: plan.shortName, maxUses: plan.maxUses,
+      expiresAt: keyStore[keyCode].expiresAt, renewed,
+      baseUrl: BASE_URL, extensionUrl: EXTENSION_URL,
+      ctaPath: '/cliente', // fluxo Cakto/standalone - legado (sale/payt webhook, partner API) continua em /verificar
+    });
+    if (delivered === false) console.warn('[CAKTO] Provedor recusou o e-mail de entrega para', maskEmail(clientEmail));
+  } catch (e) { console.warn('[CAKTO] Falha ao enviar e-mail de entrega:', e.message); }
+
+  invalidateKeysHtmlCache();
+  return { keyCode, renewed, expiresAt: keyStore[keyCode].expiresAt, maxUses: plan.maxUses };
 }
 
 async function getPayments({ startDate, endDate, limit = 500 } = {}) {
@@ -1804,6 +2092,196 @@ function readRawBody(req, maxBytes = MAX_BODY_SIZE) {
     req.on('end',   () => resolve(b));
     req.on('error', () => resolve(null));
   });
+}
+
+function validateCaktoPayload(payload, configuredSecret = CAKTO_WEBHOOK_SECRET) {
+  if (!configuredSecret) return { ok: false, status: 503, error: 'webhook_disabled' };
+  if (!isPlainRecord(payload) || !isPlainRecord(payload.data)) return { ok: false, status: 400, error: 'invalid_payload' };
+  if (typeof payload.secret !== 'string') return { ok: false, status: 400, error: 'invalid_payload' };
+  const receivedSecret = payload.secret;
+  if (!safeCompare(receivedSecret, configuredSecret)) return { ok: false, status: 401, error: 'unauthorized' };
+  const purchase = normalizeCaktoPurchase(payload);
+  if (!purchase) return { ok: false, status: 400, error: 'invalid_payload' };
+  return { ok: true, purchase, plan: resolveCaktoPlan(purchase) };
+}
+
+// P0 — recuperação de eventos "failed": um eventKey já existe (índice único
+// em webhook_events.eventKey), então a reentrega da Cakto pro MESMO txId
+// nunca passa de novo pelo insertOne abaixo — cai direto no catch(E11000).
+// Antes disso simplesmente devolvia "duplicate" pra QUALQUER status
+// existente, inclusive "failed" — uma venda legítima que falhasse no meio
+// do processamento nunca mais seria reprocessada, mesmo a Cakto reentregando
+// o webhook depois.
+//
+// Retry seguro: só reivindica a retomada quando o status permite (failed,
+// ou processing "travado" há mais de CAKTO_PROCESSING_STALE_MS) e faz isso
+// via UM findOneAndUpdate atômico com o status como parte do FILTRO — o
+// MongoDB só deixa UMA operação concorrente casar esse filtro por vez (a
+// segunda já não encontra mais status:"failed"/processing-stale depois que
+// a primeira já escreveu status:"processing" com lastAttemptAt novo), então
+// duas entregas simultâneas do mesmo webhook nunca processam a venda 2x.
+// "processed"/"payment_duplicate" nunca casam esse filtro — nunca reprocessa
+// o que já terminou. "processing" recente (dentro da janela) também não
+// casa — não temos como saber se está genuinamente em andamento agora,
+// então não mexe.
+async function claimCaktoEvent(db, purchase, plan, opts = {}) {
+  const eventKey = `cakto:purchase_approved:${purchase.txId}`;
+  const now = opts.now instanceof Date ? opts.now : new Date();
+  try {
+    await db.collection('webhook_events').insertOne({
+      eventKey, source: 'cakto', event: purchase.event, txId: purchase.txId,
+      refId: purchase.refId || null, planId: plan?.id || null,
+      status: plan ? 'processing' : 'CAKTO_UNMAPPED_PLAN', createdAt: now,
+      attempts: 1, lastAttemptAt: now,
+    });
+    return { claimed: true, eventKey, attempt: 1 };
+  } catch (e) {
+    if (e?.code !== 11000) throw e;
+    const staleBefore = new Date(now.getTime() - CAKTO_PROCESSING_STALE_MS);
+    const retryFilter = {
+      eventKey,
+      $or: [
+        { status: 'failed' },
+        { status: 'processing', lastAttemptAt: { $lt: staleBefore } },
+      ],
+    };
+    const retried = await db.collection('webhook_events').findOneAndUpdate(
+      retryFilter,
+      { $set: { status: 'processing', lastAttemptAt: now }, $inc: { attempts: 1 }, $unset: { lastError: '' } },
+      { returnDocument: 'after' }
+    );
+    // Driver mongodb v6: findOneAndUpdate devolve o documento direto (ou
+    // null) por padrão. Normalizado aqui só como defesa caso algum dia
+    // rode com includeResultMetadata:true (formato antigo {value}).
+    const retriedDoc = (retried && typeof retried === 'object' && 'value' in retried) ? retried.value : retried;
+    if (retriedDoc) return { claimed: true, eventKey, attempt: retriedDoc.attempts, retry: true };
+    return { claimed: false, duplicate: true, eventKey };
+  }
+}
+
+async function processCaktoPurchaseEvent(purchase, plan, deps = {}) {
+  const db = deps.db || await getMongoDb();
+  const claim = await claimCaktoEvent(db, purchase, plan, { now: deps.now });
+  if (!claim.claimed) {
+    console.log('[CAKTO][DUPLICATE]', { txId: purchase.txId, refId: purchase.refId || '' });
+    return { duplicate: true };
+  }
+  if (claim.retry) {
+    console.warn('[CAKTO][RETRY]', { txId: purchase.txId, attempt: claim.attempt });
+  }
+
+  if (!plan) {
+    console.warn('[CAKTO][UNMAPPED]', {
+      marker: 'CAKTO_UNMAPPED_PLAN', txId: purchase.txId, refId: purchase.refId,
+      offerId: purchase.offerId, productId: purchase.productId,
+      productName: purchase.productName, checkoutUrl: purchase.checkoutUrl,
+    });
+    return { unmapped: true };
+  }
+
+  // Segunda camada de idempotência: se o pagamento já foi salvo numa
+  // tentativa anterior (mesmo que o evento tenha falhado DEPOIS disso -
+  // ver reordenação em processCommercialSale, savePayment é o último passo
+  // que "sela" a venda), uma retomada não deve rodar processCommercialSale
+  // de novo (evita segunda chave/renovação duplicada). Só finaliza o
+  // registro do evento como concluído.
+  const existingPayment = await db.collection('payments').findOne({ txId: purchase.txId, approved: true });
+  if (existingPayment) {
+    await db.collection('webhook_events').updateOne(
+      { eventKey: claim.eventKey },
+      { $set: { status: 'payment_duplicate', processedAt: new Date() } }
+    );
+    console.log('[CAKTO][DUPLICATE]', { txId: purchase.txId, layer: 'payments' });
+    return { duplicate: true };
+  }
+
+  try {
+    const result = await processCommercialSale(purchase, plan, deps.commercialDeps || {});
+    await db.collection('webhook_events').updateOne(
+      { eventKey: claim.eventKey },
+      { $set: { status: 'processed', keyCode: result.keyCode, renewed: result.renewed, processedAt: new Date() } }
+    );
+    console.log(result.renewed ? '[CAKTO][RENEW]' : '[CAKTO][PURCHASE]', {
+      txId: purchase.txId, planId: plan.id, keyCode: result.keyCode, email: maskEmail(purchase.clientEmail),
+    });
+    return result;
+  } catch (e) {
+    // lastError sanitizado (safeScalar já trunca e nunca guarda a mensagem
+    // crua completa) - nunca o secret, nunca dado sensível do payload.
+    await db.collection('webhook_events').updateOne(
+      { eventKey: claim.eventKey },
+      { $set: { status: 'failed', lastError: safeScalar(e.message, 80, 'processing_failed'), lastAttemptAt: new Date() } }
+    ).catch(() => {});
+    throw e;
+  }
+}
+
+async function handleCaktoWebhook(req, res, url, ip, deps = {}) {
+  const configuredSecret = deps.secret !== undefined ? deps.secret : CAKTO_WEBHOOK_SECRET;
+  const rateLimit = deps.rateLimit || checkRateLimit;
+  if (!rateLimit(ip, 'cakto')) { sendJson(res, { ok: false, error: 'rate_limited' }, 429); return; }
+  if (!configuredSecret) {
+    console.error('[CAKTO] CAKTO_WEBHOOK_SECRET não configurado — webhook recusado (fail-closed)');
+    sendJson(res, { ok: false, error: 'webhook_disabled' }, 503); return;
+  }
+  const rawBody = await readRawBody(req, WEBHOOK_BODY_SIZE);
+  if (rawBody === null) { sendJson(res, { ok: false, error: 'payload_too_large' }, 413); return; }
+  let payload;
+  try { payload = JSON.parse(rawBody); }
+  catch { sendJson(res, { ok: false, error: 'invalid_payload' }, 400); return; }
+
+  const validated = validateCaktoPayload(payload, configuredSecret);
+  if (!validated.ok) { sendJson(res, { ok: false, error: validated.error }, validated.status); return; }
+  const { purchase, plan } = validated;
+
+  if (purchase.event !== 'purchase_approved') {
+    console.log('[CAKTO] Evento reconhecido e ignorado', { event: purchase.event || 'unknown', txId: purchase.txId || '' });
+    sendJson(res, { ok: true, ignored: true }); return;
+  }
+  if (!purchase.txId || !purchase.clientEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(purchase.clientEmail)) {
+    sendJson(res, { ok: false, error: 'invalid_purchase' }, 400); return;
+  }
+
+  if (url.searchParams.get('dry_run') === '1') {
+    // Diagnóstico completo pro primeiro payload real da Cakto — campos
+    // comerciais/técnicos necessários pra configurar CAKTO_*_OFFER_ID/
+    // PRODUCT_ID e confirmar o formato de amount (reais vs. centavos).
+    // Nunca inclui secret/senha/token/PII crua — e-mail e telefone
+    // mascarados (maskEmail/maskPhone, já usados em todo o projeto).
+    const diagnostic = {
+      event: purchase.event, txId: purchase.txId, refId: purchase.refId || null,
+      productId: purchase.productId || null, productShortId: purchase.productShortId || null,
+      productName: purchase.productName || null,
+      offerId: purchase.offerId || null, offerName: purchase.offerName || null,
+      checkoutUrl: purchase.checkoutUrl || null,
+      // amountRaw é só Number(data.amount) — nenhuma conversão reais/centavos
+      // acontece em nenhum ponto do pipeline hoje, então amountNormalized é
+      // idêntico por enquanto. amountRawType é o typeof do valor ANTES do
+      // Number() — é o que confirma, no primeiro payload real, se a Cakto
+      // manda number ou string, e se o valor já vem em reais (ex.: 39.9) ou
+      // em centavos (ex.: 3990).
+      amountRaw: purchase.amount, amountRawType: purchase.amountRawType, amountNormalized: purchase.amount,
+      paymentMethod: purchase.paymentMethod || null, paidAt: purchase.paidAt || null,
+      resolvedPlanId: plan?.id || null,
+      email: maskEmail(purchase.clientEmail), phone: maskPhone(purchase.clientPhone),
+    };
+    console.log('[CAKTO][DRY-RUN]', diagnostic);
+    sendJson(res, { ok: true, dryRun: true, planId: plan?.id || null, diagnostic }); return;
+  }
+
+  const indexReady = deps.indexReady !== undefined ? deps.indexReady : (deps.db ? true : _caktoIndexReady);
+  if (!indexReady) {
+    console.error('[CAKTO] Índice de idempotência indisponível — webhook recusado (fail-closed)');
+    sendJson(res, { ok: false, error: 'idempotency_unavailable' }, 503); return;
+  }
+
+  try {
+    const result = await processCaktoPurchaseEvent(purchase, plan, deps);
+    sendJson(res, { ok: true, duplicate: !!result.duplicate, unmapped: !!result.unmapped });
+  } catch (e) {
+    console.error('[CAKTO] Falha ao processar compra:', safeScalar(e.message, 120, 'processing_failed'));
+    sendJson(res, { ok: false, error: 'processing_failed' }, 500);
+  }
 }
 
 // Sanitiza IDs/códigos de chave: apenas a-z0-9 e hífen, max 40 chars
@@ -2938,6 +3416,438 @@ function renderPortalRegister(err='',vals={}) {
   return renderPortalPage(body, 'ZVM — Criar Conta');
 }
 
+function applyStandalonePortalTheme(html) {
+  const css = `
+  :focus-visible{outline:2px solid var(--g);outline-offset:3px}
+  #bg-canvas{opacity:.2}
+  @media(prefers-color-scheme:light){:root{--g:#087d4d;--g-bg:rgba(8,125,77,.09);--g-brd:rgba(8,125,77,.28);--bg:#f2f4f0;--bg2:#e9ede7;--brd:#cbd3c8;--brd2:#b7c2b4;--tx:#17211b;--tx2:#4c5c52;--tx3:#6a796f;color-scheme:light}.card,.profile-bar,.key-card,.panel-box{box-shadow:0 12px 34px rgba(30,46,36,.08)}#bg-canvas{opacity:.1}}
+  @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}#bg-canvas{display:none}}`;
+  return html.replace('</style></head>', `${css}</style></head>`);
+}
+
+// ── /cliente (deslogado) e /cliente/registro — reescritos do zero como
+// páginas standalone independentes (Parte 4/5 da rodada de polish visual).
+// NÃO reaproveitam renderPortalLogin/renderPortalRegister/renderPortalPage
+// (essas continuam servindo o WSM legado via wsmPortal(), intocadas) - zero
+// risco de regressão no WSM porque nenhuma função compartilhada foi tocada.
+// Reaproveitam sim a mesma fundação visual de /planos, /faq, /privacidade
+// (_sharedCss+_standaloneCss+_sharedNav+_standaloneFoot), pra ganhar nav
+// consistente (incl. hamburger mobile já pronto) sem duplicar essa lógica.
+// Contrato preservado: POST /cliente/login (campos email/pass, redir
+// hidden), POST /cliente/registro (name/email/phone/keycode/pass/pass2,
+// redir hidden), autocomplete, rate limit e mensagens de erro/sucesso são
+// só passados como texto pra estas views - nenhuma validação de backend
+// foi tocada.
+function _authShellCss() {
+  return `
+.auth-shell{display:grid;grid-template-columns:1fr;flex:1;min-height:calc(100vh - 64px)}
+.auth-promo{display:none;position:relative;overflow:hidden;padding:64px 56px;flex-direction:column;justify-content:center;background:radial-gradient(ellipse 80% 60% at 20% 20%,var(--g-soft),transparent 65%),var(--bg2);border-right:1px solid var(--brd)}
+.auth-promo-inner{max-width:440px;position:relative;z-index:1}
+.auth-eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:11px;font-weight:800;color:var(--g);letter-spacing:2px;text-transform:uppercase;padding:6px 14px;border:1px solid var(--g-brd);border-radius:99px;background:var(--g-soft);margin-bottom:24px}
+.auth-promo h1{font-size:clamp(28px,3vw,38px);font-weight:900;letter-spacing:-1.2px;line-height:1.12;margin-bottom:16px}
+.auth-promo h1 em{font-style:normal;color:var(--g)}
+.auth-promo-sub{font-size:15px;color:var(--tx2);line-height:1.7;margin-bottom:32px}
+.auth-benefits{list-style:none;display:flex;flex-direction:column;gap:16px}
+.auth-benefits li{display:flex;align-items:flex-start;gap:12px;font-size:14.5px;color:var(--tx2);line-height:1.5}
+.auth-benefit-icon{flex-shrink:0;width:30px;height:30px;border-radius:9px;background:var(--g-soft);border:1px solid var(--g-brd);color:var(--g);display:flex;align-items:center;justify-content:center;font-size:14px}
+.auth-form-wrap{display:flex;align-items:center;justify-content:center;padding:56px 20px}
+.auth-form-card{width:100%;max-width:400px}
+.auth-form-brand{margin-bottom:24px;display:flex;justify-content:center}
+.auth-form-card h2{font-size:24px;font-weight:900;letter-spacing:-.6px;margin-bottom:8px}
+.auth-form-hint{font-size:13.5px;color:var(--tx2);margin-bottom:24px;line-height:1.6}
+.auth-alert{border-radius:var(--r-sm);padding:12px 15px;font-size:13.5px;margin-bottom:18px;line-height:1.5}
+.auth-alert.err{background:#ff406012;border:1px solid #ff406035;color:var(--red)}
+.auth-alert.ok{background:var(--g-soft);border:1px solid var(--g-brd);color:var(--g)}
+.auth-field{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+.auth-field label{font-size:12px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px}
+.auth-field input{padding:13px 14px;background:var(--bg);border:1px solid var(--brd2);border-radius:var(--r-sm);color:var(--tx);font-family:'Outfit',sans-serif;font-size:14.5px;outline:none;transition:border-color var(--transition),box-shadow var(--transition);width:100%}
+.auth-field input:focus{border-color:var(--g);box-shadow:0 0 0 3px var(--g-soft)}
+.auth-field input::placeholder{color:var(--tx3)}
+.auth-field-hint{font-size:11.5px;color:var(--tx3);margin-top:2px}
+.auth-forgot{text-align:right;margin-top:-8px;margin-bottom:16px}
+.auth-forgot a{font-size:12.5px;color:var(--tx3);transition:color .2s}
+.auth-forgot a:hover{color:var(--g)}
+.auth-submit{width:100%;padding:14px;background:var(--g);color:#000;border:none;border-radius:var(--r-sm);font-family:'Outfit',sans-serif;font-weight:800;font-size:15px;cursor:pointer;transition:opacity .2s,transform .2s;letter-spacing:.2px;display:flex;align-items:center;justify-content:center;gap:8px}
+.auth-submit:hover{opacity:.88}
+.auth-submit:disabled{opacity:.6;cursor:default}
+.auth-submit:active:not(:disabled){transform:scale(.98)}
+.auth-submit.danger{background:var(--red);color:#fff}
+.auth-switch{text-align:center;font-size:14px;color:var(--tx2);margin-top:22px}
+.auth-switch a{color:var(--g);font-weight:700}
+.auth-switch a:hover{text-decoration:underline}
+.auth-spinner{width:15px;height:15px;border-radius:50%;border:2px solid rgba(0,0,0,.25);border-top-color:#000;animation:auth-spin .7s linear infinite;display:none}
+@keyframes auth-spin{to{transform:rotate(360deg)}}
+@media(min-width:900px){.auth-shell{grid-template-columns:1.05fr 1fr}.auth-promo{display:flex}}
+@media(prefers-reduced-motion:reduce){.auth-spinner{animation:none}}
+`;
+}
+function _authSubmitLockScript() {
+  return `<script>(function(){document.querySelectorAll('form').forEach(function(f){f.addEventListener('submit',function(){var btn=f.querySelector('.auth-submit');if(!btn||btn.disabled)return;btn.disabled=true;var sp=btn.querySelector('.auth-spinner');if(sp)sp.style.display='inline-block';});});})();</script>`;
+}
+const AUTH_BENEFITS = [
+  ['🔑', 'Acompanhe status, validade e contagem regressiva da sua chave em tempo real'],
+  ['📱', 'Veja e gerencie os dispositivos vinculados à sua licença'],
+  ['🛒', 'Renove ou troque de plano em poucos cliques'],
+  ['⬇', 'Baixe a extensão e acesse tutoriais de ativação'],
+];
+
+function renderStandalonePortalLogin(err = '', redir = '', ok = '') {
+  const safeRedirect = safeLocalRedirect(redir);
+  const errHtml = err ? `<div class="auth-alert err" role="alert">⚠ ${escHtml(err)}</div>` : '';
+  const okHtml = ok ? `<div class="auth-alert ok" role="status">✅ ${escHtml(ok)}</div>` : '';
+  const benefitsHtml = AUTH_BENEFITS.map(([icon, text]) => `<li><span class="auth-benefit-icon" aria-hidden="true">${icon}</span><span>${text}</span></li>`).join('');
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZVM — Entrar</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
+<style>${_sharedCss()}${_standaloneCss()}${_authShellCss()}</style></head>
+<body>${_sharedNav({ activePath: '', portalUser: null, showBack: false })}
+<main class="auth-shell">
+  <div class="auth-promo" aria-hidden="true">
+    <div class="auth-promo-inner">
+      <div class="auth-eyebrow">Portal do Cliente</div>
+      <h1>Gerencie sua licença <em>ZVM</em> em um só lugar</h1>
+      <p class="auth-promo-sub">Uma conta para acompanhar sua chave, dispositivos conectados e renovações — sem depender de suporte manual.</p>
+      <ul class="auth-benefits">${benefitsHtml}</ul>
+    </div>
+  </div>
+  <div class="auth-form-wrap">
+    <div class="auth-form-card">
+      <div class="auth-form-brand">${renderStandaloneBrand('auth')}</div>
+      <h2>Entrar na sua conta</h2>
+      <p class="auth-form-hint">Acesse sua conta pra gerenciar licença, dispositivos e planos.</p>
+      ${errHtml}${okHtml}
+      <form method="POST" action="/cliente/login">
+        <input type="hidden" name="redir" value="${escHtml(safeRedirect)}">
+        <div class="auth-field"><label for="auth-email">E-mail</label><input id="auth-email" type="email" name="email" placeholder="seu@email.com" required autocomplete="email"></div>
+        <div class="auth-field"><label for="auth-pass">Senha</label><input id="auth-pass" type="password" name="pass" placeholder="••••••••" required autocomplete="current-password"></div>
+        <div class="auth-forgot"><a href="/cliente/recuperar">Esqueci minha senha</a></div>
+        <button type="submit" class="auth-submit">Entrar<span class="auth-spinner" aria-hidden="true"></span></button>
+      </form>
+      <div class="auth-switch">Ainda não tem conta? <a href="/cliente/registro${safeRedirect ? '?redir=' + encodeURIComponent(safeRedirect) : ''}">Criar conta</a></div>
+    </div>
+  </div>
+</main>
+${_standaloneFoot()}
+${_pwdToggleScript()}
+${_authSubmitLockScript()}
+</body></html>`;
+}
+
+function renderStandalonePortalRegister(err = '', vals = {}, redir = '') {
+  const safeRedirect = safeLocalRedirect(redir);
+  const errHtml = err ? `<div class="auth-alert err" role="alert">⚠ ${escHtml(err)}</div>` : '';
+  const v = k => escHtml(vals[k] || '');
+  const benefitsHtml = AUTH_BENEFITS.map(([icon, text]) => `<li><span class="auth-benefit-icon" aria-hidden="true">${icon}</span><span>${text}</span></li>`).join('');
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZVM — Criar Conta</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
+<style>${_sharedCss()}${_standaloneCss()}${_authShellCss()}</style></head>
+<body>${_sharedNav({ activePath: '', portalUser: null, showBack: false })}
+<main class="auth-shell">
+  <div class="auth-promo" aria-hidden="true">
+    <div class="auth-promo-inner">
+      <div class="auth-eyebrow">Criar conta</div>
+      <h1>Sua licença <em>ZVM</em>, organizada num só painel</h1>
+      <p class="auth-promo-sub">Cadastre-se pra vincular sua chave existente ou receber uma nova automaticamente após a compra.</p>
+      <ul class="auth-benefits">${benefitsHtml}</ul>
+    </div>
+  </div>
+  <div class="auth-form-wrap">
+    <div class="auth-form-card">
+      <div class="auth-form-brand">${renderStandaloneBrand('auth')}</div>
+      <h2>Criar sua conta</h2>
+      <p class="auth-form-hint">Leva menos de um minuto.</p>
+      ${errHtml}
+      <form method="POST" action="/cliente/registro">
+        <input type="hidden" name="redir" value="${escHtml(safeRedirect)}">
+        <div class="auth-field"><label for="reg-name">Nome completo</label><input id="reg-name" type="text" name="name" placeholder="João Silva" required value="${v('name')}" maxlength="80" autocomplete="name"></div>
+        <div class="auth-field"><label for="reg-email">E-mail</label><input id="reg-email" type="email" name="email" placeholder="seu@email.com" required value="${v('email')}" autocomplete="email">
+          <div class="auth-field-hint">Use este e-mail no checkout da Cakto pra vincular sua compra automaticamente.</div>
+        </div>
+        <div class="auth-field"><label for="reg-phone">WhatsApp (com DDD)</label><input id="reg-phone" type="tel" name="phone" placeholder="11999990000" value="${v('phone')}" maxlength="20" pattern="[0-9+\\s()-]{8,20}" autocomplete="tel"></div>
+        <div class="auth-field"><label for="reg-keycode">Chave ZVM (opcional)</label><input id="reg-keycode" type="text" name="keycode" placeholder="zv-xxxxx-xxxxx-xxxxx" value="${v('keycode')}" maxlength="30">
+          <div class="auth-field-hint">Já tem uma chave? Vincule agora — ou deixe em branco e vincule depois.</div>
+        </div>
+        <div class="auth-field"><label for="reg-pass">Senha</label><input id="reg-pass" type="password" name="pass" placeholder="Mínimo 8 caracteres" required minlength="8" autocomplete="new-password">
+          <div class="auth-field-hint">Pelo menos 8 caracteres.</div>
+        </div>
+        <div class="auth-field"><label for="reg-pass2">Confirmar senha</label><input id="reg-pass2" type="password" name="pass2" placeholder="Repita a senha" required minlength="8" autocomplete="new-password"></div>
+        <button type="submit" class="auth-submit">Criar conta<span class="auth-spinner" aria-hidden="true"></span></button>
+      </form>
+      <div class="auth-switch">Já tem conta? <a href="/cliente${safeRedirect ? '?redir=' + encodeURIComponent(safeRedirect) : ''}">Entrar</a></div>
+    </div>
+  </div>
+</main>
+${_standaloneFoot()}
+${_pwdToggleScript()}
+${_authSubmitLockScript()}
+</body></html>`;
+}
+
+// ── 2FA standalone — mesma família visual do login/cadastro (auth-shell).
+// NÃO reaproveita renderPortal2FAVerify/renderPortalSetup2FA (essas
+// continuam servindo o WSM legado via wsmPortal(), intocadas). Contrato
+// preservado: mesmos endpoints, mesmos names de campo (code), mesma
+// sessão/redir/TOTP/rate limit — só a view muda.
+const SECURITY_BENEFITS = [
+  ['🛡', 'Proteção extra contra acesso indevido à sua conta'],
+  ['🔑', 'Uma camada além da sua senha, só sua'],
+  ['⏱', 'Código temporário gerado pelo seu aplicativo autenticador'],
+  ['🔒', 'Mais controle sobre quem acessa sua licença'],
+];
+function _securityPromo(eyebrow, title) {
+  const benefitsHtml = SECURITY_BENEFITS.map(([icon, text]) => `<li><span class="auth-benefit-icon" aria-hidden="true">${icon}</span><span>${text}</span></li>`).join('');
+  return `<div class="auth-promo" aria-hidden="true">
+    <div class="auth-promo-inner">
+      <div class="auth-eyebrow">${eyebrow}</div>
+      <h1>${title}</h1>
+      <p class="auth-promo-sub">Um código extra do seu aplicativo autenticador impede acesso à sua conta mesmo que sua senha vaze.</p>
+      <ul class="auth-benefits">${benefitsHtml}</ul>
+    </div>
+  </div>`;
+}
+
+// ── FAQ ZVM — fonte única compartilhada entre /faq e o mini-FAQ do
+// dashboard (evita duas listas divergentes). Perguntas herdadas do
+// ZapVoice antigo (áudios enviados, etc.) foram removidas; cada item
+// abaixo corresponde a um recurso que o standalone realmente tem hoje.
+const ZVM_FAQ_ITEMS = [
+  ['Como instalar e ativar o ZVM?', 'Baixe a extensão pelo link recebido após a compra, adicione ao Chrome e informe sua chave de ativação na primeira tela.'],
+  ['Quantos números posso usar?', 'Depende do seu plano: Solo permite 1 número, Padrão 3, Pro 5 e Empresarial até 10.'],
+  ['Como renovo minha licença?', 'No portal, acesse "Renovar / Alterar Plano" e conclua a compra pela Cakto — a renovação é aplicada automaticamente à sua chave.'],
+  ['Posso alterar meu plano?', 'Sim. Escolha outro plano em Planos; a chave existente passa a usar o novo limite de dispositivos.'],
+  ['Onde vejo a validade da minha licença?', 'No painel Minha Conta, nas seções "Minha licença" e "Resumo da conta".'],
+  ['Como removo um dispositivo?', 'Em Minha Conta, na seção "Dispositivos cadastrados", clique em Remover ao lado do número.'],
+  ['Minha chave expirou. O que faço?', 'Entre no portal e clique em "Renovar agora" — a validade é atualizada assim que o pagamento é confirmado.'],
+  ['Preciso usar o mesmo e-mail na compra?', 'Sim. Use o mesmo e-mail cadastrado na sua conta ZVM no checkout da Cakto pra chave ser vinculada automaticamente.'],
+  ['Como funciona o 2FA?', 'Ative em Segurança 2FA: escaneie o QR code com um app autenticador e confirme com o código de 6 dígitos a cada login.'],
+  ['Onde baixo a versão mais recente?', 'No banner de atualização no topo do painel, quando houver uma versão nova disponível.'],
+  ['Minha compra foi aprovada mas a chave não apareceu.', 'Aguarde alguns minutos para o processamento automático. Se persistir, fale com o suporte.'],
+  ['Esqueci minha senha. Como recupero?', 'Na tela de login, escolha "Esqueci minha senha". Se o e-mail estiver cadastrado, você receberá um link seguro de redefinição.'],
+  ['Como falo com o suporte?', 'Pelo WhatsApp, através do botão de suporte disponível no rodapé e no painel.'],
+];
+// Busca um item pelo início da pergunta — usado só pra reagrupar o mesmo
+// conteúdo em categorias visuais sem duplicar texto (fonte continua única).
+function _faqPick(startsWith) {
+  const item = ZVM_FAQ_ITEMS.find(([q]) => q.startsWith(startsWith));
+  if (!item) throw new Error('_faqPick: pergunta não encontrada em ZVM_FAQ_ITEMS: ' + startsWith);
+  return item;
+}
+
+function renderStandalone2FAVerify(err = '') {
+  const errHtml = err ? `<div class="auth-alert err" role="alert">⚠ ${escHtml(err)}</div>` : '';
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZVM — Verificação em Duas Etapas</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
+<style>${_sharedCss()}${_standaloneCss()}${_authShellCss()}</style></head>
+<body>${_sharedNav({ activePath: '', portalUser: null, showBack: false })}
+<main class="auth-shell">
+  ${_securityPromo('Portal do Cliente', 'Proteja sua conta <em>ZVM</em>')}
+  <div class="auth-form-wrap">
+    <div class="auth-form-card">
+      <div class="auth-form-brand">${renderStandaloneBrand('auth')}</div>
+      <h2>Verificação em duas etapas</h2>
+      <p class="auth-form-hint">Abra seu aplicativo autenticador (Google Authenticator, Authy, etc.) e insira o código de 6 dígitos.</p>
+      ${errHtml}
+      <form method="POST" action="/cliente/2fa/verificar">
+        <div class="auth-field"><label for="twofa-code">Código de autenticação</label><input id="twofa-code" type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required autocomplete="one-time-code" style="letter-spacing:8px;font-size:22px;text-align:center"></div>
+        <button type="submit" class="auth-submit">Verificar<span class="auth-spinner" aria-hidden="true"></span></button>
+      </form>
+      <div class="auth-switch"><a href="/cliente/logout">Cancelar e voltar ao login</a></div>
+    </div>
+  </div>
+</main>
+${_standaloneFoot()}
+${_authSubmitLockScript()}
+</body></html>`;
+}
+
+function renderStandaloneSetup2FA(user, pendingSecret = '', err = '', ok = '') {
+  const errHtml = err ? `<div class="auth-alert err" role="alert">⚠ ${escHtml(err)}</div>` : '';
+  const okHtml = ok ? `<div class="auth-alert ok" role="status">✅ ${escHtml(ok)}</div>` : '';
+  const has2fa = !!(user && user.totpSecret);
+  let content;
+  if (has2fa) {
+    content = `
+      <h2>Segurança — 2FA ativo</h2>
+      <p class="auth-form-hint">Sua conta está protegida com autenticação em dois fatores. Para desativar, confirme com um código válido do seu aplicativo autenticador.</p>
+      ${errHtml}${okHtml}
+      <form method="POST" action="/cliente/2fa/desativar">
+        <div class="auth-field"><label for="twofa-off-code">Código para confirmar desativação</label><input id="twofa-off-code" type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required autocomplete="one-time-code" style="letter-spacing:8px;font-size:22px;text-align:center"></div>
+        <button type="submit" class="auth-submit danger">Desativar 2FA</button>
+      </form>
+      <div class="auth-switch"><a href="/cliente">← Voltar ao painel</a></div>`;
+  } else if (pendingSecret) {
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&ecc=M&data=${encodeURIComponent('otpauth://totp/ZVM:'+encodeURIComponent((user&&user.email)||'')+'?secret='+pendingSecret+'&issuer=ZVM&algorithm=SHA1&digits=6&period=30')}`;
+    content = `
+      <h2>Ativar 2FA</h2>
+      <p class="auth-form-hint">Escaneie o QR code com o Google Authenticator ou Authy, depois confirme com o código gerado.</p>
+      ${errHtml}
+      <div style="text-align:center;margin-bottom:20px"><img src="${qrUrl}" alt="QR Code para configurar autenticação em duas etapas" width="220" height="220" style="border-radius:10px;border:1px solid var(--brd2);background:#fff;padding:6px"><p style="font-size:11.5px;color:var(--tx3);margin-top:10px">Link válido por 15 minutos</p></div>
+      <form method="POST" action="/cliente/2fa/ativar">
+        <div class="auth-field"><label for="twofa-on-code">Código de 6 dígitos</label><input id="twofa-on-code" type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required autocomplete="one-time-code" style="letter-spacing:8px;font-size:22px;text-align:center"></div>
+        <button type="submit" class="auth-submit">Ativar 2FA<span class="auth-spinner" aria-hidden="true"></span></button>
+      </form>
+      <div class="auth-switch"><a href="/cliente">Cancelar</a></div>`;
+  } else if (ok) {
+    content = `
+      <h2>2FA ativado</h2>
+      ${okHtml}
+      <div class="auth-switch" style="margin-top:0"><a href="/cliente">← Voltar ao painel</a></div>`;
+  } else {
+    content = `
+      <h2>Não foi possível carregar</h2>
+      ${errHtml || `<div class="auth-alert err">Erro ao gerar configuração.</div>`}
+      <div class="auth-switch"><a href="/cliente/2fa/setup">Tentar novamente</a></div>`;
+  }
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZVM — Segurança 2FA</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
+<style>${_sharedCss()}${_standaloneCss()}${_authShellCss()}</style></head>
+<body>${_sharedNav({ activePath: '', portalUser: user || null, showBack: false })}
+<main class="auth-shell">
+  ${_securityPromo('Segurança', 'Proteja sua conta <em>ZVM</em>')}
+  <div class="auth-form-wrap">
+    <div class="auth-form-card">
+      <div class="auth-form-brand">${renderStandaloneBrand('auth')}</div>
+      ${content}
+    </div>
+  </div>
+</main>
+${_standaloneFoot()}
+${_authSubmitLockScript()}
+</body></html>`;
+}
+
+// ── Subpáginas de conta standalone (vincular/senha/email) — mesmo
+// auth-shell do login/2FA. NÃO reaproveitam renderPortalLinkKey/
+// renderPortalChangePwd/renderPortalChangeEmail (essas continuam
+// servindo o WSM legado via wsmPortal(), intocadas). Contrato
+// preservado: mesmos endpoints, mesmos name= de campo, mesma sessão/
+// validação/rate-limit — só a view muda.
+function renderStandalonePortalLinkKey(err = '', ok = '') {
+  const errHtml = err ? `<div class="auth-alert err" role="alert">⚠ ${escHtml(err)}</div>` : '';
+  const okHtml = ok ? `<div class="auth-alert ok" role="status">✅ ${escHtml(ok)}</div>` : '';
+  const benefitsHtml = [
+    ['🔑', 'Acompanhe status e validade assim que a chave estiver vinculada'],
+    ['📱', 'Gerencie os dispositivos conectados à sua licença'],
+    ['🔄', 'Renove ou troque de plano em poucos cliques'],
+    ['🔒', 'Sua conta, sua chave — nada muda pra quem já usa a extensão'],
+  ].map(([icon, text]) => `<li><span class="auth-benefit-icon" aria-hidden="true">${icon}</span><span>${text}</span></li>`).join('');
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZVM — Vincular Chave</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
+<style>${_sharedCss()}${_standaloneCss()}${_authShellCss()}</style></head>
+<body>${_sharedNav({ activePath: '', portalUser: null, showBack: false })}
+<main class="auth-shell">
+  <div class="auth-promo" aria-hidden="true">
+    <div class="auth-promo-inner">
+      <div class="auth-eyebrow">Portal do Cliente</div>
+      <h1>Vincule sua licença <em>ZVM</em></h1>
+      <p class="auth-promo-sub">Associe uma chave existente à sua conta para gerenciar plano, validade e dispositivos pelo portal.</p>
+      <ul class="auth-benefits">${benefitsHtml}</ul>
+    </div>
+  </div>
+  <div class="auth-form-wrap">
+    <div class="auth-form-card">
+      <div class="auth-form-brand">${renderStandaloneBrand('auth')}</div>
+      <h2>Vincular chave</h2>
+      <p class="auth-form-hint">Digite o código da sua chave ZVM para vinculá-la à sua conta.</p>
+      ${errHtml}${okHtml}
+      <form method="POST" action="/cliente/vincular">
+        <div class="auth-field"><label for="link-keycode">Código da chave</label><input id="link-keycode" type="text" name="keycode" placeholder="zv-xxxxx-xxxxx-xxxxx" maxlength="30" pattern="[a-z0-9\\-]+" required autocomplete="off"></div>
+        <button type="submit" class="auth-submit">Vincular<span class="auth-spinner" aria-hidden="true"></span></button>
+      </form>
+      <div class="auth-switch"><a href="/cliente">← Voltar ao painel</a></div>
+    </div>
+  </div>
+</main>
+${_standaloneFoot()}
+${_authSubmitLockScript()}
+</body></html>`;
+}
+
+function renderStandalonePortalChangePwd(err = '', ok = '') {
+  const errHtml = err ? `<div class="auth-alert err" role="alert">⚠ ${escHtml(err)}</div>` : '';
+  const okHtml = ok ? `<div class="auth-alert ok" role="status">✅ ${escHtml(ok)}</div>` : '';
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZVM — Alterar Senha</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
+<style>${_sharedCss()}${_standaloneCss()}${_authShellCss()}</style></head>
+<body>${_sharedNav({ activePath: '', portalUser: null, showBack: false })}
+<main class="auth-shell">
+  ${_securityPromo('Segurança', 'Proteja sua conta <em>ZVM</em>')}
+  <div class="auth-form-wrap">
+    <div class="auth-form-card">
+      <div class="auth-form-brand">${renderStandaloneBrand('auth')}</div>
+      <h2>Alterar senha</h2>
+      <p class="auth-form-hint">Escolha uma senha nova para acessar sua conta.</p>
+      ${errHtml}${okHtml}
+      <form method="POST" action="/cliente/senha">
+        <div class="auth-field"><label for="pwd-old">Senha atual</label><input id="pwd-old" type="password" name="old" required autocomplete="current-password"></div>
+        <div class="auth-field"><label for="pwd-new">Nova senha</label><input id="pwd-new" type="password" name="pass" required minlength="8" autocomplete="new-password">
+          <div class="auth-field-hint">Pelo menos 8 caracteres.</div>
+        </div>
+        <div class="auth-field"><label for="pwd-new2">Confirmar nova senha</label><input id="pwd-new2" type="password" name="pass2" required minlength="8" autocomplete="new-password"></div>
+        <button type="submit" class="auth-submit">Salvar<span class="auth-spinner" aria-hidden="true"></span></button>
+      </form>
+      <div class="auth-switch"><a href="/cliente">← Voltar ao painel</a></div>
+    </div>
+  </div>
+</main>
+${_standaloneFoot()}
+${_pwdToggleScript()}
+${_authSubmitLockScript()}
+</body></html>`;
+}
+
+function renderStandalonePortalChangeEmail(err = '', ok = '') {
+  const errHtml = err ? `<div class="auth-alert err" role="alert">⚠ ${escHtml(err)}</div>` : '';
+  const okHtml = ok ? `<div class="auth-alert ok" role="status">✅ ${escHtml(ok)}</div>` : '';
+  const benefitsHtml = [
+    ['📧', 'Renovações e confirmações de compra chegam nesse e-mail'],
+    ['🔐', 'Toda troca exige confirmação com sua senha atual'],
+    ['🛒', 'Use sempre o mesmo e-mail no checkout da Cakto'],
+    ['🧾', 'Seu histórico de licença continua vinculado à conta'],
+  ].map(([icon, text]) => `<li><span class="auth-benefit-icon" aria-hidden="true">${icon}</span><span>${text}</span></li>`).join('');
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZVM — Alterar E-mail</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
+<style>${_sharedCss()}${_standaloneCss()}${_authShellCss()}</style></head>
+<body>${_sharedNav({ activePath: '', portalUser: null, showBack: false })}
+<main class="auth-shell">
+  <div class="auth-promo" aria-hidden="true">
+    <div class="auth-promo-inner">
+      <div class="auth-eyebrow">Conta</div>
+      <h1>Mantenha seus dados <em>atualizados</em></h1>
+      <p class="auth-promo-sub">Seu e-mail é o identificador da sua conta e do seu histórico de compras na ZVM.</p>
+      <ul class="auth-benefits">${benefitsHtml}</ul>
+    </div>
+  </div>
+  <div class="auth-form-wrap">
+    <div class="auth-form-card">
+      <div class="auth-form-brand">${renderStandaloneBrand('auth')}</div>
+      <h2>Alterar e-mail</h2>
+      <p class="auth-form-hint">Confirme sua senha atual para concluir a troca.</p>
+      ${errHtml}${okHtml}
+      <form method="POST" action="/cliente/email">
+        <div class="auth-field"><label for="email-new">Novo e-mail</label><input id="email-new" type="email" name="newemail" required maxlength="120" autocomplete="email">
+          <div class="auth-field-hint">Use no checkout da Cakto o mesmo e-mail cadastrado nesta conta.</div>
+        </div>
+        <div class="auth-field"><label for="email-new2">Confirmar novo e-mail</label><input id="email-new2" type="email" name="newemail2" required maxlength="120" autocomplete="email"></div>
+        <div class="auth-field"><label for="email-pass">Senha atual</label><input id="email-pass" type="password" name="pass" required autocomplete="current-password"></div>
+        <button type="submit" class="auth-submit">Salvar novo e-mail<span class="auth-spinner" aria-hidden="true"></span></button>
+      </form>
+      <div class="auth-switch"><a href="/cliente">← Voltar ao painel</a></div>
+    </div>
+  </div>
+</main>
+${_standaloneFoot()}
+${_pwdToggleScript()}
+${_authSubmitLockScript()}
+</body></html>`;
+}
+
 function renderPortalDashboard(user, keyData, okMsg='') {
   const now = new Date();
 
@@ -3249,6 +4159,555 @@ ${keyData && keyData.deviceHistory && keyData.deviceHistory.length ? `
 `;
   const _cleanOkScript = okMsg ? `<script>if(location.search)history.replaceState(null,'',location.pathname);<\/script>` : '';
   return renderPortalPage(body + _cleanOkScript, 'ZVM — Minha Conta', '', true);
+}
+
+function renderStandalonePortalDashboard(user, keyData, okMsg='') {
+  const now = new Date();
+
+  // ── Key status computation ───────────────────────────────────────
+  let active = false, deferred = false, expired = false, expiringSoon = false;
+  let expTxt = '—', expBadge = 'bd-muted', devUsed = 0, devMax = 1, zsOn = false;
+  let diffH = null, devPct = 0, devExceeded = false;
+
+  if (keyData) {
+    deferred = !!(keyData.expireDuration && !keyData.expiresAt);
+    if (keyData.expiresAt) {
+      diffH = Math.floor((new Date(keyData.expiresAt) - now) / 3600000);
+      expired = diffH < 0;
+    }
+    active = !expired && !deferred && keyData.active !== false;
+    expiringSoon = !expired && diffH !== null && diffH < 48;
+    zsOn = !!(keyData.modules && keyData.modules.zapSaver);
+    devUsed = (keyData.phones || []).length;
+    devMax  = keyData.maxUses === -1 ? null : (keyData.maxUses || 1);
+    devPct  = devMax ? Math.min(100, Math.round((devUsed / devMax) * 100)) : 0;
+    devExceeded = !!(devMax && devUsed > devMax);
+
+    if (deferred)       { expTxt = 'Ativa ao primeiro uso'; expBadge = 'bd-blue'; }
+    else if (expired)   { expTxt = 'Expirada'; expBadge = 'bd-red'; }
+    else if (!keyData.expiresAt) { expTxt = 'Sem expiração'; expBadge = 'bd-green'; }
+    else if (diffH < 1) { expTxt = 'Menos de 1h restante'; expBadge = 'bd-red'; }
+    else if (diffH < 24){ expTxt = `${diffH}h restantes`; expBadge = 'bd-orange'; }
+    else if (diffH < 48){ expTxt = `${diffH}h restantes`; expBadge = 'bd-orange'; }
+    else {
+      const diffD = Math.floor(diffH / 24);
+      const d = new Date(keyData.expiresAt);
+      expTxt = `${d.toLocaleDateString('pt-BR')} · ${diffD} dia${diffD!==1?'s':''} restantes`;
+      expBadge = 'bd-green';
+    }
+  }
+
+  // ── Urgência de renovação (aditivo — não altera expTxt/expBadge acima,
+  // usados pelo resumo da conta; só decide se/qual banner de alerta mostrar) ──
+  let expiryTier = null; // null | 'leve' (<=7d) | 'forte' (<=72h) | 'critico' (expirada)
+  if (keyData && !deferred) {
+    if (expired) expiryTier = 'critico';
+    else if (diffH !== null) {
+      if (diffH < 72) expiryTier = 'forte';
+      else if (diffH < 168) expiryTier = 'leve';
+    }
+  }
+  const expiryAlert = expiryTier ? `<div class="expiry-alert ${expiryTier}" role="status">
+    <span class="expiry-alert-icon" aria-hidden="true">${expiryTier==='critico'?'⛔':'⚠'}</span>
+    <span class="expiry-alert-text">${expiryTier==='critico'?'Sua licença expirou.':expiryTier==='forte'?'Sua licença vence em menos de 72 horas.':'Sua licença vence em menos de 7 dias.'}</span>
+    <a href="/planos" class="expiry-alert-cta">Renovar agora</a>
+  </div>` : '';
+
+  // ── Status pill ──────────────────────────────────────────────────
+  const mainStatusClass = expired ? 'bd-red' : deferred ? 'bd-blue' : active ? 'bd-green' : 'bd-red';
+  const mainStatusTxt   = expired ? 'Expirada' : deferred ? 'Aguardando 1º uso' : active ? 'Ativa' : 'Inativa';
+  const mainStatusGlow  = expired ? '#f0506044' : deferred ? '#5588ff44' : active ? '#00e67644' : '#f0506044';
+  const planName = keyData ? (ZVM_PLANS[keyData.planId]?.shortName || planLabelForMaxUses(keyData.maxUses || 1)) : '';
+  const expiryDateText = keyData?.expiresAt && Number.isFinite(new Date(keyData.expiresAt).getTime())
+    ? new Date(keyData.expiresAt).toLocaleDateString('pt-BR') : deferred ? 'No primeiro uso' : 'Sem expiração';
+
+  // ── "Criada em" — só client-safe porque createdAt é o timestamp real de
+  // criação/entrega da chave (setado uma única vez, nunca sobrescrito por
+  // check-in técnico da extensão). NÃO mostramos "último uso": esse campo
+  // (keyData.lastUsed) é atualizado no mesmo evento que grava IP/versão do
+  // WPP — é telemetria de dispositivo, não uma ação client-facing real.
+  const createdAtText = keyData?.createdAt && Number.isFinite(new Date(keyData.createdAt).getTime())
+    ? new Date(keyData.createdAt).toLocaleDateString('pt-BR') : null;
+
+  // ── Barra de validade — percentual real só quando createdAt E expiresAt
+  // existem e formam um intervalo válido (nunca um valor inventado). Sem
+  // isso, a barra vira só um indicador binário de urgência (cheia/vazia).
+  let validityBarPct = null;
+  if (keyData && keyData.createdAt && keyData.expiresAt) {
+    const createdMs = new Date(keyData.createdAt).getTime();
+    const expiresMs = new Date(keyData.expiresAt).getTime();
+    if (Number.isFinite(createdMs) && Number.isFinite(expiresMs) && expiresMs > createdMs) {
+      validityBarPct = Math.max(0, Math.min(100, Math.round(((expiresMs - now.getTime()) / (expiresMs - createdMs)) * 100)));
+    }
+  }
+  const validityBarColor = expired ? '#f05060' : (expiryTier === 'forte' || expiryTier === 'leve') ? '#f0b429' : '#00e676';
+
+  // ── No-key state ─────────────────────────────────────────────────
+  const noKeySection = !keyData ? `
+  <div class="dash-nokey">
+    <div class="nokey-icon" aria-hidden="true">◇</div>
+    <div class="nokey-title">Nenhuma chave vinculada</div>
+    <div class="nokey-sub">Escolha um plano para receber sua licença por e-mail ou vincule uma chave que você já possui.</div>
+    <div class="nokey-actions"><a href="/planos" class="nokey-cta">🛒 Ver planos</a><a href="/cliente/vincular" class="nokey-link">Vincular uma chave</a></div>
+  </div>` : '';
+
+  // ── Update banner ────────────────────────────────────────────────
+  const updateBanner = (EXTENSION_VERSION || EXTENSION_CHANGELOG || EXTENSION_URL) ? `
+  <div class="update-banner">
+    <div class="update-badge">NOVO</div>
+    <div class="update-body">
+      <div class="update-title">${EXTENSION_VERSION ? 'Versão ' + escHtml(EXTENSION_VERSION) + ' disponível' : 'Atualização disponível'}</div>
+      ${EXTENSION_CHANGELOG ? `<div class="update-log">${escHtml(EXTENSION_CHANGELOG)}</div>` : ''}
+    </div>
+    ${EXTENSION_URL ? `<a href="${escHtml(EXTENSION_URL)}" target="_blank" rel="noopener" class="update-btn">⬇ Baixar</a>` : ''}
+  </div>` : '';
+
+  // ── Novidades — recursos que o standalone realmente tem hoje, sem número
+  // de versão (não há changelog público consolidado pra apontar).
+  const clItems = [
+    ['new', 'Novo Portal do Cliente'],
+    ['new', 'Renovação e alteração de plano pelo portal'],
+    ['new', 'Gerenciamento de dispositivos vinculados'],
+    ['new', 'Segurança com autenticação em duas etapas'],
+    ['new', 'Compra e entrega automática por e-mail'],
+    ['new', 'Nova área de planos'],
+  ];
+  const clHtml = clItems.map(([type, text]) =>
+    `<div class="cl-item"><span class="cl-tag cl-tag-${type}">${type==='new'?'NOVO':'FIX'}</span><span class="cl-text">${text}</span></div>`
+  ).join('');
+
+  // ── Mini-FAQ do dashboard — subconjunto de ZVM_FAQ_ITEMS (fonte única
+  // compartilhada com /faq, sem manter uma segunda lista divergente).
+  const faqItems = [
+    _faqPick('Minha chave expirou'),
+    _faqPick('Como removo um dispositivo'),
+    _faqPick('Como renovo'),
+    _faqPick('Como funciona o 2FA'),
+  ];
+  const faqHtml = faqItems.map(([q, a]) => `
+    <details class="faq-item">
+      <summary class="faq-q">${q}</summary>
+      <p class="faq-a">${a}</p>
+    </details>`).join('');
+
+  const hasKey = !!keyData;
+  const has2fa = !!(user && user.totpSecret);
+  // String(): registros de portal_users criados por importação/webhook podem não ter
+  // "name"; .split de undefined derrubava o dashboard inteiro para "Erro temporário".
+  const fullName = String(user.name || '').trim();
+  const firstName = escHtml((fullName || user.email || 'Cliente').split(' ')[0]);
+  // Iniciais pro avatar padrão (fallback quando o cliente não escolheu preset).
+  // Nunca via innerHTML — só texto, calculado aqui e escapado como qualquer outro campo.
+  const initials = escHtml(fullName
+    ? fullName.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase()
+    : (user.email ? user.email[0].toUpperCase() : '?'));
+
+  // Dispositivos cadastrados — só phones (número + posição do slot), nunca
+  // IP/versão do WPP/último acesso técnico (isso fica só no painel admin).
+  const deviceListHtml = (keyData && (keyData.phones||[]).length)
+    ? (keyData.phones||[]).map((phone,index)=>`<div class="device-row"><div class="device-num" aria-hidden="true">#${index+1}</div><div class="device-info"><div class="device-phone">${escHtml(phone)}</div><div class="device-meta">Slot ${index+1} de ${devMax||'∞'}</div></div><form method="POST" action="/cliente/dispositivos/remover" onsubmit="return confirm('Remover este número da licença? O dispositivo perderá o acesso.')"><input type="hidden" name="index" value="${index}"><button type="submit" class="device-remove" aria-label="Remover número ${escHtml(phone)}">Remover</button></form></div>`).join('')
+    : '<div class="device-empty">Nenhum número vinculado. O primeiro acesso da extensão ocupará um slot.</div>';
+
+  const avatarBtn = `<div class="dash-avatar-shell">
+    <button type="button" class="dash-avatar avatar-default" id="dash-avatar-btn" aria-haspopup="dialog" aria-controls="avatar-dialog" aria-label="Alterar avatar" data-email="${escHtml(user.email||'')}">
+      <span class="avatar-initials">${initials}</span>
+      <svg class="avatar-icon avatar-icon-bolt" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" fill="currentColor"/></svg>
+      <svg class="avatar-icon avatar-icon-shield" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9 8 11 4.6-2 8-6 8-11V5l-8-3Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+      <span class="avatar-edit-badge" aria-hidden="true">✎</span>
+    </button>
+  </div>`;
+
+  const AVATAR_PRESETS = [
+    ['default', 'Padrão (iniciais)', `<span class="avatar-initials">${initials}</span>`],
+    ['neon', 'Neon', `<span class="avatar-initials">${initials}</span>`],
+    ['ocean', 'Oceano', `<span class="avatar-initials">${initials}</span>`],
+    ['violet', 'Violeta', `<span class="avatar-initials">${initials}</span>`],
+    ['sunset', 'Sunset', `<span class="avatar-initials">${initials}</span>`],
+    ['mono', 'Mono', `<span class="avatar-initials">${initials}</span>`],
+    ['bolt', 'Raio', `<svg class="avatar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" fill="currentColor"/></svg>`],
+    ['shield', 'Escudo', `<svg class="avatar-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9 8 11 4.6-2 8-6 8-11V5l-8-3Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>`],
+  ];
+  const avatarDialog = `<dialog class="avatar-dialog" id="avatar-dialog" aria-labelledby="avatar-dialog-title">
+    <div class="avatar-dialog-inner">
+      <h2 id="avatar-dialog-title">Escolha seu avatar</h2>
+      <div class="avatar-grid">
+        ${AVATAR_PRESETS.map(([id, label, inner]) => `<button type="button" class="avatar-option avatar-${id}" data-preset="${id}" aria-label="${label}">${inner}</button>`).join('')}
+      </div>
+      <button type="button" class="avatar-dialog-close">Fechar</button>
+    </div>
+  </dialog>`;
+
+  // ── Bloco de contagem regressiva — só existe pra chaves não-deferred com
+  // expiresAt real (mesma condição usada há uma rodada; um único timer,
+  // sem countdown concorrente). Deferred mostra uma nota, sem inventar uma
+  // data que ainda não existe.
+  const countdownBlock = (keyData && !deferred) ? `
+    <div class="countdown-block">
+      <div class="ks-label">Tempo restante</div>
+      <div class="countdown-grid" id="license-countdown-grid" data-expires="${escHtml(keyData.expiresAt||'')}">
+        <div class="cd-box"><span class="cd-num" data-cd="d">—</span><span class="cd-lbl">dias</span></div>
+        <div class="cd-box"><span class="cd-num" data-cd="h">—</span><span class="cd-lbl">horas</span></div>
+        <div class="cd-box"><span class="cd-num" data-cd="m">—</span><span class="cd-lbl">min</span></div>
+        <div class="cd-box"><span class="cd-num" data-cd="s">—</span><span class="cd-lbl">seg</span></div>
+      </div>
+      <div class="validity-bar"><div class="validity-bar-fill" id="validity-bar-fill" style="width:${expired ? 0 : (validityBarPct ?? 100)}%;background:${validityBarColor}"></div></div>
+    </div>` : (keyData && deferred) ? `
+    <div class="countdown-block">
+      <div class="ks-label">Tempo restante</div>
+      <div class="countdown-note">Sua licença ativa ao primeiro uso — a contagem começa quando você conectar o primeiro número.</div>
+    </div>` : '';
+
+  const body = `
+<style>
+/* Dashboard overrides (standalone) - .page-wrap aqui e sobrescrito so pra ESTA pagina; renderPortalPage() continua com o mesmo max-width 480/760 de sempre pros outros chamadores, incl. o dashboard WSM legado (bloco style separado, acima no arquivo). */
+.page-wrap{max-width:1200px}
+${_toastCss()}
+.dash-topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 0 20px}
+.dash-brand{display:flex;align-items:center}
+.dash-topbar-user{display:flex;align-items:center;gap:14px}
+.dash-topbar-name{font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;color:var(--tx2);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dash-logout{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--tx2);text-decoration:none;padding:7px 14px;border:1px solid var(--brd2);border-radius:6px;font-family:'Outfit',sans-serif;font-weight:600;transition:all .2s}
+.dash-logout:hover{color:#f05060;border-color:#f0506060}
+
+/* Update banner */
+.update-banner{display:flex;align-items:center;gap:14px;padding:14px 20px;background:linear-gradient(135deg,#00e67610 0%,#00e67605 100%);border:1px solid #00e67635;border-radius:10px;margin-bottom:18px;flex-wrap:wrap}
+.update-badge{flex-shrink:0;background:var(--g);color:#000;font-family:'Outfit',sans-serif;font-size:11px;font-weight:900;padding:3px 10px;border-radius:20px;letter-spacing:1px}
+.update-body{flex:1;min-width:160px}
+.update-title{font-family:'Outfit',sans-serif;font-size:15px;font-weight:700;color:var(--g)}
+.update-log{font-size:13px;color:var(--tx2);font-family:'Outfit',sans-serif;margin-top:3px;line-height:1.6;white-space:pre-line}
+.update-btn{flex-shrink:0;padding:9px 20px;background:var(--g);color:#000;border-radius:6px;font-family:'Outfit',sans-serif;font-weight:800;font-size:13px;text-decoration:none;transition:opacity .2s}
+.update-btn:hover{opacity:.85}
+
+/* Hero autenticado — continuação do auth-shell do login/2FA: mais ar,
+   avatar com presença real, badges de status ao invés de uma sequência
+   de cards minúsculos. */
+.dash-hero{display:flex;align-items:center;gap:22px;flex-wrap:wrap;padding:28px 26px;background:var(--bg2);border:1px solid var(--brd);border-radius:14px;margin-bottom:18px}
+.dash-hero-text{flex:1;min-width:200px}
+.dash-hero-text h1{font-size:clamp(22px,3vw,30px);font-weight:900;letter-spacing:-.6px;color:var(--tx)}
+.dash-hero-sub{font-size:14.5px;color:var(--tx2);margin-top:6px;line-height:1.5}
+.dash-hero-email{font-size:13px;color:var(--tx3);margin-top:10px;font-family:'Space Mono',monospace}
+.dash-hero-badges{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.dash-avatar-shell{flex-shrink:0}
+.dash-avatar,.avatar-option{border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;font-family:'Outfit',sans-serif;font-weight:800;position:relative;padding:0}
+.dash-avatar{width:64px;height:64px;border-radius:50%;font-size:22px;box-shadow:0 6px 18px rgba(0,0,0,.35);transition:transform .2s}
+.dash-avatar:hover{transform:scale(1.04)}
+.dash-avatar:active{transform:scale(.97)}
+.avatar-option{width:52px;height:52px;border-radius:50%;font-size:17px;transition:transform .15s,box-shadow .15s}
+.avatar-option:hover{transform:scale(1.06)}
+.avatar-option:active{transform:scale(.95)}
+.avatar-option.is-selected{box-shadow:0 0 0 3px var(--bg2),0 0 0 5px var(--g)}
+.avatar-default{background:linear-gradient(135deg,#00e67650,#00e67615);border:2px solid #00e67660;color:var(--g)}
+.avatar-neon{background:radial-gradient(circle at 30% 28%,#00ff9f,#00a35c)}
+.avatar-ocean{background:linear-gradient(135deg,#3b82f6,#0ea5e9)}
+.avatar-violet{background:linear-gradient(135deg,#8b5cf6,#6027c9)}
+.avatar-sunset{background:linear-gradient(135deg,#fb923c,#e11d48)}
+.avatar-mono{background:linear-gradient(135deg,#43434f,#17171f);border:1px solid var(--brd2)}
+.avatar-bolt{background:linear-gradient(135deg,#00e676,#009951)}
+.avatar-shield{background:linear-gradient(135deg,#5588ff,#2149c9)}
+.dash-avatar .avatar-icon{display:none;width:44%;height:44%}
+.dash-avatar.avatar-bolt .avatar-initials,.dash-avatar.avatar-shield .avatar-initials{display:none}
+.dash-avatar.avatar-bolt .avatar-icon-bolt,.dash-avatar.avatar-shield .avatar-icon-shield{display:block}
+.avatar-option .avatar-icon{width:44%;height:44%}
+.avatar-edit-badge{position:absolute;bottom:-2px;right:-2px;width:22px;height:22px;border-radius:50%;background:var(--bg2);border:1px solid var(--brd2);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--tx2);transition:all .2s}
+.dash-avatar:hover .avatar-edit-badge{color:var(--g);border-color:var(--g-brd)}
+.avatar-dialog{position:fixed;inset:0;margin:auto;width:min(420px,calc(100% - 28px));max-height:min(88vh,calc(100% - 32px));overflow:auto;border:1px solid var(--brd2);border-radius:16px;padding:0;background:var(--bg2);color:var(--tx);box-shadow:var(--shadow-lg)}
+.avatar-dialog::backdrop{background:rgba(2,4,10,.78);backdrop-filter:blur(6px)}
+.avatar-dialog-inner{padding:26px}
+.avatar-dialog-inner h2{font-size:19px;font-weight:800;margin-bottom:16px}
+.avatar-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;justify-items:center;margin-bottom:18px}
+.avatar-dialog-close{width:100%;padding:11px;border-radius:8px;background:transparent;border:1px solid var(--brd2);color:var(--tx2);font:700 13.5px 'Outfit',sans-serif;cursor:pointer;transition:all .2s}
+.avatar-dialog-close:hover{border-color:#444;color:var(--tx)}
+
+/* Status badges */
+.bd-green{display:inline-flex;align-items:center;gap:5px;background:#00e67618;color:var(--g);border:1px solid #00e67630;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;font-family:'Outfit',sans-serif;letter-spacing:.3px}
+.bd-red{display:inline-flex;align-items:center;gap:5px;background:#f0506015;color:#f05060;border:1px solid #f0506035;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;font-family:'Outfit',sans-serif;letter-spacing:.3px}
+.bd-orange{display:inline-flex;align-items:center;gap:5px;background:#f0b42915;color:#f0b429;border:1px solid #f0b42935;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;font-family:'Outfit',sans-serif;letter-spacing:.3px}
+.bd-blue{display:inline-flex;align-items:center;gap:5px;background:#5588ff15;color:#7aacff;border:1px solid #5588ff35;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;font-family:'Outfit',sans-serif;letter-spacing:.3px}
+.bd-muted{display:inline-flex;align-items:center;gap:5px;background:#2a2a2a;color:#808080;border:1px solid #333;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;font-family:'Outfit',sans-serif}
+.bd-dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+
+/* Grid 2 colunas — licença+resumo, depois conta/segurança+dispositivos */
+.dash-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;align-items:start}
+
+/* Key card (licença) */
+.key-card{background:var(--bg2);border:1px solid var(--brd);border-radius:10px;overflow:hidden;height:100%}
+.key-card-head{padding:20px 22px 16px;border-bottom:1px solid var(--brd)}
+.license-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:12px}.license-plan{font-size:21px;font-weight:800;color:var(--tx)}
+.key-card-title{font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+.key-display{font-family:'Space Mono',monospace;font-size:16px;color:var(--g);letter-spacing:2px;word-break:break-all;cursor:pointer;padding:12px 16px;background:#00ff870a;border:1.5px solid #00ff8730;border-radius:7px;transition:all .2s;display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left}
+.key-display:hover{border-color:#00ff8770;background:#00ff8714;box-shadow:0 0 12px #00ff8718}
+.key-copy-hint{font-size:11px;color:var(--g);font-family:'Outfit',sans-serif;white-space:nowrap;flex-shrink:0;font-weight:700;letter-spacing:.3px;opacity:.75}
+.expiry-alert{display:flex;align-items:center;gap:10px;padding:12px 16px;margin:14px 22px 0;border-radius:8px;font:600 13px 'Outfit',sans-serif}.expiry-alert-icon{flex-shrink:0;font-size:15px}.expiry-alert-text{flex:1}.expiry-alert-cta{flex-shrink:0;padding:7px 14px;border-radius:6px;font-weight:800;font-size:12.5px;white-space:nowrap;transition:opacity .2s}.expiry-alert.leve{background:#f0b42912;border:1px solid #f0b42935;color:#f0b429}.expiry-alert.leve .expiry-alert-cta{background:#f0b42920;color:#f0b429}.expiry-alert.forte{background:#f0506015;border:1px solid #f0506038;color:#f05060}.expiry-alert.forte .expiry-alert-cta{background:#f0506025;color:#f05060}.expiry-alert.critico{background:#f0506022;border:1px solid #f0506050;color:#f05060;font-weight:700}.expiry-alert.critico .expiry-alert-cta{background:var(--g);color:#000}.expiry-alert-cta:hover{opacity:.85}@media(max-width:520px){.expiry-alert{flex-wrap:wrap;margin:14px 16px 0}.expiry-alert-cta{width:100%;text-align:center}}
+.key-card-body{padding:18px 22px 20px}
+.ks-label{font-size:11px;color:var(--tx3);font-family:'Outfit',sans-serif;text-transform:uppercase;letter-spacing:.8px;font-weight:600}
+.ks-value{font-size:15px;font-weight:700;font-family:'Outfit',sans-serif;color:var(--tx)}
+.ks-value.green{color:var(--g)}
+.ks-value.red{color:#f05060}
+.ks-value.orange{color:#f0b429}
+.ks-value.blue{color:#7aacff}
+.key-usage-row{margin-top:6px}
+.dev-bar{margin-top:8px;background:#1a1a1a;border-radius:3px;height:3px;overflow:hidden}
+.dev-bar-fill{height:3px;border-radius:3px;transition:width .4s}
+.device-warning{margin-top:12px;padding:11px 16px;background:#f0b42912;border:1px solid #f0b42935;border-radius:8px;color:#f0b429;font-size:13px;font-weight:700}
+
+/* Resumo da conta */
+.summary-card{height:100%}
+.summary-rows{display:flex;flex-direction:column;gap:14px;margin-bottom:18px}
+.summary-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-bottom:12px;border-bottom:1px solid var(--brd)}
+.summary-row:last-child{border-bottom:none;padding-bottom:0}
+
+/* Contagem regressiva + barra de validade */
+.countdown-block{padding-top:16px;border-top:1px solid var(--brd)}
+.countdown-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}
+.cd-box{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 4px;background:var(--bg);border:1px solid var(--brd);border-radius:8px}
+.cd-num{font-family:'Space Mono',monospace;font-size:18px;font-weight:800;color:var(--tx)}
+.cd-lbl{font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px}
+.validity-bar{margin-top:12px;background:#1a1a1a;border-radius:3px;height:4px;overflow:hidden}
+.validity-bar-fill{height:4px;border-radius:3px;transition:width 1s linear,background .4s}
+.countdown-note{font-size:13px;color:var(--tx2);line-height:1.5;margin-top:8px}
+
+/* Dispositivos (dentro do painel Dispositivos cadastrados) */
+.panel-hdr{position:relative}
+.panel-hdr-badge{margin-left:auto;background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd);border-radius:20px;padding:2px 10px;font-size:11px;font-weight:800;letter-spacing:.3px}
+.panel-note{font-size:13px;color:var(--tx3);line-height:1.6;margin-bottom:14px}
+.device-list{display:flex;flex-direction:column}
+.device-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--brd)}.device-row:last-child{border-bottom:none}
+.device-num{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:var(--bg);border:1px solid var(--brd2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:var(--tx3)}
+.device-info{flex:1;min-width:0}
+.device-phone{font-family:'Space Mono',monospace;font-size:13px;color:var(--tx)}.device-meta{font-size:12px;color:var(--tx3);margin-top:3px}
+.device-remove{min-height:38px;padding:8px 12px;border:1px solid #f0506035;border-radius:7px;background:#f0506010;color:#f05060;font:700 12px 'Outfit',sans-serif;cursor:pointer;transition:background .2s,transform .2s;flex-shrink:0}.device-remove:hover{background:#f0506022}.device-remove:active{transform:scale(.96)}.device-empty{padding:6px 0;color:var(--tx3);font-size:13px}
+
+/* Ações do portal — hierarquia: 1 primária de destaque em faixa própria,
+   secundárias dentro do painel "Conta e segurança" com peso menor,
+   destrutiva isolada e discreta (não compete visualmente com o resto). */
+.quick-actions{margin-bottom:16px}
+.qa-primary{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:18px 20px;border-radius:12px;background:var(--g);color:#03120b;font:800 16px 'Outfit',sans-serif;text-decoration:none;transition:all .2s}
+.qa-primary:hover{background:#00e676;box-shadow:0 8px 24px #00e67630}
+.qa-primary:active{transform:scale(.99)}
+.qa-row{display:flex;flex-direction:column;gap:8px}
+.qa-btn{display:flex;align-items:center;gap:9px;padding:11px 14px;border-radius:8px;background:#151515;color:var(--tx2);border:1px solid var(--brd2);font:700 13.5px 'Outfit',sans-serif;text-decoration:none;cursor:pointer;transition:all .2s}
+.qa-btn:hover{border-color:#444;color:var(--tx)}
+.qa-btn:active{transform:scale(.98)}
+.qa-danger-wrap{text-align:center;margin:4px 0 16px}
+.qa-danger{background:none;border:none;color:var(--tx3);font:700 12.5px 'Outfit',sans-serif;text-decoration:underline;text-underline-offset:3px;cursor:pointer;padding:6px;transition:color .2s}
+.qa-danger:hover{color:#f05060}
+
+/* No key state */
+.dash-nokey{text-align:center;padding:40px 24px;background:var(--bg2);border:1px dashed var(--brd2);border-radius:10px;margin-bottom:16px}
+.nokey-icon{font-size:40px;margin-bottom:12px}
+.nokey-title{font-family:'Outfit',sans-serif;font-size:18px;font-weight:700;color:var(--tx);margin-bottom:8px}
+.nokey-sub{font-size:14px;color:var(--tx3);font-family:'Outfit',sans-serif;line-height:1.6;margin-bottom:20px}
+.nokey-cta{display:inline-flex;align-items:center;gap:6px;padding:12px 28px;background:var(--g);color:#000;border-radius:7px;font-family:'Outfit',sans-serif;font-weight:800;font-size:15px;text-decoration:none;transition:opacity .2s}
+.nokey-cta:active{transform:scale(.97)}
+.nokey-cta:hover{opacity:.85}
+.nokey-actions{display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap}.nokey-link{color:var(--tx2);font-weight:700;text-decoration:underline;text-underline-offset:3px}
+
+/* Lower panels */
+.panels-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:4px}
+.panel-box{background:var(--bg2);border:1px solid var(--brd);border-radius:10px;overflow:hidden}
+.panel-hdr{padding:16px 20px 12px;border-bottom:1px solid var(--brd);font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;color:var(--tx2);text-transform:uppercase;letter-spacing:.8px;display:flex;align-items:center;gap:8px}
+.panel-hdr-icon{font-size:16px}
+.panel-body{padding:16px 20px}
+
+/* Changelog */
+.cl-item{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid #0e0e0e;font-size:14px;font-family:'Outfit',sans-serif}
+.cl-item:last-child{border-bottom:none}
+.cl-tag{flex-shrink:0;font-size:10px;font-weight:800;padding:2px 8px;border-radius:4px;font-family:'Outfit',sans-serif;letter-spacing:.5px;margin-top:2px}
+.cl-tag-new{background:#00e67618;color:var(--g);border:1px solid #00e67630}
+.cl-tag-fix{background:#5588ff15;color:#7aacff;border:1px solid #5588ff30}
+.cl-text{color:var(--tx2);line-height:1.5}
+
+/* FAQ */
+.faq-item{border-bottom:1px solid #0e0e0e;padding:2px 0}
+.faq-item:last-of-type{border-bottom:none}
+.faq-q{font-size:14px;font-weight:700;color:var(--tx);cursor:pointer;font-family:'Outfit',sans-serif;padding:10px 0;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:8px;user-select:none}
+.faq-q::after{content:'›';font-size:18px;color:var(--tx3);transform:rotate(90deg);transition:transform .2s;flex-shrink:0}
+.faq-item[open] .faq-q::after{transform:rotate(270deg)}
+.faq-a{font-size:13px;color:var(--tx3);font-family:'Outfit',sans-serif;line-height:1.7;padding:0 0 12px}
+.support-btn{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:14px;padding:12px;background:#25d36610;border:1px solid #25d36630;border-radius:7px;color:#25d366;text-decoration:none;font-size:14px;font-weight:700;font-family:'Outfit',sans-serif;transition:background .2s}
+.support-btn:hover{background:#25d36620}
+
+@media(max-width:720px){
+  .dash-grid-2{grid-template-columns:1fr}
+  .panels-grid{grid-template-columns:1fr}
+  .dash-hero{padding:22px 20px}
+  .dash-hero-badges{flex-direction:row;align-items:center;width:100%;order:3}
+  .countdown-grid{gap:6px}
+  .cd-num{font-size:16px}
+}
+@media(prefers-reduced-motion:reduce){.key-display,.qa-primary,.qa-btn,.nokey-cta,.dev-bar-fill,.dash-avatar,.avatar-option,.validity-bar-fill{transition:none}}
+</style>
+
+<div class="dash-topbar">
+  <div class="dash-brand">${renderStandaloneBrand('dash')}</div>
+  <div class="dash-topbar-user">
+    <span class="dash-topbar-name">${firstName}</span>
+    <a href="/cliente/logout" class="dash-logout">Sair da conta</a>
+  </div>
+</div>
+
+${updateBanner}
+
+${okMsg ? `<div style="background:#00c85318;border:1px solid #00c85340;border-radius:10px;padding:12px 18px;margin-bottom:14px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;color:#00c853">✅ ${escHtml(okMsg)}</div>` : ''}
+
+<div class="dash-hero">
+  ${avatarBtn}
+  <div class="dash-hero-text">
+    <h1>Olá, ${firstName}</h1>
+    <p class="dash-hero-sub">Gerencie sua licença, dispositivos e segurança em um só lugar.</p>
+    <div class="dash-hero-email">${escHtml(user.email)}</div>
+  </div>
+  ${keyData ? `<div class="dash-hero-badges">
+    <span class="${mainStatusClass}"><span class="bd-dot"></span>${mainStatusTxt}</span>
+    <span class="bd-blue"><span class="bd-dot"></span>ZVM ${escHtml(planName)}</span>
+  </div>` : ''}
+</div>
+${avatarDialog}
+
+${noKeySection}
+
+${keyData ? `
+<div class="dash-grid-2">
+  <div class="key-card">
+    ${expiryAlert}
+    <div class="key-card-head">
+      <div class="license-heading"><div><div class="key-card-title">Minha licença</div><div class="license-plan">ZVM ${escHtml(planName)}</div></div><span class="${mainStatusClass}"><span class="bd-dot"></span>${mainStatusTxt}</span></div>
+      <button type="button" class="key-display" id="copy-license-key" data-key="${escHtml(keyData.code||'')}" title="Copiar chave">
+        <span>${escHtml(keyData.code||'')}</span>
+        <span class="key-copy-hint">Clique para copiar</span>
+      </button>
+    </div>
+    <div class="key-card-body">
+      <div class="ks-label">Dispositivos</div>
+      <div class="key-usage-row"><span class="ks-value ${devExceeded?'red':devMax&&devUsed>=devMax?'orange':''}">${devUsed}${devMax?' / '+devMax:' / ∞'}</span></div>
+      ${devMax ? `<div class="dev-bar"><div class="dev-bar-fill" style="width:${devPct}%;background:${devPct>=100?'#f0b429':devPct>=80?'#f0b42980':'#00e67680'}"></div></div>` : ''}
+      ${devExceeded?`<div class="device-warning" role="status">Limite excedido: seus ${devUsed} números foram preservados. Remova ${devUsed-devMax} antes de ativar outro número neste plano.</div>`:''}
+    </div>
+  </div>
+  <div class="panel-box summary-card">
+    <div class="panel-hdr"><span class="panel-hdr-icon">📊</span> Resumo da conta</div>
+    <div class="panel-body">
+      <div class="summary-rows">
+        <div class="summary-row"><span class="ks-label">Plano</span><span class="ks-value">ZVM ${escHtml(planName)}</span></div>
+        <div class="summary-row"><span class="ks-label">Validade</span><span class="ks-value ${expiringSoon?'orange':expired?'red':'green'}">${escHtml(expiryDateText)}</span></div>
+        ${createdAtText ? `<div class="summary-row"><span class="ks-label">Criada em</span><span class="ks-value">${escHtml(createdAtText)}</span></div>` : ''}
+        <div class="summary-row"><span class="ks-label">Dispositivos</span><span class="ks-value ${devExceeded?'red':devMax&&devUsed>=devMax?'orange':''}">${devUsed}${devMax?' / '+devMax:' / ∞'}</span></div>
+      </div>
+      ${countdownBlock}
+    </div>
+  </div>
+</div>
+` : ''}
+
+<div class="quick-actions">
+  <a href="/planos" class="qa-primary">🛒 Renovar / Alterar Plano</a>
+</div>
+
+<div class="dash-grid-2">
+  <div class="panel-box">
+    <div class="panel-hdr"><span class="panel-hdr-icon">🔐</span> Conta e segurança</div>
+    <div class="panel-body qa-row">
+      <a href="/cliente/vincular" class="qa-btn">🔗 Vincular Chave</a>
+      <a href="/cliente/senha" class="qa-btn">🔒 Alterar Senha</a>
+      <a href="/cliente/email" class="qa-btn">📧 Alterar E-mail</a>
+      <a href="/cliente/2fa/setup" class="qa-btn">${has2fa ? "✅ 2FA Ativo" : "🛡 Segurança 2FA"}</a>
+      <a href="https://wa.me/5521996771552?text=Preciso+de+ajuda+com+o+ZVM" target="_blank" rel="noopener noreferrer" class="qa-btn">💬 Suporte</a>
+    </div>
+  </div>
+  <div class="panel-box">
+    <div class="panel-hdr"><span class="panel-hdr-icon">📱</span> Dispositivos cadastrados${keyData ? `<span class="panel-hdr-badge">${devUsed}${devMax?'/'+devMax:''}</span>` : ''}</div>
+    <div class="panel-body">
+      <p class="panel-note">Cada número de WhatsApp vinculado ocupa um slot. Remova os que não usa para liberar espaço.</p>
+      <div class="device-list" aria-label="Dispositivos vinculados">
+        ${keyData ? deviceListHtml : '<div class="device-empty">Vincule uma chave para gerenciar dispositivos.</div>'}
+      </div>
+    </div>
+  </div>
+</div>
+
+${hasKey ? `<div class="qa-danger-wrap"><form method="POST" action="/cliente/desvincular" style="margin:0" onsubmit="return confirm('Tem certeza? Isso desvinculará sua chave desta conta.')"><button type="submit" class="qa-danger">🔓 Desvincular chave desta conta</button></form></div>` : ''}
+
+<div class="panels-grid">
+  <div class="panel-box">
+    <div class="panel-hdr"><span class="panel-hdr-icon">📋</span> Novidades do ZVM</div>
+    <div class="panel-body">
+      ${clHtml}
+    </div>
+  </div>
+  <div class="panel-box">
+    <div class="panel-hdr"><span class="panel-hdr-icon">❓</span> Perguntas Frequentes</div>
+    <div class="panel-body">
+      ${faqHtml}
+      <a href="https://wa.me/5521996771552?text=Preciso+de+ajuda+com+o+ZVM" target="_blank" rel="noopener" class="support-btn">💬 Suporte via WhatsApp</a>
+    </div>
+  </div>
+</div>
+`;
+  const _cleanOkScript = okMsg ? `<script>if(location.search)history.replaceState(null,'',location.pathname);<\/script>` : '';
+  const _licenseScript = `<script>(function(){
+  var copy=document.getElementById('copy-license-key');
+  if(copy){copy.addEventListener('click',async function(){try{await navigator.clipboard.writeText(copy.dataset.key||'');var hint=copy.querySelector('.key-copy-hint');hint.textContent='✓ Copiado';if(window.zvmToast)zvmToast('success','Chave copiada para a área de transferência.');setTimeout(function(){hint.textContent='Clique para copiar';},1800);}catch(e){if(window.zvmToast)zvmToast('error','Não foi possível copiar. Selecione a chave manualmente.');}});}
+  var cd=document.getElementById('license-countdown-grid');
+  if(cd&&cd.dataset.expires){
+    var end=new Date(cd.dataset.expires).getTime();
+    if(Number.isFinite(end)){
+      var dEl=cd.querySelector('[data-cd="d"]'),hEl=cd.querySelector('[data-cd="h"]'),mEl=cd.querySelector('[data-cd="m"]'),sEl=cd.querySelector('[data-cd="s"]');
+      var bar=document.getElementById('validity-bar-fill');
+      function tick(){
+        var ms=end-Date.now();
+        if(ms<=0){if(dEl)dEl.textContent='0';if(hEl)hEl.textContent='00';if(mEl)mEl.textContent='00';if(sEl)sEl.textContent='00';if(bar){bar.style.width='0%';bar.style.background='#f05060';}return;}
+        var days=Math.floor(ms/86400000),hours=Math.floor(ms%86400000/3600000),mins=Math.floor(ms%3600000/60000),secs=Math.floor(ms%60000/1000);
+        if(dEl)dEl.textContent=String(days);
+        if(hEl)hEl.textContent=String(hours).padStart(2,'0');
+        if(mEl)mEl.textContent=String(mins).padStart(2,'0');
+        if(sEl)sEl.textContent=String(secs).padStart(2,'0');
+      }
+      tick();
+      var timer=setInterval(tick,1000);
+      document.addEventListener('visibilitychange',function(){if(!document.hidden)tick();});
+    }
+  }
+})();<\/script>`;
+  // ── Avatar preset picker: só cliente (localStorage, escopado por hash do
+  // e-mail — nunca a chave crua). portal_users não tem campo de avatar hoje
+  // (auditado nesta rodada) e não criamos um novo write path pra isso antes
+  // da validação real da Cakto; puramente cosmético e reversível.
+  const _avatarScript = `<script>(function(){
+  var PRESETS=['default','neon','ocean','violet','sunset','mono','bolt','shield'];
+  var btn=document.getElementById('dash-avatar-btn'),dialog=document.getElementById('avatar-dialog');
+  if(!btn||!dialog)return;
+  function hashKey(str){var h=0;for(var i=0;i<str.length;i++){h=(h*31+str.charCodeAt(i))|0;}return 'u'+Math.abs(h).toString(36);}
+  var email=(btn.dataset.email||'').trim().toLowerCase();
+  var storageKey='zvm:portal:avatar:'+hashKey(email);
+  function applyPreset(id){
+    if(PRESETS.indexOf(id)===-1)id='default';
+    PRESETS.forEach(function(p){btn.classList.remove('avatar-'+p);});
+    btn.classList.add('avatar-'+id);
+    dialog.querySelectorAll('.avatar-option').forEach(function(opt){opt.classList.toggle('is-selected',opt.dataset.preset===id);});
+    return id;
+  }
+  var current='default';
+  try{var saved=localStorage.getItem(storageKey);if(saved&&PRESETS.indexOf(saved)!==-1)current=saved;}catch(e){}
+  applyPreset(current);
+  btn.addEventListener('click',function(){
+    if(dialog.showModal)dialog.showModal();else dialog.setAttribute('open','');
+    var sel=dialog.querySelector('.avatar-option.is-selected')||dialog.querySelector('.avatar-option');
+    if(sel)sel.focus();
+  });
+  dialog.addEventListener('click',function(e){
+    var opt=e.target.closest('[data-preset]');
+    if(opt){
+      var id=applyPreset(opt.dataset.preset);
+      try{localStorage.setItem(storageKey,id);}catch(e2){}
+      if(window.zvmToast)zvmToast('success','Avatar atualizado.');
+      dialog.close();
+      return;
+    }
+    if(e.target===dialog||e.target.closest('.avatar-dialog-close'))dialog.close();
+  });
+  dialog.addEventListener('close',function(){btn.focus();});
+})();<\/script>`;
+  return applyStandalonePortalTheme(renderPortalPage(body + _cleanOkScript + _licenseScript + _avatarScript + _toastScript(), 'ZVM — Minha Conta', '', true));
 }
 
 function renderPortalChangeEmail(err='', ok='') {
@@ -4766,32 +6225,147 @@ a{color:inherit;text-decoration:none}
 .zfooter-links a{font-size:16px;color:var(--tx3);transition:color .2s;font-weight:600}
 .zfooter-links a:hover{color:var(--g)}
 .zfooter-copy{font-size:15px;color:var(--tx3)}
+.zfooter-payments{font-size:12px;color:var(--tx3);opacity:.7}
 @media(max-width:768px){.znav{padding:0 20px}.znav-links a{padding:6px 12px;font-size:14px}.zfooter{padding:28px 20px;gap:12px}}
 @media(max-width:560px){.znav-links{gap:2px}.znav-links a{padding:5px 9px;font-size:13px}}`;
 }
 
-function _sharedNav(activePath = '', portalUser = null) {
+// ── Brand oficial ZVM (imagem) — standalone apenas ────────────────────
+// Fonte única atual: static/assets/zvm-logo-light.png (722x962, ícone
+// preenchido + wordmark, já vem recortado rente ao conteúdo — sem a
+// folga transparente do arquivo DARK, então não precisou de crop extra).
+// O DARK usado em rodadas anteriores (zvm-logo.png / zvm-logo-web.png)
+// continua no repo só por histórico; nenhuma rota standalone referencia
+// mais esses dois arquivos — só este helper decide a fonte, então trocar
+// a logo em todo lugar é uma troca de path, não uma varredura.
+const ZVM_BRAND_RATIO = 722 / 962; // largura/altura da arte oficial
+function renderStandaloneBrand(variant = 'nav') {
+  const dims = { nav: 44, auth: 130, dash: 66, compact: 60 };
+  const h = dims[variant] || dims.nav;
+  const w = Math.round(h * ZVM_BRAND_RATIO);
+  return `<img src="/static/assets/zvm-logo-light.png" alt="ZVM" class="zvm-brand-logo zvm-brand-${variant}" width="${w}" height="${h}" loading="eager" decoding="async">`;
+}
+
+function _sharedNav(options = '', legacyPortalUser = null) {
+  // Assinatura antiga preservada para os templates WSM que adaptam este HTML.
+  if (typeof options === 'string') {
+    const activePath = options;
+    const portalUser = legacyPortalUser;
+    const links = [
+      ['/', '← VOLTAR'],
+      ['/verificar', '🔍 VERIFICAR CHAVE'],
+      ['/faq', 'FAQ'],
+      ['/privacidade', 'PRIVACIDADE'],
+      ['/planos', 'PLANOS'],
+      ['https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda.', 'SUPORTE', 'target="_blank" rel="noopener"'],
+    ];
+    const linksHtml = links.map(([href, label, extra = '']) => {
+      const active = href === activePath ? ' nav-active' : '';
+      return `<a href="${href}"${extra ? ' ' + extra : ''} class="${active}">${label}</a>`;
+    }).join('');
+    const accountHtml = portalUser ? `
+      <a href="/cliente" class="nav-account">
+        <span class="nav-account-avatar">${escHtml((portalUser.name||'?')[0].toUpperCase())}</span>
+        <span class="nav-account-name">${escHtml(portalUser.name||portalUser.email||'Minha Conta')}</span>
+      </a>` : ``;
+    return `<nav class="znav">
+    <a href="/" class="znav-brand">⚡ ZVM</a>
+    <div class="znav-links">${linksHtml}${accountHtml}</div>
+  </nav>`;
+  }
+
+  const { activePath = '', portalUser = null, showBack = false } = options || {};
   const links = [
-    ['/', '← VOLTAR'],
-    ['/verificar', '🔍 VERIFICAR CHAVE'],
+    ...(showBack ? [['/', '← VOLTAR']] : []),
     ['/faq', 'FAQ'],
     ['/privacidade', 'PRIVACIDADE'],
     ['/planos', 'PLANOS'],
-    ['https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda.', 'SUPORTE', 'target="_blank" rel="noopener"'],
+    ['https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda.', 'SUPORTE', 'target="_blank" rel="noopener noreferrer"'],
   ];
   const linksHtml = links.map(([href, label, extra = '']) => {
     const active = href === activePath ? ' nav-active' : '';
-    return `<a href="${href}"${extra ? ' ' + extra : ''} class="${active}">${label}</a>`;
+    const current = href === activePath ? ' aria-current="page"' : '';
+    return `<a href="${href}"${extra ? ' ' + extra : ''} class="${active}"${current}>${label}</a>`;
   }).join('');
   const accountHtml = portalUser ? `
     <a href="/cliente" class="nav-account">
       <span class="nav-account-avatar">${escHtml((portalUser.name||'?')[0].toUpperCase())}</span>
       <span class="nav-account-name">${escHtml(portalUser.name||portalUser.email||'Minha Conta')}</span>
-    </a>` : ``;
-  return `<nav class="znav">
-  <a href="/" class="znav-brand">⚡ ZVM</a>
-  <div class="znav-links">${linksHtml}${accountHtml}</div>
-</nav>`;
+    </a>` : `<a href="/cliente" class="nav-login">ENTRAR</a><a href="/cliente/registro" class="nav-cta">CADASTRAR</a>`;
+  return `<nav class="znav standalone-nav" aria-label="Navegação principal">
+  <a href="/" class="znav-brand"${activePath==='/'?' aria-current="page"':''}>${renderStandaloneBrand('nav')}</a>
+  <button class="nav-menu-toggle" type="button" aria-expanded="false" aria-controls="zvm-nav-links" aria-label="Abrir menu"><span></span><span></span><span></span></button>
+  <div class="znav-links" id="zvm-nav-links">${linksHtml}${accountHtml}</div>
+</nav><script>(function(){var b=document.querySelector('.nav-menu-toggle'),m=document.getElementById('zvm-nav-links');if(!b||!m)return;function setOpen(open){b.setAttribute('aria-expanded',String(open));b.setAttribute('aria-label',open?'Fechar menu':'Abrir menu');m.classList.toggle('is-open',open);}b.addEventListener('click',function(){setOpen(b.getAttribute('aria-expanded')!=='true');});m.addEventListener('click',function(e){if(e.target.closest('a'))setOpen(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&b.getAttribute('aria-expanded')==='true'){setOpen(false);b.focus();}});})();</script>`;
+}
+
+function _standaloneCss() {
+  return `
+  :root{--surface:var(--bg2);--surface-hover:var(--bg3);--surface-active:var(--bg4);--card:var(--bg2);--border:var(--brd);--text:var(--tx);--text-muted:var(--tx2);--primary:var(--g);--success:var(--g);--warning:var(--orange);--danger:var(--red);--purple:#8b5cf6;--shadow-sm:0 8px 24px rgba(0,0,0,.22);--shadow-lg:0 24px 70px rgba(0,0,0,.35);--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;--space-6:32px;--space-7:48px;--transition:180ms cubic-bezier(.2,.8,.2,1);--fs-xs:12px;--fs-sm:13px;--fs-body:15px;--fs-body-lg:16px;--fs-lg:18px;--fs-xl:24px;color-scheme:dark}
+  :focus-visible{outline:2px solid var(--primary);outline-offset:3px}
+  button,a{touch-action:manipulation}
+  #_cvs{opacity:.5}
+  .zvm-brand-logo{object-fit:contain;display:block;width:auto}
+  .zvm-brand-nav{height:44px}
+  .zvm-brand-auth{height:130px}
+  .zvm-brand-dash{height:66px}
+  .zvm-brand-compact{height:60px}
+  @media(max-width:768px){.zvm-brand-nav{height:36px}.zvm-brand-auth{height:104px}}
+  .standalone-nav{box-shadow:0 1px 0 rgba(139,92,246,.08)}
+  .standalone-nav .znav-links a{min-height:40px;display:inline-flex;align-items:center}
+  .nav-menu-toggle{display:none;width:44px;height:44px;border:1px solid var(--brd2);border-radius:var(--r-sm);background:var(--bg2);color:var(--tx);align-items:center;justify-content:center;flex-direction:column;gap:4px;cursor:pointer}
+  .nav-menu-toggle span{width:18px;height:2px;background:currentColor;border-radius:2px}
+  .standalone-nav .nav-login{color:var(--tx)}
+  .zfooter-links a{min-height:36px;display:inline-flex;align-items:center}
+  @media(prefers-color-scheme:light){:root{--g:#087d4d;--g2:#066b42;--g-soft:rgba(8,125,77,.09);--g-brd:rgba(8,125,77,.28);--bg:#f2f4f0;--bg2:#e9ede7;--bg3:#e1e7df;--bg4:#d8e0d6;--brd:#cbd3c8;--brd2:#b7c2b4;--tx:#17211b;--tx2:#4c5c52;--tx3:#6a796f;--red:#b4233c;--orange:#8a5a00;--blue:#315fb5;--shadow-sm:0 8px 24px rgba(30,46,36,.08);--shadow-lg:0 24px 70px rgba(30,46,36,.14);color-scheme:light}.standalone-nav{background:rgba(242,244,240,.9)}.standalone-nav .znav-links{background:rgba(233,237,231,.98)}.price-card{background:linear-gradient(180deg,var(--bg3),var(--bg2))}.checkout-dialog{background:var(--bg2)}}
+  @media(max-width:900px){.standalone-nav{height:64px;position:sticky}.nav-menu-toggle{display:flex}.standalone-nav .znav-links{display:none;position:absolute;top:64px;left:12px;right:12px;padding:12px;background:rgba(13,13,24,.98);border:1px solid var(--brd2);border-radius:var(--r);box-shadow:var(--shadow-lg);flex-direction:column;align-items:stretch}.standalone-nav .znav-links.is-open{display:flex}.standalone-nav .znav-links a{justify-content:center;width:100%}.standalone-nav .nav-account{justify-content:center}}
+  @media(max-width:900px) and (prefers-color-scheme:light){.standalone-nav .znav-links{background:rgba(233,237,231,.98)}}
+  @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.standalone-nav,.price-card,.plan-btn{animation:none;transition:none}}
+  `;
+}
+
+function _standaloneFoot() {
+  return `<footer class="zfooter"><div class="zfooter-brand">${renderStandaloneBrand('compact')}</div><div class="zfooter-links"><a href="/faq">FAQ</a><a href="/planos">Planos</a><a href="/privacidade">Privacidade</a><a href="/cliente">Minha Conta</a><a href="https://wa.me/5521996771552" target="_blank" rel="noopener noreferrer">Suporte</a></div><div class="zfooter-copy">© ${new Date().getFullYear()} ZVM · Todos os direitos reservados</div><div class="zfooter-payments">Pagamentos processados pela Cakto</div></footer>`;
+}
+
+// ── Toast reutilizável (standalone) ────────────────────────────────
+// Componente leve e autocontido (cores fixas, sem depender de variáveis
+// de tema específicas de nenhuma página) para feedback rápido de ações
+// client-side (copiar chave, confirmações leves de UI). NÃO substitui
+// mensagens de backend (erros de formulário, resultado de compra etc.),
+// que continuam sendo renderizadas normalmente pelo servidor.
+function _toastCss() {
+  return `
+.zvm-toast-stack{position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:10px;max-width:340px;pointer-events:none}
+.zvm-toast{pointer-events:auto;display:flex;align-items:flex-start;gap:10px;padding:13px 16px;border-radius:10px;background:#0d0d16;border:1px solid #242438;box-shadow:0 12px 32px rgba(0,0,0,.4);font:600 13.5px 'Outfit',sans-serif;color:#e8e8f8;opacity:0;transform:translateY(8px);transition:opacity 200ms ease,transform 200ms ease}
+.zvm-toast.show{opacity:1;transform:translateY(0)}
+.zvm-toast-icon{flex-shrink:0;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:12px;border-radius:50%;font-weight:900}
+.zvm-toast.success .zvm-toast-icon{background:#00e67622;color:#00e676}
+.zvm-toast.error .zvm-toast-icon{background:#f0506022;color:#f05060}
+.zvm-toast.warning .zvm-toast-icon{background:#f0b42922;color:#f0b429}
+.zvm-toast.info .zvm-toast-icon{background:#5588ff22;color:#7aacff}
+@media(max-width:480px){.zvm-toast-stack{left:12px;right:12px;bottom:12px;max-width:none}}
+@media(prefers-reduced-motion:reduce){.zvm-toast{transition:none}}
+`;
+}
+function _toastScript() {
+  return `<script>(function(){
+  var ICONS={success:'✓',error:'✕',warning:'!',info:'i'};
+  function ensureStack(){var s=document.querySelector('.zvm-toast-stack');if(!s){s=document.createElement('div');s.className='zvm-toast-stack';s.setAttribute('role','status');s.setAttribute('aria-live','polite');document.body.appendChild(s);}return s;}
+  window.zvmToast=function(type,msg,duration){
+    var t=['success','error','warning','info'].indexOf(type)>=0?type:'info';
+    var stack=ensureStack();
+    var el=document.createElement('div');
+    el.className='zvm-toast '+t;
+    var icon=document.createElement('span');icon.className='zvm-toast-icon';icon.setAttribute('aria-hidden','true');icon.textContent=ICONS[t];
+    var text=document.createElement('span');text.textContent=msg;
+    el.appendChild(icon);el.appendChild(text);
+    stack.appendChild(el);
+    requestAnimationFrame(function(){el.classList.add('show');});
+    var ms=duration||3200;
+    setTimeout(function(){el.classList.remove('show');setTimeout(function(){el.remove();},220);},ms);
+  };
+})();<\/script>`;
 }
 
 function _sharedFoot() {
@@ -5655,7 +7229,7 @@ ${CANVAS_BG}</body></html>`;
 }
 
 // ──────────────── PLANOS ──────────────
-function renderPlanosPage(portalUser = null) {
+function renderLegacyPlanosPage(portalUser = null) {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Planos e Preços</title>
@@ -5801,6 +7375,119 @@ ${_sharedNav('/planos', portalUser)}
 ${_sharedFoot()}
 ${CANVAS_BG}
 </body></html>`;
+}
+
+function formatPlanPrice(price) {
+  const [whole, cents] = Number(price).toFixed(2).split('.');
+  return { whole, cents };
+}
+
+const PLAN_ICONS = {
+  solo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.9 3.1-7 7-7s7 3.1 7 7"/></svg>',
+  padrao: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>',
+  pro: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5c3 2 5 6 5 9.7 0 1.7-.4 3-1 4l-4 4.3-4-4.3c-.6-1-1-2.3-1-4 0-3.7 2-7.7 5-9.7Z"/><circle cx="12" cy="10.5" r="1.6"/><path d="M8.5 16.5l-2.8 2.8M15.5 16.5l2.8 2.8"/></svg>',
+  empresarial: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="10" height="18" rx="1"/><path d="M14 21h6V9l-6-3"/><path d="M7.5 7h1M7.5 11h1M7.5 15h1M11 7h1M11 11h1M11 15h1"/></svg>',
+};
+const PLAN_IDENTITY = {
+  solo: { subtitle: 'Ideal para começar' },
+  padrao: { subtitle: 'Melhor custo-benefício' },
+  pro: { subtitle: 'Para equipes' },
+  empresarial: { subtitle: 'Maior economia por número' },
+};
+const NEED_OPTIONS = [
+  { planId: 'solo', label: '1' },
+  { planId: 'padrao', label: 'Até 3' },
+  { planId: 'pro', label: 'Até 5' },
+  { planId: 'empresarial', label: 'Até 10' },
+];
+
+function renderPlanosPage(portalUser = null) {
+  const isLoggedIn = !!portalUser;
+  const cards = Object.values(ZVM_PLANS).map(plan => {
+    const price = formatPlanPrice(plan.price);
+    const perDevice = (plan.price / plan.maxUses).toFixed(2).replace('.', ',');
+    const popular = plan.id === 'padrao';
+    const identity = PLAN_IDENTITY[plan.id] || { subtitle: '' };
+    const icon = PLAN_ICONS[plan.id] || '';
+    const action = isLoggedIn
+      ? `<button type="button" class="plan-btn ${popular?'plan-btn-primary':'plan-btn-outline'}" data-buy-plan="${plan.id}" data-checkout="${escHtml(plan.checkoutUrl)}" data-plan-name="${escHtml(plan.shortName)}" data-devices="${plan.maxUses}" data-duration="${plan.durationDays}" data-price="${price.whole},${price.cents}">🛒 Comprar ${escHtml(plan.shortName)}</button>`
+      : `<button type="button" class="plan-btn plan-btn-locked" data-login-plan="${plan.id}" aria-label="Entre para comprar o plano ${escHtml(plan.shortName)}">🔒 Entre para comprar</button>`;
+    return `<article class="price-card${popular?' featured':''}" aria-labelledby="plan-${plan.id}" data-plan-id="${plan.id}">
+      ${popular?'<div class="price-badge">Mais popular</div>':''}
+      <div class="price-suggested-tag" aria-hidden="true">Sugerido pra você</div>
+      <span class="price-icon" aria-hidden="true">${icon}</span>
+      <h2 class="price-tier" id="plan-${plan.id}">${escHtml(plan.shortName)}</h2>
+      ${identity.subtitle ? `<p class="price-subtitle">${escHtml(identity.subtitle)}</p>` : ''}
+      <p class="price-devices">${plan.maxUses} ${plan.maxUses===1?'número':'números'} de WhatsApp</p>
+      <div class="price-val"><sup>R$</sup>${price.whole}<span>,${price.cents}</span><sub>/30 dias</sub></div>
+      <p class="price-per${plan.maxUses>1?' price-per-strong':''}">R$ ${perDevice} por número</p>
+      <div class="price-divider"></div>
+      <ul class="price-feats">
+        <li><span class="chk">✓</span>Todos os recursos inclusos</li>
+        <li><span class="chk">✓</span>${plan.durationDays} dias de acesso</li>
+        <li><span class="chk">✓</span>Entrega automática por e-mail</li>
+        <li><span class="chk">✓</span>Renovação e troca pelo portal</li>
+      </ul>${action}
+    </article>`;
+  }).join('');
+
+  const needPicker = `<div class="need-picker" role="radiogroup" aria-labelledby="need-picker-label">
+    <p class="need-picker-label" id="need-picker-label">Quantos números você precisa conectar?</p>
+    <div class="need-options">${NEED_OPTIONS.map(opt => `<label class="need-opt"><input type="radio" name="need" value="${opt.planId}"><span>${opt.label}</span></label>`).join('')}</div>
+  </div>`;
+
+  const buyerBox = isLoggedIn ? `<div class="buyer-box"><div class="buyer-box-label">Comprando para:</div><div class="buyer-box-email">${escHtml(portalUser.email || '')}</div><p class="buyer-box-hint">Use este mesmo e-mail no checkout da Cakto para que a compra seja vinculada automaticamente à sua conta.</p></div>` : '';
+  const purchaseNote = !isLoggedIn ? `<div class="purchase-note"><span aria-hidden="true">●</span><span>Entre na sua conta antes de comprar para receber ou renovar a licença automaticamente.</span></div>` : '';
+
+  const modalContent = isLoggedIn ? `
+    <div class="modal-icon" aria-hidden="true">↗</div><h2 id="checkout-title">Finalizar compra</h2>
+    <div class="modal-plan-summary"><div class="modal-plan-name" id="modal-plan-name">—</div><div class="modal-plan-meta" id="modal-plan-meta">—</div><div class="modal-plan-price" id="modal-plan-price">—</div></div>
+    <div class="modal-account"><span class="modal-account-label">Conta</span><strong class="modal-email">${escHtml(portalUser.email || '')}</strong></div>
+    <p class="modal-hint">Use este mesmo e-mail no checkout.</p>
+    <div class="modal-actions"><button type="button" class="modal-cancel">Cancelar</button><a class="modal-continue" href="#" target="_blank" rel="noopener noreferrer">Ir para pagamento →</a></div>` : `
+    <div class="modal-icon locked" aria-hidden="true">⌁</div><h2 id="checkout-title">Faça login antes de comprar</h2>
+    <p>Para vincular a compra à sua conta e entregar ou renovar sua chave sem problemas, entre ou crie sua conta ZVM antes de continuar.</p>
+    <div class="modal-actions"><button type="button" class="modal-cancel">Agora não</button><a class="modal-login" href="/cliente?redir=/planos">Entrar</a><a class="modal-continue" href="/cliente/registro?redir=/planos">Criar conta</a></div>`;
+
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Planos ZVM para 1, 3, 5 ou 10 números de WhatsApp, com entrega automática e 30 dias de acesso.">
+<title>ZVM — Planos e Preços</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
+<style>${_sharedCss()}${_standaloneCss()}
+.page-hero{padding:clamp(64px,9vw,112px) 24px 54px;text-align:center;background:radial-gradient(ellipse 60% 70% at 50% 0%,rgba(139,92,246,.12),transparent 68%)}
+.page-hero-tag{display:inline-flex;align-items:center;gap:8px;font:700 11px 'Space Mono',monospace;color:var(--g);letter-spacing:1.8px;text-transform:uppercase;margin-bottom:18px}.page-hero-tag::before{content:'';width:26px;height:1px;background:var(--g)}
+.page-hero h1{font-size:clamp(34px,5vw,58px);font-weight:900;letter-spacing:-2px;line-height:1.02;margin-bottom:16px}.page-hero h1 span{color:var(--g)}
+.page-hero p{font-size:16px;color:var(--tx2);max-width:620px;margin:auto;line-height:1.7}
+.plans-wrap{padding:0 40px 96px;max-width:1220px;margin:auto}.purchase-note{display:flex;align-items:center;justify-content:center;gap:10px;max-width:760px;margin:0 auto 34px;padding:12px 18px;border:1px solid var(--brd);border-radius:var(--r);background:var(--bg2);color:var(--tx2);font-size:14px}.purchase-note strong{color:var(--tx)}
+.need-picker{max-width:640px;margin:0 auto 30px;text-align:center}.need-picker-label{font-size:13px;color:var(--tx2);font-weight:700;margin-bottom:12px}.need-options{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}.need-opt{position:relative;cursor:pointer;display:inline-flex}.need-opt input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}.need-opt span{display:inline-flex;align-items:center;justify-content:center;min-width:60px;padding:10px 18px;border-radius:99px;border:1px solid var(--brd2);background:var(--bg2);color:var(--tx2);font:700 14px 'Outfit',sans-serif;transition:all var(--transition)}.need-opt input:hover+span{border-color:var(--g-brd);color:var(--tx)}.need-opt input:checked+span{background:var(--g-soft);border-color:var(--g-brd);color:var(--g)}.need-opt input:focus-visible+span{outline:2px solid var(--g);outline-offset:2px}.need-opt input:active+span{transform:scale(.97)}
+.buyer-box{max-width:520px;margin:0 auto 30px;padding:14px 18px;border:1px solid var(--g-brd);border-radius:var(--r);background:var(--g-soft);text-align:center}.buyer-box-label{font-size:11px;color:var(--tx3);text-transform:uppercase;letter-spacing:.6px;font-weight:700;margin-bottom:4px}.buyer-box-email{font-family:'Space Mono',monospace;color:var(--g);font-size:15px;font-weight:700;word-break:break-word;margin-bottom:8px}.buyer-box-hint{font-size:12.5px;color:var(--tx2);line-height:1.55}
+.pricing-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}.price-card{background:linear-gradient(180deg,var(--bg3),var(--bg2));border:1px solid var(--brd);border-radius:18px;padding:30px 24px;position:relative;display:flex;flex-direction:column;min-width:0;transition:transform var(--transition),border-color var(--transition),box-shadow var(--transition)}.price-card:hover{transform:translateY(-4px);border-color:var(--brd2);box-shadow:var(--shadow-lg)}.price-card.featured{border-color:var(--g-brd);box-shadow:inset 0 1px 0 rgba(0,255,135,.14)}.price-card.suggested{border-color:var(--g-brd);box-shadow:0 0 0 2px var(--g-soft)}
+.price-badge{position:absolute;top:-12px;right:18px;background:var(--g);color:#03120b;font-size:11px;font-weight:900;padding:5px 12px;border-radius:99px;letter-spacing:.6px;text-transform:uppercase}.price-suggested-tag{display:none;position:absolute;top:-12px;left:18px;background:var(--purple);color:#fff;font-size:11px;font-weight:900;padding:5px 12px;border-radius:99px;letter-spacing:.4px}.price-card.suggested .price-suggested-tag{display:block}
+.price-icon{width:34px;height:34px;display:flex;align-items:center;justify-content:center;margin-bottom:14px;color:var(--g)}.price-icon svg{width:100%;height:100%}.price-tier{font-size:22px;font-weight:900;margin-bottom:4px}.price-subtitle{font-size:12px;color:var(--g);font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin-bottom:18px}.price-devices{font-size:14px;color:var(--tx2);margin-bottom:22px}.price-val{font-size:48px;font-weight:900;letter-spacing:-2.5px;line-height:1}.price-val sup{font-size:15px;color:var(--tx3);vertical-align:top;letter-spacing:0;margin-right:3px}.price-val span{font-size:22px;letter-spacing:-1px}.price-val sub{display:block;font-size:12px;color:var(--tx3);letter-spacing:0;margin-top:8px}.price-per{font-size:12px;color:var(--tx3);margin-top:6px}.price-per-strong{color:var(--g);font-weight:800;font-size:13px}.price-divider{height:1px;background:var(--brd);margin:22px 0}.price-feats{list-style:none;display:flex;flex-direction:column;gap:11px;flex:1;margin-bottom:26px}.price-feats li{font-size:14px;color:var(--tx2);display:flex;gap:9px;line-height:1.45}.chk{color:var(--g);font-weight:900}.plan-btn{width:100%;min-height:46px;padding:12px 14px;border-radius:9px;font:800 14px 'Outfit',sans-serif;cursor:pointer;transition:transform var(--transition),background var(--transition),border-color var(--transition);border:1px solid var(--brd2)}.plan-btn:hover{transform:translateY(-1px)}.plan-btn:active{transform:translateY(0) scale(.98)}.plan-btn-primary{background:var(--g);color:#03120b;border-color:var(--g)}.plan-btn-outline{background:var(--g-soft);color:var(--g);border-color:var(--g-brd)}.plan-btn-locked{background:var(--bg);color:var(--tx2);border-color:var(--brd2)}
+.plans-footnote{text-align:center;color:var(--tx3);font-size:14px;margin-top:34px}.plans-footnote a{color:var(--g);font-weight:700}
+.checkout-dialog{position:fixed;inset:0;margin:auto;width:min(520px,calc(100% - 28px));max-height:min(88vh,calc(100% - 32px));overflow:auto;border:1px solid var(--brd2);border-radius:18px;padding:0;background:var(--bg2);color:var(--tx);box-shadow:var(--shadow-lg)}.checkout-dialog::backdrop{background:rgba(2,4,10,.78);backdrop-filter:blur(6px)}.dialog-inner{padding:30px}.modal-icon{width:42px;height:42px;border:1px solid var(--g-brd);background:var(--g-soft);color:var(--g);border-radius:12px;display:grid;place-items:center;font-size:22px;margin-bottom:18px}.modal-icon.locked{color:var(--purple);border-color:rgba(139,92,246,.34);background:rgba(139,92,246,.1)}.dialog-inner h2{font-size:25px;letter-spacing:-.6px;margin-bottom:12px}.dialog-inner p{font-size:15px;color:var(--tx2);line-height:1.65;margin:10px 0}.modal-plan-summary{background:var(--bg);border:1px solid var(--brd);border-radius:10px;padding:14px 16px;margin:14px 0}.modal-plan-name{font-size:16px;font-weight:800;color:var(--tx)}.modal-plan-meta{font-size:13px;color:var(--tx2);margin-top:2px}.modal-plan-price{font-size:20px;font-weight:900;color:var(--g);margin-top:8px}.modal-account{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13px;color:var(--tx2)}.modal-account-label{color:var(--tx3);text-transform:uppercase;font-size:11px;font-weight:700;letter-spacing:.5px}.modal-hint{font-size:12.5px;color:var(--tx3);margin-top:6px}.modal-email{display:inline-block;padding:5px 10px;border:1px solid var(--brd);border-radius:6px;background:var(--bg);color:var(--g);font-family:'Space Mono',monospace;word-break:break-word}.modal-actions{display:flex;justify-content:flex-end;gap:9px;flex-wrap:wrap;margin-top:24px}.modal-actions button,.modal-actions a{min-height:43px;padding:11px 16px;border-radius:8px;font:800 14px 'Outfit',sans-serif;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:transform var(--transition),opacity var(--transition)}.modal-actions button:active,.modal-actions a:active{transform:scale(.97)}.modal-cancel{background:transparent;color:var(--tx2);border:1px solid var(--brd2)}.modal-login{border:1px solid var(--g-brd);color:var(--g)}.modal-continue{background:var(--g);color:#03120b;border:1px solid var(--g)}
+@media(max-width:1050px){.pricing-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:620px){.plans-wrap{padding:0 16px 72px}.pricing-grid{grid-template-columns:1fr}.page-hero{padding:58px 18px 42px}.purchase-note{align-items:flex-start}.modal-actions{flex-direction:column-reverse}.modal-actions button,.modal-actions a{width:100%}}
+@media(prefers-reduced-motion:reduce){.price-card,.plan-btn,.need-opt span,.modal-actions button,.modal-actions a{transition:none}}
+</style></head><body>${_sharedNav({activePath:'/planos',portalUser,showBack:true})}
+<main><header class="page-hero"><div class="page-hero-tag">Licenças ZVM</div><h1>Escolha seu <span>ritmo de operação</span></h1><p>Todos os planos têm os mesmos recursos. O limite muda apenas conforme a quantidade de números conectados.</p></header>
+<div class="plans-wrap">${needPicker}${buyerBox}${purchaseNote}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section><p class="plans-footnote">Precisa de mais números? <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20um%20plano%20customizado" target="_blank" rel="noopener noreferrer">Converse com o suporte</a></p></div></main>
+<dialog class="checkout-dialog" aria-labelledby="checkout-title"><div class="dialog-inner">${modalContent}</div></dialog>${_standaloneFoot()}
+<script>(function(){
+  var d=document.querySelector('.checkout-dialog'),last=null,go=d&&d.querySelector('.modal-continue');
+  var nameEl=document.getElementById('modal-plan-name'),metaEl=document.getElementById('modal-plan-meta'),priceEl=document.getElementById('modal-plan-price');
+  function open(btn){
+    last=btn;
+    if(go&&btn.dataset.checkout)go.href=btn.dataset.checkout;
+    if(nameEl)nameEl.textContent='ZVM '+(btn.dataset.planName||'');
+    if(metaEl)metaEl.textContent=(btn.dataset.devices||'')+' número'+(btn.dataset.devices==='1'?'':'s')+' · '+(btn.dataset.duration||'')+' dias';
+    if(priceEl)priceEl.textContent='R$ '+(btn.dataset.price||'');
+    if(d.showModal)d.showModal();else d.setAttribute('open','');
+    var focus=d.querySelector('.modal-continue,.modal-login,.modal-cancel');if(focus)focus.focus();
+  }
+  document.addEventListener('click',function(e){var btn=e.target.closest('[data-buy-plan],[data-login-plan]');if(btn){open(btn);return;}if(e.target.closest('.modal-cancel'))d.close();});
+  if(d){d.addEventListener('click',function(e){if(e.target===d)d.close();});d.addEventListener('close',function(){if(last)last.focus();});}
+  document.querySelectorAll('input[name="need"]').forEach(function(r){r.addEventListener('change',function(){document.querySelectorAll('.price-card').forEach(function(c){c.classList.toggle('suggested',c.dataset.planId===r.value);});});});
+})();</script></body></html>`;
 }
 
 // ──────────────── FAQ ──────────────
@@ -5980,7 +7667,158 @@ ${CANVAS_BG}
 </body></html>`;
 }
 
+function applyStandaloneFrame(html, { activePath = '', portalUser = null, showBack = true } = {}) {
+  return html
+    .replace('</style></head>', `${_standaloneCss()}</style></head>`)
+    .replace(/<nav class="znav">[\s\S]*?<\/nav>/, _sharedNav({ activePath, portalUser, showBack }))
+    .replace(/<footer class="zfooter">[\s\S]*?<\/footer>/, _standaloneFoot());
+}
 
+// P0 — a tabela de preços de renderLandingPage() (WSM, INTOCADA) tem os 4
+// valores por card escritos à mão no HTML. Hoje eles até batem com
+// ZVM_PLANS por coincidência de manutenção manual, mas nada garante isso no
+// futuro (mudar um preço em ZVM_PLANS não mudaria essa string). Substitui
+// aqui, só na versão standalone, pelos valores REAIS de ZVM_PLANS — a
+// landing WSM (renderLandingPage puro, usado por /WSM) nunca passa por
+// esta função e continua com o HTML original, byte a byte.
+//
+// Ordem dos 4 cards no HTML (Solo, Padrão, Pro, Empresarial) é a MESMA
+// ordem de Object.values(ZVM_PLANS) — index a index, sem inferir por nome/
+// preço (evita casar o card errado se a ordem do objeto mudar por engano).
+// .pc-old (preço "riscado" promocional) é removido: não existe campo
+// equivalente em ZVM_PLANS e mantê-lo estático ao lado de um preço agora
+// dinâmico arriscava um "de R$X por Y" sem relação real com Y.
+function _standaloneLandingPricing(html) {
+  const plans = Object.values(ZVM_PLANS);
+  let di = 0, pi = 0, ui = 0, dur = 0;
+  html = html.replace(/<div class="pc-devices">[^<]*<\/div>/g, () => {
+    const plan = plans[di++]; if (!plan) return '';
+    return `<div class="pc-devices">${plan.maxUses} número${plan.maxUses > 1 ? 's' : ''} de WhatsApp</div>`;
+  });
+  html = html.replace(/<div class="pc-old">[^<]*<\/div>\s*<div class="pc-price">[\s\S]*?<\/div>/g, () => {
+    const plan = plans[pi++]; if (!plan) return '';
+    const [intPart, centPart] = plan.price.toFixed(2).split('.');
+    return `<div class="pc-price"><sup>R$</sup>${intPart}<sup style="font-size:22px">,${centPart}</sup><sub>/${plan.durationDays} dias</sub></div>`;
+  });
+  html = html.replace(/<div class="pc-per">[^<]*<\/div>/g, () => {
+    const plan = plans[ui++]; if (!plan) return '';
+    const perUnit = (plan.price / plan.maxUses).toFixed(2).replace('.', ',');
+    return `<div class="pc-per">R$${perUnit} por número</div>`;
+  });
+  html = html.replace(/<li>\d+ dias de acesso<\/li>/g, () => {
+    const plan = plans[dur++]; if (!plan) return '';
+    return `<li>${plan.durationDays} dias de acesso</li>`;
+  });
+  return html;
+}
+
+// Remove, só na versão standalone, o screenshot legado de avaliações
+// (imagem base64 gigante colada abaixo do .testi-grid em renderLandingPage)
+// que mostra IDs de pedido/anúncio e a marca "ZAPVOICE" nos pixels — não dá
+// pra editar seletivamente o conteúdo de uma imagem rasterizada, e o
+// .testi-grid logo acima já cobre o mesmo propósito (depoimentos reais,
+// nomes mascarados, sem IDs) de forma compatível com item 34/35. Usa busca
+// por string (não regex) porque o payload base64 tem ~400KB nessa única
+// linha — regex com esse volume é frágil e desnecessário aqui.
+function _stripLegacyReviewScreenshot(html) {
+  const startMarker = '<div style="margin-top:40px;text-align:center">\n    <p style="font-size:12px;font-weight:700;color:var(--tx3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:16px">★★★★★ Avaliações dos nossos clientes ★★★★★</p>';
+  const startIdx = html.indexOf(startMarker);
+  if (startIdx === -1) return html; // marcador não encontrado — não mexe em nada
+  const imgTagEnd = html.indexOf('>', html.indexOf('loading="lazy"', startIdx));
+  if (imgTagEnd === -1) return html;
+  const wrapperCloseEnd = html.indexOf('</div>', imgTagEnd + 1);
+  if (wrapperCloseEnd === -1) return html;
+  const cut = wrapperCloseEnd + '</div>'.length;
+  return html.slice(0, startIdx) + html.slice(cut);
+}
+
+function renderStandaloneLandingPage(portalUser = null) {
+  const html = applyStandaloneFrame(renderLandingPage(portalUser), { activePath: '/', portalUser, showBack: false })
+    .replace(/<a href="https:\/\/wa\.me\/[^"]+" target="_blank" rel="noopener" class="btn-primary">[\s\S]*?<\/a>/, '<a href="/planos" class="btn-primary">Ver planos e comprar com segurança →</a>')
+    .replace(/<span class="pc-btn ([^"]+)" style="[^"]+">🔒 Em breve<\/span>/g, '<a href="/planos" class="pc-btn $1">Ver opções de compra →</a>')
+    .replace('A partir de R$39,90/mês. Pagou, recebeu — sua chave de ativação chega na hora pelo WhatsApp. Zero burocracia.', 'A partir de R$39,90/30 dias. Pagou, recebeu — sua chave de ativação chega automaticamente por e-mail. Zero burocracia.')
+    .replace('A partir de R$39,90/mês.', 'A partir de R$39,90/30 dias.')
+    // Transparência: os depoimentos são reais, mas anteriores à marca ZVM
+    // atual (evolução do mesmo produto/vendedor). Uma linha deixa isso
+    // claro sem reescrever nem uma palavra dos textos originais.
+    .replace('<h2 class="sh-title">Quem usa, aprova</h2>', '<h2 class="sh-title">Quem usa, aprova</h2>\n    <p class="sh-sub">Avaliações reais de clientes, coletadas ao longo da evolução do produto.</p>');
+  return _standaloneLandingPricing(_stripLegacyReviewScreenshot(html));
+}
+
+function renderStandaloneFaqPage(portalUser = null) {
+  // Fonte única: ZVM_FAQ_ITEMS. Reagrupada aqui só pra manter a categorização
+  // visual (Compra/Produto/Conta) que a página já tinha — o texto de cada
+  // pergunta/resposta vem sempre do mesmo array usado no mini-FAQ do
+  // dashboard, então as duas superfícies nunca divergem.
+  const groups = [
+    ['Compra e licença', [_faqPick('Como renovo'), _faqPick('Posso alterar'), _faqPick('Onde vejo a validade'), _faqPick('Minha chave expirou'), _faqPick('Minha compra foi aprovada')]],
+    ['Produto e uso', [_faqPick('Como instalar'), _faqPick('Quantos números'), _faqPick('Preciso usar o mesmo e-mail'), _faqPick('Como funciona o 2FA')]],
+    ['Conta e suporte', [_faqPick('Como removo um dispositivo'), _faqPick('Onde baixo'), _faqPick('Esqueci minha senha'), _faqPick('Como falo com o suporte')]],
+  ];
+  const content = groups.map(([title, items]) => `<section class="faq-group"><h2>${title}</h2>${items.map(([q,a])=>`<details class="faq-item"><summary>${q}</summary><p>${a}</p></details>`).join('')}</section>`).join('');
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ZVM — Perguntas Frequentes</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}<style>${_sharedCss()}${_standaloneCss()}
+  .faq-hero{max-width:760px;margin:auto;padding:86px 24px 42px;text-align:center}.faq-kicker{font:700 11px 'Space Mono',monospace;color:var(--g);letter-spacing:2px;text-transform:uppercase}.faq-hero h1{font-size:clamp(34px,6vw,58px);letter-spacing:-2px;margin:13px 0}.faq-hero p{color:var(--tx2);line-height:1.7}.faq-wrap{max-width:820px;margin:auto;padding:0 24px 92px}.faq-group{margin-top:42px}.faq-group h2{font-size:15px;color:var(--g);letter-spacing:.8px;text-transform:uppercase;margin-bottom:10px}.faq-item{border-bottom:1px solid var(--brd)}.faq-item summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;gap:16px;padding:19px 0;font-weight:750}.faq-item summary::-webkit-details-marker{display:none}.faq-item summary::after{content:'+';font-family:'Space Mono',monospace;color:var(--tx3)}.faq-item[open] summary{color:var(--g)}.faq-item[open] summary::after{content:'−';color:var(--g)}.faq-item p{padding:0 28px 20px 0;color:var(--tx2);line-height:1.75}.faq-support{margin-top:44px;padding:24px;border:1px solid var(--brd);border-radius:var(--r-lg);background:linear-gradient(135deg,var(--bg2),rgba(139,92,246,.07));display:flex;justify-content:space-between;align-items:center;gap:20px}.faq-support p{color:var(--tx2);margin-top:4px}.faq-support a{flex-shrink:0;padding:12px 18px;border:1px solid var(--g-brd);border-radius:8px;color:var(--g);font-weight:800}@media(max-width:600px){.faq-support{align-items:flex-start;flex-direction:column}.faq-support a{width:100%;text-align:center}}
+  </style></head><body>${_sharedNav({activePath:'/faq',portalUser,showBack:true})}<main><header class="faq-hero"><div class="faq-kicker">Central de respostas</div><h1>Ajuda sem rodeios</h1><p>Compra, entrega, validade e dispositivos explicados de forma direta.</p></header><div class="faq-wrap">${content}<aside class="faq-support"><div><strong>Não encontrou sua resposta?</strong><p>O WhatsApp continua disponível como canal de suporte.</p></div><a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener noreferrer">Falar com suporte</a></aside></div></main>${_standaloneFoot()}</body></html>`;
+}
+
+// Tipografia do corpo do documento (renderPrivacyPage, WSM-compartilhada)
+// já estava em 16px/1.85 — dentro do pedido. O resumo, os headings e a
+// legenda de data ficavam menores que o corpo; ajuste só nesses pontos,
+// via CSS extra anexado depois de _standaloneCss (mesma técnica de
+// applyStandaloneFrame), sem tocar renderPrivacyPage nem o /WSM/privacidade.
+function renderStandalonePrivacyPage(portalUser = null) {
+  const html = applyStandaloneFrame(renderPrivacyPage(portalUser), { activePath: '/privacidade', portalUser, showBack: true });
+  const css = `.page-hero p{font-size:var(--fs-body-lg)}.info-box{font-size:var(--fs-body-lg);line-height:1.75}.doc-section h2{font-size:20px}`;
+  return html.replace('</style></head>', `${css}</style></head>`);
+}
+
+// ── Páginas de erro standalone (404 / indisponibilidade temporária) ──
+// Nunca afirmam "chave inválida" nem qualquer coisa sobre o estado da
+// licença — usadas só quando a rota não existe ou quando algo realmente
+// falhou no servidor, sem relação com validade/autenticidade de chave.
+function renderStandalone404Page(portalUser = null) {
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZVM — Página não encontrada</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
+<style>${_sharedCss()}${_standaloneCss()}
+.err-wrap{min-height:calc(100vh - 64px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:60px 24px}
+.err-code{font-family:'Orbitron',sans-serif;font-size:clamp(56px,10vw,96px);font-weight:900;color:var(--g);letter-spacing:-2px;line-height:1;text-shadow:var(--g-glow)}
+.err-title{font-size:clamp(20px,3vw,26px);font-weight:800;margin:14px 0 10px}
+.err-sub{font-size:15px;color:var(--tx2);max-width:420px;line-height:1.6;margin-bottom:32px}
+.err-actions{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+.err-actions a{padding:13px 26px;border-radius:var(--r);font-weight:800;font-size:14px;transition:all var(--transition)}
+.err-btn-primary{background:var(--g);color:#03120b}.err-btn-primary:hover{background:var(--g2)}
+.err-btn-outline{border:1.5px solid var(--brd2);color:var(--tx2)}.err-btn-outline:hover{border-color:var(--g-brd);color:var(--g)}
+@media(prefers-reduced-motion:reduce){.err-actions a{transition:none}}
+</style></head><body>${_sharedNav({activePath:'',portalUser,showBack:false})}
+<main class="err-wrap">
+  <div class="err-code" aria-hidden="true">404</div>
+  <h1 class="err-title">Essa página não existe.</h1>
+  <p class="err-sub">O link pode estar desatualizado ou o endereço foi digitado errado.</p>
+  <div class="err-actions"><a href="/" class="err-btn-outline">Voltar ao início</a><a href="/cliente" class="err-btn-primary">Portal do cliente</a></div>
+</main>${_standaloneFoot()}</body></html>`;
+}
+
+function renderStandalone500Page(portalUser = null) {
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZVM — Indisponibilidade temporária</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
+<style>${_sharedCss()}${_standaloneCss()}
+.err-wrap{min-height:calc(100vh - 64px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:60px 24px}
+.err-icon{width:56px;height:56px;border-radius:16px;background:var(--g-soft);border:1px solid var(--g-brd);color:var(--g);display:flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:22px}
+.err-title{font-size:clamp(20px,3vw,26px);font-weight:800;margin-bottom:10px}
+.err-sub{font-size:15px;color:var(--tx2);max-width:440px;line-height:1.65;margin-bottom:32px}
+.err-actions a{padding:13px 26px;border-radius:var(--r);font-weight:800;font-size:14px;transition:all var(--transition)}
+.err-btn-primary{background:var(--g);color:#03120b}.err-btn-primary:hover{background:var(--g2)}
+@media(prefers-reduced-motion:reduce){.err-actions a{transition:none}}
+</style></head><body>${_sharedNav({activePath:'',portalUser,showBack:false})}
+<main class="err-wrap">
+  <div class="err-icon" aria-hidden="true">⚠</div>
+  <h1 class="err-title">Estamos com uma indisponibilidade temporária</h1>
+  <p class="err-sub">Sua licença não foi alterada. Tente novamente em alguns instantes — se o problema persistir, fale com o suporte.</p>
+  <div class="err-actions"><a href="/" class="err-btn-primary">Tentar novamente</a></div>
+</main>${_standaloneFoot()}</body></html>`;
+}
 
 function renderAnalyticsLogin(error = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
@@ -8056,7 +9894,7 @@ ${CANVAS_BG}</body></html>`;
     }
     // ══ Páginas públicas WSM ══════════════════════════════════════
     if (p === '/' || p === '') { sendHtml(res, wsmAdapt(wsmLandingAdapt(renderLandingPage(isPortalSession(req) ? getPortalUser(req) : null)))); return; }
-    if (p === '/planos' && req.method === 'GET')     { sendHtml(res, wsmAdapt(renderPlanosPage())); return; }
+    if (p === '/planos' && req.method === 'GET')     { sendHtml(res, wsmAdapt(renderLegacyPlanosPage())); return; }
     if (p === '/faq' && req.method === 'GET')        { sendHtml(res, renderWsmFaq()); return; }
     if (p === '/privacidade' && req.method === 'GET'){ sendHtml(res, wsmAdapt(renderPrivacyPage())); return; }
 
@@ -8811,6 +10649,28 @@ async function handleRequest(req, res) {
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ..._SEC_HEADERS });
     res.end(JSON.stringify({ ok: true, ts: new Date().toISOString() }));
     return;
+  }
+
+  // /static/* — ativos versionáveis do projeto (ex.: logo oficial ZVM).
+  // Rota top-level, independente do /WSM/ia (outra pasta, outra lógica de
+  // bridge JS) — path traversal bloqueado com o mesmo padrão de comparação
+  // por prefixo+separador usado ali.
+  if ((p === '/static' || p.startsWith('/static/')) && req.method === 'GET') {
+    const _staticBase = path.resolve(__dirname, 'static');
+    const _staticSub  = p.replace(/^\/static/, '') || '/';
+    const _staticRaw  = path.resolve(_staticBase, '.' + (_staticSub.startsWith('/') ? _staticSub : '/' + _staticSub));
+    if (_staticRaw !== _staticBase && !_staticRaw.startsWith(_staticBase + path.sep)) { res.writeHead(403); res.end('Forbidden'); return; }
+    try {
+      const _stat = fs.statSync(_staticRaw);
+      if (_stat.isFile()) {
+        const _ext  = path.extname(_staticRaw).toLowerCase();
+        const _mime = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.ico': 'image/x-icon' };
+        res.writeHead(200, { 'Content-Type': _mime[_ext] || 'application/octet-stream', 'Cache-Control': 'public, max-age=604800, immutable', ..._SEC_HEADERS });
+        fs.createReadStream(_staticRaw).pipe(res);
+        return;
+      }
+    } catch (_) {}
+    res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('Not found'); return;
   }
 
   if (p === '/status' && req.method === 'GET') {
@@ -10083,6 +11943,11 @@ async function handleRequest(req, res) {
     sendJson(res, stats || {}); return;
   }
 
+  if (p === '/cakto/webhook' && req.method === 'POST') {
+    await handleCaktoWebhook(req, res, url, ip);
+    return;
+  }
+
   if ((p === '/sale/webhook' || p === '/payt/webhook') && req.method === 'POST') {
     // Throttle: sem isto, um atacante pode martelar o endpoint tentando adivinhar
     // SALE_WEBHOOK_SECRET indefinidamente (e cada tentativa custa um parse de 256 KB).
@@ -10384,7 +12249,7 @@ async function handleRequest(req, res) {
 
   if (p === '/faq' && req.method === 'GET') {
     const _sess = isPortalSession(req) ? getPortalUser(req) : null;
-    sendHtml(res, renderFaqPage(_sess)); return;
+    sendHtml(res, renderStandaloneFaqPage(_sess)); return;
   }
 
   if (p === '/planos' && req.method === 'GET') {
@@ -10394,7 +12259,7 @@ async function handleRequest(req, res) {
 
   if (p === '/privacidade' && req.method === 'GET') {
     const _sess = isPortalSession(req) ? getPortalUser(req) : null;
-    sendHtml(res, renderPrivacyPage(_sess)); return;
+    sendHtml(res, renderStandalonePrivacyPage(_sess)); return;
   }
 
   // ── Label validation endpoint (usado pelo pentest interno) ──────────────
@@ -10471,18 +12336,23 @@ async function handleRequest(req, res) {
 
   if (req.method === 'GET' && p === '/') {
     const _sess = isPortalSession(req) ? getPortalUser(req) : null;
-    sendHtml(res, renderLandingPage(_sess)); return;
+    sendHtml(res, renderStandaloneLandingPage(_sess)); return;
   }
-  if (req.method === 'GET' && (p === '/verificar' || p === '/plans/manage' || p === '/plans/new' || p === '/dashboard/chaves' || p.startsWith('/unauthorized') || p.startsWith('/funnels') || p.startsWith('/labels'))) { const _sess = isPortalSession(req) ? getPortalUser(req) : null; sendHtml(res, renderClientPortal(_sess)); return; }
+  if (req.method === 'GET' && p === '/verificar') {
+    res.writeHead(302, { Location: getVerifyRedirect(isPortalSession(req)) }); res.end(); return;
+  }
+  if (req.method === 'GET' && (p === '/plans/manage' || p === '/plans/new' || p === '/dashboard/chaves' || p.startsWith('/unauthorized') || p.startsWith('/funnels') || p.startsWith('/labels'))) { const _sess = isPortalSession(req) ? getPortalUser(req) : null; sendHtml(res, renderClientPortal(_sess)); return; }
 
   // ═══════════════════ PORTAL DO CLIENTE ═════════════════════
   if (p === '/cliente' || p === '/cliente/') {
-    if (!isPortalSession(req)) { sendHtml(res, renderPortalLogin()); return; }
+    const requestedRedirect = safeLocalRedirect(url.searchParams.get('redir') || '');
+    if (!isPortalSession(req)) { sendHtml(res, renderStandalonePortalLogin('', requestedRedirect)); return; }
+    if (requestedRedirect && requestedRedirect !== '/cliente') { res.writeHead(302, { Location: requestedRedirect }); res.end(); return; }
     const sess = getPortalUser(req);
     try {
       const db = await getMongoDb();
       const user = await db.collection('portal_users').findOne({ _id: sess.email });
-      if (!user) { res.setHeader('Set-Cookie','zv_portal=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict'); sendHtml(res, renderPortalLogin()); return; }
+      if (!user) { res.setHeader('Set-Cookie','zv_portal=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict'); sendHtml(res, renderStandalonePortalLogin()); return; }
       let keyData = null;
       if (user.keyCode) {
         await ensureKeyLoaded(user.keyCode);
@@ -10490,30 +12360,30 @@ async function handleRequest(req, res) {
       }
       const _dashOk = url.searchParams.get('ok');
       const _dashMsg = _dashOk === '2fa_off' ? '2FA desativado com sucesso.' : _dashOk === '1' ? 'Operação realizada com sucesso.' : '';
-      sendHtml(res, renderPortalDashboard(user, keyData, _dashMsg)); return;
-    } catch(e) { console.error('[Portal] dashboard:', e.message); sendHtml(res, renderPortalLogin('Erro temporário.')); return; }
+      sendHtml(res, renderStandalonePortalDashboard(user, keyData, _dashMsg)); return;
+    } catch(e) { console.error('[Portal] dashboard:', e.message); sendHtml(res, renderStandalonePortalLogin('Estamos com uma indisponibilidade temporária. Sua licença não foi alterada — tente novamente em alguns instantes.')); return; }
   }
 
   if (p === '/cliente/login' && req.method === 'GET') {
     const _loginMsg = url.searchParams.get('msg');
-    if (_loginMsg === 'email_changed') { sendHtml(res, renderPortalLogin('', '', 'E-mail alterado com sucesso! Faça login com o novo e-mail.')); return; }
+    if (_loginMsg === 'email_changed') { sendHtml(res, renderStandalonePortalLogin('', '', 'E-mail alterado com sucesso! Faça login com o novo e-mail.')); return; }
     res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
 
   if (p === '/cliente/login' && req.method === 'POST') {
-    if (!checkRateLimit(ip, 'login')) { sendHtml(res, renderPortalLogin('Muitas tentativas. Aguarde 10 minutos.'), 429); return; }
+    if (!checkRateLimit(ip, 'login')) { sendHtml(res, renderStandalonePortalLogin('Muitas tentativas. Aguarde 10 minutos.'), 429); return; }
     const form = await parseFormBody(req);
     const email = (form.get('email')||'').toLowerCase().trim().slice(0,100);
     const pass  = (form.get('pass')||'').slice(0,128);
-    const redir = (form.get('redir')||'').slice(0,200);
-    if (!email || !pass) { sendHtml(res, renderPortalLogin('Preencha todos os campos.')); return; }
+    const redir = safeLocalRedirect((form.get('redir')||'').slice(0,200));
+    if (!email || !pass) { sendHtml(res, renderStandalonePortalLogin('Preencha todos os campos.')); return; }
     try {
       const db = await getMongoDb();
       const user = await db.collection('portal_users').findOne({ _id: email });
-      if (!user) { sendHtml(res, renderPortalLogin('E-mail ou senha inválidos.')); return; }
+      if (!user) { sendHtml(res, renderStandalonePortalLogin('E-mail ou senha inválidos.')); return; }
       const hash = await hashPassword(pass, user.salt);
       const _ha = Buffer.from(hash, 'hex'), _hb = Buffer.from(user.passwordHash || '', 'hex');
       const passOk = _ha.length === _hb.length && _ha.length > 0 && crypto.timingSafeEqual(_ha, _hb);
-      if (!passOk) { sendHtml(res, renderPortalLogin('E-mail ou senha inválidos.')); return; }
+      if (!passOk) { sendHtml(res, renderStandalonePortalLogin('E-mail ou senha inválidos.')); return; }
       db.collection('portal_users').updateOne({ _id: email }, { $set: { lastLogin: new Date().toISOString() } }).catch(()=>{});
       if (user.totpSecret) {
         const pendingToken = generateToken();
@@ -10524,17 +12394,17 @@ async function handleRequest(req, res) {
         const token = generateToken();
         portalSessions[token] = { email, name: user.name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
         res.setHeader('Set-Cookie', `zv_portal=${token}; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=86400`);
-        const dest = redir && redir.startsWith('/') ? redir : '/cliente';
+        const dest = redir || '/cliente';
         res.writeHead(302, { Location: dest }); res.end();
       }
-    } catch(e) { console.error('[Portal] login:', e.message); sendHtml(res, renderPortalLogin('Erro temporário.')); return; }
+    } catch(e) { console.error('[Portal] login:', e.message); sendHtml(res, renderStandalonePortalLogin('Estamos com uma indisponibilidade temporária. Tente novamente em alguns instantes.')); return; }
     return;
   }
 
-  if (p === '/cliente/registro' && req.method === 'GET') { sendHtml(res, renderPortalRegister()); return; }
+  if (p === '/cliente/registro' && req.method === 'GET') { sendHtml(res, renderStandalonePortalRegister('', {}, safeLocalRedirect(url.searchParams.get('redir') || ''))); return; }
 
   if (p === '/cliente/registro' && req.method === 'POST') {
-    if (!checkRateLimit(ip, 'login')) { sendHtml(res, renderPortalRegister('Muitas tentativas.'), 429); return; }
+    if (!checkRateLimit(ip, 'login')) { sendHtml(res, renderStandalonePortalRegister('Muitas tentativas.'), 429); return; }
     const form = await parseFormBody(req);
     const name    = (form.get('name')||'').trim().slice(0,80);
     const email   = (form.get('email')||'').toLowerCase().trim().slice(0,100);
@@ -10542,18 +12412,19 @@ async function handleRequest(req, res) {
     const keycode = ((form.get('keycode')||'').toLowerCase().trim()).replace(/[^a-z0-9\-_]/g,'').slice(0,30);
     const pass    = (form.get('pass')||'').slice(0,128);
     const pass2   = (form.get('pass2')||'').slice(0,128);
+    const redir   = safeLocalRedirect((form.get('redir')||'').slice(0,200));
     const vals = { name, email, phone, keycode };
-    if (!name || !email || !pass) { sendHtml(res, renderPortalRegister('Preencha nome, e-mail e senha.', vals)); return; }
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { sendHtml(res, renderPortalRegister('E-mail inválido.', vals)); return; }
-    if (pass.length < 8) { sendHtml(res, renderPortalRegister('Senha: mínimo 8 caracteres.', vals)); return; }
-    if (pass !== pass2) { sendHtml(res, renderPortalRegister('As senhas não coincidem.', vals)); return; }
+    if (!name || !email || !pass) { sendHtml(res, renderStandalonePortalRegister('Preencha nome, e-mail e senha.', vals, redir)); return; }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { sendHtml(res, renderStandalonePortalRegister('E-mail inválido.', vals, redir)); return; }
+    if (pass.length < 8) { sendHtml(res, renderStandalonePortalRegister('Senha: mínimo 8 caracteres.', vals, redir)); return; }
+    if (pass !== pass2) { sendHtml(res, renderStandalonePortalRegister('As senhas não coincidem.', vals, redir)); return; }
     try {
       const db = await getMongoDb();
       const existing = await db.collection('portal_users').findOne({ _id: email });
-      if (existing) { sendHtml(res, renderPortalRegister('E-mail já cadastrado.', vals)); return; }
+      if (existing) { sendHtml(res, renderStandalonePortalRegister('E-mail já cadastrado.', vals, redir)); return; }
       if (keycode) {
         await ensureKeyLoaded(keycode);
-        if (!keys[keycode]) { sendHtml(res, renderPortalRegister('Chave não encontrada. Deixe em branco para vincular depois.', vals)); return; }
+        if (!keys[keycode]) { sendHtml(res, renderStandalonePortalRegister('Chave não encontrada. Deixe em branco para vincular depois.', vals, redir)); return; }
       }
       const salt = genSalt();
       const passwordHash = await hashPassword(pass, salt);
@@ -10561,8 +12432,8 @@ async function handleRequest(req, res) {
       const token = generateToken();
       portalSessions[token] = { email, name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
       res.setHeader('Set-Cookie', `zv_portal=${token}; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=86400`);
-      res.writeHead(302, { Location: '/cliente' }); res.end();
-    } catch(e) { console.error('[Portal] registro:', e.message); sendHtml(res, renderPortalRegister('Erro ao criar conta.', vals)); return; }
+      res.writeHead(302, { Location: redir || '/cliente' }); res.end();
+    } catch(e) { console.error('[Portal] registro:', e.message); sendHtml(res, renderStandalonePortalRegister('Erro ao criar conta.', vals, redir)); return; }
     return;
   }
 
@@ -10575,19 +12446,19 @@ async function handleRequest(req, res) {
 
   if (p === '/cliente/vincular') {
     if (!isPortalSession(req)) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
-    if (req.method === 'GET') { sendHtml(res, renderPortalLinkKey()); return; }
+    if (req.method === 'GET') { sendHtml(res, renderStandalonePortalLinkKey()); return; }
     if (req.method === 'POST') {
       const form = await parseFormBody(req);
       const keycode = ((form.get('keycode')||'').toLowerCase().trim()).replace(/[^a-z0-9\-_]/g,'').slice(0,30);
-      if (!keycode) { sendHtml(res, renderPortalLinkKey('Informe o código da chave.')); return; }
+      if (!keycode) { sendHtml(res, renderStandalonePortalLinkKey('Informe o código da chave.')); return; }
       await ensureKeyLoaded(keycode);
-      if (!keys[keycode]) { sendHtml(res, renderPortalLinkKey('Chave não encontrada.')); return; }
+      if (!keys[keycode]) { sendHtml(res, renderStandalonePortalLinkKey('Chave não encontrada.')); return; }
       const sess = getPortalUser(req);
       try {
         const db = await getMongoDb();
         await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { keyCode: keycode } });
         res.writeHead(302, { Location: '/cliente' }); res.end(); return;
-      } catch(e) { sendHtml(res, renderPortalLinkKey('Erro ao vincular.')); return; }
+      } catch(e) { sendHtml(res, renderStandalonePortalLinkKey('Erro ao vincular.')); return; }
     }
   }
 
@@ -10601,29 +12472,51 @@ async function handleRequest(req, res) {
     res.writeHead(302, { Location: '/cliente' }); res.end(); return;
   }
 
+  if (p === '/cliente/dispositivos/remover' && req.method === 'POST') {
+    if (!isPortalSession(req)) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
+    const sess = getPortalUser(req);
+    const form = await parseFormBody(req);
+    const indexRaw = String(form.get('index') || '');
+    if (!/^\d{1,3}$/.test(indexRaw)) { sendJson(res, { error: 'invalid_device' }, 400); return; }
+    try {
+      const db = await getMongoDb();
+      const user = await db.collection('portal_users').findOne({ _id: sess.email });
+      if (!user?.keyCode || !await ensureKeyLoaded(user.keyCode)) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
+      const key = keys[user.keyCode];
+      const phone = Array.isArray(key.phones) ? key.phones[Number(indexRaw)] : null;
+      if (!phone) { sendJson(res, { error: 'device_not_found' }, 404); return; }
+      removePhoneFromKey(key, phone);
+      await _writeKeyToDbStrict(user.keyCode);
+      res.writeHead(302, { Location: '/cliente?ok=1' }); res.end(); return;
+    } catch (e) {
+      console.error('[Portal] remoção de dispositivo:', e.message);
+      sendJson(res, { error: 'temporarily_unavailable' }, 503); return;
+    }
+  }
+
   if (p === '/cliente/email') {
     if (!isPortalSession(req)) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
-    if (req.method === 'GET') { sendHtml(res, renderPortalChangeEmail()); return; }
+    if (req.method === 'GET') { sendHtml(res, renderStandalonePortalChangeEmail()); return; }
     if (req.method === 'POST') {
       const sess = getPortalUser(req);
       const form = await parseFormBody(req);
       const newemail  = (form.get('newemail')||'').toLowerCase().trim().slice(0,120);
       const newemail2 = (form.get('newemail2')||'').toLowerCase().trim().slice(0,120);
       const pass = (form.get('pass')||'').slice(0,128);
-      if (!newemail || !newemail2 || !pass) { sendHtml(res, renderPortalChangeEmail('Preencha todos os campos.')); return; }
-      if (newemail !== newemail2) { sendHtml(res, renderPortalChangeEmail('Os e-mails não coincidem.')); return; }
-      if (newemail === sess.email) { sendHtml(res, renderPortalChangeEmail('O novo e-mail é igual ao atual.')); return; }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newemail)) { sendHtml(res, renderPortalChangeEmail('E-mail inválido.')); return; }
+      if (!newemail || !newemail2 || !pass) { sendHtml(res, renderStandalonePortalChangeEmail('Preencha todos os campos.')); return; }
+      if (newemail !== newemail2) { sendHtml(res, renderStandalonePortalChangeEmail('Os e-mails não coincidem.')); return; }
+      if (newemail === sess.email) { sendHtml(res, renderStandalonePortalChangeEmail('O novo e-mail é igual ao atual.')); return; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newemail)) { sendHtml(res, renderStandalonePortalChangeEmail('E-mail inválido.')); return; }
       try {
         const db = await getMongoDb();
         const user = await db.collection('portal_users').findOne({ _id: sess.email });
-        if (!user) { sendHtml(res, renderPortalChangeEmail('Sessão inválida. Faça login novamente.')); return; }
+        if (!user) { sendHtml(res, renderStandalonePortalChangeEmail('Sessão inválida. Faça login novamente.')); return; }
         const hash = await hashPassword(pass, user.salt);
         const _ha = Buffer.from(hash,'hex'), _hb = Buffer.from(user.passwordHash||'','hex');
         const passOk = _ha.length===_hb.length && _ha.length>0 && crypto.timingSafeEqual(_ha,_hb);
-        if (!passOk) { sendHtml(res, renderPortalChangeEmail('Senha incorreta.')); return; }
+        if (!passOk) { sendHtml(res, renderStandalonePortalChangeEmail('Senha incorreta.')); return; }
         const exists = await db.collection('portal_users').findOne({ _id: newemail });
-        if (exists) { sendHtml(res, renderPortalChangeEmail('Este e-mail já está cadastrado.')); return; }
+        if (exists) { sendHtml(res, renderStandalonePortalChangeEmail('Este e-mail já está cadastrado.')); return; }
         const newUser = { ...user, _id: newemail };
         await db.collection('portal_users').insertOne(newUser);
         await db.collection('portal_users').deleteOne({ _id: sess.email });
@@ -10632,36 +12525,36 @@ async function handleRequest(req, res) {
         if (_cookie) delete portalSessions[_cookie[1]];
         res.setHeader('Set-Cookie','zv_portal=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict');
         res.writeHead(302, { Location: '/cliente/login?msg=email_changed' }); res.end(); return;
-      } catch(e) { console.error('[Portal] email change:', e.message); sendHtml(res, renderPortalChangeEmail('Erro interno. Tente novamente.')); return; }
+      } catch(e) { console.error('[Portal] email change:', e.message); sendHtml(res, renderStandalonePortalChangeEmail('Erro interno. Tente novamente.')); return; }
     }
   }
 
   if (p === '/cliente/senha') {
     if (!isPortalSession(req)) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
-    if (req.method === 'GET') { const _ok=url.searchParams.get('ok'); sendHtml(res, renderPortalChangePwd(_ok?'':'',_ok?'Senha alterada com sucesso!':'')); return; }
+    if (req.method === 'GET') { const _ok=url.searchParams.get('ok'); sendHtml(res, renderStandalonePortalChangePwd(_ok?'':'',_ok?'Senha alterada com sucesso!':'')); return; }
     if (req.method === 'POST') {
       const form = await parseFormBody(req);
       const old  = (form.get('old')||'').slice(0,128);
       const pass = (form.get('pass')||'').slice(0,128);
       const pass2= (form.get('pass2')||'').slice(0,128);
-      if (pass.length < 8) { sendHtml(res, renderPortalChangePwd('Nova senha: mínimo 8 caracteres.')); return; }
-      if (pass !== pass2) { sendHtml(res, renderPortalChangePwd('As senhas não coincidem.')); return; }
+      if (pass.length < 8) { sendHtml(res, renderStandalonePortalChangePwd('Nova senha: mínimo 8 caracteres.')); return; }
+      if (pass !== pass2) { sendHtml(res, renderStandalonePortalChangePwd('As senhas não coincidem.')); return; }
       const sess = getPortalUser(req);
       try {
         const db = await getMongoDb();
         const user = await db.collection('portal_users').findOne({ _id: sess.email });
-        if (!user) { sendHtml(res, renderPortalChangePwd('Sessão inválida.')); return; }
+        if (!user) { sendHtml(res, renderStandalonePortalChangePwd('Sessão inválida.')); return; }
         const oldHash = await hashPassword(old, user.salt);
         const _oa = Buffer.from(oldHash, 'hex'), _ob = Buffer.from(user.passwordHash || '', 'hex');
         const oldOk = _oa.length === _ob.length && _oa.length > 0 && crypto.timingSafeEqual(_oa, _ob);
-        if (!oldOk) { sendHtml(res, renderPortalChangePwd('Senha atual incorreta.')); return; }
+        if (!oldOk) { sendHtml(res, renderStandalonePortalChangePwd('Senha atual incorreta.')); return; }
         const salt = genSalt();
         const passwordHash = await hashPassword(pass, salt);
         await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { passwordHash, salt } });
         // Mantem a sessao atual, revoga as demais (dispositivos/invasores antigos).
         revokePortalSessions(sess.email, ((req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/)||[])[1]);
         res.writeHead(302, { Location: '/cliente/senha?ok=1' }); res.end(); return;
-      } catch(e) { sendHtml(res, renderPortalChangePwd('Erro ao alterar senha.')); return; }
+      } catch(e) { sendHtml(res, renderStandalonePortalChangePwd('Erro ao alterar senha.')); return; }
     }
   }
   // ── Recuperação de senha ──────────────────────────────────
@@ -10725,25 +12618,25 @@ async function handleRequest(req, res) {
     }
   }
 
-  // ── 2FA portal ────────────────────────────────────────────
+  // ── 2FA portal (standalone — mesmo contrato, view renderStandalone*2FA*) ──
   if (p === '/cliente/2fa/verificar') {
     const sess = getPortalUser(req);
     if (!sess || !sess.pending2fa) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
-    if (req.method === 'GET') { sendHtml(res, renderPortal2FAVerify()); return; }
+    if (req.method === 'GET') { sendHtml(res, renderStandalone2FAVerify()); return; }
     if (req.method === 'POST') {
-      if (!checkRateLimit(ip, 'twofa')) { sendHtml(res, renderPortal2FAVerify('Muitas tentativas. Aguarde 10 minutos.'), 429); return; }
+      if (!checkRateLimit(ip, 'twofa')) { sendHtml(res, renderStandalone2FAVerify('Muitas tentativas. Aguarde 10 minutos.'), 429); return; }
       const form = await parseFormBody(req);
       const code = (form.get('code')||'').trim();
       try {
         const db   = await getMongoDb();
         const user = await db.collection('portal_users').findOne({ _id: sess.email });
-        if (!user || !verifyTOTP(user.totpSecret, code)) { addSecurityAlert('BRUTE_FORCE', '2FA falhou para ' + sess.email, ip); sendHtml(res, renderPortal2FAVerify('Código inválido. Tente novamente.')); return; }
+        if (!user || !verifyTOTP(user.totpSecret, code)) { addSecurityAlert('BRUTE_FORCE', '2FA falhou para ' + sess.email, ip); sendHtml(res, renderStandalone2FAVerify('Código inválido. Tente novamente.')); return; }
         const m = (req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/);
         if (m) portalSessions[m[1]] = { email: sess.email, name: sess.name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
         res.setHeader('Set-Cookie', `zv_portal=${m[1]}; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=86400`);
         const dest = sess.redir && sess.redir.startsWith('/') ? sess.redir : '/cliente';
         res.writeHead(302, { Location: dest }); res.end();
-      } catch(e) { sendHtml(res, renderPortal2FAVerify('Erro temporário.')); return; }
+      } catch(e) { sendHtml(res, renderStandalone2FAVerify('Erro temporário.')); return; }
       return;
     }
   }
@@ -10754,20 +12647,20 @@ async function handleRequest(req, res) {
     try {
       const db   = await getMongoDb();
       const user = await db.collection('portal_users').findOne({ _id: sess.email });
-      const _2faOk=url.searchParams.get('ok'); if (user && user.totpSecret) { sendHtml(res, renderPortalSetup2FA(user, '', '', _2faOk?'2FA ativado com sucesso! Sua conta está protegida.':'')); return; }
+      const _2faOk=url.searchParams.get('ok'); if (user && user.totpSecret) { sendHtml(res, renderStandaloneSetup2FA(user, '', '', _2faOk?'2FA ativado com sucesso! Sua conta está protegida.':'')); return; }
       let pending = user && user.pendingTotpSecret && user.pendingTotpExpiresAt && new Date() < new Date(user.pendingTotpExpiresAt)
         ? user.pendingTotpSecret : null;
       if (!pending) {
         pending = genTotpSecret();
         await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { pendingTotpSecret: pending, pendingTotpExpiresAt: new Date(Date.now() + 15 * 60000) } });
       }
-      sendHtml(res, renderPortalSetup2FA(user, pending, '', '')); return;
-    } catch(e) { sendHtml(res, renderPortalSetup2FA(null, '', 'Erro ao carregar configuração.', '')); return; }
+      sendHtml(res, renderStandaloneSetup2FA(user, pending, '', '')); return;
+    } catch(e) { sendHtml(res, renderStandaloneSetup2FA(null, '', 'Erro ao carregar configuração.', '')); return; }
   }
 
   if (p === '/cliente/2fa/ativar' && req.method === 'POST') {
     if (!isPortalSession(req)) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
-    if (!checkRateLimit(ip, 'twofa')) { sendHtml(res, renderPortalSetup2FA(null, '', 'Muitas tentativas. Aguarde 10 minutos.', ''), 429); return; }
+    if (!checkRateLimit(ip, 'twofa')) { sendHtml(res, renderStandaloneSetup2FA(null, '', 'Muitas tentativas. Aguarde 10 minutos.', ''), 429); return; }
     const sess = getPortalUser(req);
     const form = await parseFormBody(req);
     const code = (form.get('code')||'').trim();
@@ -10776,32 +12669,39 @@ async function handleRequest(req, res) {
       const user = await db.collection('portal_users').findOne({ _id: sess.email });
       const pending = user && user.pendingTotpSecret && user.pendingTotpExpiresAt && new Date() < new Date(user.pendingTotpExpiresAt)
         ? user.pendingTotpSecret : null;
-      if (!pending) { sendHtml(res, renderPortalSetup2FA(user, '', 'Sessão expirada. Tente novamente.', '')); return; }
-      if (!verifyTOTP(pending, code)) { sendHtml(res, renderPortalSetup2FA(user, pending, 'Código inválido. Tente novamente.', '')); return; }
+      if (!pending) { sendHtml(res, renderStandaloneSetup2FA(user, '', 'Sessão expirada. Tente novamente.', '')); return; }
+      if (!verifyTOTP(pending, code)) { sendHtml(res, renderStandaloneSetup2FA(user, pending, 'Código inválido. Tente novamente.', '')); return; }
       await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { totpSecret: pending }, $unset: { pendingTotpSecret: '', pendingTotpExpiresAt: '' } });
       const updated = await db.collection('portal_users').findOne({ _id: sess.email });
       res.writeHead(302, { Location: '/cliente/2fa/setup?ok=ativado' }); res.end(); return;
-    } catch(e) { sendHtml(res, renderPortalSetup2FA(null, '', 'Erro ao ativar 2FA.', '')); return; }
+    } catch(e) { sendHtml(res, renderStandaloneSetup2FA(null, '', 'Erro ao ativar 2FA.', '')); return; }
   }
 
   if (p === '/cliente/2fa/desativar' && req.method === 'POST') {
     if (!isPortalSession(req)) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
-    if (!checkRateLimit(ip, 'twofa')) { sendHtml(res, renderPortalSetup2FA(null, '', 'Muitas tentativas. Aguarde.', ''), 429); return; }
+    if (!checkRateLimit(ip, 'twofa')) { sendHtml(res, renderStandaloneSetup2FA(null, '', 'Muitas tentativas. Aguarde.', ''), 429); return; }
     const sess = getPortalUser(req);
     const form = await parseFormBody(req);
     const code = (form.get('code')||'').trim();
     try {
       const db   = await getMongoDb();
       const user = await db.collection('portal_users').findOne({ _id: sess.email });
-      if (!user || !verifyTOTP(user.totpSecret||'', code)) { sendHtml(res, renderPortalSetup2FA(user, '', 'Código 2FA inválido.', '')); return; }
+      if (!user || !verifyTOTP(user.totpSecret||'', code)) { sendHtml(res, renderStandaloneSetup2FA(user, '', 'Código 2FA inválido.', '')); return; }
       await db.collection('portal_users').updateOne({ _id: sess.email }, { $unset: { totpSecret: '', pendingTotpSecret: '', pendingTotpExpiresAt: '' } });
       res.writeHead(302, { Location: '/cliente?ok=2fa_off' }); res.end(); return;
-    } catch(e) { sendHtml(res, renderPortalSetup2FA(null, '', 'Erro ao desativar 2FA.', '')); return; }
+    } catch(e) { sendHtml(res, renderStandaloneSetup2FA(null, '', 'Erro ao desativar 2FA.', '')); return; }
   }
 
   // ══════════════ fim portal do cliente ══════════════════════
 
-
+  // Rota não encontrada: navegação real de navegador (Accept: text/html)
+  // recebe a página 404 do standalone; qualquer outra coisa (extensão,
+  // scripts, fetch de API) mantém o JSON de sempre — contrato preservado.
+  if (req.method === 'GET' && (req.headers.accept || '').includes('text/html')) {
+    const _sess404 = isPortalSession(req) ? getPortalUser(req) : null;
+    sendHtml(res, renderStandalone404Page(_sess404), 404);
+    return;
+  }
   sendJson(res, { error: 'not_found' }, 404);
 }
 
@@ -10837,6 +12737,7 @@ async function gracefulShutdown(signal) {
   clearTimeout(forceExit);
   process.exit(0);
 }
+if (require.main === module) {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
 (async () => {
@@ -10851,7 +12752,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     console.log(
       `✅ zvm-lr1290 v10 — porta ${PORT}\n` +
       `🍃 MongoDB: zapvoice.store | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}\n` +
-      `🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | 2FA: ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | Webhook Vendas: ${SALE_WEBHOOK_SECRET ? 'ATIVO' : '⚠ INATIVO'} | Partner API: ${PARTNER_API_TOKEN ? 'ATIVO' : '⚠ INATIVO'}\n` +
+      `🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | 2FA: ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | Webhook Vendas: ${SALE_WEBHOOK_SECRET ? 'ATIVO' : '⚠ INATIVO'} | Cakto: ${CAKTO_WEBHOOK_SECRET ? 'ATIVO' : '⚠ INATIVO'} | Partner API: ${PARTNER_API_TOKEN ? 'ATIVO' : '⚠ INATIVO'}\n` +
       `🔑 Admin ZVM: ${R_ADMIN} | User: ${ADMIN_USER}\n` +
       `🔑 Admin WSM: /WSM${WSM.adminSlug()} | Mod WSM: /WSM${WSM.modSlug()} (banco: ${process.env.WSM_MONGODB_DB || 'watidy'})\n` +
       `👮 Mod:   ${MODS.length > 0 ? R_MOD+' | '+MODS.length+' mod(s): '+MODS.map(m=>m.name).join(', ') : '⚠ inativo'}\n` +
@@ -10862,7 +12763,16 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     const safeHandler = (req, res) => {
       handleRequest(req, res).catch(err => {
         console.error(`[ERRO] ${req.method} ${req.url.split('?')[0]}:`, err.message||err);
-        if (!res.headersSent) { res.writeHead(500); res.end('Internal Server Error'); }
+        if (res.headersSent) return;
+        // Navegação real de navegador fora de /wsm|/WSM ganha a página de
+        // indisponibilidade temporária do standalone; qualquer outro caso
+        // (API, extensão, rotas WSM) mantém o texto plano de sempre.
+        const _path = (req.url || '').split('?')[0];
+        const _isHtmlNav = req.method === 'GET' && (req.headers.accept || '').includes('text/html') && !/^\/wsm(\/|$)/i.test(_path);
+        if (_isHtmlNav) {
+          try { res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(renderStandalone500Page()); return; } catch (_) { /* fallback abaixo */ }
+        }
+        res.writeHead(500); res.end('Internal Server Error');
       });
     };
 
@@ -10902,4 +12812,36 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     process.exit(1);
   }
 })();
+}
 
+module.exports.__test = Object.freeze({
+  keys,
+  _writeKeyToDbStrict,
+  ZVM_PLANS,
+  normalizeCaktoPurchase,
+  resolveCaktoPlan,
+  validateCaktoPayload,
+  claimCaktoEvent,
+  processCommercialSale,
+  processCaktoPurchaseEvent,
+  handleCaktoWebhook,
+  safeLocalRedirect,
+  getVerifyRedirect,
+  renderPlanosPage,
+  renderPortalDashboard: renderStandalonePortalDashboard,
+  renderStandalonePortalLogin,
+  renderStandalonePortalRegister,
+  renderLegacyPortalDashboard: renderPortalDashboard,
+  renderStandaloneLandingPage,
+  renderStandaloneFaqPage,
+  renderStandalonePrivacyPage,
+  renderLegacyPlanosPage,
+  renderStandalone2FAVerify,
+  renderStandaloneSetup2FA,
+  renderStandalonePortalLinkKey,
+  renderStandalonePortalChangePwd,
+  renderStandalonePortalChangeEmail,
+  renderStandaloneBrand,
+  renderStandalone404Page,
+  renderStandalone500Page,
+});
