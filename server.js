@@ -2075,22 +2075,41 @@ async function processCommercialSale(sale, plan, deps = {}) {
     }) || null;
   }
 
+  // P0 — retomada de falha parcial não pode somar a duração duas vezes: se
+  // persistKey/linkPortalUser/savePayment falhar DEPOIS que a chave já foi
+  // mutada em memória (criada ou renovada), o evento vira "failed" e é
+  // reprocessado do zero (ver claimCaktoEvent). Sem isto, o reprocessamento
+  // encontraria a MESMA chave via existingCode e aplicaria +duração de novo
+  // por cima do que a tentativa anterior já tinha aplicado — cliente
+  // recebendo o dobro dos dias por uma única compra. As marcas de txId já
+  // gravadas em key.note (criação: "cakto_tx:X"; renovação: "renovado_..._tx:X")
+  // servem como prova de que ESTA transação específica já mutou esta chave.
+  const txLabel = sale.testMode ? 'simulacao' : 'cakto';
+  const creationTxMarker = sale.txId ? `cakto_tx:${sale.txId}` : null;
+  const renewalTxMarker = sale.txId ? `renovado_${txLabel}_tx:${sale.txId}` : null;
+
   let keyCode;
   let renewed;
   if (existingCode) {
     keyCode = existingCode;
-    renewed = true;
     const key = keyStore[keyCode];
-    const currentExpiry = key.expiresAt ? new Date(key.expiresAt) : null;
-    const validExpiry = currentExpiry && Number.isFinite(currentExpiry.getTime()) && currentExpiry > now;
-    const base = validExpiry ? currentExpiry : now;
-    key.expiresAt = new Date(base.getTime() + durationMs).toISOString();
-    key.expireDuration = durationMs;
-    key.maxUses = plan.maxUses;
-    key.planId = plan.id;
-    key.active = true;
-    key.warnEmailSent = false;
-    key.note = [key.note || '', sale.txId ? `renovado_${sale.testMode ? 'simulacao' : 'cakto'}_tx:${sale.txId}` : `renovado_${sale.testMode ? 'simulacao' : 'cakto'}`].filter(Boolean).join('\n');
+    const alreadyRenewedThisTx = !!(renewalTxMarker && key.note && key.note.includes(renewalTxMarker));
+    const alreadyCreatedThisTx = !alreadyRenewedThisTx && !!(creationTxMarker && key.note && key.note.includes(creationTxMarker));
+    if (alreadyRenewedThisTx || alreadyCreatedThisTx) {
+      renewed = alreadyRenewedThisTx;
+    } else {
+      renewed = true;
+      const currentExpiry = key.expiresAt ? new Date(key.expiresAt) : null;
+      const validExpiry = currentExpiry && Number.isFinite(currentExpiry.getTime()) && currentExpiry > now;
+      const base = validExpiry ? currentExpiry : now;
+      key.expiresAt = new Date(base.getTime() + durationMs).toISOString();
+      key.expireDuration = durationMs;
+      key.maxUses = plan.maxUses;
+      key.planId = plan.id;
+      key.active = true;
+      key.warnEmailSent = false;
+      key.note = [key.note || '', renewalTxMarker || `renovado_${txLabel}`].filter(Boolean).join('\n');
+    }
   } else {
     keyCode = generateCode();
     renewed = false;
@@ -2103,7 +2122,7 @@ async function processCommercialSale(sale, plan, deps = {}) {
       createdAt: now.toISOString(), lastUsed: null, lastIp: null,
       lastPhone: null, deviceId: null, wppVersion: null, warnCount: 0,
       tracking: sale.tracking || null,
-      note: [sale.testMode ? 'Simulação (Analytics Lab)' : 'Pedido Cakto', `Email: ${clientEmail}`, sale.txId ? `cakto_tx:${sale.txId}` : null, sale.tracking?.compact ? `Origem: ${sale.tracking.compact}` : null].filter(Boolean).join('\n'),
+      note: [sale.testMode ? 'Simulação (Analytics Lab)' : 'Pedido Cakto', `Email: ${clientEmail}`, creationTxMarker, sale.tracking?.compact ? `Origem: ${sale.tracking.compact}` : null].filter(Boolean).join('\n'),
     };
   }
 
