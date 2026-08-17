@@ -33,6 +33,10 @@ const SALE_WEBHOOK_SECRET = process.env.SALE_WEBHOOK_SECRET || '';
 const CAKTO_WEBHOOK_SECRET = process.env.CAKTO_WEBHOOK_SECRET || '';
 const PARTNER_API_TOKEN   = process.env.PARTNER_API_TOKEN   || '';
 const ANALYTICS_PASS = process.env.ANALYTICS_PASS || '';
+// Opcional: se preenchida, exige TOTP além da senha pra entrar no Analytics
+// (mesma implementação de verifyTOTP já usada pro admin — nenhuma lib nova).
+// Vazia = compatibilidade total com o comportamento atual (só senha).
+const ANALYTICS_TOTP_SECRET = process.env.ANALYTICS_TOTP_SECRET || '';
 const MONGODB_URI  = (process.env.MONGODB_URI || '').replace(/^["']|["']$/g, '');
 const APP_SECRET   = process.env.APP_SECRET   || '';
 const TOTP_SECRET  = process.env.TOTP_SECRET  || '';
@@ -833,13 +837,66 @@ function generateTOTP(secret, window = 0) {
   return ((hmac.readUInt32BE(off) & 0x7fffffff) % 1000000).toString().padStart(6, '0');
 }
 
-function hashPassword(pass, salt) {
+// Assinatura original preservada (pass, salt) — todo chamador existente (WSM
+// incluído) continua rodando com 150000 iterações exatamente como antes. O
+// 3º parâmetro é aditivo: só quem passa explicitamente um valor sai do
+// comportamento legado.
+function hashPassword(pass, salt, iterations = 150000) {
   return new Promise((res, rej) =>
-    crypto.pbkdf2(String(pass).slice(0,128), String(salt), 150000, 64, 'sha256',
+    crypto.pbkdf2(String(pass).slice(0,128), String(salt), iterations, 64, 'sha256',
       (e, d) => e ? rej(e) : res(d.toString('hex')))
   );
 }
 function genSalt() { return crypto.randomBytes(32).toString('hex'); }
+
+// ── Portal standalone: work factor de senha versionado ──────────────────
+// Contas antigas (sem passwordIterations no registro) foram hasheadas com
+// 150000 iterações — comparar contra elas com 600000 nunca bateria e
+// derrubaria todo login legado. PASSWORD_ITERATIONS_LEGACY documenta esse
+// valor histórico; PASSWORD_ITERATIONS_CURRENT é o novo padrão (cadastro,
+// troca de senha, reset e rehash transparente pós-login legado). WSM não
+// participa deste esquema — continua chamando hashPassword(pass, salt) com
+// 2 argumentos, sempre 150000, intocado.
+const PASSWORD_ITERATIONS_LEGACY  = 150000;
+const PASSWORD_ITERATIONS_CURRENT = 600000;
+
+// Compara a senha informada contra o hash salvo, usando as iterações do
+// PRÓPRIO registro do usuário (fallback pro valor legado se o campo ainda
+// não existir — contas criadas antes desta rodada). Comparação final via
+// timingSafeEqual, como já era.
+async function verifyPortalPassword(pass, user) {
+  const iterations = user.passwordIterations || PASSWORD_ITERATIONS_LEGACY;
+  const hash = await hashPassword(pass, user.salt, iterations);
+  const _a = Buffer.from(hash, 'hex'), _b = Buffer.from(user.passwordHash || '', 'hex');
+  return _a.length === _b.length && _a.length > 0 && crypto.timingSafeEqual(_a, _b);
+}
+
+// Gera um novo hash já no formato atual (600000 iterações) — usado por
+// cadastro, troca de senha, reset de senha e rehash transparente.
+async function hashNewPortalPassword(pass) {
+  const salt = genSalt();
+  const passwordHash = await hashPassword(pass, salt, PASSWORD_ITERATIONS_CURRENT);
+  return {
+    passwordHash, salt,
+    passwordKdf: 'pbkdf2-sha256',
+    passwordIterations: PASSWORD_ITERATIONS_CURRENT,
+    passwordVersion: 2,
+  };
+}
+
+// Se o registro ainda está no formato legado (sem passwordIterations, ou
+// abaixo do valor atual), rehasheia em segundo plano após um login válido.
+// Fire-and-forget deliberado: se a escrita falhar, o próximo login legado
+// tenta de novo — nunca bloqueia nem falha o login em andamento.
+// Retorna a Promise (o chamador de login NÃO dá await nela — dispara e segue
+// pra resposta HTTP) só pra ficar testável; em produção seu resultado nunca
+// é aguardado nem afeta o fluxo de login em andamento.
+function maybeRehashPortalPassword(db, email, pass, user) {
+  if (user.passwordIterations >= PASSWORD_ITERATIONS_CURRENT) return Promise.resolve();
+  return hashNewPortalPassword(pass)
+    .then(upgraded => db.collection('portal_users').updateOne({ _id: email }, { $set: upgraded }))
+    .catch(e => console.warn('[Portal] rehash pós-login falhou (não bloqueia o login):', e.message));
+}
 
 // Comparação de segredos em tempo constante. Aceita strings de qualquer tamanho:
 // o comprimento sozinho já vaza por timing em `===`, então normalizamos via hash
@@ -859,6 +916,24 @@ function verifyTOTP(secret, token) {
     if (generateTOTP(secret, w) === token) return true;
   }
   return false;
+}
+
+// Regra de login do Analytics: senha sempre obrigatória; TOTP só é exigido
+// quando expectedTotpSecret (ANALYTICS_TOTP_SECRET) está preenchida —
+// verifyTOTP() já retorna true sozinha nesse caso, então esta função nunca
+// precisa de um "if" separado pra manter compatibilidade quando a variável
+// está vazia. Recebe expectedPass/expectedTotpSecret por parâmetro (em vez
+// de ler ANALYTICS_PASS/ANALYTICS_TOTP_SECRET direto) só pra ficar testável
+// com qualquer combinação, sem depender de como o processo foi iniciado.
+function checkAnalyticsLogin(pass, totpCode, expectedPass, expectedTotpSecret) {
+  // safeCompare já hasheia os dois lados antes do timingSafeEqual — evita
+  // por completo a comparação de comprimento em claro que o ramo anterior
+  // fazia (mesmo com fallback pra Buffer.alloc(1), ainda era um branch
+  // condicionado ao tamanho). Mesmo comportamento pros casos de borda:
+  // string vazia dos dois lados (ANALYTICS_PASS ausente) continua false.
+  const passOk = safeCompare(String(pass || ''), String(expectedPass || ''));
+  const totpOk = verifyTOTP(expectedTotpSecret, String(totpCode || '').trim());
+  return passOk && totpOk;
 }
 
 function deriveSlug(seed) {
@@ -961,12 +1036,22 @@ setInterval(async () => {
           const _pu = await _db.collection('portal_users').findOne({ keyCode: code });
           if (_pu && _pu._id) {
             const hoursLeft = Math.ceil(msLeft / 3600000);
-            await sendKeyExpiryWarningEmail(_pu._id, {
+            // warnEmailSent só é marcado com o retorno REAL do envio — antes era
+            // marcado incondicionalmente, então uma recusa do Resend (ou qualquer
+            // falha) perdia a tentativa pra sempre nesse ciclo de expiração (o
+            // cliente nunca mais recebia o aviso, mesmo com o provedor de volta
+            // no ar). Falhando, o próximo ciclo horário tenta de novo — sem risco
+            // de loop de spam, porque um sucesso interrompe as tentativas.
+            const warnSent = await sendKeyExpiryWarningEmail(_pu._id, {
               code, hoursLeft, planLabel: planLabelForMaxUses(k.maxUses), maxUses: k.maxUses,
               expiresAt: k.expiresAt, baseUrl: BASE_URL, ctaPath: '/cliente',
             });
-            keys[code].warnEmailSent = true;
-            saveKey(code).catch(() => {});
+            if (warnSent) {
+              keys[code].warnEmailSent = true;
+              saveKey(code).catch(() => {});
+            } else {
+              console.warn('[CRON] Aviso de expiração não confirmado pelo provedor — tenta de novo no próximo ciclo:', code);
+            }
           }
         } catch (e) { console.warn('[CRON] Aviso expiração:', e.message); }
       }
@@ -1202,6 +1287,33 @@ function generateCode() {
   return `zv-${seg()}-${seg()}-${seg()}`;
 }
 function generateToken() { return crypto.randomBytes(32).toString('hex'); }
+
+// Token de reset de senha do portal standalone: o valor UTILIZÁVEL (o que
+// destrava a troca de senha) nunca fica em claro no Mongo. O e-mail recebe
+// o rawToken; o banco guarda só o hash. Um vazamento de leitura do Mongo
+// (backup exposto, dump, acesso indevido a um admin do banco) deixa de ser
+// um caminho direto de account takeover — o hash sozinho não autentica nada.
+function hashResetToken(rawToken) {
+  return crypto.createHash('sha256').update(String(rawToken)).digest('hex');
+}
+
+// Resolve um rawToken (o que veio do link do e-mail) pro registro em
+// password_resets: tenta pelo hash (formato atual) e só cai pro valor cru
+// se não achar — tokens emitidos antes desta migração, ainda dentro da
+// validade de 1h (compatibilidade temporária, ver item P0 do relatório).
+// Retorna { rec: null, matchedId: null } se não achar ou se já expirou —
+// o chamador não precisa saber qual dos dois formatos casou.
+async function resolveResetToken(db, rawToken) {
+  const tokenHash = hashResetToken(rawToken);
+  let rec = await db.collection('password_resets').findOne({ _id: tokenHash });
+  let matchedId = tokenHash;
+  if (!rec) {
+    rec = await db.collection('password_resets').findOne({ _id: rawToken });
+    matchedId = rawToken;
+  }
+  if (!rec || new Date() > new Date(rec.expiresAt)) return { rec: null, matchedId: null };
+  return { rec, matchedId };
+}
 
 function isFreeAuthKey(key) {
   return key === FREE_AUTH_KEY;
@@ -1811,6 +1923,16 @@ function getIp(req) {
   return raw.replace(/[^0-9a-fA-F.:[\]]/g, '').slice(0, 45) || 'N/A';
 }
 
+// Limite absoluto pra sessões privilegiadas (admin/mod/analytics — NÃO o
+// portal do cliente). O timeout de inatividade (sliding, 8h) continua
+// existindo, mas sozinho ele deixava uma sessão viver indefinidamente
+// contanto que alguém continuasse usando — um cookie roubado/vazado
+// permanecia válido pra sempre. 24h é conservador o bastante pra não
+// atrapalhar um turno de trabalho normal do admin/moderador, mas força
+// login de novo pelo menos uma vez por dia. Deliberadamente NÃO vinculado
+// a IP: troca legítima de rede (wifi -> 4G, VPN) não deve derrubar sessão.
+const SESSION_ABSOLUTE_LIMIT_MS = 24 * 60 * 60 * 1000;
+
 function isAdminSession(req) {
   const cookie = req.headers.cookie || '';
   const match  = cookie.match(/zv_admin=([a-f0-9]+)/);
@@ -1818,6 +1940,7 @@ function isAdminSession(req) {
   const s = sessions[match[1]];
   if (!s) return false;
   if (new Date() > new Date(s.expiresAt)) { delete sessions[match[1]]; return false; }
+  if (s.absoluteExpiresAt && new Date() > new Date(s.absoluteExpiresAt)) { delete sessions[match[1]]; return false; }
   // Sliding expiry: renova por mais 8h a cada acesso autenticado
   s.expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString();
   return true;
@@ -1835,6 +1958,7 @@ function isModSession(req) {
   const s = modSessions[match[1]];
   if (!s) return false;
   if (new Date() > new Date(s.expiresAt)) { delete modSessions[match[1]]; return false; }
+  if (s.absoluteExpiresAt && new Date() > new Date(s.absoluteExpiresAt)) { delete modSessions[match[1]]; return false; }
   // Sliding expiry: renova por mais 8h a cada acesso autenticado
   s.expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString();
   return true;
@@ -1890,11 +2014,22 @@ function isAnalyticsSession(req) {
   const s = analyticsSessions[match[1]];
   if (!s) return false; // sessão não encontrada (servidor reiniciado) — cookie inválido
   if (new Date() > new Date(s.expiresAt)) { delete analyticsSessions[match[1]]; return false; }
+  if (s.absoluteExpiresAt && new Date() > new Date(s.absoluteExpiresAt)) { delete analyticsSessions[match[1]]; return false; }
   return true;
 }
-function clearAnalyticsCookie(res) {
-  res.setHeader('Set-Cookie', 'zv_an=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict; Secure');
+// ── Cookies de sessão autenticada (portal/admin/mod/analytics) ──────────
+// Todo cookie de sessão do namespace top-level (não-WSM) passa por aqui —
+// evita a inconsistência que existia antes (algumas limpezas de zv_portal
+// sem Secure). Nomes de cookie continuam exatamente os mesmos
+// (zv_portal/zv_admin/zv_mod/zv_an); só a criação/remoção foi centralizada.
+function setSessionCookie(res, name, token, maxAgeSec) {
+  const maxAge = maxAgeSec ? `; Max-Age=${maxAgeSec}` : '';
+  res.setHeader('Set-Cookie', `${name}=${token}; Path=/; HttpOnly; SameSite=Strict; Secure${maxAge}`);
 }
+function clearSessionCookie(res, name) {
+  res.setHeader('Set-Cookie', `${name}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0; HttpOnly; SameSite=Strict; Secure`);
+}
+function clearAnalyticsCookie(res) { clearSessionCookie(res, 'zv_an'); }
 
 async function savePayment(payment, { strict = false } = {}) {
   try {
@@ -1995,6 +2130,10 @@ async function processCommercialSale(sale, plan, deps = {}) {
     rawStatus: sale.event,
   });
 
+  // emailDelivered é reportado de volta ao chamador (o Laboratório de Testes
+  // depende disso pra não afirmar "e-mail enviado" quando o provedor recusou
+  // ou a chamada falhou — antes esse resultado era só logado e descartado).
+  let emailDelivered = false;
   try {
     const delivered = await deliveryMailer(clientEmail, {
       code: keyCode, planLabel: plan.shortName, maxUses: plan.maxUses,
@@ -2002,11 +2141,12 @@ async function processCommercialSale(sale, plan, deps = {}) {
       baseUrl: BASE_URL, extensionUrl: EXTENSION_URL,
       ctaPath: '/cliente', // fluxo Cakto/standalone - legado (sale/payt webhook, partner API) continua em /verificar
     });
-    if (delivered === false) console.warn('[CAKTO] Provedor recusou o e-mail de entrega para', maskEmail(clientEmail));
+    emailDelivered = !!delivered;
+    if (!emailDelivered) console.warn('[CAKTO] Provedor recusou o e-mail de entrega para', maskEmail(clientEmail));
   } catch (e) { console.warn('[CAKTO] Falha ao enviar e-mail de entrega:', e.message); }
 
   invalidateKeysHtmlCache();
-  return { keyCode, renewed, expiresAt: keyStore[keyCode].expiresAt, maxUses: plan.maxUses };
+  return { keyCode, renewed, expiresAt: keyStore[keyCode].expiresAt, maxUses: plan.maxUses, emailDelivered };
 }
 
 // ── Laboratório de Testes (Analytics) ───────────────────────────────────
@@ -2032,7 +2172,12 @@ function resolveLabPlan(planId) {
   return plan || null;
 }
 
-async function simulateCommercialSale({ planId, name, email, phone, method, execute = false, sendRealEmail = false }) {
+// _testSavePayment: override só para os testes automatizados alcançarem o
+// EXECUTE sem tocar o MongoDB real (savePayment normalmente não é
+// injetável aqui, diferente de processCommercialSale). A rota HTTP do
+// Laboratório nunca passa esse parâmetro — comportamento em produção
+// idêntico ao de antes.
+async function simulateCommercialSale({ planId, name, email, phone, method, execute = false, sendRealEmail = false, _testSavePayment = null }) {
   const plan = resolveLabPlan(planId);
   if (!plan) { const e = new Error('lab_invalid_plan'); e.code = 'invalid_plan'; throw e; }
 
@@ -2085,7 +2230,7 @@ async function simulateCommercialSale({ planId, name, email, phone, method, exec
     findPortalUser: async () => null,
     linkPortalUser: async () => {},
     persistKey: async () => {},
-    savePayment: payment => savePayment(payment, { strict: true }),
+    savePayment: _testSavePayment || (payment => savePayment(payment, { strict: true })),
     sendKeyDeliveryEmail: sendRealEmail ? sendKeyDeliveryEmail : (async () => true),
     now,
   });
@@ -2094,7 +2239,12 @@ async function simulateCommercialSale({ planId, name, email, phone, method, exec
     mode: 'execute', planId: plan.id, planName: plan.name, price: plan.price,
     maxUses: plan.maxUses, durationDays: plan.durationDays,
     wouldRenew: result.renewed, wouldCreate: !result.renewed, expiresAt: result.expiresAt,
-    paymentMethod, email: clientEmail, persisted: true, emailSent: !!sendRealEmail,
+    paymentMethod, email: clientEmail, persisted: true,
+    // Antes isto era `!!sendRealEmail` — refletia só se o checkbox estava
+    // marcado, não se o e-mail REALMENTE saiu. Um provedor recusando o envio
+    // (ou qualquer outra falha) continuava sendo relatado como "enviado" pro
+    // admin. Agora reflete o resultado real que processCommercialSale devolve.
+    emailSent: sendRealEmail ? !!result.emailDelivered : false,
     txId, keyCode: result.keyCode,
   };
 }
@@ -2493,7 +2643,7 @@ const _SEC_HEADERS = {
   'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
   // frame-src/media-src precisam citar o YouTube: sem eles o iframe do tutorial cai
   // no default-src 'self' e o navegador bloqueia com ERR_BLOCKED_BY_CSP.
-  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https://api.qrserver.com https://pps.whatsapp.net https://i.ytimg.com; connect-src 'self'; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; media-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'",
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https://api.qrserver.com https://pps.whatsapp.net https://i.ytimg.com; connect-src 'self'; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; media-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests",
   'Server': 'ZVM',
 };
 
@@ -3704,7 +3854,7 @@ function renderStandalonePortalRegister(err = '', vals = {}, redir = '') {
         <input type="hidden" name="redir" value="${escHtml(safeRedirect)}">
         <div class="auth-field"><label for="reg-name">Nome completo</label><input id="reg-name" type="text" name="name" placeholder="João Silva" required value="${v('name')}" maxlength="80" autocomplete="name"></div>
         <div class="auth-field"><label for="reg-email">E-mail</label><input id="reg-email" type="email" name="email" placeholder="seu@email.com" required value="${v('email')}" autocomplete="email">
-          <div class="auth-field-hint">Use este e-mail no checkout da Cakto pra vincular sua compra automaticamente.</div>
+          <div class="auth-field-hint">Use este e-mail na página de pagamento para vincular sua compra automaticamente.</div>
         </div>
         <div class="auth-field"><label for="reg-phone">WhatsApp (com DDD)</label><input id="reg-phone" type="tel" name="phone" placeholder="11999990000" value="${v('phone')}" maxlength="20" pattern="[0-9+\\s()-]{8,20}" autocomplete="tel"></div>
         <div class="auth-field"><label for="reg-keycode">Chave ZVM (opcional)</label><input id="reg-keycode" type="text" name="keycode" placeholder="zv-xxxxx-xxxxx-xxxxx" value="${v('keycode')}" maxlength="30">
@@ -3754,14 +3904,17 @@ function _securityPromo(eyebrow, title) {
 // ZapVoice antigo (áudios enviados, etc.) foram removidas; cada item
 // abaixo corresponde a um recurso que o standalone realmente tem hoje.
 const ZVM_FAQ_ITEMS = [
+  ['Como recebo minha licença depois da compra?', 'Assim que o pagamento é aprovado, sua chave é gerada e enviada automaticamente por e-mail. Você também acompanha tudo pelo painel Minha Conta.'],
+  ['Preciso criar uma conta antes de comprar?', 'Não é obrigatório, mas é recomendado: entrando antes da compra, sua chave é vinculada automaticamente à sua conta. Sem login, você recebe a chave só por e-mail.'],
   ['Como instalar e ativar o ZVM?', 'Baixe a extensão pelo link recebido após a compra, adicione ao Chrome e informe sua chave de ativação na primeira tela.'],
   ['Quantos números posso usar?', 'Depende do seu plano: Solo permite 1 número, Padrão 3, Pro 5 e Empresarial até 10.'],
   ['Como renovo minha licença?', 'No portal, acesse "Renovar / Alterar Plano" e conclua a compra pela Cakto — a renovação é aplicada automaticamente à sua chave.'],
   ['Posso alterar meu plano?', 'Sim. Escolha outro plano em Planos; a chave existente passa a usar o novo limite de dispositivos.'],
   ['Onde vejo a validade da minha licença?', 'No painel Minha Conta, nas seções "Minha licença" e "Resumo da conta".'],
   ['Como removo um dispositivo?', 'Em Minha Conta, na seção "Dispositivos cadastrados", clique em Remover ao lado do número.'],
-  ['Minha chave expirou. O que faço?', 'Entre no portal e clique em "Renovar agora" — a validade é atualizada assim que o pagamento é confirmado.'],
-  ['Preciso usar o mesmo e-mail na compra?', 'Sim. Use o mesmo e-mail cadastrado na sua conta ZVM no checkout da Cakto pra chave ser vinculada automaticamente.'],
+  ['Como vincular uma chave que já tenho?', 'Em Minha Conta, acesse "Vincular chave" e informe o código recebido — ela passa a aparecer no seu painel.'],
+  ['Minha chave expirou. O que faço?', 'Entre no portal e clique em "Renovar agora" — a validade é atualizada assim que o pagamento é confirmado. Seus dispositivos vinculados continuam salvos e voltam a funcionar assim que a chave é renovada.'],
+  ['Preciso usar o mesmo e-mail na compra?', 'Sim. Use o mesmo e-mail cadastrado na sua conta ZVM na página de pagamento da Cakto pra chave ser vinculada automaticamente.'],
   ['Como funciona o 2FA?', 'Ative em Segurança 2FA: escaneie o QR code com um app autenticador e confirme com o código de 6 dígitos a cada login.'],
   ['Onde baixo a versão mais recente?', 'No banner de atualização no topo do painel, quando houver uma versão nova disponível.'],
   ['Minha compra foi aprovada mas a chave não apareceu.', 'Aguarde alguns minutos para o processamento automático. Se persistir, fale com o suporte.'],
@@ -3949,7 +4102,7 @@ function renderStandalonePortalChangeEmail(err = '', ok = '', portalUser = null)
   const benefitsHtml = [
     ['📧', 'Renovações e confirmações de compra chegam nesse e-mail'],
     ['🔐', 'Toda troca exige confirmação com sua senha atual'],
-    ['🛒', 'Use sempre o mesmo e-mail no checkout da Cakto'],
+    ['🛒', 'Use sempre o mesmo e-mail na página de pagamento'],
     ['🧾', 'Seu histórico de licença continua vinculado à conta'],
   ].map(([icon, text]) => `<li><span class="auth-benefit-icon" aria-hidden="true">${icon}</span><span>${text}</span></li>`).join('');
   return `<!DOCTYPE html><html lang="pt-BR"><head>
@@ -3974,7 +4127,7 @@ function renderStandalonePortalChangeEmail(err = '', ok = '', portalUser = null)
       ${errHtml}${okHtml}
       <form method="POST" action="/cliente/email">
         <div class="auth-field"><label for="email-new">Novo e-mail</label><input id="email-new" type="email" name="newemail" required maxlength="120" autocomplete="email">
-          <div class="auth-field-hint">Use no checkout da Cakto o mesmo e-mail cadastrado nesta conta.</div>
+          <div class="auth-field-hint">Use na página de pagamento o mesmo e-mail cadastrado nesta conta.</div>
         </div>
         <div class="auth-field"><label for="email-new2">Confirmar novo e-mail</label><input id="email-new2" type="email" name="newemail2" required maxlength="120" autocomplete="email"></div>
         <div class="auth-field"><label for="email-pass">Senha atual</label><input id="email-pass" type="password" name="pass" required autocomplete="current-password"></div>
@@ -6509,9 +6662,15 @@ function _sharedNav(options = '', legacyPortalUser = null) {
   // dentro do próprio card — nada foi removido, só não duplicado aqui em
   // cima. Área LOGADA (2FA setup, dashboard) continua usando a nav cheia.
   if (variant === 'auth') {
-    return `<a class="skip-link" href="#main-content">Pular para o conteúdo</a><nav class="znav standalone-nav znav-auth" aria-label="Navegação">
-  <a href="/" class="znav-brand">${renderStandaloneBrand('nav')}</a>
-</nav>`;
+    // Sem nav nas páginas de autenticação: a marca principal já aparece
+    // dentro do próprio card (auth-form-brand, variant 'auth', 130px). Um
+    // <nav> vazio ainda ocuparia os 64px + border-bottom fixos de .znav
+    // (_sharedCss) mesmo sem links dentro — por isso o elemento não é
+    // renderizado (não é display:none nem visibility:hidden, ele
+    // simplesmente não existe no DOM), e o auth-shell começa no topo.
+    // Landmark <nav> vazio também é um anti-padrão de acessibilidade
+    // (leitor de tela anuncia uma região sem conteúdo).
+    return `<a class="skip-link" href="#main-content">Pular para o conteúdo</a>`;
   }
 
   const links = [
@@ -6532,7 +6691,7 @@ function _sharedNav(options = '', legacyPortalUser = null) {
       <span class="nav-account-name">${escHtml(portalUser.name||portalUser.email||'Minha Conta')}</span>
     </a>` : `<a href="/cliente" class="nav-login">ENTRAR</a><a href="/cliente/registro" class="nav-cta">CADASTRAR</a>`;
   return `<a class="skip-link" href="#main-content">Pular para o conteúdo</a><nav class="znav standalone-nav" aria-label="Navegação principal">
-  <a href="/" class="znav-brand"${activePath==='/'?' aria-current="page"':''}>${renderStandaloneBrand('nav')}</a>
+  <a href="/" class="znav-brand"${activePath === '/' ? ' aria-current="page"' : ''}>${renderStandaloneBrand('nav')}</a>
   <button class="nav-menu-toggle" type="button" aria-expanded="false" aria-controls="zvm-nav-links" aria-label="Abrir menu"><span></span><span></span><span></span></button>
   <div class="znav-links" id="zvm-nav-links">${linksHtml}${accountHtml}</div>
 </nav><script>(function(){var b=document.querySelector('.nav-menu-toggle'),m=document.getElementById('zvm-nav-links');if(!b||!m)return;function setOpen(open){b.setAttribute('aria-expanded',String(open));b.setAttribute('aria-label',open?'Fechar menu':'Abrir menu');m.classList.toggle('is-open',open);}b.addEventListener('click',function(){setOpen(b.getAttribute('aria-expanded')!=='true');});m.addEventListener('click',function(e){if(e.target.closest('a'))setOpen(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&b.getAttribute('aria-expanded')==='true'){setOpen(false);b.focus();}});})();</script>`;
@@ -6540,7 +6699,7 @@ function _sharedNav(options = '', legacyPortalUser = null) {
 
 function _standaloneCss() {
   return `
-  :root{--surface:var(--bg2);--surface-hover:var(--bg3);--surface-active:var(--bg4);--card:var(--bg2);--border:var(--brd);--text:var(--tx);--text-muted:var(--tx2);--primary:var(--g);--success:var(--g);--warning:var(--orange);--danger:var(--red);--purple:#8b5cf6;--shadow-sm:0 8px 24px rgba(0,0,0,.22);--shadow-lg:0 24px 70px rgba(0,0,0,.35);--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;--space-6:32px;--space-7:48px;--transition:180ms cubic-bezier(.2,.8,.2,1);--fs-xs:12px;--fs-sm:13px;--fs-body:15px;--fs-body-lg:16px;--fs-lg:18px;--fs-xl:24px;color-scheme:dark}
+  :root{--surface:var(--bg2);--surface-hover:var(--bg3);--surface-active:var(--bg4);--card:var(--bg2);--border:var(--brd);--text:var(--tx);--text-muted:var(--tx2);--primary:var(--g);--success:var(--g);--warning:var(--orange);--danger:var(--red);--purple:#8b5cf6;--shadow-sm:0 8px 24px rgba(0,0,0,.22);--shadow-lg:0 24px 70px rgba(0,0,0,.35);--space-xs:4px;--space-sm:8px;--space-md:16px;--space-lg:24px;--space-xl:48px;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;--space-6:32px;--space-7:48px;--transition:180ms cubic-bezier(.2,.8,.2,1);--radius-sm:var(--r-sm);--radius-md:var(--r);--radius-lg:var(--r-lg);--fs-xs:12px;--fs-sm:13px;--fs-body:15px;--fs-body-lg:16px;--fs-lg:18px;--fs-xl:24px;--fs-h3:22px;--fs-h2:clamp(24px,3.2vw,32px);--fs-h1:clamp(28px,4.4vw,44px);--fs-display:clamp(34px,5.4vw,58px);--page-max:1200px;--content-max:640px;--text-max:65ch;color-scheme:dark}
   :focus-visible{outline:2px solid var(--primary);outline-offset:3px}
   button,a{touch-action:manipulation}
   #_cvs{opacity:.5}
@@ -6566,7 +6725,7 @@ function _standaloneCss() {
 }
 
 function _standaloneFoot() {
-  return `<footer class="zfooter"><div class="zfooter-brand">${renderStandaloneBrand('compact')}</div><div class="zfooter-links"><a href="/faq">FAQ</a><a href="/planos">Planos</a><a href="/privacidade">Privacidade</a><a href="/cliente">Minha Conta</a><a href="https://wa.me/5521996771552" target="_blank" rel="noopener noreferrer">Suporte</a></div><div class="zfooter-copy">© ${new Date().getFullYear()} ZVM · Todos os direitos reservados</div><div class="zfooter-payments">Pagamentos processados pela Cakto</div></footer>`;
+  return `<footer class="zfooter"><div class="zfooter-links"><a href="/faq">FAQ</a><a href="/planos">Planos</a><a href="/privacidade">Privacidade</a><a href="/cliente">Minha Conta</a><a href="https://wa.me/5521996771552" target="_blank" rel="noopener noreferrer">Suporte</a></div><div class="zfooter-copy">© ${new Date().getFullYear()} ZVM · Todos os direitos reservados</div><div class="zfooter-payments">Pagamentos processados pela Cakto</div></footer>`;
 }
 
 // ── Toast reutilizável (standalone) ────────────────────────────────
@@ -7677,15 +7836,15 @@ function renderPlanosPage(portalUser = null) {
     <div class="need-options">${NEED_OPTIONS.map(opt => `<label class="need-opt"><input type="radio" name="need" value="${opt.planId}"><span>${opt.label}</span></label>`).join('')}</div>
   </div>`;
 
-  const buyerBox = isLoggedIn ? `<div class="buyer-box"><div class="buyer-box-label">Comprando para:</div><div class="buyer-box-email">${escHtml(portalUser.email || '')}</div><p class="buyer-box-hint">Use este mesmo e-mail no checkout da Cakto para que a compra seja vinculada automaticamente à sua conta.</p></div>` : '';
-  const purchaseNote = !isLoggedIn ? `<div class="purchase-note"><span aria-hidden="true">●</span><span>Entre na sua conta antes de comprar para receber ou renovar a licença automaticamente.</span></div>` : '';
+  const buyerBox = isLoggedIn ? `<div class="buyer-box"><div class="buyer-box-label">Comprando para:</div><div class="buyer-box-email">${escHtml(portalUser.email || '')}</div><p class="buyer-box-hint">Use este mesmo e-mail na página de pagamento para que a compra seja vinculada automaticamente à sua conta.</p></div>` : '';
+  const purchaseNote = !isLoggedIn ? `<div class="purchase-note"><span aria-hidden="true">●</span><span>Entre na sua conta antes da compra. Assim, sua licença é vinculada automaticamente.</span></div>` : '';
 
   const modalContent = isLoggedIn ? `
-    <div class="modal-icon" aria-hidden="true">↗</div><h2 id="checkout-title">Finalizar compra</h2>
+    <div class="modal-icon" aria-hidden="true">↗</div><h2 id="checkout-title">Confirmar plano</h2>
     <div class="modal-plan-summary"><div class="modal-plan-name" id="modal-plan-name">—</div><div class="modal-plan-meta" id="modal-plan-meta">—</div><div class="modal-plan-price" id="modal-plan-price">—</div></div>
-    <div class="modal-account"><span class="modal-account-label">Conta</span><strong class="modal-email">${escHtml(portalUser.email || '')}</strong></div>
-    <p class="modal-hint">Use este mesmo e-mail no checkout.</p>
-    <div class="modal-actions"><button type="button" class="modal-cancel">Cancelar</button><a class="modal-continue" href="#" target="_blank" rel="noopener noreferrer">Ir para pagamento →</a></div>` : `
+    <div class="modal-account"><span class="modal-account-label">Compra vinculada à conta</span><strong class="modal-email">${escHtml(portalUser.email || '')}</strong></div>
+    <p class="modal-hint">Use este mesmo e-mail na página de pagamento para que sua licença seja ativada automaticamente.</p>
+    <div class="modal-actions"><button type="button" class="modal-cancel">Voltar</button><a class="modal-continue" href="#" target="_blank" rel="noopener noreferrer">Continuar para pagamento →</a></div>` : `
     <div class="modal-icon locked" aria-hidden="true">⌁</div><h2 id="checkout-title">Faça login antes de comprar</h2>
     <p>Para vincular a compra à sua conta e entregar ou renovar sua chave sem problemas, entre ou crie sua conta ZVM antes de continuar.</p>
     <div class="modal-actions"><button type="button" class="modal-cancel">Agora não</button><a class="modal-login" href="/cliente?redir=/planos">Entrar</a><a class="modal-continue" href="/cliente/registro?redir=/planos">Criar conta</a></div>`;
@@ -7697,8 +7856,8 @@ function renderPlanosPage(portalUser = null) {
 <style>${_sharedCss()}${_standaloneCss()}
 .page-hero{padding:clamp(64px,9vw,112px) 24px 54px;text-align:center;background:radial-gradient(ellipse 60% 70% at 50% 0%,rgba(139,92,246,.12),transparent 68%)}
 .page-hero-tag{display:inline-flex;align-items:center;gap:8px;font:700 11px 'Space Mono',monospace;color:var(--g);letter-spacing:1.8px;text-transform:uppercase;margin-bottom:18px}
-.page-hero h1{font-size:clamp(34px,5vw,58px);font-weight:900;letter-spacing:-2px;line-height:1.02;margin-bottom:16px}.page-hero h1 span{color:var(--g)}
-.page-hero p{font-size:16px;color:var(--tx2);max-width:620px;margin:auto;line-height:1.7}
+.page-hero h1{font-size:var(--fs-display);font-weight:900;letter-spacing:-2px;line-height:1.02;margin-bottom:var(--space-4)}.page-hero h1 span{color:var(--g)}
+.page-hero p{font-size:var(--fs-body-lg);color:var(--tx2);max-width:var(--content-max);margin:auto;line-height:1.7}
 .plans-wrap{padding:0 40px 96px;max-width:1220px;margin:auto}.purchase-note{display:flex;align-items:center;justify-content:center;gap:10px;max-width:760px;margin:0 auto 34px;padding:12px 18px;border:1px solid var(--brd);border-radius:var(--r);background:var(--bg2);color:var(--tx2);font-size:14px}.purchase-note strong{color:var(--tx)}
 .need-picker{max-width:640px;margin:0 auto 30px;text-align:center}.need-picker-label{font-size:13px;color:var(--tx2);font-weight:700;margin-bottom:12px}.need-options{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}.need-opt{position:relative;cursor:pointer;display:inline-flex}.need-opt input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}.need-opt span{display:inline-flex;align-items:center;justify-content:center;min-width:60px;padding:10px 18px;border-radius:99px;border:1px solid var(--brd2);background:var(--bg2);color:var(--tx2);font:700 14px 'Outfit',sans-serif;transition:all var(--transition)}.need-opt input:hover+span{border-color:var(--g-brd);color:var(--tx)}.need-opt input:checked+span{background:var(--g-soft);border-color:var(--g-brd);color:var(--g)}.need-opt input:focus-visible+span{outline:2px solid var(--g);outline-offset:2px}.need-opt input:active+span{transform:scale(.97)}
 .buyer-box{max-width:520px;margin:0 auto 30px;padding:14px 18px;border:1px solid var(--g-brd);border-radius:var(--r);background:var(--g-soft);text-align:center}.buyer-box-label{font-size:11px;color:var(--tx3);text-transform:uppercase;letter-spacing:.6px;font-weight:700;margin-bottom:4px}.buyer-box-email{font-family:'Space Mono',monospace;color:var(--g);font-size:15px;font-weight:700;word-break:break-word;margin-bottom:8px}.buyer-box-hint{font-size:12.5px;color:var(--tx2);line-height:1.55}
@@ -7991,7 +8150,27 @@ function renderStandaloneLandingPage(portalUser = null) {
     // estava em 14px — menor que o próprio heading do card (.fc-name, 16px)
     // e abaixo da referência de /privacidade (16px/1.8). Só esse ponto
     // precisava de ajuste; hero/steps/pricing já estavam na faixa certa.
-    .replace('</style></head>', '.fc-desc{font-size:16px;line-height:1.8}</style></head>');
+    .replace('</style></head>', '.fc-desc{font-size:16px;line-height:1.8}</style></head>')
+    // Auditoria de copy (só standalone — renderLandingPage/WSM intocada,
+    // wsmLandingAdapt continua com seus próprios .replace() nas mesmas
+    // strings originais, sem conflito porque cada caller parte de uma
+    // cópia própria do HTML). "100% das avaliações com 5 estrelas" e "Em
+    // 100% das avaliações" eram números sem fonte verificável — trocados
+    // por afirmações reais (dado de produto ou o mesmo texto de
+    // transparência já usado na seção de depoimentos). "Anti-ban" sozinho
+    // soa como garantia absoluta; a única versão do texto que já explica o
+    // mecanismo com uma ressalva honesta é a resposta do FAQ ("nenhum
+    // sistema garante 100% de isenção") — as ocorrências soltas do hero/
+    // stats/pills passam a descrever o mecanismo real (intervalos
+    // inteligentes, redução de risco) em vez de prometer imunidade.
+    .replace('Extensão Chrome · 100% das avaliações com 5 estrelas', 'Extensão Chrome · Avaliações reais de clientes')
+    .replace('Anti-ban integrado, multi-dispositivo e ativação imediata.', 'Envio com intervalos inteligentes, multi-dispositivo e ativação imediata.')
+    .replace('O ZVM dispara mensagens de voz, textos e mídias em massa no WhatsApp — com anti-ban integrado e ativação em 5 minutos.', 'O ZVM dispara mensagens de voz, textos e mídias em massa no WhatsApp — com intervalos inteligentes que reduzem o risco de bloqueio e ativação em 5 minutos.')
+    .replace('<span class="trust-pill"><span class="trust-pill-icon">✓</span> Anti-ban que protege seu número</span>', '<span class="trust-pill"><span class="trust-pill-icon">✓</span> Intervalos inteligentes contra bloqueio</span>')
+    .replace('<div class="stat-item"><div class="stat-num">5★</div><div class="stat-lbl">Em 100% das avaliações</div></div>', '<div class="stat-item"><div class="stat-num">30 dias</div><div class="stat-lbl">De acesso por plano</div></div>')
+    .replace('Áudio, texto ou mídia para toda a lista, com intervalos inteligentes anti-ban.', 'Áudio, texto ou mídia para toda a lista, com intervalos inteligentes contra bloqueio.')
+    .replace('<div class="fc-name">Anti-Ban Avançado</div><p class="fc-desc">Intervalos inteligentes e rotação de padrões. Um número banido é uma carteira de clientes perdida — aqui isso não acontece por descuido.</p>', '<div class="fc-name">Envio Inteligente</div><p class="fc-desc">Intervalos e rotação de padrões pensados para reduzir o risco de bloqueio ao longo dos disparos — sem prometer o que nenhum sistema pode garantir.</p>')
+    .replace('Acesso completo em todos os planos: mesmos recursos, mesmo anti-ban, mesmo suporte.', 'Acesso completo em todos os planos: mesmos recursos, mesma proteção de envio, mesmo suporte.');
   return _standaloneLandingPricing(_stripLegacyReviewScreenshot(html));
 }
 
@@ -8001,13 +8180,14 @@ function renderStandaloneFaqPage(portalUser = null) {
   // pergunta/resposta vem sempre do mesmo array usado no mini-FAQ do
   // dashboard, então as duas superfícies nunca divergem.
   const groups = [
-    ['Compra e licença', [_faqPick('Como renovo'), _faqPick('Posso alterar'), _faqPick('Onde vejo a validade'), _faqPick('Minha chave expirou'), _faqPick('Minha compra foi aprovada')]],
-    ['Produto e uso', [_faqPick('Como instalar'), _faqPick('Quantos números'), _faqPick('Preciso usar o mesmo e-mail'), _faqPick('Como funciona o 2FA')]],
-    ['Conta e suporte', [_faqPick('Como removo um dispositivo'), _faqPick('Onde baixo'), _faqPick('Esqueci minha senha'), _faqPick('Como falo com o suporte')]],
+    ['Compra e licença', [_faqPick('Como recebo minha licença'), _faqPick('Preciso criar uma conta'), _faqPick('Preciso usar o mesmo e-mail'), _faqPick('Minha compra foi aprovada')]],
+    ['Gerenciar sua licença', [_faqPick('Como renovo'), _faqPick('Posso alterar'), _faqPick('Onde vejo a validade'), _faqPick('Minha chave expirou'), _faqPick('Como vincular uma chave')]],
+    ['Produto e uso', [_faqPick('Como instalar'), _faqPick('Quantos números'), _faqPick('Como removo um dispositivo'), _faqPick('Como funciona o 2FA')]],
+    ['Conta e suporte', [_faqPick('Onde baixo'), _faqPick('Esqueci minha senha'), _faqPick('Como falo com o suporte')]],
   ];
   const content = groups.map(([title, items]) => `<section class="faq-group"><h2>${title}</h2>${items.map(([q,a])=>`<details class="faq-item"><summary>${q}</summary><p>${a}</p></details>`).join('')}</section>`).join('');
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ZVM — Perguntas Frequentes</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}<style>${_sharedCss()}${_standaloneCss()}
-  .faq-hero{max-width:760px;margin:auto;padding:86px 24px 42px;text-align:center}.faq-kicker{font:700 11px 'Space Mono',monospace;color:var(--g);letter-spacing:2px;text-transform:uppercase}.faq-hero h1{font-size:clamp(34px,6vw,58px);letter-spacing:-2px;margin:13px 0}.faq-hero p{color:var(--tx2);line-height:1.7}.faq-wrap{max-width:820px;margin:auto;padding:0 24px 92px}.faq-group{margin-top:42px}.faq-group h2{font-size:15px;color:var(--g);letter-spacing:.8px;text-transform:uppercase;margin-bottom:10px}.faq-item{border-bottom:1px solid var(--brd)}.faq-item summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;gap:16px;padding:19px 0;font-weight:750}.faq-item summary::-webkit-details-marker{display:none}.faq-item summary::after{content:'+';font-family:'Space Mono',monospace;color:var(--tx3)}.faq-item[open] summary{color:var(--g)}.faq-item[open] summary::after{content:'−';color:var(--g)}.faq-item p{padding:0 28px 20px 0;color:var(--tx2);line-height:1.75}.faq-support{margin-top:44px;padding:24px;border:1px solid var(--brd);border-radius:var(--r-lg);background:linear-gradient(135deg,var(--bg2),rgba(139,92,246,.07));display:flex;justify-content:space-between;align-items:center;gap:20px}.faq-support p{color:var(--tx2);margin-top:4px}.faq-support a{flex-shrink:0;padding:12px 18px;border:1px solid var(--g-brd);border-radius:8px;color:var(--g);font-weight:800}@media(max-width:600px){.faq-support{align-items:flex-start;flex-direction:column}.faq-support a{width:100%;text-align:center}}
+  .faq-hero{max-width:var(--content-max);margin:auto;padding:86px 24px 42px;text-align:center}.faq-kicker{font:700 11px 'Space Mono',monospace;color:var(--g);letter-spacing:2px;text-transform:uppercase}.faq-hero h1{font-size:var(--fs-display);font-weight:900;letter-spacing:-2px;margin:13px 0}.faq-hero p{font-size:var(--fs-body-lg);color:var(--tx2);line-height:1.7}.faq-wrap{max-width:820px;margin:auto;padding:0 24px 92px}.faq-group{margin-top:42px}.faq-group h2{font-size:15px;color:var(--g);letter-spacing:.8px;text-transform:uppercase;margin-bottom:10px}.faq-item{border-bottom:1px solid var(--brd)}.faq-item summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;gap:16px;padding:19px 0;font-weight:750}.faq-item summary::-webkit-details-marker{display:none}.faq-item summary::after{content:'+';font-family:'Space Mono',monospace;color:var(--tx3)}.faq-item[open] summary{color:var(--g)}.faq-item[open] summary::after{content:'−';color:var(--g)}.faq-item p{padding:0 28px 20px 0;color:var(--tx2);line-height:1.75}.faq-support{margin-top:44px;padding:24px;border:1px solid var(--brd);border-radius:var(--r-lg);background:linear-gradient(135deg,var(--bg2),rgba(139,92,246,.07));display:flex;justify-content:space-between;align-items:center;gap:20px}.faq-support p{color:var(--tx2);margin-top:4px}.faq-support a{flex-shrink:0;padding:12px 18px;border:1px solid var(--g-brd);border-radius:8px;color:var(--g);font-weight:800}@media(max-width:600px){.faq-support{align-items:flex-start;flex-direction:column}.faq-support a{width:100%;text-align:center}}
   </style></head><body>${_sharedNav({activePath:'/faq',portalUser,showBack:true})}<main id="main-content"><header class="faq-hero"><div class="faq-kicker">Central de respostas</div><h1>Ajuda sem rodeios</h1><p>Compra, entrega, validade e dispositivos explicados de forma direta.</p></header><div class="faq-wrap">${content}<aside class="faq-support"><div><strong>Não encontrou sua resposta?</strong><p>O WhatsApp continua disponível como canal de suporte.</p></div><a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener noreferrer">Falar com suporte</a></aside></div></main>${_standaloneFoot()}</body></html>`;
 }
 
@@ -8018,7 +8198,7 @@ function renderStandaloneFaqPage(portalUser = null) {
 // applyStandaloneFrame), sem tocar renderPrivacyPage nem o /WSM/privacidade.
 function renderStandalonePrivacyPage(portalUser = null) {
   const html = applyStandaloneFrame(renderPrivacyPage(portalUser), { activePath: '/privacidade', portalUser, showBack: true });
-  const css = `.page-hero p{font-size:var(--fs-body-lg)}.info-box{font-size:var(--fs-body-lg);line-height:1.75}.doc-section h2{font-size:20px}`;
+  const css = `.page-hero h1{font-size:var(--fs-h1)}.page-hero p{font-size:var(--fs-body-lg)}.info-box{font-size:var(--fs-body-lg);line-height:1.75}.doc-section h2{font-size:var(--fs-h3)}`;
   return html.replace('</style></head>', `${css}</style></head>`);
 }
 
@@ -8099,6 +8279,7 @@ input:focus{border-color:#00e676;box-shadow:0 0 0 2px #00e67615}
   <form method="POST" action="${R_ANALYTICS}/login">
     <label>Senha de Acesso</label>
     <input type="password" name="pass" autofocus>
+    ${ANALYTICS_TOTP_SECRET ? `<label>Código 2FA</label><input type="text" name="totp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" autocomplete="one-time-code" style="letter-spacing:4px;font-size:18px;text-align:center">` : ''}
     <button type="submit" class="btn">Entrar</button>
   </form>
 </div>
@@ -8289,7 +8470,9 @@ tr:hover td{background:#ffffff02}
             <select id="lab-type"><option value="new">Nova licença</option><option value="renewal">Renovação</option></select>
           </div>
           <div class="lab-field"><label for="lab-name">Nome</label><input id="lab-name" type="text" value="Cliente Teste" maxlength="80"></div>
-          <div class="lab-field"><label for="lab-email">E-mail de teste</label><input id="lab-email" type="email" placeholder="teste@example.com" maxlength="160"></div>
+          <div class="lab-field"><label for="lab-email">E-mail de teste</label><input id="lab-email" type="email" placeholder="um-endereco-que-voce-acesse@dominio.com" maxlength="160">
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">Domínios de exemplo (example.com etc.) são recusados pelo provedor de e-mail — use um endereço real que você acesse.</div>
+          </div>
           <div class="lab-field"><label for="lab-phone">Telefone (opcional)</label><input id="lab-phone" type="text" placeholder="11999990000" maxlength="20"></div>
           <div class="lab-field"><label for="lab-method">Método simulado</label>
             <select id="lab-method"><option value="pix">Pix</option><option value="credit_card">Cartão de crédito</option></select>
@@ -8311,10 +8494,12 @@ tr:hover td{background:#ffffff02}
               <option value="password_reset">Recuperação de senha</option>
             </select>
           </div>
-          <div class="lab-field"><label for="lab-tpl-email">Destinatário</label><input id="lab-tpl-email" type="email" placeholder="teste@example.com" maxlength="160"></div>
+          <div class="lab-field"><label for="lab-tpl-email">Destinatário</label><input id="lab-tpl-email" type="email" placeholder="um-endereco-que-voce-acesse@dominio.com" maxlength="160">
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">Domínios de exemplo (example.com etc.) são recusados pelo provedor de e-mail — use um endereço real que você acesse.</div>
+          </div>
           <div class="lab-actions">
-            <button class="btn blab" onclick="labEmailPreview()">Visualizar</button>
-            <button class="btn blab" onclick="labEmailSend()">Enviar teste</button>
+            <button class="btn blab" onclick="labEmailPreview(this)">Visualizar</button>
+            <button class="btn blab" onclick="labEmailSend(this)">Enviar teste</button>
           </div>
           <div id="lab-email-status" style="margin-top:10px;font-family:'Outfit',sans-serif;font-size:12.5px;color:var(--muted)"></div>
           <iframe class="lab-iframe" id="lab-iframe" style="display:none" sandbox="" title="Preview do e-mail"></iframe>
@@ -8471,6 +8656,47 @@ function labFormData(){
   };
 }
 
+// Traduz status HTTP + payload de erro numa frase que o admin entende sem
+// precisar ler stack trace nenhuma. "reason" (quando existe) é sempre uma
+// string já sanitizada pelo servidor (mensagem do Resend, "RESEND_API_KEY
+// não configurado", erro de rede) — nunca contém a API key nem outro segredo,
+// mas fica escondida atrás de "Detalhes técnicos" mesmo assim, por hábito.
+function labErrorMessage(status,data){
+  if(status===401) return {short:'❌ Sessão expirada — atualize a página e entre de novo.',detail:null};
+  if(status===403) return {short:'❌ Requisição bloqueada por segurança (origem inválida) — atualize a página.',detail:null};
+  if(status===429) return {short:'❌ Muitas tentativas em pouco tempo — aguarde um minuto.',detail:null};
+  const code=(data&&data.error)||'';
+  if(code==='invalid_email') return {short:'❌ Endereço de e-mail inválido.',detail:null};
+  if(code==='invalid_plan') return {short:'❌ Plano inválido.',detail:null};
+  if(code==='invalid_template') return {short:'❌ Template de e-mail inválido.',detail:null};
+  if(status>=500) return {short:'❌ Falha interna do servidor.',detail:(data&&data.error)||null};
+  return {short:'❌ Não foi possível concluir a operação.',detail:(data&&(data.reason||data.error))||null};
+}
+
+function labRenderStatus(el,msg){
+  el.innerHTML='';
+  const p=document.createElement('div');
+  p.textContent=msg.short;
+  el.appendChild(p);
+  if(msg.detail){
+    const d=document.createElement('details');
+    d.style.marginTop='6px';
+    const s=document.createElement('summary');
+    s.textContent='Detalhes técnicos';
+    s.style.cursor='pointer';
+    const pre=document.createElement('div');
+    pre.textContent=msg.detail;
+    pre.style.cssText='margin-top:4px;font-family:monospace;font-size:11.5px;color:var(--muted);white-space:pre-wrap;word-break:break-word';
+    d.appendChild(s);d.appendChild(pre);
+    el.appendChild(d);
+  }
+}
+
+function labMaskEmail(email){
+  const m=String(email||'').match(/^(.)(.*)(@.*)$/);
+  return m?(m[1]+'***'+m[3]):'***';
+}
+
 const _planLabels={solo:'Solo',padrao:'Padrão',pro:'Pro',empresarial:'Empresarial'};
 
 function renderLabResult(d,executed){
@@ -8483,10 +8709,21 @@ function renderLabResult(d,executed){
   html+='<div class="row"><span>Duração</span><span>'+d.durationDays+' dias</span></div>';
   html+='<div class="row"><span>Modo</span><span>'+modeLabel+'</span></div>';
   html+='<div class="row"><span>Expira em</span><span>'+new Date(d.expiresAt).toLocaleDateString('pt-BR')+'</span></div>';
-  html+='<div class="row"><span>E-mail</span><span>'+(executed?(d.emailSent?'enviado':'não enviado'):'—')+'</span></div>';
+  if(executed){
+    const emailRow = d.emailRequested
+      ? (d.emailSent ? '✅ enviado para '+labMaskEmail(d.email) : '❌ não foi possível enviar (veja o console do servidor)')
+      : '— (checkbox desmarcado)';
+    html+='<div class="row"><span>E-mail</span><span>'+emailRow+'</span></div>';
+  } else {
+    html+='<div class="row"><span>E-mail</span><span>—</span></div>';
+  }
   html+='<div class="row"><span>Persistência</span><span>'+(d.persisted?'teste (testMode:true)':'preview (nada salvo)')+'</span></div>';
   if(d.txId) html+='<div class="row"><span>Tx</span><span>'+d.txId+'</span></div>';
-  if(!executed) html+='<div class="lab-actions" style="margin-top:12px"><button class="btn blab-exec" onclick="labExecute()">▶ Executar de verdade (grava testMode:true)</button></div>';
+  if(!executed){
+    const willSend=document.getElementById('lab-send-email').checked;
+    const label=willSend?'▶ Executar e enviar e-mail de teste (grava testMode:true)':'▶ Executar sem enviar e-mail (grava testMode:true)';
+    html+='<div class="lab-actions" style="margin-top:12px"><button class="btn blab-exec" id="lab-btn-exec" onclick="labExecute()">'+label+'</button></div>';
+  }
   html+='</div>';
   box.innerHTML=html;
 }
@@ -8494,25 +8731,36 @@ function renderLabResult(d,executed){
 async function labPreview(){
   const body=labFormData();
   if(!body.email){alert('Informe um e-mail de teste.');return;}
-  const btn=document.getElementById('lab-btn-sim');btn.disabled=true;
+  const btn=document.getElementById('lab-btn-sim');
+  if(btn.disabled)return; // guarda contra duplo clique
+  btn.disabled=true;const originalLabel=btn.textContent;btn.textContent='Processando...';
   try{
     const r=await fetch('${R_ANALYTICS}/api/lab/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
-    if(!r.ok){alert('Erro: '+(d.error||'falha na simulação'));return;}
+    if(!r.ok){const msg=labErrorMessage(r.status,d);labRenderStatus(document.getElementById('lab-result'),msg);return;}
     renderLabResult(d,false);
-  }catch(e){alert('Erro de conexão.');}finally{btn.disabled=false;}
+  }catch(e){labRenderStatus(document.getElementById('lab-result'),{short:'❌ Erro de conexão com o servidor.',detail:null});}
+  finally{btn.disabled=false;btn.textContent=originalLabel;}
 }
 
 async function labExecute(){
-  if(!confirm('Isso grava um pagamento de TESTE (testMode:true) e uma chave sandbox. Nunca toca em cliente real. Confirma?'))return;
+  const sendEmailChecked=document.getElementById('lab-send-email').checked;
+  const confirmMsg='Isso grava um pagamento de TESTE (testMode:true) e uma chave sandbox. Nunca toca em cliente real.'
+    +(sendEmailChecked?' Um e-mail de teste REAL será enviado.':' Nenhum e-mail será enviado.')+' Confirma?';
+  if(!confirm(confirmMsg))return;
+  const btn=document.getElementById('lab-btn-exec');
+  if(!btn||btn.disabled)return; // guarda contra duplo clique (também cobre o caso do botão já ter sumido)
+  btn.disabled=true;const originalLabel=btn.textContent;btn.textContent='Processando...';
   const body=labFormData();
-  body.sendRealEmail=document.getElementById('lab-send-email').checked;
+  body.sendRealEmail=sendEmailChecked;
   try{
     const r=await fetch('${R_ANALYTICS}/api/lab/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
-    if(!r.ok){alert('Erro: '+(d.error||'falha ao executar'));return;}
+    if(!r.ok){const msg=labErrorMessage(r.status,d);labRenderStatus(document.getElementById('lab-result'),msg);return;}
+    d.emailRequested=sendEmailChecked;
     renderLabResult(d,true);
-  }catch(e){alert('Erro de conexão.');}
+  }catch(e){labRenderStatus(document.getElementById('lab-result'),{short:'❌ Erro de conexão com o servidor.',detail:null});}
+  finally{if(btn.isConnected){btn.disabled=false;btn.textContent=originalLabel;}}
 }
 
 function labCancel(){
@@ -8523,29 +8771,34 @@ function labCancel(){
   document.getElementById('lab-send-email').checked=false;
 }
 
-async function labEmailPreview(){
+async function labEmailPreview(btn){
   const status=document.getElementById('lab-email-status'),frame=document.getElementById('lab-iframe');
-  status.textContent='Carregando preview...';
+  if(btn){if(btn.disabled)return;btn.disabled=true;}
+  status.textContent='Processando...';
   try{
     const r=await fetch('${R_ANALYTICS}/api/lab/email-preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({template:document.getElementById('lab-tpl').value})});
     const d=await r.json();
-    if(!r.ok){status.textContent='Erro: '+(d.error||'falha no preview');return;}
+    if(!r.ok){labRenderStatus(status,labErrorMessage(r.status,d));return;}
     frame.srcdoc=d.html;frame.style.display='block';
-    status.textContent='Assunto: '+d.subject;
-  }catch(e){status.textContent='Erro de conexão.';}
+    status.textContent='✅ Preview gerado. Assunto: '+d.subject;
+  }catch(e){labRenderStatus(status,{short:'❌ Erro de conexão com o servidor.',detail:null});}
+  finally{if(btn)btn.disabled=false;}
 }
 
-async function labEmailSend(){
+async function labEmailSend(btn){
   const status=document.getElementById('lab-email-status');
   const email=document.getElementById('lab-tpl-email').value;
   if(!email){alert('Informe o destinatário.');return;}
   if(!confirm('Enviar e-mail de TESTE real para '+email+'?'))return;
-  status.textContent='Enviando...';
+  if(btn){if(btn.disabled)return;btn.disabled=true;}
+  status.textContent='Processando...';
   try{
     const r=await fetch('${R_ANALYTICS}/api/lab/email-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({template:document.getElementById('lab-tpl').value,email})});
     const d=await r.json();
-    status.textContent=(r.ok&&d.ok)?'✅ Enviado.':'❌ Falha ao enviar (verifique RESEND_API_KEY).';
-  }catch(e){status.textContent='Erro de conexão.';}
+    if(r.ok&&d.ok){status.textContent='✅ E-mail enviado para '+labMaskEmail(email)+'.';}
+    else{labRenderStatus(status,d.reason?{short:'❌ Erro retornado pelo serviço de e-mail.',detail:d.reason}:labErrorMessage(r.status,d));}
+  }catch(e){labRenderStatus(status,{short:'❌ Erro de conexão com o servidor.',detail:null});}
+  finally{if(btn)btn.disabled=false;}
 }
 </script>
 ${CANVAS_BG}</body></html>`;
@@ -11168,7 +11421,7 @@ async function handleRequest(req, res) {
     'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
     'Referrer-Policy':              'no-referrer',
     'Permissions-Policy':           'geolocation=(), microphone=(), camera=()',
-    'Content-Security-Policy':      "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://i.ytimg.com https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; media-src https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'",
+    'Content-Security-Policy':      "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://i.ytimg.com https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; media-src https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests",
   };
   Object.entries(_corsH).forEach(([k, v]) => res.setHeader(k, v));
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
@@ -11653,8 +11906,8 @@ async function handleRequest(req, res) {
       const _oldMatch = (req.headers.cookie||'').match(/zv_admin=([a-f0-9]+)/);
       if (_oldMatch) delete sessions[_oldMatch[1]];
       const token = generateToken();
-      sessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString(), ip, loginAt: new Date().toISOString() };
-      res.setHeader('Set-Cookie', `zv_admin=${token}; Path=/; HttpOnly; SameSite=Strict; Secure`);
+      sessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString(), ip, loginAt: new Date().toISOString(), createdAt: new Date().toISOString(), absoluteExpiresAt: new Date(Date.now() + SESSION_ABSOLUTE_LIMIT_MS).toISOString() };
+      setSessionCookie(res, 'zv_admin', token);
       res.writeHead(302, { Location: R_ADMIN }); res.end();
     } else {
       const msg = credOk && !totpOk ? 'Código 2FA inválido ou expirado' : 'Usuário ou senha incorretos';
@@ -11665,7 +11918,7 @@ async function handleRequest(req, res) {
   }
 
   if (p === R_ADMIN+'/logout') {
-    res.setHeader('Set-Cookie', 'zv_admin=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict; Secure');
+    clearSessionCookie(res, 'zv_admin');
     res.writeHead(302, { Location: R_ADMIN }); res.end(); return;
   }
 
@@ -11704,8 +11957,8 @@ async function handleRequest(req, res) {
       const _oldModMatch = (req.headers.cookie||'').match(/zv_mod=([a-f0-9]+)/);
       if (_oldModMatch) delete modSessions[_oldModMatch[1]];
       const token = generateToken();
-      modSessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString(), modName: matchedMod.name, ip, loginAt: new Date().toISOString() };
-      res.setHeader('Set-Cookie', `zv_mod=${token}; Path=/; HttpOnly; SameSite=Strict; Secure`);
+      modSessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString(), modName: matchedMod.name, ip, loginAt: new Date().toISOString(), createdAt: new Date().toISOString(), absoluteExpiresAt: new Date(Date.now() + SESSION_ABSOLUTE_LIMIT_MS).toISOString() };
+      setSessionCookie(res, 'zv_mod', token);
       res.writeHead(302, { Location: R_MOD }); res.end();
     } else {
       const msg = matchedMod && !totpOk ? 'Código 2FA inválido ou expirado' : 'Usuário ou senha incorretos';
@@ -11716,7 +11969,7 @@ async function handleRequest(req, res) {
   }
 
   if (p === R_MOD+'/logout') {
-    res.setHeader('Set-Cookie', 'zv_mod=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict; Secure');
+    clearSessionCookie(res, 'zv_mod');
     res.writeHead(302, { Location: R_MOD }); res.end(); return;
   }
 
@@ -12363,21 +12616,24 @@ async function handleRequest(req, res) {
       sendHtml(res, renderAnalyticsLogin(`⏳ Muitas tentativas. Aguarde ${mins} minuto(s).`), 429); return;
     }
     const form = await parseFormBody(req);
-    const _anp=Buffer.from(form.get('pass')||''), _anap=Buffer.from(ANALYTICS_PASS||'');
-    if (_anp.length===_anap.length && crypto.timingSafeEqual(_anp.length?_anp:Buffer.alloc(1),_anap.length?_anap:Buffer.alloc(1)) && ANALYTICS_PASS) {
+    const analyticsOk = checkAnalyticsLogin(form.get('pass'), form.get('totp'), ANALYTICS_PASS, ANALYTICS_TOTP_SECRET);
+    if (analyticsOk) {
       const token = generateToken();
-      analyticsSessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString() };
-      res.setHeader('Set-Cookie', `zv_an=${token}; Path=/; HttpOnly; SameSite=Strict; Secure`);
+      analyticsSessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString(), createdAt: new Date().toISOString(), absoluteExpiresAt: new Date(Date.now() + SESSION_ABSOLUTE_LIMIT_MS).toISOString() };
+      setSessionCookie(res, 'zv_an', token);
       res.writeHead(302, { Location: R_ANALYTICS }); res.end();
     } else {
-      addSecurityAlert('BRUTE_FORCE', 'Analytics login falhou — senha incorreta', ip);
-      sendHtml(res, renderAnalyticsLogin('Senha incorreta.'));
+      addSecurityAlert('BRUTE_FORCE', 'Analytics login falhou — credencial incorreta', ip);
+      // Mensagem genérica quando TOTP está ativo: não revela se foi a senha
+      // ou o código que errou. Sem TOTP configurado, texto idêntico ao de
+      // sempre — zero mudança perceptível de UX nesse caso.
+      sendHtml(res, renderAnalyticsLogin(ANALYTICS_TOTP_SECRET ? 'Senha ou código incorreto.' : 'Senha incorreta.'));
     }
     return;
   }
 
   if (p === R_ANALYTICS+'/logout') {
-    res.setHeader('Set-Cookie', 'zv_an=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict; Secure');
+    clearAnalyticsCookie(res);
     res.writeHead(302, { Location: R_ANALYTICS }); res.end(); return;
   }
 
@@ -12488,9 +12744,11 @@ async function handleRequest(req, res) {
       console.log('[LAB] email-preview', template);
       sendJson(res, { subject: built.subject, html: built.html }); return;
     }
-    const sent = await sendEmail({ to, subject: `[TESTE] ${built.subject}`, html: built.html });
-    console.log('[LAB] email-send', template, maskEmail(to), sent ? 'ok' : 'falhou');
-    sendJson(res, { ok: sent }); return;
+    const result = await sendEmail({ to, subject: `[TESTE] ${built.subject}`, html: built.html });
+    console.log('[LAB] email-send', template, maskEmail(to), result.ok ? 'ok' : `falhou: ${result.reason || ''}`);
+    // reason vem só de mailer.js: mensagem de validação do Resend, "RESEND_API_KEY
+    // não configurado" ou erro de rede — nunca a API key nem outro segredo.
+    sendJson(res, { ok: result.ok, reason: result.ok ? null : result.reason }); return;
   }
 
   if (p === '/cakto/webhook' && req.method === 'POST') {
@@ -12902,7 +13160,7 @@ async function handleRequest(req, res) {
     try {
       const db = await getMongoDb();
       const user = await db.collection('portal_users').findOne({ _id: sess.email });
-      if (!user) { res.setHeader('Set-Cookie','zv_portal=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict'); sendHtml(res, renderStandalonePortalLogin()); return; }
+      if (!user) { clearSessionCookie(res, 'zv_portal'); sendHtml(res, renderStandalonePortalLogin()); return; }
       let keyData = null;
       if (user.keyCode) {
         await ensureKeyLoaded(user.keyCode);
@@ -12930,20 +13188,19 @@ async function handleRequest(req, res) {
       const db = await getMongoDb();
       const user = await db.collection('portal_users').findOne({ _id: email });
       if (!user) { sendHtml(res, renderStandalonePortalLogin('E-mail ou senha inválidos.')); return; }
-      const hash = await hashPassword(pass, user.salt);
-      const _ha = Buffer.from(hash, 'hex'), _hb = Buffer.from(user.passwordHash || '', 'hex');
-      const passOk = _ha.length === _hb.length && _ha.length > 0 && crypto.timingSafeEqual(_ha, _hb);
+      const passOk = await verifyPortalPassword(pass, user);
       if (!passOk) { sendHtml(res, renderStandalonePortalLogin('E-mail ou senha inválidos.')); return; }
+      maybeRehashPortalPassword(db, email, pass, user);
       db.collection('portal_users').updateOne({ _id: email }, { $set: { lastLogin: new Date().toISOString() } }).catch(()=>{});
       if (user.totpSecret) {
         const pendingToken = generateToken();
         portalSessions[pendingToken] = { email, name: user.name, pending2fa: true, redir: redir||'', expiresAt: new Date(Date.now()+5*60*1000).toISOString() };
-        res.setHeader('Set-Cookie', `zv_portal=${pendingToken}; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=300`);
+        setSessionCookie(res, 'zv_portal', pendingToken, 300);
         res.writeHead(302, { Location: '/cliente/2fa/verificar' }); res.end();
       } else {
         const token = generateToken();
         portalSessions[token] = { email, name: user.name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
-        res.setHeader('Set-Cookie', `zv_portal=${token}; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=86400`);
+        setSessionCookie(res, 'zv_portal', token, 86400);
         const dest = redir || '/cliente';
         res.writeHead(302, { Location: dest }); res.end();
       }
@@ -12982,12 +13239,11 @@ async function handleRequest(req, res) {
         const alreadyLinked = await db.collection('portal_users').findOne({ keyCode: keycode });
         if (alreadyLinked) { sendHtml(res, renderStandalonePortalRegister('Esta chave já está vinculada a outra conta. Entre em contato com o suporte se isso for um engano.', vals, redir)); return; }
       }
-      const salt = genSalt();
-      const passwordHash = await hashPassword(pass, salt);
-      await db.collection('portal_users').insertOne({ _id: email, name, email, phone: phone||null, passwordHash, salt, keyCode: keycode||null, createdAt: new Date().toISOString() });
+      const newPass = await hashNewPortalPassword(pass);
+      await db.collection('portal_users').insertOne({ _id: email, name, email, phone: phone||null, ...newPass, keyCode: keycode||null, createdAt: new Date().toISOString() });
       const token = generateToken();
       portalSessions[token] = { email, name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
-      res.setHeader('Set-Cookie', `zv_portal=${token}; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=86400`);
+      setSessionCookie(res, 'zv_portal', token, 86400);
       res.writeHead(302, { Location: redir || '/cliente' }); res.end();
     } catch(e) { console.error('[Portal] registro:', e.message); sendHtml(res, renderStandalonePortalRegister('Erro ao criar conta.', vals, redir)); return; }
     return;
@@ -12996,7 +13252,7 @@ async function handleRequest(req, res) {
   if (p === '/cliente/logout') {
     const m = (req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/);
     if (m) delete portalSessions[m[1]];
-    res.setHeader('Set-Cookie','zv_portal=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict');
+    clearSessionCookie(res, 'zv_portal');
     res.writeHead(302, { Location: '/cliente' }); res.end(); return;
   }
 
@@ -13077,9 +13333,7 @@ async function handleRequest(req, res) {
         const db = await getMongoDb();
         const user = await db.collection('portal_users').findOne({ _id: sess.email });
         if (!user) { sendHtml(res, renderStandalonePortalChangeEmail('Sessão inválida. Faça login novamente.', '', sess)); return; }
-        const hash = await hashPassword(pass, user.salt);
-        const _ha = Buffer.from(hash,'hex'), _hb = Buffer.from(user.passwordHash||'','hex');
-        const passOk = _ha.length===_hb.length && _ha.length>0 && crypto.timingSafeEqual(_ha,_hb);
+        const passOk = await verifyPortalPassword(pass, user);
         if (!passOk) { sendHtml(res, renderStandalonePortalChangeEmail('Senha incorreta.', '', sess)); return; }
         const exists = await db.collection('portal_users').findOne({ _id: newemail });
         if (exists) { sendHtml(res, renderStandalonePortalChangeEmail('Este e-mail já está cadastrado.', '', sess)); return; }
@@ -13089,7 +13343,7 @@ async function handleRequest(req, res) {
         // Revogar sessão atual
         const _cookie = (req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/);
         if (_cookie) delete portalSessions[_cookie[1]];
-        res.setHeader('Set-Cookie','zv_portal=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict');
+        clearSessionCookie(res, 'zv_portal');
         res.writeHead(302, { Location: '/cliente/login?msg=email_changed' }); res.end(); return;
       } catch(e) { console.error('[Portal] email change:', e.message); sendHtml(res, renderStandalonePortalChangeEmail('Erro interno. Tente novamente.', '', sess)); return; }
     }
@@ -13111,13 +13365,10 @@ async function handleRequest(req, res) {
         const db = await getMongoDb();
         const user = await db.collection('portal_users').findOne({ _id: sess.email });
         if (!user) { sendHtml(res, renderStandalonePortalChangePwd('Sessão inválida.', '', sess)); return; }
-        const oldHash = await hashPassword(old, user.salt);
-        const _oa = Buffer.from(oldHash, 'hex'), _ob = Buffer.from(user.passwordHash || '', 'hex');
-        const oldOk = _oa.length === _ob.length && _oa.length > 0 && crypto.timingSafeEqual(_oa, _ob);
+        const oldOk = await verifyPortalPassword(old, user);
         if (!oldOk) { sendHtml(res, renderStandalonePortalChangePwd('Senha atual incorreta.', '', sess)); return; }
-        const salt = genSalt();
-        const passwordHash = await hashPassword(pass, salt);
-        await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { passwordHash, salt } });
+        const newPass = await hashNewPortalPassword(pass);
+        await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: newPass });
         // Mantem a sessao atual, revoga as demais (dispositivos/invasores antigos).
         revokePortalSessions(sess.email, ((req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/)||[])[1]);
         res.writeHead(302, { Location: '/cliente/senha?ok=1' }); res.end(); return;
@@ -13139,11 +13390,13 @@ async function handleRequest(req, res) {
         const db   = await getMongoDb();
         const user = await db.collection('portal_users').findOne({ _id: email });
         if (user) {
-          const token     = generateToken();
+          const rawToken  = generateToken();
+          const tokenHash = hashResetToken(rawToken);
           const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
           await db.collection('password_resets').deleteMany({ email });
-          await db.collection('password_resets').insertOne({ _id: token, email, expiresAt });
-          const resetUrl = BASE_URL + '/cliente/redefinir?token=' + token;
+          // _id é o HASH, nunca o token utilizável — ver hashResetToken().
+          await db.collection('password_resets').insertOne({ _id: tokenHash, email, expiresAt });
+          const resetUrl = BASE_URL + '/cliente/redefinir?token=' + rawToken;
           // NUNCA logar resetUrl: o token troca a senha da conta. Logs vão para
           // agregadores/terceiros e viram um caminho direto de account takeover.
           // E-mail mascarado (maskEmail) — o log serve pra correlacionar
@@ -13173,15 +13426,15 @@ async function handleRequest(req, res) {
       if (pass.length < 8) { sendHtml(res, renderStandalonePortalResetForm('Senha: mínimo 8 caracteres.', '', tk)); return; }
       if (pass !== pass2)  { sendHtml(res, renderStandalonePortalResetForm('As senhas não coincidem.', '', tk)); return; }
       try {
-        const db   = await getMongoDb();
-        const rec  = await db.collection('password_resets').findOne({ _id: tk });
-        if (!rec || new Date() > new Date(rec.expiresAt)) { sendHtml(res, renderStandalonePortalResetForm('Link expirado ou inválido. Solicite um novo.', '', '')); return; }
-        const salt = genSalt();
-        const passwordHash = await hashPassword(pass, salt);
-        await db.collection('portal_users').updateOne({ _id: rec.email }, { $set: { passwordHash, salt } });
+        const db      = await getMongoDb();
+        const { rec, matchedId } = await resolveResetToken(db, tk);
+        if (!rec) { sendHtml(res, renderStandalonePortalResetForm('Link expirado ou inválido. Solicite um novo.', '', '')); return; }
+        const newPass = await hashNewPortalPassword(pass);
+        await db.collection('portal_users').updateOne({ _id: rec.email }, { $set: newPass });
         // Reset de senha expulsa todas as sessoes existentes da conta.
         revokePortalSessions(rec.email);
-        await db.collection('password_resets').deleteOne({ _id: tk });
+        // Uso único: apaga pelo mesmo _id que casou (hash ou, no caso legado, cru).
+        await db.collection('password_resets').deleteOne({ _id: matchedId });
         sendHtml(res, renderStandalonePortalResetForm('', 'Senha redefinida com sucesso!', '')); return;
       } catch(e) { sendHtml(res, renderStandalonePortalResetForm('Erro temporário.', '', tk)); return; }
     }
@@ -13203,7 +13456,7 @@ async function handleRequest(req, res) {
         if (!user || !verifyTOTP(user.totpSecret, code)) { addSecurityAlert('BRUTE_FORCE', '2FA falhou para ' + sess.email, ip); sendHtml(res, renderStandalone2FAVerify('Código inválido. Tente novamente.')); return; }
         const m = (req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/);
         if (m) portalSessions[m[1]] = { email: sess.email, name: sess.name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
-        res.setHeader('Set-Cookie', `zv_portal=${m[1]}; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=86400`);
+        setSessionCookie(res, 'zv_portal', m[1], 86400);
         const dest = sess.redir && sess.redir.startsWith('/') ? sess.redir : '/cliente';
         res.writeHead(302, { Location: dest }); res.end();
       } catch(e) { sendHtml(res, renderStandalone2FAVerify('Erro temporário.')); return; }
@@ -13428,4 +13681,26 @@ module.exports.__test = Object.freeze({
   simulateCommercialSale,
   resolveLabPlan,
   getPaymentStats,
+  hashPassword,
+  verifyPortalPassword,
+  hashNewPortalPassword,
+  maybeRehashPortalPassword,
+  PASSWORD_ITERATIONS_LEGACY,
+  PASSWORD_ITERATIONS_CURRENT,
+  hashResetToken,
+  resolveResetToken,
+  setSessionCookie,
+  clearSessionCookie,
+  isAdminSession,
+  isModSession,
+  isAnalyticsSession,
+  sessions,
+  modSessions,
+  analyticsSessions,
+  SESSION_ABSOLUTE_LIMIT_MS,
+  verifyTOTP,
+  generateTOTP,
+  checkAnalyticsLogin,
+  genTotpSecret,
+  _SEC_HEADERS,
 });
