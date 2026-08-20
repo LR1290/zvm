@@ -1298,6 +1298,353 @@ function hashResetToken(rawToken) {
   return crypto.createHash('sha256').update(String(rawToken)).digest('hex');
 }
 
+// ── Extension API V4: sessão opaca + entitlement server-authoritative ───
+// O token utilizável existe apenas na resposta HTTP e na memória transitória
+// desta chamada. `extension_sessions._id` recebe exclusivamente SHA-256(token),
+// portanto uma leitura indevida do Mongo não entrega um bearer reutilizável.
+const EXTENSION_SESSION_COLLECTION = 'extension_sessions';
+const EXTENSION_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+const EXTENSION_ENTITLEMENT_LEASE_MS = 15 * 60 * 1000;
+const EXTENSION_FREE_CAPABILITIES = Object.freeze([
+  'account.manage',
+  'academy.basic',
+  'dashboard.basic',
+  'items.manage',
+  'items.preview',
+  'laboratory.preview',
+  'personalization.manage',
+]);
+const EXTENSION_LICENSED_CAPABILITIES = Object.freeze([
+  ...EXTENSION_FREE_CAPABILITIES,
+  'academy.ai',
+  'ai.agents',
+  'ai.knowledge',
+  'ai.memory',
+  'crm.use',
+  'disparos.execute',
+  'export.contacts',
+  'flows.execute',
+  'flows.manage',
+  'followup.execute',
+  'followup.manage',
+  'funnels.execute',
+  'funnels.manage',
+  'groups.send',
+  'integrations.manage',
+  'items.send',
+  'items.schedule',
+  'quickReply.send',
+  'laboratory.realSend',
+  'laboratory.aiTest',
+]);
+const _extensionSessionIndexedDbs = new WeakSet();
+
+function extensionNow(deps = {}) {
+  const value = typeof deps.now === 'function' ? deps.now() : deps.now;
+  const date = value instanceof Date ? new Date(value) : new Date(value == null ? Date.now() : value);
+  return Number.isFinite(date.getTime()) ? date : new Date();
+}
+
+function hashExtensionSessionToken(rawToken) {
+  return crypto.createHash('sha256').update(String(rawToken || ''), 'utf8').digest('hex');
+}
+
+function extensionSubject(type, stableId) {
+  return {
+    type,
+    id: crypto.createHash('sha256').update(`zvm-extension:${type}:${String(stableId || '')}`, 'utf8').digest('hex'),
+  };
+}
+
+function extensionLicenseIsUsable(keyRecord, nowValue = Date.now()) {
+  if (!keyRecord || keyRecord.active !== true) return false;
+  if (!keyRecord.expiresAt) return true;
+  const expiresAt = new Date(keyRecord.expiresAt).getTime();
+  return Number.isFinite(expiresAt) && expiresAt > new Date(nowValue).getTime();
+}
+
+function buildExtensionEntitlement({ keyCode = null, keyRecord = null, now = Date.now() } = {}) {
+  const nowDate = now instanceof Date ? new Date(now) : new Date(now);
+  const nowMs = Number.isFinite(nowDate.getTime()) ? nowDate.getTime() : Date.now();
+  const licensed = !!keyCode && extensionLicenseIsUsable(keyRecord, nowMs);
+  const capabilities = [...(licensed ? EXTENSION_LICENSED_CAPABILITIES : EXTENSION_FREE_CAPABILITIES)].sort();
+  const licenseExpiryMs = licensed && keyRecord.expiresAt ? new Date(keyRecord.expiresAt).getTime() : null;
+  const leaseExpiryMs = Number.isFinite(licenseExpiryMs)
+    ? Math.min(nowMs + EXTENSION_ENTITLEMENT_LEASE_MS, licenseExpiryMs)
+    : nowMs + EXTENSION_ENTITLEMENT_LEASE_MS;
+  const tier = licensed ? 'paid' : 'free';
+  const planId = licensed ? String(keyRecord.plan_id || keyRecord.planId || 'ZV_PRO') : FREE_PLAN_ID;
+  const planName = licensed ? String(keyRecord.planName || 'Licenciado') : 'Gratuito';
+  const revisionInput = JSON.stringify({
+    tier,
+    planId,
+    capabilities,
+    licenseExpiresAt: licensed ? (keyRecord.expiresAt || null) : null,
+    modules: licensed ? { ...DEFAULT_MODULES, ...(keyRecord.modules || {}) } : { ...DEFAULT_MODULES },
+    permissions: licensed && Array.isArray(keyRecord.permissions) ? [...keyRecord.permissions].sort() : [],
+  });
+  return {
+    status: licensed ? 'active' : 'free',
+    tier: licensed ? 'paid' : 'free',
+    planId,
+    planName,
+    capabilities,
+    entitlementRevision: crypto.createHash('sha256').update(revisionInput, 'utf8').digest('hex'),
+    expiresAt: new Date(leaseExpiryMs).toISOString(),
+    licenseExpiresAt: licensed ? (keyRecord.expiresAt || null) : null,
+    usageAuthority: 'server',
+  };
+}
+
+async function ensureExtensionSessionIndexes(db) {
+  if (_extensionSessionIndexedDbs.has(db)) return;
+  const collection = db.collection(EXTENSION_SESSION_COLLECTION);
+  await collection.createIndex(
+    { expiresAt: 1 },
+    { expireAfterSeconds: 0, name: 'extension_sessions_ttl' }
+  );
+  await collection.createIndex(
+    { 'subject.id': 1, revokedAt: 1 },
+    { name: 'extension_sessions_subject' }
+  );
+  _extensionSessionIndexedDbs.add(db);
+}
+
+function publicExtensionSession(doc, rawToken) {
+  return {
+    token: rawToken,
+    sessionId: doc.sessionId,
+    subject: { ...doc.subject },
+    authMethod: doc.authMethod,
+    expiresAt: new Date(doc.expiresAt).toISOString(),
+  };
+}
+
+function extensionSessionSuccess(rawToken, sessionDoc, entitlement) {
+  const session = publicExtensionSession(sessionDoc, rawToken);
+  return {
+    ok: true,
+    session,
+    entitlement: {
+      subject: { ...session.subject },
+      authMethod: session.authMethod,
+      status: entitlement.status,
+      tier: entitlement.tier,
+      entitlementRevision: entitlement.entitlementRevision,
+      capabilities: [...entitlement.capabilities],
+      expiresAt: entitlement.expiresAt,
+      planId: entitlement.planId,
+      planName: entitlement.planName,
+    },
+  };
+}
+
+async function createExtensionSession(descriptor, deps = {}) {
+  const db = deps.db || await getMongoDb();
+  const now = extensionNow(deps);
+  await ensureExtensionSessionIndexes(db);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const rawToken = (deps.generateToken || generateToken)();
+    const tokenHash = hashExtensionSessionToken(rawToken);
+    const doc = {
+      _id: tokenHash,
+      sessionId: crypto.randomUUID(),
+      subject: { ...descriptor.subject },
+      authMethod: descriptor.authMethod,
+      accountEmail: descriptor.accountEmail || null,
+      licenseKeyCode: descriptor.licenseKeyCode || null,
+      phoneNumber: normalizePhone(descriptor.phoneNumber || '') || null,
+      deviceIdHash: descriptor.deviceId
+        ? crypto.createHash('sha256').update(String(descriptor.deviceId), 'utf8').digest('hex')
+        : null,
+      entitlementRevision: descriptor.entitlementRevision,
+      createdAt: now,
+      lastSeenAt: now,
+      expiresAt: new Date(now.getTime() + EXTENSION_SESSION_TTL_MS),
+      revokedAt: null,
+    };
+    try {
+      await db.collection(EXTENSION_SESSION_COLLECTION).insertOne(doc);
+      return { token: rawToken, doc, session: publicExtensionSession(doc, rawToken) };
+    } catch (error) {
+      if (error?.code !== 11000 || attempt === 2) throw error;
+    }
+  }
+  throw new Error('extension_session_issue_failed');
+}
+
+async function readExtensionSession(rawToken, deps = {}) {
+  if (!/^[a-f0-9]{64}$/i.test(String(rawToken || ''))) return { ok: false, errorCode: 'invalid_session' };
+  const db = deps.db || await getMongoDb();
+  const now = extensionNow(deps);
+  const doc = await db.collection(EXTENSION_SESSION_COLLECTION).findOne({ _id: hashExtensionSessionToken(rawToken) });
+  if (!doc) return { ok: false, errorCode: 'invalid_session' };
+  if (doc.revokedAt) return { ok: false, errorCode: 'session_revoked' };
+  if (!doc.expiresAt || new Date(doc.expiresAt).getTime() <= now.getTime()) {
+    return { ok: false, errorCode: 'session_expired' };
+  }
+  return { ok: true, doc };
+}
+
+async function revokeExtensionSession(rawToken, deps = {}) {
+  if (!/^[a-f0-9]{64}$/i.test(String(rawToken || ''))) return { ok: true, revoked: false };
+  const db = deps.db || await getMongoDb();
+  const now = extensionNow(deps);
+  const result = await db.collection(EXTENSION_SESSION_COLLECTION).updateOne(
+    { _id: hashExtensionSessionToken(rawToken), revokedAt: null },
+    { $set: { revokedAt: now, lastSeenAt: now } }
+  );
+  return { ok: true, revoked: result.modifiedCount > 0 };
+}
+
+function getExtensionBearerToken(req) {
+  const match = /^Bearer\s+([a-f0-9]{64})$/i.exec(String(req?.headers?.authorization || '').trim());
+  return match ? match[1] : '';
+}
+
+function extensionAuthFailure(errorCode, status, extra = {}) {
+  return { ok: false, errorCode, status, ...extra };
+}
+
+async function resolveExtensionAccountEntitlement(user, deps = {}) {
+  const now = extensionNow(deps);
+  const keyStore = deps.keyStore || keys;
+  const keyCode = sanitizeId(user?.keyCode, 32);
+  if (!keyCode) return { ok: true, keyCode: null, entitlement: buildExtensionEntitlement({ now }) };
+  const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(keyCode);
+  if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
+  const keyRecord = loaded.found ? keyStore[keyCode] : null;
+  if (!extensionLicenseIsUsable(keyRecord, now)) {
+    return { ok: true, keyCode: null, entitlement: buildExtensionEntitlement({ now }) };
+  }
+  return { ok: true, keyCode, entitlement: buildExtensionEntitlement({ keyCode, keyRecord, now }) };
+}
+
+async function authenticateExtensionAccount(input, deps = {}) {
+  const email = String(input?.email || '').toLowerCase().trim().slice(0, 100);
+  const password = String(input?.password || '').slice(0, 128);
+  if (!email || !password || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return extensionAuthFailure('invalid_credentials', 401);
+  }
+  const db = deps.db || await getMongoDb();
+  const user = await db.collection('portal_users').findOne({ _id: email });
+  const verifyPassword = deps.verifyPassword || verifyPortalPassword;
+  if (!user || !await verifyPassword(password, user)) {
+    return extensionAuthFailure('invalid_credentials', 401);
+  }
+  if (user.totpSecret) {
+    const totpCode = String(input?.totpCode || '').trim();
+    if (!totpCode) return extensionAuthFailure('mfa_required', 401, { mfaRequired: true });
+    const verifyMfa = deps.verifyTotp || verifyTOTP;
+    if (!verifyMfa(user.totpSecret, totpCode)) return extensionAuthFailure('invalid_totp', 401);
+  }
+  const entitlementResult = await resolveExtensionAccountEntitlement(user, { ...deps, db });
+  if (!entitlementResult.ok) return entitlementResult;
+  const rehash = deps.rehashPassword || maybeRehashPortalPassword;
+  try { Promise.resolve(rehash(db, email, password, user)).catch(() => {}); } catch (_) {}
+  return {
+    ok: true,
+    subject: extensionSubject('account', email),
+    accountEmail: email,
+    licenseKeyCode: entitlementResult.keyCode,
+    entitlement: entitlementResult.entitlement,
+  };
+}
+
+async function authorizeExtensionKeySession(input, deps = {}) {
+  const keyCode = sanitizeId(input?.authKey, 32);
+  const phoneNumber = normalizePhone(input?.phoneNumber || '');
+  const deviceId = safeScalar(input?.deviceId, 160);
+  if (!keyCode || isFreeAuthKey(keyCode) || !phoneNumber || !deviceId) {
+    return extensionAuthFailure('invalid_request', 400);
+  }
+  const keyStore = deps.keyStore || keys;
+  const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(keyCode);
+  if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
+  if (!loaded.found || !keyStore[keyCode]) return extensionAuthFailure('invalid_key', 401);
+  const keyRecord = keyStore[keyCode];
+  if (keyRecord.active !== true) return extensionAuthFailure('key_blocked', 403);
+  // Diferente do helper legado isKeyExpired(), este guard também falha
+  // fechado para expiresAt malformado em vez de autenticar a chave e só
+  // depois degradar silenciosamente o entitlement.
+  if (!extensionLicenseIsUsable(keyRecord)) return extensionAuthFailure('key_expired', 403);
+  if (!Array.isArray(keyRecord.phones)) keyRecord.phones = keyRecord.lastPhone ? [keyRecord.lastPhone] : [];
+  const alreadyKnown = keyRecord.phones.some(value => normalizePhone(value) === phoneNumber);
+  if (!alreadyKnown && keyRecord.phones.length >= MAX_PHONES_GLOBAL) {
+    return extensionAuthFailure('phone_limit_global', 403);
+  }
+  const maxUses = typeof keyRecord.maxUses === 'number' ? keyRecord.maxUses : MAX_USES;
+  const claim = await (deps.claimPhoneSlot || claimPhoneSlotAtomic)(keyCode, phoneNumber, maxUses);
+  if (claim.status === 'limit_reached') return extensionAuthFailure('phone_limit', 403);
+  if (keyRecord.expireDuration && !keyRecord.expiresAt) {
+    const activated = await (deps.activateDeferredKey || activateDeferredKey)(keyCode);
+    if (!activated) return extensionAuthFailure('activation_failed', 503, { retryable: true });
+  }
+  const now = extensionNow(deps);
+  const entitlement = buildExtensionEntitlement({ keyCode, keyRecord: keyStore[keyCode], now });
+  return {
+    ok: true,
+    subject: extensionSubject('license', keyCode),
+    licenseKeyCode: keyCode,
+    phoneNumber,
+    deviceId,
+    entitlement,
+    newlyClaimed: claim.status === 'claimed',
+  };
+}
+
+async function refreshExtensionSession(rawToken, deps = {}) {
+  const db = deps.db || await getMongoDb();
+  const now = extensionNow(deps);
+  const current = await readExtensionSession(rawToken, { ...deps, db, now });
+  if (!current.ok) return extensionAuthFailure(current.errorCode, 401);
+  const doc = current.doc;
+  let entitlementResult;
+  let licenseKeyCode = doc.licenseKeyCode || null;
+  if (doc.authMethod === 'password') {
+    const user = await db.collection('portal_users').findOne({ _id: doc.accountEmail });
+    if (!user) {
+      await revokeExtensionSession(rawToken, { ...deps, db, now });
+      return extensionAuthFailure('subject_not_found', 401);
+    }
+    entitlementResult = await resolveExtensionAccountEntitlement(user, { ...deps, db, now });
+    if (!entitlementResult.ok) return entitlementResult;
+    licenseKeyCode = entitlementResult.keyCode;
+  } else if (doc.authMethod === 'license_key') {
+    const keyStore = deps.keyStore || keys;
+    const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(doc.licenseKeyCode);
+    if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
+    const keyRecord = loaded.found ? keyStore[doc.licenseKeyCode] : null;
+    const phoneStillAllowed = !doc.phoneNumber || (Array.isArray(keyRecord?.phones)
+      && keyRecord.phones.some(value => normalizePhone(value) === doc.phoneNumber));
+    if (!extensionLicenseIsUsable(keyRecord, now) || !phoneStillAllowed) {
+      await revokeExtensionSession(rawToken, { ...deps, db, now });
+      return extensionAuthFailure('entitlement_revoked', 403);
+    }
+    entitlementResult = {
+      ok: true,
+      keyCode: doc.licenseKeyCode,
+      entitlement: buildExtensionEntitlement({ keyCode: doc.licenseKeyCode, keyRecord, now }),
+    };
+  } else {
+    await revokeExtensionSession(rawToken, { ...deps, db, now });
+    return extensionAuthFailure('invalid_session', 401);
+  }
+  await db.collection(EXTENSION_SESSION_COLLECTION).updateOne(
+    { _id: doc._id, revokedAt: null },
+    { $set: {
+      lastSeenAt: now,
+      licenseKeyCode: licenseKeyCode || null,
+      entitlementRevision: entitlementResult.entitlement.entitlementRevision,
+    } }
+  );
+  return {
+    ok: true,
+    sessionDoc: doc,
+    entitlement: entitlementResult.entitlement,
+  };
+}
+
 // Resolve um rawToken (o que veio do link do e-mail) pro registro em
 // password_resets: tenta pelo hash (formato atual) e só cai pro valor cru
 // se não achar — tokens emitidos antes desta migração, ainda dentro da
@@ -1321,24 +1668,6 @@ function isFreeAuthKey(key) {
 }
 function isFreePlanId(planId) {
   return planId === FREE_PLAN_ID || planId === FREE_OWNER_ID;
-}
-function isPaidPlan(body) {
-  const planId = body.planId || '';
-  if (isFreePlanId(planId)) return false;
-  if (planId) return true;
-  if (body.isBasic === true || body.isBasic === 'true') return true;
-  return false;
-}
-function isExplicitFreeSession(body) {
-  const authKey = (body.authKey || '').toLowerCase().slice(0, 32);
-  const planId = body.planId || '';
-  const managerId = body.managerId || '';
-  if (authKey === FREE_AUTH_KEY) return true;
-  if (!isFreePlanId(planId)) return false;
-  return !managerId || managerId === FREE_MANAGER_ID;
-}
-function isProManagerId(managerId) {
-  return !!managerId && managerId !== FREE_MANAGER_ID;
 }
 function sanitizeKeyRecord(k) {
   if (!k || typeof k !== 'object') return k;
@@ -1424,22 +1753,6 @@ function findKeyCodeByPhone(keysMap, phone) {
   }
   return null;
 }
-function findKeyCodeByManager(keysMap, managerId, phone) {
-  if (!managerId) return null;
-  const norm = phone ? String(phone).replace(/\D/g, '') : '';
-  let fallback = null;
-  for (const [code, k] of Object.entries(keysMap)) {
-    if (!k || typeof k !== 'object' || k.active === false) continue;
-    if (k.managerId !== managerId) continue;
-    if (norm) {
-      const lastNorm = String(k.lastPhone || '').replace(/\D/g, '');
-      if (lastNorm === norm) return code;
-      if (Array.isArray(k.phones) && k.phones.some(p => String(p).replace(/\D/g, '') === norm)) return code;
-    }
-    if (!fallback) fallback = code;
-  }
-  return fallback;
-}
 // Distingue "chave nao existe" de "nao deu para verificar" (banco fora do ar /
 // queda de conexao). Tratar os dois como iguais desloga clientes de chave ATIVA
 // a cada blip de rede — o logout so pode acontecer com certeza (ver /v3/key).
@@ -1490,23 +1803,20 @@ async function adminGetKey(code) {
 }
 async function resolveUsageKey(body) {
   const authKey = (body.authKey || '').toLowerCase().slice(0, 32);
-  const planId = body.planId || '';
-  const managerId = body.managerId || '';
   const phone = body.phoneNumber || '';
 
-  if (isExplicitFreeSession(body)) return FREE_AUTH_KEY;
+  // A identidade/entitlement vem de chave real ou associação real de
+  // telefone já persistida. planId/isBasic/managerId e qualquer outra flag
+  // enviada pelo cliente são deliberadamente ignorados: antes bastava forjar
+  // uma delas para cair no pseudo-key ilimitado __paid__.
+  if (authKey === FREE_AUTH_KEY) return FREE_AUTH_KEY;
 
-  if (authKey && authKey !== FREE_AUTH_KEY && await ensureKeyLoaded(authKey)) return authKey;
+  if (authKey && authKey !== FREE_AUTH_KEY && await ensureKeyLoaded(authKey)) {
+    return extensionLicenseIsUsable(keys[authKey]) ? authKey : null;
+  }
 
   const byPhone = findKeyCodeByPhone(keys, phone);
-  if (byPhone && await ensureKeyLoaded(byPhone)) return byPhone;
-
-  const byManager = findKeyCodeByManager(keys, managerId, phone);
-  if (byManager && await ensureKeyLoaded(byManager)) return byManager;
-
-  if (isPaidPlan(body) || isProManagerId(managerId)) return PAID_USAGE_KEY;
-
-  if (isFreePlanId(planId)) return FREE_AUTH_KEY;
+  if (byPhone && await ensureKeyLoaded(byPhone) && extensionLicenseIsUsable(keys[byPhone])) return byPhone;
 
   return null;
 }
@@ -11741,6 +12051,131 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // ── Extension API V4: sessões opacas e capabilities do servidor ──────
+  // V3 permanece abaixo, sem mudança de path ou schema. V4 nunca recebe
+  // tier/capabilities/usage do cliente: toda decisão nasce da conta/chave
+  // realmente carregada do banco/cache canônico do servidor.
+  if (p === R_EXT+'/v4/session/key' && req.method === 'POST') {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    if (!checkRateLimit(ip, 'ext_key')) {
+      sendJson(res, { ok: false, errorCode: 'rate_limited', retryable: true }, 429);
+      return;
+    }
+    try {
+      const body = await parseBody(req);
+      const authorized = await authorizeExtensionKeySession(body);
+      if (!authorized.ok) {
+        const { status, ...errorBody } = authorized;
+        sendJson(res, errorBody, status);
+        return;
+      }
+      const issued = await createExtensionSession({
+        subject: authorized.subject,
+        authMethod: 'key',
+        licenseKeyCode: authorized.licenseKeyCode,
+        phoneNumber: authorized.phoneNumber,
+        deviceId: authorized.deviceId,
+        entitlementRevision: authorized.entitlement.entitlementRevision,
+      });
+      const keyRecord = keys[authorized.licenseKeyCode];
+      if (keyRecord) {
+        keyRecord.lastUsed = new Date().toISOString();
+        keyRecord.lastIp = ip;
+        keyRecord.wppVersion = safeScalar(body.wppVersion, 80, '-');
+        keyRecord.lastPhone = authorized.phoneNumber;
+        upsertActivation(authorized.licenseKeyCode, authorized.phoneNumber, authorized.deviceId, {
+          ip, wppVersion: keyRecord.wppVersion,
+        }).catch(() => {});
+        saveKey(authorized.licenseKeyCode).catch(() => {});
+      }
+      sendJson(res, extensionSessionSuccess(issued.token, issued.doc, authorized.entitlement));
+    } catch (error) {
+      console.error('[extension-v4] session/key indisponível:', error.message);
+      sendJson(res, { ok: false, errorCode: 'temporarily_unavailable', retryable: true }, 503);
+    }
+    return;
+  }
+
+  if (p === R_EXT+'/v4/session/login' && req.method === 'POST') {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    if (!checkRateLimit(ip, 'login')) {
+      sendJson(res, { ok: false, errorCode: 'rate_limited', retryable: true }, 429);
+      return;
+    }
+    try {
+      const body = await parseBody(req);
+      const db = await getMongoDb();
+      const authenticated = await authenticateExtensionAccount(body, { db });
+      // Reduz a vida da senha em memória após a verificação. Ela nunca é
+      // copiada para sessão, entitlement, Mongo ou logs desta API.
+      if (body && typeof body === 'object') delete body.password;
+      if (!authenticated.ok) {
+        const { status, ...errorBody } = authenticated;
+        sendJson(res, errorBody, status);
+        return;
+      }
+      const issued = await createExtensionSession({
+        subject: authenticated.subject,
+        authMethod: 'password',
+        accountEmail: authenticated.accountEmail,
+        licenseKeyCode: authenticated.licenseKeyCode,
+        phoneNumber: body.phoneNumber,
+        deviceId: body.deviceId,
+        entitlementRevision: authenticated.entitlement.entitlementRevision,
+      }, { db });
+      db.collection('portal_users').updateOne(
+        { _id: authenticated.accountEmail },
+        { $set: { lastLogin: new Date().toISOString() } }
+      ).catch(() => {});
+      sendJson(res, extensionSessionSuccess(issued.token, issued.doc, authenticated.entitlement));
+    } catch (error) {
+      console.error('[extension-v4] session/login indisponível:', error.message);
+      sendJson(res, { ok: false, errorCode: 'temporarily_unavailable', retryable: true }, 503);
+    }
+    return;
+  }
+
+  if (p === R_EXT+'/v4/session/refresh' && req.method === 'POST') {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    if (!checkRateLimit(ip, 'api')) {
+      sendJson(res, { ok: false, errorCode: 'rate_limited', retryable: true }, 429);
+      return;
+    }
+    const token = getExtensionBearerToken(req);
+    if (!token) { sendJson(res, { ok: false, errorCode: 'invalid_session' }, 401); return; }
+    try {
+      const refreshed = await refreshExtensionSession(token);
+      if (!refreshed.ok) {
+        const { status, ...errorBody } = refreshed;
+        sendJson(res, errorBody, status);
+        return;
+      }
+      sendJson(res, extensionSessionSuccess(token, refreshed.sessionDoc, refreshed.entitlement));
+    } catch (error) {
+      console.error('[extension-v4] session/refresh indisponível:', error.message);
+      sendJson(res, { ok: false, errorCode: 'temporarily_unavailable', retryable: true }, 503);
+    }
+    return;
+  }
+
+  if (p === R_EXT+'/v4/session/logout' && req.method === 'POST') {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    if (!checkRateLimit(ip, 'api')) {
+      sendJson(res, { ok: false, errorCode: 'rate_limited', retryable: true }, 429);
+      return;
+    }
+    const token = getExtensionBearerToken(req);
+    if (!token) { sendJson(res, { ok: false, errorCode: 'invalid_session' }, 401); return; }
+    try {
+      const revoked = await revokeExtensionSession(token);
+      sendJson(res, { ok: true, revoked: revoked.revoked });
+    } catch (error) {
+      console.error('[extension-v4] session/logout indisponível:', error.message);
+      sendJson(res, { ok: false, errorCode: 'temporarily_unavailable', retryable: true }, 503);
+    }
+    return;
+  }
+
   if (p === R_EXT+'/v3/key' && req.method === 'POST') {
     if (!checkRateLimit(ip, 'ext_key')) {
       sendJson(res, { authError: 'rateLimited', authErrorMessage: 'Muitas tentativas. Aguarde.', isLoggedIn: false }, 429);
@@ -11899,21 +12334,24 @@ async function handleRequest(req, res) {
 
   if (p === R_EXT+'/v3/check-status' && req.method === 'POST') {
     if (!checkRateLimit(ip, 'check_status', 60, 60000)) {
-      sendJson(res, { active: true }); return; // silencioso — não deslogar por rate limit
+      // Estado incerto não renova acesso. O cliente pode aplicar a grace de
+      // rede já existente, mas não recebe um novo veredito active:true.
+      sendJson(res, { error: 'rate_limited', retryable: true }, 429); return;
     }
     const body    = await parseBody(req); // 64 KB limit + prototype-pollution guard
     const keyCode = sanitizeId(body.authKey, 32);
-    if (!serverReady) { sendJson(res, { active: true }); return; }
-    if (!keyCode)     { sendJson(res, { active: true }); return; }
+    if (!serverReady) { sendJson(res, { error: 'temporarily_unavailable', retryable: true }, 503); return; }
+    if (!keyCode)     { sendJson(res, { error: 'invalid_request' }, 400); return; }
     if (isFreeAuthKey(keyCode)) {
       sendJson(res, { active: true, expiringSoon: false, hoursLeft: null, modules: { ...DEFAULT_MODULES }, ts: Date.now() });
       return;
     }
     const _cs = await ensureKeyLoadedEx(keyCode);
     if (_cs.dbError) {
-      // Mesma politica das linhas acima: em caso de duvida NAO desativamos.
-      // Banco inacessivel != chave inexistente — desativar aqui desloga chave ATIVA.
-      sendJson(res, { active: true }); return;
+      // Banco inacessível não prova nem revogação nem entitlement ativo.
+      // Resposta neutra/retryable preserva a grace do cliente sem renovar
+      // active:true com base em incerteza.
+      sendJson(res, { error: 'temporarily_unavailable', retryable: true }, 503); return;
     }
     if (!_cs.found) {
       sendJson(res, { active: false, reason: 'not_found' }); return;
@@ -13986,5 +14424,23 @@ module.exports.__test = Object.freeze({
   generateTOTP,
   checkAnalyticsLogin,
   genTotpSecret,
+  EXTENSION_SESSION_COLLECTION,
+  EXTENSION_SESSION_TTL_MS,
+  EXTENSION_ENTITLEMENT_LEASE_MS,
+  EXTENSION_FREE_CAPABILITIES,
+  EXTENSION_LICENSED_CAPABILITIES,
+  hashExtensionSessionToken,
+  extensionSubject,
+  extensionLicenseIsUsable,
+  buildExtensionEntitlement,
+  extensionSessionSuccess,
+  createExtensionSession,
+  readExtensionSession,
+  revokeExtensionSession,
+  getExtensionBearerToken,
+  authenticateExtensionAccount,
+  authorizeExtensionKeySession,
+  refreshExtensionSession,
+  resolveUsageKey,
   _SEC_HEADERS,
 });
