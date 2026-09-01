@@ -85,7 +85,7 @@ Use `.env.example` como referência. Principais grupos:
 - núcleo: `MONGODB_URI`, `MONGODB_DB`, `ADMIN_USER`, `ADMIN_PASS`, `APP_SECRET`, `TOTP_SECRET`;
 - Analytics: `ANALYTICS_PASS`, `ANALYTICS_TOTP_SECRET`;
 - comercial: `CAKTO_WEBHOOK_SECRET`, `SALE_WEBHOOK_SECRET`, `PARTNER_API_TOKEN` e IDs Cakto;
-- e-mail: `RESEND_API_KEY`, `EMAIL_FROM`;
+- e-mail: `RESEND_API_KEY`, `EMAIL_FROM` e, opcionalmente, `EMAIL_REPLY_TO` para respostas de suporte;
 - extensão: `EXTENSION_URL`, `EXTENSION_VERSION`, `EXTENSION_CHANGELOG`, `ZVM_EXTENSION_IDS`;
 - Meta Oficial: `META_APP_ID`, `META_APP_SECRET`, `META_CONFIG_ID`, `META_TOKEN_ENCRYPTION_KEY`, `META_WEBHOOK_VERIFY_TOKEN`;
 - WSM legado: somente as `WSM_*` ainda necessárias ao namespace `/WSM`.

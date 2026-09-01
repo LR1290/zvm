@@ -61,3 +61,10 @@ Valide nesta ordem:
 10. Meta Oficial somente depois das credenciais e configuração do Meta App estarem prontas.
 
 Não aplique o antigo patch V254 por cima desta versão: a integração já está incorporada ao `server.js` consolidado.
+
+## E-mail transacional — identidade e respostas
+
+- `EMAIL_FROM`: remetente verificado no Resend.
+- `EMAIL_REPLY_TO` (opcional): endereço real de suporte para receber respostas dos clientes.
+- A marca ZVM enviada nos e-mails usa imagem inline CID; não depende de `data:` URI no cliente de e-mail.
+- Após o deploy, use o laboratório de e-mail do painel administrativo para enviar um teste real ao Gmail e conferir logo, CTA e resposta.
