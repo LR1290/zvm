@@ -1,15 +1,20 @@
 {
-  "name": "zvm",
+  "name": "zvm-server",
   "version": "1.0.0",
-  "description": "ZVM - Servidor de licenciamento",
+  "private": true,
+  "description": "Backend oficial da ZVM para licenciamento, portal, integrações e serviços da extensão.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "check": "node --check server.js && node --check mailer.js",
+    "audit:prod": "npm audit --omit=dev"
   },
   "dependencies": {
-    "mongodb": "^6.3.0"
+    "dotenv": "17.4.2",
+    "mongodb": "6.21.0"
   },
   "engines": {
-    "node": "26.4.0"
-  }
+    "node": ">=24.20.0 <25"
+  },
+  "license": "UNLICENSED"
 }
