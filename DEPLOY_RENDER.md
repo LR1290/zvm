@@ -41,6 +41,10 @@ META_AUTO_REGISTER_PHONE=1
 META_WEBHOOK_RETENTION_DAYS=30
 ```
 
+## Hotfix HTTP / Node 24
+
+A configuração HTTP desta release mantém `requestTimeout=30000`, usa `headersTimeout=30000` e `keepAliveTimeout=65000`. Em Node moderno, `headersTimeout` não pode ser maior que `requestTimeout`; a configuração anterior (`66000 > 30000`) abortava o processo com `ERR_OUT_OF_RANGE` antes de `server.listen()`.
+
 ## Pós-deploy
 
 Valide nesta ordem:

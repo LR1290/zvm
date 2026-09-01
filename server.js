@@ -12987,10 +12987,15 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     process.on('uncaughtException',  err => console.error('[uncaughtException]', err));
     process.on('unhandledRejection', err => console.error('[unhandledRejection]', err));
 
-    const server = http.createServer({ maxHeaderSize: 16 * 1024, requestTimeout: 30000, headersTimeout: 66000, keepAliveTimeout: 65000 }, safeHandler);
-    server.requestTimeout = 30000;
-    server.headersTimeout = 66000;
-    server.keepAliveTimeout = 65000;
+    const HTTP_REQUEST_TIMEOUT_MS = 30_000;
+    const HTTP_HEADERS_TIMEOUT_MS = 30_000;
+    const HTTP_KEEP_ALIVE_TIMEOUT_MS = 65_000;
+    const server = http.createServer({
+      maxHeaderSize: 16 * 1024,
+      requestTimeout: HTTP_REQUEST_TIMEOUT_MS,
+      headersTimeout: HTTP_HEADERS_TIMEOUT_MS,
+      keepAliveTimeout: HTTP_KEEP_ALIVE_TIMEOUT_MS,
+    }, safeHandler);
     server.maxHeadersCount = 100;
     server.maxRequestsPerSocket = 1000;
     _httpServer = server;
