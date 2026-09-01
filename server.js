@@ -3281,7 +3281,7 @@ const ZVM_FAQ_ITEMS = [
   ['Como renovo minha licença?', 'No portal, acesse "Renovar / Alterar Plano" e conclua a compra pela Cakto — a renovação é aplicada automaticamente à sua chave.'],
   ['Posso alterar meu plano?', 'Sim. Escolha outro plano em Planos; a chave existente passa a usar o novo limite de dispositivos.'],
   ['Onde vejo a validade da minha licença?', 'No painel Minha Conta, nas seções "Minha licença" e "Resumo da conta".'],
-  ['Como removo um dispositivo?', 'Em Minha Conta, na seção "Dispositivos cadastrados", clique em Remover ao lado do número.'],
+  ['Como removo um dispositivo?', 'Em Minha Conta, abra Dispositivos e números, clique em Remover acesso no número desejado e confirme. O slot é liberado na hora para você conectar outro número.'],
   ['Como vincular uma chave que já tenho?', 'Em Minha Conta, acesse "Vincular chave" e informe o código recebido — ela passa a aparecer no seu painel.'],
   ['Minha chave expirou. O que faço?', 'Entre no portal e clique em "Renovar agora" — a validade é atualizada assim que o pagamento é confirmado. Seus dispositivos vinculados continuam salvos e voltam a funcionar assim que a chave é renovada.'],
   ['Preciso usar o mesmo e-mail na compra?', 'Sim. Use o mesmo e-mail cadastrado na sua conta ZVM na página de pagamento da Cakto pra chave ser vinculada automaticamente.'],
@@ -3966,7 +3966,7 @@ function renderStandalonePortalDashboard(user, keyData, okMsg='') {
   const mainStatusClass = expired ? 'bd-red' : deferred ? 'bd-blue' : active ? 'bd-green' : 'bd-red';
   const mainStatusTxt   = expired ? 'Expirada' : deferred ? 'Aguardando 1º uso' : active ? 'Ativa' : 'Inativa';
   const mainStatusGlow  = expired ? '#f0506044' : deferred ? '#5588ff44' : active ? '#00e67644' : '#f0506044';
-  const planName = keyData ? (ZVM_PLANS[keyData.planId]?.shortName || planLabelForMaxUses(keyData.maxUses || 1)) : '';
+  const planName = keyData ? (ZVM_PLANS[keyData.planId]?.shortName || (keyData.maxUses === -1 ? 'Ilimitado' : planLabelForMaxUses(keyData.maxUses || 1))) : '';
   const expiryDateText = keyData?.expiresAt && Number.isFinite(new Date(keyData.expiresAt).getTime())
     ? new Date(keyData.expiresAt).toLocaleDateString('pt-BR') : deferred ? 'No primeiro uso' : 'Sem expiração';
 
@@ -4014,12 +4014,12 @@ function renderStandalonePortalDashboard(user, keyData, okMsg='') {
   // ── Novidades — recursos que o standalone realmente tem hoje, sem número
   // de versão (não há changelog público consolidado pra apontar).
   const clItems = [
-    ['new', 'Novo Portal do Cliente'],
+    ['new', 'Gerenciador visual de dispositivos e slots'],
+    ['new', 'Confirmação segura para liberar um número'],
+    ['new', 'Atalhos rápidos de licença e segurança'],
     ['new', 'Renovação e alteração de plano pelo portal'],
-    ['new', 'Gerenciamento de dispositivos vinculados'],
-    ['new', 'Segurança com autenticação em duas etapas'],
     ['new', 'Compra e entrega automática por e-mail'],
-    ['new', 'Nova área de planos'],
+    ['new', 'Segurança com autenticação em duas etapas'],
   ];
   const clHtml = clItems.map(([type, text]) =>
     `<div class="cl-item"><span class="cl-tag cl-tag-${type}">${type==='new'?'NOVO':'FIX'}</span><span class="cl-text">${text}</span></div>`
@@ -4041,6 +4041,17 @@ function renderStandalonePortalDashboard(user, keyData, okMsg='') {
 
   const hasKey = !!keyData;
   const has2fa = !!(user && user.totpSecret);
+  const slotsFree = devMax ? Math.max(0, devMax - devUsed) : null;
+  const deviceCapacityLabel = devMax
+    ? `${devUsed} de ${devMax} slot${devMax!==1?'s':''} em uso`
+    : `${devUsed} dispositivo${devUsed!==1?'s':''} vinculado${devUsed!==1?'s':''}`;
+  const deviceAvailabilityLabel = devMax
+    ? (slotsFree > 0 ? `${slotsFree} livre${slotsFree!==1?'s':''}` : 'Limite atingido')
+    : 'Sem limite de slots';
+  const rawKeyCode = keyData ? String(keyData.code || '') : '';
+  const maskedKeyCode = rawKeyCode.length > 8
+    ? `${rawKeyCode.slice(0,3)}••••••••${rawKeyCode.slice(-4)}`
+    : rawKeyCode;
   // String(): registros de portal_users criados por importação/webhook podem não ter
   // "name"; .split de undefined derrubava o dashboard inteiro para "Erro temporário".
   const fullName = String(user.name || '').trim();
@@ -4051,11 +4062,52 @@ function renderStandalonePortalDashboard(user, keyData, okMsg='') {
     ? fullName.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase()
     : (user.email ? user.email[0].toUpperCase() : '?'));
 
-  // Dispositivos cadastrados — só phones (número + posição do slot), nunca
-  // IP/versão do WPP/último acesso técnico (isso fica só no painel admin).
+  // Gerenciador de dispositivos client-facing: mostra somente número e slot.
+  // Dados técnicos (IP, versão, último check-in) continuam restritos ao admin.
+  // O POST envia o telefone exato e mantém index como fallback de compatibilidade.
+  const formatClientPhone = (phone) => {
+    const raw = String(phone || '').trim();
+    const digits = raw.replace(/\D/g, '');
+    if (digits.length === 13 && digits.startsWith('55')) return `+55 (${digits.slice(2,4)}) ${digits.slice(4,9)}-${digits.slice(9)}`;
+    if (digits.length === 12 && digits.startsWith('55')) return `+55 (${digits.slice(2,4)}) ${digits.slice(4,8)}-${digits.slice(8)}`;
+    return raw.startsWith('+') ? raw : (digits ? `+${digits}` : raw);
+  };
   const deviceListHtml = (keyData && (keyData.phones||[]).length)
-    ? (keyData.phones||[]).map((phone,index)=>`<div class="device-row"><div class="device-num" aria-hidden="true">#${index+1}</div><div class="device-info"><div class="device-phone">${escHtml(phone)}</div><div class="device-meta">Slot ${index+1} de ${devMax||'∞'}</div></div><form method="POST" action="/cliente/dispositivos/remover" onsubmit="return confirm('Remover este número da licença? O dispositivo perderá o acesso.')"><input type="hidden" name="index" value="${index}"><button type="submit" class="device-remove" aria-label="Remover número ${escHtml(phone)}">Remover</button></form></div>`).join('')
-    : '<div class="device-empty">Nenhum número vinculado. O primeiro acesso da extensão ocupará um slot.</div>';
+    ? (keyData.phones||[]).map((phone,index)=>{
+      const displayPhone = formatClientPhone(phone);
+      return `
+      <article class="device-row">
+        <div class="device-avatar" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><rect x="7" y="2.5" width="10" height="19" rx="2.3" stroke="currentColor" stroke-width="1.6"/><path d="M10 5.5h4M11.2 18.5h1.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </div>
+        <div class="device-info">
+          <div class="device-title-line"><div class="device-phone">${escHtml(displayPhone)}</div><span class="device-status"><span></span>Vinculado</span></div>
+          <div class="device-meta">Número de WhatsApp · Slot ${index+1}${devMax?' de '+devMax:''}</div>
+        </div>
+        <form method="POST" action="/cliente/dispositivos/remover" class="device-remove-form" data-device-phone="${escHtml(phone)}">
+          <input type="hidden" name="phone" value="${escHtml(phone)}">
+          <input type="hidden" name="index" value="${index}">
+          <button type="submit" class="device-remove" aria-label="Remover acesso do número ${escHtml(phone)}"><span aria-hidden="true">⌫</span> Remover acesso</button>
+        </form>
+      </article>`;
+    }).join('')
+    : `<div class="device-empty"><div class="device-empty-icon" aria-hidden="true">＋</div><div><strong>Nenhum número conectado</strong><span>Abra a extensão no WhatsApp Web para ocupar o primeiro slot desta licença.</span></div></div>`;
+
+  const deviceRemoveDialog = `<dialog class="device-remove-dialog" id="device-remove-dialog" aria-labelledby="device-remove-title">
+    <div class="device-remove-dialog-inner">
+      <div class="device-dialog-icon" aria-hidden="true">!</div>
+      <div>
+        <div class="device-dialog-kicker">Liberar slot</div>
+        <h2 id="device-remove-title">Remover este número?</h2>
+        <p>O número <strong id="device-remove-phone">—</strong> perderá o acesso à licença neste dispositivo. Seus dados do portal e sua licença não serão apagados.</p>
+      </div>
+      <div class="device-dialog-note">Depois da remoção, você pode abrir a extensão em outro número para ocupar o slot liberado.</div>
+      <div class="device-dialog-actions">
+        <button type="button" class="device-dialog-cancel" id="device-remove-cancel">Cancelar</button>
+        <button type="button" class="device-dialog-confirm" id="device-remove-confirm">Sim, remover acesso</button>
+      </div>
+    </div>
+  </dialog>`;
 
   const avatarBtn = `<div class="dash-avatar-shell">
     <button type="button" class="dash-avatar avatar-default" id="dash-avatar-btn" aria-haspopup="dialog" aria-controls="avatar-dialog" aria-label="Alterar avatar" data-email="${escHtml(user.email||'')}">
@@ -4215,31 +4267,9 @@ ${_toastCss()}
 .validity-bar-fill{height:4px;border-radius:3px;transition:width 1s linear,background .4s}
 .countdown-note{font-size:13px;color:var(--tx2);line-height:1.5;margin-top:8px}
 
-/* Dispositivos (dentro do painel Dispositivos cadastrados) */
-.panel-hdr{position:relative}
-.panel-hdr-badge{margin-left:auto;background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd);border-radius:20px;padding:2px 10px;font-size:11px;font-weight:800;letter-spacing:.3px}
-.panel-note{font-size:13px;color:var(--tx3);line-height:1.6;margin-bottom:14px}
-.device-list{display:flex;flex-direction:column}
-.device-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--brd)}.device-row:last-child{border-bottom:none}
-.device-num{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:var(--bg);border:1px solid var(--brd2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:var(--tx3)}
-.device-info{flex:1;min-width:0}
-.device-phone{font-family:'Space Mono',monospace;font-size:13px;color:var(--tx)}.device-meta{font-size:12px;color:var(--tx3);margin-top:3px}
-.device-remove{min-height:38px;padding:8px 12px;border:1px solid #f0506035;border-radius:7px;background:#f0506010;color:#f05060;font:700 12px 'Outfit',sans-serif;cursor:pointer;transition:background .2s,transform .2s;flex-shrink:0}.device-remove:hover{background:#f0506022}.device-remove:active{transform:scale(.96)}.device-empty{padding:6px 0;color:var(--tx3);font-size:13px}
-
-/* Ações do portal — hierarquia: 1 primária de destaque em faixa própria,
-   secundárias dentro do painel "Conta e segurança" com peso menor,
-   destrutiva isolada e discreta (não compete visualmente com o resto). */
-.quick-actions{margin-bottom:16px}
-.qa-primary{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:18px 20px;border-radius:12px;background:var(--g);color:#03120b;font:800 16px 'Outfit',sans-serif;text-decoration:none;transition:all .2s}
-.qa-primary:hover{background:#00e676;box-shadow:0 8px 24px #00e67630}
+/* Ação primária de assinatura */
+.qa-primary{display:flex;align-items:center;justify-content:center;gap:10px;background:var(--g);color:#03120b;font:800 14px 'Outfit',sans-serif;text-decoration:none;transition:all .2s}
 .qa-primary:active{transform:scale(.99)}
-.qa-row{display:flex;flex-direction:column;gap:8px}
-.qa-btn{display:flex;align-items:center;gap:9px;padding:11px 14px;border-radius:8px;background:#151515;color:var(--tx2);border:1px solid var(--brd2);font:700 13.5px 'Outfit',sans-serif;text-decoration:none;cursor:pointer;transition:all .2s}
-.qa-btn:hover{border-color:#444;color:var(--tx)}
-.qa-btn:active{transform:scale(.98)}
-.qa-danger-wrap{text-align:center;margin:4px 0 16px}
-.qa-danger{background:none;border:none;color:var(--tx3);font:700 12.5px 'Outfit',sans-serif;text-decoration:underline;text-underline-offset:3px;cursor:pointer;padding:6px;transition:color .2s}
-.qa-danger:hover{color:#f05060}
 
 /* No key state */
 .dash-nokey{text-align:center;padding:40px 24px;background:var(--bg2);border:1px dashed var(--brd2);border-radius:10px;margin-bottom:16px}
@@ -4276,6 +4306,30 @@ ${_toastCss()}
 .support-btn{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:14px;padding:12px;background:#25d36610;border:1px solid #25d36630;border-radius:7px;color:#25d366;text-decoration:none;font-size:14px;font-weight:700;font-family:'Outfit',sans-serif;transition:background .2s}
 .support-btn:hover{background:#25d36620}
 
+
+/* Portal UX V2 — self-service de assinatura, dispositivos e segurança */
+.account-nav{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:-4px 0 16px;padding:7px;background:var(--bg2);border:1px solid var(--brd);border-radius:12px;position:sticky;top:8px;z-index:5;box-shadow:0 8px 24px rgba(0,0,0,.08)}.account-nav a{display:inline-flex;align-items:center;gap:7px;padding:8px 11px;border-radius:8px;color:var(--tx2);font:700 12px 'Outfit',sans-serif;text-decoration:none;transition:background .18s,color .18s}.account-nav a:hover{background:var(--bg);color:var(--tx)}.account-nav a span{color:var(--g);font-weight:900}.account-nav a b{padding:2px 6px;border-radius:999px;background:var(--g-bg);color:var(--g);font-size:10px}.dash-grid-2[id],.device-manager,.account-security,.panels-grid[id]{scroll-margin-top:76px}
+.page-wrap{max-width:1240px}
+.dash-hero{background:linear-gradient(135deg,var(--bg2),color-mix(in srgb,var(--g) 5%,var(--bg2)));border-radius:16px;padding:26px 28px}
+.dash-hero-sub{max-width:620px}.dash-hero-badges{gap:8px}
+.key-card,.panel-box{border-radius:14px}.key-card-head{padding:22px 24px 18px}.key-card-body{padding:18px 24px 22px}
+.key-display{background:var(--bg);border-color:var(--g-brd);border-radius:10px;padding:13px 15px}.key-mask{letter-spacing:2.4px}.key-copy-hint{padding:5px 9px;border-radius:7px;background:var(--g-bg);opacity:1}
+.subscription-strip{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:18px 20px 18px 22px;margin-bottom:16px;background:linear-gradient(110deg,var(--bg2),color-mix(in srgb,var(--g) 7%,var(--bg2)));border:1px solid var(--g-brd);border-radius:14px}
+.subscription-copy{display:flex;flex-direction:column;gap:3px;min-width:0}.subscription-copy strong{font:800 17px 'Outfit',sans-serif;color:var(--tx)}.subscription-copy>span:last-child{font:500 13px 'Outfit',sans-serif;color:var(--tx2);line-height:1.5}.subscription-kicker,.section-kicker{font:800 10.5px 'Outfit',sans-serif;text-transform:uppercase;letter-spacing:1.1px;color:var(--g)}
+.qa-primary{width:auto;min-width:230px;padding:12px 18px;border-radius:9px;font-size:14px;flex-shrink:0}.qa-primary:hover{box-shadow:0 8px 22px color-mix(in srgb,var(--g) 20%,transparent)}
+.device-manager,.account-security{margin-bottom:16px;overflow:visible}
+.device-manager-head{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;padding:22px 24px 18px;border-bottom:1px solid var(--brd)}
+.device-manager-head h2{font:850 20px 'Outfit',sans-serif;color:var(--tx);margin:4px 0 5px}.device-manager-head p{font:500 13.5px 'Outfit',sans-serif;color:var(--tx2);line-height:1.55;max-width:660px}
+.device-capacity-badges{display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end;padding-top:3px}.capacity-main,.capacity-free,.security-state{display:inline-flex;align-items:center;justify-content:center;padding:6px 10px;border-radius:999px;font:800 11.5px 'Outfit',sans-serif;white-space:nowrap}.capacity-main{background:var(--g-bg);border:1px solid var(--g-brd);color:var(--g)}.capacity-free{background:var(--bg);border:1px solid var(--brd2);color:var(--tx2)}.capacity-free.is-full{background:#f0b42912;border-color:#f0b42938;color:#f0b429}
+.device-manager-body{padding:18px 24px 22px}.capacity-meter{padding:14px 16px;margin-bottom:14px;background:var(--bg);border:1px solid var(--brd);border-radius:11px}.capacity-meter-copy{display:flex;align-items:center;justify-content:space-between;gap:12px;font:700 12px 'Outfit',sans-serif;color:var(--tx2)}.capacity-meter-copy strong{color:var(--tx);font-size:13px}.capacity-track{height:6px;background:color-mix(in srgb,var(--tx) 9%,transparent);border-radius:999px;overflow:hidden;margin:9px 0 7px}.capacity-track span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--g),#17c97a)}.capacity-help{font:500 11.5px 'Outfit',sans-serif;color:var(--tx3)}.capacity-help.is-full{color:#f0b429}
+.device-list{gap:9px}.device-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:14px;padding:14px 15px;background:var(--bg);border:1px solid var(--brd);border-radius:11px}.device-row:last-child{border-bottom:1px solid var(--brd)}.device-row:hover{border-color:var(--brd2)}
+.device-avatar{width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center;color:var(--g);background:var(--g-bg);border:1px solid var(--g-brd)}.device-avatar svg{width:23px;height:23px}.device-info{min-width:0}.device-title-line{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.device-phone{font-family:'Space Mono',monospace;font-size:14px;font-weight:700;color:var(--tx);letter-spacing:.3px}.device-meta{font:500 12px 'Outfit',sans-serif;color:var(--tx3);margin-top:5px}.device-status{display:inline-flex;align-items:center;gap:5px;padding:3px 7px;border-radius:999px;background:var(--g-bg);color:var(--g);font:750 10.5px 'Outfit',sans-serif}.device-status span{width:5px;height:5px;border-radius:50%;background:currentColor}.device-remove-form{margin:0}.device-remove{min-height:36px;padding:8px 11px;background:transparent;border-color:var(--brd2);color:var(--tx2);font-size:11.5px}.device-remove:hover{border-color:#f0506055;background:#f0506010;color:#f05060}
+.device-empty{display:flex;align-items:center;gap:12px;padding:18px;background:var(--bg);border:1px dashed var(--brd2);border-radius:11px}.device-empty-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:var(--g-bg);color:var(--g);font-size:18px}.device-empty strong{display:block;color:var(--tx);font:750 13.5px 'Outfit',sans-serif}.device-empty span{display:block;color:var(--tx3);font:500 12px 'Outfit',sans-serif;margin-top:3px;line-height:1.45}
+.device-remove-dialog{position:fixed;inset:0;margin:auto;width:min(450px,calc(100% - 28px));border:1px solid var(--brd2);border-radius:16px;padding:0;background:var(--bg2);color:var(--tx);box-shadow:0 28px 80px rgba(0,0,0,.55)}.device-remove-dialog::backdrop{background:rgba(0,0,0,.72);backdrop-filter:blur(5px)}.device-remove-dialog-inner{padding:24px}.device-dialog-icon{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:14px;background:#f0506014;border:1px solid #f0506035;color:#f05060;font:900 18px 'Outfit',sans-serif}.device-dialog-kicker{font:800 10.5px 'Outfit',sans-serif;text-transform:uppercase;letter-spacing:1px;color:#f05060}.device-remove-dialog h2{font:850 21px 'Outfit',sans-serif;margin:4px 0 8px}.device-remove-dialog p{font:500 13.5px 'Outfit',sans-serif;color:var(--tx2);line-height:1.6}.device-remove-dialog p strong{color:var(--tx);font-family:'Space Mono',monospace}.device-dialog-note{padding:11px 12px;margin-top:15px;border-radius:9px;background:var(--bg);border:1px solid var(--brd);font:500 12px 'Outfit',sans-serif;color:var(--tx3);line-height:1.5}.device-dialog-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:18px}.device-dialog-actions button{padding:10px 13px;border-radius:8px;font:800 12.5px 'Outfit',sans-serif;cursor:pointer}.device-dialog-cancel{background:var(--bg);border:1px solid var(--brd2);color:var(--tx2)}.device-dialog-confirm{background:#f05060;border:1px solid #f05060;color:#fff}
+.security-head{align-items:center}.security-state{background:#f0b42912;border:1px solid #f0b42935;color:#f0b429}.security-state.is-on{background:var(--g-bg);border-color:var(--g-brd);color:var(--g)}
+.account-actions-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:18px 24px}.account-action{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;min-height:72px;padding:12px 13px;border-radius:11px;background:var(--bg);border:1px solid var(--brd);text-decoration:none;transition:border-color .18s,transform .18s,background .18s}.account-action:hover{border-color:var(--brd2);background:color-mix(in srgb,var(--g) 3%,var(--bg));transform:translateY(-1px)}.account-action.is-protected{border-color:var(--g-brd)}.account-action-icon{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:var(--bg2);border:1px solid var(--brd);font-size:15px}.account-action-copy{min-width:0}.account-action-copy strong{display:block;font:750 13.5px 'Outfit',sans-serif;color:var(--tx)}.account-action-copy small{display:block;font:500 11.5px 'Outfit',sans-serif;color:var(--tx3);margin-top:3px;line-height:1.35}.account-action-arrow{color:var(--tx3);font-size:20px}.account-more{margin:0 24px 20px;border-top:1px solid var(--brd);padding-top:12px}.account-more summary{cursor:pointer;color:var(--tx3);font:700 12px 'Outfit',sans-serif;list-style:none}.account-more summary::after{content:' +';color:var(--g)}.account-more[open] summary::after{content:' −'}.account-more-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding-top:11px}.account-more-actions a,.account-more-actions button{background:none;border:none;padding:0;color:var(--tx2);font:650 12px 'Outfit',sans-serif;text-decoration:underline;text-underline-offset:3px;cursor:pointer}.account-more-actions button:hover{color:#f05060}.account-link-key{padding:0 24px 20px}.account-link-key a{color:var(--g);font:700 13px 'Outfit',sans-serif}
+.panels-grid{margin-top:0}.panel-box{box-shadow:0 10px 30px rgba(0,0,0,.08)}
+
 @media(max-width:720px){
   .dash-grid-2{grid-template-columns:1fr}
   .panels-grid{grid-template-columns:1fr}
@@ -4283,8 +4337,18 @@ ${_toastCss()}
   .dash-hero-badges{flex-direction:row;align-items:center;width:100%;order:3}
   .countdown-grid{gap:6px}
   .cd-num{font-size:16px}
+  .account-nav{position:static;overflow-x:auto;flex-wrap:nowrap}.account-nav a{white-space:nowrap}
+  .subscription-strip{align-items:stretch;flex-direction:column;gap:13px}.qa-primary{width:100%;min-width:0}
+  .device-manager-head{flex-direction:column;gap:13px;padding:19px 18px 15px}.device-capacity-badges{justify-content:flex-start}.device-manager-body{padding:15px 18px 19px}
+  .device-row{grid-template-columns:auto minmax(0,1fr)}.device-remove-form{grid-column:1/-1}.device-remove{width:100%}
+  .account-actions-grid{grid-template-columns:1fr;padding:15px 18px}.account-more{margin:0 18px 18px}
 }
-@media(prefers-reduced-motion:reduce){.key-display,.qa-primary,.qa-btn,.nokey-cta,.dev-bar-fill,.dash-avatar,.avatar-option,.validity-bar-fill{transition:none}}
+@media(max-width:460px){
+  .dash-topbar-name{display:none}.dash-hero{gap:15px}.dash-avatar{width:54px;height:54px}.dash-hero-text h1{font-size:23px}
+  .key-card-head,.key-card-body{padding-left:17px;padding-right:17px}.license-heading{align-items:flex-start;flex-direction:column;gap:8px}.key-display{align-items:flex-start;flex-direction:column}.key-copy-hint{align-self:flex-start}
+  .device-avatar{width:38px;height:38px}.device-phone{font-size:12.5px}.device-dialog-actions{flex-direction:column-reverse}.device-dialog-actions button{width:100%}
+}
+@media(prefers-reduced-motion:reduce){.key-display,.qa-primary,.nokey-cta,.dev-bar-fill,.dash-avatar,.avatar-option,.validity-bar-fill,.account-action{transition:none}}
 </style>
 
 <div class="dash-topbar">
@@ -4313,17 +4377,24 @@ ${okMsg ? `<div style="background:#00c85318;border:1px solid #00c85340;border-ra
 </div>
 ${avatarDialog}
 
+<nav class="account-nav" aria-label="Atalhos da conta">
+  <a href="#licenca"><span aria-hidden="true">◇</span> Licença</a>
+  <a href="#dispositivos"><span aria-hidden="true">▣</span> Dispositivos${keyData?` <b>${devUsed}${devMax?'/'+devMax:''}</b>`:''}</a>
+  <a href="#seguranca"><span aria-hidden="true">◈</span> Segurança</a>
+  <a href="#ajuda"><span aria-hidden="true">?</span> Ajuda</a>
+</nav>
+
 ${noKeySection}
 
 ${keyData ? `
-<div class="dash-grid-2">
+<div class="dash-grid-2" id="licenca">
   <div class="key-card">
     ${expiryAlert}
     <div class="key-card-head">
       <div class="license-heading"><div><div class="key-card-title">Minha licença</div><div class="license-plan">ZVM ${escHtml(planName)}</div></div><span class="${mainStatusClass}"><span class="bd-dot"></span>${mainStatusTxt}</span></div>
-      <button type="button" class="key-display" id="copy-license-key" data-key="${escHtml(keyData.code||'')}" title="Copiar chave">
-        <span>${escHtml(keyData.code||'')}</span>
-        <span class="key-copy-hint">Clique para copiar</span>
+      <button type="button" class="key-display" id="copy-license-key" data-key="${escHtml(rawKeyCode)}" title="Copiar chave de ativação">
+        <span class="key-mask">${escHtml(maskedKeyCode)}</span>
+        <span class="key-copy-hint">⧉ Copiar chave</span>
       </button>
     </div>
     <div class="key-card-body">
@@ -4348,35 +4419,52 @@ ${keyData ? `
 </div>
 ` : ''}
 
-<div class="quick-actions">
-  <a href="/planos" class="qa-primary">🛒 Renovar / Alterar Plano</a>
-</div>
+<section class="subscription-strip" aria-label="Assinatura">
+  <div class="subscription-copy">
+    <span class="subscription-kicker">Assinatura ZVM</span>
+    <strong>${keyData ? `Plano ${escHtml(planName)}` : 'Gerencie seu plano'}</strong>
+    <span>${keyData ? 'Renove, aumente ou reduza a quantidade de números quando precisar.' : 'Escolha o plano ideal para começar.'}</span>
+  </div>
+  <a href="/planos" class="qa-primary"><span aria-hidden="true">↗</span> Renovar / Alterar plano</a>
+</section>
 
-<div class="dash-grid-2">
-  <div class="panel-box">
-    <div class="panel-hdr"><span class="panel-hdr-icon">🔐</span> Conta e segurança</div>
-    <div class="panel-body qa-row">
-      <a href="/cliente/vincular" class="qa-btn">🔗 Vincular Chave</a>
-      <a href="/cliente/senha" class="qa-btn">🔒 Alterar Senha</a>
-      <a href="/cliente/email" class="qa-btn">📧 Alterar E-mail</a>
-      <a href="/cliente/2fa/setup" class="qa-btn">${has2fa ? "✅ 2FA Ativo" : "🛡 Segurança 2FA"}</a>
-      <a href="https://wa.me/5521996771552?text=Preciso+de+ajuda+com+o+ZVM" target="_blank" rel="noopener noreferrer" class="qa-btn">💬 Suporte</a>
+<section class="panel-box device-manager" id="dispositivos">
+  <div class="device-manager-head">
+    <div>
+      <div class="section-kicker">Acessos da licença</div>
+      <h2>Dispositivos e números</h2>
+      <p>Veja quais números ocupam sua licença e libere um slot sem precisar falar com o suporte.</p>
+    </div>
+    ${keyData ? `<div class="device-capacity-badges"><span class="capacity-main">${escHtml(deviceCapacityLabel)}</span><span class="capacity-free ${slotsFree===0?'is-full':''}">${escHtml(deviceAvailabilityLabel)}</span></div>` : ''}
+  </div>
+  <div class="device-manager-body">
+    ${keyData && devMax ? `<div class="capacity-meter"><div class="capacity-meter-copy"><span>Uso dos slots</span><strong>${devUsed}/${devMax}</strong></div><div class="capacity-track"><span style="width:${devPct}%"></span></div><div class="capacity-help ${slotsFree===0?'is-full':''}">${slotsFree===0?'Todos os slots estão ocupados. Remova um número abaixo antes de conectar outro.':`Você ainda pode conectar ${slotsFree} número${slotsFree!==1?'s':''}.`}</div></div>` : ''}
+    <div class="device-list" aria-label="Dispositivos vinculados">
+      ${keyData ? deviceListHtml : '<div class="device-empty"><div class="device-empty-icon">🔗</div><div><strong>Vincule uma chave primeiro</strong><span>Depois disso, os números conectados aparecerão aqui.</span></div></div>'}
     </div>
   </div>
-  <div class="panel-box">
-    <div class="panel-hdr"><span class="panel-hdr-icon">📱</span> Dispositivos cadastrados${keyData ? `<span class="panel-hdr-badge">${devUsed}${devMax?'/'+devMax:''}</span>` : ''}</div>
-    <div class="panel-body">
-      <p class="panel-note">Cada número de WhatsApp vinculado ocupa um slot. Remova os que não usa para liberar espaço.</p>
-      <div class="device-list" aria-label="Dispositivos vinculados">
-        ${keyData ? deviceListHtml : '<div class="device-empty">Vincule uma chave para gerenciar dispositivos.</div>'}
-      </div>
+</section>
+${deviceRemoveDialog}
+
+<section class="panel-box account-security" id="seguranca">
+  <div class="device-manager-head security-head">
+    <div>
+      <div class="section-kicker">Sua conta</div>
+      <h2>Conta e segurança</h2>
+      <p>Atualize credenciais e proteja o acesso ao portal.</p>
     </div>
+    <span class="security-state ${has2fa?'is-on':''}">${has2fa?'✓ 2FA protegido':'2FA recomendado'}</span>
   </div>
-</div>
+  <div class="account-actions-grid">
+    <a href="/cliente/senha" class="account-action"><span class="account-action-icon">🔒</span><span class="account-action-copy"><strong>Senha</strong><small>Altere sua senha de acesso ao portal</small></span><span class="account-action-arrow">›</span></a>
+    <a href="/cliente/email" class="account-action"><span class="account-action-icon">✉</span><span class="account-action-copy"><strong>E-mail</strong><small>Atualize o endereço usado para entrar</small></span><span class="account-action-arrow">›</span></a>
+    <a href="/cliente/2fa/setup" class="account-action ${has2fa?'is-protected':''}"><span class="account-action-icon">🛡</span><span class="account-action-copy"><strong>Autenticação em duas etapas</strong><small>${has2fa?'Proteção ativa nesta conta':'Adicione uma camada extra de segurança'}</small></span><span class="account-action-arrow">›</span></a>
+    <a href="https://wa.me/5521996771552?text=Preciso+de+ajuda+com+o+ZVM" target="_blank" rel="noopener noreferrer" class="account-action"><span class="account-action-icon">💬</span><span class="account-action-copy"><strong>Suporte</strong><small>Fale com o atendimento pelo WhatsApp</small></span><span class="account-action-arrow">↗</span></a>
+  </div>
+  ${hasKey ? `<details class="account-more"><summary>Mais opções da licença</summary><div class="account-more-actions"><a href="/cliente/vincular">Vincular ou trocar chave</a><form method="POST" action="/cliente/desvincular" onsubmit="return confirm('Tem certeza? Isso desvinculará sua chave desta conta, mas não apagará a licença.')"><button type="submit">Desvincular chave desta conta</button></form></div></details>` : `<div class="account-link-key"><a href="/cliente/vincular">🔗 Vincular uma chave à conta</a></div>`}
+</section>
 
-${hasKey ? `<div class="qa-danger-wrap"><form method="POST" action="/cliente/desvincular" style="margin:0" onsubmit="return confirm('Tem certeza? Isso desvinculará sua chave desta conta.')"><button type="submit" class="qa-danger">🔓 Desvincular chave desta conta</button></form></div>` : ''}
-
-<div class="panels-grid">
+<div class="panels-grid" id="ajuda">
   <div class="panel-box">
     <div class="panel-hdr"><span class="panel-hdr-icon">📋</span> Novidades do ZVM</div>
     <div class="panel-body">
@@ -4395,7 +4483,21 @@ ${hasKey ? `<div class="qa-danger-wrap"><form method="POST" action="/cliente/des
   const _cleanOkScript = okMsg ? `<script>if(location.search)history.replaceState(null,'',location.pathname);<\/script>` : '';
   const _licenseScript = `<script>(function(){
   var copy=document.getElementById('copy-license-key');
-  if(copy){copy.addEventListener('click',async function(){try{await navigator.clipboard.writeText(copy.dataset.key||'');var hint=copy.querySelector('.key-copy-hint');hint.textContent='✓ Copiado';if(window.zvmToast)zvmToast('success','Chave copiada para a área de transferência.');setTimeout(function(){hint.textContent='Clique para copiar';},1800);}catch(e){if(window.zvmToast)zvmToast('error','Não foi possível copiar. Selecione a chave manualmente.');}});}
+  if(copy){copy.addEventListener('click',async function(){try{await navigator.clipboard.writeText(copy.dataset.key||'');var hint=copy.querySelector('.key-copy-hint');hint.textContent='✓ Chave copiada';if(window.zvmToast)zvmToast('success','Chave copiada para a área de transferência.');setTimeout(function(){hint.textContent='⧉ Copiar chave';},1800);}catch(e){if(window.zvmToast)zvmToast('error','Não foi possível copiar a chave.');}});}
+  var removeDialog=document.getElementById('device-remove-dialog');
+  var removePhone=document.getElementById('device-remove-phone');
+  var removeConfirm=document.getElementById('device-remove-confirm');
+  var removeCancel=document.getElementById('device-remove-cancel');
+  var pendingRemoveForm=null;
+  document.querySelectorAll('.device-remove-form').forEach(function(form){form.addEventListener('submit',function(ev){
+    if(form.dataset.confirmed==='1')return;
+    ev.preventDefault();
+    if(!removeDialog||typeof removeDialog.showModal!=='function'){if(confirm('Remover este número da licença? O dispositivo perderá o acesso.')){form.dataset.confirmed='1';form.submit();}return;}
+    pendingRemoveForm=form;if(removePhone)removePhone.textContent=form.dataset.devicePhone||'este número';removeDialog.showModal();
+  });});
+  if(removeCancel)removeCancel.addEventListener('click',function(){pendingRemoveForm=null;if(removeDialog&&removeDialog.open)removeDialog.close();});
+  if(removeDialog)removeDialog.addEventListener('click',function(ev){if(ev.target===removeDialog){pendingRemoveForm=null;removeDialog.close();}});
+  if(removeConfirm)removeConfirm.addEventListener('click',function(){if(!pendingRemoveForm)return;var form=pendingRemoveForm;pendingRemoveForm=null;form.dataset.confirmed='1';removeConfirm.disabled=true;removeConfirm.textContent='Removendo…';form.submit();});
   var cd=document.getElementById('license-countdown-grid');
   if(cd&&cd.dataset.expires){
     var end=new Date(cd.dataset.expires).getTime();
@@ -12541,7 +12643,9 @@ async function handleRequest(req, res) {
         keyData = keys[user.keyCode] ? { ...keys[user.keyCode], code: user.keyCode } : null;
       }
       const _dashOk = url.searchParams.get('ok');
-      const _dashMsg = _dashOk === '2fa_off' ? '2FA desativado com sucesso.' : _dashOk === '1' ? 'Operação realizada com sucesso.' : '';
+      const _dashMsg = _dashOk === '2fa_off' ? '2FA desativado com sucesso.'
+        : _dashOk === 'device_removed' ? 'Número removido e slot liberado com sucesso.'
+        : _dashOk === '1' ? 'Operação realizada com sucesso.' : '';
       sendHtml(res, renderStandalonePortalDashboard(user, keyData, _dashMsg)); return;
     } catch(e) { console.error('[Portal] dashboard:', e.message); sendHtml(res, renderStandalonePortalLogin('Estamos com uma indisponibilidade temporária. Sua licença não foi alterada — tente novamente em alguns instantes.')); return; }
   }
@@ -12672,17 +12776,23 @@ async function handleRequest(req, res) {
     const sess = getPortalUser(req);
     const form = await parseFormBody(req);
     const indexRaw = String(form.get('index') || '');
-    if (!/^\d{1,3}$/.test(indexRaw)) { sendJson(res, { error: 'invalid_device' }, 400); return; }
+    const requestedPhone = String(form.get('phone') || '').trim().slice(0, 40);
+    if (!requestedPhone && !/^\d{1,3}$/.test(indexRaw)) { sendJson(res, { error: 'invalid_device' }, 400); return; }
     try {
       const db = await getMongoDb();
       const user = await db.collection('portal_users').findOne({ _id: sess.email });
       if (!user?.keyCode || !await ensureKeyLoaded(user.keyCode)) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
       const key = keys[user.keyCode];
-      const phone = Array.isArray(key.phones) ? key.phones[Number(indexRaw)] : null;
+      const phones = Array.isArray(key.phones) ? key.phones : [];
+      // O telefone exato evita remover o item errado se a ordem dos slots mudar
+      // entre a renderização da página e o POST. index fica como fallback legado.
+      const phone = requestedPhone && phones.includes(requestedPhone)
+        ? requestedPhone
+        : (/^\d{1,3}$/.test(indexRaw) ? phones[Number(indexRaw)] : null);
       if (!phone) { sendJson(res, { error: 'device_not_found' }, 404); return; }
       removePhoneFromKey(key, phone);
       await _writeKeyToDbStrict(user.keyCode);
-      res.writeHead(302, { Location: '/cliente?ok=1' }); res.end(); return;
+      res.writeHead(302, { Location: '/cliente?ok=device_removed' }); res.end(); return;
     } catch (e) {
       console.error('[Portal] remoção de dispositivo:', e.message);
       sendJson(res, { error: 'temporarily_unavailable' }, 503); return;
