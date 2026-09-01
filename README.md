@@ -1,0 +1,133 @@
+# ZVM Server
+
+Backend oficial da ZVM para licenciamento, portal do cliente, integrações, Analytics, serviços da extensão e compatibilidade necessária do namespace WSM.
+
+> **Projeto proprietário.** Este repositório não é software open source. Consulte `LICENSE`.
+
+## Estado atual
+
+Esta consolidação remove definitivamente duas superfícies antigas que não fazem mais parte do produto:
+
+- sistema de moderadores;
+- pasta/rotas da antiga IA estática do WSM (`ia/`, `/WSM/ia`, `/WSM/ia-bridge.js`).
+
+O acesso privilegiado ZVM fica restrito ao administrador. A rastreabilidade de ações sensíveis permanece em auditoria administrativa própria.
+
+A marca ZVM também deixou de depender de arquivos em `/static`: site, páginas de autenticação e favicon usam a arte incorporada no próprio servidor; os e-mails usam a mesma arte em `data:` com wordmark textual de fallback.
+
+## Requisitos
+
+- Node.js **24.20.0 LTS** ou patch mais novo da mesma linha 24.x;
+- MongoDB / Atlas;
+- npm;
+- variáveis de ambiente configuradas no Render ou no ambiente local.
+
+## Instalação local
+
+Na primeira instalação, enquanto o repositório ainda não tiver `package-lock.json`:
+
+```bash
+cp .env.example .env
+npm install
+npm start
+```
+
+Depois do primeiro `npm install`, revise e versione o `package-lock.json`. A partir daí, use:
+
+```bash
+npm ci
+npm start
+```
+
+Validação rápida:
+
+```bash
+npm run check
+```
+
+## Docker
+
+```bash
+docker compose up --build
+```
+
+O container roda como usuário não-root, com filesystem somente leitura, capacidades Linux removidas e healthcheck em `GET /health`.
+
+## Render
+
+O entrypoint canônico é:
+
+```text
+server.js
+```
+
+O endpoint de saúde é:
+
+```text
+GET /health
+```
+
+Se usar o Dockerfile deste repositório, a imagem fixa Node 24.20.0 LTS. Nunca faça commit do `.env` real; use o painel **Environment** do Render.
+
+Consulte `DEPLOY_RENDER.md` antes de substituir a produção.
+
+## Dependências diretas
+
+- `mongodb` 6.21.0 — mantida a linha 6 para evitar uma migração major desnecessária no mesmo deploy;
+- `dotenv` 17.4.2 — usado apenas para desenvolvimento/execução com arquivo `.env`; no Render as variáveis continuam vindo do ambiente.
+
+As versões são fixas, sem `^`/`~`, para reduzir drift. O `package-lock.json` continua obrigatório para fechar a árvore transitiva de forma reproduzível.
+
+## Variáveis de ambiente
+
+Use `.env.example` como referência. Principais grupos:
+
+- núcleo: `MONGODB_URI`, `MONGODB_DB`, `ADMIN_USER`, `ADMIN_PASS`, `APP_SECRET`, `TOTP_SECRET`;
+- Analytics: `ANALYTICS_PASS`, `ANALYTICS_TOTP_SECRET`;
+- comercial: `CAKTO_WEBHOOK_SECRET`, `SALE_WEBHOOK_SECRET`, `PARTNER_API_TOKEN` e IDs Cakto;
+- e-mail: `RESEND_API_KEY`, `EMAIL_FROM`;
+- extensão: `EXTENSION_URL`, `EXTENSION_VERSION`, `EXTENSION_CHANGELOG`, `ZVM_EXTENSION_IDS`;
+- Meta Oficial: `META_APP_ID`, `META_APP_SECRET`, `META_CONFIG_ID`, `META_TOKEN_ENCRYPTION_KEY`, `META_WEBHOOK_VERIFY_TOKEN`;
+- WSM legado: somente as `WSM_*` ainda necessárias ao namespace `/WSM`.
+
+Não existem mais variáveis `MOD_*` no projeto consolidado.
+
+## Meta Oficial
+
+A integração permanece *fail-closed*: sem as credenciais Meta necessárias, o restante do servidor funciona normalmente e o Embedded Signup não é ativado. Segredos/tokens Meta permanecem no backend e não devem ser enviados à extensão.
+
+## Segurança
+
+- sessões opacas da Extension API V4 com bearer armazenado somente por hash;
+- entitlement/capabilities decididos pelo servidor;
+- allowlist de callback da extensão via `ZVM_EXTENSION_IDS`;
+- CSRF same-origin nas mutações autenticadas por cookie;
+- rate limiting, limites de payload/URL e alertas de segurança;
+- sanitização de logs/CSV;
+- Cakto com idempotência;
+- Meta com AES-256-GCM, validação server-side e assinatura de webhook;
+- admin como única superfície privilegiada ZVM;
+- nenhuma rota estática genérica necessária para a marca;
+- container não-root e filesystem somente leitura.
+
+Veja `SECURITY.md` e `AUDIT_REPORT.md`.
+
+## Arquivos
+
+```text
+server.js             servidor principal
+mailer.js             e-mails transacionais via Resend
+package.json          dependências e scripts
+Dockerfile            imagem de produção
+docker-compose.yml    execução local/servidor Docker
+.env.example          nomes de configuração sem segredos
+README.md              documentação do projeto
+LICENSE                licença proprietária
+SECURITY.md            política de segurança
+DEPLOY_RENDER.md       roteiro de implantação
+AUDIT_REPORT.md        fechamento técnico desta consolidação
+```
+
+## Licença
+
+Copyright © 2026 ZVM. Todos os direitos reservados. Consulte `LICENSE`.

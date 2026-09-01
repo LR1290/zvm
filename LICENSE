@@ -1,0 +1,37 @@
+ZVM PROPRIETARY SOFTWARE LICENSE
+Copyright (c) 2026 ZVM. All rights reserved.
+
+1. Ownership
+This software, including its source code, server components, interfaces, documentation, branding, configuration, and associated materials (the "Software"), is proprietary to ZVM and/or its respective rights holders. No ownership rights are transferred by access to the Software.
+
+2. No Open-Source Grant
+The Software is not released under an open-source license. Except where a separate written agreement expressly permits otherwise, no permission is granted to copy, reproduce, publish, distribute, sublicense, sell, lease, disclose, or make the Software available to third parties.
+
+3. Authorized Use
+The Software may be used only by persons or entities authorized by ZVM and only for the purposes, environments, accounts, and periods covered by that authorization or by a separate written agreement.
+
+4. Restrictions
+Except to the extent that applicable law expressly prohibits such restriction, you may not:
+(a) redistribute or publicly disclose the Software or substantial portions of it;
+(b) remove or alter copyright, trademark, attribution, security, or proprietary notices;
+(c) use the Software to create or distribute an unauthorized competing or derivative service;
+(d) circumvent licensing, access-control, integrity, authentication, rate-limit, or security mechanisms; or
+(e) sublicense or transfer rights in the Software without prior written authorization from ZVM.
+
+5. Third-Party Components
+Third-party libraries, assets, APIs, and other components remain subject to their own licenses and terms. Nothing in this license restricts rights granted directly by those third-party licenses.
+
+6. Credentials and Service Access
+Possession of source code does not grant rights to use ZVM production infrastructure, trademarks, customer data, API credentials, external-provider accounts, or other protected services. Credentials and secrets must not be committed to source control or redistributed.
+
+7. No Warranty
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+
+8. Limitation of Liability
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, ZVM AND ITS RIGHTS HOLDERS SHALL NOT BE LIABLE FOR INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES ARISING FROM THE USE OF OR INABILITY TO USE THE SOFTWARE.
+
+9. Separate Agreements
+A signed commercial, partnership, affiliate, employment, contractor, customer, or other written agreement may grant additional rights or impose additional obligations. Where such an agreement conflicts with this license, the signed agreement governs to the extent of the conflict.
+
+10. Reservation of Rights
+All rights not expressly granted are reserved.
