@@ -23,7 +23,7 @@ Revise o resultado e faça commit do `package-lock.json`. Depois disso, `Dockerf
 
 ## Meta Oficial
 
-Pode ser implantado sem ativar a Meta. Para habilitar o Embedded Signup, configure posteriormente:
+Nesta build de recuperação, as variáveis Meta permanecem reservadas, mas o subsistema Meta não foi reconstituído automaticamente. Não considere o Embedded Signup ativo apenas por preencher `META_*`. Quando a etapa Meta for retomada e validada em uma build dedicada, configure:
 
 ```text
 META_APP_ID
@@ -57,10 +57,11 @@ Valide nesta ordem:
 6. login da extensão e Extension API V4;
 7. webhook Cakto em dry-run antes de uma venda real;
 8. envio de e-mail de teste pelo Laboratório;
-9. favicon/logo nas páginas;
-10. Meta Oficial somente depois das credenciais e configuração do Meta App estarem prontas.
+9. favicon/logo nas páginas e a seção “Sobre mim”;
+10. confirme que `/static/assets/zvm-logo-light.png` retorna 404 e que nenhuma página depende dele;
+11. Meta Oficial somente depois de uma build dedicada reintroduzir/validar o subsistema e as credenciais/configuração do Meta App estarem prontas.
 
-Não aplique o antigo patch V254 por cima desta versão: a integração já está incorporada ao `server.js` consolidado.
+Não aplique o antigo patch V254 por cima desta versão. Esta recuperação deliberadamente não reintroduz o subsistema Meta; ele deve voltar somente em uma build dedicada, partindo de uma fonte completa e validada.
 
 ## E-mail transacional — identidade e respostas
 

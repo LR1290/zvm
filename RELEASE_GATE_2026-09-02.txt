@@ -1,0 +1,51 @@
+ZVM SERVER RECOVERY RELEASE GATE — 40/40 PASS
+
+Base canonical ZIP SHA-256: e3a524a7b443159c97ea31989d35b1b407210f44654737485a6d0575628e50bb
+Final server.js SHA-256: d5f4a17e57dc3a35ecd3c5f99876d3955622f694c2c1fee29d91972c19034c7d
+
+[PASS] node --check server.js
+[PASS] node --check mailer.js
+[PASS] package.json válido
+[PASS] docker-compose.yml válido
+[PASS] moderadores runtime removidos
+[PASS] WSM IA estática removida
+[PASS] rota/logo estática antiga ausente
+[PASS] require(fs/path) ausente
+[PASS] eval/new Function ausentes
+[PASS] child_process ausente
+[PASS] Extension API V4 presente
+[PASS] bearer V4 armazenado por hash
+[PASS] CSRF same-origin presente
+[PASS] CORS da Extension API restrito
+[PASS] webhooks sem CORS web permissivo
+[PASS] cookies Secure/HttpOnly/Strict
+[PASS] CSP object-src none
+[PASS] shutdown fatal controlado
+[PASS] status DB cache 15s
+[PASS] reset ZVM hash-only
+[PASS] reset WSM hash-only
+[PASS] nenhum novo reset cru
+[PASS] Meta runtime não reintroduzido nesta recovery
+[PASS] brand embutida
+[PASS] mailer usa inline CID
+[PASS] Docker usuário não-root
+[PASS] Compose read-only/cap_drop
+[PASS] Sobre mim sincero/autodidata
+[PASS] SSX Quick Track Flow factual
+[PASS] SSX 60FPS separado
+[PASS] GTA5-Mods verificável
+[PASS] runtime harness 20 checks
+[PASS] HTTP boot /health
+[PASS] HTTP / landing
+[PASS] HTTP /status
+[PASS] old static logo 404
+[PASS] CORS web -> null
+[PASS] CORS official extension allowed
+[PASS] CORS non-allowlisted extension blocked
+[PASS] Webhook browser CORS denied
+
+Notas:
+- Meta server-side não foi reintroduzido nesta recovery; isso é uma decisão de segurança/checkpoint, não um teste esquecido.
+- package-lock.json não é fabricado sem registry; executar npm install + npm audit --omit=dev em ambiente conectado e versionar o lock.
+- Nenhum teste real foi executado contra Mongo/Cakto de produção.
+- Chromium visual não é declarado PASS nesta release; HTML/runtime foi validado por harness e HTTP smoke.
