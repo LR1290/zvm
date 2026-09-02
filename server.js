@@ -1,4 +1,4 @@
-const ZVM_BUILD_ID = '2026-09-02-premium-workspace-r6';
+const ZVM_BUILD_ID = '2026-09-02-portal-security-r7';
 'use strict';
 const http   = require('http');
 const https  = require('https');
@@ -143,6 +143,7 @@ let _mongoClient = null;
 let _mongoDb     = null;
 let _mongoConnecting = false;
 let _caktoIndexReady = false;
+let _adminPortalUsersCache = { ts: 0, users: [] };
 
 // Retomada de eventos Cakto (P0) — um registro "processing" só é considerado
 // travado/abandonado depois desse tempo sem avanço (lastAttemptAt). 5min é
@@ -751,6 +752,13 @@ function deriveSlug(seed) {
 const R_ADMIN     = (s => s ? '/' + s : '/admin')    (deriveSlug('admin-panel'));
 const R_ANALYTICS = (s => s ? '/' + s : '/analytics')(deriveSlug('analytics-panel'));
 const R_EXT       = '/extension';
+const INTERNAL_AUDIT_TOKEN = crypto.randomBytes(24).toString('hex');
+function isInternalAuditProbe(req) {
+  const remote = String(req?.socket?.remoteAddress || '').replace(/^::ffff:/, '');
+  const loopback = remote === '127.0.0.1' || remote === '::1';
+  const token = String(req?.headers?.['x-zvm-internal-audit'] || '');
+  return loopback && token.length === INTERNAL_AUDIT_TOKEN.length && safeCompare(token, INTERNAL_AUDIT_TOKEN);
+}
 
 const rateLimitMap  = new Map();
 const _DEDUP_TTL_MS = 60 * 60 * 1000; // TTL para entradas de dedup de logs (1h)
@@ -2828,7 +2836,10 @@ function _gzipSend(res, buf, status) {
 const _SEC_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
-  'X-XSS-Protection': '1; mode=block',
+  'X-XSS-Protection': '0',
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Resource-Policy': 'same-origin',
+  'Origin-Agent-Cluster': '?1',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
@@ -3118,8 +3129,8 @@ function _authShellCss() {
 .auth-promo{display:flex;position:relative;overflow:hidden;padding:72px clamp(42px,6vw,92px);flex-direction:column;justify-content:center;background:radial-gradient(circle at 18% 24%,rgba(0,230,118,.16),transparent 34%),radial-gradient(circle at 54% 70%,rgba(0,230,118,.07),transparent 34%),linear-gradient(135deg,#071b19 0%,#071310 46%,#070b10 100%);border-right:1px solid rgba(120,150,138,.16)}
 .auth-promo::before{content:'';position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,230,118,.03),transparent 42%),repeating-linear-gradient(0deg,transparent 0 54px,rgba(255,255,255,.012) 55px);pointer-events:none}
 .auth-promo::after{content:'';position:absolute;width:420px;height:420px;border:1px solid rgba(0,230,118,.08);border-radius:50%;left:-220px;bottom:-230px;box-shadow:0 0 90px rgba(0,230,118,.05);pointer-events:none}
-.auth-promo-inner{max-width:560px;position:relative;z-index:1}
-.auth-eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:11px;font-weight:800;color:#19e88c;letter-spacing:1.6px;text-transform:uppercase;padding:7px 14px;border:1px solid rgba(25,232,140,.38);border-radius:99px;background:rgba(0,230,118,.08);margin-bottom:26px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.015)}
+.auth-promo-inner{width:100%;max-width:640px;margin:0 auto;position:relative;z-index:1}
+.auth-eyebrow{display:flex;width:max-content;margin-left:auto;margin-right:auto;align-items:center;gap:8px;font-size:11px;font-weight:800;color:#19e88c;letter-spacing:1.6px;text-transform:uppercase;padding:7px 14px;border:1px solid rgba(25,232,140,.38);border-radius:99px;background:rgba(0,230,118,.08);margin-bottom:26px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.015)}
 .auth-promo h1{font-size:clamp(42px,5vw,68px);font-weight:900;letter-spacing:-2.6px;line-height:1.02;margin-bottom:20px;max-width:620px;color:#f4f7f5}
 .auth-promo h1 em{font-style:normal;color:#0ee889;text-shadow:0 0 34px rgba(0,230,118,.16)}
 .auth-promo-sub{font-size:clamp(15px,1.4vw,18px);color:#9eaaa6;line-height:1.65;margin-bottom:32px;max-width:580px}
@@ -3127,8 +3138,8 @@ function _authShellCss() {
 .auth-benefits li{display:flex;align-items:center;gap:14px;font-size:14.5px;color:#b5c0bc;line-height:1.45}
 .auth-benefit-icon{flex-shrink:0;width:34px;height:34px;border-radius:10px;background:rgba(0,230,118,.08);border:1px solid rgba(0,230,118,.3);color:#16e88d;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:inset 0 0 20px rgba(0,230,118,.03)}
 .auth-form-wrap{display:flex;align-items:center;justify-content:center;padding:56px clamp(28px,5vw,72px);background:radial-gradient(circle at 74% 14%,rgba(0,230,118,.055),transparent 26%),linear-gradient(180deg,#070910,#06080d);min-width:0}
-.auth-form-card{width:100%;max-width:470px;padding:0;background:transparent;border:0;border-radius:0;box-shadow:none}
-.auth-form-brand{margin-bottom:28px;display:flex;justify-content:flex-start;align-items:center}
+.auth-form-card{width:100%;max-width:500px;padding:34px 36px;background:linear-gradient(180deg,rgba(11,16,23,.92),rgba(7,10,15,.94));border:1px solid #192631;border-radius:24px;box-shadow:0 24px 70px rgba(0,0,0,.26),inset 0 1px 0 rgba(255,255,255,.025)}
+.auth-form-brand{margin-bottom:26px;display:flex;justify-content:center;align-items:center}
 .auth-form-card h2{font-size:28px;font-weight:900;letter-spacing:-.8px;margin-bottom:8px;color:#f4f7f5}
 .auth-form-hint{font-size:14.5px;color:#929ca8;margin-bottom:20px;line-height:1.55}
 .auth-secure-chip{display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border-radius:999px;border:1px solid #222837;background:#0a0d14;color:#aeb6c2;font-size:11.5px;font-weight:700;margin-bottom:22px}
@@ -3138,7 +3149,7 @@ function _authShellCss() {
 .auth-alert.ok{background:rgba(0,230,118,.08);border:1px solid rgba(0,230,118,.28);color:#35ed9d}
 .auth-field{display:flex;flex-direction:column;gap:7px;margin-bottom:15px}
 .auth-field label{font-size:11.5px;font-weight:800;color:#8b95a3;text-transform:uppercase;letter-spacing:.55px}
-.auth-field input{padding:14px 15px;background:#080a11;border:1px solid #242937;border-radius:10px;color:#edf1f4;font-family:'Outfit',sans-serif;font-size:14.5px;outline:none;transition:border-color 180ms ease,box-shadow 180ms ease,background 180ms ease;width:100%;min-height:48px}
+.auth-field input{padding:14px 15px;background:#070c12;border:1px solid #1d2933;border-radius:10px;color:#edf1f4;font-family:'Outfit',sans-serif;font-size:14.5px;outline:none;transition:border-color 180ms ease,box-shadow 180ms ease,background 180ms ease;width:100%;min-height:48px}
 .auth-field input:hover{border-color:#303747}.auth-field input:focus{border-color:#0ee889;box-shadow:0 0 0 3px rgba(14,232,137,.11);background:#090d13}.auth-field input::placeholder{color:#4f5968}
 .auth-field-hint{font-size:11.5px;color:#687281;margin-top:2px;line-height:1.45}
 .auth-field-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}.auth-field-row .auth-field{min-width:0}
@@ -3149,11 +3160,11 @@ function _authShellCss() {
 .auth-spinner{width:15px;height:15px;border-radius:50%;border:2px solid rgba(0,0,0,.25);border-top-color:#000;animation:auth-spin .7s linear infinite;display:none}
 .auth-footnote{text-align:center;font-size:11px;color:#525d6c;margin-top:14px}
 @keyframes auth-spin{to{transform:rotate(360deg)}}
-body.zvm-auth-immersive{min-height:100vh;background:#070910;overflow:auto}body.zvm-auth-immersive .auth-shell{min-height:100vh}body.zvm-auth-immersive .zfooter{display:none}body.zvm-auth-immersive #_cvs{opacity:.24}body.zvm-auth-immersive .auth-form-wrap{min-height:100vh}body.zvm-auth-immersive .auth-form-card{padding:42px 0}
+body.zvm-auth-immersive{min-height:100vh;background:#070910;overflow:auto}body.zvm-auth-immersive .auth-shell{min-height:100vh}body.zvm-auth-immersive .zfooter{display:none}body.zvm-auth-immersive #_cvs{opacity:.24}body.zvm-auth-immersive .auth-form-wrap{min-height:100vh}body.zvm-auth-immersive .auth-form-card{padding:38px 40px}
 .auth-register .auth-form-card{max-width:560px}
 @media(max-width:1050px){.auth-shell{grid-template-columns:.95fr 1.05fr}.auth-promo{padding:56px 44px}.auth-promo h1{font-size:clamp(36px,5vw,54px)}}
 @media(max-width:820px){.auth-shell{grid-template-columns:1fr}.auth-promo{display:none}.auth-form-wrap{padding:34px 22px;min-height:calc(100vh - 68px)}body.zvm-auth-immersive .auth-form-wrap{min-height:100vh}.auth-form-card{max-width:480px}.auth-form-brand{justify-content:center}}
-@media(max-width:560px){.auth-form-wrap{padding:26px 18px}.auth-form-card{padding:16px 0}.auth-form-card h2{font-size:25px}.auth-field-row{grid-template-columns:1fr}.auth-field input{min-height:46px}}
+@media(max-width:560px){.auth-form-wrap{padding:26px 14px}.auth-form-card{padding:26px 20px}.auth-form-card h2{font-size:25px}.auth-field-row{grid-template-columns:1fr}.auth-field input{min-height:46px}}
 @media(prefers-reduced-motion:reduce){.auth-spinner{animation:none}}
 `;
 }
@@ -4217,8 +4228,8 @@ ${_toastCss()}
 
 /* ZVM Premium Control R5 — pós-login do cliente */
 body{background:radial-gradient(circle at 16% 12%,rgba(14,232,137,.055),transparent 27%),radial-gradient(circle at 82% 18%,rgba(41,98,255,.035),transparent 24%),#05070b;color:#eef3f1}
-.page-wrap{max-width:1540px;padding:28px clamp(18px,3vw,46px) 40px}
-.client-shell{grid-template-columns:286px minmax(0,1fr);gap:30px}
+.page-wrap{max-width:1880px;width:100%;padding:28px clamp(18px,2.2vw,42px) 40px}
+.client-shell{grid-template-columns:280px minmax(0,1fr);gap:28px}
 .client-rail{top:28px;min-height:calc(100vh - 56px);padding:20px;border:1px solid #183229;border-radius:26px;background:radial-gradient(circle at 12% 0%,rgba(14,232,137,.18),transparent 30%),linear-gradient(180deg,#071611 0%,#07100e 42%,#06090d 100%);box-shadow:0 28px 90px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.025)}
 .client-rail::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:linear-gradient(135deg,rgba(255,255,255,.018),transparent 30%)}
 .client-rail-brand{position:relative;z-index:1;display:grid;grid-template-columns:auto 1fr;align-items:center;column-gap:12px;row-gap:2px;padding:2px 2px 19px;margin-bottom:18px;border-bottom:1px solid rgba(41,67,57,.7)}
@@ -4234,6 +4245,8 @@ body{background:radial-gradient(circle at 16% 12%,rgba(14,232,137,.055),transpar
 .device-row{border-color:#142129}.device-remove{border-radius:10px}.panels-grid{gap:18px}.faq-item,.cl-item{border-color:#111c22}
 
 .client-cockpit{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,.65fr);gap:18px;margin-bottom:18px}.client-cockpit-main{position:relative;overflow:hidden;padding:26px 27px;border:1px solid #1a2930;border-radius:23px;background:radial-gradient(circle at 88% 12%,rgba(14,232,137,.11),transparent 28%),linear-gradient(135deg,#0b1116,#080d11 72%)}.client-cockpit-main::after{content:'';position:absolute;width:280px;height:280px;border:1px solid rgba(14,232,137,.07);border-radius:50%;right:-150px;bottom:-225px}.client-cockpit-kicker{display:inline-flex;padding:6px 10px;border-radius:999px;border:1px solid rgba(14,232,137,.3);background:rgba(14,232,137,.08);color:#13e88b;font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:1px}.client-cockpit-main h2{margin-top:12px;color:#f4f8f6;font-size:clamp(27px,3.2vw,40px);line-height:1.05;letter-spacing:-1px}.client-cockpit-main p{margin-top:10px;max-width:720px;color:#8d9aa2;font-size:14px;line-height:1.6}.client-cockpit-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:18px}.client-cockpit-actions a{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:9px 13px;border-radius:11px;border:1px solid #223039;background:#080d11;color:#a8b4af;text-decoration:none;font-size:12.5px;font-weight:800}.client-cockpit-actions a.primary{background:#13e88b;color:#03110a;border-color:#13e88b}.client-cockpit-pulse{display:grid;grid-template-columns:1fr 1fr;gap:10px}.client-pulse{min-height:96px;padding:14px;border:1px solid #19272e;border-radius:17px;background:linear-gradient(180deg,#090f14,#070b0f);display:flex;flex-direction:column;justify-content:space-between}.client-pulse span{font-size:9.5px;color:#65746d;text-transform:uppercase;letter-spacing:.85px;font-weight:800}.client-pulse strong{font-size:17px;color:#edf4f1;line-height:1.15}.client-pulse small{font-size:11px;color:#718078}.client-section-title{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin:22px 2px 10px}.client-section-title div span{display:block;color:#64736d;font-size:9.5px;font-weight:850;letter-spacing:1px;text-transform:uppercase}.client-section-title div strong{display:block;margin-top:3px;color:#e8efec;font-size:17px}.client-section-title p{max-width:520px;color:#718078;font-size:11.5px;text-align:right}
+.client-focus-grid{display:grid;grid-template-columns:minmax(0,1.18fr) minmax(390px,.82fr);gap:18px;margin-bottom:20px}.client-license-focus,.client-devices-focus{border:1px solid #1a2930;border-radius:24px;background:linear-gradient(145deg,#0a1116,#070c10);box-shadow:inset 0 1px 0 rgba(255,255,255,.02),0 18px 46px rgba(0,0,0,.15)}.client-license-focus{padding:26px 28px;background:radial-gradient(circle at 88% 12%,rgba(14,232,137,.13),transparent 31%),linear-gradient(145deg,#0b1217,#070c10)}.client-focus-kicker{display:inline-flex;padding:6px 10px;border-radius:999px;border:1px solid rgba(14,232,137,.3);background:rgba(14,232,137,.08);color:#13e88b;font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:1px}.client-license-head{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-top:13px}.client-license-head h2{font-size:29px;color:#f4f8f6;letter-spacing:-.7px}.client-license-head p{max-width:720px;margin-top:7px;color:#84928d;font-size:13px;line-height:1.55}.client-key-command{width:100%;margin-top:20px;padding:18px 20px;border:1px solid rgba(14,232,137,.38);border-radius:16px;background:#06120d;color:#16ee91;display:flex;align-items:center;justify-content:space-between;gap:16px;cursor:pointer;text-align:left}.client-key-command:hover{background:#081a12;border-color:#13e88b}.client-key-value{font-family:'Space Mono',monospace;font-size:clamp(16px,1.8vw,22px);letter-spacing:2px;overflow-wrap:anywhere}.client-key-empty{display:flex;margin-top:20px;padding:18px;border-radius:16px;border:1px dashed #2a4036;color:#13e88b;text-decoration:none}.client-focus-meta{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}.client-focus-meta>div{padding:12px 13px;border-radius:13px;border:1px solid #18262e;background:#070c10}.client-focus-meta span{display:block;color:#62716b;font-size:9.5px;text-transform:uppercase;letter-spacing:.8px;font-weight:800}.client-focus-meta strong{display:block;margin-top:5px;color:#e9f0ed;font-size:13px}.client-focus-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:15px}.client-focus-actions a{min-height:39px;padding:9px 12px;border:1px solid #213039;border-radius:11px;color:#a8b4af;text-decoration:none;font-size:12px;font-weight:800;display:inline-flex;align-items:center}.client-focus-actions a.primary{background:#13e88b;color:#03110a;border-color:#13e88b}.client-devices-focus{padding:22px}.client-devices-head{display:flex;align-items:center;justify-content:space-between;gap:14px;padding-bottom:14px;border-bottom:1px solid #17252d}.client-devices-head span:first-child{font-size:9.5px;color:#697873;text-transform:uppercase;font-weight:850;letter-spacing:.9px}.client-devices-head h2{margin-top:4px;color:#eef4f1;font-size:20px}.client-devices-intro{margin:14px 0;color:#7c8a85;font-size:12px;line-height:1.5}.client-device-list{display:flex;flex-direction:column;gap:8px}.client-devices-focus .device-row{border:1px solid #17262e;border-radius:14px;padding:12px;background:#070c10}.client-devices-focus .device-remove{min-height:38px;padding:8px 12px}.client-devices-focus .device-empty{padding:20px;border:1px dashed #203039;border-radius:14px}.client-main{width:100%}
+@media(max-width:1180px){.client-focus-grid{grid-template-columns:1fr}.client-devices-focus{order:2}}@media(max-width:700px){.client-focus-meta{grid-template-columns:1fr}.client-license-head{flex-direction:column}.client-key-command{align-items:flex-start;flex-direction:column}}
 @media(max-width:1120px){.client-cockpit{grid-template-columns:1fr}.client-cockpit-pulse{grid-template-columns:repeat(4,1fr)}}@media(max-width:760px){.client-cockpit-pulse{grid-template-columns:1fr 1fr}.client-section-title{align-items:flex-start;flex-direction:column}.client-section-title p{text-align:left}}@media(max-width:520px){.client-cockpit-pulse{grid-template-columns:1fr}.client-cockpit-main{padding:21px 18px}}.client-main>.dash-grid-2,.client-main>.panels-grid,.client-main>.qa-danger-wrap{content-visibility:auto;contain-intrinsic-size:360px}
 @media(max-width:1100px){.client-shell{grid-template-columns:244px minmax(0,1fr);gap:20px}.client-rail{padding:16px}.client-rail-brand::after{font-size:11px}}
 @media(max-width:900px){.page-wrap{padding-top:18px}.client-shell{grid-template-columns:1fr}.client-rail{position:relative;top:0;min-height:auto}.client-rail-brand{grid-template-columns:auto 1fr auto}.client-rail-brand::after{grid-column:3;grid-row:1/3;align-self:center}.client-nav{grid-template-columns:repeat(2,minmax(0,1fr))}.client-rail-card{display:none}}
@@ -4264,14 +4277,23 @@ body{background:radial-gradient(circle at 16% 12%,rgba(14,232,137,.055),transpar
   </div>
 </div>
 
-<div class="client-cockpit">
-  <section class="client-cockpit-main"><span class="client-cockpit-kicker">Seu espaço ZVM</span><h2>Licença, segurança e dispositivos sem ruído.</h2><p>Uma visão executiva da sua conta para resolver o que importa rápido: manter a licença ativa, controlar dispositivos e proteger o acesso.</p><div class="client-cockpit-actions"><a class="primary" href="/planos">↻ Renovar ou mudar plano</a><a href="/cliente/2fa/setup">🛡 Revisar segurança</a><a href="/cliente/vincular">🔗 Gerenciar licença</a></div></section>
-  <div class="client-cockpit-pulse">
-    <div class="client-pulse"><span>Licença</span><strong>${keyData ? escHtml(mainStatusTxt) : 'Sem chave'}</strong><small>${keyData ? 'ZVM '+escHtml(planName) : 'Vincule ou compre um plano'}</small></div>
-    <div class="client-pulse"><span>Renovação</span><strong>${keyData ? escHtml(expiryDateText) : '—'}</strong><small>${expiryTier ? 'Atenção necessária' : 'Situação acompanhada'}</small></div>
-    <div class="client-pulse"><span>Dispositivos</span><strong>${keyData ? devUsed+(devMax?' / '+devMax:' / ∞') : '—'}</strong><small>${devExceeded ? 'Limite excedido' : 'Slots da licença'}</small></div>
-    <div class="client-pulse"><span>Segurança</span><strong>${has2fa ? '2FA ativo' : '2FA opcional'}</strong><small>${has2fa ? 'Segunda camada habilitada' : 'Recomendado ativar'}</small></div>
-  </div>
+<div class="client-focus-grid">
+  <section class="client-license-focus">
+    <div class="client-focus-kicker">Chave principal</div>
+    <div class="client-license-head"><div><h2>${keyData ? 'ZVM '+escHtml(planName) : 'Nenhuma chave vinculada'}</h2><p>${keyData ? 'Sua licença é a peça central da conta. Copie, acompanhe a validade e renove sem procurar em outros painéis.' : 'Vincule uma chave existente ou escolha um plano para começar.'}</p></div>${keyData ? `<span class="${mainStatusClass}"><span class="bd-dot"></span>${mainStatusTxt}</span>` : ''}</div>
+    ${keyData ? `<button type="button" class="client-key-command" id="copy-license-key" data-key="${escHtml(keyData.code||'')}" title="Copiar chave"><span class="client-key-value">${escHtml(keyData.code||'')}</span><span class="key-copy-hint">Copiar chave</span></button>` : `<a href="/cliente/vincular" class="client-key-empty">Vincular uma chave ZVM →</a>`}
+    <div class="client-focus-meta">
+      <div><span>Validade</span><strong>${keyData ? escHtml(expiryDateText) : '—'}</strong></div>
+      <div><span>Dispositivos</span><strong>${keyData ? devUsed+(devMax?' / '+devMax:' / ∞') : '—'}</strong></div>
+      <div><span>Segurança</span><strong>${has2fa ? '2FA ativo' : 'Ativar 2FA'}</strong></div>
+    </div>
+    <div class="client-focus-actions"><a class="primary" href="/planos">↻ Renovar / mudar plano</a><a href="/cliente/vincular">Gerenciar licença</a><a href="/cliente/2fa/setup">Segurança</a></div>
+  </section>
+  <section class="client-devices-focus">
+    <div class="client-devices-head"><div><span>Dispositivos vinculados</span><h2>Números com acesso</h2></div>${keyData ? `<span class="panel-hdr-badge">${devUsed}${devMax?'/'+devMax:''}</span>` : ''}</div>
+    <p class="client-devices-intro">Remova rapidamente um número que não usa mais para liberar o slot da licença.</p>
+    <div class="client-device-list">${keyData ? deviceListHtml : '<div class="device-empty">Vincule uma chave para gerenciar dispositivos.</div>'}</div>
+  </section>
 </div>
 
 ${updateBanner}
@@ -4302,7 +4324,7 @@ ${keyData ? `
     ${expiryAlert}
     <div class="key-card-head">
       <div class="license-heading"><div><div class="key-card-title">Minha licença</div><div class="license-plan">ZVM ${escHtml(planName)}</div></div><span class="${mainStatusClass}"><span class="bd-dot"></span>${mainStatusTxt}</span></div>
-      <button type="button" class="key-display" id="copy-license-key" data-key="${escHtml(keyData.code||'')}" title="Copiar chave">
+      <button type="button" class="key-display" data-copy-license-secondary="1" data-key="${escHtml(keyData.code||'')}" title="Copiar chave">
         <span>${escHtml(keyData.code||'')}</span>
         <span class="key-copy-hint">Clique para copiar</span>
       </button>
@@ -4346,12 +4368,11 @@ ${keyData ? `
     </div>
   </div>
   <div class="panel-box">
-    <div class="panel-hdr"><span class="panel-hdr-icon">📱</span> Dispositivos cadastrados${keyData ? `<span class="panel-hdr-badge">${devUsed}${devMax?'/'+devMax:''}</span>` : ''}</div>
-    <div class="panel-body">
-      <p class="panel-note">Cada número de WhatsApp vinculado ocupa um slot. Remova os que não usa para liberar espaço.</p>
-      <div class="device-list" aria-label="Dispositivos vinculados">
-        ${keyData ? deviceListHtml : '<div class="device-empty">Vincule uma chave para gerenciar dispositivos.</div>'}
-      </div>
+    <div class="panel-hdr"><span class="panel-hdr-icon">🧭</span> Próximos passos</div>
+    <div class="panel-body qa-row">
+      <a href="/planos" class="qa-btn">↻ Conferir renovação e planos</a>
+      <a href="/cliente/2fa/setup" class="qa-btn">🛡 Revisar segurança da conta</a>
+      <a href="https://wa.me/5521996771552?text=Preciso+de+ajuda+com+o+ZVM" target="_blank" rel="noopener noreferrer" class="qa-btn">💬 Falar com o suporte</a>
     </div>
   </div>
 </div>
@@ -5615,15 +5636,23 @@ function switchTab(t){
 let _usersData=[];
 async function loadUsers(){
   const tb=document.getElementById('users-tb');
-  if(tb)tb.innerHTML='<tr><td colspan="8" class="empty">Carregando...</td></tr>';
+  if(tb)tb.innerHTML='<tr><td colspan="8" class="empty">Carregando usuários...</td></tr>';
   try{
-    const r=await fetch(_RA+'/api/portal-users');
-    if(r.status===401){toast('Sessão expirada',false);return;}
-    const d=await r.json();
-    if(!d.ok){toast('Erro ao carregar usuários',false);return;}
+    const r=await fetch(_RA+'/api/portal-users',{credentials:'same-origin',headers:{'Accept':'application/json'}});
+    if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.reload(),900);return;}
+    const raw=await r.text();
+    let d={};try{d=raw?JSON.parse(raw):{};}catch(_e){throw new Error('Resposta inválida do servidor (HTTP '+r.status+')');}
+    if(!r.ok||!d.ok){
+      if(tb)tb.innerHTML='<tr><td colspan="8" class="empty">Falha ao consultar usuários (HTTP '+r.status+'). <button class="btn bw" style="margin-left:8px" onclick="loadUsers()">Tentar novamente</button></td></tr>';
+      toast(d.error==='db_error'?'Banco temporariamente indisponível':'Erro ao carregar usuários',false);return;
+    }
     _usersData=d.users||[];
     renderUsersTable(_usersData);
-  }catch(e){if(tb)tb.innerHTML='<tr><td colspan="8" class="empty">Não foi possível carregar os usuários. <button class="btn bw" style="margin-left:8px" onclick="loadUsers()">Tentar novamente</button></td></tr>';}
+    if(d.stale)toast('MongoDB oscilou: exibindo o último snapshot disponível.',false);
+  }catch(e){
+    console.error('portal-users',e);
+    if(tb)tb.innerHTML='<tr><td colspan="8" class="empty">Não foi possível carregar os usuários. <button class="btn bw" style="margin-left:8px" onclick="loadUsers()">Tentar novamente</button></td></tr>';
+  }
 }
 function renderUsersTable(list){
   const tb=document.getElementById('users-tb');
@@ -5727,7 +5756,8 @@ async function runPentest(){
         <span style="float:right;font-size:11px;color:var(--tx3)">\${dPen.ts ? new Date(dPen.ts).toLocaleTimeString('pt-BR') : ''}</span>
       </td></tr>\`;
 
-      const rows = dPen.results.map(x=>{
+      const orderedResults=[...dPen.results].sort((a,b)=>Number(a.pass===true)-Number(b.pass===true));
+      const rows = orderedResults.map(x=>{
         const pass=x.pass===true, fail=x.pass===false;
         const badge=pass
           ?'<span style="color:var(--g);font-weight:700;font-size:16px">🟢</span>&nbsp;<span style="color:var(--g);font-size:11px;font-family:Outfit,sans-serif">PASSED</span>'
@@ -6421,22 +6451,6 @@ ${_sharedCss()}
         <div>
           <div class="about-proj-name">SSX 2012 — Patch 60 FPS para PS3</div>
           <div class="about-proj-desc">Outro projeto de modding do SSX: patch de EBOOT publicado para permitir 60 FPS em diferentes versões do jogo. É um trabalho separado da descoberta do menu de desenvolvimento.</div>
-        </div>
-        <span class="about-proj-arrow">→</span>
-      </a>
-      <a href="https://www.gta5-mods.com/misc/remove-gen9-oiv-menyoo" target="_blank" rel="noopener" class="about-proj">
-        <span class="about-proj-icon">🚗</span>
-        <div>
-          <div class="about-proj-name">GTA V — REMOVE GEN9 .OIV Menyoo</div>
-          <div class="about-proj-desc">Um mod pequeno que publiquei para instalar e desfazer, via OpenIV, uma correção do aviso de GEN9 do Menyoo. É um bom retrato de como aprendi: resolvendo uma necessidade específica e compartilhando o resultado, sem fingir que sou especialista em tudo.</div>
-        </div>
-        <span class="about-proj-arrow">→</span>
-      </a>
-      <a href="https://www.gta5-mods.com/users/LR1290" target="_blank" rel="noopener" class="about-proj">
-        <span class="about-proj-icon">🧩</span>
-        <div>
-          <div class="about-proj-name">GTA5-Mods — Meu perfil público</div>
-          <div class="about-proj-desc">Perfil onde ficam meu upload e minhas interações com outros projetos. Prefiro deixar esse histórico público falar por si em vez de transformar hobby e aprendizado em um currículo inflado.</div>
         </div>
         <span class="about-proj-arrow">→</span>
       </a>
@@ -7777,7 +7791,6 @@ main{max-width:none;margin:0;padding:24px 26px 40px}.analytics-hero{display:grid
     <a class="active" href="#overview">◫ Visão executiva</a>
     <a href="#performance">↗ Performance</a>
     <a href="#customers">◎ Clientes</a>
-    <a href="#lab-sec">◇ Laboratório</a>
     <a href="#payments">▤ Pagamentos</a>
   </nav>
   <div class="analytics-rail-card"><strong>Sessão protegida</strong><span>Dados reais e simulações permanecem identificados separadamente.</span></div>
@@ -8300,10 +8313,10 @@ async function runInternalSecurityAudit() {
   function _probe(path, opts = {}) {
     return new Promise(resolve => {
       const bodyStr = opts.body ? JSON.stringify(opts.body) : null;
-      const headers = { ...(opts.headers || {}) };
+      const headers = { 'x-zvm-internal-audit': INTERNAL_AUDIT_TOKEN, ...(opts.headers || {}) };
       if (bodyStr) {
-        headers['Content-Type']   = 'application/json';
-        headers['Content-Length'] = Buffer.byteLength(bodyStr);
+        headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+        if (headers['Content-Length'] == null && headers['content-length'] == null) headers['Content-Length'] = Buffer.byteLength(bodyStr);
       }
       const r = http.request(
         { hostname: '127.0.0.1', port: PORT, path, method: opts.method || 'GET', headers, timeout: 5000 },
@@ -8459,6 +8472,21 @@ async function runInternalSecurityAudit() {
     name:   'Referrer-Policy presente',
     pass:   !!(h['referrer-policy']),
     detail: h['referrer-policy'] || 'ausente',
+  });
+  results.push({
+    name:   'Cross-Origin-Opener-Policy isolado',
+    pass:   (h['cross-origin-opener-policy'] || '') === 'same-origin',
+    detail: h['cross-origin-opener-policy'] || 'ausente',
+  });
+  results.push({
+    name:   'Cross-Origin-Resource-Policy isolado',
+    pass:   (h['cross-origin-resource-policy'] || '') === 'same-origin',
+    detail: h['cross-origin-resource-policy'] || 'ausente',
+  });
+  results.push({
+    name:   'X-XSS-Protection legado desativado com segurança',
+    pass:   (h['x-xss-protection'] || '') === '0',
+    detail: h['x-xss-protection'] || 'ausente',
   });
   results.push({
     name:   '/health endpoint operacional',
@@ -11385,19 +11413,39 @@ async function handleRequest(req, res) {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     try {
       const db = await getMongoDb();
-      const users = await db.collection('portal_users').find({}, { projection: { passwordHash:0, salt:0 } }).sort({ createdAt: -1 }).toArray();
-      await Promise.all(users.filter(u => u.keyCode).map(u => ensureKeyLoaded(u.keyCode).catch(()=>{})));
+      const users = await db.collection('portal_users').find({}, {
+        projection: { _id:1, name:1, displayName:1, phone:1, keyCode:1, createdAt:1, lastLogin:1, banned:1, verified:1 }
+      }).sort({ createdAt: -1 }).limit(1000).toArray();
+
+      // Uma única leitura do documento de chaves resolve referências que ainda não
+      // estejam no cache em memória. A versão anterior podia disparar uma leitura
+      // grande por usuário ausente, tornando a aba frágil em rede lenta.
+      let keyDoc = null;
+      const missingKeyRef = users.some(u => u.keyCode && !keys[u.keyCode]);
+      if (missingKeyRef) {
+        keyDoc = await db.collection('store').findOne({ _id:'keys' }, { projection:{ data:1 } });
+      }
+      const sourceKeys = keyDoc?.data && typeof keyDoc.data === 'object' ? keyDoc.data : {};
       const enriched = users.map(u => {
-        const k = u.keyCode ? keys[u.keyCode] : null;
+        const code = typeof u.keyCode === 'string' ? u.keyCode : '';
+        const k = code ? (keys[code] || sourceKeys[code] || null) : null;
         let plan = k ? (k.planId || k.plan_id || k.plan || null) : null;
-        if (!plan && k) {
-          const m = k.maxUses === -1 ? 'BUSINESS' : k.maxUses === 1 ? 'STARTER' : k.maxUses >= 3 ? 'PRO' : null;
-          plan = m;
-        }
-        return { ...u, plan };
+        if (!plan && k) plan = k.maxUses === -1 ? 'BUSINESS' : k.maxUses === 1 ? 'STARTER' : k.maxUses >= 3 ? 'PRO' : null;
+        return {
+          _id: String(u._id || ''), name: u.name || '', displayName: u.displayName || '', phone: u.phone || '',
+          keyCode: code, createdAt: u.createdAt || null, lastLogin: u.lastLogin || null,
+          banned: !!u.banned, verified: u.verified !== false, plan
+        };
       });
-      sendJson(res, { ok: true, users: enriched }); return;
-    } catch(e) { sendJson(res, { error: 'db_error' }, 500); return; }
+      _adminPortalUsersCache = { ts: Date.now(), users: enriched };
+      sendJson(res, { ok: true, users: enriched, stale: false }); return;
+    } catch(e) {
+      console.error('[ADMIN] portal-users:', e.message);
+      if (_adminPortalUsersCache.users.length) {
+        sendJson(res, { ok: true, users: _adminPortalUsersCache.users, stale: true, warning: 'db_temporarily_unavailable' }); return;
+      }
+      sendJson(res, { ok: false, error: 'db_error', retryable: true }, 503); return;
+    }
   }
 
   if (p === R_ADMIN+'/api/keys' && req.method === 'POST') {
@@ -12087,7 +12135,7 @@ async function handleRequest(req, res) {
   }
 
   if (p === '/client/status' && req.method === 'POST') {
-    if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    if (!isInternalAuditProbe(req) && !checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
     const _cl = parseInt(req.headers['content-length'] || '0', 10);
     if (_cl > 256) { sendJson(res, { error: 'payload_too_large' }, 400); return; }
     const body = await parseBody(req);
@@ -12116,7 +12164,7 @@ async function handleRequest(req, res) {
   }
 
   if (p === '/client/remove-phone' && req.method === 'POST') {
-    if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    if (!isInternalAuditProbe(req) && !checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
     const _clRm = parseInt(req.headers['content-length'] || '0', 10);
     if (_clRm > 256) { sendJson(res, { error: 'payload_too_large' }, 400); return; }
     const body    = await parseBody(req);
