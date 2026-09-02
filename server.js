@@ -1,4 +1,4 @@
-const ZVM_BUILD_ID = '2026-09-02-premium-control-r5';
+const ZVM_BUILD_ID = '2026-09-02-premium-workspace-r6';
 'use strict';
 const http   = require('http');
 const https  = require('https');
@@ -2928,8 +2928,17 @@ async function addAdminAuditLog({ actor = 'admin', action, keyCode = '', label =
   } catch (e) { console.warn('[ADMIN-AUDIT]', e.message); }
 }
 
-const CANVAS_BG = `<canvas id="_cvs" style="position:fixed;inset:0;z-index:0;pointer-events:none"></canvas>
-<script>(function(){var c=document.getElementById('_cvs'),ctx=c.getContext('2d');function resize(){c.width=window.innerWidth;c.height=window.innerHeight;}resize();window.addEventListener('resize',resize);var pts=Array.from({length:60},function(){return{x:Math.random()*c.width,y:Math.random()*c.height,vx:(Math.random()-.5)*.4,vy:(Math.random()-.5)*.4,r:Math.random()*2+.5};});function draw(){ctx.clearRect(0,0,c.width,c.height);pts.forEach(function(p){p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>c.width)p.vx*=-1;if(p.y<0||p.y>c.height)p.vy*=-1;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle='rgba(14,232,137,0.34)';ctx.fill();});for(var i=0;i<pts.length;i++){for(var j=i+1;j<pts.length;j++){var dx=pts[i].x-pts[j].x,dy=pts[i].y-pts[j].y,d=Math.sqrt(dx*dx+dy*dy);if(d<130){ctx.beginPath();ctx.moveTo(pts[i].x,pts[i].y);ctx.lineTo(pts[j].x,pts[j].y);ctx.strokeStyle='rgba(14,232,137,'+(0.10*(1-d/130))+')';ctx.lineWidth=.7;ctx.stroke();}}}requestAnimationFrame(draw);}draw();})();</script>`;
+const CANVAS_BG = `<canvas id="_cvs" style="position:fixed;inset:0;z-index:0;pointer-events:none" aria-hidden="true"></canvas>
+<script>(function(){
+  var c=document.getElementById('_cvs');if(!c)return;var ctx=c.getContext('2d');if(!ctx)return;
+  var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var pts=[],raf=0,last=0,frameMs=1000/30;
+  function density(){var area=Math.max(1,innerWidth*innerHeight);return Math.max(18,Math.min(46,Math.round(area/42000)));}
+  function resize(){var dpr=Math.min(window.devicePixelRatio||1,1.5);c.width=Math.round(innerWidth*dpr);c.height=Math.round(innerHeight*dpr);c.style.width=innerWidth+'px';c.style.height=innerHeight+'px';ctx.setTransform(dpr,0,0,dpr,0,0);var n=density();pts=Array.from({length:n},function(){return{x:Math.random()*innerWidth,y:Math.random()*innerHeight,vx:(Math.random()-.5)*.28,vy:(Math.random()-.5)*.28,r:Math.random()*1.45+.45};});drawStatic();}
+  function drawStatic(){ctx.clearRect(0,0,innerWidth,innerHeight);for(var i=0;i<pts.length;i++){var p=pts[i];ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle='rgba(14,232,137,.25)';ctx.fill();}for(var a=0;a<pts.length;a++){for(var b=a+1;b<pts.length;b++){var dx=pts[a].x-pts[b].x,dy=pts[a].y-pts[b].y,d2=dx*dx+dy*dy;if(d2<12100){var d=Math.sqrt(d2);ctx.beginPath();ctx.moveTo(pts[a].x,pts[a].y);ctx.lineTo(pts[b].x,pts[b].y);ctx.strokeStyle='rgba(14,232,137,'+(.075*(1-d/110))+')';ctx.lineWidth=.65;ctx.stroke();}}}}
+  function tick(ts){raf=requestAnimationFrame(tick);if(document.hidden||reduce||ts-last<frameMs)return;last=ts;for(var i=0;i<pts.length;i++){var p=pts[i];p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>innerWidth)p.vx*=-1;if(p.y<0||p.y>innerHeight)p.vy*=-1;}drawStatic();}
+  resize();if(!reduce)raf=requestAnimationFrame(tick);window.addEventListener('resize',function(){clearTimeout(resize._t);resize._t=setTimeout(resize,120);},{passive:true});document.addEventListener('visibilitychange',function(){if(!document.hidden&&!reduce){last=0;drawStatic();}});
+})();</script>`;
 
 // ──────────────── PORTAL DO CLIENTE ────────────────────────────
 function renderPortalPage(body, title='ZVM — Minha Conta', extra='', wide=false) {
@@ -3151,6 +3160,30 @@ body.zvm-auth-immersive{min-height:100vh;background:#070910;overflow:auto}body.z
 function _authSubmitLockScript() {
   return `<script>(function(){document.querySelectorAll('form').forEach(function(f){f.addEventListener('submit',function(){var btn=f.querySelector('.auth-submit');if(!btn||btn.disabled)return;btn.disabled=true;var sp=btn.querySelector('.auth-spinner');if(sp)sp.style.display='inline-block';});});})();</script>`;
 }
+
+function _clientWorkspaceCss(){return `
+.client-app{display:grid;grid-template-columns:258px minmax(0,1fr);min-height:100vh;background:radial-gradient(circle at 12% 8%,rgba(14,232,137,.055),transparent 24%),#05070b;color:#eef3f1}
+.client-app-rail{position:sticky;top:0;height:100vh;padding:24px 16px;border-right:1px solid #173027;background:radial-gradient(circle at 12% 0%,rgba(14,232,137,.14),transparent 28%),linear-gradient(180deg,#07130f,#06090d 74%);overflow:auto}
+.client-app-brand{padding:4px 8px 22px;border-bottom:1px solid #173027;margin-bottom:18px}.client-app-brand .zvm-brand-word{font-size:23px}.client-app-brand small{display:block;margin:7px 0 0 2px;font-size:10px;color:#617069;text-transform:uppercase;letter-spacing:1.35px;font-weight:800}
+.client-app-nav{display:flex;flex-direction:column;gap:7px}.client-app-nav a{display:flex;align-items:center;gap:11px;min-height:44px;padding:11px 12px;border:1px solid transparent;border-radius:13px;color:#93a19b;font-size:13px;font-weight:750;text-decoration:none;transition:background .18s,border-color .18s,color .18s,transform .18s}.client-app-nav a:hover{color:#eaf3ef;background:#0b1713;border-color:#1b362c;transform:translateX(2px)}.client-app-nav a.active{color:#13ec91;background:linear-gradient(90deg,rgba(14,232,137,.12),rgba(14,232,137,.03));border-color:rgba(14,232,137,.3);box-shadow:inset 3px 0 0 #0ee889}.client-app-nav span{width:18px;text-align:center;opacity:.9}
+.client-app-rail-card{margin-top:18px;padding:15px;border:1px solid #172a23;border-radius:17px;background:rgba(5,10,9,.74)}.client-app-rail-card strong{display:block;font-size:12px;color:#e8f0ec}.client-app-rail-card p{margin-top:6px;color:#72827b;font-size:11.5px;line-height:1.55}
+.client-app-main{min-width:0;padding:0 clamp(18px,3.2vw,48px) 44px}.client-app-topbar{display:flex;align-items:center;justify-content:space-between;gap:18px;min-height:74px;border-bottom:1px solid #142029;margin-bottom:22px}.client-app-title span{display:block;color:#64737a;font-size:10px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase}.client-app-title strong{display:block;margin-top:3px;color:#f2f7f4;font-size:21px;letter-spacing:-.35px}.client-app-user{display:flex;align-items:center;gap:12px;color:#9ca8a3;font-size:13px;font-weight:700}.client-app-user a{padding:8px 13px;border:1px solid #202c33;border-radius:10px;color:#96a29f;background:#080c10;text-decoration:none}.client-app-user a:hover{color:#ff7385;border-color:#63303a;background:#140c0f}
+.client-app-hero{position:relative;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) minmax(230px,310px);gap:22px;align-items:center;margin-bottom:20px;padding:28px;border:1px solid #1a2930;border-radius:24px;background:radial-gradient(circle at 86% 18%,rgba(14,232,137,.1),transparent 28%),linear-gradient(135deg,#0b1116,#080d11 72%);box-shadow:0 20px 56px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.02)}.client-app-hero::after{content:'';position:absolute;width:300px;height:300px;border:1px solid rgba(14,232,137,.07);border-radius:50%;right:-160px;bottom:-230px}.client-app-kicker{display:inline-flex;padding:6px 10px;border:1px solid rgba(14,232,137,.3);border-radius:999px;background:rgba(14,232,137,.08);color:#13e88b;font-size:10px;font-weight:850;letter-spacing:1px;text-transform:uppercase}.client-app-hero h1{margin-top:12px;font-size:clamp(28px,3.6vw,42px);line-height:1.05;letter-spacing:-1.2px;color:#f5f8f6}.client-app-hero p{max-width:720px;margin-top:10px;color:#8e9ba3;font-size:14.5px;line-height:1.65}.client-app-hero-side{display:grid;gap:9px}.client-app-hero-note{padding:13px 14px;border:1px solid #1b2b30;border-radius:14px;background:rgba(5,10,13,.78)}.client-app-hero-note span{display:block;color:#617078;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.9px}.client-app-hero-note strong{display:block;margin-top:5px;color:#eaf1ee;font-size:13px}
+.client-app-grid{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:18px;align-items:start}.client-app-card{padding:24px;border:1px solid #19262e;border-radius:21px;background:linear-gradient(180deg,#0a1015,#080c10);box-shadow:0 18px 48px rgba(0,0,0,.12),inset 0 1px 0 rgba(255,255,255,.02)}.client-app-card .auth-form-card{max-width:none}.client-app-card .auth-form-brand{display:none}.client-app-card h2{font-size:22px}.client-app-card .auth-form-hint{color:#8a979e}.client-app-aside{display:flex;flex-direction:column;gap:12px}.client-app-mini{padding:16px;border:1px solid #19262e;border-radius:17px;background:#080d11}.client-app-mini span{display:block;color:#64736d;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.85px}.client-app-mini strong{display:block;margin-top:6px;color:#e8efec;font-size:14px}.client-app-mini p{margin-top:5px;color:#748188;font-size:11.5px;line-height:1.5}.client-app .auth-submit{border-radius:11px;min-height:48px}.client-app .auth-field input{border-radius:11px;background:#060a0e;border-color:#1e2a32}.client-app .auth-field input:focus{border-color:#0ee889}.client-app .auth-switch{text-align:left}.client-app .auth-switch a{display:inline-flex;padding:8px 0}
+@media(max-width:980px){.client-app{grid-template-columns:1fr}.client-app-rail{position:relative;height:auto;padding:14px 16px;border-right:0;border-bottom:1px solid #173027}.client-app-brand{padding-bottom:12px}.client-app-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.client-app-rail-card{display:none}.client-app-main{padding-top:0}.client-app-grid{grid-template-columns:1fr}.client-app-aside{display:grid;grid-template-columns:1fr 1fr}.client-app-hero{grid-template-columns:1fr}.client-app-hero-side{grid-template-columns:1fr 1fr}}
+@media(max-width:650px){.client-app-nav{grid-template-columns:1fr 1fr}.client-app-main{padding-left:12px;padding-right:12px}.client-app-topbar{align-items:flex-start}.client-app-user{flex-direction:column;align-items:flex-end;gap:6px}.client-app-hero{padding:20px}.client-app-hero h1{font-size:29px}.client-app-hero-side,.client-app-aside{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){.client-app-nav a{transition:none}}
+`;}
+function renderClientWorkspacePage({portalUser=null,active='overview',eyebrow='Minha ZVM',title='Conta',subtitle='',content='',aside=''}){
+  const name=escHtml(String(portalUser?.name||portalUser?.email||'Cliente').trim().split(/\s+/)[0]||'Cliente');
+  const nav=[['overview','⌂','Visão geral','/cliente'],['plans','↻','Renovações e planos','/planos'],['security','🛡','Segurança','/cliente/2fa/setup'],['license','🔗','Licença','/cliente/vincular'],['password','🔒','Senha','/cliente/senha'],['email','✉','E-mail','/cliente/email']];
+  const navHtml=nav.map(([id,icon,label,href])=>`<a href="${href}" class="${active===id?'active':''}"><span>${icon}</span>${label}</a>`).join('')+`<a href="https://wa.me/5521996771552?text=Preciso+de+ajuda+com+o+ZVM" target="_blank" rel="noopener noreferrer"><span>💬</span>Suporte</a>`;
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ZVM — ${escHtml(title)}</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}<style>${_sharedCss()}${_standaloneCss()}${_authShellCss()}${_clientWorkspaceCss()}</style></head><body>
+  <div class="client-app"><aside class="client-app-rail"><div class="client-app-brand">${renderStandaloneBrand('compact')}<small>Portal do Cliente</small></div><nav class="client-app-nav">${navHtml}</nav><div class="client-app-rail-card"><strong>Sua conta ZVM em um só lugar</strong><p>Licença, renovação, dispositivos e segurança usam a mesma sessão protegida do portal.</p></div></aside>
+  <div class="client-app-main"><header class="client-app-topbar"><div class="client-app-title"><span>${escHtml(eyebrow)}</span><strong>${escHtml(title)}</strong></div><div class="client-app-user"><span>${name}</span><a href="/cliente/logout">Sair da conta</a></div></header>
+  <section class="client-app-hero"><div><span class="client-app-kicker">${escHtml(eyebrow)}</span><h1>${escHtml(title)}</h1><p>${escHtml(subtitle)}</p></div><div class="client-app-hero-side"><div class="client-app-hero-note"><span>Sessão</span><strong>Protegida e vinculada à sua conta</strong></div><div class="client-app-hero-note"><span>Atalho</span><strong>Volte à visão geral sem perder o contexto</strong></div></div></section>
+  <div class="client-app-grid"><section class="client-app-card">${content}</section><aside class="client-app-aside">${aside||`<div class="client-app-mini"><span>Privacidade</span><strong>Dados de conta sob controle</strong><p>As alterações exigem sessão válida e, quando necessário, confirmação da sua senha ou 2FA.</p></div><div class="client-app-mini"><span>Suporte</span><strong>Precisa de ajuda?</strong><p>O suporte continua disponível pelo WhatsApp sem sair da sua conta.</p></div>`}</aside></div></div></div>${_authSubmitLockScript()}</body></html>`;
+}
 const AUTH_BENEFITS = [
   ['🔑', 'Acompanhe status, validade e contagem regressiva da sua chave em tempo real'],
   ['📱', 'Veja e gerencie os dispositivos vinculados à sua licença'],
@@ -3360,23 +3393,7 @@ function renderStandaloneSetup2FA(user, pendingSecret = '', err = '', ok = '') {
       ${errHtml || `<div class="auth-alert err">Erro ao gerar configuração.</div>`}
       <div class="auth-switch"><a href="/cliente/2fa/setup">Tentar novamente</a></div>`;
   }
-  return `<!DOCTYPE html><html lang="pt-BR"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Segurança 2FA</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
-<style>${_sharedCss()}${_standaloneCss()}${_authShellCss()}</style></head>
-<body>${_sharedNav({ activePath: '', portalUser: user || null, showBack: false })}
-<main id="main-content" class="auth-shell">
-  ${_securityPromo('Segurança', 'Proteja sua conta <em>ZVM</em>')}
-  <div class="auth-form-wrap">
-    <div class="auth-form-card">
-      <div class="auth-form-brand">${renderStandaloneBrand('auth')}</div>
-      ${content}
-    </div>
-  </div>
-</main>
-${_standaloneFoot()}
-${_authSubmitLockScript()}
-</body></html>`;
+  return renderClientWorkspacePage({portalUser:user,active:'security',eyebrow:'Segurança',title:'Autenticação em duas etapas',subtitle:'Proteja sua conta com um código temporário além da senha.',content});
 }
 
 // ── Subpáginas de conta standalone (vincular/senha/email) — mesmo
@@ -3388,124 +3405,22 @@ ${_authSubmitLockScript()}
 function renderStandalonePortalLinkKey(err = '', ok = '', portalUser = null) {
   const errHtml = err ? `<div class="auth-alert err" role="alert">⚠ ${escHtml(err)}</div>` : '';
   const okHtml = ok ? `<div class="auth-alert ok" role="status">✅ ${escHtml(ok)}</div>` : '';
-  const benefitsHtml = [
-    ['🔑', 'Acompanhe status e validade assim que a chave estiver vinculada'],
-    ['📱', 'Gerencie os dispositivos conectados à sua licença'],
-    ['🔄', 'Renove ou troque de plano em poucos cliques'],
-    ['🔒', 'Sua conta, sua chave — nada muda pra quem já usa a extensão'],
-  ].map(([icon, text]) => `<li><span class="auth-benefit-icon" aria-hidden="true">${icon}</span><span>${text}</span></li>`).join('');
-  return `<!DOCTYPE html><html lang="pt-BR"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Vincular Chave</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
-<style>${_sharedCss()}${_standaloneCss()}${_authShellCss()}</style></head>
-<body>${_sharedNav({ activePath: '', portalUser: portalUser || null, showBack: false })}
-<main id="main-content" class="auth-shell">
-  <div class="auth-promo" aria-hidden="true">
-    <div class="auth-promo-inner">
-      <div class="auth-eyebrow">Portal do Cliente</div>
-      <h1>Vincule sua licença <em>ZVM</em></h1>
-      <p class="auth-promo-sub">Associe uma chave existente à sua conta para gerenciar plano, validade e dispositivos pelo portal.</p>
-      <ul class="auth-benefits">${benefitsHtml}</ul>
-    </div>
-  </div>
-  <div class="auth-form-wrap">
-    <div class="auth-form-card">
-      <div class="auth-form-brand">${renderStandaloneBrand('auth')}</div>
-      <h2>Vincular chave</h2>
-      <p class="auth-form-hint">Digite o código da sua chave ZVM para vinculá-la à sua conta.</p>
-      ${errHtml}${okHtml}
-      <form method="POST" action="/cliente/vincular">
-        <div class="auth-field"><label for="link-keycode">Código da chave</label><input id="link-keycode" type="text" name="keycode" placeholder="zv-xxxxx-xxxxx-xxxxx" maxlength="30" pattern="[a-z0-9\\-]+" required autocomplete="off"></div>
-        <button type="submit" class="auth-submit">Vincular<span class="auth-spinner" aria-hidden="true"></span></button>
-      </form>
-      <div class="auth-switch"><a href="/cliente">← Voltar ao painel</a></div>
-    </div>
-  </div>
-</main>
-${_standaloneFoot()}
-${_authSubmitLockScript()}
-</body></html>`;
+  const content=`<div class="auth-form-card"><h2>Vincular chave</h2><p class="auth-form-hint">Associe uma licença existente à sua conta. O portal passa a mostrar validade, plano e dispositivos imediatamente.</p>${errHtml}${okHtml}<form method="POST" action="/cliente/vincular"><div class="auth-field"><label for="link-keycode">Código da chave</label><input id="link-keycode" type="text" name="keycode" placeholder="zv-xxxxx-xxxxx-xxxxx" maxlength="30" pattern="[a-z0-9\\-]+" required autocomplete="off"><div class="auth-field-hint">Use exatamente o código recebido na compra ou no atendimento.</div></div><button type="submit" class="auth-submit">Vincular chave<span class="auth-spinner" aria-hidden="true"></span></button></form><div class="auth-switch"><a href="/cliente">← Voltar à visão geral</a></div></div>`;
+  return renderClientWorkspacePage({portalUser,active:'license',eyebrow:'Licença',title:'Vincular uma chave ZVM',subtitle:'Centralize sua licença, validade, plano e dispositivos dentro da mesma conta.',content,aside:`<div class="client-app-mini"><span>Licença</span><strong>Vinculação imediata</strong><p>Depois de validada, a chave passa a aparecer na visão geral da conta.</p></div><div class="client-app-mini"><span>Segurança</span><strong>Uma chave por conta</strong><p>Se a chave já estiver vinculada a outra conta, o portal bloqueia a associação.</p></div>`});
 }
 
 function renderStandalonePortalChangePwd(err = '', ok = '', portalUser = null) {
   const errHtml = err ? `<div class="auth-alert err" role="alert">⚠ ${escHtml(err)}</div>` : '';
   const okHtml = ok ? `<div class="auth-alert ok" role="status">✅ ${escHtml(ok)}</div>` : '';
-  return `<!DOCTYPE html><html lang="pt-BR"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Alterar Senha</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
-<style>${_sharedCss()}${_standaloneCss()}${_authShellCss()}</style></head>
-<body>${_sharedNav({ activePath: '', portalUser: portalUser || null, showBack: false })}
-<main id="main-content" class="auth-shell">
-  ${_securityPromo('Segurança', 'Proteja sua conta <em>ZVM</em>')}
-  <div class="auth-form-wrap">
-    <div class="auth-form-card">
-      <div class="auth-form-brand">${renderStandaloneBrand('auth')}</div>
-      <h2>Alterar senha</h2>
-      <p class="auth-form-hint">Escolha uma senha nova para acessar sua conta.</p>
-      ${errHtml}${okHtml}
-      <form method="POST" action="/cliente/senha">
-        <div class="auth-field"><label for="pwd-old">Senha atual</label><input id="pwd-old" type="password" name="old" required autocomplete="current-password"></div>
-        <div class="auth-field"><label for="pwd-new">Nova senha</label><input id="pwd-new" type="password" name="pass" required minlength="8" autocomplete="new-password">
-          <div class="auth-field-hint">Pelo menos 8 caracteres.</div>
-        </div>
-        <div class="auth-field"><label for="pwd-new2">Confirmar nova senha</label><input id="pwd-new2" type="password" name="pass2" required minlength="8" autocomplete="new-password"></div>
-        <button type="submit" class="auth-submit">Salvar<span class="auth-spinner" aria-hidden="true"></span></button>
-      </form>
-      <div class="auth-switch"><a href="/cliente">← Voltar ao painel</a></div>
-    </div>
-  </div>
-</main>
-${_standaloneFoot()}
-${_pwdToggleScript()}
-${_authSubmitLockScript()}
-</body></html>`;
+  const content=`<div class="auth-form-card"><h2>Alterar senha</h2><p class="auth-form-hint">Troque sua senha sem sair do portal. A senha atual é exigida antes de salvar.</p>${errHtml}${okHtml}<form method="POST" action="/cliente/senha"><div class="auth-field"><label for="pwd-old">Senha atual</label><input id="pwd-old" type="password" name="old" required autocomplete="current-password"></div><div class="auth-field"><label for="pwd-new">Nova senha</label><input id="pwd-new" type="password" name="pass" required minlength="8" autocomplete="new-password"><div class="auth-field-hint">Pelo menos 8 caracteres.</div></div><div class="auth-field"><label for="pwd-new2">Confirmar nova senha</label><input id="pwd-new2" type="password" name="pass2" required minlength="8" autocomplete="new-password"></div><button type="submit" class="auth-submit">Salvar nova senha<span class="auth-spinner" aria-hidden="true"></span></button></form><div class="auth-switch"><a href="/cliente">← Voltar à visão geral</a></div></div>`;
+  return renderClientWorkspacePage({portalUser,active:'password',eyebrow:'Segurança',title:'Senha da conta',subtitle:'Mantenha uma credencial forte e exclusiva para o Portal do Cliente e a extensão.',content:content+_pwdToggleScript(),aside:`<div class="client-app-mini"><span>Recomendação</span><strong>Senha exclusiva</strong><p>Evite reutilizar a mesma senha de e-mail ou outros serviços.</p></div><div class="client-app-mini"><span>2FA</span><strong>Adicione uma segunda camada</strong><p>Ative a autenticação em duas etapas para proteger ainda mais a conta.</p></div>`});
 }
 
 function renderStandalonePortalChangeEmail(err = '', ok = '', portalUser = null) {
   const errHtml = err ? `<div class="auth-alert err" role="alert">⚠ ${escHtml(err)}</div>` : '';
   const okHtml = ok ? `<div class="auth-alert ok" role="status">✅ ${escHtml(ok)}</div>` : '';
-  const benefitsHtml = [
-    ['📧', 'Renovações e confirmações de compra chegam nesse e-mail'],
-    ['🔐', 'Toda troca exige confirmação com sua senha atual'],
-    ['🛒', 'Use sempre o mesmo e-mail na página de pagamento'],
-    ['🧾', 'Seu histórico de licença continua vinculado à conta'],
-  ].map(([icon, text]) => `<li><span class="auth-benefit-icon" aria-hidden="true">${icon}</span><span>${text}</span></li>`).join('');
-  return `<!DOCTYPE html><html lang="pt-BR"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Alterar E-mail</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
-<style>${_sharedCss()}${_standaloneCss()}${_authShellCss()}</style></head>
-<body>${_sharedNav({ activePath: '', portalUser: portalUser || null, showBack: false })}
-<main id="main-content" class="auth-shell">
-  <div class="auth-promo" aria-hidden="true">
-    <div class="auth-promo-inner">
-      <div class="auth-eyebrow">Conta</div>
-      <h1>Mantenha seus dados <em>atualizados</em></h1>
-      <p class="auth-promo-sub">Seu e-mail é o identificador da sua conta e do seu histórico de compras na ZVM.</p>
-      <ul class="auth-benefits">${benefitsHtml}</ul>
-    </div>
-  </div>
-  <div class="auth-form-wrap">
-    <div class="auth-form-card">
-      <div class="auth-form-brand">${renderStandaloneBrand('auth')}</div>
-      <h2>Alterar e-mail</h2>
-      <p class="auth-form-hint">Confirme sua senha atual para concluir a troca.</p>
-      ${errHtml}${okHtml}
-      <form method="POST" action="/cliente/email">
-        <div class="auth-field"><label for="email-new">Novo e-mail</label><input id="email-new" type="email" name="newemail" required maxlength="120" autocomplete="email">
-          <div class="auth-field-hint">Use na página de pagamento o mesmo e-mail cadastrado nesta conta.</div>
-        </div>
-        <div class="auth-field"><label for="email-new2">Confirmar novo e-mail</label><input id="email-new2" type="email" name="newemail2" required maxlength="120" autocomplete="email"></div>
-        <div class="auth-field"><label for="email-pass">Senha atual</label><input id="email-pass" type="password" name="pass" required autocomplete="current-password"></div>
-        <button type="submit" class="auth-submit">Salvar novo e-mail<span class="auth-spinner" aria-hidden="true"></span></button>
-      </form>
-      <div class="auth-switch"><a href="/cliente">← Voltar ao painel</a></div>
-    </div>
-  </div>
-</main>
-${_standaloneFoot()}
-${_pwdToggleScript()}
-${_authSubmitLockScript()}
-</body></html>`;
+  const content=`<div class="auth-form-card"><h2>Alterar e-mail</h2><p class="auth-form-hint">Seu e-mail identifica a conta e ajuda a vincular compras e renovações.</p>${errHtml}${okHtml}<form method="POST" action="/cliente/email"><div class="auth-field"><label for="email-new">Novo e-mail</label><input id="email-new" type="email" name="newemail" required maxlength="120" autocomplete="email"><div class="auth-field-hint">Use o mesmo e-mail na compra para facilitar a vinculação automática.</div></div><div class="auth-field"><label for="email-new2">Confirmar novo e-mail</label><input id="email-new2" type="email" name="newemail2" required maxlength="120" autocomplete="email"></div><div class="auth-field"><label for="email-pass">Senha atual</label><input id="email-pass" type="password" name="pass" required autocomplete="current-password"></div><button type="submit" class="auth-submit">Salvar novo e-mail<span class="auth-spinner" aria-hidden="true"></span></button></form><div class="auth-switch"><a href="/cliente">← Voltar à visão geral</a></div></div>`;
+  return renderClientWorkspacePage({portalUser,active:'email',eyebrow:'Conta',title:'E-mail da conta',subtitle:'Mantenha seu identificador principal atualizado para compras, renovações e recuperação.',content:content+_pwdToggleScript(),aside:`<div class="client-app-mini"><span>Compras</span><strong>Mesmo e-mail na Cakto</strong><p>Isso facilita a associação automática da compra à sua conta ZVM.</p></div><div class="client-app-mini"><span>Confirmação</span><strong>Sua senha é obrigatória</strong><p>A troca não acontece sem confirmar a credencial atual.</p></div>`});
 }
 
 // ── Recuperação de senha standalone (mesmo auth-shell, nav mínima).
@@ -4317,6 +4232,9 @@ body{background:radial-gradient(circle at 16% 12%,rgba(14,232,137,.055),transpar
 .countdown-grid{gap:8px}.cd-box{min-height:58px;border-radius:13px;background:#070b0f;border-color:#1b2931}.cd-num{color:#f0f5f3}.validity-bar{background:#111a1f}
 .qa-primary{min-height:54px;border-radius:14px;background:linear-gradient(135deg,#15ee91,#00cc72);color:#03110a;box-shadow:0 14px 36px rgba(14,232,137,.14)}.qa-primary:hover{box-shadow:0 18px 44px rgba(14,232,137,.2)}.qa-btn{min-height:46px;border-radius:12px;background:#0a0f13;border-color:#1d2a31;color:#b1bcb8}.qa-btn:hover{background:#0d1518;border-color:#294039;color:#eaf2ef}.support-btn{border-radius:12px}
 .device-row{border-color:#142129}.device-remove{border-radius:10px}.panels-grid{gap:18px}.faq-item,.cl-item{border-color:#111c22}
+
+.client-cockpit{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,.65fr);gap:18px;margin-bottom:18px}.client-cockpit-main{position:relative;overflow:hidden;padding:26px 27px;border:1px solid #1a2930;border-radius:23px;background:radial-gradient(circle at 88% 12%,rgba(14,232,137,.11),transparent 28%),linear-gradient(135deg,#0b1116,#080d11 72%)}.client-cockpit-main::after{content:'';position:absolute;width:280px;height:280px;border:1px solid rgba(14,232,137,.07);border-radius:50%;right:-150px;bottom:-225px}.client-cockpit-kicker{display:inline-flex;padding:6px 10px;border-radius:999px;border:1px solid rgba(14,232,137,.3);background:rgba(14,232,137,.08);color:#13e88b;font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:1px}.client-cockpit-main h2{margin-top:12px;color:#f4f8f6;font-size:clamp(27px,3.2vw,40px);line-height:1.05;letter-spacing:-1px}.client-cockpit-main p{margin-top:10px;max-width:720px;color:#8d9aa2;font-size:14px;line-height:1.6}.client-cockpit-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:18px}.client-cockpit-actions a{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:9px 13px;border-radius:11px;border:1px solid #223039;background:#080d11;color:#a8b4af;text-decoration:none;font-size:12.5px;font-weight:800}.client-cockpit-actions a.primary{background:#13e88b;color:#03110a;border-color:#13e88b}.client-cockpit-pulse{display:grid;grid-template-columns:1fr 1fr;gap:10px}.client-pulse{min-height:96px;padding:14px;border:1px solid #19272e;border-radius:17px;background:linear-gradient(180deg,#090f14,#070b0f);display:flex;flex-direction:column;justify-content:space-between}.client-pulse span{font-size:9.5px;color:#65746d;text-transform:uppercase;letter-spacing:.85px;font-weight:800}.client-pulse strong{font-size:17px;color:#edf4f1;line-height:1.15}.client-pulse small{font-size:11px;color:#718078}.client-section-title{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin:22px 2px 10px}.client-section-title div span{display:block;color:#64736d;font-size:9.5px;font-weight:850;letter-spacing:1px;text-transform:uppercase}.client-section-title div strong{display:block;margin-top:3px;color:#e8efec;font-size:17px}.client-section-title p{max-width:520px;color:#718078;font-size:11.5px;text-align:right}
+@media(max-width:1120px){.client-cockpit{grid-template-columns:1fr}.client-cockpit-pulse{grid-template-columns:repeat(4,1fr)}}@media(max-width:760px){.client-cockpit-pulse{grid-template-columns:1fr 1fr}.client-section-title{align-items:flex-start;flex-direction:column}.client-section-title p{text-align:left}}@media(max-width:520px){.client-cockpit-pulse{grid-template-columns:1fr}.client-cockpit-main{padding:21px 18px}}.client-main>.dash-grid-2,.client-main>.panels-grid,.client-main>.qa-danger-wrap{content-visibility:auto;contain-intrinsic-size:360px}
 @media(max-width:1100px){.client-shell{grid-template-columns:244px minmax(0,1fr);gap:20px}.client-rail{padding:16px}.client-rail-brand::after{font-size:11px}}
 @media(max-width:900px){.page-wrap{padding-top:18px}.client-shell{grid-template-columns:1fr}.client-rail{position:relative;top:0;min-height:auto}.client-rail-brand{grid-template-columns:auto 1fr auto}.client-rail-brand::after{grid-column:3;grid-row:1/3;align-self:center}.client-nav{grid-template-columns:repeat(2,minmax(0,1fr))}.client-rail-card{display:none}}
 @media(max-width:620px){.client-nav{grid-template-columns:1fr}.dash-topbar{align-items:flex-start}.dash-topbar-user{flex-direction:column;align-items:flex-end;gap:7px}.dash-hero{padding:22px 18px}.dash-hero h1{font-size:26px}.page-wrap{padding-left:12px;padding-right:12px}}
@@ -4346,10 +4264,21 @@ body{background:radial-gradient(circle at 16% 12%,rgba(14,232,137,.055),transpar
   </div>
 </div>
 
+<div class="client-cockpit">
+  <section class="client-cockpit-main"><span class="client-cockpit-kicker">Seu espaço ZVM</span><h2>Licença, segurança e dispositivos sem ruído.</h2><p>Uma visão executiva da sua conta para resolver o que importa rápido: manter a licença ativa, controlar dispositivos e proteger o acesso.</p><div class="client-cockpit-actions"><a class="primary" href="/planos">↻ Renovar ou mudar plano</a><a href="/cliente/2fa/setup">🛡 Revisar segurança</a><a href="/cliente/vincular">🔗 Gerenciar licença</a></div></section>
+  <div class="client-cockpit-pulse">
+    <div class="client-pulse"><span>Licença</span><strong>${keyData ? escHtml(mainStatusTxt) : 'Sem chave'}</strong><small>${keyData ? 'ZVM '+escHtml(planName) : 'Vincule ou compre um plano'}</small></div>
+    <div class="client-pulse"><span>Renovação</span><strong>${keyData ? escHtml(expiryDateText) : '—'}</strong><small>${expiryTier ? 'Atenção necessária' : 'Situação acompanhada'}</small></div>
+    <div class="client-pulse"><span>Dispositivos</span><strong>${keyData ? devUsed+(devMax?' / '+devMax:' / ∞') : '—'}</strong><small>${devExceeded ? 'Limite excedido' : 'Slots da licença'}</small></div>
+    <div class="client-pulse"><span>Segurança</span><strong>${has2fa ? '2FA ativo' : '2FA opcional'}</strong><small>${has2fa ? 'Segunda camada habilitada' : 'Recomendado ativar'}</small></div>
+  </div>
+</div>
+
 ${updateBanner}
 
 ${okMsg ? `<div style="background:#00c85318;border:1px solid #00c85340;border-radius:10px;padding:12px 18px;margin-bottom:14px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;color:#00c853">✅ ${escHtml(okMsg)}</div>` : ''}
 
+<div class="client-section-title"><div><span>Conta</span><strong>Identidade e status</strong></div><p>Informações principais da conta e da licença atual.</p></div>
 <div class="dash-hero">
   ${avatarBtn}
   <div class="dash-hero-text">
@@ -4366,6 +4295,7 @@ ${avatarDialog}
 
 ${noKeySection}
 
+<div class="client-section-title"><div><span>Licença</span><strong>Controle da assinatura</strong></div><p>Validade, limite de dispositivos e dados essenciais da sua licença.</p></div>
 ${keyData ? `
 <div class="dash-grid-2">
   <div class="key-card">
@@ -4399,6 +4329,7 @@ ${keyData ? `
 </div>
 ` : ''}
 
+<div class="client-section-title"><div><span>Ações rápidas</span><strong>Central da conta</strong></div><p>Atalhos para segurança, renovação, dados da conta e suporte.</p></div>
 <div class="quick-actions">
   <a href="/planos" class="qa-primary">🛒 Renovar / Alterar Plano</a>
 </div>
@@ -4456,6 +4387,7 @@ ${hasKey ? `<div class="qa-danger-wrap"><form method="POST" action="/cliente/des
       var dEl=cd.querySelector('[data-cd="d"]'),hEl=cd.querySelector('[data-cd="h"]'),mEl=cd.querySelector('[data-cd="m"]'),sEl=cd.querySelector('[data-cd="s"]');
       var bar=document.getElementById('validity-bar-fill');
       function tick(){
+        if(document.hidden)return;
         var ms=end-Date.now();
         if(ms<=0){if(dEl)dEl.textContent='0';if(hEl)hEl.textContent='00';if(mEl)mEl.textContent='00';if(sEl)sEl.textContent='00';if(bar){bar.style.width='0%';bar.style.background='#f05060';}return;}
         var days=Math.floor(ms/86400000),hours=Math.floor(ms%86400000/3600000),mins=Math.floor(ms%3600000/60000),secs=Math.floor(ms%60000/1000);
@@ -4777,6 +4709,7 @@ function renderAdminDashboard(opts = {}) {
   const stats = opts.stats || getKeyStats();
   const _keysHtml = (opts.keysHtml != null) ? opts.keysHtml : getKeysHtmlCached();
   const _logsHtml = (opts.logsHtml != null) ? opts.logsHtml : buildLogsHtml();
+  const portalUserCount = Number(opts.portalUserCount || 0);
   const { expiredKeys: expiredCount, warnKeys: expiringSoon } = stats;
   const _dashboardBrand = opts.brand === 'WSM' ? 'WSM' : 'ZVM';
   const _adminBrand = _dashboardBrand === 'ZVM' ? renderStandaloneBrand('compact') : '⚡ WSM';
@@ -4956,16 +4889,19 @@ header{height:58px;padding:0 22px;background:rgba(6,9,10,.94);backdrop-filter:bl
 :root{--g:#13e88b;--g-dim:#00c96f;--g-bg:rgba(14,232,137,.08);--g-brd:rgba(14,232,137,.28);--bg:#05070b;--s0:#070a0d;--s1:#090e12;--s2:#0c1217;--s3:#10171c;--brd:#18242b;--brd2:#22313a;--tx:#eef3f1;--tx2:#93a09b;--tx3:#586761;--sidebar-w:190px;--sidebar-open:190px;--hdr:62px;--r:12px;--r-sm:9px;--r-lg:18px}
 body{background:radial-gradient(circle at 16% 10%,rgba(14,232,137,.045),transparent 24%),#05070b}
 header{height:var(--hdr);padding:0 22px;background:rgba(6,10,12,.95);border-bottom:1px solid #17242b;box-shadow:0 12px 34px rgba(0,0,0,.23);backdrop-filter:blur(18px)}.logo{gap:12px}.logo .zvm-brand-word{font-size:20px}.logo-ver{padding-left:10px;border-left:1px solid #243038;color:#74827d;font-weight:700;letter-spacing:.4px}.hright{gap:9px}.hdr-meta{color:#68766f}.out{border-radius:10px}
-.admin-wrap{min-height:calc(100vh - var(--hdr))}.rsidebar{width:var(--sidebar-w);top:var(--hdr);height:calc(100vh - var(--hdr));padding:13px 10px;background:radial-gradient(circle at 18% 0%,rgba(14,232,137,.12),transparent 29%),linear-gradient(180deg,#07120e,#060a0d 74%);border-right:1px solid #173027;overflow-y:auto}.rsidebar:hover{width:var(--sidebar-w)}.rsb-title{opacity:1;padding:10px 11px 9px;border-bottom:0;color:#5b6b64}.rtab{min-height:44px;padding:11px 12px;border-left:0;border:1px solid transparent;border-radius:12px;gap:10px;color:#8f9d97}.rtab:hover{transform:translateX(2px);background:#0b1713;color:#e7efeb;border-color:#1a332a}.rtab.active{background:linear-gradient(90deg,rgba(14,232,137,.12),rgba(14,232,137,.035));color:#13e88b;border-color:rgba(14,232,137,.3);box-shadow:inset 3px 0 0 #13e88b}.rtab-label{opacity:1}.rtab-icon{width:18px}
+.admin-wrap{min-height:calc(100vh - var(--hdr))}.rsidebar{width:64px;top:var(--hdr);height:calc(100vh - var(--hdr));padding:13px 9px;background:radial-gradient(circle at 18% 0%,rgba(14,232,137,.12),transparent 29%),linear-gradient(180deg,#07120e,#060a0d 74%);border-right:1px solid #173027;overflow:hidden;transition:width .2s cubic-bezier(.4,0,.2,1)}.rsidebar:hover,.rsidebar:focus-within{width:210px;overflow-y:auto}.rsb-title{opacity:0;padding:10px 11px 9px;border-bottom:0;color:#5b6b64;transition:opacity .14s}.rsidebar:hover .rsb-title,.rsidebar:focus-within .rsb-title{opacity:1}.rtab{min-height:44px;padding:11px 12px;border-left:0;border:1px solid transparent;border-radius:12px;gap:10px;color:#8f9d97}.rtab:hover{transform:translateX(2px);background:#0b1713;color:#e7efeb;border-color:#1a332a}.rtab.active{background:linear-gradient(90deg,rgba(14,232,137,.12),rgba(14,232,137,.035));color:#13e88b;border-color:rgba(14,232,137,.3);box-shadow:inset 3px 0 0 #13e88b}.rtab-label{opacity:0;transition:opacity .14s}.rsidebar:hover .rtab-label,.rsidebar:focus-within .rtab-label{opacity:1}.rtab-icon{width:18px;flex:0 0 18px}
 .admin-content{padding:24px 26px 32px}.alert-strip{padding:11px 15px;border-radius:14px;background:linear-gradient(90deg,rgba(249,115,22,.1),rgba(249,115,22,.025))}.stats{gap:12px;margin-bottom:18px}.sc{min-height:82px;padding:16px 17px;border-radius:17px;background:radial-gradient(circle at 92% 18%,rgba(14,232,137,.045),transparent 35%),linear-gradient(180deg,#0b1115,#080d11);border:1px solid #1a2830;box-shadow:0 16px 40px rgba(0,0,0,.12),inset 0 1px 0 rgba(255,255,255,.02)}.sc:hover{border-color:#2b4038;box-shadow:0 18px 46px rgba(0,0,0,.18)}.sc .n{font-size:23px}.sc .l{color:#66756f}.sc-icon{opacity:.6;filter:saturate(.8)}
 .sec{border-radius:18px;background:linear-gradient(180deg,#090e12,#080c10);border:1px solid #19272e;box-shadow:0 18px 48px rgba(0,0,0,.1),inset 0 1px 0 rgba(255,255,255,.018)}.sh{padding:13px 16px;background:linear-gradient(180deg,#0d1419,#0a1014);border-color:#19272e}.st{font-size:13.5px;color:#e3eae7}.search-bar{padding:9px 14px;background:#080d11;border-color:#17242b}.search-bar input,.search-bar select,.gen-form input{min-height:35px;background:#06090c;border-color:#1e2c33;border-radius:10px}.search-bar input:focus,.search-bar select:focus,.gen-form input:focus{border-color:rgba(14,232,137,.5);box-shadow:0 0 0 3px rgba(14,232,137,.07)}
 .btn{border-radius:10px;min-height:34px}.bp{background:linear-gradient(135deg,#15ee91,#00c96f);color:#03110a}.bp:hover{box-shadow:0 10px 26px rgba(14,232,137,.16)}.bs{border-radius:7px;padding:3px 6px}.ov{scrollbar-gutter:stable}thead{top:0}th{height:32px;background:#070b0e;color:#64736d;border-color:#18252c}td{padding-top:5px;padding-bottom:5px;border-color:#131f25}tr:nth-child(even) td{background:#ffffff018}tr:hover td{background:rgba(14,232,137,.025)}.kc{color:#18ec92}
 .modal-bg{background:rgba(0,0,0,.7);backdrop-filter:blur(10px)}.modal{padding:22px;border-radius:20px;background:#090e12;border-color:#26373f;box-shadow:0 28px 90px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.025)}.modal textarea,.modal input[type=text],.modal input[type=number]{min-height:42px;border-radius:10px;background:#06090c;border-color:#1e2c33}
 @media(max-width:920px){:root{--sidebar-w:54px;--sidebar-open:190px}.rsidebar{width:54px;overflow:hidden}.rsidebar:hover{width:190px}.rsidebar .rsb-title,.rsidebar .rtab-label{opacity:0}.rsidebar:hover .rsb-title,.rsidebar:hover .rtab-label{opacity:1}.admin-content{padding:18px}}
+
+.zvm-admin-r6 .admin-content{padding:22px 24px 34px}.zvm-admin-r6 .admin-overview{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(360px,.65fr);gap:18px;margin-bottom:16px;padding:23px 24px;border:1px solid #1a2a31;border-radius:22px;background:radial-gradient(circle at 88% 18%,rgba(14,232,137,.09),transparent 30%),linear-gradient(135deg,#0b1116,#080d11 72%);box-shadow:0 18px 50px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.02)}.zvm-admin-r6 .admin-overview-kicker{display:inline-flex;padding:6px 10px;border:1px solid rgba(14,232,137,.3);border-radius:999px;background:rgba(14,232,137,.08);color:#13e88b;font-size:9.5px;font-weight:850;letter-spacing:1px;text-transform:uppercase}.zvm-admin-r6 .admin-overview h1{margin-top:10px;color:#f4f8f6;font-size:clamp(25px,3vw,36px);line-height:1.05;letter-spacing:-.8px}.zvm-admin-r6 .admin-overview p{margin-top:8px;max-width:760px;color:#849198;font-size:13px;line-height:1.6}.zvm-admin-r6 .admin-overview-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.zvm-admin-r6 .admin-overview-actions button{min-height:38px;padding:8px 12px;border:1px solid #213039;border-radius:10px;background:#080d11;color:#a2afa9;font-weight:800;font-size:11.5px;cursor:pointer}.zvm-admin-r6 .admin-overview-actions button.primary{background:#13e88b;color:#03110a;border-color:#13e88b}.zvm-admin-r6 .admin-overview-pulse{display:grid;grid-template-columns:1fr 1fr;gap:9px}.zvm-admin-r6 .admin-pulse{padding:12px 13px;border:1px solid #19272e;border-radius:15px;background:#070c10}.zvm-admin-r6 .admin-pulse span{display:block;color:#63726c;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.8px}.zvm-admin-r6 .admin-pulse strong{display:block;margin-top:5px;color:#eaf1ee;font-size:18px}.zvm-admin-r6 .admin-pulse small{display:block;margin-top:2px;color:#718078;font-size:10.5px}.zvm-admin-r6 .stats{gap:12px}.zvm-admin-r6 .sc{min-height:92px;padding:16px 17px;border-radius:17px;background:linear-gradient(180deg,#0b1115,#080c10);border-color:#19262e}.zvm-admin-r6 .sc .n{font-size:24px}.zvm-admin-r6 .sc .l{margin-top:6px}.zvm-admin-r6 .sec{border-radius:19px;border-color:#19262e;background:linear-gradient(180deg,#090f13,#080c10);box-shadow:0 16px 42px rgba(0,0,0,.08)}.zvm-admin-r6 .sh{min-height:52px;padding:12px 16px;background:#0c1217;border-color:#19272e}.zvm-admin-r6 .st{font-size:13.5px}.zvm-admin-r6 .search-bar{padding:10px 14px;background:#080d11}.zvm-admin-r6 .search-bar input,.zvm-admin-r6 .search-bar select,.zvm-admin-r6 .gen-form input{min-height:36px}.zvm-admin-r6 th{height:34px;background:#070b0f;color:#62716b}.zvm-admin-r6 td{height:32px}.zvm-admin-r6 tr:hover td{background:rgba(14,232,137,.025)}.zvm-admin-r6 .modal{border-radius:20px}.zvm-admin-r6 .alert-strip{min-height:42px;border-radius:13px}.zvm-admin-r6 .filter-count{padding:7px 14px}.zvm-admin-r6 .ov{scrollbar-gutter:stable}.zvm-admin-r6 .rtab-label{white-space:nowrap}.zvm-admin-r6 .sec-panel.active>.sec{content-visibility:auto;contain-intrinsic-size:520px}
+@media(max-width:1200px){.zvm-admin-r6 .admin-overview{grid-template-columns:1fr}.zvm-admin-r6 .admin-overview-pulse{grid-template-columns:repeat(4,1fr)}}@media(max-width:800px){.zvm-admin-r6 .admin-overview-pulse{grid-template-columns:1fr 1fr}}
 @media(max-width:750px){.rsidebar{display:none}.admin-content{padding:12px}.stats{grid-template-columns:1fr 1fr}}
 </style>
 </head>
-<body>
+<body class="${_dashboardBrand==='ZVM'?'zvm-admin-r6':''}">
 <header>
   <div class="logo">
     ${_adminBrand}
@@ -4991,6 +4927,9 @@ header{height:var(--hdr);padding:0 22px;background:rgba(6,10,12,.95);border-bott
   <button class="rtab" data-tab="security" onclick="switchTab('security')"><span class="rtab-icon">🔒</span><span class="rtab-label">Segurança</span></button>
 </nav>
 <div class="admin-content">
+
+  ${_dashboardBrand==='ZVM'?`<section class="admin-overview"><div><span class="admin-overview-kicker">Centro de Operações</span><h1>Licenças, segurança e clientes em uma única leitura.</h1><p>Use esta visão para identificar rapidamente renovações, bloqueios, comportamento suspeito e crescimento do portal sem perder a densidade operacional da tabela.</p><div class="admin-overview-actions"><button class="primary" onclick="switchTab('keys')">🔑 Gerenciar chaves</button><button onclick="switchTab('users')">👥 Usuários do portal</button><button onclick="switchTab('security')">🛡 Revisar segurança</button><button onclick="switchTab('audit')">◎ Auditoria</button></div></div><div class="admin-overview-pulse"><div class="admin-pulse"><span>Ativas</span><strong id="hero-admin-active">${stats.activeKeys}</strong><small>licenças em operação</small></div><div class="admin-pulse"><span>Expiradas</span><strong id="hero-admin-expired">${expiredCount}</strong><small>renovações pendentes</small></div><div class="admin-pulse"><span>Suspeitas</span><strong id="hero-admin-suspect">${stats.suspectKeys}</strong><small>revisão recomendada</small></div><div class="admin-pulse"><span>Portal</span><strong>${portalUserCount}</strong><small>usuários cadastrados</small></div></div></section>`:''}
+
 
   <div class="alert-strip" id="urgent-alert" style="${(expiredCount>0||expiringSoon>0)?'':'display:none'}">
     <span>⚠</span>
@@ -5399,7 +5338,7 @@ async function doRefresh(manual){
     const sw=document.getElementById('s-warn');sw.textContent=d.warnKeys||0;sw.style.color=d.warnKeys>0?'var(--orange)':'var(--green)';sw.closest('.sc').classList.toggle('warn-card',d.warnKeys>0);
     const sbl=document.getElementById('s-blocked');if(sbl)sbl.textContent=d.blockedKeys||0;
     const sdf=document.getElementById('s-deferred');if(sdf)sdf.textContent=d.deferredKeys||0;
-    const ssp=document.getElementById('s-suspect');if(ssp){ssp.textContent=d.suspectKeys||0;ssp.style.color=(d.suspectKeys||0)>0?'var(--red)':'';};
+    const ssp=document.getElementById('s-suspect');if(ssp){ssp.textContent=d.suspectKeys||0;ssp.style.color=(d.suspectKeys||0)>0?'var(--red)':'';};const _hm=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};_hm('hero-admin-active',d.activeKeys||0);_hm('hero-admin-expired',d.expiredKeys||0);_hm('hero-admin-suspect',d.suspectKeys||0);
     const alert=document.getElementById('urgent-alert'),alertTxt=document.getElementById('urgent-alert-text');
     if(alert&&alertTxt){
       const parts=[];
@@ -5420,7 +5359,7 @@ async function doRefresh(manual){
     if(manual)toast('Painel atualizado');
   }catch(e){console.error('Refresh error',e);if(manual)toast('Erro ao atualizar',false);}
 }
-setInterval(()=>doRefresh(false),120000);
+setInterval(()=>{if(!document.hidden)doRefresh(false);},120000);document.addEventListener('visibilitychange',function(){if(!document.hidden)doRefresh(false);});
 
 // Click-to-copy nas chaves da tabela
 document.addEventListener('click',function(e){
@@ -5684,7 +5623,7 @@ async function loadUsers(){
     if(!d.ok){toast('Erro ao carregar usuários',false);return;}
     _usersData=d.users||[];
     renderUsersTable(_usersData);
-  }catch(e){if(tb)tb.innerHTML='<tr><td colspan="8" class="empty">Erro de rede ao carregar usuários.</td></tr>';}
+  }catch(e){if(tb)tb.innerHTML='<tr><td colspan="8" class="empty">Não foi possível carregar os usuários. <button class="btn bw" style="margin-left:8px" onclick="loadUsers()">Tentar novamente</button></td></tr>';}
 }
 function renderUsersTable(list){
   const tb=document.getElementById('users-tb');
@@ -7827,6 +7766,8 @@ main{max-width:none;margin:0;padding:24px 26px 40px}.analytics-hero{display:grid
 .sec{border-radius:18px;border-color:#19272e;background:linear-gradient(180deg,#090f13,#080c10);box-shadow:0 18px 48px rgba(0,0,0,.09)}.sh{padding:13px 16px;background:#0c1217;border-color:#19272e}.st{font-size:13px;color:#dce5e1}.ov{border-radius:0 0 18px 18px}th{background:#070b0f;color:#64736d;padding:8px 10px}td{padding:8px 10px;border-color:#142027}tr:hover td{background:rgba(14,232,137,.025)}#search{min-height:38px;border-radius:10px;background:#06090d;border-color:#1e2b32}.pb{border-radius:9px}.pb.active{background:rgba(14,232,137,.1);border-color:rgba(14,232,137,.3);color:#13e88b}.lab-body{background:#080c10}.lab-field select,.lab-field input{min-height:42px;border-radius:10px;background:#06090d;border-color:#1e2b32}.lab-iframe{border-radius:14px}.purge-dialog{border-radius:20px;background:#090e12;border-color:#293941}
 @media(max-width:1350px){.stats{grid-template-columns:repeat(3,1fr)}.stats2{grid-template-columns:repeat(3,1fr)}.analytics-insights{grid-template-columns:1fr 1fr}.analytics-hero{grid-template-columns:1fr}.analytics-hero-pulse{min-width:0;max-width:420px}}
 @media(max-width:980px){.analytics-shell{grid-template-columns:1fr}.analytics-rail{position:relative;height:auto;padding:14px 16px;border-right:0;border-bottom:1px solid #173027}.analytics-rail-brand{padding-bottom:10px}.analytics-nav{display:grid;grid-template-columns:repeat(3,1fr)}.analytics-rail-card{display:none}.analytics-topbar{position:sticky;top:0}.charts3{grid-template-columns:1fr 1fr}}
+
+.analytics-workspace main{max-width:1760px;margin:0 auto;width:100%}.analytics-topbar{backdrop-filter:blur(18px)}.analytics-nav a{position:relative}.analytics-nav a.active::after{content:'';position:absolute;left:10px;right:10px;bottom:5px;height:1px;background:linear-gradient(90deg,transparent,#13e88b,transparent);opacity:.55}.analytics-hero{box-shadow:0 22px 58px rgba(0,0,0,.14),inset 0 1px 0 rgba(255,255,255,.02)}.analytics-insights{margin-top:2px}.chart-card{content-visibility:auto;contain-intrinsic-size:320px}.sec{content-visibility:auto;contain-intrinsic-size:300px}
 @media(max-width:700px){main{padding:14px 12px 30px}.analytics-topbar{height:auto;min-height:66px;padding:10px 12px;align-items:flex-start}.analytics-actions{justify-content:flex-end}.analytics-nav{grid-template-columns:1fr 1fr}.stats,.stats2{grid-template-columns:1fr 1fr}.analytics-insights{grid-template-columns:1fr}.charts3{grid-template-columns:1fr}.analytics-hero{padding:19px}.analytics-hero h1{font-size:25px}.analytics-hero-pulse{grid-template-columns:1fr 1fr}.hour-bars{gap:2px}}
 </style></head><body>
 <div class="analytics-shell">
@@ -8342,6 +8283,7 @@ async function purgeExecute(){
   }
 }
 </script>
+<script>(function(){var links=[].slice.call(document.querySelectorAll('.analytics-nav a[href^="#"]'));if(!links.length||!('IntersectionObserver'in window))return;var map=new Map(links.map(function(a){return[a.getAttribute('href').slice(1),a]}));var io=new IntersectionObserver(function(entries){var visible=entries.filter(function(e){return e.isIntersecting}).sort(function(a,b){return b.intersectionRatio-a.intersectionRatio})[0];if(!visible)return;links.forEach(function(a){a.classList.toggle('active',a===map.get(visible.target.id));});},{rootMargin:'-18% 0px -65% 0px',threshold:[0,.1,.35]});map.forEach(function(a,id){var el=document.getElementById(id);if(el)io.observe(el);});})();</script>
 ${CANVAS_BG}</body></html>`;
 }
 
