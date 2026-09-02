@@ -3,7 +3,8 @@ const http   = require('http');
 const https  = require('https');
 const crypto = require('crypto');
 const zlib   = require('zlib');
-const net    = require('net');
+const fs     = require('fs');
+const path   = require('path');
 const { MongoClient } = require('mongodb');
 // DOTENV_CONFIG_PATH (convenção padrão do próprio dotenv) permite apontar
 // pra um arquivo de ambiente diferente (ex.: .env.test) sem tocar em .env
@@ -18,6 +19,15 @@ const {
 const PORT         = process.env.PORT         || 3000;
 const ADMIN_USER   = process.env.ADMIN_USER;
 const ADMIN_PASS   = process.env.ADMIN_PASS;
+
+const MODS = [
+  { user: process.env.MOD_USER  || '', pass: process.env.MOD_PASS  || '', totp: process.env.MOD_TOTP  || '', name: process.env.MOD_USER  || 'Moderador'   },
+  { user: process.env.MOD2_USER || '', pass: process.env.MOD2_PASS || '', totp: process.env.MOD2_TOTP || '', name: 'Simplifique' },
+  { user: process.env.MOD3_USER || '', pass: process.env.MOD3_PASS || '', totp: process.env.MOD3_TOTP || '', name: 'BS'          },
+  { user: process.env.MOD4_USER || '', pass: process.env.MOD4_PASS || '', totp: process.env.MOD4_TOTP || '', name: 'Acaraí'      },
+  { user: process.env.MOD5_USER || '', pass: process.env.MOD5_PASS || '', totp: process.env.MOD5_TOTP || '', name: 'Adiel'       },
+  { user: process.env.MOD6_USER || '', pass: process.env.MOD6_PASS || '', totp: process.env.MOD6_TOTP || '', name: 'Arjuna'      },
+].filter(m => m.user && m.pass);
 
 const SALE_WEBHOOK_SECRET = process.env.SALE_WEBHOOK_SECRET || '';
 const CAKTO_WEBHOOK_SECRET = process.env.CAKTO_WEBHOOK_SECRET || '';
@@ -38,8 +48,6 @@ const RESEND_API_KEY    = process.env.RESEND_API_KEY || '';
 const EMAIL_FROM        = process.env.EMAIL_FROM    || 'ZVM <noreply@zvm.app>';
 const EXTENSION_VERSION = process.env.EXTENSION_VERSION || '';
 const EXTENSION_CHANGELOG = process.env.EXTENSION_CHANGELOG || '';
-const TRUST_PROXY_HEADERS = process.env.TRUST_PROXY_HEADERS === '1' || String(process.env.RENDER || '').toLowerCase() === 'true';
-const ZVM_EXTENSION_IDS = new Set(String(process.env.ZVM_EXTENSION_IDS || '').split(',').map(v => v.trim().toLowerCase()).filter(v => /^[a-p]{32}$/.test(v)));
 
 // Fonte comercial única do ZVM Standalone. IDs reais podem ser preenchidos
 // por ambiente quando forem conhecidos; valores vazios nunca participam da
@@ -75,6 +83,202 @@ const ZVM_PLANS = Object.freeze({
   }),
 });
 
+// ── Ponte extensao WSM <-> paginas /ia (servida em /WSM/ia-bridge.js) ──
+// Detecta a extensao via externally_connectable e conecta o WhatsApp por ela;
+// tambem neutraliza as chamadas AJAX antigas do wascript para nao gerar 404.
+const IA_BRIDGE_JS = `(function(){
+  if (window.__wsmExtBridge) return; window.__wsmExtBridge = true;
+  var EXT_ID = 'gjlfpggiddcminhebiejofeglfjmleli';
+  var WA_URL = 'https://web.whatsapp.com/';
+  var IS_INSTANCIA = location.pathname.indexOf('/instancia-wa') >= 0;
+  var extState = 'checking';                       // checking | ready | absent
+  var waSt = { connected: false, phone: '', waOpen: false };
+  var fastUntil = 0;
+
+  // ---- Mensageria com a extensao (externally_connectable) ----
+  function extSend(msg, cb){
+    try{
+      if (!(window.chrome && chrome.runtime && chrome.runtime.sendMessage)){ if (cb) cb(null); return; }
+      var done = false;
+      var t = setTimeout(function(){ if (!done){ done = true; if (cb) cb(null); } }, 2000);
+      chrome.runtime.sendMessage(EXT_ID, msg, function(resp){
+        if (done) return; done = true; clearTimeout(t);
+        if (chrome.runtime.lastError){ if (cb) cb(null); return; }
+        if (cb) cb(resp || null);
+      });
+    }catch(e){ if (cb) cb(null); }
+  }
+  function detectExt(cb){
+    extSend({ action: 'is_instaled' }, function(resp){
+      extState = (resp && resp.success) ? 'ready' : 'absent';
+      if (cb) cb(extState);
+    });
+  }
+  function getWaStatus(cb){
+    extSend({ action: 'get_wa_status' }, function(resp){
+      if (resp && resp.success){
+        waSt = { connected: !!resp.connected, phone: resp.phone || '', waOpen: !!resp.waOpen };
+      }
+      if (cb) cb(waSt);
+    });
+  }
+  function openWhatsApp(){
+    if (extState === 'ready'){ extSend({ action: 'open_whatsapp' }, function(){}); }
+    else { window.open(WA_URL, '_blank'); }
+    fastUntil = Date.now() + 40000;                // acompanha a conexao mais de perto por 40s
+  }
+  function fmtPhone(p){
+    p = String(p || '');
+    var out = '';
+    for (var i = 0; i < p.length; i++){ var ch = p.charCodeAt(i); if (ch >= 48 && ch <= 57) out += p.charAt(i); }
+    return out ? '+' + out : '';
+  }
+
+  if (!IS_INSTANCIA){ detectExt(); return; }
+
+  // ---- 1. Neutraliza as chamadas AJAX antigas do wascript (sem 404/503, sem erro) ----
+  function isBlocked(url){
+    url = String(url || '');
+    return url.indexOf('ia.wascript.com.br') >= 0 || url.indexOf('/WSM/ia-ajax') >= 0 || url.indexOf('admin-ajax.php') >= 0;
+  }
+  function actionOf(body){
+    try{
+      if (body && typeof FormData !== 'undefined' && body instanceof FormData){ return body.get('action') || ''; }
+      if (body && typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams){ return body.get('action') || ''; }
+      var s = String(body || '');
+      var parts = s.split('&');
+      for (var i = 0; i < parts.length; i++){
+        var kv = parts[i].split('=');
+        if (kv[0] === 'action'){ return decodeURIComponent((kv[1] || '').split('+').join(' ')); }
+      }
+      return '';
+    }catch(e){ return ''; }
+  }
+  function localData(action){
+    switch (action){
+      case 'papo_get_user_plan_info': return { success: true, data: { can_create: true, plan_name: 'WSM' } };
+      case 'papo_get_user_instances': return { success: true, data: [] };
+      case 'papo_get_instance_status': return { success: true, data: { status: waSt.connected ? 'connected' : 'connecting' } };
+      case 'papo_create_instance': openWhatsApp(); return { success: true, data: { instance_id: 'ext', instance_name: 'WhatsApp' } };
+      case 'papo_get_instance_qr': openWhatsApp(); return { success: true, data: { qr_code: '' } };
+      case 'papo_disconnect_instance':
+      case 'papo_delete_instance': return { success: true, data: {} };
+      default: return { success: true, data: [] };
+    }
+  }
+
+  var _fetch = window.fetch;
+  window.fetch = function(u, o){
+    var url = (u && u.url) ? u.url : u;
+    if (isBlocked(url)){
+      var d = localData(actionOf(o && o.body));
+      return Promise.resolve(new Response(JSON.stringify(d), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    }
+    return _fetch.apply(this, arguments);
+  };
+  var _xopen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(m, u){ this.__wsmB = isBlocked(u); return _xopen.apply(this, arguments); };
+  var _xsend = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.send = function(body){
+    var x = this;
+    if (this.__wsmB){
+      var rt = JSON.stringify(localData(actionOf(body)));
+      Object.defineProperty(x, 'readyState', { value: 4, configurable: true });
+      Object.defineProperty(x, 'status', { value: 200, configurable: true });
+      Object.defineProperty(x, 'responseText', { value: rt, configurable: true });
+      Object.defineProperty(x, 'response', { value: rt, configurable: true });
+      x.getResponseHeader = function(h){ return (String(h).toLowerCase() === 'content-type') ? 'application/json' : null; };
+      setTimeout(function(){
+        if (x.onreadystatechange) x.onreadystatechange();
+        if (x.onload) x.onload();
+        try{ x.dispatchEvent(new Event('readystatechange')); }catch(e){}
+        try{ x.dispatchEvent(new ProgressEvent('load')); }catch(e){}
+      }, 0);
+      return;
+    }
+    return _xsend.apply(this, arguments);
+  };
+
+  // ---- 2. Roteia o botao "Nova Instancia" para abrir o WhatsApp via extensao ----
+  document.addEventListener('click', function(e){
+    var el = e.target && e.target.closest ? e.target.closest('#create-new-instance') : null;
+    if (el){ e.preventDefault(); e.stopImmediatePropagation(); openWhatsApp(); }
+  }, true);
+
+  // ---- 3. Card de conexao WSM ----
+  function row(dot, text, btn){
+    var cls = 'wsm-cc__dot' + (dot ? ' wsm-cc__dot--' + dot : '');
+    return '<div class="wsm-cc__row"><div class="wsm-cc__status"><span class="' + cls + '"></span>' + text + '</div>'
+      + '<button type="button" id="wsm-cc-btn" class="wsm-cc__btn">' + btn + '</button></div>';
+  }
+  function sub(text){ return '<p class="wsm-cc__sub">' + text + '</p>'; }
+  function cardHtml(){
+    if (extState === 'absent'){
+      return row('off', 'Extensao WSM nao detectada', 'Abrir WhatsApp Web')
+        + sub('Instale ou ative a extensao WSM no Chrome e recarregue esta pagina.');
+    }
+    if (extState !== 'ready'){
+      return row('', 'Verificando extensao...', 'Conectar WhatsApp') + sub('Aguarde um instante.');
+    }
+    if (waSt.connected && waSt.phone){
+      return row('ok', 'WhatsApp conectado &nbsp;<strong>' + fmtPhone(waSt.phone) + '</strong>', 'Abrir WhatsApp')
+        + sub('Seu WhatsApp esta conectado a extensao. A IA ja pode responder por ele.');
+    }
+    if (waSt.waOpen){
+      return row('warn', 'WhatsApp Web aberto', 'Abrir WhatsApp')
+        + sub('Se ainda nao conectou, escaneie o QR Code na aba do WhatsApp Web.');
+    }
+    return row('', 'Extensao WSM conectada', 'Conectar WhatsApp')
+      + sub('Clique em Conectar para abrir o WhatsApp Web e ler o QR Code com o seu celular.');
+  }
+  var cardEl = null;
+  function ensureCard(){
+    var anchor = document.getElementById('instances-grid') || document.querySelector('.papo-instances-panel') || document.querySelector('.instances-grid');
+    if (!anchor || !anchor.parentNode) return;
+    if (!cardEl || !cardEl.parentNode){
+      cardEl = document.createElement('div');
+      cardEl.className = 'wsm-cc';
+      anchor.parentNode.insertBefore(cardEl, anchor);
+    }
+    cardEl.innerHTML = cardHtml();
+    var b = document.getElementById('wsm-cc-btn');
+    if (b) b.onclick = function(){ openWhatsApp(); };
+  }
+  function injectStyle(){
+    if (document.getElementById('wsm-cc-style')) return;
+    var s = document.createElement('style'); s.id = 'wsm-cc-style';
+    s.textContent = '.wsm-cc{background:#fff;border:1px solid #e3e8ef;border-radius:14px;padding:16px 18px;margin:0 0 16px;box-shadow:0 1px 2px rgba(16,24,40,.05)}'
+      + '.wsm-cc__row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}'
+      + '.wsm-cc__status{font-weight:600;font-size:14px;color:#101828;display:flex;align-items:center;gap:8px}'
+      + '.wsm-cc__dot{width:9px;height:9px;border-radius:50%;background:#98a2b3;display:inline-block;flex-shrink:0}'
+      + '.wsm-cc__dot--ok{background:#12b76a;box-shadow:0 0 0 3px rgba(18,183,106,.15)}'
+      + '.wsm-cc__dot--warn{background:#f79009;box-shadow:0 0 0 3px rgba(247,144,9,.15)}'
+      + '.wsm-cc__dot--off{background:#f04438;box-shadow:0 0 0 3px rgba(240,68,56,.15)}'
+      + '.wsm-cc__btn{background:#25d366;color:#fff;border:0;border-radius:10px;padding:10px 18px;font-weight:700;font-size:14px;cursor:pointer}'
+      + '.wsm-cc__btn:hover{filter:brightness(.96)}'
+      + '.wsm-cc__sub{margin:10px 0 0;font-size:12.5px;color:#667085}';
+    document.head.appendChild(s);
+  }
+  function tick(){
+    getWaStatus(function(){ ensureCard(); });
+  }
+  function boot(){
+    injectStyle();
+    ensureCard();
+    detectExt(function(){ ensureCard(); tick(); });
+    var slow = 0;
+    setInterval(function(){
+      // acompanha de perto logo apos "Conectar"; caso contrario, a cada ~6s
+      if (Date.now() < fastUntil) { tick(); }
+      else if ((++slow % 3) === 0) { tick(); }
+      ensureCard();
+    }, 2000);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+`;
+
 const LOG_RETENTION_DAYS = Math.max(1, parseInt(process.env.LOG_RETENTION_DAYS || '90') || 90);
 
 const LOG_MAX = Math.min(parseInt(process.env.LOG_MAX || '500'), 2000);
@@ -86,9 +290,6 @@ if (!ADMIN_USER || !ADMIN_PASS) {
 if (!MONGODB_URI) {
   console.error('❌ ERRO CRÍTICO: Defina MONGODB_URI nas variáveis de ambiente.');
   process.exit(1);
-}
-if (!ZVM_EXTENSION_IDS.size) {
-  console.warn('[SEC] ZVM_EXTENSION_IDS vazio — callbacks chrome-extension mantêm compatibilidade ampla. Configure a allowlist no Render antes do go-live.');
 }
 
 const FULL_PERMISSIONS = [
@@ -200,7 +401,7 @@ async function loadDb() {
   try {
     const db = await getMongoDb();
     // Garante índices úteis (idempotente — não recria se já existe)
-    db.collection('admin_audit_logs').createIndex({ ts: -1 }, { background: true }).catch(() => {});
+    db.collection('mod_logs').createIndex({ ts: -1 }, { background: true }).catch(() => {});
     db.collection('portal_users').createIndex({ keyCode: 1 }, { background: true }).catch(() => {});
     try {
       await db.collection('webhook_events').createIndex({ eventKey: 1 }, { unique: true, background: true });
@@ -538,6 +739,7 @@ let freeUsage         = { usageDate: '', byPhone: {} };
 let logs              = [];
 let securityAlerts    = [];
 let sessions          = {};
+let modSessions       = {};
 let portalSessions    = {};
 let analyticsSessions = {};
 // Sandbox isolado do Laboratório de Testes do Analytics — NUNCA é o mesmo
@@ -551,11 +753,6 @@ const ipBlacklist     = new Set(); // IPs bloqueados manualmente pelo admin
 const keyFailMap      = new Map(); // { keyCode -> { count, ips: Set, firstAt } } — falhas recentes por chave
 let _httpServer       = null;
 let _pingInterval     = null;
-// /status é público; sem cache, cada refresh externo causaria um ping direto
-// no MongoDB. Uma janela curta reduz amplificação/DoS sem mascarar incidentes
-// por tempo relevante. /health continua independente e barato para o Render.
-const PUBLIC_STATUS_DB_CACHE_MS = 15 * 1000;
-let _publicStatusCache = { checkedAt: 0, dbOk: false };
 let _adminPassSalt    = null;  // gerado aleatoriamente no boot
 let _adminPassHash    = null;  // scrypt-64 derivado de ADMIN_PASS
 // Derivação imediata — scrypt é memory-hard (N=16384), derrota GPU/rainbow tables.
@@ -609,14 +806,10 @@ function _trackKeyFail(keyCode, ip) {
 
 function base32Decode(b32) {
   const alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-  const normalized = String(b32 || '').toUpperCase().replace(/=+$/, '');
-  if (!normalized || /[^A-Z2-7]/.test(normalized)) throw new Error('invalid_base32');
   let bits = 0, val = 0;
   const out = [];
-  for (const c of normalized) {
-    const idx = alpha.indexOf(c);
-    if (idx < 0) throw new Error('invalid_base32');
-    val = (val << 5) | idx;
+  for (const c of b32.toUpperCase().replace(/=+$/, '')) {
+    val = (val << 5) | alpha.indexOf(c);
     bits += 5;
     if (bits >= 8) { bits -= 8; out.push((val >> bits) & 0xff); }
   }
@@ -748,6 +941,7 @@ function deriveSlug(seed) {
   return crypto.createHmac('sha256', APP_SECRET).update(seed).digest('hex').slice(0, 14);
 }
 const R_ADMIN     = (s => s ? '/' + s : '/admin')    (deriveSlug('admin-panel'));
+const R_MOD       = (s => s ? '/' + s : '/mod')      (deriveSlug('mod-panel'));
 const R_ANALYTICS = (s => s ? '/' + s : '/analytics')(deriveSlug('analytics-panel'));
 const R_EXT       = '/extension';
 
@@ -813,6 +1007,8 @@ setInterval(() => {
   const now = Date.now();
   for (const [k, s] of Object.entries(sessions))
     if (now > new Date(s.expiresAt).getTime()) delete sessions[k];
+  for (const [k, s] of Object.entries(modSessions))
+    if (now > new Date(s.expiresAt).getTime()) delete modSessions[k];
   for (const [k, s] of Object.entries(portalSessions))
     if (now > new Date(s.expiresAt).getTime()) delete portalSessions[k];
   for (const [k, s] of Object.entries(analyticsSessions))
@@ -1747,30 +1943,15 @@ function getAuthData(keyCode, userName) {
     },
   };
 }
-function isAllowedExtensionOrigin(origin) {
-  if (!origin) return null;
-  try {
-    const u = new URL(origin);
-    if (u.protocol !== 'chrome-extension:') return null;
-    const id = String(u.hostname || '').toLowerCase();
-    if (!/^[a-p]{32}$/.test(id)) return null;
-    if (ZVM_EXTENSION_IDS.size && !ZVM_EXTENSION_IDS.has(id)) return null;
-    if (u.username || u.password || u.port) return null;
-    return `chrome-extension://${id}`;
-  } catch (_) { return null; }
-}
-
-function isAllowedExtensionCallback(callback) {
-  if (!callback) return null;
-  try {
-    const u = new URL(callback);
-    if (!isAllowedExtensionOrigin(`${u.protocol}//${u.host}`)) return null;
-    return u;
-  } catch (_) { return null; }
-}
-
 function redirectExtensionCallback(res, callback, plan, keyCode) {
-  const _cbUrl = isAllowedExtensionCallback(callback);
+  const _cbOk = ['chrome-extension:', 'https:', 'http:'];
+  let _cbUrl = null;
+  if (callback) {
+    try {
+      _cbUrl = new URL(callback);
+      if (!_cbOk.includes(_cbUrl.protocol)) _cbUrl = null;
+    } catch (_) { _cbUrl = null; }
+  }
   if (_cbUrl) {
     if (plan === 'free') {
       _cbUrl.searchParams.set('key', FREE_AUTH_KEY);
@@ -1954,7 +2135,7 @@ function buildKeysHtml(srcKeys, srcLogs) {
     const deferredAttr = (!k.expiresAt && k.expireDuration) ? '1' : '0';
     const dispStatus = getKeyDisplayStatus(k);
     const zsOn = !!(k.modules && k.modules.zapSaver);
-    return `<tr data-code="${escHtml(code)}" data-expires-at="${escHtml(k.expiresAt||'')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(String(k.label||'').toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-lastused="${escHtml(k.lastUsed||'')}" data-suspect="${isSuspect?'1':''}" data-plan="${escHtml((k.planId||k.plan_id||'pro').toLowerCase())}"` + rowStyle + `>
+    return `<tr data-code="${escHtml(code)}" data-expires-at="${escHtml(k.expiresAt||'')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(String(k.label||'').toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-lastused="${escHtml(k.lastUsed||'')}" data-suspect="${isSuspect?'1':''}" data-createdby="${escHtml(((k.createdBy)||((k.note||'').match(/\[Mod: ([^\]]+)\]/)||[])[1]||'').toLowerCase())}" data-plan="${escHtml((k.planId||k.plan_id||'pro').toLowerCase())}"` + rowStyle + `>
   <td><span style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="key-cb" style="cursor:pointer;width:13px;height:13px;flex-shrink:0"><span class="kc" title="Clique para copiar" style="cursor:pointer">${escHtml(code)}</span></span></td>
   <td>${escHtml(k.label)}${suspectBadge}${zsOn?'<span title="ZapSaver ativo" style="color:#4f8ef7;font-size:11px;margin-left:4px">💾</span>':''}</td>
   <td>${renderKeyStatusBadge(k)}</td>
@@ -1965,7 +2146,7 @@ function buildKeysHtml(srcKeys, srcLogs) {
   <td>${fmtShortDate(k.lastUsed||null)}</td>
   <td>${fmtShortDate(k.createdAt||null)}</td>
   <td>${renderTrackingChips(k)}</td>
-  <td class="note-cell" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${escHtml(k.note||'')||'<span style="color:var(--muted)">—</span>'}</span></td>
+  <td class="note-cell" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${(()=>{const modPfx=k.createdBy?`<span style="color:#9b59b6;font-size:11px">[Mod: ${escHtml(k.createdBy)}]</span> `:``;const noteText=escHtml(k.note||'');return modPfx+(noteText||(!modPfx?'<span style="color:var(--muted)">—</span>':''));})()}</span></td>
   <td><div class="acts">
     <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
     <button class="bs bg" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">+ Tempo</button>
@@ -1975,6 +2156,7 @@ function buildKeysHtml(srcKeys, srcLogs) {
     <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
     ${isSuspect?`<button class="bs bsusp" onclick="clearSuspect('${escHtml(code)}')">🕵️ Suspeita</button>`:''}
     <button class="bs ${zsOn?'bg':'bw'}" title="ZapSaver" onclick="toggleModule('${escHtml(code)}','zapSaver',${zsOn?'false':'true'})">💾</button>
+    <button class="bs" style="background:#7c3aed18;color:#9b59b6;border:1px solid #7c3aed30" data-code="${escHtml(code)}" data-label="${escHtml(k.label||'')}" data-modnote="${escHtml(k.createdBy||(k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1]||'')}" onclick="openAssignModFromEl(this)">👮</button>
   </div></td>
 </tr>`;
   }).join('');
@@ -2045,27 +2227,19 @@ function logActionBadgeClass(action) {
   return 'warn';
 }
 
-function normalizeClientIp(value) {
-  let raw = String(value || '').trim();
-  if (raw.startsWith('::ffff:')) raw = raw.slice(7);
-  if (raw.startsWith('[') && raw.endsWith(']')) raw = raw.slice(1, -1);
-  return net.isIP(raw) ? raw : '';
-}
 function getIp(req) {
-  const socketIp = normalizeClientIp(req.socket?.remoteAddress) || 'N/A';
-  if (!TRUST_PROXY_HEADERS) return socketIp;
-  const direct = normalizeClientIp(req.headers['cf-connecting-ip']) || normalizeClientIp(req.headers['x-real-ip']);
-  if (direct) return direct;
-  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',').map(v => normalizeClientIp(v)).filter(Boolean);
-  return forwarded[0] || socketIp;
+  const raw = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
+    || req.socket?.remoteAddress || 'N/A';
+  // Sanitiza: mantém apenas chars válidos em IPv4/IPv6 e descarta qualquer HTML/JS
+  return raw.replace(/[^0-9a-fA-F.:[\]]/g, '').slice(0, 45) || 'N/A';
 }
 
-// Limite absoluto pra sessões privilegiadas (admin/analytics — NÃO o
+// Limite absoluto pra sessões privilegiadas (admin/mod/analytics — NÃO o
 // portal do cliente). O timeout de inatividade (sliding, 8h) continua
 // existindo, mas sozinho ele deixava uma sessão viver indefinidamente
 // contanto que alguém continuasse usando — um cookie roubado/vazado
 // permanecia válido pra sempre. 24h é conservador o bastante pra não
-// atrapalhar um turno de trabalho normal do admin/analytics, mas força
+// atrapalhar um turno de trabalho normal do admin/moderador, mas força
 // login de novo pelo menos uma vez por dia. Deliberadamente NÃO vinculado
 // a IP: troca legítima de rede (wifi -> 4G, VPN) não deve derrubar sessão.
 const SESSION_ABSOLUTE_LIMIT_MS = 24 * 60 * 60 * 1000;
@@ -2086,6 +2260,19 @@ function isAdminSession(req) {
 function getAdminSession(req) {
   const match = (req.headers.cookie || '').match(/zv_admin=([a-f0-9]+)/);
   return match ? sessions[match[1]] : null;
+}
+
+function isModSession(req) {
+  const cookie = req.headers.cookie || '';
+  const match  = cookie.match(/zv_mod=([a-f0-9]+)/);
+  if (!match) return false;
+  const s = modSessions[match[1]];
+  if (!s) return false;
+  if (new Date() > new Date(s.expiresAt)) { delete modSessions[match[1]]; return false; }
+  if (s.absoluteExpiresAt && new Date() > new Date(s.absoluteExpiresAt)) { delete modSessions[match[1]]; return false; }
+  // Sliding expiry: renova por mais 8h a cada acesso autenticado
+  s.expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString();
+  return true;
 }
 
 // Revoga todas as sessões de portal de um e-mail. Chamado após troca/reset de senha:
@@ -2114,7 +2301,7 @@ function getPortalUser(req) {
 }
 
 // Defesa em profundidade contra CSRF nos POSTs autenticados via cookie
-// (portal/admin/analytics). SameSite=Strict já bloqueia a esmagadora
+// (portal/admin/mod/analytics). SameSite=Strict já bloqueia a esmagadora
 // maioria dos casos; isto cobre navegadores antigos/extensões que não
 // respeitam SameSite. NÃO aplicar a webhooks externos (Cakto/sale/payt)
 // nem a APIs de extensão — esses são legitimamente cross-origin.
@@ -2141,11 +2328,11 @@ function isAnalyticsSession(req) {
   if (s.absoluteExpiresAt && new Date() > new Date(s.absoluteExpiresAt)) { delete analyticsSessions[match[1]]; return false; }
   return true;
 }
-// ── Cookies de sessão autenticada (portal/admin/analytics) ──────────────
+// ── Cookies de sessão autenticada (portal/admin/mod/analytics) ──────────
 // Todo cookie de sessão do namespace top-level (não-WSM) passa por aqui —
 // evita a inconsistência que existia antes (algumas limpezas de zv_portal
 // sem Secure). Nomes de cookie continuam exatamente os mesmos
-// (zv_portal/zv_admin/zv_an); só a criação/remoção foi centralizada.
+// (zv_portal/zv_admin/zv_mod/zv_an); só a criação/remoção foi centralizada.
 function setSessionCookie(res, name, token, maxAgeSec) {
   const maxAge = maxAgeSec ? `; Max-Age=${maxAgeSec}` : '';
   res.setHeader('Set-Cookie', `${name}=${token}; Path=/; HttpOnly; SameSite=Strict; Secure${maxAge}`);
@@ -2544,11 +2731,22 @@ async function getPaymentStats() {
     }).length;
     const churnRate = expiredKeys.length ? Math.round((churnedKeys / expiredKeys.length) * 100) : 0;
 
+    const modStats = {};
+    Object.values(keys).forEach(k => {
+      const name = k.createdBy || ((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1] || '');
+      if (name) {
+        if (!modStats[name]) modStats[name] = 0;
+        modStats[name]++;
+      }
+    });
+    const byMod = Object.entries(modStats).map(([name, count]) => ({ name, count })).sort((a,b) => b.count - a.count);
+
     return {
       total, last7, last30, revenueTotal, revenueLast30, revenueLast7,
       byProduct, byDay, byHour, byMethod, simCount,
       uniqueClients, returningClients, retentionRate, topClients,
       churnedKeys, churnRate, expiredKeys: expiredKeys.length,
+      byMod,
     };
   } catch (e) { console.error('[DB] Erro nas stats:', e.message); return null; }
 }
@@ -2841,8 +3039,6 @@ function sendJson(res, data, status = 200) {
   const body = JSON.stringify(data);
   const buf  = Buffer.from(body, 'utf8');
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-  res.setHeader('Pragma', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   Object.entries(_SEC_HEADERS).forEach(([k,v]) => res.setHeader(k, v));
   const accept = String(res.req?.headers?.['accept-encoding'] || '');
@@ -2916,19 +3112,840 @@ async function addLog(entry) {
   await saveLogs();
 }
 
-async function addAdminAuditLog({ actor = 'admin', action, keyCode = '', label = '', detail = '' }) {
+async function addModLog({ mod, action, keyCode, label='', detail='' }) {
   try {
     const db = await getMongoDb();
-    await db.collection('admin_audit_logs').insertOne({
-      ts: new Date(), actor: String(actor || 'admin').slice(0, 40),
-      action: String(action || '').slice(0, 80), keyCode: String(keyCode || '').slice(0, 80),
-      label: String(label || '').slice(0, 120), detail: String(detail || '').slice(0, 500),
-    });
-  } catch (e) { console.warn('[ADMIN-AUDIT]', e.message); }
+    await db.collection('mod_logs').insertOne({ ts: new Date(), mod: mod||'admin', action, keyCode: keyCode||'', label: label||'', detail: detail||'' });
+  } catch (e) { console.warn('[MOD-LOG]', e.message); }
 }
 
 const CANVAS_BG = `<canvas id="_cvs" style="position:fixed;inset:0;z-index:0;pointer-events:none"></canvas>
 <script>(function(){var c=document.getElementById('_cvs'),ctx=c.getContext('2d');function resize(){c.width=window.innerWidth;c.height=window.innerHeight;}resize();window.addEventListener('resize',resize);var pts=Array.from({length:60},function(){return{x:Math.random()*c.width,y:Math.random()*c.height,vx:(Math.random()-.5)*.4,vy:(Math.random()-.5)*.4,r:Math.random()*2+.5};});function draw(){ctx.clearRect(0,0,c.width,c.height);pts.forEach(function(p){p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>c.width)p.vx*=-1;if(p.y<0||p.y>c.height)p.vy*=-1;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle='rgba(124,58,237,0.5)';ctx.fill();});for(var i=0;i<pts.length;i++){for(var j=i+1;j<pts.length;j++){var dx=pts[i].x-pts[j].x,dy=pts[i].y-pts[j].y,d=Math.sqrt(dx*dx+dy*dy);if(d<130){ctx.beginPath();ctx.moveTo(pts[i].x,pts[i].y);ctx.lineTo(pts[j].x,pts[j].y);ctx.strokeStyle='rgba(124,58,237,'+(0.12*(1-d/130))+')';ctx.lineWidth=.7;ctx.stroke();}}}requestAnimationFrame(draw);}draw();})();</script>`;
+
+const CYBER_BG = `<canvas id="_mx" style="position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.14"></canvas>
+<script>(function(){var c=document.getElementById('_mx');if(!c)return;var ctx=c.getContext('2d');var W,H,cols,drops;var ch='ZVM01アイウエオカキクケコ';function resize(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;cols=Math.floor(W/18);if(!drops){drops=[];}while(drops.length<cols)drops.push(Math.random()*H/14|0);}resize();window.addEventListener('resize',resize);function draw(){ctx.fillStyle='rgba(0,0,0,0.06)';ctx.fillRect(0,0,W,H);ctx.font='13px monospace';for(var i=0;i<cols;i++){var s=ch[Math.random()*ch.length|0];var x=i*18,y=drops[i]*14;ctx.fillStyle=y<H*.15?'#00ff66':'#00ff6625';ctx.fillText(s,x,y);if(y>H&&Math.random()>.975)drops[i]=0;drops[i]++;}}setInterval(draw,55);})();</script>`;
+
+function renderModLogin(error = '') {
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZVM — Moderação</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Orbitron:wght@700;900&family=Outfit:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:#000}::-webkit-scrollbar-thumb{background:#00e67640;border-radius:10px}::-webkit-scrollbar-thumb:hover{background:#00e676}
+body{background:#000;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Outfit',sans-serif;font-size:16px;overflow:hidden}
+.card{background:#0a0a0a;border:1px solid #1a1a1a;border-radius:16px;padding:36px 32px;width:360px;position:relative;z-index:1;box-shadow:0 0 40px #5b8cf710,0 8px 32px #00000090}
+.logo{font-family:'Outfit',sans-serif;font-size:22px;font-weight:800;color:#00e676;margin-bottom:4px;text-align:center;letter-spacing:-0.5px}
+.sub{color:#4a4a4a;font-size:11px;letter-spacing:2px;text-transform:uppercase;margin-bottom:22px;text-align:center;font-family:'Outfit',sans-serif}
+.badge{display:block;background:#5b8cf710;border:1px solid #5b8cf730;color:#5b8cf7;font-size:12px;letter-spacing:1px;text-transform:uppercase;padding:4px 12px;border-radius:20px;margin-bottom:18px;font-family:'Outfit',sans-serif;text-align:center}
+label{display:block;font-size:11px;letter-spacing:1px;color:#5a5a5a;text-transform:uppercase;margin-bottom:6px;font-family:'Outfit',sans-serif}
+input{width:100%;padding:10px 13px;background:#000;border:1px solid #1a1a1a;border-radius:7px;color:#c8cad8;font-family:'Space Mono',monospace;font-size:13px;outline:none;margin-bottom:14px;transition:border-color .18s}
+input:focus{border-color:#00e676;box-shadow:0 0 0 2px #00e67615}
+.btn{width:100%;padding:11px;background:#00e676;border:none;border-radius:7px;color:#000;font-family:'Outfit',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:opacity .2s,box-shadow .2s}
+.btn:hover{opacity:.9;box-shadow:0 4px 16px #00e67640}
+.err{background:#f0506012;border:1px solid #f0506035;border-radius:6px;color:#f05060;padding:11px 14px;font-size:13px;margin-bottom:14px;font-family:'Outfit',sans-serif}
+</style></head><body>
+<div class="card">
+  <div class="logo">⚡ ZVM</div>
+  <div class="sub">Painel de Moderação</div>
+  <div class="badge">👮 Acesso Moderador</div>
+  ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
+  <form method="POST" action="${R_MOD}/login">
+    <label>Usuário</label><input type="text" name="user" autocomplete="off">
+    <label>Senha</label><input type="password" name="pass">
+    ${MODS.some(m=>m.totp) ? `<label>Código 2FA (se configurado)</label><input type="text" name="totp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" autocomplete="one-time-code" style="letter-spacing:4px;font-size:18px;text-align:center">` : ''}
+    <button type="submit" class="btn">Entrar</button>
+  </form>
+</div>
+${_pwdToggleScript()}${CANVAS_BG}</body></html>`;
+}
+
+function renderModDashboard(modName = 'Moderador') {
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZVM — Moderação</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Orbitron:wght@700;900&family=Outfit:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --g:#00e676;--g-dim:#00c85a;--g-bg:#00e67608;--g-brd:#00e67622;
+  --bg:#080808;--s1:#0d0d0d;--s2:#111111;
+  --brd:#1a1a1a;--brd2:#242424;--tx:#e0e0e0;--tx2:#a0a0a0;--tx3:#606060;
+  --red:#f05060;--red-bg:#f0506010;--red-brd:#f0506030;
+  --orange:#f0b429;--org-bg:#f0b42910;--org-brd:#f0b42930;
+  --r:6px;--r-sm:4px;--hdr:52px;--sb-w:48px;--sb-open:178px;
+  --shadow:0 1px 4px #00000060,0 4px 16px #00000040;
+  --muted:var(--tx3);--text:var(--tx);--green:var(--g);--blue:var(--g);
+  --border:var(--brd);--card:var(--s1);--dark:var(--bg);
+}
+*{font-family:"Space Mono",monospace}
+body{background:var(--bg);color:var(--tx);min-height:100vh;overflow-x:hidden;display:flex;flex-direction:column}
+header{height:var(--hdr);display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid var(--brd);background:var(--s1);position:sticky;top:0;z-index:50;box-shadow:var(--shadow)}
+.logo{font-family:"Outfit",sans-serif;font-size:18px;font-weight:800;color:var(--g);display:flex;align-items:center;gap:8px;letter-spacing:-.5px}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.badge-mod{background:var(--g-bg);border:1px solid var(--g-brd);color:var(--g);font-size:10px;text-transform:uppercase;padding:3px 10px;border-radius:20px;font-family:"Outfit",sans-serif;font-weight:700;letter-spacing:.5px}
+.hright{display:flex;align-items:center;gap:10px}
+a.out{color:var(--tx3);font-size:11px;text-decoration:none;padding:4px 11px;border:1px solid var(--brd2);border-radius:var(--r-sm);transition:all .2s;font-family:"Outfit",sans-serif;font-weight:600}
+a.out:hover{color:var(--red);border-color:var(--red)}
+.mod-wrap{display:flex;flex:1;height:calc(100vh - var(--hdr))}
+.rsidebar{width:var(--sb-w);flex-shrink:0;background:rgba(8,8,8,.97);border-right:1px solid var(--brd);position:sticky;top:var(--hdr);height:calc(100vh - var(--hdr));display:flex;flex-direction:column;overflow:hidden;transition:width .2s cubic-bezier(.4,0,.2,1);z-index:40;backdrop-filter:blur(6px)}
+.rsidebar:hover{width:var(--sb-open)}
+.rsb-title{font-size:9px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:1.4px;padding:14px 14px 8px;border-bottom:1px solid var(--brd);white-space:nowrap;opacity:0;transition:opacity .15s;font-family:"Outfit",sans-serif}
+.rsidebar:hover .rsb-title{opacity:1}
+.rtab{display:flex;align-items:center;gap:11px;width:100%;padding:11px 14px;background:transparent;border:none;border-left:2px solid transparent;color:var(--tx3);font-size:12px;font-weight:600;text-align:left;cursor:pointer;transition:all .15s;white-space:nowrap;overflow:hidden;font-family:"Outfit",sans-serif}
+.rtab:hover{background:var(--g-bg);color:var(--tx);border-left-color:var(--g-brd)}
+.rtab.active{background:var(--g-bg);color:var(--g);border-left-color:var(--g)}
+.rtab-icon{font-size:14px;flex-shrink:0;line-height:1;width:16px;text-align:center}
+.rtab-label{opacity:0;transition:opacity .12s}
+.rsidebar:hover .rtab-label{opacity:1}
+.mod-content{flex:1;overflow-y:auto;padding:18px 22px;min-width:0}
+.sec-panel{display:none}
+.sec-panel.active{display:block}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.sc{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);padding:14px 16px;position:relative;overflow:hidden;transition:border-color .18s,box-shadow .18s}
+.sc:hover{border-color:var(--brd2);box-shadow:var(--shadow)}
+.sc-icon{position:absolute;right:12px;top:12px;font-size:18px;opacity:1}
+.sc .n{font-size:22px;font-weight:700;color:var(--g);line-height:1.15;font-variant-numeric:tabular-nums}
+.sc .l{color:var(--tx3);font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-top:4px;font-family:"Outfit",sans-serif;font-weight:500}
+.alert-card{background:var(--org-bg);border:1px solid var(--org-brd);border-radius:var(--r);padding:9px 14px;margin-bottom:12px;display:none;align-items:center;gap:8px;font-size:12px;color:var(--orange);font-family:"Outfit",sans-serif}
+.sec{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);overflow:hidden;margin-bottom:12px}
+.sh{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--brd);background:var(--s2);flex-wrap:wrap;gap:8px}
+.st{font-family:"Outfit",sans-serif;font-weight:600;font-size:13px;color:var(--tx);display:flex;align-items:center;gap:6px}
+.form-body{padding:14px}
+.form-grid{display:grid;grid-template-columns:1fr auto auto auto auto;gap:8px;align-items:end}
+.fi{display:flex;flex-direction:column;gap:3px}
+.fi label{font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.4px;font-family:"Outfit",sans-serif;font-weight:600;padding-left:2px}
+.fi input{padding:5px 8px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-family:"Space Mono",monospace;font-size:12px;outline:none;transition:border .18s}
+.fi input:focus{border-color:var(--g)}
+.fi input::placeholder{color:var(--tx3)}
+.fi-num input{width:52px;text-align:center}
+.btn{padding:6px 12px;border:none;border-radius:var(--r-sm);font-family:"Outfit",sans-serif;font-weight:600;font-size:12px;cursor:pointer;transition:all .18s;white-space:nowrap;letter-spacing:.1px}
+.btn-primary{background:var(--g);color:#000814}
+.btn-primary:hover{background:var(--g-dim);transform:translateY(-1px);box-shadow:0 2px 8px #00d97e35}
+.btn-sec{background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd)}
+.btn-sec:hover{background:#00e67618}
+.btn-del{background:var(--red-bg);color:var(--red);border:1px solid var(--red-brd);padding:1px 6px;font-size:11px;border-radius:3px;cursor:pointer;transition:all .15s;font-family:"Outfit",sans-serif;font-weight:600}
+.btn-del:hover{background:#f0506018;transform:translateY(-1px)}
+.btn-rename{background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd);padding:1px 6px;font-size:11px;border-radius:3px;cursor:pointer;transition:all .15s;font-family:"Outfit",sans-serif;font-weight:600}
+.btn-rename:hover{background:#00e67618;transform:translateY(-1px)}
+.btn-note{background:#5b8cf710;color:#5b8cf7;border:1px solid #5b8cf728;padding:1px 6px;font-size:11px;border-radius:3px;cursor:pointer;transition:all .15s;font-family:"Outfit",sans-serif;font-weight:600}
+.btn-note:hover{background:#5b8cf718;transform:translateY(-1px)}
+.result-box{display:none;margin-top:12px;background:var(--bg);border:1px solid var(--g-brd);border-radius:var(--r);padding:14px}
+.result-box.show{display:block}
+.result-label{font-size:10px;color:var(--tx3);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;font-family:"Outfit",sans-serif}
+.result-key{font-family:"Space Mono",monospace;font-size:16px;color:var(--g);letter-spacing:2px;word-break:break-all;margin-bottom:10px}
+.result-meta{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+.result-tag{background:var(--g-bg);border:1px solid var(--g-brd);color:var(--g);font-size:10px;padding:2px 8px;border-radius:20px;font-family:"Outfit",sans-serif}
+.copy-btn{padding:5px 12px;background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd);border-radius:var(--r-sm);font-family:"Outfit",sans-serif;font-weight:600;font-size:11px;cursor:pointer;transition:all .2s}
+.copy-btn:hover{background:#00e67618}
+.hist-table{width:100%;border-collapse:collapse;font-size:12px}
+.hist-table th{padding:5px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.3px;color:var(--tx3);border-bottom:1px solid var(--brd);background:var(--s2);font-weight:600;font-family:"Outfit",sans-serif}
+.hist-table td{padding:7px 10px;border-bottom:1px solid #111;vertical-align:middle}
+.hist-table tr:last-child td{border-bottom:none}
+.hist-table tr:hover td{background:#ffffff02}
+.kc{color:var(--g);font-size:11px;letter-spacing:.2px;font-family:"Space Mono",monospace}
+.badge-bon{background:#00e67618;color:var(--g);border:1px solid var(--g-brd);padding:1px 7px;border-radius:3px;font-size:10px;font-weight:700;font-family:"Outfit",sans-serif;letter-spacing:.3px;text-transform:uppercase}
+.badge-exp{background:var(--org-bg);color:var(--orange);border:1px solid var(--org-brd);padding:1px 7px;border-radius:3px;font-size:10px;font-weight:700;font-family:"Outfit",sans-serif}
+.badge-expired{background:var(--red-bg);color:var(--red);border:1px solid var(--red-brd);padding:1px 7px;border-radius:3px;font-size:10px;font-weight:700;font-family:"Outfit",sans-serif}
+.empty{text-align:center;color:var(--tx3);padding:28px;font-size:12px;font-family:"Outfit",sans-serif}
+.notice{background:var(--g-bg);border:1px solid var(--g-brd);border-radius:var(--r);padding:10px 14px;margin-bottom:12px;display:flex;align-items:flex-start;gap:10px;font-size:12px;color:var(--tx2);line-height:1.7;font-family:"Outfit",sans-serif}
+.notice strong{color:var(--g)}
+.ach-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;padding:16px}
+.ach{background:var(--bg);border:1px solid var(--brd);border-radius:var(--r);padding:16px 18px 14px;display:flex;align-items:flex-start;gap:14px;transition:all .2s;position:relative;min-width:0;min-height:86px}
+.ach.unlocked{border-color:var(--g-brd);background:var(--g-bg)}
+.ach.locked{opacity:.45;filter:grayscale(.6)}
+.ach-icon{font-size:38px;flex-shrink:0;line-height:1.2;margin-top:2px}
+.ach-info{flex:1;min-width:0}
+.ach-name{font-family:"Outfit",sans-serif;font-size:15px;font-weight:700;color:var(--tx);margin-bottom:4px;padding-right:22px}
+.ach-desc{font-size:13px;color:var(--tx3);line-height:1.6;font-family:"Outfit",sans-serif}
+.ach-badge{position:absolute;top:7px;right:7px;font-size:11px;line-height:1}
+.ach.unlocked .ach-badge{color:var(--g)}
+.ach.locked .ach-badge{color:var(--tx3)}
+.rank-grid{display:flex;flex-direction:column;overflow:hidden}
+.toast{position:fixed;bottom:18px;right:18px;padding:10px 16px;border-radius:var(--r);font-family:"Outfit",sans-serif;font-weight:700;font-size:12px;display:none;z-index:999999;box-shadow:0 6px 30px #00000070}
+.modal-bg{display:none;position:fixed;inset:0;background:#00000090;z-index:99999;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
+.modal-bg.open{display:flex}
+.modal{background:var(--s1);border:1px solid var(--brd2);border-radius:var(--r);padding:20px;width:360px;max-width:95vw;box-shadow:0 20px 60px #00000090}
+.modal h3{font-family:"Outfit",sans-serif;font-size:14px;margin-bottom:12px;color:var(--g)}
+.modal input[type=text]{width:100%;padding:7px 9px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-family:"Space Mono",monospace;font-size:12px;outline:none;transition:border .2s}
+.modal input[type=text]:focus{border-color:var(--g)}
+.modal textarea{width:100%;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-family:"Space Mono",monospace;font-size:12px;padding:7px 9px;outline:none;resize:vertical;min-height:80px;transition:border .2s}
+.modal textarea:focus{border-color:var(--g)}
+.modal-actions{display:flex;gap:8px;margin-top:12px;justify-content:flex-end}
+.modal-cancel{padding:5px 11px;background:var(--s2);color:var(--tx3);border:1px solid var(--brd);border-radius:var(--r-sm);font-family:"Outfit",sans-serif;font-weight:600;font-size:11px;cursor:pointer}
+.modal-save{padding:5px 11px;background:var(--g);color:#000814;border:none;border-radius:var(--r-sm);font-family:"Outfit",sans-serif;font-weight:700;font-size:11px;cursor:pointer}
+.modal-danger{padding:5px 11px;background:var(--red);color:#fff;border:none;border-radius:var(--r-sm);font-family:"Outfit",sans-serif;font-weight:700;font-size:11px;cursor:pointer}
+#trophy-notif{position:fixed;bottom:28px;right:-420px;z-index:9999999;width:340px;background:linear-gradient(135deg,#080808,#101010);border:1px solid var(--g-brd);border-radius:10px;overflow:hidden;box-shadow:0 8px 40px #00000080;transition:right .5s cubic-bezier(.34,1.56,.64,1)}
+#trophy-notif.show{right:24px}
+#trophy-notif.hide{right:-420px;transition:right .4s ease-in}
+.tn-top{display:flex;align-items:center;padding:8px 12px 6px;border-bottom:1px solid #ffffff08}
+.tn-trophy-icon{font-size:10px;color:#ffd32a;font-family:"Outfit",sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;display:flex;align-items:center;gap:5px}
+.tn-trophy-icon::before{content:"🏆";font-size:12px}
+.tn-body{display:flex;align-items:center;gap:12px;padding:12px}
+.tn-icon{font-size:36px;flex-shrink:0;line-height:1}
+.tn-text{flex:1;min-width:0}
+.tn-label{font-size:10px;color:var(--g);font-family:"Outfit",sans-serif;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:2px}
+.tn-name{font-size:14px;font-weight:800;color:#fff;font-family:"Outfit",sans-serif;margin-bottom:2px}
+.tn-desc{font-size:11px;color:#8a8aaa;font-family:"Outfit",sans-serif}
+.tn-bar-wrap{height:3px;background:#ffffff10;margin:0 12px 12px;border-radius:2px;overflow:hidden}
+.tn-bar{height:3px;background:linear-gradient(90deg,var(--g),#00ff87);border-radius:2px;width:0;transition:width 3s linear}
+::-webkit-scrollbar{width:4px;height:3px}
+::-webkit-scrollbar-track{background:#000}
+::-webkit-scrollbar-thumb{background:#1a1a1a;border-radius:2px}
+::-webkit-scrollbar-thumb:hover{background:var(--g-brd)}
+@media(max-width:900px){.stats{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:700px){.form-grid{grid-template-columns:1fr 1fr};.rsidebar{display:none}}
+</style>
+</head>
+<body>
+<!-- Trophy Notification -->
+<div id="trophy-notif">
+  <div class="tn-top"><div class="tn-trophy-icon">Conquista Desbloqueada</div></div>
+  <div class="tn-body">
+    <div class="tn-icon" id="tn-icon">🏆</div>
+    <div class="tn-text">
+      <div class="tn-label">ZVM — Moderação</div>
+      <div class="tn-name" id="tn-name">—</div>
+      <div class="tn-desc" id="tn-desc">—</div>
+    </div>
+  </div>
+  <div class="tn-bar-wrap"><div class="tn-bar" id="tn-bar"></div></div>
+</div>
+
+<header>
+  <div class="logo">⚡ ZVM <span class="badge-mod">${modName}</span></div>
+  <div class="hright">
+    <a href="${R_MOD}/logout" class="out">↩ Sair</a>
+  </div>
+</header>
+
+<div class="mod-wrap">
+<!-- Left Sidebar -->
+<nav class="rsidebar">
+  <div class="rsb-title">Navegação</div>
+  <button class="rtab active" data-tab="create" onclick="switchTab('create')"><span class="rtab-icon">🔑</span><span class="rtab-label">Gerar Chave</span></button>
+  <button class="rtab" data-tab="logs" onclick="switchTab('logs')"><span class="rtab-icon">📋</span><span class="rtab-label">Logs</span></button>
+  <button class="rtab" data-tab="achievements" onclick="switchTab('achievements')"><span class="rtab-icon">🏆</span><span class="rtab-label">Conquistas</span></button>
+  <button class="rtab" data-tab="ranking" onclick="switchTab('ranking')"><span class="rtab-icon">📊</span><span class="rtab-label">Ranking</span></button>
+</nav>
+
+<!-- Content -->
+<div class="mod-content">
+
+  <!-- ── GERAR CHAVE + MINHAS CHAVES ── -->
+  <div class="sec-panel active" data-panel="create">
+    <div class="notice">
+      <span style="font-size:15px;flex-shrink:0">🔒</span>
+      <span><strong>Acesso restrito.</strong> Apenas criação de chaves. Dados de clientes, telefones, IPs e logs não estão disponíveis.</span>
+    </div>
+    <div class="stats">
+      <div class="sc"><div class="sc-icon">🔑</div><div class="n" id="stat-total">—</div><div class="l">Total de Chaves</div></div>
+      <div class="sc"><div class="sc-icon">✅</div><div class="n" id="stat-active">—</div><div class="l">Chaves Ativas</div></div>
+      <div class="sc"><div class="sc-icon">🔒</div><div class="n" id="stat-blocked">—</div><div class="l">Bloqueadas</div></div>
+      <div class="sc"><div class="sc-icon">⏱</div><div class="n" id="stat-deferred">—</div><div class="l">Aguardando 1º uso</div></div>
+      <div class="sc"><div class="sc-icon">📅</div><div class="n" id="stat-today">—</div><div class="l">Criadas Hoje</div></div>
+      <div class="sc"><div class="sc-icon">⚠️</div><div class="n" id="stat-expiring" style="color:var(--orange)">—</div><div class="l">Expirando 48h</div></div>
+      <div class="sc"><div class="sc-icon">⚠️</div><div class="n" id="stat-suspect" style="color:var(--red)">—</div><div class="l">Suspeitas</div></div>
+    </div>
+    <div class="alert-card" id="alert-expiring">
+      <span style="font-size:16px;flex-shrink:0">⚠️</span>
+      <span id="alert-expiring-text"></span>
+    </div>
+    <div class="sec">
+      <div class="sh"><div class="st">🔑 Criar Nova Chave</div></div>
+      <div class="form-body">
+        <div class="form-grid">
+          <div class="fi">
+            <label>Nome do Cliente</label>
+            <input type="text" id="nlabel" placeholder="Ex: João Silva" autocomplete="off">
+          </div>
+          <div class="fi"><label>Dias</label><div class="fi-num"><input type="number" id="ndays" placeholder="0" min="0"></div></div>
+          <div class="fi"><label>Horas</label><div class="fi-num"><input type="number" id="nhours" placeholder="0" min="0"></div></div>
+          <div class="fi"><label>Min</label><div class="fi-num"><input type="number" id="nmins" placeholder="0" min="0"></div></div>
+          <div class="fi"><label>Usos</label><div class="fi-num"><input type="number" id="nuses" placeholder="3" min="1"></div></div>
+          <div class="fi"><label>Qtd</label><div class="fi-num"><input type="number" id="nqty" placeholder="1" min="1" max="50" title="Quantidade de chaves a gerar"></div></div>
+          <div class="fi" style="justify-content:flex-end"><label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--tx2);white-space:nowrap;cursor:pointer;text-transform:none;letter-spacing:0"><input type="checkbox" id="ndeferred" style="accent-color:var(--g);width:13px;height:13px">⏱ Ativar ao 1º uso</label></div>
+          <button class="btn btn-primary" style="align-self:flex-end" onclick="createKey()">+ Gerar</button>
+        </div>
+        <div class="result-box" id="result-box">
+          <div class="result-label">Chave criada com sucesso</div>
+          <div class="result-key" id="result-key"></div>
+          <div class="result-meta" id="result-meta"></div>
+          <button class="copy-btn" onclick="copyKey()">📋 Copiar Chave</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Keys table -->
+    <div class="sec">
+      <div class="sh">
+        <div class="st">📋 Minhas Chaves</div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input type="text" id="fq" placeholder="Buscar cliente/chave..." oninput="filterKeys()" style="padding:4px 8px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:11px;width:160px;font-family:'Space Mono',monospace;outline:none" onfocus="this.style.borderColor='var(--g)'" onblur="this.style.borderColor='var(--brd)'">
+          <select id="fst" onchange="filterKeys()" style="padding:4px 7px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:11px;font-family:'Outfit',sans-serif;outline:none;cursor:pointer">
+            <option value="">Todos status</option>
+            <option value="ativa">Ativas</option>
+            <option value="bloqueada">Bloqueadas</option>
+            <option value="expirada">Expiradas</option>
+            <option value="expirando">Expirando &lt;48h</option>
+            <option value="deferred">Aguardando uso</option>
+            <option value="suspect">⚠ Suspeitas</option>
+          </select>
+          <button class="btn btn-sec" style="font-size:11px;padding:4px 9px" onclick="exportCSV()">⬇ CSV</button>
+          <button class="btn btn-sec" style="font-size:11px;padding:4px 9px" onclick="loadHistory()">↻ Atualizar</button>
+          <button class="btn-del" id="btn-del-batch" style="display:none;font-size:11px;padding:4px 9px" onclick="deleteBatchModKeys()">🗑 Excluir (<span id="batch-n">0</span>)</button>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="hist-table">
+          <thead><tr>
+            <th><span style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="master-cb" onchange="toggleAllCbs(this.checked)" style="cursor:pointer;width:13px;height:13px;flex-shrink:0">Chave</span></th><th>Cliente</th><th>Usos</th><th>Validade</th><th>Criada em</th><th>Nota</th><th>Status</th><th>Ações</th>
+          </tr></thead>
+          <tbody id="hist-body"><tr><td colspan="8" class="empty">Carregando...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── LOGS ── -->
+  <div class="sec-panel" data-panel="logs">
+    <div class="sec">
+      <div class="sh">
+        <div class="st">📋 Logs das Minhas Chaves</div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input type="text" id="log-fq" placeholder="Filtrar por chave/cliente..." oninput="filterModLogs()" style="padding:4px 8px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:11px;width:180px;font-family:'Space Mono',monospace;outline:none" onfocus="this.style.borderColor='var(--g)'" onblur="this.style.borderColor='var(--brd)'">
+          <button class="btn btn-sec" style="font-size:11px;padding:4px 9px" onclick="loadModLogs()">↻ Atualizar</button>
+        </div>
+      </div>
+      <div style="padding:8px 14px;font-size:11px;color:var(--tx3);border-bottom:1px solid var(--brd)">🔒 <strong style="color:var(--g)">Acesso restrito.</strong> Telefones e IPs dos clientes não são exibidos (LGPD).</div>
+      <div style="overflow-x:auto">
+        <table class="hist-table">
+          <thead><tr><th>Horário</th><th>Chave</th><th>Cliente</th><th>Ação</th></tr></thead>
+          <tbody id="modlogs-body"><tr><td colspan="4" class="empty">Carregando...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── CONQUISTAS ── -->
+  <div class="sec-panel" data-panel="achievements">
+    <div class="sec">
+      <div class="sh">
+        <div class="st">🏆 Conquistas</div>
+        <span id="ach-count" style="font-size:11px;color:var(--tx3);font-family:'Outfit',sans-serif"></span>
+      </div>
+      <div style="padding:10px 14px 4px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <span style="font-size:10px;color:var(--tx3);font-family:'Outfit',sans-serif;text-transform:uppercase;letter-spacing:.5px">Progresso Geral</span>
+          <span id="ach-pct" style="font-size:10px;color:var(--g);font-family:'Outfit',sans-serif;font-weight:700">0%</span>
+        </div>
+        <div style="height:4px;background:var(--brd);border-radius:2px;overflow:hidden">
+          <div id="ach-progress-bar" style="height:4px;background:linear-gradient(90deg,var(--g),#00ff87);border-radius:2px;width:0%;transition:width .6s ease"></div>
+        </div>
+      </div>
+      <div class="ach-grid" id="ach-grid"><div style="padding:20px;text-align:center;color:var(--tx3);font-size:13px">Atualizando...</div></div>
+    </div>
+  </div>
+
+  <!-- ── RANKING ── -->
+  <div class="sec-panel" data-panel="ranking">
+    <div class="sec">
+      <div class="sh"><div class="st">📊 Ranking de Moderadores</div></div>
+      <div class="rank-grid" id="rank-grid"><div style="padding:20px;text-align:center;color:var(--tx3);font-size:13px">Atualizando...</div></div>
+    </div>
+  </div>
+
+</div><!-- fim mod-content -->
+</div><!-- fim mod-wrap -->
+
+<!-- Modals -->
+<div class="modal-bg" id="modRenewModal"><div class="modal">
+  <h3>⏱ Adicionar Tempo — <span id="modRenewLabel" style="color:var(--tx3);font-weight:400;font-size:12px"></span></h3>
+  <input type="hidden" id="modRenewCode">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:4px">
+    <div class="fi"><label>Dias</label><input type="number" id="modRenewDays" min="0" placeholder="0"></div>
+    <div class="fi"><label>Horas</label><input type="number" id="modRenewHours" min="0" placeholder="0"></div>
+  </div>
+  <div class="modal-actions">
+    <button class="modal-cancel" onclick="closeModRenew()">Cancelar</button>
+    <button class="modal-save" onclick="saveModRenew()">Adicionar</button>
+  </div>
+</div></div>
+
+<div class="modal-bg" id="modNoteModal"><div class="modal">
+  <h3>📝 Nota — <span id="modNoteLabel"></span></h3>
+  <input type="hidden" id="modNoteCode">
+  <textarea id="modNoteText" placeholder="Ex: Cliente preferencial, renovação pendente..."></textarea>
+  <div class="modal-actions">
+    <button class="modal-cancel" onclick="closeModNote()">Cancelar</button>
+    <button class="modal-save" onclick="saveModNote()">Salvar</button>
+  </div>
+</div></div>
+
+<div class="modal-bg" id="renameModal"><div class="modal">
+  <h3>✏️ Renomear Cliente — <span id="renameLabelPreview" style="color:var(--tx3);font-weight:400;font-size:12px"></span></h3>
+  <input type="hidden" id="renameCode">
+  <input type="text" id="renameInput" placeholder="Novo nome do cliente" maxlength="60">
+  <div class="modal-actions">
+    <button class="modal-cancel" onclick="closeRename()">Cancelar</button>
+    <button class="modal-save" onclick="doRename()">Salvar</button>
+  </div>
+</div></div>
+
+<div class="modal-bg" id="deleteModal"><div class="modal">
+  <h3>🗑️ Excluir Chave</h3>
+  <input type="hidden" id="deleteCode">
+  <p style="font-size:13px;color:var(--tx3);margin-bottom:6px;font-family:'Outfit',sans-serif">Tem certeza que deseja excluir a chave <strong id="deleteLabelPreview" style="color:var(--tx)"></strong>?</p>
+  <p style="font-size:12px;color:var(--red);font-family:'Outfit',sans-serif">Esta ação é irreversível.</p>
+  <div class="modal-actions">
+    <button class="modal-cancel" onclick="closeDelete()">Cancelar</button>
+    <button class="modal-danger" onclick="doDelete()">Excluir</button>
+  </div>
+</div></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const _RM = '${R_MOD}';
+const _MODS = ${JSON.stringify(MODS.map(m => m.name))};
+
+function toast(msg,ok=true){const t=document.getElementById('toast');t.textContent=msg;t.style.background=ok?'var(--g)':'var(--red)';t.style.color=ok?'#000814':'#fff';t.style.display='block';setTimeout(()=>t.style.display='none',3200);}
+
+function switchTab(tab){
+  document.querySelectorAll('.rtab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
+  document.querySelectorAll('.sec-panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===tab));
+  if(tab==='logs')loadModLogs();
+}
+
+let _allKeys=[],_myModName='';
+function filterKeys(){
+  const q=(document.getElementById('fq')||{}).value||'';
+  const st=(document.getElementById('fst')||{}).value||'';
+  const ql=q.toLowerCase();
+  const isSuspectFilter=st==='suspect';
+  const rows=document.querySelectorAll('#hist-body tr[data-code]');
+  rows.forEach(row=>{
+    const matchQ=!ql||(row.dataset.label||'').toLowerCase().includes(ql)||(row.dataset.code||'').toLowerCase().includes(ql);
+    const rowSt=row.dataset.st||'';
+    const matchSt=!st||(isSuspectFilter?row.dataset.suspect==='1':rowSt===st);
+    row.style.display=(matchQ&&matchSt)?'':'none';
+  });
+}
+
+function exportCSV(){
+  if(!_allKeys.length){toast('Nenhuma chave para exportar.',false);return;}
+  const hdr='Chave,Cliente,Max Usos,Validade,Criada em,Status,Nota';
+  const rows=_allKeys.map(k=>{
+    const st=k.active?'ATIVA':'INATIVA';
+    const exp=k.deferred?'Ativa ao 1 uso':k.expiresAt?new Date(k.expiresAt).toLocaleString('pt-BR'):'Sem expiracao';
+    const created=k.createdAt?new Date(k.createdAt).toLocaleString('pt-BR'):'';
+    const note=(k.note||'').replace(/"/g,"'");
+    return [k.code,k.label,k.maxUses,exp,created,st,'"'+note+'"'].join(',');
+  });
+  const csv=[hdr,...rows].join('\\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='chaves-'+(_myModName||'zvm').toLowerCase().replace(/[^a-z0-9]/g,'-')+'.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+  toast('✅ CSV exportado!');
+}
+
+async function createKey(){
+  const label=document.getElementById('nlabel').value.trim();
+  const days=parseInt(document.getElementById('ndays').value||0);
+  const hours=parseInt(document.getElementById('nhours').value||0);
+  const mins=parseInt((document.getElementById('nmins')||{}).value||0);
+  const qty=Math.min(50,Math.max(1,parseInt((document.getElementById('nqty')||{}).value||1)||1));
+  const deferred=!!(document.getElementById('ndeferred')||{}).checked;
+  const _u=document.getElementById('nuses').value.trim();
+  const maxUses=_u===''?3:parseInt(_u);
+  if(!label){toast('Informe o nome do cliente.',false);return;}
+  if(isNaN(maxUses)||maxUses<1){toast('Número de usos inválido.',false);return;}
+  try{
+    const body={label,maxUses,qty};
+    if(deferred)body.deferred=true;
+    if(days>0)body.expireDays=days;
+    if(hours>0)body.expireHours=hours;
+    if(mins>0)body.expireMinutes=mins;
+    const r=await fetch(_RM+'/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(r.status===401){toast('Sessão expirada.',false);setTimeout(()=>location.href=_RM+'/logout',1500);return;}
+    const d=await r.json();
+    if(!d.ok){toast('Erro: '+(d.error||'desconhecido'),false);return;}
+    const allKeys=d.keys&&d.keys.length?d.keys:[d.key];
+    document.getElementById('result-key').textContent=allKeys.join('  ');
+    const meta=[];const exp=[];if(days>0)exp.push(days+'d');if(hours>0)exp.push(hours+'h');if(mins>0)exp.push(mins+'min');
+    meta.push(exp.length?exp.join(' ')+' de validade':'Sem expiração');
+    meta.push(maxUses+' dispositivo(s)');
+    if(deferred)meta.push('Ativa ao 1º uso');
+    if(allKeys.length>1)meta.push(allKeys.length+' chaves geradas');
+    meta.push('ZapSaver ✓');
+    document.getElementById('result-meta').innerHTML=meta.map(m=>'<span class="result-tag">'+m+'</span>').join('');
+    document.getElementById('result-box').classList.add('show');
+    ['nlabel','ndays','nhours','nmins','nuses','nqty'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+    const cb=document.getElementById('ndeferred');if(cb)cb.checked=false;
+    toast(allKeys.length>1?('✅ '+allKeys.length+' chaves criadas!'):('✅ Chave criada: '+d.key));
+    await loadHistory();
+  }catch(e){toast('Erro de rede.',false);}
+}
+
+function copyKey(){const key=document.getElementById('result-key').textContent;navigator.clipboard.writeText(key).then(()=>toast('Chave copiada!')).catch(()=>{const ta=document.createElement('textarea');ta.value=key;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);toast('Chave copiada!');});}
+
+// Click-to-copy nas chaves da tabela
+document.addEventListener('click',function(e){
+  const kc=e.target.closest('.kc');
+  if(!kc)return;
+  const code=kc.textContent.trim();
+  if(!code)return;
+  navigator.clipboard.writeText(code).then(function(){
+    const prev=kc.textContent;
+    kc.textContent='✓ Copiada!';
+    kc.style.color='var(--g)';
+    setTimeout(function(){kc.textContent=prev;kc.style.color='';},1400);
+  }).catch(function(){});
+});
+
+async function toggleModKey(code){
+  try{
+    const r=await fetch(_RM+'/api/keys/'+encodeURIComponent(code)+'/toggle',{method:'POST'});
+    if(r.status===401){toast('Sessão expirada.',false);return;}
+    const d=await r.json();
+    if(d.ok){toast(d.active?'✅ Chave liberada!':'🔒 Chave bloqueada!');await loadHistory();}
+    else toast('Erro: '+(d.error||'?'),false);
+  }catch(e){toast('Erro de rede.',false);}
+}
+async function clearSuspectMod(code){
+  if(!confirm('Limpar alerta de suspeita para a chave '+code+'?\\n\\nO alerta não voltará por 48h.'))return;
+  try{
+    const r=await fetch(_RM+'/api/keys/'+encodeURIComponent(code)+'/clear-suspect',{method:'POST'});
+    if(r.status===401){toast('Sessão expirada.',false);return;}
+    const d=await r.json();
+    if(d.ok){toast('Alerta de suspeita removido por 48h');await loadHistory();}
+    else toast('Erro ao limpar suspeita',false);
+  }catch(e){toast('Erro de rede.',false);}
+}
+
+// ── Seleção em lote ──
+function toggleAllCbs(checked){
+  document.querySelectorAll('#hist-body .key-cb').forEach(cb=>{
+    if(cb.closest('tr').style.display!=='none')cb.checked=checked;
+  });
+  updateBatchModUI();
+}
+function updateBatchModUI(){
+  const sel=document.querySelectorAll('#hist-body .key-cb:checked').length;
+  const btn=document.getElementById('btn-del-batch');
+  const n=document.getElementById('batch-n');
+  if(n)n.textContent=sel;
+  if(btn)btn.style.display=sel>0?'inline-block':'none';
+}
+async function deleteBatchModKeys(){
+  const codes=[...document.querySelectorAll('#hist-body .key-cb:checked')].map(cb=>cb.closest('tr').dataset.code).filter(Boolean);
+  if(!codes.length)return;
+  const labels=codes.slice(0,8).map(c=>{const tr=document.querySelector('#hist-body tr[data-code="'+c+'"]');return '• '+((tr&&tr.dataset.label)||c);});
+  const preview=labels.join('\\n')+(codes.length>8?'\\n… e mais '+(codes.length-8):'');
+  if(!confirm('Excluir '+codes.length+' chave(s)? Esta ação é irreversível.\\n\\n'+preview))return;
+  let ok=0,fail=0;
+  for(const c of codes){
+    try{
+      const r=await fetch(_RM+'/api/keys/'+encodeURIComponent(c),{method:'DELETE'});
+      const d=await r.json();
+      if(d.ok)ok++;else fail++;
+    }catch(e){fail++;}
+  }
+  toast(fail?('⚠ '+ok+' excluída(s), '+fail+' falha(s)'):('✅ '+ok+' chave(s) excluída(s)'),!fail);
+  const mcb=document.getElementById('master-cb');if(mcb)mcb.checked=false;
+  await loadHistory();
+  updateBatchModUI();
+}
+
+// ── Logs das minhas chaves ──
+let _modLogs=[];
+async function loadModLogs(){
+  const tb=document.getElementById('modlogs-body');
+  if(tb)tb.innerHTML='<tr><td colspan="4" class="empty">Carregando...</td></tr>';
+  try{
+    const r=await fetch(_RM+'/api/my-logs');
+    if(r.status===401){toast('Sessão expirada.',false);return;}
+    const d=await r.json();
+    if(!d.ok){if(tb)tb.innerHTML='<tr><td colspan="4" class="empty">Erro ao carregar logs.</td></tr>';return;}
+    _modLogs=d.logs||[];
+    renderModLogs(_modLogs);
+  }catch(e){if(tb)tb.innerHTML='<tr><td colspan="4" class="empty">Erro de rede.</td></tr>';}
+}
+function renderModLogs(list){
+  const tb=document.getElementById('modlogs-body');
+  if(!tb)return;
+  if(!list.length){tb.innerHTML='<tr><td colspan="4" class="empty">Nenhum log encontrado para suas chaves.</td></tr>';return;}
+  tb.innerHTML=list.map(l=>{
+    const _d=l.timestamp?new Date(l.timestamp):null;
+    const _mon=_d?_d.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',month:'short'}).replace('.','').toUpperCase():'';
+    const _day=_d?_d.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit'}):'';
+    const _hm=_d?_d.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit',second:'2-digit'}):'';
+    const ts=_d?(_mon+'/'+_day+', '+_hm):'-';
+    const act=(l.action||'').toUpperCase();
+    const actColor=/OK|RENEW|CREATED|ACTIVA/.test(act)?'var(--g)':/FAIL|ERROR|NOT_FOUND|EXPIRED|BLOCKED/.test(act)?'var(--red)':'var(--tx2)';
+    return '<tr><td style="font-size:11px;white-space:nowrap">'+ts+'</td><td><span class="kc" title="Clique para copiar" style="cursor:pointer">'+escHtml(l.keyCode||'')+'</span></td><td>'+escHtml(l.label||'-')+'</td><td><span style="color:'+actColor+';font-size:11px;font-weight:700">'+escHtml(act||'-')+'</span></td></tr>';
+  }).join('');
+}
+function filterModLogs(){
+  const q=((document.getElementById('log-fq')||{}).value||'').toLowerCase();
+  if(!q){renderModLogs(_modLogs);return;}
+  renderModLogs(_modLogs.filter(l=>(l.keyCode||'').toLowerCase().includes(q)||(l.label||'').toLowerCase().includes(q)));
+}
+
+function openModRenew(code,label){
+  document.getElementById('modRenewCode').value=code;
+  document.getElementById('modRenewLabel').textContent=label;
+  document.getElementById('modRenewDays').value='';
+  document.getElementById('modRenewHours').value='';
+  document.getElementById('modRenewModal').classList.add('open');
+  setTimeout(()=>document.getElementById('modRenewDays').focus(),100);
+}
+function closeModRenew(){document.getElementById('modRenewModal').classList.remove('open');}
+document.getElementById('modRenewModal').addEventListener('click',function(e){if(e.target===this)closeModRenew();});
+async function saveModRenew(){
+  const code=document.getElementById('modRenewCode').value;
+  const days=parseInt(document.getElementById('modRenewDays').value)||0;
+  const hours=parseInt(document.getElementById('modRenewHours').value)||0;
+  if(!days&&!hours){toast('Informe pelo menos 1 dia ou hora.',false);return;}
+  try{
+    const r=await fetch(_RM+'/api/keys/'+encodeURIComponent(code)+'/renew',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({days,hours})});
+    if(r.status===401){toast('Sessão expirada.',false);return;}
+    const d=await r.json();
+    if(d.ok){toast('✅ Tempo adicionado!');closeModRenew();await loadHistory();}
+    else toast('Erro: '+(d.error||'?'),false);
+  }catch(e){toast('Erro de rede.',false);}
+}
+
+function fmtDate(iso){if(!iso)return'—';const d=new Date(iso);return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
+function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+const ACHIEVEMENTS=[
+  {id:'first_key',icon:'🔑',name:'Primeira Chave',desc:'Crie sua primeira chave',max:1,val:s=>s.total},
+  {id:'keys_5',icon:'🎯',name:'5 Chaves',desc:'Crie 5 chaves no total',max:5,val:s=>s.total},
+  {id:'keys_10',icon:'💪',name:'10 Chaves',desc:'Crie 10 chaves no total',max:10,val:s=>s.total},
+  {id:'keys_25',icon:'🚀',name:'25 Chaves',desc:'Crie 25 chaves no total',max:25,val:s=>s.total},
+  {id:'keys_50',icon:'⭐',name:'50 Chaves',desc:'Crie 50 chaves no total',max:50,val:s=>s.total},
+  {id:'keys_100',icon:'💎',name:'100 Chaves',desc:'Crie 100 chaves no total',max:100,val:s=>s.total},
+  {id:'keys_200',icon:'👑',name:'200 Chaves',desc:'Crie 200 chaves no total',max:200,val:s=>s.total},
+  {id:'today_3',icon:'⚡',name:'Sprint do Dia',desc:'Crie 3 chaves em um único dia',max:3,val:s=>s.today},
+  {id:'today_5',icon:'🔥',name:'Em Chamas',desc:'Crie 5 chaves em um único dia',max:5,val:s=>s.today},
+  {id:'today_10',icon:'🌋',name:'Imparável',desc:'Crie 10 chaves em um único dia',max:10,val:s=>s.today},
+  {id:'active_5',icon:'🟢',name:'5 Ativas',desc:'Tenha 5 chaves ativas ao mesmo tempo',max:5,val:s=>s.active},
+  {id:'active_10',icon:'✅',name:'10 Ativas',desc:'Tenha 10 chaves ativas ao mesmo tempo',max:10,val:s=>s.active},
+  {id:'active_25',icon:'🏅',name:'25 Ativas',desc:'Tenha 25 chaves ativas ao mesmo tempo',max:25,val:s=>s.active},
+  {id:'active_50',icon:'🔮',name:'50 Ativas',desc:'Tenha 50 chaves ativas ao mesmo tempo',max:50,val:s=>s.active},
+  {id:'rank_1',icon:'🥇',name:'Número 1',desc:'Seja o moderador com mais chaves',max:1,val:s=>s.rank===1?1:0},
+  {id:'no_expired',icon:'🛡️',name:'Zero Expiradas',desc:'Nenhuma expirada (min. 5 ativas)',max:1,val:s=>(s.expired===0&&s.active>=5)?1:0},
+  {id:'zap_saver',icon:'💾',name:'ZapSaver Master',desc:'Crie 10 chaves com ZapSaver ativo',max:10,val:s=>s.zapSaverCount||0},
+  {id:'note_master',icon:'📝',name:'Nota Mestre',desc:'Adicione notas em 5 chaves',max:5,val:s=>s.withNote||0},
+];
+
+let _prevUnlocked=null,_trophyQueue=[],_trophyBusy=false;
+function showTrophy(a){
+  document.getElementById('tn-icon').textContent=a.icon;
+  document.getElementById('tn-name').textContent=a.name;
+  document.getElementById('tn-desc').textContent=a.desc;
+  const bar=document.getElementById('tn-bar'),notif=document.getElementById('trophy-notif');
+  bar.style.transition='none';bar.style.width='0%';notif.classList.remove('hide');
+  requestAnimationFrame(()=>{
+    notif.classList.add('show');
+    setTimeout(()=>{bar.style.transition='width 3s linear';bar.style.width='100%';},150);
+    setTimeout(()=>{notif.classList.remove('show');notif.classList.add('hide');setTimeout(()=>{notif.classList.remove('hide');_trophyBusy=false;if(_trophyQueue.length>0)setTimeout(()=>showTrophy(_trophyQueue.shift()),400);},450);},3600);
+  });
+}
+function queueTrophy(a){if(_trophyBusy){_trophyQueue.push(a);return;}_trophyBusy=true;showTrophy(a);}
+function checkNewAchievements(stats){
+  const now=new Set(ACHIEVEMENTS.filter(a=>a.val(stats)>=a.max).map(a=>a.id));
+  if(_prevUnlocked===null){_prevUnlocked=now;return;}
+  for(const a of ACHIEVEMENTS){if(!_prevUnlocked.has(a.id)&&now.has(a.id))queueTrophy(a);}
+  _prevUnlocked=now;
+}
+function renderAchievements(stats){
+  checkNewAchievements(stats);
+  const grid=document.getElementById('ach-grid');
+  const cel=document.getElementById('ach-count');
+  if(!grid)return;
+  const unlocked=ACHIEVEMENTS.filter(a=>a.val(stats)>=a.max);
+  const pct=Math.round(unlocked.length/ACHIEVEMENTS.length*100);
+  if(cel)cel.textContent=unlocked.length+'/'+ACHIEVEMENTS.length+' conquistadas';
+  const pb=document.getElementById('ach-progress-bar');
+  const pp=document.getElementById('ach-pct');
+  if(pb)pb.style.width=pct+'%';
+  if(pp)pp.textContent=pct+'%';
+  grid.innerHTML=ACHIEVEMENTS.map(a=>{
+    const v=Math.min(a.val(stats),a.max),ok=v>=a.max,pct2=a.max===1?100:Math.round(v/a.max*100);
+    const progBar=ok?'':'<div style="margin-top:5px;height:2px;background:var(--brd);border-radius:1px;overflow:hidden"><div style="height:2px;background:var(--g);border-radius:1px;width:'+pct2+'%;opacity:.6;transition:width .4s"></div></div><div style="font-size:9px;color:var(--tx3);margin-top:2px;font-family:Outfit,sans-serif">'+v+'/'+a.max+'</div>';
+    return '<div class="ach '+(ok?'unlocked':'locked')+'"><div class="ach-icon">'+a.icon+'</div><div class="ach-info"><div class="ach-name">'+a.name+'</div><div class="ach-desc">'+a.desc+'</div>'+progBar+'</div><div class="ach-badge">'+(ok?'✓':'🔒')+'</div></div>';
+  }).join('');
+}
+function renderRanking(ranking,myName){
+  const grid=document.getElementById('rank-grid');
+  if(!grid)return;
+  if(!ranking.length){grid.innerHTML='<div style="padding:28px;text-align:center;color:var(--tx3);font-size:13px;font-family:Outfit,sans-serif">Sem dados de ranking ainda</div>';return;}
+  const medals=['🥇','🥈','🥉'];
+  const maxC=Math.max(...ranking.map(r=>r.count),1);
+  grid.innerHTML='<div style="padding:8px 14px 2px;font-size:9px;color:var(--tx3);font-family:Outfit,sans-serif;text-transform:uppercase;letter-spacing:1px;display:flex;justify-content:space-between"><span>Moderador</span><span>Chaves</span></div>'+
+  ranking.map((r,i)=>{
+    const isMe=r.name===myName,pct=maxC>0?Math.round(r.count/maxC*100):0;
+    const medal=medals[i]||(i+1);
+    const posC=i===0?'#ffd32a':i===1?'#a0a0b0':i===2?'#cd7f32':'var(--tx3)';
+    const rowBg=isMe?'background:var(--g-bg);border-color:var(--g-brd);':'';
+    return '<div style="display:flex;flex-direction:column;gap:4px;padding:10px 14px;border-bottom:1px solid var(--brd);'+rowBg+'">'+'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div style="display:flex;align-items:center;gap:8px;min-width:0"><span style="font-size:16px;font-weight:800;color:'+posC+';width:22px;text-align:center;flex-shrink:0">'+medal+'</span><span style="font-family:Outfit,sans-serif;font-size:13px;font-weight:700;color:'+(isMe?'var(--g)':'var(--tx)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(r.name)+'</span>'+(isMe?'<span style="font-size:9px;background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd);padding:1px 6px;border-radius:8px;font-family:Outfit,sans-serif;font-weight:700;flex-shrink:0">Você</span>':'')+'</div><span style="font-family:Space Mono,monospace;font-size:13px;font-weight:700;color:'+(r.count>0?'var(--g)':'var(--tx3)')+';flex-shrink:0">'+r.count+'</span></div><div style="display:flex;align-items:center;gap:6px"><div style="flex:1;height:5px;background:var(--brd);border-radius:3px;overflow:hidden"><div style="height:5px;border-radius:3px;width:'+pct+'%;background:'+(isMe?'linear-gradient(90deg,var(--g),#00ff87)':'linear-gradient(90deg,#4a4a6a,#6a6a8a)')+';transition:width .6s ease"></div></div><span style="font-size:9px;color:var(--tx3);font-family:Outfit,sans-serif;width:28px;text-align:right">'+pct+'%</span></div></div>';
+  }).join('');
+}
+function updateStats(keys,myName,srvRanking){
+  const now=new Date(),todayStr=now.toISOString().slice(0,10);
+  const total=keys.length,active=keys.filter(k=>k.active).length;
+  const expired=keys.filter(k=>!k.active&&k.expiresAt&&new Date(k.expiresAt)<now).length;
+  const today=keys.filter(k=>(k.createdAt||'').startsWith(todayStr)).length;
+  const expiring=keys.filter(k=>{if(!k.expiresAt||!k.active)return false;const h=(new Date(k.expiresAt)-now)/3600000;return h>0&&h<48;}).length;
+  const blocked=keys.filter(k=>!k.active&&!(k.expiresAt&&new Date(k.expiresAt)<now)&&!(!k.expiresAt&&k.expireDuration)).length;
+  const deferred=keys.filter(k=>!k.expiresAt&&k.expireDuration).length;
+  const suspect=keys.filter(k=>(k.suspectFlag||k.isSuspect)).length;
+  const zapSaverCount=keys.filter(k=>k.zapSaver).length;
+  const withNote=keys.filter(k=>k.note&&k.note.trim()).length;
+  document.getElementById('stat-total').textContent=total;
+  document.getElementById('stat-active').textContent=active;
+  document.getElementById('stat-today').textContent=today;
+  document.getElementById('stat-expiring').textContent=expiring;
+  const elbl=document.getElementById('stat-blocked');if(elbl)elbl.textContent=blocked;
+  const eldf=document.getElementById('stat-deferred');if(eldf)eldf.textContent=deferred;
+  const elsp=document.getElementById('stat-suspect');if(elsp){elsp.textContent=suspect;elsp.style.color=suspect>0?'var(--red)':'var(--tx3)';};
+  const ranking=srvRanking&&srvRanking.length?srvRanking:[];
+  const myRank=ranking.length?ranking.findIndex(r=>r.name===myName)+1:1;
+  renderRanking(ranking,myName);
+  renderAchievements({total,active,expired,today,rank:myRank,zapSaverCount,withNote});
+}
+
+async function loadHistory(){
+  try{
+    const r=await fetch(_RM+'/api/my-keys');
+    if(r.status===401){toast('Sessão expirada. Redirecionando...',false);setTimeout(()=>location.href=_RM+'/logout',1500);return;}
+    const d=await r.json();
+    if(d.error==='db_error'){toast('Erro de conexão. Tente novamente.',false);return;}
+    _allKeys=d.keys||[];
+    if(d.modName)_myModName=d.modName;
+    const tbody=document.getElementById('hist-body');
+    if(!_allKeys.length){
+      const msg=d.modName?'Nenhuma chave criada por <strong>'+escHtml(d.modName)+'</strong> ainda.':'Nenhuma chave encontrada.';
+      tbody.innerHTML='<tr><td colspan="8" class="empty">'+msg+'</td></tr>';
+      updateStats([],d.modName,[]);return;
+    }
+    const now=Date.now();let expiringSoon=0,expired=0;
+    tbody.innerHTML=_allKeys.map(k=>{
+      let expHtml='',expClass='',stTag='';
+      if(k.deferred){expHtml='<span style="color:var(--tx3);font-size:11px">Ativa ao 1º uso</span>';stTag='deferred';}
+      else if(k.expiresAt){
+        const expTs=new Date(k.expiresAt).getTime(),diffH=Math.floor((expTs-now)/3600000),diffD=Math.floor(diffH/24),expDate=fmtDate(k.expiresAt);
+        if(expTs<now){expired++;expHtml=expDate+'<br><span class="badge-expired">EXPIRADA</span>';expClass=' style="background:#ff000008"';stTag='expirada';}
+        else if(diffH<48){expiringSoon++;const lbl=diffH<1?'<1h':diffH<24?diffH+'h':diffD+'d';expHtml=expDate+'<br><span class="badge-exp">⚠ '+lbl+'</span>';expClass=' style="background:#ff860008"';stTag='expirando';}
+        else{const lbl=diffD>0?diffD+'d '+(diffH%24>0?(diffH%24)+'h':''):diffH+'h';expHtml=expDate+'<br><span style="color:var(--g);font-size:11px">'+lbl.trim()+' restantes</span>';stTag='ativa';}
+      }else{expHtml='<span style="color:var(--tx3)">Sem expiração</span>';stTag='ativa';}
+      if(!k.active&&stTag!=='expirada')stTag='bloqueada';
+      const isSusp=!!(k.suspectFlag||k.isSuspect||(k.recentIpCount&&k.recentIpCount>3));
+      const st=k.active?'<span class="badge-bon">ATIVA</span>':'<span class="badge-expired">INATIVA</span>';
+      const noteClean=(k.note||'').trim();
+      const noteHtml=noteClean?'<span style="font-size:11px;color:var(--tx3)">'+escHtml(noteClean)+'</span>':'<span style="color:var(--tx3);font-size:11px">—</span>';
+      const toggleLbl=k.active?'🔒 Bloquear':'✅ Liberar';
+      const toggleCls=k.active?'btn-del':'btn-rename';
+      const suspBadge=isSusp?'<span style="color:#ff4757;font-size:11px;margin-left:4px">⚠ SUSPEITA</span>':'';
+      const suspBtn=isSusp?'<button class="btn-note" onclick="clearSuspectMod(\\''+escHtml(k.code)+'\\')">🕵️ Suspeita</button> ':'';
+      const acts=suspBtn
+                +'<button class="'+toggleCls+'" onclick="toggleModKey(\\''+escHtml(k.code)+'\\')">'+toggleLbl+'</button> '
+                +'<button class="btn-note" onclick="openModRenew(\\''+escHtml(k.code)+'\\',\\''+escHtml(k.label)+'\\')">⏱ +Tempo</button> '
+                +'<button class="btn-rename" onclick="openRename(\\''+escHtml(k.code)+'\\',\\''+escHtml(k.label)+'\\')">✏ Renomear</button> '
+                +'<button class="btn-note" onclick="openModNote(\\''+escHtml(k.code)+'\\',\\''+escHtml(k.label)+'\\',\\''+escHtml(noteClean)+'\\')">📝 Nota</button> '
+                +'<button class="btn-del" onclick="openDelete(\\''+escHtml(k.code)+'\\',\\''+escHtml(k.label)+'\\')">🗑 Excluir</button>';
+      return '<tr'+expClass+' data-code="'+escHtml(k.code)+'" data-label="'+escHtml(k.label)+'" data-st="'+stTag+'" data-suspect="'+(isSusp?'1':'')+'"><td><span style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="key-cb" onchange="updateBatchModUI()" style="cursor:pointer;width:13px;height:13px;flex-shrink:0"><span class="kc" title="Clique para copiar" style="cursor:pointer">'+escHtml(k.code)+'</span>'+suspBadge+'</span></td><td>'+escHtml(k.label)+'</td><td>'+k.maxUses+'</td><td>'+expHtml+'</td><td style="font-size:11px">'+fmtDate(k.createdAt)+'</td><td>'+noteHtml+'</td><td>'+st+'</td><td style="white-space:nowrap">'+acts+'</td></tr>';
+    }).join('');
+    const alertCard=document.getElementById('alert-expiring');
+    if(expired>0||expiringSoon>0){
+      alertCard.style.display='flex';
+      const parts=[];
+      if(expired>0)parts.push('<strong>'+expired+' chave(s) expirada(s)</strong>');
+      if(expiringSoon>0)parts.push('<strong>'+expiringSoon+' expirando em 48h</strong>');
+      document.getElementById('alert-expiring-text').innerHTML='⚠️ '+parts.join(' e ')+'. Contate o administrador.';
+    }else{alertCard.style.display='none';}
+    filterKeys();
+    updateBatchModUI();
+    updateStats(_allKeys,d.modName,d.ranking||[]);
+  }catch(e){toast('Erro ao carregar.',false);}
+}
+
+// Note modal
+function openModNote(code,label,currentNote){
+  document.getElementById('modNoteCode').value=code;
+  document.getElementById('modNoteLabel').textContent=label;
+  document.getElementById('modNoteText').value=currentNote||'';
+  document.getElementById('modNoteModal').classList.add('open');
+  setTimeout(()=>document.getElementById('modNoteText').focus(),100);
+}
+function closeModNote(){document.getElementById('modNoteModal').classList.remove('open');}
+document.getElementById('modNoteModal').addEventListener('click',function(e){if(e.target===this)closeModNote();});
+async function saveModNote(){
+  const code=document.getElementById('modNoteCode').value;
+  const note=document.getElementById('modNoteText').value.trim();
+  try{
+    const r=await fetch(_RM+'/api/keys/'+encodeURIComponent(code)+'/note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note})});
+    if(r.status===401){toast('Sessão expirada.',false);return;}
+    const d=await r.json();
+    if(d.ok){toast('✅ Nota salva!');closeModNote();await loadHistory();}
+    else toast('Erro: '+(d.error||'?'),false);
+  }catch(e){toast('Erro de rede.',false);}
+}
+
+// Rename modal
+function openRename(code,label){
+  document.getElementById('renameCode').value=code;
+  document.getElementById('renameLabelPreview').textContent=label;
+  document.getElementById('renameInput').value=label;
+  document.getElementById('renameModal').classList.add('open');
+  setTimeout(()=>{const i=document.getElementById('renameInput');i.focus();i.select();},100);
+}
+function closeRename(){document.getElementById('renameModal').classList.remove('open');}
+document.getElementById('renameModal').addEventListener('click',function(e){if(e.target===this)closeRename();});
+async function doRename(){
+  const code=document.getElementById('renameCode').value;
+  const label=document.getElementById('renameInput').value.trim();
+  if(!label){toast('Informe o nome.',false);return;}
+  try{
+    const r=await fetch(_RM+'/api/keys/'+encodeURIComponent(code)+'/rename',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label})});
+    if(r.status===401){toast('Sessão expirada.',false);return;}
+    const d=await r.json();
+    if(d.ok){toast('✅ Renomeado!');closeRename();await loadHistory();}
+    else toast('Erro: '+(d.error||'?'),false);
+  }catch(e){toast('Erro de rede.',false);}
+}
+
+// Delete modal
+function openDelete(code,label){
+  document.getElementById('deleteCode').value=code;
+  document.getElementById('deleteLabelPreview').textContent=label;
+  document.getElementById('deleteModal').classList.add('open');
+}
+function closeDelete(){document.getElementById('deleteModal').classList.remove('open');}
+document.getElementById('deleteModal').addEventListener('click',function(e){if(e.target===this)closeDelete();});
+async function doDelete(){
+  const code=document.getElementById('deleteCode').value;
+  try{
+    const r=await fetch(_RM+'/api/keys/'+encodeURIComponent(code),{method:'DELETE'});
+    if(r.status===401){toast('Sessão expirada.',false);return;}
+    if(r.status===403){toast('Acesso negado.',false);closeDelete();return;}
+    const d=await r.json();
+    if(d.ok){toast('🗑️ Chave excluída!');closeDelete();await loadHistory();}
+    else toast('Erro: '+(d.error||'?'),false);
+  }catch(e){toast('Erro de rede.',false);}
+}
+
+loadHistory();
+</script>
+${CANVAS_BG}</body></html>`;
+}
+
 
 // ──────────────── PORTAL DO CLIENTE ────────────────────────────
 function renderPortalPage(body, title='ZVM — Minha Conta', extra='', wide=false) {
@@ -4725,15 +5742,14 @@ function renderAdminDashboard(opts = {}) {
   const stats = opts.stats || getKeyStats();
   const _keysHtml = (opts.keysHtml != null) ? opts.keysHtml : getKeysHtmlCached();
   const _logsHtml = (opts.logsHtml != null) ? opts.logsHtml : buildLogsHtml();
+  const portalUserCount = Number(opts.portalUserCount || 0);
   const { expiredKeys: expiredCount, warnKeys: expiringSoon } = stats;
-  const _dashboardBrand = opts.brand === 'WSM' ? 'WSM' : 'ZVM';
-  const _adminBrand = _dashboardBrand === 'ZVM' ? renderStandaloneBrand('compact') : '⚡ WSM';
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${_dashboardBrand} Admin v10</title>
+<title>ZVM Admin v10</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Orbitron:wght@700;900&family=Outfit:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
@@ -4761,29 +5777,63 @@ button{font-family:inherit}
 header,nav,.admin-content,.modal-bg,.toast{position:relative;z-index:2}
 header{position:sticky}
 /* ── Header ── */
-header{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:var(--hdr);border-bottom:1px solid var(--brd);background:rgba(8,8,8,.96);top:0;z-index:50;box-shadow:0 1px 0 var(--brd),0 2px 16px #00000060;backdrop-filter:blur(8px)}
-.logo{font-family:'Orbitron',sans-serif;font-weight:900;letter-spacing:1px;font-size:15px;color:var(--g);display:flex;align-items:center;gap:7px}
-.logo-ver{font-size:11px;color:var(--tx3);font-weight:400;margin-left:2px}
-.hright{display:flex;align-items:center;gap:8px}
+header{display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:var(--hdr);border-bottom:1px solid var(--brd);background:linear-gradient(180deg,rgba(7,10,9,.97),rgba(7,10,9,.92));top:0;z-index:50;box-shadow:0 1px 0 var(--brd),0 10px 30px #00000045;backdrop-filter:blur(14px)}
+.logo{display:flex;align-items:center;gap:12px;color:var(--tx)}
+.logo-mark{width:38px;height:38px;border-radius:14px;border:1px solid var(--g-brd);background:radial-gradient(circle at 30% 30%,#00ff8722,#00ff8708 55%,transparent 65%),linear-gradient(180deg,#0d1813,#09100d);display:grid;place-items:center;color:var(--g);font-family:'Orbitron',sans-serif;font-weight:900;font-size:18px;box-shadow:inset 0 0 0 1px #ffffff04,0 0 0 1px #00000090,0 12px 30px #00e67612}
+.logo-copy{display:flex;flex-direction:column;line-height:1.05}
+.logo-main{font-family:'Orbitron',sans-serif;font-weight:900;letter-spacing:.06em;font-size:18px;color:var(--g)}
+.logo-ver{font-size:11px;color:var(--tx3);font-weight:600;margin-top:4px}
+.hright{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .hdr-meta{font-size:11px;color:var(--tx3);margin-right:4px}
-a.out{color:var(--tx2);font-size:12px;padding:5px 12px;border:1px solid var(--brd2);border-radius:var(--r-sm);transition:all .2s}
-a.out:hover{color:var(--red);border-color:var(--red-brd)}
+a.out{color:var(--tx2);font-size:12px;padding:7px 12px;border:1px solid var(--brd2);border-radius:12px;transition:all .2s;background:#ffffff03}
+a.out:hover{color:var(--red);border-color:var(--red-brd);background:var(--red-bg)}
 /* ── Layout shell ── */
-.admin-wrap{display:flex;min-height:calc(100vh - var(--hdr));align-items:flex-start}
-.admin-content{flex:1;min-width:0;padding:18px 20px;max-width:1900px}
-/* ── Sidebar ── */
-.rsidebar{width:var(--sidebar-w);flex-shrink:0;background:rgba(8,8,8,.97);border-right:1px solid var(--brd);position:sticky;top:var(--hdr);height:calc(100vh - var(--hdr));display:flex;flex-direction:column;overflow:hidden;transition:width .2s cubic-bezier(.4,0,.2,1);z-index:40;backdrop-filter:blur(6px)}
-.rsidebar:hover{width:var(--sidebar-open)}
-.rsb-title{font-size:9px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:1.4px;padding:14px 14px 8px;border-bottom:1px solid var(--brd);white-space:nowrap;opacity:0;transition:opacity .15s}
-.rsidebar:hover .rsb-title{opacity:1}
-.rtab{display:flex;align-items:center;gap:11px;width:100%;padding:11px 14px;background:transparent;border:none;border-left:2px solid transparent;color:var(--tx3);font-size:12px;font-weight:600;text-align:left;cursor:pointer;transition:all .15s;white-space:nowrap;overflow:hidden}
-.rtab:hover{background:var(--g-bg);color:var(--tx);border-left-color:var(--g-brd)}
-.rtab.active{background:var(--g-bg);color:var(--g);border-left-color:var(--g)}
-.rtab-icon{font-size:14px;flex-shrink:0;line-height:1;width:16px;text-align:center}
-.rtab-label{opacity:0;transition:opacity .12s;font-size:12px}
-.rsidebar:hover .rtab-label{opacity:1}
+.admin-wrap{display:grid;grid-template-columns:300px minmax(0,1fr);min-height:calc(100vh - var(--hdr));align-items:start}
+.admin-content{min-width:0;padding:24px 26px 28px;max-width:none}
+/* ── Sidebar / Premium rail ── */
+.rsidebar{background:linear-gradient(180deg,rgba(8,11,10,.98),rgba(6,8,8,.98));border-right:1px solid var(--brd);position:sticky;top:var(--hdr);height:calc(100vh - var(--hdr));display:flex;flex-direction:column;overflow:auto;padding:18px 14px 18px;z-index:40;backdrop-filter:blur(12px)}
+.rsidebar::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at top left,#00e67618,transparent 42%);pointer-events:none}
+.rsb-brand,.rail-card{position:relative;z-index:1}
+.rsb-brand{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--g-brd);border-radius:20px;background:linear-gradient(180deg,#0b1511,#09110e);box-shadow:inset 0 0 0 1px #ffffff04,0 20px 36px #0000002f;margin-bottom:16px}
+.rsb-brand-icon{width:48px;height:48px;border-radius:16px;border:1px solid var(--g-brd);display:grid;place-items:center;color:var(--g);font-family:'Orbitron',sans-serif;font-weight:900;font-size:21px;background:radial-gradient(circle at 30% 30%,#00ff8730,#00ff870d 55%,transparent 65%),#07100c}
+.rsb-brand-copy{display:flex;flex-direction:column;gap:3px;min-width:0}
+.rsb-brand-copy strong{font-size:16px;color:#f7faf8}
+.rsb-brand-copy span{font-size:12px;color:var(--tx2);line-height:1.45}
+.rsb-title{font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:1.4px;padding:0 8px 8px}
+.rnav{display:flex;flex-direction:column;gap:6px}
+.rtab{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;background:transparent;border:1px solid transparent;border-radius:14px;color:var(--tx2);font-size:13px;font-weight:700;text-align:left;cursor:pointer;transition:all .18s;white-space:nowrap;overflow:hidden}
+.rtab:hover{background:#0e1512;color:var(--tx);border-color:var(--g-brd);transform:translateY(-1px)}
+.rtab.active{background:linear-gradient(180deg,#0d1a13,#0b1410);color:var(--g);border-color:var(--g-brd);box-shadow:inset 0 0 0 1px #ffffff04}
+.rtab-icon{font-size:15px;flex-shrink:0;line-height:1;width:18px;text-align:center}
+.rtab-label{font-size:13px}
+.premium-stack{display:flex;flex-direction:column;gap:12px;margin-top:18px}
+.rail-card{padding:14px;border:1px solid var(--brd);border-radius:20px;background:linear-gradient(180deg,#0c0f0e,#0a0c0b);box-shadow:inset 0 0 0 1px #ffffff03}
+.rail-kicker{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--tx3);margin-bottom:6px}
+.rail-title{font-size:15px;font-weight:800;color:#f2f6f3;line-height:1.25;margin-bottom:5px}
+.rail-desc{font-size:12px;color:var(--tx2);line-height:1.45}
+.rail-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.rail-mini{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:10px 11px;border-radius:14px;border:1px solid var(--brd2);background:#ffffff02;color:var(--tx);text-align:left;cursor:pointer;transition:all .18s}
+.rail-mini:hover{border-color:var(--g-brd);background:#0f1713}
+.rail-mini-label{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--tx3);font-weight:700}
+.rail-mini strong{font-size:18px;line-height:1.1;color:#f7faf8;font-variant-numeric:tabular-nums}
+.rail-mini small{font-size:11px;color:var(--tx2)}
+.rail-actions{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.rail-link{display:flex;align-items:center;justify-content:space-between;width:100%;padding:11px 12px;border-radius:14px;border:1px solid var(--brd2);background:#ffffff03;color:var(--tx);font-size:12px;font-weight:700;text-align:left;cursor:pointer;transition:all .18s}
+.rail-link:hover{border-color:var(--g-brd);color:var(--g);background:#0f1613}
 .sec-panel{display:none}
 .sec-panel.active{display:block}
+.hero-card{display:flex;align-items:stretch;justify-content:space-between;gap:18px;padding:20px 22px;border:1px solid var(--brd);border-radius:24px;background:linear-gradient(135deg,#0b1010 0%,#0d1511 45%,#0a0d0c 100%);margin-bottom:16px;box-shadow:inset 0 0 0 1px #ffffff04,0 18px 38px #00000020}
+.hero-copy{flex:1;min-width:0}
+.hero-kicker{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;border:1px solid var(--g-brd);background:var(--g-bg);color:var(--g);font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px}
+.hero-copy h1{font-size:30px;line-height:1.05;font-weight:800;color:#f6faf7;letter-spacing:-.03em;margin-bottom:10px}
+.hero-copy p{font-size:14px;color:var(--tx2);max-width:720px;line-height:1.6}
+.hero-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.hero-chip{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:12px;border:1px solid var(--brd2);background:#ffffff03;color:var(--tx);font-size:12px;font-weight:700}
+.hero-side{width:300px;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-self:stretch}
+.hero-metric{padding:14px;border-radius:18px;border:1px solid var(--brd);background:#060908;display:flex;flex-direction:column;justify-content:space-between;min-height:96px}
+.hero-metric span{font-size:11px;color:var(--tx3);text-transform:uppercase;letter-spacing:.8px;font-weight:700}
+.hero-metric strong{font-size:24px;color:#f7faf8;line-height:1.1;font-variant-numeric:tabular-nums}
+.hero-metric small{font-size:12px;color:var(--tx2);line-height:1.35}
 /* ── Alert strip ── */
 .alert-strip{display:flex;background:var(--org-bg);border:1px solid var(--org-brd);border-radius:var(--r);padding:9px 14px;margin-bottom:14px;align-items:center;gap:8px;font-size:12px;color:var(--orange);flex-wrap:wrap}
 /* ── Stats grid ── */
@@ -4895,15 +5945,17 @@ td.td-status{white-space:nowrap;overflow:hidden}
 .modal-cancel{background:var(--s2);color:var(--tx2);border:1px solid var(--brd2)}
 .modal-cancel:hover{color:var(--tx)}
 /* ── Responsive ── */
-@media(max-width:1100px){.stats{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:750px){.stats{grid-template-columns:1fr 1fr};.admin-content{padding:12px};.acts{max-width:180px};.rsidebar{display:none}}
+@media(max-width:1280px){.hero-card{flex-direction:column}.hero-side{width:100%}.admin-wrap{grid-template-columns:280px minmax(0,1fr)}}
+@media(max-width:1100px){.stats{grid-template-columns:repeat(3,1fr)}.admin-wrap{grid-template-columns:1fr}.rsidebar{position:relative;top:0;height:auto;border-right:none;border-bottom:1px solid var(--brd)}}
+@media(max-width:750px){.stats{grid-template-columns:1fr 1fr}.admin-content{padding:14px}.acts{max-width:180px}.hero-copy h1{font-size:24px}.hero-side{grid-template-columns:1fr 1fr}.rail-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:560px){header{padding:10px 14px;height:auto;align-items:flex-start}.hright{width:100%;justify-content:flex-start}.hero-side{grid-template-columns:1fr}.stats{grid-template-columns:1fr}.rail-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <header>
   <div class="logo">
-    ${_adminBrand}
-    <span class="logo-ver">Admin v10</span>
+    <span class="logo-mark">Z</span>
+    <span class="logo-copy"><span class="logo-main">ZVM</span><span class="logo-ver">Admin premium · v10</span></span>
   </div>
   <div class="hright">
     <span class="hdr-meta" id="last-refresh">—</span>
@@ -4917,14 +5969,68 @@ td.td-status{white-space:nowrap;overflow:hidden}
 </header>
 <div class="admin-wrap">
 <nav class="rsidebar" id="rsidebar">
-  <div class="rsb-title">Menu</div>
-  <button class="rtab active" data-tab="keys" onclick="switchTab('keys')"><span class="rtab-icon">🔑</span><span class="rtab-label">Chaves</span></button>
-  <button class="rtab" data-tab="logs" onclick="switchTab('logs')"><span class="rtab-icon">📋</span><span class="rtab-label">Logs</span></button>
-  <button class="rtab" data-tab="audit" onclick="switchTab('audit')"><span class="rtab-icon">🛡</span><span class="rtab-label">Auditoria</span></button>
-  <button class="rtab" data-tab="users" onclick="switchTab('users')"><span class="rtab-icon">👥</span><span class="rtab-label">Usuários</span></button>
-  <button class="rtab" data-tab="security" onclick="switchTab('security')"><span class="rtab-icon">🔒</span><span class="rtab-label">Segurança</span></button>
+  <div class="rsb-brand">
+    <div class="rsb-brand-icon">Z</div>
+    <div class="rsb-brand-copy">
+      <strong>ZVM Admin</strong>
+      <span>Painel premium para segurança, renovações e operação da sua base de clientes.</span>
+    </div>
+  </div>
+  <div class="rsb-title">Navegação</div>
+  <div class="rnav">
+    <button class="rtab active" data-tab="keys" onclick="switchTab('keys')"><span class="rtab-icon">🔑</span><span class="rtab-label">Chaves</span></button>
+    <button class="rtab" data-tab="logs" onclick="switchTab('logs')"><span class="rtab-icon">📋</span><span class="rtab-label">Logs</span></button>
+    <button class="rtab" data-tab="audit" onclick="switchTab('audit')"><span class="rtab-icon">🛡</span><span class="rtab-label">Auditoria</span></button>
+    <button class="rtab" data-tab="users" onclick="switchTab('users')"><span class="rtab-icon">👥</span><span class="rtab-label">Usuários</span></button>
+    <button class="rtab" data-tab="security" onclick="switchTab('security')"><span class="rtab-icon">🔒</span><span class="rtab-label">Segurança</span></button>
+  </div>
+  <div class="premium-stack">
+    <div class="rail-card">
+      <div class="rail-kicker">Resumo premium</div>
+      <div class="rail-title">Segurança e renovações</div>
+      <div class="rail-desc">Acompanhe rapidamente a saúde da operação e acesse os pontos que pedem atenção.</div>
+      <div class="rail-grid">
+        <button class="rail-mini" onclick="document.getElementById('filter-status').value='suspect';switchTab('keys');filterKeys()"><span class="rail-mini-label">Segurança</span><strong id="rail-suspect">${stats.suspectKeys}</strong><small>suspeitas</small></button>
+        <button class="rail-mini" onclick="document.getElementById('filter-status').value='bloqueado';switchTab('keys');filterKeys()"><span class="rail-mini-label">Bloqueios</span><strong id="rail-blocked">${stats.blockedKeys}</strong><small>chaves bloqueadas</small></button>
+        <button class="rail-mini" onclick="document.getElementById('filter-status').value='expirada';switchTab('keys');filterKeys()"><span class="rail-mini-label">Renovações</span><strong id="rail-expired">${expiredCount}</strong><small>expiradas</small></button>
+        <button class="rail-mini" onclick="document.getElementById('filter-status').value='expirando';switchTab('keys');filterKeys()"><span class="rail-mini-label">Em breve</span><strong id="rail-warn">${expiringSoon}</strong><small>vencendo</small></button>
+      </div>
+    </div>
+    <div class="rail-card">
+      <div class="rail-kicker">Conta premium</div>
+      <div class="rail-title">Clientes e dispositivos</div>
+      <div class="rail-grid">
+        <button class="rail-mini" onclick="switchTab('users')"><span class="rail-mini-label">Portal</span><strong id="rail-users">${portalUserCount}</strong><small>usuários</small></button>
+        <button class="rail-mini" onclick="document.getElementById('filter-status').value='ativo';switchTab('keys');filterKeys()"><span class="rail-mini-label">Ativas</span><strong id="rail-active">${stats.activeKeys}</strong><small>chaves ativas</small></button>
+      </div>
+      <div class="rail-actions">
+        <button class="rail-link" onclick="switchTab('users')">Ver usuários do portal <span>→</span></button>
+        <button class="rail-link" onclick="switchTab('security')">Revisar IPs e proteção <span>→</span></button>
+        <button class="rail-link" onclick="switchTab('audit');runPentest()">Executar auditoria <span>→</span></button>
+      </div>
+    </div>
+  </div>
 </nav>
 <div class="admin-content">
+
+  <div class="hero-card">
+    <div class="hero-copy">
+      <span class="hero-kicker">Portal premium ZVM</span>
+      <h1>Segurança, renovações e gestão num painel que combina com a identidade da ZVM.</h1>
+      <p>Esta área administrativa foi reorganizada para conversar visualmente com os painéis de login e portal do cliente: leitura mais clara, navegação lateral útil e visão rápida da operação premium.</p>
+      <div class="hero-chips">
+        <span class="hero-chip">🔒 Proteção administrativa</span>
+        <span class="hero-chip">⏱ Renovações em evidência</span>
+        <span class="hero-chip">👥 Clientes e dispositivos</span>
+      </div>
+    </div>
+    <div class="hero-side">
+      <div class="hero-metric"><span>Usuários do portal</span><strong id="hero-users">${portalUserCount}</strong><small>contas vinculadas</small></div>
+      <div class="hero-metric"><span>Chaves ativas</span><strong id="hero-active">${stats.activeKeys}</strong><small>clientes em operação</small></div>
+      <div class="hero-metric"><span>Expiradas</span><strong id="hero-expired">${expiredCount}</strong><small>pedem ação</small></div>
+      <div class="hero-metric"><span>Suspeitas</span><strong id="hero-suspect">${stats.suspectKeys}</strong><small>revisão de segurança</small></div>
+    </div>
+  </div>
 
   <div class="alert-strip" id="urgent-alert" style="${(expiredCount>0||expiringSoon>0)?'':'display:none'}">
     <span>⚠</span>
@@ -4973,6 +6079,10 @@ td.td-status{white-space:nowrap;overflow:hidden}
         <option value="aguardando">Aguardando 1º uso</option>
         <option value="suspect">⚠ Suspeitas</option>
       </select>
+      <select id="filter-mod" onchange="filterKeys()" style="min-width:140px">
+        <option value="">Todos os mods</option>
+        ${MODS.map(m => `<option value="${escHtml(m.name.toLowerCase())}">${escHtml(m.name)}</option>`).join('')}
+      </select>
       <select id="filter-plan" onchange="filterKeys()" style="min-width:120px">
         <option value="">Todos os planos</option>
         <option value="pro">Pro</option>
@@ -5014,6 +6124,19 @@ td.td-status{white-space:nowrap;overflow:hidden}
         </tr></thead>
         <tbody id="kb">${_keysHtml}</tbody>
       </table>
+    </div>
+  </div>
+  </div>
+
+  <!-- ── PAINEL HISTÓRICO MODS ── -->
+  <div class="sec-panel" data-panel="logs">
+  <div class="sec">
+    <div class="sh">
+      <div class="st"><span class="st-accent">📋</span> Histórico de Ações dos Moderadores</div>
+      <button class="btn br" style="font-size:12px" onclick="loadModLogs()">↻ Carregar</button>
+    </div>
+    <div id="mod-logs-body" style="margin-top:10px;max-height:360px;overflow-y:auto;font-size:13px">
+      <p style="color:var(--muted);padding:8px">Clique em "Carregar" para ver o histórico de ações.</p>
     </div>
   </div>
   </div>
@@ -5071,7 +6194,7 @@ td.td-status{white-space:nowrap;overflow:hidden}
         <div style="font-size:11px;color:var(--tx3);margin-top:2px">Logins falhos · Rate limit · Payloads suspeitos · Webhooks inválidos</div>
       </div>
       <div style="display:flex;gap:8px">
-        <a href="${R_ADMIN}/api/audit-logs/csv" class="btn bw" style="font-size:11px;padding:4px 10px;text-decoration:none" download>⬇ Exportar Auditoria CSV</a>
+        <a href="${R_ADMIN}/api/mod-logs/csv" class="btn bw" style="font-size:11px;padding:4px 10px;text-decoration:none" download>⬇ Exportar Audit CSV</a>
         <button class="btn br" style="font-size:11px;padding:4px 10px" onclick="clearSecurityAlerts()">🗑 Limpar Logs</button>
       </div>
     </div>
@@ -5112,6 +6235,18 @@ td.td-status{white-space:nowrap;overflow:hidden}
     </div>
   </div>
 
+  <div class="sec" style="margin-top:12px">
+    <div class="sh">
+      <div>
+        <div class="st"><span class="st-accent">🔐</span> 2FA dos Moderadores</div>
+        <div style="font-size:11px;color:var(--tx3);margin-top:2px">QR codes para configurar TOTP em apps como Google Authenticator</div>
+      </div>
+      <button class="btn bw" style="font-size:12px;padding:5px 12px" onclick="loadTotpSetup()">↻ Carregar</button>
+    </div>
+    <div class="ov" id="totp-setup-body" style="padding:14px">
+      <p style="color:var(--tx3);font-size:12px">Clique em <strong>↻ Carregar</strong> para ver o status de 2FA de cada moderador.</p>
+    </div>
+  </div>
   </div>
 
   <!-- ── PAINEL USUÁRIOS ── -->
@@ -5212,8 +6347,23 @@ td.td-status{white-space:nowrap;overflow:hidden}
   </div>
 </div></div>
 
+<div class="modal-bg" id="assignModModal"><div class="modal" style="width:400px">
+  <h3>👮 Atribuir ao Moderador</h3>
+  <p style="font-size:12px;color:var(--tx3);margin-bottom:14px">Selecione o moderador responsável por esta chave.</p>
+  <input type="hidden" id="assignModCode">
+  <div style="font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Chave: <span id="assignModLabel" style="color:var(--tx);font-size:11px;font-weight:400;text-transform:none"></span></div>
+  <div id="modListBtns" style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px"></div>
+  <div style="display:flex;gap:8px">
+    <button class="btn bd" style="flex:1" onclick="assignMod(document.getElementById('assignModCode').value,'')">🗑 Remover atribuição</button>
+    <button class="btn modal-cancel" onclick="closeAssignMod()">Cancelar</button>
+  </div>
+</div></div>
+
+<div class="toast" id="toast"></div>
+
 <script>
 const _RA='${R_ADMIN}';
+const _MODS=${JSON.stringify(MODS.map(m => m.name))};
 
 function toast(msg,ok=true){
   const t=document.getElementById('toast');
@@ -5224,9 +6374,44 @@ function toast(msg,ok=true){
   clearTimeout(t._tid);t._tid=setTimeout(()=>t.style.display='none',3400);
 }
 
+function openAssignModFromEl(el){
+  openAssignMod(el.dataset.code||'', el.dataset.label||'', el.dataset.modnote||'');
+}
+function openAssignMod(code,label,currentMod){
+  document.getElementById('assignModCode').value=code;
+  document.getElementById('assignModLabel').textContent=label;
+  const container=document.getElementById('modListBtns');
+  container.innerHTML='';
+  _MODS.forEach(name=>{
+    const btn=document.createElement('button');
+    const isActive=currentMod===name;
+    btn.className='btn';
+    btn.style.cssText='font-size:13px;padding:10px 16px;text-align:left;display:flex;align-items:center;gap:10px;'+(isActive?'background:#7c3aed30;color:#c4b5fd;border:1px solid #7c3aed60':'background:#1e1e2e;color:var(--text);border:1px solid var(--border)');
+    btn.innerHTML=(isActive?'✅ ':'👤 ')+name+(isActive?' <span style="font-size:11px;color:#9b59b6;margin-left:auto">Atual</span>':'');
+    btn.onclick=()=>assignMod(code,name);
+    container.appendChild(btn);
+  });
+  if(_MODS.length===0){container.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px;text-align:center">Nenhum moderador configurado.<br>Defina MOD_USER/PASS no Render.</div>';}
+  document.getElementById('assignModModal').classList.add('open');
+}
+function closeAssignMod(){document.getElementById('assignModModal').classList.remove('open');}
+document.getElementById('assignModModal').addEventListener('click',function(e){if(e.target===this)closeAssignMod();});
+async function assignMod(code,modName){
+  try{
+    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/assign-mod',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({modName})});
+    const d=await r.json();
+    if(d.ok){
+      toast(modName?'✅ Atribuída a: '+modName:'Atribuição removida');
+      closeAssignMod();
+      await doRefresh();
+    }else toast('Erro: '+(d.error||'?'),false);
+  }catch(e){toast('Erro de rede',false);}
+}
+
 function filterKeys(){
   const q=(document.getElementById('search-input').value||'').toLowerCase();
   const st=document.getElementById('filter-status').value;
+  const fm=(document.getElementById('filter-mod')||{}).value||'';
   const fp=(document.getElementById('filter-plan')||{}).value||'';
   const isSuspectFilter=st==='suspect';
   let shown=0,total=0;
@@ -5236,12 +6421,14 @@ function filterKeys(){
     const phone=(row.dataset.phone||'').toLowerCase();
     const status=(row.dataset.status||'').toLowerCase();
     const code=(row.dataset.code||'').toLowerCase();
+    const createdby=(row.dataset.createdby||'').toLowerCase();
     const plan=(row.dataset.plan||'').toLowerCase();
     const ip=(row.cells[7]||{}).textContent||'';
     const matchQ=!q||label.includes(q)||phone.includes(q)||code.includes(q)||ip.toLowerCase().includes(q);
     const matchSt=!st||(isSuspectFilter?row.dataset.suspect==='1':status===st);
+    const matchMod=!fm||(fm==='__admin__'?!createdby:createdby===fm);
     const matchPlan=!fp||plan===fp;
-    const visible=matchQ&&matchSt&&matchPlan;
+    const visible=matchQ&&matchSt&&matchMod&&matchPlan;
     row.style.display=visible?'':'none';
     if(visible)shown++;
   });
@@ -5334,6 +6521,15 @@ async function doRefresh(manual){
     const sbl=document.getElementById('s-blocked');if(sbl)sbl.textContent=d.blockedKeys||0;
     const sdf=document.getElementById('s-deferred');if(sdf)sdf.textContent=d.deferredKeys||0;
     const ssp=document.getElementById('s-suspect');if(ssp){ssp.textContent=d.suspectKeys||0;ssp.style.color=(d.suspectKeys||0)>0?'var(--red)':'';};
+    const setMetric=(id,val)=>{const el=document.getElementById(id);if(el)el.textContent=val;};
+    setMetric('rail-suspect',d.suspectKeys||0);
+    setMetric('rail-blocked',d.blockedKeys||0);
+    setMetric('rail-expired',d.expiredKeys||0);
+    setMetric('rail-warn',d.warnKeys||0);
+    setMetric('rail-active',d.activeKeys||0);
+    setMetric('hero-active',d.activeKeys||0);
+    setMetric('hero-expired',d.expiredKeys||0);
+    setMetric('hero-suspect',d.suspectKeys||0);
     const alert=document.getElementById('urgent-alert'),alertTxt=document.getElementById('urgent-alert-text');
     if(alert&&alertTxt){
       const parts=[];
@@ -5421,6 +6617,25 @@ async function removeFromBlacklist(ip){
 }
 
 // TOTP Setup
+async function loadTotpSetup(){
+  const body=document.getElementById('totp-setup-body');
+  if(!body)return;
+  body.innerHTML='<p style="color:var(--tx3);font-size:12px">Carregando...</p>';
+  try{
+    const r=await fetch(_RA+'/api/mods/totp-setup');
+    const d=await r.json();
+    if(!d.ok||!d.mods){body.innerHTML='<p style="color:var(--red);font-size:12px">Erro ao carregar.</p>';return;}
+    body.innerHTML='<div style="display:flex;flex-wrap:wrap;gap:16px;padding:4px">'+d.mods.map(m=>{
+      const status=m.hasTotp?'<span style="color:var(--g);font-size:11px">✅ 2FA ativo</span>':'<span style="color:var(--orange);font-size:11px">⚠ Sem 2FA</span>';
+      const qr=m.hasTotp&&m.qrUrl?'<img src="'+m.qrUrl+'" alt="QR" style="display:block;margin-top:8px;border-radius:6px;border:1px solid var(--brd)" width="140" height="140">'
+        :'<p style="font-size:11px;color:var(--tx3);margin-top:8px">Configure MOD_TOTP no .env para ativar</p>';
+      return '<div style="background:var(--bg);border:1px solid var(--brd);border-radius:8px;padding:14px;min-width:160px"><div style="font-weight:700;margin-bottom:4px">'+m.name+'</div><div style="font-size:11px;color:var(--tx3);margin-bottom:6px">'+m.user+'</div>'+status+qr+'</div>';
+    }).join('')+'</div>';
+  }catch{body.innerHTML='<p style="color:var(--red);font-size:12px">Erro de conexão.</p>';}
+}
+
+
+
 async function toggleKey(code){
   try{const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/toggle',{method:'POST'});if(r.status===401){toast('Sessão expirada',false);return;}const d=await r.json();if(d.ok){toast(d.active?'Chave liberada!':'Chave bloqueada!');await doRefresh();}}catch(e){toast('Erro',false);}
 }
@@ -5474,6 +6689,35 @@ async function deleteBatchKeys(){
     if(d.ok){toast('🗑 '+d.deleted+' chave(s) excluída(s)');await doRefresh();}
     else toast('Erro: '+(d.error||'?'),false);
   }catch(e){toast('Erro de rede',false);}
+}
+
+async function loadModLogs(){
+  const el=document.getElementById('mod-logs-body');
+  if(!el)return;
+  el.innerHTML='<p style="color:var(--muted);padding:8px">Carregando…</p>';
+  try{
+    const r=await fetch(_RA+'/api/mod-logs');
+    if(r.status===401){el.innerHTML='<p style="color:red">Sessão expirada.</p>';return;}
+    const d=await r.json();
+    if(!d.logs||!d.logs.length){el.innerHTML='<p style="color:var(--muted);padding:8px">Nenhuma ação registrada ainda.</p>';return;}
+    const lbl={key_created:'✅ Criou',key_deleted:'🗑 Deletou',key_enabled:'🟢 Ativou',key_disabled:'🔴 Desativou'};
+    const _eh=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    el.innerHTML='<table style="width:100%;border-collapse:collapse"><thead><tr>'
+      +'<th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--brd);font-size:11px;color:var(--muted)">Data</th>'
+      +'<th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--brd);font-size:11px;color:var(--muted)">Mod</th>'
+      +'<th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--brd);font-size:11px;color:var(--muted)">Ação</th>'
+      +'<th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--brd);font-size:11px;color:var(--muted)">Chave</th>'
+      +'<th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--brd);font-size:11px;color:var(--muted)">Cliente</th>'
+      +'</tr></thead><tbody>'
+      +d.logs.map(l=>'<tr>'
+        +'<td style="padding:4px 8px;border-bottom:1px solid var(--brd2);font-size:12px">'+new Date(l.ts).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})+'</td>'
+        +'<td style="padding:4px 8px;border-bottom:1px solid var(--brd2);font-size:12px">'+_eh(l.mod)+'</td>'
+        +'<td style="padding:4px 8px;border-bottom:1px solid var(--brd2);font-size:12px">'+(lbl[l.action]||l.action)+'</td>'
+        +'<td style="padding:4px 8px;border-bottom:1px solid var(--brd2);font-family:monospace;font-size:11px">'+_eh(l.keyCode)+'</td>'
+        +'<td style="padding:4px 8px;border-bottom:1px solid var(--brd2);font-size:12px">'+_eh(l.label)+'</td>'
+        +'</tr>').join('')
+      +'</tbody></table>';
+  }catch(e){el.innerHTML='<p style="color:red;padding:8px">Erro ao carregar.</p>';}
 }
 
 async function filterLog(){
@@ -5627,9 +6871,13 @@ function renderUsersTable(list){
     const pb=document.getElementById('users-panel-badge');
     const hb=document.getElementById('hdr-users-num');
     const hc=document.getElementById('hdr-users-count');
+    const rail=document.getElementById('rail-users');
+    const hero=document.getElementById('hero-users');
     if(pb){pb.textContent=n;pb.style.display=n>0?'inline':'none';}
     if(hb)hb.textContent=n;
     if(hc)hc.style.display=n>0?'inline-flex':'none';
+    if(rail)rail.textContent=n;
+    if(hero)hero.textContent=n;
   };
   if(!list.length){tb.innerHTML='<tr><td colspan="8" class="empty">Nenhum usuário cadastrado.</td></tr>';setCount(0);return;}
   setCount(list.length);
@@ -5639,8 +6887,9 @@ function renderUsersTable(list){
     const _eu=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     const name=_eu(u.name||u.displayName||'-');
     const email=_eu(u._id||u.email||'-');
-    // _eu em TODOS os campos: u.plan pode vir de dados persistidos/controlados por usuários.
-    // Sem escape, um label com HTML malicioso executaria no navegador administrativo.
+    // _eu em TODOS os campos: u.plan vem de k.label no painel WSM, que um moderador
+    // controla. Sem escape, um label com <img onerror=...> executava no navegador do
+    // admin ao abrir a aba Usuários (escalonamento moderador -> admin).
     const phone=u.phone?'<span style="font-family:var(--mono);font-size:13px">'+_eu(u.phone)+'</span>':'<span style="color:var(--tx3)">—</span>';
     const key=u.keyCode?'<span class="kc" style="font-size:12px">'+_eu(u.keyCode)+'</span>':'<span style="color:var(--tx3)">—</span>';
     const plan=u.plan?'<span style="color:var(--g);font-weight:700;font-size:12px">'+_eu(String(u.plan).toUpperCase())+'</span>':'<span style="color:var(--tx3)">—</span>';
@@ -5842,7 +7091,7 @@ a{color:inherit;text-decoration:none}
 .nav-account-name{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* FOOTER */
 .zfooter{border-top:1px solid var(--brd);padding:36px 48px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:16px}
-.zfooter-brand{font-family:'Orbitron',sans-serif;font-size:17px;font-weight:900;color:var(--g)}
+.zvm-brand{display:inline-flex;align-items:center;gap:12px}.zvm-brand-mark{display:inline-flex;align-items:center;justify-content:center;filter:drop-shadow(0 0 16px #00e67622)}.zvm-brand-mark img{display:block}.zvm-brand-word{font-family:'Orbitron',sans-serif;font-weight:900;letter-spacing:.04em;color:var(--g);font-size:clamp(24px,3vw,34px)}.zvm-brand-nav .zvm-brand-word{font-size:21px}.zvm-brand-compact .zvm-brand-word,.zvm-brand-dash .zvm-brand-word{font-size:26px}.zvm-brand-auth{justify-content:center}.zvm-brand-auth .zvm-brand-word{font-size:34px}.zfooter-brand{font-family:'Orbitron',sans-serif;font-size:17px;font-weight:900;color:var(--g)}
 .zfooter-links{display:flex;gap:24px;flex-wrap:wrap;justify-content:center}
 .zfooter-links a{font-size:16px;color:var(--tx3);transition:color .2s;font-weight:600}
 .zfooter-links a:hover{color:var(--g)}
@@ -5852,13 +7101,13 @@ a{color:inherit;text-decoration:none}
 @media(max-width:560px){.znav-links{gap:2px}.znav-links a{padding:5px 9px;font-size:13px}}`;
 }
 
-// ── Brand oficial ZVM — incorporada no próprio servidor ────────────────
-// O portal não depende de /static nem de arquivos soltos no deploy.
-const ZVM_BRAND_ICON_DATA_URI = 'data:image/png;base64,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';
+// ── Brand oficial ZVM (embutida) — standalone apenas ────────────────────
+// O servidor não depende mais de /static/assets para a marca principal.
+const ZVM_BRAND_DATA_URL = 'data:image/png;base64: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';
 function renderStandaloneBrand(variant = 'nav') {
-  const safeVariant = ['nav','auth','dash','compact'].includes(variant) ? variant : 'nav';
-  const size = { nav: ['42px','22px'], auth: ['82px','40px'], dash: ['52px','28px'], compact: ['32px','18px'] }[safeVariant];
-  return `<span class="zvm-brand-logo zvm-brand-${safeVariant}" role="img" aria-label="ZVM" style="display:inline-flex;align-items:center;justify-content:center;gap:.28em;height:${size[0]};font-size:${size[1]};color:var(--g,#00e676);line-height:1;vertical-align:middle;max-width:100%"><img data-zvm-mark="1" src="${ZVM_BRAND_ICON_DATA_URI}" alt="" aria-hidden="true" loading="eager" decoding="async" style="display:block;height:100%;width:auto;aspect-ratio:100/92;object-fit:contain;flex:none"><span class="zvm-brand-wordmark" style="font-family:'Orbitron','Outfit',sans-serif;font-weight:900;letter-spacing:.04em;white-space:nowrap">ZVM</span></span>`;
+  const sizes = { nav: 42, auth: 68, dash: 54, compact: 44 };
+  const icon = sizes[variant] || sizes.nav;
+  return `<span class="zvm-brand zvm-brand-${variant}"><span class="zvm-brand-mark"><img src="${ZVM_BRAND_DATA_URL}" alt="ZVM" width="${icon}" height="${icon}" loading="eager" decoding="async"></span><span class="zvm-brand-word">ZVM</span></span>`;
 }
 
 function _sharedNav(options = '', legacyPortalUser = null) {
@@ -6121,10 +7370,7 @@ ${_sharedCss()}
 .about-avatar img{width:100%;height:100%;object-fit:cover;display:block}
 .about-name{font-size:20px;font-weight:900;letter-spacing:-.5px}
 .about-role{font-size:13px;color:var(--g);font-weight:700;text-transform:uppercase;letter-spacing:1.5px;margin-top:3px}
-.about-bio{font-size:15px;color:var(--tx2);line-height:1.75;margin-bottom:18px}
-.about-note{font-size:12px;color:var(--tx3);line-height:1.6;margin:0 0 22px;padding:11px 13px;border:1px solid var(--brd);background:var(--bg);border-radius:var(--r-sm)}
-.about-note strong{color:var(--tx2)}
-.about-projects-title{font-size:11px;color:var(--tx3);font-weight:800;text-transform:uppercase;letter-spacing:1.4px;margin:0 0 10px}
+.about-bio{font-size:15px;color:var(--tx2);line-height:1.75;margin-bottom:28px}
 .about-projects{display:flex;flex-direction:column;gap:10px}
 .about-proj{display:flex;align-items:center;gap:16px;padding:16px 18px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r);transition:all .2s}
 .about-proj:hover{border-color:var(--g-brd);transform:translateX(4px);background:var(--g-soft)}
@@ -6375,59 +7621,41 @@ ${_sharedCss()}
     <div class="about-head">
       <div class="about-avatar" id="about-avatar-lr"><img src="data:image/png;base64,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" alt="LR1290"></div>
       <div>
-        <div class="about-name">LR1290 — Desenvolvedor independente</div>
-        <div class="about-role">Modding · Engenharia reversa · Automação</div>
+        <div class="about-name">LR1290 — Desenvolvedor</div>
+        <div class="about-role">Engenharia reversa · Mods · Automação</div>
       </div>
     </div>
-    <p class="about-bio">Sou o LR1290, desenvolvedor independente e autodidata. Aprendi principalmente na prática: desmontando jogos, estudando arquivos e comportamentos pouco documentados, criando mods, quebrando a cabeça com problemas reais e refazendo o que não ficou bom. O ZVM nasceu dessa mesma forma de trabalhar — não de uma grande equipe ou de uma história perfeita, mas de anos de curiosidade, tentativa, erro e melhoria contínua. Hoje concentro boa parte do meu tempo em transformar essa experiência em uma ferramenta útil para quem trabalha pelo WhatsApp, enquanto continuo mexendo em projetos de modding e preservação de jogos quando encontro algo que vale a pena investigar.</p>
-    <p class="about-note"><strong>Prefiro mostrar o trabalho em vez de exagerar currículo.</strong> Abaixo estão alguns registros públicos dos projetos. No caso do SSX 2012, o próprio post da comunidade documenta a descoberta inicial e também deixa claro onde outras pessoas continuaram e ampliaram o trabalho depois.</p>
-    <div class="about-projects-title">Projetos e registros públicos</div>
+    <p class="about-bio">Sou o LR1290, engenheiro focado em engenharia reversa e automação. É essa bagagem — anos destrinchando executáveis e binários que ninguém documentou — que sustenta o ZVM: quando o WhatsApp muda algo por baixo dos panos, eu já sei mexer lá dentro. Trabalho mais recente: 14 anos depois do lançamento, destravei um painel de debug escondido no código do SSX 2012 (PS3) que libera as fases ocultas do jogo.</p>
     <div class="about-projects">
-      <a href="/planos" class="about-proj">
-        <span class="about-proj-icon">⚡</span>
-        <div>
-          <div class="about-proj-name">ZVM — Meu projeto atual</div>
-          <div class="about-proj-desc">Extensão e ecossistema que venho construindo e refinando para organização, atendimento, CRM, automações e fluxos de trabalho no WhatsApp.</div>
-        </div>
-        <span class="about-proj-arrow">→</span>
-      </a>
       <a href="https://www.reddit.com/r/SSX/comments/1uxuatc/enough_memes_major_ssx_2012_modding_advancements/" target="_blank" rel="noopener" class="about-proj">
         <span class="about-proj-icon">🔓</span>
         <div>
-          <div class="about-proj-name">SSX 2012 — Quick Track Flow e níveis de teste</div>
-          <div class="about-proj-desc">Em 2026 encontrei o menu de desenvolvimento deixado no jogo e montei a primeira forma de acessá-lo no Xbox 360/Xenia. A descoberta expôs 14 níveis de teste; depois, outros modders estudaram e ampliaram o caminho em outras plataformas.</div>
+          <div class="about-proj-name">SSX 2012 — Painel de Debug Oculto</div>
+          <div class="about-proj-desc">14 anos depois, destravei o menu de debug escondido no código e liberei as fases ocultas — post completo no r/SSX</div>
         </div>
         <span class="about-proj-arrow">→</span>
       </a>
       <a href="https://www.youtube.com/watch?v=uzizjVPHsao" target="_blank" rel="noopener" class="about-proj">
         <span class="about-proj-icon">🎬</span>
         <div>
-          <div class="about-proj-name">SSX 2012 — Registro em vídeo da descoberta</div>
-          <div class="about-proj-desc">Demonstração do menu e dos níveis de teste que deram origem à discussão e às pesquisas posteriores da comunidade.</div>
+          <div class="about-proj-name">SSX 2012 — Vídeo da Descoberta</div>
+          <div class="about-proj-desc">Gravação mostrando o painel de debug e as fases ocultas sendo acessadas</div>
         </div>
         <span class="about-proj-arrow">→</span>
       </a>
       <a href="https://archive.org/details/ssx-2012-60fps-eboot-all-versions-ps-3.7z" target="_blank" rel="noopener" class="about-proj">
         <span class="about-proj-icon">🏂</span>
         <div>
-          <div class="about-proj-name">SSX 2012 — Patch 60 FPS para PS3</div>
-          <div class="about-proj-desc">Outro projeto de modding do SSX: patch de EBOOT publicado para permitir 60 FPS em diferentes versões do jogo. É um trabalho separado da descoberta do menu de desenvolvimento.</div>
+          <div class="about-proj-name">SSX 2012 — Patch 60FPS (PS3)</div>
+          <div class="about-proj-desc">Engenharia reversa do executável para dobrar o framerate do jogo</div>
         </div>
         <span class="about-proj-arrow">→</span>
       </a>
-      <a href="https://www.gta5-mods.com/misc/remove-gen9-oiv-menyoo" target="_blank" rel="noopener" class="about-proj">
+      <a href="https://www.youtube.com/watch?v=NROunpBpkgA" target="_blank" rel="noopener" class="about-proj">
         <span class="about-proj-icon">🚗</span>
         <div>
-          <div class="about-proj-name">GTA V — REMOVE GEN9 .OIV Menyoo</div>
-          <div class="about-proj-desc">Um mod pequeno que publiquei para instalar e desfazer, via OpenIV, uma correção do aviso de GEN9 do Menyoo. É um bom retrato de como aprendi: resolvendo uma necessidade específica e compartilhando o resultado, sem fingir que sou especialista em tudo.</div>
-        </div>
-        <span class="about-proj-arrow">→</span>
-      </a>
-      <a href="https://www.gta5-mods.com/users/LR1290" target="_blank" rel="noopener" class="about-proj">
-        <span class="about-proj-icon">🧩</span>
-        <div>
-          <div class="about-proj-name">GTA5-Mods — Meu perfil público</div>
-          <div class="about-proj-desc">Perfil onde ficam meu upload e minhas interações com outros projetos. Prefiro deixar esse histórico público falar por si em vez de transformar hobby e aprendizado em um currículo inflado.</div>
+          <div class="about-proj-name">Mod Menu — GTA V</div>
+          <div class="about-proj-desc">Mod menu próprio com injeção nativa — demonstração no YouTube</div>
         </div>
         <span class="about-proj-arrow">→</span>
       </a>
@@ -6609,7 +7837,7 @@ a{text-decoration:none;color:inherit}
 
 /* ── FOOTER ── */
 .zfooter{border-top:1px solid var(--brd);padding:36px 48px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:16px}
-.zfooter-brand{font-family:'Orbitron',sans-serif;font-size:17px;font-weight:900;color:var(--g)}
+.zvm-brand{display:inline-flex;align-items:center;gap:12px}.zvm-brand-mark{display:inline-flex;align-items:center;justify-content:center;filter:drop-shadow(0 0 16px #00e67622)}.zvm-brand-mark img{display:block}.zvm-brand-word{font-family:'Orbitron',sans-serif;font-weight:900;letter-spacing:.04em;color:var(--g);font-size:clamp(24px,3vw,34px)}.zvm-brand-nav .zvm-brand-word{font-size:21px}.zvm-brand-compact .zvm-brand-word,.zvm-brand-dash .zvm-brand-word{font-size:26px}.zvm-brand-auth{justify-content:center}.zvm-brand-auth .zvm-brand-word{font-size:34px}.zfooter-brand{font-family:'Orbitron',sans-serif;font-size:17px;font-weight:900;color:var(--g)}
 .zfooter-links{display:flex;gap:24px;flex-wrap:wrap;justify-content:center}
 .zfooter-links a{font-size:16px;color:var(--tx3);transition:color .2s;font-weight:600}
 .zfooter-links a:hover{color:var(--g)}
@@ -7581,7 +8809,9 @@ async function renderAnalyticsDashboard() {
     `<tr><td>${escH(c._id)}</td><td style="text-align:center;color:#00ff87;font-weight:700">${c.count}</td><td style="text-align:right;color:#00ff87">${fmtBRL(c.total)}</td></tr>`
   ).join('') || '<tr><td colspan="3" class="empty">Sem dados</td></tr>';
 
-
+  const modRows = (stats?.byMod||[]).map((m,i) =>
+    `<tr><td>${i===0?'🥇':i===1?'🥈':i===2?'🥉':'  '} ${escH(m.name)}</td><td style="text-align:right;color:#4f8ef7;font-weight:700">${m.count} chaves</td></tr>`
+  ).join('') || '<tr><td colspan="2" class="empty">Sem dados</td></tr>';
 
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -7870,6 +9100,13 @@ tr:hover td{background:#ffffff02}
       <div class="ov"><table>
         <thead><tr><th>Email</th><th style="text-align:center">Compras</th><th style="text-align:right">Total Gasto</th></tr></thead>
         <tbody>${topClientsRows}</tbody>
+      </table></div>
+    </div>
+    <div class="sec">
+      <div class="sh"><div class="st">👮 Moderadores</div></div>
+      <div class="ov"><table>
+        <thead><tr><th>Moderador</th><th style="text-align:right">Chaves Criadas</th></tr></thead>
+        <tbody>${modRows}</tbody>
       </table></div>
     </div>
   </div>
@@ -8301,6 +9538,13 @@ async function runInternalSecurityAudit() {
       ? `${ANALYTICS_PASS.length} chars · painel analytics ativo`
       : 'Não configurado — painel analytics desativado (opcional)',
   });
+  results.push({
+    name:   'Moderadores — opcional',
+    pass:   true,
+    detail: MODS.length > 0
+      ? `${MODS.length} moderador(es) ativo(s)`
+      : 'Nenhum moderador configurado — operação solo (opcional)',
+  });
 
   // ── BLOCO 2: Fuzzing de Injeção ─────────────────────────────────────────
   // 2a. NoSQL injection em campo label (objeto $gt)
@@ -8447,6 +9691,16 @@ async function runInternalSecurityAudit() {
     pass:   APP_SECRET ? plainAdminLeak.status === 404 : true,
     detail: APP_SECRET
       ? `HTTP ${plainAdminLeak.status} (esperado 404)`
+      : 'APP_SECRET ausente — slug HMAC desativado (risco)',
+  });
+
+  // 6c. Rota /mod sem slug
+  const plainModLeak = await _probe('/mod');
+  results.push({
+    name:   'Rota /mod sem slug inacessível (APP_SECRET)',
+    pass:   APP_SECRET ? plainModLeak.status === 404 : true,
+    detail: APP_SECRET
+      ? `HTTP ${plainModLeak.status} (esperado 404)`
       : 'APP_SECRET ausente — slug HMAC desativado (risco)',
   });
 
@@ -8816,7 +10070,7 @@ const WSM = (() => {
   async function findLicenseByCode(code) {
     const k = normKey(code);
     if (!k) return null;
-    // Chaves do administrador estão em keys[] (store.keys), não em licenses
+    // Chaves do admin/mod estao em keys[] (store.keys), nao em licenses
     await ensureKeyLoaded(k);
     if (keys[k]) return _synthRec(k, keys[k]);
     await getDb(); if (!db) return null;
@@ -9410,6 +10664,17 @@ const WSM = (() => {
   ${rows}
   </div></body></html>`;
   }
+  // ── WSM_R_MOD ──────────────────────────────────────────────────
+  const WSM_R_MOD = (s => s ? '/' + s : '/wsm-mod')(_wsmDeriveSlug('mod-panel'));
+
+  // ── WSM audit log (moderação) ──────────────────────────────────
+  let wsmLogs = [];
+  const WSM_LOG_MAX = 200;
+  function addWsmLog(entry) {
+    wsmLogs.unshift({ ts: new Date().toISOString(), ...entry });
+    if (wsmLogs.length > WSM_LOG_MAX) wsmLogs = wsmLogs.slice(0, WSM_LOG_MAX);
+  }
+
   // ── WSM logs de LOGIN da extensão (formato do painel admin: keyCode/label/phone/ip/action) ──
   let wsmExtLogs = [];
   function addWsmExtLog(entry) {
@@ -9437,6 +10702,7 @@ const WSM = (() => {
   function wsmAdapt(html) {
     const _esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const wsmAdminPath = '/WSM' + WSM_R_ADMIN;
+    const wsmModPath   = '/WSM' + WSM_R_MOD;
     return html
       // Branding
       .replace(/ZVM Admin v\d+/g, 'WSM Admin')
@@ -9449,8 +10715,10 @@ const WSM = (() => {
       // Substitui slugs ZVM resolvidos (action/href injetados) pelo equivalente WSM
       // ANTES de adicionar prefixo /WSM/ para não duplicar
       .replace(new RegExp(_esc(R_ADMIN), 'g'), wsmAdminPath)
+      .replace(new RegExp(_esc(R_MOD), 'g'), wsmModPath)
       // Atualiza variáveis JS _RA/_RM
       .replace(/const _RA='[^']*'/g, `const _RA='${wsmAdminPath}'`)
+      .replace(/const _RM\s*=\s*'[^']*'/g, `const _RM='${wsmModPath}'`)
       // form actions com / raiz restantes → /WSM/
       .replace(/action="\/(?!WSM\/|http|#)/g, 'action="/WSM/')
       // hrefs internos restantes → /WSM/
@@ -9793,13 +11061,9 @@ ${CANVAS_BG}</body></html>`;
           const user = await db.collection('portal_users').findOne({ _id: email });
           if (user) {
             const token     = generateToken();
-            const tokenHash = hashResetToken(token);
             const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
             await db.collection('password_resets').deleteMany({ email });
-            // Mesmo hardening do portal ZVM: o banco guarda somente SHA-256 do
-            // token utilizável. resolveResetToken mantém leitura de registros
-            // WSM antigos em texto puro durante a migração, sem gerar novos.
-            await db.collection('password_resets').insertOne({ _id: tokenHash, email, expiresAt });
+            await db.collection('password_resets').insertOne({ _id: token, email, expiresAt });
             const resetUrl = BASE_URL + '/WSM/cliente/redefinir?token=' + token;
             // NUNCA logar resetUrl: o token troca a senha da conta. Logs vão para
             // agregadores/terceiros e viram um caminho direto de account takeover.
@@ -9826,14 +11090,14 @@ ${CANVAS_BG}</body></html>`;
         if (pass !== pass2)  { _html(renderPortalResetForm('As senhas não coincidem.', '', tk)); return true; }
         try {
           const db   = await getDb();
-          const { rec, matchedId } = await resolveResetToken(db, tk);
+          const rec  = await db.collection('password_resets').findOne({ _id: tk });
           if (!rec || new Date() > new Date(rec.expiresAt)) { _html(renderPortalResetForm('Link expirado ou inválido. Solicite um novo.', '', '')); return true; }
           const salt = genSalt();
           const passwordHash = await hashPassword(pass, salt);
           await db.collection('portal_users').updateOne({ _id: rec.email }, { $set: { passwordHash, salt } });
         // Reset de senha expulsa todas as sessoes existentes da conta.
         revokePortalSessions(rec.email);
-          await db.collection('password_resets').deleteOne({ _id: matchedId });
+          await db.collection('password_resets').deleteOne({ _id: tk });
           _html(renderPortalResetForm('', 'Senha redefinida com sucesso!', '')); return true;
         } catch(e) { _html(renderPortalResetForm('Erro temporário.', '', tk)); return true; }
       }
@@ -9916,6 +11180,65 @@ ${CANVAS_BG}</body></html>`;
 
   // ── Router do namespace /WSM (p já vem SEM o prefixo) ──
   async function route(req, res, p, url, ip) {
+    // Bridge JS da extensao WSM (injetado nas paginas /ia)
+    if (p === '/ia-bridge.js') {
+      res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache', ..._SEC_HEADERS });
+      res.end(IA_BRIDGE_JS); return;
+    }
+    // Paginas estaticas do Agente IA (salvas de ia.wascript.com.br)
+    if (p === '/ia' || p.startsWith('/ia/') || p === '/ia/') {
+      const _iaBase = path.resolve(__dirname, 'ia');
+      const _iaSub  = p.replace(/^\/ia/, '') || '/';
+      const _iaRaw  = path.resolve(_iaBase, '.' + (_iaSub.startsWith('/') ? _iaSub : '/' + _iaSub));
+      // Proteção contra path traversal. O startsWith(_iaBase) puro era burlável por
+      // IRMÃOS com o mesmo prefixo: "/ia/../ia-secrets/x" resolve para <root>/ia-secrets
+      // e passava no teste. Comparar com _iaBase + separador elimina esse caso.
+      if (_iaRaw !== _iaBase && !_iaRaw.startsWith(_iaBase + path.sep)) { res.writeHead(403); res.end('Forbidden'); return; }
+      // Redirect: diretório sem barra final → adiciona / para que ./page-style.css resolva certo
+      if (!p.endsWith('/')) {
+        try {
+          if (fs.statSync(_iaRaw).isDirectory()) {
+            res.writeHead(301, { 'Location': '/WSM' + p + '/', ..._SEC_HEADERS });
+            res.end(); return;
+          }
+        } catch (_) {}
+      }
+      const _iaCandidates = [
+        _iaRaw,
+        path.join(_iaRaw, 'index.html'),
+        _iaRaw + '.html',
+      ];
+      for (const _fp of _iaCandidates) {
+        try {
+          const _stat = fs.statSync(_fp);
+          if (_stat.isFile()) {
+            const _ext  = path.extname(_fp).toLowerCase();
+            const _mime = { '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript',
+                            '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg',
+                            '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp',
+                            '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
+                            '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf',
+                            '.otf': 'font/otf', '.eot': 'application/vnd.ms-fontobject' };
+            res.writeHead(200, {
+              'Content-Type': (_mime[_ext] || 'application/octet-stream') + (_ext === '.html' ? '; charset=utf-8' : ''),
+              'Cache-Control': _ext === '.html' ? 'no-cache' : 'public, max-age=86400',
+              ..._SEC_HEADERS,
+            });
+            if (_ext === '.html') {
+              let _html = fs.readFileSync(_fp, 'utf8');
+              const _tag = '\n<script src="/WSM/ia-bridge.js"></script>\n';
+              _html = /<\/body>/i.test(_html) ? _html.replace(/<\/body>/i, _tag + '</body>') : _html + _tag;
+              res.end(_html);
+            } else {
+              fs.createReadStream(_fp).pipe(res);
+            }
+            return;
+          }
+        } catch (_) {}
+      }
+      res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('404 — página não encontrada'); return;
+    }
+
     // ══ Portal do Cliente WSM (/cliente*) ══════════════════════════
     if (p === '/cliente' || p.startsWith('/cliente/')) {
       if (await wsmPortal(req, res, p, url, ip)) return;
@@ -9948,8 +11271,8 @@ ${CANVAS_BG}</body></html>`;
         const _old = (req.headers.cookie || '').match(/zv_admin=([a-f0-9]+)/);
         if (_old) delete sessions[_old[1]];
         const token = generateToken();
-        sessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString(), ip, loginAt: new Date().toISOString(), createdAt: new Date().toISOString(), absoluteExpiresAt: new Date(Date.now() + SESSION_ABSOLUTE_LIMIT_MS).toISOString() };
-        setSessionCookie(res, 'zv_admin', token);
+        sessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString(), ip, loginAt: new Date().toISOString() };
+        res.setHeader('Set-Cookie', `zv_admin=${token}; Path=/; HttpOnly; SameSite=Strict; Secure`);
         res.writeHead(302, { Location: '/WSM' + WSM_R_ADMIN }); res.end();
       } else {
         const msg = credOk ? 'Código 2FA inválido ou expirado' : 'Usuário ou senha incorretos';
@@ -9958,7 +11281,7 @@ ${CANVAS_BG}</body></html>`;
       return;
     }
     if (p === WSM_R_ADMIN + '/logout') {
-      clearSessionCookie(res, 'zv_admin');
+      res.setHeader('Set-Cookie', 'zv_admin=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict; Secure');
       res.writeHead(302, { Location: '/WSM' + WSM_R_ADMIN }); res.end(); return;
     }
     if (p === WSM_R_ADMIN || p === WSM_R_ADMIN + '/') {
@@ -9967,11 +11290,153 @@ ${CANVAS_BG}</body></html>`;
       await ensureExtLogsLoaded();
       // Renderiza o dashboard com as chaves e logs do banco WSM (watidy), não do ZVM (zapvoice)
       sendHtml(res, wsmAdapt(renderAdminDashboard({
-        brand:    'WSM',
         stats:    getKeyStats(keys, wsmExtLogs),
         keysHtml: buildKeysHtml(keys, wsmExtLogs),
         logsHtml: buildLogsHtml(wsmExtLogs),
       }))); return;
+    }
+
+    // ══ Mod WSM ══════════════════════════════════════════════════
+    if (p === WSM_R_MOD + '/login' && req.method === 'POST') {
+      if (MODS.length === 0) { res.writeHead(404); res.end('Not found'); return; }
+      if (!checkRateLimit(ip, 'login')) {
+        const mins = getRateLimitWait(ip, 'login');
+        sendHtml(res, wsmAdapt(renderModLogin(`⏳ Muitas tentativas. Aguarde ${mins} minuto(s).`)), 429); return;
+      }
+      const form = await parseFormBody(req);
+      const inputUser = (form.get('user') || '');
+      const inputPass = form.get('pass') || '';
+      const inputTotp = (form.get('totp') || '').trim();
+      let matchedMod = null;
+      for (const m of MODS) {
+        try {
+          const bu = Buffer.from(m.user), bi = Buffer.from(inputUser);
+          const bp = Buffer.from(m.pass), bip = Buffer.from(inputPass);
+          const userMatch = bu.length === bi.length && bu.length > 0 && crypto.timingSafeEqual(bu, bi);
+          const passMatch = bp.length === bip.length && bp.length > 0 && crypto.timingSafeEqual(bp, bip);
+          if (userMatch && passMatch && !matchedMod) matchedMod = m;
+        } catch { /* continue */ }
+      }
+      const totpOk = matchedMod ? verifyTOTP(matchedMod.totp, inputTotp) : false;
+      if (matchedMod && totpOk) {
+        rateLimitMap.delete(ip + ':login');
+        const token = generateToken();
+        modSessions[token] = { mod: matchedMod.name, modName: matchedMod.name, expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString(), ip };
+        res.setHeader('Set-Cookie', `zv_mod=${token}; Path=/; HttpOnly; SameSite=Strict; Secure`);
+        res.writeHead(302, { Location: '/WSM' + WSM_R_MOD }); res.end();
+      } else {
+        sendHtml(res, wsmAdapt(renderModLogin('Usuário, senha ou 2FA incorretos.')));
+      }
+      return;
+    }
+    if (p === WSM_R_MOD + '/logout') {
+      const _tok = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+      if (_tok) delete modSessions[_tok[1]];
+      res.setHeader('Set-Cookie', 'zv_mod=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict; Secure');
+      res.writeHead(302, { Location: '/WSM' + WSM_R_MOD }); res.end(); return;
+    }
+    if (p === WSM_R_MOD || p === WSM_R_MOD + '/') {
+      if (MODS.length === 0) { res.writeHead(404); res.end('Not found'); return; }
+      const _tok = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+      const modSess = _tok && modSessions[_tok[1]];
+      if (!modSess || new Date(modSess.expiresAt) < new Date()) { sendHtml(res, wsmAdapt(renderModLogin())); return; }
+      sendHtml(res, wsmAdapt(renderModDashboard(modSess.mod))); return;
+    }
+    // Mod API routes WSM
+    if (p === WSM_R_MOD + '/api/my-logs' && req.method === 'GET') {
+      const _tok = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+      const ms = _tok && modSessions[_tok[1]];
+      if (!ms || new Date(ms.expiresAt) < new Date()) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+      sendJson(res, { ok: true, logs: wsmLogs.slice(0, 100) }); return;
+    }
+    if (p === WSM_R_MOD + '/api/my-keys' && req.method === 'GET') {
+      const _tok = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+      const ms = _tok && modSessions[_tok[1]];
+      if (!ms || new Date(ms.expiresAt) < new Date()) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+      await ensureKeyLoaded();
+      const list = Object.entries(keys).map(([code, kv]) => ({ code, ...kv }));
+      sendJson(res, { ok: true, keys: list, total: list.length }); return;
+    }
+    if (p === WSM_R_MOD + '/api/keys' && req.method === 'POST') {
+      const _tok = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+      const ms = _tok && modSessions[_tok[1]];
+      if (!ms || new Date(ms.expiresAt) < new Date()) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+      await ensureKeyLoaded();
+      const body = await parseBody(req);
+      const code = genWsmKey();
+      const now = new Date();
+      const expireDays = parseInt(body.expireDays, 10) || 0;
+      keys[code] = {
+        label: String(body.label || 'Cliente WSM').slice(0, 60),
+        active: true, premium: body.premium !== false,
+        phones: [], uses: 0,
+        maxUses: body.maxUses != null ? parseInt(body.maxUses, 10) || -1 : -1,
+        expiresAt: expireDays > 0 ? new Date(now.getTime() + expireDays * 864e5).toISOString() : null,
+        createdAt: now.toISOString(), lastUsed: null, lastIp: null, lastPhone: null,
+        note: String(body.note || '').slice(0, 200), createdBy: ms.mod,
+      };
+      await saveKeyNow(code);
+      addWsmLog({ action: 'CREATE_KEY', code, mod: ms.mod, ip });
+      sendJson(res, { ok: true, code, key: keys[code] }); return;
+    }
+    {
+      const _wsmToggle = p.match(new RegExp(`^${WSM_R_MOD.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}/api/keys/([a-z0-9_\\-]{1,48})/toggle$`));
+      if (_wsmToggle) {
+        const _tok = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+        const ms = _tok && modSessions[_tok[1]];
+        if (!ms || new Date(ms.expiresAt) < new Date()) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+        await ensureKeyLoaded();
+        const code = normKey(_wsmToggle[1]);
+        if (!keys[code]) { sendJson(res, { error: 'not_found' }, 404); return; }
+        keys[code].active = !keys[code].active;
+        await saveKeyNow(code);
+        addWsmLog({ action: keys[code].active ? 'ACTIVATE_KEY' : 'BLOCK_KEY', code, mod: ms.mod, ip });
+        sendJson(res, { ok: true, active: keys[code].active }); return;
+      }
+    }
+    {
+      const _wsmNote = p.match(new RegExp(`^${WSM_R_MOD.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}/api/keys/([a-z0-9_\\-]{1,48})/note$`));
+      if (_wsmNote && req.method === 'POST') {
+        const _tok = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+        const ms = _tok && modSessions[_tok[1]];
+        if (!ms || new Date(ms.expiresAt) < new Date()) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+        await ensureKeyLoaded();
+        const code = normKey(_wsmNote[1]);
+        if (!keys[code]) { sendJson(res, { error: 'not_found' }, 404); return; }
+        const body = await parseBody(req);
+        keys[code].note = String(body.note || '').slice(0, 200);
+        await saveKeyNow(code);
+        sendJson(res, { ok: true }); return;
+      }
+    }
+    {
+      const _wsmRename = p.match(new RegExp(`^${WSM_R_MOD.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}/api/keys/([a-z0-9_\\-]{1,48})/rename$`));
+      if (_wsmRename && req.method === 'POST') {
+        const _tok = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+        const ms = _tok && modSessions[_tok[1]];
+        if (!ms || new Date(ms.expiresAt) < new Date()) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+        await ensureKeyLoaded();
+        const code = normKey(_wsmRename[1]);
+        if (!keys[code]) { sendJson(res, { error: 'not_found' }, 404); return; }
+        const body = await parseBody(req);
+        keys[code].label = String(body.label || '').trim().slice(0, 60) || keys[code].label;
+        await saveKeyNow(code);
+        sendJson(res, { ok: true, label: keys[code].label }); return;
+      }
+    }
+    {
+      const _wsmDel = p.match(new RegExp(`^${WSM_R_MOD.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}/api/keys/([a-z0-9_\\-]{1,48})$`));
+      if (_wsmDel && req.method === 'DELETE') {
+        const _tok = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+        const ms = _tok && modSessions[_tok[1]];
+        if (!ms || new Date(ms.expiresAt) < new Date()) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+        await ensureKeyLoaded();
+        const code = normKey(_wsmDel[1]);
+        if (!keys[code]) { sendJson(res, { error: 'not_found' }, 404); return; }
+        await deleteKey(code);
+        addWsmLog({ action: 'DELETE_KEY', code, mod: ms.mod, ip });
+        sendJson(res, { ok: true }); return;
+      }
     }
 
     if (p === '/health' && req.method === 'GET') { sendJson(res, { ok: true, tool: 'WSM', ts: new Date().toISOString() }); return; }
@@ -10046,11 +11511,6 @@ ${CANVAS_BG}</body></html>`;
       sendJson(res, { ok: true }); return;
     }
 
-    // CSRF uniforme nas mutações do painel administrativo WSM.
-    if (p.startsWith(WSM_R_ADMIN + '/api/') && !['GET','HEAD','OPTIONS'].includes(req.method) && !requireSameOriginPost(req)) {
-      sendJson(res, { error: 'invalid_origin' }, 403); return;
-    }
-
     // ── Administração de chaves WSM (slug próprio WSM_R_ADMIN) ──
     if (p === WSM_R_ADMIN + '/api/keys' && req.method === 'GET') {
       if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
@@ -10110,6 +11570,7 @@ ${CANVAS_BG}</body></html>`;
           if (action === 'note') { k.note = String(body.note || '').slice(0, 200); await saveKeyNow(code); sendJson(res, { ok: true }); return; }
           if (action === 'max-uses') { const mu = parseInt(body.maxUses, 10); k.maxUses = isNaN(mu) ? -1 : mu; await saveKeyNow(code); sendJson(res, { ok: true, maxUses: k.maxUses }); return; }
           if (action === 'modules') { k.modules = { ...(k.modules || {}), ...(body.modules || (body.module ? { [body.module]: body.value } : {})) }; await saveKeyNow(code); sendJson(res, { ok: true, modules: k.modules }); return; }
+          if (action === 'assign-mod') { k.createdBy = String(body.mod || body.modName || '').slice(0, 40); await saveKeyNow(code); sendJson(res, { ok: true }); return; }
           if (action === 'renew') {
             const days = parseInt(body.days, 10) || 0, hours = parseInt(body.hours, 10) || 0, mins = parseInt(body.mins != null ? body.mins : body.minutes, 10) || 0;
             const ms = ((days * 1440) + (hours * 60) + mins) * 60000;
@@ -10189,8 +11650,9 @@ ${CANVAS_BG}</body></html>`;
         ok: true, db: dbStatus, uptime: Math.floor(process.uptime()), ts: new Date().toISOString(),
         keys: Object.keys(keys).length,
         activeSessions: Object.keys(sessions).length,
+        modSessions: Object.keys(modSessions).length,
         portalSessions: typeof portalSessions !== 'undefined' ? Object.keys(portalSessions).length : 0,
-        logs: wsmExtLogs.length, securityAlerts: 0,
+        logs: wsmLogs.length, securityAlerts: 0,
       }); return;
     }
     if (p === WSM_R_ADMIN + '/api/session-info' && req.method === 'GET') {
@@ -10243,13 +11705,9 @@ ${CANVAS_BG}</body></html>`;
         sendJson(res, { ok: true, users: enriched }); return;
       } catch(e) { sendJson(res, { error: 'db_error', detail: e.message }, 500); return; }
     }
-    if (p === WSM_R_ADMIN + '/api/logs' && req.method === 'GET') {
+    if ((p === WSM_R_ADMIN + '/api/logs' || p === WSM_R_ADMIN + '/api/mod-logs') && req.method === 'GET') {
       if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-      await ensureExtLogsLoaded();
-      const date = String(url.searchParams.get('date') || '').slice(0, 10);
-      const q = String(url.searchParams.get('q') || '').toLowerCase().slice(0, 100);
-      const filtered = wsmExtLogs.filter(l => (!date || String(l.timestamp || '').startsWith(date)) && (!q || [l.keyCode,l.label,l.phone,l.ip].some(v => String(v || '').toLowerCase().includes(q))));
-      sendJson(res, { ok: true, logsHtml: buildLogsHtml(filtered) }); return;
+      sendJson(res, { ok: true, logs: wsmLogs }); return;
     }
     // Limpar log de acessos (botão "Limpar Log" do painel) — corrige "Erro ao limpar"
     if (p === WSM_R_ADMIN + '/api/logs' && req.method === 'DELETE') {
@@ -10268,7 +11726,21 @@ ${CANVAS_BG}</body></html>`;
       if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
       sendJson(res, { ok: true }); return;
     }
-
+    if (p === WSM_R_ADMIN + '/api/mod-logs/csv' && req.method === 'GET') {
+      if (!isAdminSession(req)) { res.writeHead(401); res.end('Unauthorized'); return; }
+      const esc = csvCell;   // csvCell tambem neutraliza formulas (=,+,-,@)
+      const lines = ['Data,Mod,Ação,Chave,Detalhe'];
+      for (const r of wsmLogs) {
+        lines.push([
+          esc(new Date(r.ts).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})),
+          esc(r.mod), esc(r.action), esc(r.code||r.keyCode||'-'), esc(r.detail||'-')
+        ].join(','));
+      }
+      const csv = lines.join('\r\n');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="wsm-logs-${new Date().toISOString().slice(0,10)}.csv"`);
+      res.writeHead(200); res.end('﻿' + csv); return;
+    }
 
   if ((p === '/install' || p === '/bem-vindo' || p === '/obrigado-pela-instalacao') && req.method === 'GET') {
     sendHtml(res, renderInstallPage()); return;
@@ -10500,7 +11972,7 @@ ${CANVAS_BG}</body></html>`;
     res.end('WSM: rota não encontrada');
   }
 
-  return { route, adminSlug: () => WSM_R_ADMIN };
+  return { route, adminSlug: () => WSM_R_ADMIN, modSlug: () => WSM_R_MOD };
 })();
 // ═══════════ FIM WSM MODULE ═══════════
 
@@ -10530,24 +12002,37 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // /static/* — ativos versionáveis do projeto (ex.: logo oficial ZVM).
+  // Rota top-level, independente do /WSM/ia (outra pasta, outra lógica de
+  // bridge JS) — path traversal bloqueado com o mesmo padrão de comparação
+  // por prefixo+separador usado ali.
+  if ((p === '/static' || p.startsWith('/static/')) && (req.method === 'GET' || req.method === 'HEAD')) {
+    const _staticBase = path.resolve(__dirname, 'static');
+    const _staticSub  = p.replace(/^\/static/, '') || '/';
+    const _staticRaw  = path.resolve(_staticBase, '.' + (_staticSub.startsWith('/') ? _staticSub : '/' + _staticSub));
+    if (_staticRaw !== _staticBase && !_staticRaw.startsWith(_staticBase + path.sep)) { res.writeHead(403); res.end('Forbidden'); return; }
+    try {
+      const _stat = fs.statSync(_staticRaw);
+      if (_stat.isFile()) {
+        const _ext  = path.extname(_staticRaw).toLowerCase();
+        const _mime = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.ico': 'image/x-icon' };
+        res.writeHead(200, { 'Content-Type': _mime[_ext] || 'application/octet-stream', 'Cache-Control': 'public, max-age=604800, immutable', ..._SEC_HEADERS });
+        if (req.method === 'HEAD') { res.end(); return; }
+        fs.createReadStream(_staticRaw).pipe(res);
+        return;
+      }
+    } catch (_) {}
+    res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('Not found'); return;
+  }
+
   if (p === '/status' && req.method === 'GET') {
     // Página pública de status operacional — propositalmente NÃO revela
     // métricas de negócio (contagem de chaves ativas/totais) nem estado
     // detalhado do Mongo. Isso já é servido só pro admin autenticado em
     // R_ADMIN+'/status'. /health continua a checagem mínima pro Render/
     // UptimeRobot, sem nenhuma dependência deste endpoint.
-    const _statusNow = Date.now();
-    if (_statusNow - _publicStatusCache.checkedAt >= PUBLIC_STATUS_DB_CACHE_MS) {
-      // Marca o instante antes do await para evitar stampede: requisições que
-      // chegarem enquanto o ping está em voo usam o último estado conhecido.
-      _publicStatusCache.checkedAt = _statusNow;
-      try {
-        const _sd = await getMongoDb();
-        await _sd.command({ ping: 1 });
-        _publicStatusCache.dbOk = true;
-      } catch { _publicStatusCache.dbOk = false; }
-    }
-    const dbOk = _publicStatusCache.dbOk;
+    let dbOk = false;
+    try { const _sd = await getMongoDb(); await _sd.command({ ping: 1 }); dbOk = true; } catch {}
     const upSec = Math.floor(process.uptime());
     const upStr = upSec < 60 ? upSec + 's' : upSec < 3600 ? Math.floor(upSec/60) + 'm' : Math.floor(upSec/3600) + 'h ' + Math.floor((upSec%3600)/60) + 'm';
     const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="60"><title>ZVM — Status</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace;color:#e0e0e0}.card{background:#111118;border:1px solid #1a1a2e;border-radius:16px;padding:36px 32px;width:100%;max-width:480px}.logo{font-size:22px;font-weight:800;color:#00e676;margin-bottom:4px;letter-spacing:-0.5px}h1{font-size:13px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:28px}.row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #1a1a2e;font-size:13px}.row:last-child{border-bottom:none}.label{color:#888}.value{font-weight:700;color:#e0e0e0}.ok{color:#00e676}.fail{color:#f05060}.ts{font-size:11px;color:#444;margin-top:20px;text-align:right}</style></head><body><div class="card"><div class="logo">⚡ ZVM</div><h1>Status do Serviço</h1><div class="row"><span class="label">API</span><span class="value ok">● Operacional</span></div><div class="row"><span class="label">Banco de Dados</span><span class="value ${dbOk?'ok':'fail'}">${dbOk?'● Conectado':'● Desconectado'}</span></div><div class="row"><span class="label">Uptime</span><span class="value">${upStr}</span></div><div class="ts">Atualizado: ${new Date().toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</div></div></body></html>`;
@@ -10559,20 +12044,20 @@ async function handleRequest(req, res) {
   const _corsH = {
     'Access-Control-Allow-Origin':  (()=>{
       const o=req.headers.origin||'';
-      if(p.startsWith(R_ADMIN)||(R_ANALYTICS&&p.startsWith(R_ANALYTICS))){return 'null';}
+      if(p.startsWith(R_ADMIN)||p.startsWith(R_MOD)||(R_ANALYTICS&&p.startsWith(R_ANALYTICS))){return 'null';}
       // /WSM/* é o namespace legado — comportamento de CORS preservado
       // exatamente como estava, sem tocar (fora de escopo desta rodada).
       if (/^\/wsm(\/|$)/i.test(p)) return o || '*';
-      // Extension API: nunca refletir uma Origin web arbitrária. Quando a
-      // allowlist está configurada, só IDs oficiais passam; enquanto ela ainda
-      // estiver vazia, preservamos compatibilidade aceitando apenas o formato
-      // chrome-extension://<id-válido>, nunca https://evil.example.
-      if (p.startsWith(R_EXT)) return isAllowedExtensionOrigin(o) || 'null';
-      // Partner API pode ter consumidor web autorizado por token; comportamento
-      // existente preservado. Webhooks são server-to-server e não precisam de
-      // CORS de navegador — negar CORS não interfere em Cakto/Payt.
-      if (p.startsWith('/api/partner')) return o || '*';
-      if (p === '/cakto/webhook' || p === '/sale/webhook' || p === '/payt/webhook') return 'null';
+      // CORS permissivo só nos namespaces com consumidor cross-origin real e
+      // mapeado: extensão ZVM (chrome-extension://), API de parceiro e os
+      // webhooks (que não dependem de CORS de navegador pra funcionar, mas
+      // preservam o header por compatibilidade com testes/monitoramento
+      // externos). O portal público (HTML/JSON do site) não tem consumidor
+      // cross-origin conhecido — 'null' aqui replica o mesmo padrão já usado
+      // pra bloquear admin/mod/analytics acima.
+      const isCrossOriginNamespace = p.startsWith(R_EXT) || p.startsWith('/api/partner')
+        || p === '/cakto/webhook' || p === '/sale/webhook' || p === '/payt/webhook';
+      if (isCrossOriginNamespace) return o || '*';
       return 'null';
     })(),
     'Access-Control-Allow-Methods': 'POST,GET,OPTIONS,DELETE',
@@ -10601,6 +12086,7 @@ async function handleRequest(req, res) {
 
   if (APP_SECRET) {
     if (p === '/admin' || p.startsWith('/admin/')) { res.writeHead(404); res.end('Not found'); return; }
+    if (p === '/mod'  || p.startsWith('/mod/'))   { res.writeHead(404); res.end('Not found'); return; }
     if (p === '/analytics' || p.startsWith('/analytics/')) { res.writeHead(404); res.end('Not found'); return; }
   }
 
@@ -11223,6 +12709,279 @@ async function handleRequest(req, res) {
     sendHtml(res, renderAdminDashboard({ portalUserCount })); return;
   }
 
+  if (p === R_MOD+'/login' && req.method === 'POST') {
+    if (MODS.length === 0) { res.writeHead(404); res.end('Not found'); return; }
+    if (!checkRateLimit(ip, 'login')) {
+      const mins = getRateLimitWait(ip, 'login');
+      sendHtml(res, renderModLogin(`⏳ Muitas tentativas. Aguarde ${mins} minuto(s).`), 429); return;
+    }
+    const form        = await parseFormBody(req);
+    const inputUser   = form.get('user') || '';
+    const inputPass   = form.get('pass') || '';
+    const inputTotp   = (form.get('totp') || '').trim();
+    let matchedMod = null;
+    for (const m of MODS) {
+      try {
+        const bu = Buffer.from(m.user), bi = Buffer.from(inputUser);
+        const bp = Buffer.from(m.pass), bip = Buffer.from(inputPass);
+        const userMatch = bu.length === bi.length && bu.length > 0 && crypto.timingSafeEqual(bu, bi);
+        const passMatch = bp.length === bip.length && bp.length > 0 && crypto.timingSafeEqual(bp, bip);
+        if (userMatch && passMatch && !matchedMod) matchedMod = m;
+      } catch { /* continue */ }
+    }
+    const totpOk = matchedMod ? verifyTOTP(matchedMod.totp, inputTotp) : false;
+    if (matchedMod && totpOk) {
+      rateLimitMap.delete(ip + ':login');
+      const _oldModMatch = (req.headers.cookie||'').match(/zv_mod=([a-f0-9]+)/);
+      if (_oldModMatch) delete modSessions[_oldModMatch[1]];
+      const token = generateToken();
+      modSessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString(), modName: matchedMod.name, ip, loginAt: new Date().toISOString(), createdAt: new Date().toISOString(), absoluteExpiresAt: new Date(Date.now() + SESSION_ABSOLUTE_LIMIT_MS).toISOString() };
+      setSessionCookie(res, 'zv_mod', token);
+      res.writeHead(302, { Location: R_MOD }); res.end();
+    } else {
+      const msg = matchedMod && !totpOk ? 'Código 2FA inválido ou expirado' : 'Usuário ou senha incorretos';
+      addSecurityAlert('BRUTE_FORCE', `Mod login falhou — ${matchedMod?'2FA inválido':'user não encontrado'} · user="${String(inputUser).slice(0,20)}"`, ip);
+      sendHtml(res, renderModLogin(msg));
+    }
+    return;
+  }
+
+  if (p === R_MOD+'/logout') {
+    clearSessionCookie(res, 'zv_mod');
+    res.writeHead(302, { Location: R_MOD }); res.end(); return;
+  }
+
+  if (p === R_MOD || p === R_MOD+'/') {
+    if (MODS.length === 0) { res.writeHead(404); res.end('Not found'); return; }
+    if (!isModSession(req)) { sendHtml(res, renderModLogin()); return; }
+    const _mc2 = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+    const _ms2 = _mc2 ? modSessions[_mc2[1]] : null;
+    sendHtml(res, renderModDashboard(_ms2 ? _ms2.modName : 'Moderador')); return;
+  }
+
+  if (p === R_MOD+'/api/keys' && req.method === 'POST') {
+    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
+    if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate limit' }, 429); return; }
+    const _modCookie = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+    const _modSess   = _modCookie ? modSessions[_modCookie[1]] : null;
+    const modName    = _modSess ? _modSess.modName : 'Moderador';
+    const body = await parseBody(req);
+    if (!body.label || !String(body.label).trim()) { sendJson(res, { error: 'label obrigatório' }, 400); return; }
+    const qty = Math.min(50, Math.max(1, parseInt(body.qty) || 1));
+    const { expiresAt, expireDuration } = parseKeyExpiryFromBody(body, { allowMinutes: true });
+    const maxUses = Math.max(1, parseInt(body.maxUses) || MAX_USES);
+    const label = String(body.label).trim().replace(/[<>"']/g, '').slice(0, 60);
+    const createdCodes = [];
+    for (let qi = 0; qi < qty; qi++) {
+      const code = generateCode();
+      keys[code] = {
+        label: qty > 1 ? `${label} #${qi+1}` : label,
+        active: true, createdAt: new Date().toISOString(),
+        uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null,
+        deviceId: null, wppVersion: null, note: '',
+        createdBy: modName,
+        expiresAt, expireDuration: expireDuration || null,
+        maxUses, warnCount: 0,
+        modules: { ...DEFAULT_MODULES, zapSaver: true },
+      };
+      saveKey(code);
+      createdCodes.push(code);
+    }
+    addModLog({ mod: modName, action: 'key_created', keyCode: createdCodes.join(', ').slice(0,120), label, detail: qty > 1 ? `${qty} chaves` : undefined }).catch(()=>{});
+    sendJson(res, { ok: true, key: createdCodes[0], keys: createdCodes }); return;
+  }
+
+  if (p === R_MOD+'/api/my-keys' && req.method === 'GET') {
+    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const _mc = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+    const myModName = (_mc && modSessions[_mc[1]]) ? modSessions[_mc[1]].modName : null;
+    if (!myModName) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    try {
+      const db  = await getMongoDb();
+      const doc = await db.collection('store').findOne({ _id: 'keys' });
+      const dbKeys = (doc && doc.data) ? doc.data : {};
+      const search = '[Mod: ' + myModName + ']';
+      const myKeys = Object.entries(dbKeys)
+        .filter(([, k]) => k.createdBy === myModName || (k.note && k.note.includes(search)))
+        .map(([code, k]) => ({
+          code, label: k.label, maxUses: k.maxUses,
+          active: k.active && !isKeyExpired(k),
+          expiresAt: k.expiresAt || null,
+          deferred: !!(k.expireDuration && !k.expiresAt),
+          createdAt: k.createdAt || '', note: (k.note || '').replace(/\[Mod:[^\]]+\]\s*/g, '').trim(),
+          zapSaver: !!(k.modules && k.modules.zapSaver),
+          isSuspect: isKeySuspect(code, k),
+        }))
+        .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      // Compute real ranking across all mods from full DB
+      const rankMap = {};
+      MODS.forEach(m => { rankMap[m.name] = 0; });
+      Object.values(dbKeys).forEach(k => {
+        const n = k.createdBy || ((k.note||'').match(/\[Mod: ([^\]]+)\]/)?.[1] || '');
+        if (n && Object.prototype.hasOwnProperty.call(rankMap, n)) rankMap[n]++;
+      });
+      const ranking = Object.entries(rankMap)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count);
+      sendJson(res, { ok: true, keys: myKeys, modName: myModName, ranking }); return;
+    } catch(e) {
+      console.error('[DB] my-keys:', e.message);
+      sendJson(res, { error: 'db_error' }, 500); return;
+    }
+  }
+
+  // Mod: logs de acesso das PRÓPRIAS chaves — sem telefone, sem IP (LGPD/acesso restrito)
+  if (p === R_MOD+'/api/my-logs' && req.method === 'GET') {
+    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const _mcL = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+    const myModNameL = (_mcL && modSessions[_mcL[1]]) ? modSessions[_mcL[1]].modName : null;
+    if (!myModNameL) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const searchL = '[Mod: ' + myModNameL + ']';
+    const myCodes = new Set(Object.entries(keys)
+      .filter(([, k]) => k.createdBy === myModNameL || (k.note && k.note.includes(searchL)))
+      .map(([code]) => code));
+    const myLogs = logs
+      .filter(l => l.keyCode && myCodes.has(l.keyCode))
+      .slice(0, 200)
+      .map(l => ({ timestamp: l.timestamp, keyCode: l.keyCode, label: l.label || '', action: l.action || '' }));
+    sendJson(res, { ok: true, logs: myLogs }); return;
+  }
+
+  if (p.startsWith(R_MOD+'/api/keys/') && p.endsWith('/note') && req.method === 'POST') {
+    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
+    const codeFromUrl = sanitizeId(decodeURIComponent(p.slice((R_MOD+'/api/keys/').length, -'/note'.length)), 30);
+    if (!codeFromUrl) { sendJson(res, { error: 'not found' }, 404); return; }
+    if (!await ensureKeyLoaded(codeFromUrl)) { sendJson(res, { error: 'not found' }, 404); return; }
+    const _mc3 = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+    const _ms3 = _mc3 ? modSessions[_mc3[1]] : null;
+    const _myName3 = _ms3 ? _ms3.modName : null;
+    // Falha fechada: sem nome de moderador na sessão não há como provar posse da
+    // chave. A condição antiga (`_myName3 && !_noteOwner3`) PULAVA a checagem quando
+    // _myName3 era null, deixando editar a nota de qualquer chave.
+    if (!_myName3) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const _noteOwner3 = keys[codeFromUrl].createdBy === _myName3 || (keys[codeFromUrl].note||'').includes('[Mod: '+_myName3+']');
+    if (!_noteOwner3) {
+      sendJson(res, { error: 'acesso negado' }, 403); return;
+    }
+    const body = await parseBody(req);
+    const newNote = String(body.note||'').slice(0, 400);
+    const existingNote = keys[codeFromUrl].note || '';
+    const modTag = (existingNote.match(/^\[Mod: [^\]]+\]/) || [''])[0];
+    keys[codeFromUrl].note = (modTag + (newNote ? (modTag ? ' ' : '') + newNote : '')).trim().slice(0, 500);
+    saveKey(codeFromUrl);
+    sendJson(res, { ok: true }); return;
+  }
+
+  // Mod: toggle (block/unblock) own key
+  const _modToggleMatch = p.match(new RegExp(`^${R_MOD.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}/api/keys/([a-z0-9_\\-]{1,30})/toggle$`));
+  if (_modToggleMatch && req.method === 'POST') {
+    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const _mcT = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+    const _msT = _mcT ? modSessions[_mcT[1]] : null;
+    const _myNameT = _msT ? _msT.modName : null;
+    if (!_myNameT) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const togCode = sanitizeId(decodeURIComponent(_modToggleMatch[1]), 30);
+    if (!await ensureKeyLoaded(togCode)) { sendJson(res, { error: 'not found' }, 404); return; }
+    const kTog = keys[togCode];
+    if (!kTog) { sendJson(res, { error: 'not found' }, 404); return; }
+    const isOwnerT = kTog.createdBy === _myNameT || ((kTog.note||'').includes('[Mod: '+_myNameT+']'));
+    if (!isOwnerT) { sendJson(res, { error: 'acesso negado' }, 403); return; }
+    kTog.active = !kTog.active;
+    saveKey(togCode);
+    addModLog({ mod: _myNameT, action: kTog.active ? 'key_enabled' : 'key_disabled', keyCode: togCode, label: kTog.label }).catch(()=>{});
+    sendJson(res, { ok: true, active: kTog.active }); return;
+  }
+
+  // Mod: clear suspect flag on own key
+  const _modCsMatch = p.match(new RegExp(`^${R_MOD.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}/api/keys/([a-z0-9_\\-]{1,30})/clear-suspect$`));
+  if (_modCsMatch && req.method === 'POST') {
+    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const _mcCs = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+    const _msCs = _mcCs ? modSessions[_mcCs[1]] : null;
+    const _myNameCs = _msCs ? _msCs.modName : null;
+    if (!_myNameCs) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const csCode = sanitizeId(decodeURIComponent(_modCsMatch[1]), 30);
+    if (!await ensureKeyLoaded(csCode)) { sendJson(res, { error: 'not found' }, 404); return; }
+    const kCs = keys[csCode];
+    if (!kCs) { sendJson(res, { error: 'not found' }, 404); return; }
+    const isOwnerCs = kCs.createdBy === _myNameCs || ((kCs.note||'').includes('[Mod: '+_myNameCs+']'));
+    if (!isOwnerCs) { sendJson(res, { error: 'acesso negado' }, 403); return; }
+    kCs.suspectClearedAt = new Date().toISOString();
+    saveKey(csCode);
+    addModLog({ mod: _myNameCs, action: 'suspect_cleared', keyCode: csCode, label: kCs.label }).catch(()=>{});
+    sendJson(res, { ok: true }); return;
+  }
+
+  // Mod: renew (add time) to own key
+  const _modRenewMatch = p.match(new RegExp(`^${R_MOD.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}/api/keys/([a-z0-9_\\-]{1,30})/renew$`));
+  if (_modRenewMatch && req.method === 'POST') {
+    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const _mcRw = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+    const _msRw = _mcRw ? modSessions[_mcRw[1]] : null;
+    const _myNameRw = _msRw ? _msRw.modName : null;
+    if (!_myNameRw) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const rwCode = sanitizeId(decodeURIComponent(_modRenewMatch[1]), 30);
+    if (!await ensureKeyLoaded(rwCode)) { sendJson(res, { error: 'not found' }, 404); return; }
+    const kRw = keys[rwCode];
+    if (!kRw) { sendJson(res, { error: 'not found' }, 404); return; }
+    const isOwnerRw = kRw.createdBy === _myNameRw || ((kRw.note||'').includes('[Mod: '+_myNameRw+']'));
+    if (!isOwnerRw) { sendJson(res, { error: 'acesso negado' }, 403); return; }
+    const bodyRw = await parseBody(req);
+    const days = parseInt(bodyRw.days||0), hours = parseInt(bodyRw.hours||0);
+    if (!days && !hours) { sendJson(res, { error: 'nenhum tempo informado' }, 400); return; }
+    const addMs = ((days*1440)+(hours*60))*60000;
+    const base = (kRw.expiresAt && !isKeyExpired(kRw)) ? new Date(kRw.expiresAt).getTime() : Date.now();
+    kRw.expiresAt = new Date(base+addMs).toISOString();
+    kRw.expireDuration = null;
+    kRw.active = true;
+    kRw.warnEmailSent = false;
+    saveKey(rwCode);
+    addModLog({ mod: _myNameRw, action: 'key_renewed', keyCode: rwCode, label: kRw.label, detail: `+${days}d${hours}h` }).catch(()=>{});
+    sendJson(res, { ok: true, expiresAt: kRw.expiresAt }); return;
+  }
+
+  // Mod: delete own key
+  const _modDelMatch = p.match(new RegExp(`^${R_MOD.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}/api/keys/([a-z0-9_\\-]{1,30})$`));
+  if (_modDelMatch && req.method === 'DELETE') {
+    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const _mc4 = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+    const _ms4 = _mc4 ? modSessions[_mc4[1]] : null;
+    const _myName4 = _ms4 ? _ms4.modName : null;
+    if (!_myName4) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const delCode = decodeURIComponent(_modDelMatch[1]);
+    if (!await ensureKeyLoaded(delCode)) { sendJson(res, { error: 'not found' }, 404); return; }
+    const kDel = keys[delCode];
+    if (!kDel) { sendJson(res, { error: 'not found' }, 404); return; }
+    const isOwner = kDel.createdBy === _myName4 || ((kDel.note||'').includes('[Mod: '+_myName4+']'));
+    if (!isOwner) { sendJson(res, { error: 'acesso negado' }, 403); return; }
+    try { await deleteKeyFromDb(delCode); } catch(e) { sendJson(res, { error: 'db_error' }, 500); return; }
+    sendJson(res, { ok: true }); return;
+  }
+
+  // Mod: rename own key
+  const _modRenameMatch = p.match(new RegExp(`^${R_MOD.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}/api/keys/([a-z0-9_\\-]{1,30})/rename$`));
+  if (_modRenameMatch && req.method === 'POST') {
+    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const _mc5 = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+    const _ms5 = _mc5 ? modSessions[_mc5[1]] : null;
+    const _myName5 = _ms5 ? _ms5.modName : null;
+    if (!_myName5) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const renCode = decodeURIComponent(_modRenameMatch[1]);
+    if (!await ensureKeyLoaded(renCode)) { sendJson(res, { error: 'not found' }, 404); return; }
+    const kRen = keys[renCode];
+    if (!kRen) { sendJson(res, { error: 'not found' }, 404); return; }
+    const isOwner = kRen.createdBy === _myName5 || ((kRen.note||'').includes('[Mod: '+_myName5+']'));
+    if (!isOwner) { sendJson(res, { error: 'acesso negado' }, 403); return; }
+    const body = await parseBody(req);
+    const newLabel = String(body.label || '').trim().slice(0, 60);
+    if (!newLabel) { sendJson(res, { error: 'label obrigatório' }, 400); return; }
+    kRen.label = newLabel;
+    saveKey(renCode);
+    sendJson(res, { ok: true }); return;
+  }
+
   function extractCode(pattern) {
     const match = p.match(pattern);
     if (!match) return null;
@@ -11231,10 +12990,6 @@ async function handleRequest(req, res) {
     return code;
   }
   const RA = R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  // Defesa CSRF uniforme para toda mutação administrativa autenticada.
-  if (p.startsWith(R_ADMIN + '/api/') && !['GET','HEAD','OPTIONS'].includes(req.method) && !requireSameOriginPost(req)) {
-    sendJson(res, { error: 'invalid_origin' }, 403); return;
-  }
 
   // /status — diagnóstico completo do servidor (admin-gated, substitui /health público)
   if (p === R_ADMIN+'/status' && req.method === 'GET') {
@@ -11245,7 +13000,7 @@ async function handleRequest(req, res) {
     sendJson(res, {
       ok: true, db: dbStatus, uptime: uptimeSec, ts: new Date().toISOString(),
       keys: Object.keys(keys).length, activeSessions: Object.keys(sessions).length,
-      portalSessions: Object.keys(portalSessions).length,
+      modSessions: Object.keys(modSessions).length, portalSessions: Object.keys(portalSessions).length,
       logs: logs.length, securityAlerts: securityAlerts.length,
     }); return;
   }
@@ -11263,7 +13018,7 @@ async function handleRequest(req, res) {
     if (!_ip) { sendJson(res, { error: 'ip_required' }, 400); return; }
     ipBlacklist.add(_ip);
     await saveIpBlacklist();
-    addAdminAuditLog({ actor: 'admin', action: 'ip_blacklist_add', keyCode: '-', label: '-', detail: _ip }).catch(()=>{});
+    addModLog({ mod: 'admin', action: 'ip_blacklist_add', keyCode: '-', label: '-', detail: _ip }).catch(()=>{});
     sendJson(res, { ok: true, ips: [...ipBlacklist] }); return;
   }
   if (p === R_ADMIN+'/api/ip-blacklist/remove' && req.method === 'POST') {
@@ -11273,26 +13028,46 @@ async function handleRequest(req, res) {
     const _ip = String(_b.ip || '').trim().slice(0, 45);
     ipBlacklist.delete(_ip);
     await saveIpBlacklist();
-    addAdminAuditLog({ actor: 'admin', action: 'ip_blacklist_remove', keyCode: '-', label: '-', detail: _ip }).catch(()=>{});
+    addModLog({ mod: 'admin', action: 'ip_blacklist_remove', keyCode: '-', label: '-', detail: _ip }).catch(()=>{});
     sendJson(res, { ok: true, ips: [...ipBlacklist] }); return;
   }
 
-  // ── Exportar auditoria administrativa CSV ───────────────────────────────
-  if (p === R_ADMIN+'/api/audit-logs/csv' && req.method === 'GET') {
+  // ── Exportar Mod Logs CSV ────────────────────────────────────────────────────
+  if (p === R_ADMIN+'/api/mod-logs/csv' && req.method === 'GET') {
     if (!isAdminSession(req)) { res.writeHead(401); res.end('Unauthorized'); return; }
     try {
       const db = await getMongoDb();
-      const rows = await db.collection('admin_audit_logs').find({}).sort({ ts: -1 }).limit(5000).toArray();
-      const esc = csvCell;
-      const lines = ['Data,Ator,Ação,Chave,Cliente,Detalhe'];
-      for (const r of rows) lines.push([esc(new Date(r.ts).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})),esc(r.actor||'admin'),esc(r.action),esc(r.keyCode),esc(r.label),esc(r.detail)].join(','));
+      const rows = await db.collection('mod_logs').find({}).sort({ ts: -1 }).limit(5000).toArray();
+      const esc = csvCell;   // csvCell tambem neutraliza formulas (=,+,-,@)
+      const lines = ['Data,Mod,Ação,Chave,Label,Detalhe'];
+      for (const r of rows) {
+        lines.push([
+          esc(new Date(r.ts).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})),
+          esc(r.mod), esc(r.action), esc(r.keyCode), esc(r.label), esc(r.detail)
+        ].join(','));
+      }
       const csv = lines.join('\r\n');
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="zvm-admin-audit-${new Date().toISOString().slice(0,10)}.csv"`);
+      res.setHeader('Content-Disposition', `attachment; filename="mod-logs-${new Date().toISOString().slice(0,10)}.csv"`);
       Object.entries(_SEC_HEADERS).forEach(([k,v]) => res.setHeader(k, v));
-      res.writeHead(200); res.end('﻿' + csv);
-    } catch (e) { sendJson(res, { error: 'audit_export_failed' }, 500); }
+      res.writeHead(200);
+      res.end('﻿' + csv); // BOM para Excel reconhecer UTF-8
+    } catch (e) { sendJson(res, { error: e.message }, 500); }
     return;
+  }
+
+  // ── TOTP Setup para Mods ─────────────────────────────────────────────────────
+  if (p === R_ADMIN+'/api/mods/totp-setup' && req.method === 'GET') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const setups = MODS.map(m => ({
+      name: m.name,
+      user: m.user,
+      hasTotp: !!m.totp,
+      qrUrl: m.totp
+        ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`otpauth://totp/ZVM:${encodeURIComponent(m.user)}?secret=${m.totp}&issuer=ZVM`)}`
+        : null,
+    }));
+    sendJson(res, { ok: true, mods: setups }); return;
   }
 
   // ── Session info (para warning de expiração no frontend) ─────────────────────
@@ -11346,7 +13121,7 @@ async function handleRequest(req, res) {
       modules: { ...DEFAULT_MODULES, zapSaver: true },
     };
     saveKey(code);
-    addAdminAuditLog({ actor: 'admin', action: 'key_created', keyCode: code, label: keys[code].label }).catch(()=>{});
+    addModLog({ mod: 'admin', action: 'key_created', keyCode: code, label: keys[code].label }).catch(()=>{});
     sendJson(res, { ok: true, key: code }); return;
   }
 
@@ -11358,7 +13133,7 @@ async function handleRequest(req, res) {
     k.active = !k.active;
     saveKey(codeToggle);
     if (!k.active) fireWebhook('key_blocked', codeToggle, 'Bloqueio manual pelo admin');
-    addAdminAuditLog({ actor: 'admin', action: k.active ? 'key_enabled' : 'key_disabled', keyCode: codeToggle, label: k.label }).catch(()=>{});
+    addModLog({ mod: 'admin', action: k.active ? 'key_enabled' : 'key_disabled', keyCode: codeToggle, label: k.label }).catch(()=>{});
     sendJson(res, { ok: true, active: k.active }); return;
   }
 
@@ -11369,7 +13144,7 @@ async function handleRequest(req, res) {
     if (!kCs) { sendJson(res, { error: 'not found' }, 404); return; }
     kCs.suspectClearedAt = new Date().toISOString();
     saveKey(codeClearSuspect);
-    addAdminAuditLog({ actor: 'admin', action: 'suspect_cleared', keyCode: codeClearSuspect, label: kCs.label }).catch(()=>{});
+    addModLog({ mod: 'admin', action: 'suspect_cleared', keyCode: codeClearSuspect, label: kCs.label }).catch(()=>{});
     sendJson(res, { ok: true }); return;
   }
 
@@ -11390,7 +13165,7 @@ async function handleRequest(req, res) {
     kRenew.warnEmailSent = false;
     saveKey(codeRenew);
     await addLog({ keyCode: codeRenew, label: kRenew.label, phone: '-', ip, wppVersion: '-', action: 'renewed' });
-    addAdminAuditLog({ actor: 'admin', action: 'key_renewed', keyCode: codeRenew, label: kRenew.label, detail: `+${days}d${hours}h${mins}m` }).catch(()=>{});
+    addModLog({ mod: 'admin', action: 'key_renewed', keyCode: codeRenew, label: kRenew.label, detail: `+${days}d${hours}h${mins}m` }).catch(()=>{});
     sendJson(res, { ok: true, expiresAt: kRenew.expiresAt }); return;
   }
 
@@ -11404,7 +13179,7 @@ async function handleRequest(req, res) {
     if (isNaN(maxUses) || maxUses < -1) { sendJson(res, { error: 'invalid' }, 400); return; }
     kMu.maxUses = maxUses;
     saveKey(codeMaxUses);
-    addAdminAuditLog({ actor: 'admin', action: 'key_maxuses', keyCode: codeMaxUses, label: kMu.label, detail: `maxUses=${maxUses}` }).catch(()=>{});
+    addModLog({ mod: 'admin', action: 'key_maxuses', keyCode: codeMaxUses, label: kMu.label, detail: `maxUses=${maxUses}` }).catch(()=>{});
     sendJson(res, { ok: true, maxUses }); return;
   }
 
@@ -11418,7 +13193,7 @@ async function handleRequest(req, res) {
     if (!label) { sendJson(res, { error: 'label vazio' }, 400); return; }
     kLbl.label = label;
     saveKey(codeLabel).catch(()=>{});
-    addAdminAuditLog({ actor: 'admin', action: 'key_renamed', keyCode: codeLabel, label, detail: `→ ${label}` }).catch(()=>{});
+    addModLog({ mod: 'admin', action: 'key_renamed', keyCode: codeLabel, label, detail: `→ ${label}` }).catch(()=>{});
     sendJson(res, { ok: true, label }); return;
   }
 
@@ -11463,7 +13238,7 @@ async function handleRequest(req, res) {
     if (!rawCodes.length) { sendJson(res, { error: 'nenhum código enviado' }, 400); return; }
     const validCodes = rawCodes.map(c => sanitizeId(String(c || ''), 40)).filter(c => c && keys[c]);
     await Promise.all(validCodes.map(c => deleteKeyFromDb(c).catch(e => console.error('[DB] batch del:', e.message))));
-    addAdminAuditLog({ actor: 'admin', action: 'key_batch_deleted', keyCode: '-', label: '-', detail: `${validCodes.length} chave(s): ${validCodes.slice(0,5).join(', ')}` }).catch(()=>{});
+    addModLog({ mod: 'admin', action: 'key_batch_deleted', keyCode: '-', label: '-', detail: `${validCodes.length} chave(s): ${validCodes.slice(0,5).join(', ')}` }).catch(()=>{});
     sendJson(res, { ok: true, deleted: validCodes.length }); return;
   }
 
@@ -11479,13 +13254,27 @@ async function handleRequest(req, res) {
   }
 
 
+  const codeAssignMod = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/assign-mod$`));
+  if (codeAssignMod && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const k = await adminGetKey(codeAssignMod);
+    if (!k) { sendJson(res, { error: 'not found' }, 404); return; }
+    const body    = await parseBody(req);
+    const modName = String(body.modName || '').trim().slice(0, 60);
+    k.createdBy = modName || null;
+    let note = (k.note || '').replace(/\[Mod: [^\]]+\]\s*/g, '').trim();
+    k.note = note.slice(0, 500);
+    saveKey(codeAssignMod);
+    addModLog({ mod: 'admin', action: 'key_assign_mod', keyCode: codeAssignMod, label: k.label, detail: modName || '(removido)' }).catch(()=>{});
+    sendJson(res, { ok: true, modName, note: k.note }); return;
+  }
 
   const codeDelete = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)$`));
   if (codeDelete && req.method === 'DELETE') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const _delLabel = keys[codeDelete]?.label || '';
     try { await deleteKeyFromDb(codeDelete); } catch(e) { sendJson(res, { error: 'db_error' }, 500); return; }
-    addAdminAuditLog({ actor: 'admin', action: 'key_deleted', keyCode: codeDelete, label: _delLabel }).catch(()=>{});
+    addModLog({ mod: 'admin', action: 'key_deleted', keyCode: codeDelete, label: _delLabel }).catch(()=>{});
     sendJson(res, { ok: true }); return;
   }
 
@@ -11517,7 +13306,15 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true, remaining: logs.length }); return;
   }
 
-
+  if (p === R_ADMIN+'/api/mod-logs' && req.method === 'GET') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    try {
+      const _mlDb = await getMongoDb();
+      const _mlLogs = await _mlDb.collection('mod_logs').find({}).sort({ ts: -1 }).limit(200).toArray();
+      sendJson(res, { logs: _mlLogs });
+    } catch(e) { sendJson(res, { error: e.message }, 500); }
+    return;
+  }
 
   if (p === R_ADMIN+'/api/logs' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
@@ -12549,7 +14346,7 @@ async function handleRequest(req, res) {
   sendJson(res, { error: 'not_found' }, 404);
 }
 
-async function gracefulShutdown(signal, exitCode = 0) {
+async function gracefulShutdown(signal) {
   console.log(`[${signal}] Encerrando servidor graciosamente...`);
 
   // 1. Para o timer de keep-alive para não criar conexões novas durante o dreno
@@ -12561,15 +14358,11 @@ async function gracefulShutdown(signal, exitCode = 0) {
     process.exit(1);
   }, 8_000).unref();
 
-  // 3. Para de aceitar novas conexões, encerra keep-alives ociosos e deixa
-  // requests em andamento concluírem dentro da janela de segurança acima.
-  // Não usamos closeAllConnections() aqui: isso derrubaria transações ativas
-  // (por exemplo um webhook já autenticado) no meio de um deploy do Render.
+  // 3. Para de aceitar novas conexões e força fechamento de sockets ociosos
   if (_httpServer) {
-    await new Promise(resolve => {
-      _httpServer.close(resolve);
-      _httpServer.closeIdleConnections?.();
-    });
+    _httpServer.closeAllConnections?.();    // Node 18.2+: drena keep-alives imediatamente
+    _httpServer.closeIdleConnections?.();   // Node 18.2+: sockets em wait sem request ativo
+    await new Promise(resolve => _httpServer.close(resolve));
     console.log('[SHUTDOWN] HTTP server drenado');
   }
 
@@ -12583,7 +14376,7 @@ async function gracefulShutdown(signal, exitCode = 0) {
   } catch(e) { console.error('[SHUTDOWN] Erro ao fechar MongoDB:', e.message); }
 
   clearTimeout(forceExit);
-  process.exit(exitCode);
+  process.exit(0);
 }
 if (require.main === module) {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
@@ -12606,7 +14399,8 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
       // vars (APP_SECRET/ADMIN_USER) — reimprimi-las só cria mais um lugar
       // (agregador de log, dashboard do host) onde um segredo pode vazar.
       `🔑 Admin ZVM: configurado (rota derivada de APP_SECRET)\n` +
-      `🔑 Admin WSM: configurado (banco: ${process.env.WSM_MONGODB_DB || 'watidy'})\n` +
+      `🔑 Admin WSM / Mod WSM: configurados (banco: ${process.env.WSM_MONGODB_DB || 'watidy'})\n` +
+      `👮 Mod:   ${MODS.length > 0 ? R_MOD+' | '+MODS.length+' mod(s): '+MODS.map(m=>m.name).join(', ') : '⚠ inativo'}\n` +
       `📊 Analytics: ${ANALYTICS_PASS ? 'ATIVO' : '⚠ INATIVO'} | Extension: ${R_EXT}/v3/key | Webhook: ${WEBHOOK_URL || 'não configurado'}\n` +
       `🗂  Logs: retenção ${LOG_RETENTION_DAYS}d (LGPD) | máx ${LOG_MAX} em memória`
     );
@@ -12627,22 +14421,12 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
       });
     };
 
-    let _fatalShutdownStarted = false;
-    const fatalShutdown = (kind, err) => {
-      console.error(`[${kind}]`, err && (err.stack || err.message) || err);
-      if (_fatalShutdownStarted) return;
-      _fatalShutdownStarted = true;
-      gracefulShutdown(kind, 1).catch(() => process.exit(1));
-    };
-    process.on('uncaughtException',  err => fatalShutdown('uncaughtException', err));
-    process.on('unhandledRejection', err => fatalShutdown('unhandledRejection', err));
+    process.on('uncaughtException',  err => console.error('[uncaughtException]', err));
+    process.on('unhandledRejection', err => console.error('[unhandledRejection]', err));
 
-    const server = http.createServer({ maxHeaderSize: 16 * 1024 }, safeHandler);
-    server.requestTimeout   = 30000;
-    server.headersTimeout   = 30000;
+    const server = http.createServer(safeHandler);
     server.keepAliveTimeout = 65000; // acima dos 60s do LB do Render
-    server.maxHeadersCount  = 100;
-    server.maxRequestsPerSocket = 1000;
+    server.headersTimeout   = 66000;
     _httpServer = server;
     // Erro amigável quando a porta já está em uso (evita stack trace confuso de EADDRINUSE)
     server.on('error', (err) => {
@@ -12727,8 +14511,10 @@ module.exports.__test = Object.freeze({
   setSessionCookie,
   clearSessionCookie,
   isAdminSession,
+  isModSession,
   isAnalyticsSession,
   sessions,
+  modSessions,
   analyticsSessions,
   SESSION_ABSOLUTE_LIMIT_MS,
   verifyTOTP,
@@ -12753,8 +14539,5 @@ module.exports.__test = Object.freeze({
   authorizeExtensionKeySession,
   refreshExtensionSession,
   resolveUsageKey,
-  normalizeClientIp,
-  isAllowedExtensionOrigin,
-  isAllowedExtensionCallback,
   _SEC_HEADERS,
 });

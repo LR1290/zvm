@@ -13,7 +13,7 @@ Esta consolidação remove definitivamente duas superfícies antigas que não fa
 
 O acesso privilegiado ZVM fica restrito ao administrador. A rastreabilidade de ações sensíveis permanece em auditoria administrativa própria.
 
-A marca ZVM também deixou de depender de arquivos em `/static`: site, páginas de autenticação e favicon usam a arte incorporada no próprio servidor; os e-mails usam a mesma arte incorporada e, no envio, a convertem para anexo inline CID com wordmark textual de fallback.
+A marca ZVM também deixou de depender de arquivos em `/static`: site, páginas de autenticação e favicon usam a arte incorporada no próprio servidor; os e-mails usam a mesma arte em `data:` com wordmark textual de fallback.
 
 ## Requisitos
 
@@ -87,14 +87,14 @@ Use `.env.example` como referência. Principais grupos:
 - comercial: `CAKTO_WEBHOOK_SECRET`, `SALE_WEBHOOK_SECRET`, `PARTNER_API_TOKEN` e IDs Cakto;
 - e-mail: `RESEND_API_KEY`, `EMAIL_FROM` e, opcionalmente, `EMAIL_REPLY_TO` para respostas de suporte;
 - extensão: `EXTENSION_URL`, `EXTENSION_VERSION`, `EXTENSION_CHANGELOG`, `ZVM_EXTENSION_IDS`;
-- Meta Oficial (reservado para a etapa Meta): `META_APP_ID`, `META_APP_SECRET`, `META_CONFIG_ID`, `META_TOKEN_ENCRYPTION_KEY`, `META_WEBHOOK_VERIFY_TOKEN`;
+- Meta Oficial: `META_APP_ID`, `META_APP_SECRET`, `META_CONFIG_ID`, `META_TOKEN_ENCRYPTION_KEY`, `META_WEBHOOK_VERIFY_TOKEN`;
 - WSM legado: somente as `WSM_*` ainda necessárias ao namespace `/WSM`.
 
 Não existem mais variáveis `MOD_*` no projeto consolidado.
 
 ## Meta Oficial
 
-As variáveis `META_*` permanecem reservadas para a integração server-side. O `server.js` canônico recuperado em 2026-09-02 não continha o subsistema Meta descrito pelo relatório histórico anterior; por segurança, esta recuperação não reconstrói rotas/criptografia Meta a partir de fragmentos. Quando essa etapa for retomada, segredos/tokens deverão permanecer exclusivamente no backend e a integração deve continuar *fail-closed*.
+A integração permanece *fail-closed*: sem as credenciais Meta necessárias, o restante do servidor funciona normalmente e o Embedded Signup não é ativado. Segredos/tokens Meta permanecem no backend e não devem ser enviados à extensão.
 
 ## Segurança
 
@@ -104,16 +104,13 @@ As variáveis `META_*` permanecem reservadas para a integração server-side. O 
 - CSRF same-origin nas mutações autenticadas por cookie;
 - rate limiting, limites de payload/URL e alertas de segurança;
 - sanitização de logs/CSV;
-- tokens de redefinição de senha ZVM e WSM persistidos somente por SHA-256, com compatibilidade temporária para links legados ainda válidos;
-- CORS da Extension API limitado a origens `chrome-extension://` válidas (e à allowlist quando `ZVM_EXTENSION_IDS` estiver configurado);
-- `/status` com cache curto do ping ao Mongo para evitar amplificação de carga;
 - Cakto com idempotência;
-- reserva de configuração Meta mantida para uma etapa server-side isolada;
+- Meta com AES-256-GCM, validação server-side e assinatura de webhook;
 - admin como única superfície privilegiada ZVM;
 - nenhuma rota estática genérica necessária para a marca;
 - container não-root e filesystem somente leitura.
 
-Veja `SECURITY.md` e `RECOVERY_HARDENING_REPORT_2026-09-02.md`. `AUDIT_REPORT.md` é mantido apenas como histórico de uma consolidação anterior.
+Veja `SECURITY.md` e `AUDIT_REPORT.md`.
 
 ## Arquivos
 
@@ -128,8 +125,7 @@ README.md              documentação do projeto
 LICENSE                licença proprietária
 SECURITY.md            política de segurança
 DEPLOY_RENDER.md       roteiro de implantação
-RECOVERY_HARDENING_REPORT_2026-09-02.md  fechamento técnico canônico
-AUDIT_REPORT.md        histórico da consolidação anterior
+AUDIT_REPORT.md        fechamento técnico desta consolidação
 ```
 
 ## Licença

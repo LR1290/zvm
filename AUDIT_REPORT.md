@@ -1,5 +1,3 @@
-> **RELATÓRIO HISTÓRICO / SUPERADO PARA DEPLOY.** O `server.js` que voltou ao GitHub depois deste relatório regrediu para um snapshot V277. Use `RECOVERY_HARDENING_REPORT_2026-09-02.md` como referência canônica da recuperação atual. O conteúdo abaixo é preservado apenas como histórico do que já havia sido projetado/validado.
-
 # ZVM Server — Relatório Final de Consolidação do Repositório
 
 Data: 2026-09-01

@@ -25,22 +25,7 @@ O administrador é a única superfície privilegiada ZVM. O antigo sistema de mo
 
 A antiga aplicação `ia/` e as rotas `/WSM/ia*` também foram removidas.
 
-
-## Sessões, reset e CORS
-
-- cookies autenticados usam `HttpOnly`, `Secure` e `SameSite=Strict`;
-- mutações autenticadas por cookie exigem origem same-origin como defesa adicional contra CSRF;
-- tokens de redefinição de senha novos são persistidos somente como SHA-256; o fallback para token cru existe apenas para consumir links legados ainda dentro do prazo e não gera novos registros em claro;
-- a Extension API não reflete origens web arbitrárias: CORS aceita somente `chrome-extension://<id>` válido e, quando `ZVM_EXTENSION_IDS` está configurado, somente IDs presentes na allowlist;
-- webhooks server-to-server não dependem de CORS do navegador.
-
-## Endpoint público de status
-
-`/status` não revela métricas comerciais e usa cache curto para o ping ao MongoDB, evitando que refreshes públicos sejam convertidos em um ping de banco por requisição. `/health` continua mínimo e independente para o Render.
-
 ## Meta / WhatsApp Business Platform
-
-A build de recuperação 2026-09-02 mantém esta seção como política para a futura etapa Meta; o `server.js` atual não expõe o subsistema Meta. Quando ele for reintroduzido em build dedicada:
 
 - App Secret e access tokens somente no backend;
 - tokens persistidos cifrados;
