@@ -1,4 +1,4 @@
-const ZVM_BUILD_ID = '2026-09-02-portal-security-r7';
+const ZVM_BUILD_ID = '2026-09-02-portal-desktop-r8';
 'use strict';
 const http   = require('http');
 const https  = require('https');
@@ -144,6 +144,39 @@ let _mongoDb     = null;
 let _mongoConnecting = false;
 let _caktoIndexReady = false;
 let _adminPortalUsersCache = { ts: 0, users: [] };
+
+async function loadAdminPortalUsers({ limit = 1000 } = {}) {
+  try {
+    const db = await getMongoDb();
+    const users = await db.collection('portal_users').find({}, {
+      projection: { _id:1, name:1, displayName:1, phone:1, keyCode:1, createdAt:1, lastLogin:1, banned:1, verified:1 }
+    }).sort({ createdAt: -1 }).limit(Math.max(1, Math.min(2000, Number(limit)||1000))).toArray();
+
+    let sourceKeys = {};
+    if (users.some(u => typeof u.keyCode === 'string' && u.keyCode && !keys[u.keyCode])) {
+      const keyDoc = await db.collection('store').findOne({ _id:'keys' }, { projection:{ data:1 } });
+      sourceKeys = keyDoc?.data && typeof keyDoc.data === 'object' ? keyDoc.data : {};
+    }
+
+    const enriched = users.map(u => {
+      const code = typeof u.keyCode === 'string' ? u.keyCode : '';
+      const k = code ? (keys[code] || sourceKeys[code] || null) : null;
+      let plan = k ? (k.planId || k.plan_id || k.plan || null) : null;
+      if (!plan && k) plan = k.maxUses === -1 ? 'BUSINESS' : k.maxUses === 1 ? 'STARTER' : k.maxUses >= 3 ? 'PRO' : null;
+      return {
+        _id: String(u._id || ''), name: u.name || '', displayName: u.displayName || '', phone: u.phone || '',
+        keyCode: code, createdAt: u.createdAt || null, lastLogin: u.lastLogin || null,
+        banned: !!u.banned, verified: u.verified !== false, plan
+      };
+    });
+    _adminPortalUsersCache = { ts: Date.now(), users: enriched };
+    return { ok: true, users: enriched, stale: false };
+  } catch (e) {
+    console.error('[ADMIN] portal-users:', e.message);
+    if (_adminPortalUsersCache.users.length) return { ok: true, users: _adminPortalUsersCache.users, stale: true, warning: 'db_temporarily_unavailable' };
+    return { ok: false, users: [], stale: false, error: 'db_error', retryable: true };
+  }
+}
 
 // Retomada de eventos Cakto (P0) — um registro "processing" só é considerado
 // travado/abandonado depois desse tempo sem avanço (lastAttemptAt). 5min é
@@ -4251,6 +4284,22 @@ body{background:radial-gradient(circle at 16% 12%,rgba(14,232,137,.055),transpar
 @media(max-width:1100px){.client-shell{grid-template-columns:244px minmax(0,1fr);gap:20px}.client-rail{padding:16px}.client-rail-brand::after{font-size:11px}}
 @media(max-width:900px){.page-wrap{padding-top:18px}.client-shell{grid-template-columns:1fr}.client-rail{position:relative;top:0;min-height:auto}.client-rail-brand{grid-template-columns:auto 1fr auto}.client-rail-brand::after{grid-column:3;grid-row:1/3;align-self:center}.client-nav{grid-template-columns:repeat(2,minmax(0,1fr))}.client-rail-card{display:none}}
 @media(max-width:620px){.client-nav{grid-template-columns:1fr}.dash-topbar{align-items:flex-start}.dash-topbar-user{flex-direction:column;align-items:flex-end;gap:7px}.dash-hero{padding:22px 18px}.dash-hero h1{font-size:26px}.page-wrap{padding-left:12px;padding-right:12px}}
+/* ZVM Portal R8 — desktop first, foco em chave e dispositivos */
+.page-wrap{max-width:none!important;width:100%!important;padding:24px clamp(22px,3.8vw,72px) 42px!important}
+.client-shell{grid-template-columns:250px minmax(0,1fr)!important;gap:32px!important;max-width:1880px;margin:0 auto}
+.client-rail{min-height:calc(100vh - 48px);padding:18px!important;border-radius:24px!important}.client-rail-brand{margin-bottom:16px!important}.client-nav a{min-height:46px!important}
+.client-main{max-width:none!important;width:100%}.dash-topbar{margin-bottom:14px!important}
+.client-command-grid{display:grid;grid-template-columns:minmax(0,1.28fr) minmax(390px,.72fr);gap:22px;align-items:stretch;margin-bottom:18px}
+.client-license-focus,.client-devices-focus{height:100%;border-radius:26px!important}.client-license-focus{padding:30px 32px!important;display:flex;flex-direction:column}.client-devices-focus{padding:26px!important}
+.client-license-head h2{font-size:clamp(28px,2.5vw,38px)!important}.client-license-head p{font-size:13.5px!important;max-width:760px!important}.client-key-command{margin-top:22px!important;min-height:72px;padding:20px 22px!important;border-radius:17px!important}.client-key-value{font-size:clamp(18px,2vw,26px)!important}
+.client-license-focus .expiry-alert{margin:16px 0 0!important}.client-license-focus .countdown-block{margin-top:16px;padding:15px 16px 14px;border:1px solid #17272f!important;border-radius:16px;background:#070c10}.client-license-focus .countdown-grid{margin-top:10px}.client-license-focus .cd-box{min-height:66px}.client-license-focus .cd-num{font-size:20px}.client-license-focus .validity-bar{margin-top:10px}
+.client-focus-actions{margin-top:16px!important;align-items:center}.client-focus-actions a,.client-focus-actions button{min-height:42px!important}.client-focus-actions form{margin-left:auto}.client-unlink{min-height:42px;padding:9px 13px;border-radius:11px;border:1px solid rgba(255,80,100,.28);background:rgba(255,80,100,.065);color:#ff7184;font:800 12px 'Outfit',sans-serif;cursor:pointer}.client-unlink:hover{background:rgba(255,80,100,.12);border-color:rgba(255,80,100,.48)}
+.client-devices-head h2{font-size:22px!important}.client-devices-intro{font-size:13px!important}.client-devices-focus .device-row{padding:14px!important}.client-devices-focus .device-phone{font-size:14px!important}.client-devices-focus .device-remove{min-width:82px}
+.client-account-tools{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:18px}.client-tool{display:flex;align-items:center;gap:12px;min-height:72px;padding:14px 16px;border:1px solid #18272e;border-radius:16px;background:linear-gradient(180deg,#090f13,#070b0f);text-decoration:none;color:#aeb9b5;transition:border-color .18s,background .18s,transform .18s}.client-tool:hover{border-color:rgba(14,232,137,.32);background:#0b1412;transform:translateY(-1px)}.client-tool-icon{width:34px;height:34px;display:grid;place-items:center;border:1px solid #20332c;border-radius:10px;background:#07110d;color:#13e88b;flex-shrink:0}.client-tool strong{display:block;color:#edf4f1;font-size:13px}.client-tool span{display:block;margin-top:2px;color:#6f7d78;font-size:11px;line-height:1.35}
+.client-ok-banner{margin-bottom:14px;padding:12px 15px;border:1px solid rgba(14,232,137,.28);border-radius:13px;background:rgba(14,232,137,.07);color:#13e88b;font-size:13px;font-weight:700}.client-account-note{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:12px 2px 0;color:#6f7d78;font-size:11px}.client-account-note strong{color:#9aa8a2;font-weight:700}
+@media(max-width:1180px){.client-command-grid{grid-template-columns:1fr}.client-account-tools{grid-template-columns:1fr 1fr}}
+@media(max-width:960px){.client-shell{grid-template-columns:1fr!important;gap:18px!important}.client-rail{position:relative!important;top:0!important;min-height:auto!important}.client-nav{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important}}
+@media(max-width:700px){.page-wrap{padding:14px 12px 30px!important}.client-nav{grid-template-columns:1fr 1fr!important}.client-license-focus,.client-devices-focus{padding:20px!important}.client-account-tools{grid-template-columns:1fr}.client-focus-actions form{margin-left:0;width:100%}.client-unlink{width:100%}.client-key-command{align-items:flex-start;flex-direction:column}.countdown-grid{grid-template-columns:1fr 1fr}}
 </style>
 
 <div class="client-shell">
@@ -4265,8 +4314,6 @@ body{background:radial-gradient(circle at 16% 12%,rgba(14,232,137,.055),transpar
     <a href="/cliente/email">✉ E-mail</a>
     <a href="https://wa.me/5521996771552?text=Preciso+de+ajuda+com+o+ZVM" target="_blank" rel="noopener noreferrer">💬 Suporte</a>
   </nav>
-  <div class="client-rail-card"><div class="client-rail-kicker">Plano atual</div><div class="client-rail-value">${keyData ? `ZVM ${escHtml(planName)}` : 'Sem licença'}</div><div class="client-rail-meta">${keyData ? `${escHtml(mainStatusTxt)} · ${devUsed}${devMax?' / '+devMax:' / ∞'} dispositivo(s)` : 'Vincule uma chave ou escolha um plano.'}</div></div>
-  <div class="client-rail-card"><div class="client-rail-kicker">Renovação</div><div class="client-rail-value">${keyData ? escHtml(expiryDateText) : '—'}</div><div class="client-rail-meta">Acompanhe validade, plano e segurança sem precisar sair do portal.</div></div>
 </aside>
 <main class="client-main">
 <div class="dash-topbar">
@@ -4277,130 +4324,45 @@ body{background:radial-gradient(circle at 16% 12%,rgba(14,232,137,.055),transpar
   </div>
 </div>
 
-<div class="client-focus-grid">
+${updateBanner}
+${okMsg ? `<div class="client-ok-banner">✅ ${escHtml(okMsg)}</div>` : ''}
+${noKeySection}
+
+<div class="client-command-grid">
   <section class="client-license-focus">
     <div class="client-focus-kicker">Chave principal</div>
-    <div class="client-license-head"><div><h2>${keyData ? 'ZVM '+escHtml(planName) : 'Nenhuma chave vinculada'}</h2><p>${keyData ? 'Sua licença é a peça central da conta. Copie, acompanhe a validade e renove sem procurar em outros painéis.' : 'Vincule uma chave existente ou escolha um plano para começar.'}</p></div>${keyData ? `<span class="${mainStatusClass}"><span class="bd-dot"></span>${mainStatusTxt}</span>` : ''}</div>
+    <div class="client-license-head"><div><h2>${keyData ? 'ZVM '+escHtml(planName) : 'Nenhuma chave vinculada'}</h2><p>${keyData ? 'Sua chave concentra o que importa: acesso, validade, tempo restante, renovação e desvinculação.' : 'Vincule uma chave existente ou escolha um plano para começar.'}</p></div>${keyData ? `<span class="${mainStatusClass}"><span class="bd-dot"></span>${mainStatusTxt}</span>` : ''}</div>
     ${keyData ? `<button type="button" class="client-key-command" id="copy-license-key" data-key="${escHtml(keyData.code||'')}" title="Copiar chave"><span class="client-key-value">${escHtml(keyData.code||'')}</span><span class="key-copy-hint">Copiar chave</span></button>` : `<a href="/cliente/vincular" class="client-key-empty">Vincular uma chave ZVM →</a>`}
-    <div class="client-focus-meta">
-      <div><span>Validade</span><strong>${keyData ? escHtml(expiryDateText) : '—'}</strong></div>
-      <div><span>Dispositivos</span><strong>${keyData ? devUsed+(devMax?' / '+devMax:' / ∞') : '—'}</strong></div>
-      <div><span>Segurança</span><strong>${has2fa ? '2FA ativo' : 'Ativar 2FA'}</strong></div>
+    ${expiryAlert}
+    ${countdownBlock}
+    <div class="client-focus-actions">
+      <a class="primary" href="/planos">↻ Renovar / mudar plano</a>
+      <a href="/cliente/2fa/setup">🛡 Segurança</a>
+      ${hasKey ? `<form method="POST" action="/cliente/desvincular" onsubmit="return confirm('Tem certeza? Isso desvinculará sua chave desta conta.')"><button type="submit" class="client-unlink">🔓 Desvincular chave</button></form>` : ''}
     </div>
-    <div class="client-focus-actions"><a class="primary" href="/planos">↻ Renovar / mudar plano</a><a href="/cliente/vincular">Gerenciar licença</a><a href="/cliente/2fa/setup">Segurança</a></div>
   </section>
+
   <section class="client-devices-focus">
     <div class="client-devices-head"><div><span>Dispositivos vinculados</span><h2>Números com acesso</h2></div>${keyData ? `<span class="panel-hdr-badge">${devUsed}${devMax?'/'+devMax:''}</span>` : ''}</div>
-    <p class="client-devices-intro">Remova rapidamente um número que não usa mais para liberar o slot da licença.</p>
+    <p class="client-devices-intro">Gerencie os números ligados à licença sem abrir outra tela. Remover libera o slot imediatamente.</p>
     <div class="client-device-list">${keyData ? deviceListHtml : '<div class="device-empty">Vincule uma chave para gerenciar dispositivos.</div>'}</div>
   </section>
 </div>
 
-${updateBanner}
-
-${okMsg ? `<div style="background:#00c85318;border:1px solid #00c85340;border-radius:10px;padding:12px 18px;margin-bottom:14px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;color:#00c853">✅ ${escHtml(okMsg)}</div>` : ''}
-
-<div class="client-section-title"><div><span>Conta</span><strong>Identidade e status</strong></div><p>Informações principais da conta e da licença atual.</p></div>
-<div class="dash-hero">
-  ${avatarBtn}
-  <div class="dash-hero-text">
-    <h1>Olá, ${firstName}</h1>
-    <p class="dash-hero-sub">Gerencie sua licença, dispositivos e segurança em um só lugar.</p>
-    <div class="dash-hero-email">${escHtml(user.email)}</div>
-  </div>
-  ${keyData ? `<div class="dash-hero-badges">
-    <span class="${mainStatusClass}"><span class="bd-dot"></span>${mainStatusTxt}</span>
-    <span class="bd-blue"><span class="bd-dot"></span>ZVM ${escHtml(planName)}</span>
-  </div>` : ''}
+<div class="client-account-tools" aria-label="Atalhos da conta">
+  <a class="client-tool" href="/cliente/senha"><span class="client-tool-icon">⌁</span><div><strong>Senha</strong><span>Trocar credencial de acesso</span></div></a>
+  <a class="client-tool" href="/cliente/email"><span class="client-tool-icon">✉</span><div><strong>E-mail</strong><span>Atualizar identidade da conta</span></div></a>
+  <a class="client-tool" href="/cliente/2fa/setup"><span class="client-tool-icon">◈</span><div><strong>2FA</strong><span>${has2fa ? 'Proteção adicional ativa' : 'Ativar proteção adicional'}</span></div></a>
+  <a class="client-tool" href="https://wa.me/5521996771552?text=Preciso+de+ajuda+com+o+ZVM" target="_blank" rel="noopener noreferrer"><span class="client-tool-icon">●</span><div><strong>Suporte</strong><span>Falar com atendimento ZVM</span></div></a>
 </div>
-${avatarDialog}
-
-${noKeySection}
-
-<div class="client-section-title"><div><span>Licença</span><strong>Controle da assinatura</strong></div><p>Validade, limite de dispositivos e dados essenciais da sua licença.</p></div>
-${keyData ? `
-<div class="dash-grid-2">
-  <div class="key-card">
-    ${expiryAlert}
-    <div class="key-card-head">
-      <div class="license-heading"><div><div class="key-card-title">Minha licença</div><div class="license-plan">ZVM ${escHtml(planName)}</div></div><span class="${mainStatusClass}"><span class="bd-dot"></span>${mainStatusTxt}</span></div>
-      <button type="button" class="key-display" data-copy-license-secondary="1" data-key="${escHtml(keyData.code||'')}" title="Copiar chave">
-        <span>${escHtml(keyData.code||'')}</span>
-        <span class="key-copy-hint">Clique para copiar</span>
-      </button>
-    </div>
-    <div class="key-card-body">
-      <div class="ks-label">Dispositivos</div>
-      <div class="key-usage-row"><span class="ks-value ${devExceeded?'red':devMax&&devUsed>=devMax?'orange':''}">${devUsed}${devMax?' / '+devMax:' / ∞'}</span></div>
-      ${devMax ? `<div class="dev-bar"><div class="dev-bar-fill" style="width:${devPct}%;background:${devPct>=100?'#f0b429':devPct>=80?'#f0b42980':'#00e67680'}"></div></div>` : ''}
-      ${devExceeded?`<div class="device-warning" role="status">Limite excedido: seus ${devUsed} números foram preservados. Remova ${devUsed-devMax} antes de ativar outro número neste plano.</div>`:''}
-    </div>
-  </div>
-  <div class="panel-box summary-card">
-    <div class="panel-hdr"><span class="panel-hdr-icon">📊</span> Resumo da conta</div>
-    <div class="panel-body">
-      <div class="summary-rows">
-        <div class="summary-row"><span class="ks-label">Plano</span><span class="ks-value">ZVM ${escHtml(planName)}</span></div>
-        <div class="summary-row"><span class="ks-label">Validade</span><span class="ks-value ${expiringSoon?'orange':expired?'red':'green'}">${escHtml(expiryDateText)}</span></div>
-        ${createdAtText ? `<div class="summary-row"><span class="ks-label">Criada em</span><span class="ks-value">${escHtml(createdAtText)}</span></div>` : ''}
-        <div class="summary-row"><span class="ks-label">Dispositivos</span><span class="ks-value ${devExceeded?'red':devMax&&devUsed>=devMax?'orange':''}">${devUsed}${devMax?' / '+devMax:' / ∞'}</span></div>
-      </div>
-      ${countdownBlock}
-    </div>
-  </div>
-</div>
-` : ''}
-
-<div class="client-section-title"><div><span>Ações rápidas</span><strong>Central da conta</strong></div><p>Atalhos para segurança, renovação, dados da conta e suporte.</p></div>
-<div class="quick-actions">
-  <a href="/planos" class="qa-primary">🛒 Renovar / Alterar Plano</a>
-</div>
-
-<div class="dash-grid-2">
-  <div class="panel-box">
-    <div class="panel-hdr"><span class="panel-hdr-icon">🔐</span> Conta e segurança</div>
-    <div class="panel-body qa-row">
-      <a href="/cliente/vincular" class="qa-btn">🔗 Vincular Chave</a>
-      <a href="/cliente/senha" class="qa-btn">🔒 Alterar Senha</a>
-      <a href="/cliente/email" class="qa-btn">📧 Alterar E-mail</a>
-      <a href="/cliente/2fa/setup" class="qa-btn">${has2fa ? "✅ 2FA Ativo" : "🛡 Segurança 2FA"}</a>
-      <a href="https://wa.me/5521996771552?text=Preciso+de+ajuda+com+o+ZVM" target="_blank" rel="noopener noreferrer" class="qa-btn">💬 Suporte</a>
-    </div>
-  </div>
-  <div class="panel-box">
-    <div class="panel-hdr"><span class="panel-hdr-icon">🧭</span> Próximos passos</div>
-    <div class="panel-body qa-row">
-      <a href="/planos" class="qa-btn">↻ Conferir renovação e planos</a>
-      <a href="/cliente/2fa/setup" class="qa-btn">🛡 Revisar segurança da conta</a>
-      <a href="https://wa.me/5521996771552?text=Preciso+de+ajuda+com+o+ZVM" target="_blank" rel="noopener noreferrer" class="qa-btn">💬 Falar com o suporte</a>
-    </div>
-  </div>
-</div>
-
-${hasKey ? `<div class="qa-danger-wrap"><form method="POST" action="/cliente/desvincular" style="margin:0" onsubmit="return confirm('Tem certeza? Isso desvinculará sua chave desta conta.')"><button type="submit" class="qa-danger">🔓 Desvincular chave desta conta</button></form></div>` : ''}
-
-<div class="panels-grid">
-  <div class="panel-box">
-    <div class="panel-hdr"><span class="panel-hdr-icon">📋</span> Novidades do ZVM</div>
-    <div class="panel-body">
-      ${clHtml}
-    </div>
-  </div>
-  <div class="panel-box">
-    <div class="panel-hdr"><span class="panel-hdr-icon">❓</span> Perguntas Frequentes</div>
-    <div class="panel-body">
-      ${faqHtml}
-      <a href="https://wa.me/5521996771552?text=Preciso+de+ajuda+com+o+ZVM" target="_blank" rel="noopener" class="support-btn">💬 Suporte via WhatsApp</a>
-    </div>
-  </div>
-</div>
+<div class="client-account-note"><span>Conta: <strong>${escHtml(user.email||'')}</strong></span><span>${keyData ? `Validade: <strong>${escHtml(expiryDateText)}</strong>` : 'Sem licença vinculada'}</span></div>
 </main>
 </div>
 `;
   const _cleanOkScript = okMsg ? `<script>if(location.search)history.replaceState(null,'',location.pathname);<\/script>` : '';
   const _licenseScript = `<script>(function(){
   var copy=document.getElementById('copy-license-key');
-  if(copy){copy.addEventListener('click',async function(){try{await navigator.clipboard.writeText(copy.dataset.key||'');var hint=copy.querySelector('.key-copy-hint');hint.textContent='✓ Copiado';if(window.zvmToast)zvmToast('success','Chave copiada para a área de transferência.');setTimeout(function(){hint.textContent='Clique para copiar';},1800);}catch(e){if(window.zvmToast)zvmToast('error','Não foi possível copiar. Selecione a chave manualmente.');}});}
+  if(copy){copy.addEventListener('click',async function(){try{await navigator.clipboard.writeText(copy.dataset.key||'');var hint=copy.querySelector('.key-copy-hint');hint.textContent='✓ Copiado';if(window.zvmToast)zvmToast('success','Chave copiada para a área de transferência.');setTimeout(function(){hint.textContent='Copiar chave';},1800);}catch(e){if(window.zvmToast)zvmToast('error','Não foi possível copiar. Selecione a chave manualmente.');}});}
   var cd=document.getElementById('license-countdown-grid');
   if(cd&&cd.dataset.expires){
     var end=new Date(cd.dataset.expires).getTime();
@@ -4462,7 +4424,7 @@ ${hasKey ? `<div class="qa-danger-wrap"><form method="POST" action="/cliente/des
   });
   dialog.addEventListener('close',function(){btn.focus();});
 })();<\/script>`;
-  return applyStandalonePortalTheme(renderPortalPage(body + _cleanOkScript + _licenseScript + _avatarScript + _toastScript(), 'ZVM — Minha Conta', '', true));
+  return applyStandalonePortalTheme(renderPortalPage(body + _cleanOkScript + _licenseScript + _toastScript(), 'ZVM — Minha Conta', '', true));
 }
 
 function renderPortalChangeEmail(err='', ok='') {
@@ -4730,7 +4692,11 @@ function renderAdminDashboard(opts = {}) {
   const stats = opts.stats || getKeyStats();
   const _keysHtml = (opts.keysHtml != null) ? opts.keysHtml : getKeysHtmlCached();
   const _logsHtml = (opts.logsHtml != null) ? opts.logsHtml : buildLogsHtml();
-  const portalUserCount = Number(opts.portalUserCount || 0);
+  const initialPortalUsers = Array.isArray(opts.portalUsers) ? opts.portalUsers : [];
+  const portalUserCount = Number(opts.portalUserCount ?? initialPortalUsers.length ?? 0);
+  const initialPortalUsersJson = JSON.stringify(initialPortalUsers)
+    .replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026')
+    .replace(/\u2028/g,'\\u2028').replace(/\u2029/g,'\\u2029');
   const { expiredKeys: expiredCount, warnKeys: expiringSoon } = stats;
   const _dashboardBrand = opts.brand === 'WSM' ? 'WSM' : 'ZVM';
   const _adminBrand = _dashboardBrand === 'ZVM' ? renderStandaloneBrand('compact') : '⚡ WSM';
@@ -5150,7 +5116,7 @@ header{height:var(--hdr);padding:0 22px;background:rgba(6,10,12,.95);border-bott
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <input type="text" id="users-search" placeholder="Buscar por nome, e-mail ou chave…" style="padding:5px 10px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;width:220px" oninput="filterUsers()">
-        <button class="btn bw" onclick="loadUsers()">↻ Atualizar</button>
+        <button class="btn bw" onclick="loadUsers(true)">↻ Atualizar</button>
       </div>
     </div>
     <div class="ov">
@@ -5624,26 +5590,29 @@ async function toggleModule(code,module,enabled){
 const lr0=document.getElementById('last-refresh');if(lr0)lr0.textContent='Carregado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 filterKeys();
 
+let _usersData=${initialPortalUsersJson};
 function switchTab(t){
   document.querySelectorAll('.rtab').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('.sec-panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===t));
   try{localStorage.setItem('zvmTab',t);}catch(e){}
-  if(t==='users')loadUsers();
+  if(t==='users')loadUsers(false);
   if(t==='security')loadBlacklist();
 }
 (function(){switchTab(localStorage.getItem('zvmTab')||'keys');})();
 
-let _usersData=[];
-async function loadUsers(){
+async function loadUsers(force){
+  force=!!force;
   const tb=document.getElementById('users-tb');
-  if(tb)tb.innerHTML='<tr><td colspan="8" class="empty">Carregando usuários...</td></tr>';
+  if(_usersData.length&&!force){renderUsersTable(_usersData);return;}
+  if(tb&&(!_usersData.length||force))tb.innerHTML='<tr><td colspan="8" class="empty">Carregando usuários...</td></tr>';
   try{
     const r=await fetch(_RA+'/api/portal-users',{credentials:'same-origin',headers:{'Accept':'application/json'}});
     if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.reload(),900);return;}
     const raw=await r.text();
     let d={};try{d=raw?JSON.parse(raw):{};}catch(_e){throw new Error('Resposta inválida do servidor (HTTP '+r.status+')');}
     if(!r.ok||!d.ok){
-      if(tb)tb.innerHTML='<tr><td colspan="8" class="empty">Falha ao consultar usuários (HTTP '+r.status+'). <button class="btn bw" style="margin-left:8px" onclick="loadUsers()">Tentar novamente</button></td></tr>';
+      if(_usersData.length){renderUsersTable(_usersData);toast('Não foi possível atualizar agora; mantendo o último snapshot válido.',false);return;}
+      if(tb)tb.innerHTML='<tr><td colspan="8" class="empty">Falha ao consultar usuários (HTTP '+r.status+'). <button class="btn bw" style="margin-left:8px" onclick="loadUsers(true)">Tentar novamente</button></td></tr>';
       toast(d.error==='db_error'?'Banco temporariamente indisponível':'Erro ao carregar usuários',false);return;
     }
     _usersData=d.users||[];
@@ -5651,7 +5620,8 @@ async function loadUsers(){
     if(d.stale)toast('MongoDB oscilou: exibindo o último snapshot disponível.',false);
   }catch(e){
     console.error('portal-users',e);
-    if(tb)tb.innerHTML='<tr><td colspan="8" class="empty">Não foi possível carregar os usuários. <button class="btn bw" style="margin-left:8px" onclick="loadUsers()">Tentar novamente</button></td></tr>';
+    if(_usersData.length){renderUsersTable(_usersData);toast('Falha de rede ao atualizar; mantendo os dados já carregados.',false);return;}
+    if(tb)tb.innerHTML='<tr><td colspan="8" class="empty">Não foi possível carregar os usuários. <button class="btn bw" style="margin-left:8px" onclick="loadUsers(true)">Tentar novamente</button></td></tr>';
   }
 }
 function renderUsersTable(list){
@@ -6153,26 +6123,27 @@ ${_sharedCss()}
 .testi-name{font-weight:700;font-size:14px}
 .testi-role{font-size:12px;color:var(--tx3)}
 /* ── SOBRE MIM ── */
-.about-card{max-width:760px;margin:0 auto;background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r-lg);padding:40px;position:relative;overflow:hidden}
+.about-card{max-width:1160px;margin:0 auto;background:linear-gradient(145deg,var(--bg2),#080d10);border:1px solid var(--brd);border-radius:24px;padding:38px;position:relative;overflow:hidden;display:grid;grid-template-columns:minmax(300px,.78fr) minmax(500px,1.22fr);column-gap:34px;row-gap:14px;align-items:start;box-shadow:0 24px 70px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.02)}
 .about-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--g),transparent)}
-.about-head{display:flex;align-items:center;gap:18px;margin-bottom:22px}
-.about-avatar{width:64px;height:64px;border-radius:50%;background:var(--g-soft);border:2px solid var(--g-brd);display:flex;align-items:center;justify-content:center;font-family:'Orbitron',sans-serif;font-weight:900;font-size:22px;color:var(--g);flex-shrink:0;overflow:hidden}
+.about-head{grid-column:1;grid-row:1;display:flex;align-items:center;gap:18px;margin-bottom:6px}
+.about-avatar{width:68px;height:68px;border-radius:50%;background:var(--g-soft);border:2px solid var(--g-brd);display:flex;align-items:center;justify-content:center;font-family:'Orbitron',sans-serif;font-weight:900;font-size:22px;color:var(--g);flex-shrink:0;overflow:hidden}
 .about-avatar img{width:100%;height:100%;object-fit:cover;display:block}
-.about-name{font-size:20px;font-weight:900;letter-spacing:-.5px}
-.about-role{font-size:13px;color:var(--g);font-weight:700;text-transform:uppercase;letter-spacing:1.5px;margin-top:3px}
-.about-bio{font-size:15px;color:var(--tx2);line-height:1.75;margin-bottom:18px}
-.about-note{font-size:12px;color:var(--tx3);line-height:1.6;margin:0 0 22px;padding:11px 13px;border:1px solid var(--brd);background:var(--bg);border-radius:var(--r-sm)}
+.about-name{font-size:21px;font-weight:900;letter-spacing:-.5px}
+.about-role{font-size:12px;color:var(--g);font-weight:800;text-transform:uppercase;letter-spacing:1.35px;margin-top:4px}
+.about-bio{grid-column:1;grid-row:2;font-size:15px;color:var(--tx2);line-height:1.75;margin:0}
+.about-note{grid-column:1;grid-row:3;font-size:12px;color:var(--tx3);line-height:1.6;margin:4px 0 0;padding:13px 14px;border:1px solid var(--brd);background:rgba(3,7,8,.68);border-radius:12px}
 .about-note strong{color:var(--tx2)}
-.about-projects-title{font-size:11px;color:var(--tx3);font-weight:800;text-transform:uppercase;letter-spacing:1.4px;margin:0 0 10px}
-.about-projects{display:flex;flex-direction:column;gap:10px}
-.about-proj{display:flex;align-items:center;gap:16px;padding:16px 18px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r);transition:all .2s}
-.about-proj:hover{border-color:var(--g-brd);transform:translateX(4px);background:var(--g-soft)}
-.about-proj-icon{font-size:24px;flex-shrink:0}
-.about-proj-name{font-size:15px;font-weight:800}
-.about-proj-desc{font-size:13px;color:var(--tx3);margin-top:2px;line-height:1.5}
-.about-proj-arrow{margin-left:auto;color:var(--g);font-weight:900;font-size:18px;flex-shrink:0;opacity:.5;transition:opacity .2s}
+.about-projects-title{grid-column:2;grid-row:1;font-size:11px;color:var(--tx3);font-weight:800;text-transform:uppercase;letter-spacing:1.4px;margin:8px 0 0}
+.about-projects{grid-column:2;grid-row:2/4;display:grid;grid-template-columns:1fr 1fr;gap:11px}
+.about-proj{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:start;gap:13px;padding:16px;background:rgba(3,7,8,.66);border:1px solid var(--brd);border-radius:15px;transition:border-color .2s,background .2s,transform .2s;min-height:142px}
+.about-proj:hover{border-color:var(--g-brd);transform:translateY(-2px);background:var(--g-soft)}
+.about-proj-icon{font-size:22px;flex-shrink:0;line-height:1.25}
+.about-proj-name{font-size:14px;font-weight:800;line-height:1.35}
+.about-proj-desc{font-size:12px;color:var(--tx3);margin-top:4px;line-height:1.5}
+.about-proj-arrow{margin-left:auto;color:var(--g);font-weight:900;font-size:17px;flex-shrink:0;opacity:.5;transition:opacity .2s}
 .about-proj:hover .about-proj-arrow{opacity:1}
-@media(max-width:560px){.about-card{padding:26px 20px}.about-proj{gap:12px}}
+@media(max-width:900px){.about-card{grid-template-columns:1fr;padding:30px}.about-head,.about-bio,.about-note,.about-projects-title,.about-projects{grid-column:1;grid-row:auto}.about-projects{grid-template-columns:1fr 1fr}.about-projects-title{margin-top:12px}}
+@media(max-width:620px){.about-card{padding:24px 18px}.about-projects{grid-template-columns:1fr}.about-proj{min-height:auto}.about-head{align-items:flex-start}.about-avatar{width:58px;height:58px}}
 /* ── FINAL CTA ── */
 .fcta{text-align:center;padding:100px 48px;background:radial-gradient(ellipse 70% 60% at 50% 100%,#00ff870a,transparent 70%);border-top:1px solid var(--brd);position:relative;overflow:hidden}
 .fcta h2{font-size:clamp(28px,5vw,54px);font-weight:900;letter-spacing:-1.5px;margin-bottom:18px}
@@ -11314,11 +11285,9 @@ async function handleRequest(req, res) {
 
   if (p === R_ADMIN || p === R_ADMIN+'/') {
     if (!isAdminSession(req)) { sendHtml(res, renderAdminLogin()); return; }
-    const _pdb = await getMongoDb().catch(()=>null);
-    // renderAdminDashboard recebe um objeto de opções; passar o número cru fazia
-    // o contador ser descartado silenciosamente (opts.stats/keysHtml viravam undefined).
-    const portalUserCount = _pdb ? await _pdb.collection('portal_users').countDocuments().catch(()=>0) : 0;
-    sendHtml(res, renderAdminDashboard({ portalUserCount })); return;
+    const portalUsersResult = await loadAdminPortalUsers({ limit: 1000 });
+    const portalUsers = portalUsersResult.users || [];
+    sendHtml(res, renderAdminDashboard({ portalUserCount: portalUsers.length, portalUsers })); return;
   }
 
   function extractCode(pattern) {
@@ -11411,41 +11380,9 @@ async function handleRequest(req, res) {
 
   if (p === R_ADMIN+'/api/portal-users' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    try {
-      const db = await getMongoDb();
-      const users = await db.collection('portal_users').find({}, {
-        projection: { _id:1, name:1, displayName:1, phone:1, keyCode:1, createdAt:1, lastLogin:1, banned:1, verified:1 }
-      }).sort({ createdAt: -1 }).limit(1000).toArray();
-
-      // Uma única leitura do documento de chaves resolve referências que ainda não
-      // estejam no cache em memória. A versão anterior podia disparar uma leitura
-      // grande por usuário ausente, tornando a aba frágil em rede lenta.
-      let keyDoc = null;
-      const missingKeyRef = users.some(u => u.keyCode && !keys[u.keyCode]);
-      if (missingKeyRef) {
-        keyDoc = await db.collection('store').findOne({ _id:'keys' }, { projection:{ data:1 } });
-      }
-      const sourceKeys = keyDoc?.data && typeof keyDoc.data === 'object' ? keyDoc.data : {};
-      const enriched = users.map(u => {
-        const code = typeof u.keyCode === 'string' ? u.keyCode : '';
-        const k = code ? (keys[code] || sourceKeys[code] || null) : null;
-        let plan = k ? (k.planId || k.plan_id || k.plan || null) : null;
-        if (!plan && k) plan = k.maxUses === -1 ? 'BUSINESS' : k.maxUses === 1 ? 'STARTER' : k.maxUses >= 3 ? 'PRO' : null;
-        return {
-          _id: String(u._id || ''), name: u.name || '', displayName: u.displayName || '', phone: u.phone || '',
-          keyCode: code, createdAt: u.createdAt || null, lastLogin: u.lastLogin || null,
-          banned: !!u.banned, verified: u.verified !== false, plan
-        };
-      });
-      _adminPortalUsersCache = { ts: Date.now(), users: enriched };
-      sendJson(res, { ok: true, users: enriched, stale: false }); return;
-    } catch(e) {
-      console.error('[ADMIN] portal-users:', e.message);
-      if (_adminPortalUsersCache.users.length) {
-        sendJson(res, { ok: true, users: _adminPortalUsersCache.users, stale: true, warning: 'db_temporarily_unavailable' }); return;
-      }
-      sendJson(res, { ok: false, error: 'db_error', retryable: true }, 503); return;
-    }
+    const result = await loadAdminPortalUsers({ limit: 1000 });
+    if (!result.ok) { sendJson(res, result, 503); return; }
+    sendJson(res, result); return;
   }
 
   if (p === R_ADMIN+'/api/keys' && req.method === 'POST') {
