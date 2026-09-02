@@ -1,4 +1,4 @@
-const ZVM_BUILD_ID = '2026-09-02-visual-system-r4';
+const ZVM_BUILD_ID = '2026-09-02-premium-control-r5';
 'use strict';
 const http   = require('http');
 const https  = require('https');
@@ -2929,7 +2929,7 @@ async function addAdminAuditLog({ actor = 'admin', action, keyCode = '', label =
 }
 
 const CANVAS_BG = `<canvas id="_cvs" style="position:fixed;inset:0;z-index:0;pointer-events:none"></canvas>
-<script>(function(){var c=document.getElementById('_cvs'),ctx=c.getContext('2d');function resize(){c.width=window.innerWidth;c.height=window.innerHeight;}resize();window.addEventListener('resize',resize);var pts=Array.from({length:60},function(){return{x:Math.random()*c.width,y:Math.random()*c.height,vx:(Math.random()-.5)*.4,vy:(Math.random()-.5)*.4,r:Math.random()*2+.5};});function draw(){ctx.clearRect(0,0,c.width,c.height);pts.forEach(function(p){p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>c.width)p.vx*=-1;if(p.y<0||p.y>c.height)p.vy*=-1;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle='rgba(124,58,237,0.5)';ctx.fill();});for(var i=0;i<pts.length;i++){for(var j=i+1;j<pts.length;j++){var dx=pts[i].x-pts[j].x,dy=pts[i].y-pts[j].y,d=Math.sqrt(dx*dx+dy*dy);if(d<130){ctx.beginPath();ctx.moveTo(pts[i].x,pts[i].y);ctx.lineTo(pts[j].x,pts[j].y);ctx.strokeStyle='rgba(124,58,237,'+(0.12*(1-d/130))+')';ctx.lineWidth=.7;ctx.stroke();}}}requestAnimationFrame(draw);}draw();})();</script>`;
+<script>(function(){var c=document.getElementById('_cvs'),ctx=c.getContext('2d');function resize(){c.width=window.innerWidth;c.height=window.innerHeight;}resize();window.addEventListener('resize',resize);var pts=Array.from({length:60},function(){return{x:Math.random()*c.width,y:Math.random()*c.height,vx:(Math.random()-.5)*.4,vy:(Math.random()-.5)*.4,r:Math.random()*2+.5};});function draw(){ctx.clearRect(0,0,c.width,c.height);pts.forEach(function(p){p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>c.width)p.vx*=-1;if(p.y<0||p.y>c.height)p.vy*=-1;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle='rgba(14,232,137,0.34)';ctx.fill();});for(var i=0;i<pts.length;i++){for(var j=i+1;j<pts.length;j++){var dx=pts[i].x-pts[j].x,dy=pts[i].y-pts[j].y,d=Math.sqrt(dx*dx+dy*dy);if(d<130){ctx.beginPath();ctx.moveTo(pts[i].x,pts[i].y);ctx.lineTo(pts[j].x,pts[j].y);ctx.strokeStyle='rgba(14,232,137,'+(0.10*(1-d/130))+')';ctx.lineWidth=.7;ctx.stroke();}}}requestAnimationFrame(draw);}draw();})();</script>`;
 
 // ──────────────── PORTAL DO CLIENTE ────────────────────────────
 function renderPortalPage(body, title='ZVM — Minha Conta', extra='', wide=false) {
@@ -3082,9 +3082,9 @@ function renderPortalRegister(err='',vals={}) {
 
 function applyStandalonePortalTheme(html) {
   const css = `
+  :root{--g:#13e88b;--g-bg:rgba(14,232,137,.08);--g-brd:rgba(14,232,137,.28);--bg:#05070b;--bg2:#090e13;--brd:#19262e;--brd2:#223139;--tx:#eef3f1;--tx2:#93a09b;--tx3:#5f6e68;color-scheme:dark}
   :focus-visible{outline:2px solid var(--g);outline-offset:3px}
-  #bg-canvas{opacity:.2}
-  @media(prefers-color-scheme:light){:root{--g:#087d4d;--g-bg:rgba(8,125,77,.09);--g-brd:rgba(8,125,77,.28);--bg:#f2f4f0;--bg2:#e9ede7;--brd:#cbd3c8;--brd2:#b7c2b4;--tx:#17211b;--tx2:#4c5c52;--tx3:#6a796f;color-scheme:light}.card,.profile-bar,.key-card,.panel-box{box-shadow:0 12px 34px rgba(30,46,36,.08)}#bg-canvas{opacity:.1}}
+  #bg-canvas{opacity:.18}
   @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}#bg-canvas{display:none}}`;
   return html.replace('</style></head>', `${css}</style></head>`);
 }
@@ -3759,7 +3759,7 @@ function renderPortalDashboard(user, keyData, okMsg='') {
 
 /* Lower panels */
 .panels-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:4px}
-.panel-box{background:var(--bg2);border:1px solid var(--brd);border-radius:18px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.02)
+.panel-box{background:var(--bg2);border:1px solid var(--brd);border-radius:18px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.02)}
 .panel-hdr{padding:16px 20px 12px;border-bottom:1px solid var(--brd);font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;color:var(--tx2);text-transform:uppercase;letter-spacing:.8px;display:flex;align-items:center;gap:8px}
 .panel-hdr-icon{font-size:16px}
 .panel-body{padding:16px 20px}
@@ -4253,7 +4253,7 @@ ${_toastCss()}
 
 /* Lower panels */
 .panels-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:4px}
-.panel-box{background:var(--bg2);border:1px solid var(--brd);border-radius:18px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.02)
+.panel-box{background:var(--bg2);border:1px solid var(--brd);border-radius:18px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.02)}
 .panel-hdr{padding:16px 20px 12px;border-bottom:1px solid var(--brd);font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;color:var(--tx2);text-transform:uppercase;letter-spacing:.8px;display:flex;align-items:center;gap:8px}
 .panel-hdr-icon{font-size:16px}
 .panel-body{padding:16px 20px}
@@ -4299,6 +4299,27 @@ ${_toastCss()}
 .key-card,.summary-card,.panel-card,.security-card,.devices-card{border-radius:20px!important;background:linear-gradient(180deg,#0b1014,#080c0f)!important;border-color:#1a252c!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.018)}
 .qa-primary{border-radius:12px;background:#0ee889;color:#03110b;box-shadow:0 12px 32px rgba(0,230,118,.12)}.qa-btn{border-radius:12px!important;background:#0b0f13!important;border-color:#202b33!important}.key-display{border-radius:10px!important;background:#07110e!important;border-color:rgba(14,232,137,.3)!important}.cd-box{border-radius:12px!important;background:#070a0d!important;border-color:#1d272e!important}
 @media(max-width:1000px){.client-shell{grid-template-columns:230px minmax(0,1fr);gap:18px}.client-rail{padding:14px}.client-nav a{padding:11px 10px}}@media(max-width:900px){.client-shell{grid-template-columns:1fr}.client-rail{position:relative;top:0;min-height:auto}.client-rail-brand{flex-direction:row;align-items:center}.client-rail-brand-caption{margin-left:auto}.client-nav{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* ZVM Premium Control R5 — pós-login do cliente */
+body{background:radial-gradient(circle at 16% 12%,rgba(14,232,137,.055),transparent 27%),radial-gradient(circle at 82% 18%,rgba(41,98,255,.035),transparent 24%),#05070b;color:#eef3f1}
+.page-wrap{max-width:1540px;padding:28px clamp(18px,3vw,46px) 40px}
+.client-shell{grid-template-columns:286px minmax(0,1fr);gap:30px}
+.client-rail{top:28px;min-height:calc(100vh - 56px);padding:20px;border:1px solid #183229;border-radius:26px;background:radial-gradient(circle at 12% 0%,rgba(14,232,137,.18),transparent 30%),linear-gradient(180deg,#071611 0%,#07100e 42%,#06090d 100%);box-shadow:0 28px 90px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.025)}
+.client-rail::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:linear-gradient(135deg,rgba(255,255,255,.018),transparent 30%)}
+.client-rail-brand{position:relative;z-index:1;display:grid;grid-template-columns:auto 1fr;align-items:center;column-gap:12px;row-gap:2px;padding:2px 2px 19px;margin-bottom:18px;border-bottom:1px solid rgba(41,67,57,.7)}
+.client-rail-logo{grid-row:1/3;max-width:none}.client-rail-logo .zvm-brand{gap:8px}.client-rail-logo .zvm-brand-word{font-size:22px}.client-rail-brand-caption{margin:0;font-size:10px;color:#788780;letter-spacing:1.35px}.client-rail-brand::after{content:'Conta premium';font-size:12px;font-weight:800;color:#f1f5f3;grid-column:2;grid-row:1;align-self:end}
+.client-nav{position:relative;z-index:1;gap:7px}.client-nav a{min-height:44px;padding:11px 13px;border-radius:13px;color:#98a6a0;font-size:13px;font-weight:700;text-decoration:none;border:1px solid transparent;transition:background .18s,border-color .18s,color .18s,transform .18s}.client-nav a:hover{color:#eaf3ef;background:#0b1713;border-color:#1b362c;transform:translateX(2px)}.client-nav a.active{color:#13ec91;background:linear-gradient(90deg,rgba(14,232,137,.12),rgba(14,232,137,.035));border-color:rgba(14,232,137,.34);box-shadow:inset 3px 0 0 #0ee889}
+.client-rail-card{position:relative;z-index:1;margin-top:14px;padding:15px 16px;border-radius:18px;border:1px solid #172a23;background:linear-gradient(180deg,rgba(6,13,11,.78),rgba(5,10,9,.74));box-shadow:inset 0 1px 0 rgba(255,255,255,.018)}.client-rail-kicker{font-size:9.5px;color:#61716a;letter-spacing:1.05px}.client-rail-value{font-size:17px;color:#edf4f1}.client-rail-meta{color:#7e8c86;line-height:1.5}
+.client-main{min-width:0}.dash-topbar{min-height:72px;padding:2px 2px 18px;margin-bottom:18px;border-bottom:1px solid #142029}.dash-page-heading{display:flex;flex-direction:column;gap:4px;min-width:0}.dash-page-heading span,.dash-page-heading strong{display:block}.dash-page-heading span{font-size:10px;color:#697880;letter-spacing:1.4px}.dash-page-heading strong{font-size:24px;line-height:1.1;color:#f3f7f5;letter-spacing:-.55px}.dash-topbar-user{gap:12px}.dash-topbar-name{color:#aab7b2}.dash-logout{min-height:40px;padding:9px 15px;border-radius:12px;color:#96a29f;background:#080c10;border-color:#202c33}.dash-logout:hover{background:#140c0f;border-color:#63303a;color:#ff7385}
+.update-banner{position:relative;overflow:hidden;padding:15px 18px;border-radius:18px;border:1px solid rgba(14,232,137,.3);background:linear-gradient(90deg,rgba(14,232,137,.1),rgba(14,232,137,.025) 62%,rgba(25,105,255,.025));box-shadow:inset 0 1px 0 rgba(255,255,255,.02)}.update-banner::after{content:'';position:absolute;width:240px;height:240px;border-radius:50%;right:-120px;top:-150px;background:rgba(14,232,137,.055);pointer-events:none}.update-badge{background:#13e88b;color:#03110a}.update-btn{position:relative;z-index:1;min-width:96px;padding:10px 18px;border-radius:11px;background:#13e88b;color:#03110a;box-shadow:0 10px 26px rgba(14,232,137,.12)}
+.dash-hero{position:relative;overflow:hidden;min-height:146px;padding:27px 28px;border-radius:24px;border:1px solid #1b2931;background:radial-gradient(circle at 84% 20%,rgba(14,232,137,.085),transparent 30%),linear-gradient(135deg,#0b1116,#090d12 68%);box-shadow:0 20px 58px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.024)}.dash-hero::after{content:'';position:absolute;width:320px;height:320px;border:1px solid rgba(14,232,137,.07);border-radius:50%;right:-170px;bottom:-235px;pointer-events:none}.dash-hero h1{font-size:30px;letter-spacing:-.8px}.dash-hero-sub{color:#8f9ca5;max-width:660px}.dash-avatar{box-shadow:0 0 0 5px rgba(14,232,137,.035),0 14px 34px rgba(0,0,0,.3)}
+.dash-grid-2{gap:18px}.key-card,.summary-card,.panel-card,.security-card,.devices-card,.panel-box{border-radius:21px;background:linear-gradient(180deg,#0a1015,#080c10);border-color:#19262e;box-shadow:0 18px 48px rgba(0,0,0,.12),inset 0 1px 0 rgba(255,255,255,.02)}.key-card-head,.panel-hdr{border-color:#17242b}.panel-hdr{background:linear-gradient(180deg,rgba(13,19,24,.9),rgba(10,15,19,.9));padding:15px 18px;color:#c8d0ce;text-transform:none;letter-spacing:.1px;font-size:13.5px}.panel-body{padding:17px 18px}.key-display{min-height:48px;border-radius:12px;background:linear-gradient(90deg,#071511,#06100d);border-color:rgba(14,232,137,.34);box-shadow:inset 0 0 24px rgba(14,232,137,.025)}
+.countdown-grid{gap:8px}.cd-box{min-height:58px;border-radius:13px;background:#070b0f;border-color:#1b2931}.cd-num{color:#f0f5f3}.validity-bar{background:#111a1f}
+.qa-primary{min-height:54px;border-radius:14px;background:linear-gradient(135deg,#15ee91,#00cc72);color:#03110a;box-shadow:0 14px 36px rgba(14,232,137,.14)}.qa-primary:hover{box-shadow:0 18px 44px rgba(14,232,137,.2)}.qa-btn{min-height:46px;border-radius:12px;background:#0a0f13;border-color:#1d2a31;color:#b1bcb8}.qa-btn:hover{background:#0d1518;border-color:#294039;color:#eaf2ef}.support-btn{border-radius:12px}
+.device-row{border-color:#142129}.device-remove{border-radius:10px}.panels-grid{gap:18px}.faq-item,.cl-item{border-color:#111c22}
+@media(max-width:1100px){.client-shell{grid-template-columns:244px minmax(0,1fr);gap:20px}.client-rail{padding:16px}.client-rail-brand::after{font-size:11px}}
+@media(max-width:900px){.page-wrap{padding-top:18px}.client-shell{grid-template-columns:1fr}.client-rail{position:relative;top:0;min-height:auto}.client-rail-brand{grid-template-columns:auto 1fr auto}.client-rail-brand::after{grid-column:3;grid-row:1/3;align-self:center}.client-nav{grid-template-columns:repeat(2,minmax(0,1fr))}.client-rail-card{display:none}}
+@media(max-width:620px){.client-nav{grid-template-columns:1fr}.dash-topbar{align-items:flex-start}.dash-topbar-user{flex-direction:column;align-items:flex-end;gap:7px}.dash-hero{padding:22px 18px}.dash-hero h1{font-size:26px}.page-wrap{padding-left:12px;padding-right:12px}}
 </style>
 
 <div class="client-shell">
@@ -4930,6 +4951,18 @@ td.td-status{white-space:nowrap;overflow:hidden}
 @media(max-width:750px){.stats{grid-template-columns:1fr 1fr};.admin-content{padding:12px};.acts{max-width:180px};.rsidebar{display:none}}
 /* ZVM Visual System R4 — moderniza o Admin sem mudar sua estrutura */
 header{height:58px;padding:0 22px;background:rgba(6,9,10,.94);backdrop-filter:blur(16px);border-bottom-color:#182229}.logo{gap:10px}.logo-ver{color:#637078}.rsidebar{top:58px;height:calc(100vh - 58px);background:linear-gradient(180deg,#07100d,#06090b);border-color:#172229}.rtab{padding-top:12px;padding-bottom:12px}.rtab.active{background:rgba(14,232,137,.075)}.admin-wrap{min-height:calc(100vh - 58px)}.admin-content{padding:22px 24px}.sc{border-radius:16px;padding:16px 17px;background:linear-gradient(180deg,#0c1114,#090d10);border-color:#1b252c}.sec{border-radius:16px;background:#090d10;border-color:#1b252c}.sh{background:#0d1216;border-color:#1b252c;padding:12px 16px}.alert-strip{border-radius:12px}.btn{border-radius:9px;padding:7px 12px}.gen-form input,.search-bar input,.search-bar select{border-radius:9px;background:#070a0d;border-color:#202a31}.bs{border-radius:6px;padding:2px 6px}th{background:#070a0d;padding-top:6px;padding-bottom:6px}td{padding-top:4px;padding-bottom:4px}.modal{border-radius:18px;background:#0a0f12;border-color:#223039}
+
+/* ZVM Premium Control R5 — Admin mantém funções/estrutura, recebe direção premium */
+:root{--g:#13e88b;--g-dim:#00c96f;--g-bg:rgba(14,232,137,.08);--g-brd:rgba(14,232,137,.28);--bg:#05070b;--s0:#070a0d;--s1:#090e12;--s2:#0c1217;--s3:#10171c;--brd:#18242b;--brd2:#22313a;--tx:#eef3f1;--tx2:#93a09b;--tx3:#586761;--sidebar-w:190px;--sidebar-open:190px;--hdr:62px;--r:12px;--r-sm:9px;--r-lg:18px}
+body{background:radial-gradient(circle at 16% 10%,rgba(14,232,137,.045),transparent 24%),#05070b}
+header{height:var(--hdr);padding:0 22px;background:rgba(6,10,12,.95);border-bottom:1px solid #17242b;box-shadow:0 12px 34px rgba(0,0,0,.23);backdrop-filter:blur(18px)}.logo{gap:12px}.logo .zvm-brand-word{font-size:20px}.logo-ver{padding-left:10px;border-left:1px solid #243038;color:#74827d;font-weight:700;letter-spacing:.4px}.hright{gap:9px}.hdr-meta{color:#68766f}.out{border-radius:10px}
+.admin-wrap{min-height:calc(100vh - var(--hdr))}.rsidebar{width:var(--sidebar-w);top:var(--hdr);height:calc(100vh - var(--hdr));padding:13px 10px;background:radial-gradient(circle at 18% 0%,rgba(14,232,137,.12),transparent 29%),linear-gradient(180deg,#07120e,#060a0d 74%);border-right:1px solid #173027;overflow-y:auto}.rsidebar:hover{width:var(--sidebar-w)}.rsb-title{opacity:1;padding:10px 11px 9px;border-bottom:0;color:#5b6b64}.rtab{min-height:44px;padding:11px 12px;border-left:0;border:1px solid transparent;border-radius:12px;gap:10px;color:#8f9d97}.rtab:hover{transform:translateX(2px);background:#0b1713;color:#e7efeb;border-color:#1a332a}.rtab.active{background:linear-gradient(90deg,rgba(14,232,137,.12),rgba(14,232,137,.035));color:#13e88b;border-color:rgba(14,232,137,.3);box-shadow:inset 3px 0 0 #13e88b}.rtab-label{opacity:1}.rtab-icon{width:18px}
+.admin-content{padding:24px 26px 32px}.alert-strip{padding:11px 15px;border-radius:14px;background:linear-gradient(90deg,rgba(249,115,22,.1),rgba(249,115,22,.025))}.stats{gap:12px;margin-bottom:18px}.sc{min-height:82px;padding:16px 17px;border-radius:17px;background:radial-gradient(circle at 92% 18%,rgba(14,232,137,.045),transparent 35%),linear-gradient(180deg,#0b1115,#080d11);border:1px solid #1a2830;box-shadow:0 16px 40px rgba(0,0,0,.12),inset 0 1px 0 rgba(255,255,255,.02)}.sc:hover{border-color:#2b4038;box-shadow:0 18px 46px rgba(0,0,0,.18)}.sc .n{font-size:23px}.sc .l{color:#66756f}.sc-icon{opacity:.6;filter:saturate(.8)}
+.sec{border-radius:18px;background:linear-gradient(180deg,#090e12,#080c10);border:1px solid #19272e;box-shadow:0 18px 48px rgba(0,0,0,.1),inset 0 1px 0 rgba(255,255,255,.018)}.sh{padding:13px 16px;background:linear-gradient(180deg,#0d1419,#0a1014);border-color:#19272e}.st{font-size:13.5px;color:#e3eae7}.search-bar{padding:9px 14px;background:#080d11;border-color:#17242b}.search-bar input,.search-bar select,.gen-form input{min-height:35px;background:#06090c;border-color:#1e2c33;border-radius:10px}.search-bar input:focus,.search-bar select:focus,.gen-form input:focus{border-color:rgba(14,232,137,.5);box-shadow:0 0 0 3px rgba(14,232,137,.07)}
+.btn{border-radius:10px;min-height:34px}.bp{background:linear-gradient(135deg,#15ee91,#00c96f);color:#03110a}.bp:hover{box-shadow:0 10px 26px rgba(14,232,137,.16)}.bs{border-radius:7px;padding:3px 6px}.ov{scrollbar-gutter:stable}thead{top:0}th{height:32px;background:#070b0e;color:#64736d;border-color:#18252c}td{padding-top:5px;padding-bottom:5px;border-color:#131f25}tr:nth-child(even) td{background:#ffffff018}tr:hover td{background:rgba(14,232,137,.025)}.kc{color:#18ec92}
+.modal-bg{background:rgba(0,0,0,.7);backdrop-filter:blur(10px)}.modal{padding:22px;border-radius:20px;background:#090e12;border-color:#26373f;box-shadow:0 28px 90px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.025)}.modal textarea,.modal input[type=text],.modal input[type=number]{min-height:42px;border-radius:10px;background:#06090c;border-color:#1e2c33}
+@media(max-width:920px){:root{--sidebar-w:54px;--sidebar-open:190px}.rsidebar{width:54px;overflow:hidden}.rsidebar:hover{width:190px}.rsidebar .rsb-title,.rsidebar .rtab-label{opacity:0}.rsidebar:hover .rsb-title,.rsidebar:hover .rtab-label{opacity:1}.admin-content{padding:18px}}
+@media(max-width:750px){.rsidebar{display:none}.admin-content{padding:12px}.stats{grid-template-columns:1fr 1fr}}
 </style>
 </head>
 <body>
@@ -7545,44 +7578,46 @@ function renderStandalone500Page(portalUser = null) {
 }
 
 function renderAnalyticsLogin(error = '') {
+  const errHtml = error ? `<div class="auth-alert err" role="alert">⚠ ${escHtml(error)}</div>` : '';
+  const benefits = [
+    ['📈','Visão executiva de receita, vendas e ticket médio'],
+    ['👥','Retenção, recorrência e comportamento da base'],
+    ['🧪','Laboratório isolado para testar os fluxos comerciais'],
+    ['🔒','Painel privado com sessão administrativa dedicada'],
+  ].map(([icon,text])=>`<li><span class="auth-benefit-icon" aria-hidden="true">${icon}</span><span>${text}</span></li>`).join('');
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Analytics</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Outfit:wght@400;500;600;700;800;900&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:#000}::-webkit-scrollbar-thumb{background:#00e67640;border-radius:10px}::-webkit-scrollbar-thumb:hover{background:#00e676}
-body{background:#000;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Outfit',sans-serif;font-size:14px;overflow:hidden}
-.card{background:#0a0a0a;border:1px solid #1a1a1a;border-radius:16px;padding:36px 32px;width:360px;position:relative;z-index:1;box-shadow:0 0 40px #00e67610,0 8px 32px #00000090}
-.logo{font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900;color:#00e676;margin-bottom:4px;text-align:center;letter-spacing:1px;text-shadow:0 0 20px #00e67440}
-.sub{color:#4a4a4a;font-size:13px;letter-spacing:1px;text-transform:uppercase;margin-bottom:22px;text-align:center}
-.badge{display:block;background:#00e67610;border:1px solid #00e67630;color:#00e676;font-size:13px;letter-spacing:.5px;text-transform:uppercase;padding:4px 14px;border-radius:20px;margin-bottom:18px;text-align:center;font-family:'Outfit',sans-serif;font-weight:700}
-label{display:block;font-size:13px;letter-spacing:.5px;color:#5a5a5a;text-transform:uppercase;margin-bottom:6px;font-family:'Outfit',sans-serif;font-weight:600}
-input{width:100%;padding:10px 13px;background:#000;border:1px solid #1a1a1a;border-radius:7px;color:#c8cad8;font-family:'Space Mono',monospace;font-size:14px;outline:none;margin-bottom:14px;transition:border-color .18s}
-input:focus{border-color:#00e676;box-shadow:0 0 0 2px #00e67615}
-.btn{width:100%;padding:12px;background:#00e676;border:none;border-radius:7px;color:#000;font-family:'Outfit',sans-serif;font-weight:800;font-size:14px;cursor:pointer;transition:opacity .2s,box-shadow .2s}
-.btn:hover{opacity:.9;box-shadow:0 4px 16px #00e67640}
-.err{background:#f0506012;border:1px solid #f0506035;border-radius:6px;color:#f05060;padding:11px 14px;font-size:14px;margin-bottom:14px;font-family:'Outfit',sans-serif}
-</style></head><body>
-<div class="card">
-  <div class="logo">⚡ ZVM</div>
-  <div class="sub">Painel de Analytics</div>
-  <div class="badge">📊 Acesso Privado</div>
-  ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
-  <form method="POST" action="${R_ANALYTICS}/login">
-    <label>Senha de Acesso</label>
-    <input type="password" name="pass" autofocus>
-    ${ANALYTICS_TOTP_SECRET ? `<label>Código 2FA</label><input type="text" name="totp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" autocomplete="one-time-code" style="letter-spacing:4px;font-size:18px;text-align:center">` : ''}
-    <button type="submit" class="btn">Entrar</button>
-  </form>
-</div>
-${_pwdToggleScript()}${CANVAS_BG}</body></html>`;
+<title>ZVM — Analytics</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
+<style>${_sharedCss()}${_standaloneCss()}${_authShellCss()}</style></head>
+<body>
+<main class="auth-shell" style="min-height:100vh">
+  <section class="auth-promo" aria-hidden="true"><div class="auth-promo-inner">
+    <div class="auth-eyebrow">ZVM Analytics</div>
+    <h1>Dados claros. <em>Decisões melhores.</em></h1>
+    <p class="auth-promo-sub">Uma área privada para acompanhar a operação comercial sem misturar dados reais com testes.</p>
+    <ul class="auth-benefits">${benefits}</ul>
+  </div></section>
+  <section class="auth-form-wrap"><div class="auth-form-card">
+    <div class="auth-form-brand">${renderStandaloneBrand('auth')}</div>
+    <h2>Acessar Analytics</h2>
+    <p class="auth-form-hint">Entre com a credencial privada do painel de dados.</p>
+    <div class="auth-secure-chip">Sessão protegida e isolada do portal</div>
+    ${errHtml}
+    <form method="POST" action="${R_ANALYTICS}/login">
+      <div class="auth-field"><label for="analytics-pass">Senha de acesso</label><input id="analytics-pass" type="password" name="pass" required autofocus autocomplete="current-password" placeholder="Sua credencial privada"></div>
+      ${ANALYTICS_TOTP_SECRET ? `<div class="auth-field"><label for="analytics-totp">Código 2FA</label><input id="analytics-totp" type="text" name="totp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" autocomplete="one-time-code" style="letter-spacing:8px;font-size:20px;text-align:center"></div>` : ''}
+      <button type="submit" class="auth-submit">Entrar no Analytics<span class="auth-spinner" aria-hidden="true"></span></button>
+    </form>
+    <div class="auth-footnote">Área restrita à administração da ZVM.</div>
+  </div></section>
+</main>
+${_pwdToggleScript()}${_authSubmitLockScript()}
+</body></html>`;
 }
 
-async function renderAnalyticsDashboard() {
-  const stats    = await getPaymentStats();
-  const payments = await getPayments({ limit: 200 });
+async function renderAnalyticsDashboard(fixture = null) {
+  const stats    = fixture?.stats || await getPaymentStats();
+  const payments = fixture?.payments || await getPayments({ limit: 200 });
   const fmtBRL   = v => 'R$\u00a0' + (v||0).toFixed(2).replace('.',',');
   const fmtDate  = iso => iso ? new Date(iso).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
   // Usa o escHtml global: o antigo escH NÃO escapava aspas, e é usado dentro de
@@ -7618,7 +7653,48 @@ async function renderAnalyticsDashboard() {
     `<tr><td>${escH(c._id)}</td><td style="text-align:center;color:#00ff87;font-weight:700">${c.count}</td><td style="text-align:right;color:#00ff87">${fmtBRL(c.total)}</td></tr>`
   ).join('') || '<tr><td colspan="3" class="empty">Sem dados</td></tr>';
 
-
+  // Visualizações renderizadas no servidor: sem Chart.js/CDN, portanto não
+  // dependem de script externo nem entram em conflito com a CSP do painel.
+  const clampNum = v => Number.isFinite(Number(v)) ? Number(v) : 0;
+  const _dayMap = new Map((stats?.byDay||[]).map(x => [String(x._id||''), x]));
+  const daySeries = Array.from({length:30}, (_,idx) => {
+    const d = new Date(Date.now() - (29-idx)*86400000);
+    const key = d.toISOString().slice(0,10);
+    const x = _dayMap.get(key) || {};
+    return { key, label:key.slice(5), count:clampNum(x.count), revenue:clampNum(x.revenue) };
+  });
+  function lineViz(series, valueKey='revenue') {
+    const W=760,H=230,PX=22,PY=24,innerW=W-PX*2,innerH=H-PY*2;
+    const vals=series.map(x=>clampNum(x[valueKey]));
+    const max=Math.max(1,...vals);
+    const pts=series.map((x,i)=>{
+      const px=PX+(i/(Math.max(1,series.length-1)))*innerW;
+      const py=PY+innerH-(clampNum(x[valueKey])/max)*innerH;
+      return [px,py];
+    });
+    const poly=pts.map(p=>p.map(n=>n.toFixed(1)).join(',')).join(' ');
+    const area=`${PX},${H-PY} ${poly} ${W-PX},${H-PY}`;
+    const grid=[.25,.5,.75,1].map(t=>`<line x1="${PX}" y1="${(PY+innerH-innerH*t).toFixed(1)}" x2="${W-PX}" y2="${(PY+innerH-innerH*t).toFixed(1)}" stroke="#17242b" stroke-width="1"/>`).join('');
+    const labels=series.map((x,i)=>i%7===0||i===series.length-1?`<text x="${pts[i][0].toFixed(1)}" y="${H-4}" text-anchor="middle" fill="#64736f" font-size="10" font-family="Outfit, sans-serif">${escH(x.label)}</text>`:'').join('');
+    const last=vals[vals.length-1]||0;
+    return `<div class="viz-frame"><svg class="viz-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolução de receita nos últimos 30 dias">${grid}<polygon points="${area}" fill="rgba(14,232,137,.07)"/><polyline points="${poly}" fill="none" stroke="#13e88b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>${labels}</svg><div class="viz-caption"><span>Pico: ${fmtBRL(max)}</span><span>Último dia: ${fmtBRL(last)}</span></div></div>`;
+  }
+  function horizontalBars(items, valueKey, formatter, emptyText='Sem dados suficientes') {
+    if(!items.length) return `<div class="viz-empty">${emptyText}</div>`;
+    const max=Math.max(1,...items.map(x=>clampNum(x[valueKey])));
+    return `<div class="metric-bars">${items.slice(0,6).map((x,i)=>{const v=clampNum(x[valueKey]);const pct=Math.max(3,Math.round(v/max*100));return `<div class="metric-bar-row"><div class="metric-bar-head"><span>${escH(x._id||'Outros')}</span><strong>${formatter(v)}</strong></div><div class="metric-bar-track"><span style="width:${pct}%"></span></div></div>`}).join('')}</div>`;
+  }
+  function hourViz(items) {
+    const map=new Map((items||[]).map(x=>[String(x._id).padStart(2,'0'),clampNum(x.count)]));
+    const vals=Array.from({length:24},(_,i)=>map.get(String(i).padStart(2,'0'))||0),max=Math.max(1,...vals);
+    return `<div class="hour-bars" aria-label="Vendas por hora">${vals.map((v,i)=>`<div class="hour-col" title="${String(i).padStart(2,'0')}h · ${v} venda(s)"><span style="height:${Math.max(5,Math.round(v/max*100))}%"></span><small>${i%3===0?String(i).padStart(2,'0'):''}</small></div>`).join('')}</div>`;
+  }
+  const salesTrendViz = lineViz(daySeries,'revenue');
+  const productViz = horizontalBars(stats?.byProduct||[], 'revenue', fmtBRL, 'Ainda não há receita por produto.');
+  const hourChartViz = hourViz(stats?.byHour||[]);
+  const methodViz = horizontalBars(stats?.byMethod||[], 'count', v=>`${v} venda${v===1?'':'s'}`, 'Ainda não há métodos de pagamento registrados.');
+  const topProduct = (stats?.byProduct||[]).slice().sort((a,b)=>clampNum(b.revenue)-clampNum(a.revenue))[0];
+  const peakHour = (stats?.byHour||[]).slice().sort((a,b)=>clampNum(b.count)-clampNum(a.count))[0];
 
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -7740,20 +7816,54 @@ tr:hover td{background:#ffffff02}
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
 @media(max-width:1200px){.stats{grid-template-columns:repeat(3,1fr)}.stats2{grid-template-columns:repeat(3,1fr)}.charts{grid-template-columns:1fr}.charts3{grid-template-columns:1fr 1fr}}
 @media(max-width:700px){.stats{grid-template-columns:1fr 1fr}.stats2{grid-template-columns:1fr 1fr}.two-col{grid-template-columns:1fr}.charts3{grid-template-columns:1fr};main{padding:14px 12px}}
+
+/* ZVM Premium Control R5 — Analytics */
+:root{--gold:#13e88b;--dark:#05070b;--card:#090e13;--card2:#0c1217;--border:#19262e;--text:#eef3f1;--muted:#7e8c91;--green:#13e88b;--red:#ff6175;--blue:#68a0ff;--purple:#ac8dff;--radius:18px;--shadow:0 18px 50px rgba(0,0,0,.16)}
+body{background:radial-gradient(circle at 14% 8%,rgba(14,232,137,.05),transparent 25%),#05070b;color:var(--text)}.analytics-shell{display:grid;grid-template-columns:244px minmax(0,1fr);min-height:100vh}.analytics-rail{position:sticky;top:0;height:100vh;padding:22px 16px;border-right:1px solid #173027;background:radial-gradient(circle at 18% 0%,rgba(14,232,137,.14),transparent 30%),linear-gradient(180deg,#07130f,#060a0d 74%);display:flex;flex-direction:column;gap:18px;overflow:auto}.analytics-rail-brand{padding:2px 4px 18px;border-bottom:1px solid #173027}.analytics-rail-brand .zvm-brand-word{font-size:22px}.analytics-rail-kicker{margin-top:8px;font-size:10px;text-transform:uppercase;letter-spacing:1.4px;color:#67776f;font-weight:800}.analytics-nav{display:flex;flex-direction:column;gap:7px}.analytics-nav a{display:flex;align-items:center;gap:10px;min-height:43px;padding:10px 12px;border-radius:12px;color:#93a19b;text-decoration:none;font-size:13px;font-weight:700;border:1px solid transparent;transition:all .18s}.analytics-nav a:hover,.analytics-nav a.active{color:#16eb91;background:rgba(14,232,137,.08);border-color:rgba(14,232,137,.28);transform:translateX(2px)}.analytics-rail-card{margin-top:auto;padding:15px;border:1px solid #172a23;border-radius:17px;background:#070c0a}.analytics-rail-card strong{display:block;font-size:13px;color:#e7efeb;margin-bottom:5px}.analytics-rail-card span{font-size:11.5px;color:#74827c;line-height:1.5}.analytics-workspace{min-width:0}.analytics-topbar{height:66px;padding:0 24px;background:rgba(6,10,12,.94);border-bottom:1px solid #17242b;backdrop-filter:blur(18px);box-shadow:0 12px 34px rgba(0,0,0,.18)}.analytics-title{display:flex;flex-direction:column;gap:2px}.analytics-title span{font-size:9.5px;text-transform:uppercase;letter-spacing:1.35px;color:#64736c;font-weight:800}.analytics-title strong{font-size:17px;color:#edf3f0}.analytics-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.analytics-actions .btn,.analytics-actions .out{min-height:36px;border-radius:10px}
+main{max-width:none;margin:0;padding:24px 26px 40px}.analytics-hero{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:22px;align-items:center;padding:24px 26px;margin-bottom:18px;border:1px solid #1a2930;border-radius:22px;background:radial-gradient(circle at 86% 20%,rgba(14,232,137,.09),transparent 32%),linear-gradient(135deg,#0a1115,#080c10);box-shadow:var(--shadow),inset 0 1px 0 rgba(255,255,255,.02)}.analytics-hero-kicker{display:inline-flex;width:max-content;padding:6px 10px;border-radius:999px;border:1px solid rgba(14,232,137,.28);background:rgba(14,232,137,.07);color:#15e990;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.1px;margin-bottom:10px}.analytics-hero h1{font-size:30px;line-height:1.08;letter-spacing:-.8px;color:#f3f7f5;margin-bottom:8px}.analytics-hero p{max-width:700px;color:#87959a;line-height:1.55}.analytics-hero-pulse{display:grid;grid-template-columns:1fr 1fr;gap:8px;min-width:280px}.analytics-pulse{padding:12px 14px;border:1px solid #1a2930;border-radius:14px;background:#070b0f}.analytics-pulse span{display:block;font-size:9.5px;color:#64736d;text-transform:uppercase;letter-spacing:.8px;font-weight:800}.analytics-pulse strong{display:block;margin-top:5px;font-size:17px;color:#edf3f0}.analytics-pulse strong.green{color:#13e88b}
+.stats,.stats2{gap:12px}.stats{grid-template-columns:repeat(6,minmax(0,1fr))}.stats2{grid-template-columns:repeat(5,minmax(0,1fr));margin-bottom:18px}.sc{min-height:112px;padding:17px 18px;border-radius:17px;border-color:#1a2930;background:radial-gradient(circle at 92% 16%,rgba(14,232,137,.045),transparent 34%),linear-gradient(180deg,#0b1116,#080d11);box-shadow:0 16px 42px rgba(0,0,0,.11),inset 0 1px 0 rgba(255,255,255,.02)}.sc:hover{transform:translateY(-1px);border-color:#2b4239}.sc .n{font-size:25px}.sc .l{font-size:10.5px;color:#67766f;font-weight:800;letter-spacing:.65px}.sc .sub-n{font-size:11.5px;color:#748188}.sc-icon{opacity:.38;filter:saturate(.8)}
+.analytics-insights{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:0 0 18px}.insight-card{padding:14px 15px;border:1px solid #18262d;border-radius:15px;background:#080d11}.insight-card span{font-size:9.5px;color:#64736d;text-transform:uppercase;letter-spacing:.8px;font-weight:800}.insight-card strong{display:block;margin-top:5px;font-size:14px;color:#e7eeeb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.insight-card small{display:block;margin-top:3px;color:#76848a;font-size:11px}
+.charts,.charts3{gap:14px}.chart-card{border-radius:18px;border-color:#19272e;background:linear-gradient(180deg,#090f14,#080c10);box-shadow:0 18px 48px rgba(0,0,0,.1),inset 0 1px 0 rgba(255,255,255,.018);min-height:0;padding:18px}.chart-title{font-size:13.5px;color:#e0e8e4;margin-bottom:14px}.viz-frame{min-height:250px;display:flex;flex-direction:column;justify-content:center}.viz-svg{display:block;width:100%;height:auto;max-height:250px}.viz-caption{display:flex;justify-content:space-between;gap:12px;margin-top:8px;color:#6d7b80;font-size:11px}.viz-empty{min-height:210px;display:grid;place-items:center;color:#69767b;font-size:12px}.metric-bars{display:flex;flex-direction:column;gap:15px;padding:6px 2px}.metric-bar-row{display:flex;flex-direction:column;gap:7px}.metric-bar-head{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:#9aa7a3}.metric-bar-head strong{color:#e9f0ed}.metric-bar-track{height:7px;border-radius:99px;background:#111b20;overflow:hidden}.metric-bar-track span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#0bbf70,#13e88b);box-shadow:0 0 16px rgba(14,232,137,.15)}.hour-bars{height:220px;display:grid;grid-template-columns:repeat(24,1fr);gap:4px;align-items:end;padding:10px 0 2px}.hour-col{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px}.hour-col span{display:block;width:100%;min-height:5px;border-radius:4px 4px 2px 2px;background:linear-gradient(180deg,#13e88b,#087e50);opacity:.8}.hour-col:hover span{opacity:1}.hour-col small{font-size:8px;color:#5f6d70;height:10px}
+.sec{border-radius:18px;border-color:#19272e;background:linear-gradient(180deg,#090f13,#080c10);box-shadow:0 18px 48px rgba(0,0,0,.09)}.sh{padding:13px 16px;background:#0c1217;border-color:#19272e}.st{font-size:13px;color:#dce5e1}.ov{border-radius:0 0 18px 18px}th{background:#070b0f;color:#64736d;padding:8px 10px}td{padding:8px 10px;border-color:#142027}tr:hover td{background:rgba(14,232,137,.025)}#search{min-height:38px;border-radius:10px;background:#06090d;border-color:#1e2b32}.pb{border-radius:9px}.pb.active{background:rgba(14,232,137,.1);border-color:rgba(14,232,137,.3);color:#13e88b}.lab-body{background:#080c10}.lab-field select,.lab-field input{min-height:42px;border-radius:10px;background:#06090d;border-color:#1e2b32}.lab-iframe{border-radius:14px}.purge-dialog{border-radius:20px;background:#090e12;border-color:#293941}
+@media(max-width:1350px){.stats{grid-template-columns:repeat(3,1fr)}.stats2{grid-template-columns:repeat(3,1fr)}.analytics-insights{grid-template-columns:1fr 1fr}.analytics-hero{grid-template-columns:1fr}.analytics-hero-pulse{min-width:0;max-width:420px}}
+@media(max-width:980px){.analytics-shell{grid-template-columns:1fr}.analytics-rail{position:relative;height:auto;padding:14px 16px;border-right:0;border-bottom:1px solid #173027}.analytics-rail-brand{padding-bottom:10px}.analytics-nav{display:grid;grid-template-columns:repeat(3,1fr)}.analytics-rail-card{display:none}.analytics-topbar{position:sticky;top:0}.charts3{grid-template-columns:1fr 1fr}}
+@media(max-width:700px){main{padding:14px 12px 30px}.analytics-topbar{height:auto;min-height:66px;padding:10px 12px;align-items:flex-start}.analytics-actions{justify-content:flex-end}.analytics-nav{grid-template-columns:1fr 1fr}.stats,.stats2{grid-template-columns:1fr 1fr}.analytics-insights{grid-template-columns:1fr}.charts3{grid-template-columns:1fr}.analytics-hero{padding:19px}.analytics-hero h1{font-size:25px}.analytics-hero-pulse{grid-template-columns:1fr 1fr}.hour-bars{gap:2px}}
 </style></head><body>
-<header>
-  <div class="logo">⚡ ZVM <span class="badge-an">Analytics</span></div>
-  <div style="display:flex;gap:10px;align-items:center">
-    <button class="btn lab-toggle" onclick="toggleLab()">🧪 Laboratório de Testes</button>
-    <a href="${R_ANALYTICS}/export/csv" class="btn bcsv">⬇ CSV</a>
-    <button class="btn bpurge" onclick="purgeOpen()">🗑 Limpar dados</button>
-    <a href="${R_ANALYTICS}/logout" class="out">↩ Sair</a>
+<div class="analytics-shell">
+<aside class="analytics-rail" aria-label="Navegação do Analytics">
+  <div class="analytics-rail-brand">${renderStandaloneBrand('compact')}<div class="analytics-rail-kicker">Analytics privado</div></div>
+  <nav class="analytics-nav">
+    <a class="active" href="#overview">◫ Visão executiva</a>
+    <a href="#performance">↗ Performance</a>
+    <a href="#customers">◎ Clientes</a>
+    <a href="#lab-sec">◇ Laboratório</a>
+    <a href="#payments">▤ Pagamentos</a>
+  </nav>
+  <div class="analytics-rail-card"><strong>Sessão protegida</strong><span>Dados reais e simulações permanecem identificados separadamente.</span></div>
+</aside>
+<div class="analytics-workspace">
+<header class="analytics-topbar">
+  <div class="analytics-title"><span>ZVM Analytics</span><strong>Visão executiva</strong></div>
+  <div class="analytics-actions">
+    <button class="btn lab-toggle" onclick="toggleLab()">◇ Laboratório</button>
+    <a href="${R_ANALYTICS}/export/csv" class="btn bcsv">↓ CSV</a>
+    <button class="btn bpurge" onclick="purgeOpen()">Limpar dados</button>
+    <a href="${R_ANALYTICS}/logout" class="out">Sair</a>
   </div>
 </header>
 <main>
+  <section class="analytics-hero" id="overview">
+    <div><span class="analytics-hero-kicker">Operação comercial</span><h1>O que está acontecendo com a receita da ZVM.</h1><p>Receita, recorrência, produtos e pagamentos organizados para leitura rápida — com testes claramente isolados dos dados reais.</p></div>
+    <div class="analytics-hero-pulse">
+      <div class="analytics-pulse"><span>Receita 30 dias</span><strong class="green">${fmtBRL(stats?.revenueLast30||0)}</strong></div>
+      <div class="analytics-pulse"><span>Clientes</span><strong>${stats?.uniqueClients||0}</strong></div>
+      <div class="analytics-pulse"><span>Ticket médio</span><strong>${stats?.total ? fmtBRL((stats.revenueTotal||0)/stats.total) : 'R$ 0,00'}</strong></div>
+      <div class="analytics-pulse"><span>Retenção</span><strong>${stats?.retentionRate||0}%</strong></div>
+    </div>
+  </section>
 
   <!-- KPIs principais -->
-  <div class="stats">
+  <div class="stats" id="overview-metrics">
     <div class="sc"><div class="sc-icon">💰</div><div class="n">${fmtBRL(stats?.revenueTotal||0)}</div><div class="l">Receita Total</div><div class="sub-n">${fmtBRL(stats?.revenueLast30||0)} últimos 30d</div></div>
     <div class="sc"><div class="sc-icon">🛒</div><div class="n">${stats?.total||0}</div><div class="l">Total de Vendas</div><div class="sub-n">${stats?.last30||0} últimos 30d</div></div>
     <div class="sc"><div class="sc-icon">📈</div><div class="n">${stats?.last7||0}</div><div class="l">Vendas 7 dias</div><div class="sub-n">${fmtBRL(stats?.revenueLast7||0)}</div></div>
@@ -7769,6 +7879,13 @@ tr:hover td{background:#ffffff02}
     <div class="sc"><div class="sc-icon">📉</div><div class="n ${(stats?.churnRate||0)>50?'red':(stats?.churnRate||0)>25?'gold':''}">${stats?.churnRate||0}%</div><div class="l">Taxa de Churn (30d)</div><div class="sub-n">${stats?.churnedKeys||0} de ${stats?.expiredKeys||0} expiradas</div></div>
     <div class="sc"><div class="sc-icon">⏰</div><div class="n blue">${(stats?.byHour||[]).sort((a,b)=>b.count-a.count)[0]?._id||'—'}h</div><div class="l">Horário de Pico</div><div class="sub-n">${(stats?.byHour||[]).sort((a,b)=>b.count-a.count)[0]?.count||0} vendas neste horário</div></div>
     <div class="sc" style="border-color:#f0b42930"><div class="sc-icon">🧪</div><div class="n" style="color:#f0b429">${stats?.simCount||0}</div><div class="l">Simulações</div><div class="sub-n">Não conta como receita real</div></div>
+  </div>
+
+  <div class="analytics-insights">
+    <div class="insight-card"><span>Produto líder</span><strong>${topProduct ? escH(topProduct._id||'—') : '—'}</strong><small>${topProduct ? fmtBRL(topProduct.revenue||0)+' em receita' : 'Sem vendas suficientes'}</small></div>
+    <div class="insight-card"><span>Horário de pico</span><strong>${peakHour ? escH(String(peakHour._id||'—'))+'h' : '—'}</strong><small>${peakHour ? (peakHour.count||0)+' venda(s) neste horário' : 'Sem volume suficiente'}</small></div>
+    <div class="insight-card"><span>Recorrência</span><strong>${stats?.returningClients||0} cliente(s)</strong><small>${stats?.retentionRate||0}% de retenção</small></div>
+    <div class="insight-card"><span>Simulações</span><strong>${stats?.simCount||0}</strong><small>Excluídas da receita real</small></div>
   </div>
 
   <!-- Laboratório de Testes -->
@@ -7863,26 +7980,26 @@ tr:hover td{background:#ffffff02}
   </dialog>
 
   <!-- Gráficos principais -->
-  <div class="charts">
+  <div class="charts" id="performance">
     <div class="chart-card">
       <div class="chart-title">📊 Vendas e Receita — últimos 30 dias</div>
-      <canvas id="chartVendas" height="180"></canvas>
+      ${salesTrendViz}
     </div>
     <div class="chart-card">
       <div class="chart-title">🥧 Receita por Produto</div>
-      <canvas id="chartProdutos" height="180"></canvas>
+      ${productViz}
     </div>
   </div>
 
   <!-- Gráficos secundários -->
-  <div class="charts3">
+  <div class="charts3" id="customers">
     <div class="chart-card">
       <div class="chart-title">⏰ Horários de Pico</div>
-      <canvas id="chartHoras" height="160"></canvas>
+      ${hourChartViz}
     </div>
     <div class="chart-card">
       <div class="chart-title">💳 Métodos de Pagamento</div>
-      <canvas id="chartMetodos" height="160"></canvas>
+      ${methodViz}
     </div>
     <div class="chart-card">
       <div class="chart-title">🔄 Retenção de Clientes</div>
@@ -7912,7 +8029,7 @@ tr:hover td{background:#ffffff02}
   </div>
 
   <!-- Histórico de pagamentos -->
-  <div class="sec">
+  <div class="sec" id="payments">
     <div class="sh">
       <div class="st">💳 Histórico de Pagamentos</div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -7939,37 +8056,11 @@ tr:hover td{background:#ffffff02}
   </div>
   </div>
 </main>
+</div>
+</div>
 
 <script>
-const _byDay=${byDayJson},_byProduct=${byProdJson},_byHour=${byHourJson},_byMethod=${byMethodJson};
-const _days=[];
-for(let i=29;i>=0;i--){const d=new Date(Date.now()-i*86400000),k=d.toISOString().slice(0,10),f=_byDay.find(x=>x._id===k);_days.push({date:k,count:f?.count||0,revenue:f?.revenue||0});}
-
-const _hours=Array.from({length:24},(_,i)=>{const h=String(i).padStart(2,'0'),f=_byHour.find(x=>x._id===h);return{h:h+'h',count:f?.count||0};});
-
-function loadChart(cb){if(window.Chart){cb();return;}const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js';s.onload=cb;document.head.appendChild(s);}
-
-loadChart(()=>{
-  Chart.defaults.color='#5a5a7a';Chart.defaults.borderColor='#1c1c2e';
-
-  new Chart(document.getElementById('chartVendas'),{type:'bar',data:{
-    labels:_days.map(d=>d.date.slice(5)),
-    datasets:[
-      {label:'Vendas',data:_days.map(d=>d.count),backgroundColor:'#00ff8722',borderColor:'#00ff87',borderWidth:1.5,borderRadius:4,yAxisID:'y'},
-      {label:'Receita (R$)',data:_days.map(d=>d.revenue),type:'line',borderColor:'#00ff87',backgroundColor:'#00ff8715',borderWidth:2,pointRadius:2,tension:0.4,yAxisID:'y2'}
-    ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{family:'Space Mono',size:10},boxWidth:12}}},scales:{y:{position:'left',grid:{color:'#1c1c2e'},ticks:{precision:0}},y2:{position:'right',grid:{drawOnChartArea:false},ticks:{callback:v=>'R$'+v.toFixed(0)}},x:{grid:{color:'#1c1c2e'},ticks:{font:{size:9},maxRotation:45}}}}});
-
-  if(_byProduct.length){const colors=['#ffd32a','#00ff87','#4f8ef7','#ff4757','#9b59b6','#ff8600'];
-  new Chart(document.getElementById('chartProdutos'),{type:'doughnut',data:{labels:_byProduct.map(p=>p._id||'?'),datasets:[{data:_byProduct.map(p=>p.revenue||p.count),backgroundColor:colors,borderColor:'#0f0f1a',borderWidth:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{family:'Space Mono',size:10},boxWidth:10,padding:8}},tooltip:{callbacks:{label:ctx=>' R$ '+ctx.parsed.toFixed(2).replace('.',',')}}}}});}
-
-  new Chart(document.getElementById('chartHoras'),{type:'bar',data:{
-    labels:_hours.map(h=>h.h),
-    datasets:[{label:'Vendas',data:_hours.map(h=>h.count),backgroundColor:_hours.map(h=>{const max=Math.max(..._hours.map(x=>x.count));return h.count===max?'#00ff87':'#00ff8722';}),borderColor:'#00ff8760',borderWidth:1,borderRadius:3}]
-  },options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{grid:{color:'#1c1c2e'},ticks:{precision:0,font:{size:8}}},x:{grid:{color:'#1c1c2e'},ticks:{font:{size:8}}}}}});
-
-  if(_byMethod.length){const mc=['#4f8ef7','#ffd32a','#00ff87','#ff4757','#9b59b6'];
-  new Chart(document.getElementById('chartMetodos'),{type:'pie',data:{labels:_byMethod.map(m=>m._id||'?'),datasets:[{data:_byMethod.map(m=>m.count),backgroundColor:mc,borderColor:'#0f0f1a',borderWidth:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{family:'Space Mono',size:10},boxWidth:10,padding:8}}}}});}
-});
+// Gráficos são renderizados no servidor para funcionar com CSP estrita e sem CDN.
 
 // Um único ponto que aplica busca + período + filtro real/teste — os três
 // filtros escreviam direto em row.style.display cada um por conta própria
@@ -12728,6 +12819,9 @@ module.exports.__test = Object.freeze({
   getVerifyRedirect,
   renderPlanosPage,
   renderPortalDashboard: renderStandalonePortalDashboard,
+  renderAdminDashboard,
+  renderAnalyticsLogin,
+  renderAnalyticsDashboard,
   renderStandalonePortalLogin,
   renderStandalonePortalRegister,
   renderLegacyPortalDashboard: renderPortalDashboard,
