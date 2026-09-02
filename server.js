@@ -1,4 +1,4 @@
-const ZVM_BUILD_ID = '2026-09-02-client-premium-ui-r3';
+const ZVM_BUILD_ID = '2026-09-02-visual-system-r4';
 'use strict';
 const http   = require('http');
 const https  = require('https');
@@ -3104,44 +3104,47 @@ function applyStandalonePortalTheme(html) {
 // foi tocada.
 function _authShellCss() {
   return `
-.auth-shell{display:grid;grid-template-columns:1fr;flex:1;min-height:calc(100vh - 64px)}
-.auth-promo{display:none;position:relative;overflow:hidden;padding:72px 64px;flex-direction:column;justify-content:center;background:radial-gradient(ellipse 90% 72% at 12% 12%,#00e67618,transparent 62%),linear-gradient(180deg,#0b120f,#080c0a);border-right:1px solid var(--brd)}
-.auth-promo-inner{max-width:440px;position:relative;z-index:1}
-.auth-eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:11px;font-weight:800;color:var(--g);letter-spacing:2px;text-transform:uppercase;padding:6px 14px;border:1px solid var(--g-brd);border-radius:99px;background:var(--g-soft);margin-bottom:24px}
-.auth-promo h1{font-size:clamp(28px,3vw,38px);font-weight:900;letter-spacing:-1.2px;line-height:1.12;margin-bottom:16px}
-.auth-promo h1 em{font-style:normal;color:var(--g)}
-.auth-promo-sub{font-size:15px;color:var(--tx2);line-height:1.7;margin-bottom:32px}
-.auth-benefits{list-style:none;display:flex;flex-direction:column;gap:16px}
-.auth-benefits li{display:flex;align-items:flex-start;gap:12px;font-size:14.5px;color:var(--tx2);line-height:1.5}
-.auth-benefit-icon{flex-shrink:0;width:30px;height:30px;border-radius:9px;background:var(--g-soft);border:1px solid var(--g-brd);color:var(--g);display:flex;align-items:center;justify-content:center;font-size:14px}
-.auth-form-wrap{display:flex;align-items:center;justify-content:center;padding:56px 28px;background:radial-gradient(circle at 70% 18%,#00e67609,transparent 34%)}
-.auth-form-card{width:100%;max-width:430px;padding:32px;border:1px solid var(--brd);border-radius:24px;background:linear-gradient(180deg,rgba(15,21,18,.92),rgba(9,13,11,.94));box-shadow:0 30px 80px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.025)}
-.auth-form-brand{margin-bottom:24px;display:flex;justify-content:center}
-.auth-form-card h2{font-size:24px;font-weight:900;letter-spacing:-.6px;margin-bottom:8px}
-.auth-form-hint{font-size:13.5px;color:var(--tx2);margin-bottom:24px;line-height:1.6}
-.auth-alert{border-radius:var(--r-sm);padding:12px 15px;font-size:13.5px;margin-bottom:18px;line-height:1.5}
-.auth-alert.err{background:#ff406012;border:1px solid #ff406035;color:var(--red)}
-.auth-alert.ok{background:var(--g-soft);border:1px solid var(--g-brd);color:var(--g)}
-.auth-field{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
-.auth-field label{font-size:12px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px}
-.auth-field input{padding:14px 15px;background:#060908;border:1px solid var(--brd2);border-radius:12px;color:var(--tx);font-family:'Outfit',sans-serif;font-size:14.5px;outline:none;transition:border-color var(--transition),box-shadow var(--transition),background var(--transition);width:100%}
-.auth-field input:focus{border-color:var(--g);box-shadow:0 0 0 3px var(--g-soft)}
-.auth-field input::placeholder{color:var(--tx3)}
-.auth-field-hint{font-size:11.5px;color:var(--tx3);margin-top:2px}
-.auth-forgot{text-align:right;margin-top:-8px;margin-bottom:16px}
-.auth-forgot a{font-size:12.5px;color:var(--tx3);transition:color .2s}
-.auth-forgot a:hover{color:var(--g)}
-.auth-submit{width:100%;padding:15px;background:linear-gradient(135deg,var(--g),#00c968);color:#03120b;border:none;border-radius:12px;font-family:'Outfit',sans-serif;font-weight:800;font-size:15px;cursor:pointer;transition:opacity .2s,transform .2s;letter-spacing:.2px;display:flex;align-items:center;justify-content:center;gap:8px}
-.auth-submit:hover{opacity:.88}
-.auth-submit:disabled{opacity:.6;cursor:default}
-.auth-submit:active:not(:disabled){transform:scale(.98)}
-.auth-submit.danger{background:var(--red);color:#fff}
-.auth-switch{text-align:center;font-size:14px;color:var(--tx2);margin-top:22px}
-.auth-switch a{color:var(--g);font-weight:700}
-.auth-switch a:hover{text-decoration:underline}
+/* ZVM Visual System R4 — direção de arte inspirada no login da extensão */
+.auth-shell{display:grid;grid-template-columns:minmax(0,1.04fr) minmax(430px,.96fr);flex:1;min-height:calc(100vh - 68px);background:#070910}
+.auth-promo{display:flex;position:relative;overflow:hidden;padding:72px clamp(42px,6vw,92px);flex-direction:column;justify-content:center;background:radial-gradient(circle at 18% 24%,rgba(0,230,118,.16),transparent 34%),radial-gradient(circle at 54% 70%,rgba(0,230,118,.07),transparent 34%),linear-gradient(135deg,#071b19 0%,#071310 46%,#070b10 100%);border-right:1px solid rgba(120,150,138,.16)}
+.auth-promo::before{content:'';position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,230,118,.03),transparent 42%),repeating-linear-gradient(0deg,transparent 0 54px,rgba(255,255,255,.012) 55px);pointer-events:none}
+.auth-promo::after{content:'';position:absolute;width:420px;height:420px;border:1px solid rgba(0,230,118,.08);border-radius:50%;left:-220px;bottom:-230px;box-shadow:0 0 90px rgba(0,230,118,.05);pointer-events:none}
+.auth-promo-inner{max-width:560px;position:relative;z-index:1}
+.auth-eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:11px;font-weight:800;color:#19e88c;letter-spacing:1.6px;text-transform:uppercase;padding:7px 14px;border:1px solid rgba(25,232,140,.38);border-radius:99px;background:rgba(0,230,118,.08);margin-bottom:26px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.015)}
+.auth-promo h1{font-size:clamp(42px,5vw,68px);font-weight:900;letter-spacing:-2.6px;line-height:1.02;margin-bottom:20px;max-width:620px;color:#f4f7f5}
+.auth-promo h1 em{font-style:normal;color:#0ee889;text-shadow:0 0 34px rgba(0,230,118,.16)}
+.auth-promo-sub{font-size:clamp(15px,1.4vw,18px);color:#9eaaa6;line-height:1.65;margin-bottom:32px;max-width:580px}
+.auth-benefits{list-style:none;display:flex;flex-direction:column;gap:14px}
+.auth-benefits li{display:flex;align-items:center;gap:14px;font-size:14.5px;color:#b5c0bc;line-height:1.45}
+.auth-benefit-icon{flex-shrink:0;width:34px;height:34px;border-radius:10px;background:rgba(0,230,118,.08);border:1px solid rgba(0,230,118,.3);color:#16e88d;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:inset 0 0 20px rgba(0,230,118,.03)}
+.auth-form-wrap{display:flex;align-items:center;justify-content:center;padding:56px clamp(28px,5vw,72px);background:radial-gradient(circle at 74% 14%,rgba(0,230,118,.055),transparent 26%),linear-gradient(180deg,#070910,#06080d);min-width:0}
+.auth-form-card{width:100%;max-width:470px;padding:0;background:transparent;border:0;border-radius:0;box-shadow:none}
+.auth-form-brand{margin-bottom:28px;display:flex;justify-content:flex-start;align-items:center}
+.auth-form-card h2{font-size:28px;font-weight:900;letter-spacing:-.8px;margin-bottom:8px;color:#f4f7f5}
+.auth-form-hint{font-size:14.5px;color:#929ca8;margin-bottom:20px;line-height:1.55}
+.auth-secure-chip{display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border-radius:999px;border:1px solid #222837;background:#0a0d14;color:#aeb6c2;font-size:11.5px;font-weight:700;margin-bottom:22px}
+.auth-secure-chip::before{content:'';width:7px;height:7px;border-radius:50%;background:#0ee889;box-shadow:0 0 10px rgba(14,232,137,.45)}
+.auth-alert{border-radius:12px;padding:12px 15px;font-size:13.5px;margin-bottom:18px;line-height:1.5}
+.auth-alert.err{background:#ff406012;border:1px solid #ff406035;color:#ff6b7f}
+.auth-alert.ok{background:rgba(0,230,118,.08);border:1px solid rgba(0,230,118,.28);color:#35ed9d}
+.auth-field{display:flex;flex-direction:column;gap:7px;margin-bottom:15px}
+.auth-field label{font-size:11.5px;font-weight:800;color:#8b95a3;text-transform:uppercase;letter-spacing:.55px}
+.auth-field input{padding:14px 15px;background:#080a11;border:1px solid #242937;border-radius:10px;color:#edf1f4;font-family:'Outfit',sans-serif;font-size:14.5px;outline:none;transition:border-color 180ms ease,box-shadow 180ms ease,background 180ms ease;width:100%;min-height:48px}
+.auth-field input:hover{border-color:#303747}.auth-field input:focus{border-color:#0ee889;box-shadow:0 0 0 3px rgba(14,232,137,.11);background:#090d13}.auth-field input::placeholder{color:#4f5968}
+.auth-field-hint{font-size:11.5px;color:#687281;margin-top:2px;line-height:1.45}
+.auth-field-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}.auth-field-row .auth-field{min-width:0}
+.auth-forgot{text-align:right;margin-top:-7px;margin-bottom:17px}.auth-forgot a{font-size:12.5px;color:#929ca8;transition:color .2s}.auth-forgot a:hover{color:#0ee889}
+.auth-submit{width:100%;padding:15px;background:#0ee889;color:#02110a;border:none;border-radius:9px;font-family:'Outfit',sans-serif;font-weight:900;font-size:15px;cursor:pointer;transition:filter .2s,transform .2s,box-shadow .2s;letter-spacing:.1px;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 12px 28px rgba(0,230,118,.12)}
+.auth-submit:hover{filter:brightness(1.05);box-shadow:0 14px 34px rgba(0,230,118,.18)}.auth-submit:disabled{opacity:.58;cursor:default}.auth-submit:active:not(:disabled){transform:scale(.99)}.auth-submit.danger{background:#ff5c70;color:#fff;box-shadow:none}
+.auth-switch{text-align:center;font-size:13.5px;color:#7f8997;margin-top:22px}.auth-switch a{color:#0ee889;font-weight:800}.auth-switch a:hover{text-decoration:underline}
 .auth-spinner{width:15px;height:15px;border-radius:50%;border:2px solid rgba(0,0,0,.25);border-top-color:#000;animation:auth-spin .7s linear infinite;display:none}
+.auth-footnote{text-align:center;font-size:11px;color:#525d6c;margin-top:14px}
 @keyframes auth-spin{to{transform:rotate(360deg)}}
-@media(min-width:900px){.auth-shell{grid-template-columns:1.05fr 1fr}.auth-promo{display:flex}}
+body.zvm-auth-immersive{min-height:100vh;background:#070910;overflow:auto}body.zvm-auth-immersive .auth-shell{min-height:100vh}body.zvm-auth-immersive .zfooter{display:none}body.zvm-auth-immersive #_cvs{opacity:.24}body.zvm-auth-immersive .auth-form-wrap{min-height:100vh}body.zvm-auth-immersive .auth-form-card{padding:42px 0}
+.auth-register .auth-form-card{max-width:560px}
+@media(max-width:1050px){.auth-shell{grid-template-columns:.95fr 1.05fr}.auth-promo{padding:56px 44px}.auth-promo h1{font-size:clamp(36px,5vw,54px)}}
+@media(max-width:820px){.auth-shell{grid-template-columns:1fr}.auth-promo{display:none}.auth-form-wrap{padding:34px 22px;min-height:calc(100vh - 68px)}body.zvm-auth-immersive .auth-form-wrap{min-height:100vh}.auth-form-card{max-width:480px}.auth-form-brand{justify-content:center}}
+@media(max-width:560px){.auth-form-wrap{padding:26px 18px}.auth-form-card{padding:16px 0}.auth-form-card h2{font-size:25px}.auth-field-row{grid-template-columns:1fr}.auth-field input{min-height:46px}}
 @media(prefers-reduced-motion:reduce){.auth-spinner{animation:none}}
 `;
 }
@@ -3164,36 +3167,32 @@ function renderStandalonePortalLogin(err = '', redir = '', ok = '') {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Entrar</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
 <style>${_sharedCss()}${_standaloneCss()}${_authShellCss()}</style></head>
-<body>${_sharedNav({ variant: 'auth' })}
+<body class="zvm-auth-immersive">
 <main id="main-content" class="auth-shell">
-  <div class="auth-promo" aria-hidden="true">
-    <div class="auth-promo-inner">
-      <div class="auth-eyebrow">Portal do Cliente</div>
-      <h1>Gerencie sua licença <em>ZVM</em> em um só lugar</h1>
-      <p class="auth-promo-sub">Uma conta para acompanhar sua chave, dispositivos conectados e renovações — sem depender de suporte manual.</p>
-      <ul class="auth-benefits">${benefitsHtml}</ul>
-    </div>
-  </div>
-  <div class="auth-form-wrap">
-    <div class="auth-form-card">
-      <div class="auth-form-brand">${renderStandaloneBrand('auth')}</div>
-      <h2>Entrar na sua conta</h2>
-      <p class="auth-form-hint">Acesse sua conta pra gerenciar licença, dispositivos e planos.</p>
-      ${errHtml}${okHtml}
-      <form method="POST" action="/cliente/login">
-        <input type="hidden" name="redir" value="${escHtml(safeRedirect)}">
-        <div class="auth-field"><label for="auth-email">E-mail</label><input id="auth-email" type="email" name="email" placeholder="seu@email.com" required autocomplete="email"></div>
-        <div class="auth-field"><label for="auth-pass">Senha</label><input id="auth-pass" type="password" name="pass" placeholder="••••••••" required autocomplete="current-password"></div>
-        <div class="auth-forgot"><a href="/cliente/recuperar">Esqueci minha senha</a></div>
-        <button type="submit" class="auth-submit">Entrar<span class="auth-spinner" aria-hidden="true"></span></button>
-      </form>
-      <div class="auth-switch">Ainda não tem conta? <a href="/cliente/registro${safeRedirect ? '?redir=' + encodeURIComponent(safeRedirect) : ''}">Criar conta</a></div>
-    </div>
-  </div>
+  <section class="auth-promo" aria-hidden="true"><div class="auth-promo-inner">
+    <div class="auth-eyebrow">Portal ZVM</div>
+    <h1>Sua ZVM, <em>pronta para trabalhar.</em></h1>
+    <p class="auth-promo-sub">Entre com a mesma conta usada na extensão e mantenha licença, dispositivos, segurança e renovações sincronizados em um único lugar.</p>
+    <ul class="auth-benefits">${benefitsHtml}</ul>
+  </div></section>
+  <section class="auth-form-wrap"><div class="auth-form-card">
+    <div class="auth-form-brand">${renderStandaloneBrand('auth')}</div>
+    <h2>Entrar na sua conta</h2>
+    <p class="auth-form-hint">Acesse sua conta para gerenciar sua licença e continuar de onde parou.</p>
+    <div class="auth-secure-chip">Acesso protegido ao Portal do Cliente</div>
+    ${errHtml}${okHtml}
+    <form method="POST" action="/cliente/login">
+      <input type="hidden" name="redir" value="${escHtml(safeRedirect)}">
+      <div class="auth-field"><label for="auth-email">E-mail</label><input id="auth-email" type="email" name="email" placeholder="seu@email.com" required autocomplete="email"></div>
+      <div class="auth-field"><label for="auth-pass">Senha</label><input id="auth-pass" type="password" name="pass" placeholder="Sua senha" required autocomplete="current-password"></div>
+      <div class="auth-forgot"><a href="/cliente/recuperar">Esqueci minha senha</a></div>
+      <button type="submit" class="auth-submit">Entrar<span class="auth-spinner" aria-hidden="true"></span></button>
+    </form>
+    <div class="auth-switch">Ainda não tem conta? <a href="/cliente/registro${safeRedirect ? '?redir=' + encodeURIComponent(safeRedirect) : ''}">Criar conta</a></div>
+    <div class="auth-footnote">Sua senha é protegida e nunca é exibida no painel.</div>
+  </div></section>
 </main>
-${_standaloneFoot()}
-${_pwdToggleScript()}
-${_authSubmitLockScript()}
+${_standaloneFoot()}${_pwdToggleScript()}${_authSubmitLockScript()}
 </body></html>`;
 }
 
@@ -3206,45 +3205,39 @@ function renderStandalonePortalRegister(err = '', vals = {}, redir = '') {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Criar Conta</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
 <style>${_sharedCss()}${_standaloneCss()}${_authShellCss()}</style></head>
-<body>${_sharedNav({ variant: 'auth' })}
-<main id="main-content" class="auth-shell">
-  <div class="auth-promo" aria-hidden="true">
-    <div class="auth-promo-inner">
-      <div class="auth-eyebrow">Criar conta</div>
-      <h1>Sua licença <em>ZVM</em>, organizada num só painel</h1>
-      <p class="auth-promo-sub">Cadastre-se pra vincular sua chave existente ou receber uma nova automaticamente após a compra.</p>
-      <ul class="auth-benefits">${benefitsHtml}</ul>
-    </div>
-  </div>
-  <div class="auth-form-wrap">
-    <div class="auth-form-card">
-      <div class="auth-form-brand">${renderStandaloneBrand('auth')}</div>
-      <h2>Criar sua conta</h2>
-      <p class="auth-form-hint">Leva menos de um minuto.</p>
-      ${errHtml}
-      <form method="POST" action="/cliente/registro">
-        <input type="hidden" name="redir" value="${escHtml(safeRedirect)}">
-        <div class="auth-field"><label for="reg-name">Nome completo</label><input id="reg-name" type="text" name="name" placeholder="João Silva" required value="${v('name')}" maxlength="80" autocomplete="name"></div>
-        <div class="auth-field"><label for="reg-email">E-mail</label><input id="reg-email" type="email" name="email" placeholder="seu@email.com" required value="${v('email')}" autocomplete="email">
-          <div class="auth-field-hint">Use este e-mail na página de pagamento para vincular sua compra automaticamente.</div>
-        </div>
-        <div class="auth-field"><label for="reg-phone">WhatsApp (com DDD)</label><input id="reg-phone" type="tel" name="phone" placeholder="11999990000" value="${v('phone')}" maxlength="20" pattern="[0-9+\\s()-]{8,20}" autocomplete="tel"></div>
-        <div class="auth-field"><label for="reg-keycode">Chave ZVM (opcional)</label><input id="reg-keycode" type="text" name="keycode" placeholder="zv-xxxxx-xxxxx-xxxxx" value="${v('keycode')}" maxlength="30">
-          <div class="auth-field-hint">Já tem uma chave? Vincule agora — ou deixe em branco e vincule depois.</div>
-        </div>
-        <div class="auth-field"><label for="reg-pass">Senha</label><input id="reg-pass" type="password" name="pass" placeholder="Mínimo 8 caracteres" required minlength="8" autocomplete="new-password">
-          <div class="auth-field-hint">Pelo menos 8 caracteres.</div>
-        </div>
+<body class="zvm-auth-immersive">
+<main id="main-content" class="auth-shell auth-register">
+  <section class="auth-promo" aria-hidden="true"><div class="auth-promo-inner">
+    <div class="auth-eyebrow">Nova conta ZVM</div>
+    <h1>Crie sua conta. <em>A ZVM cuida do resto.</em></h1>
+    <p class="auth-promo-sub">Uma conta única para portal e extensão, com sua licença, dispositivos, segurança e renovações sempre no mesmo lugar.</p>
+    <ul class="auth-benefits">${benefitsHtml}</ul>
+  </div></section>
+  <section class="auth-form-wrap"><div class="auth-form-card">
+    <div class="auth-form-brand">${renderStandaloneBrand('auth')}</div>
+    <h2>Criar sua conta</h2>
+    <p class="auth-form-hint">Crie seu acesso ao ecossistema ZVM. Leva menos de um minuto.</p>
+    <div class="auth-secure-chip">Conta única para portal e extensão</div>
+    ${errHtml}
+    <form method="POST" action="/cliente/registro">
+      <input type="hidden" name="redir" value="${escHtml(safeRedirect)}">
+      <div class="auth-field-row">
+        <div class="auth-field"><label for="reg-name">Nome completo</label><input id="reg-name" type="text" name="name" placeholder="Seu nome" required value="${v('name')}" maxlength="80" autocomplete="name"></div>
+        <div class="auth-field"><label for="reg-phone">WhatsApp</label><input id="reg-phone" type="tel" name="phone" placeholder="11999990000" value="${v('phone')}" maxlength="20" pattern="[0-9+\s()-]{8,20}" autocomplete="tel"></div>
+      </div>
+      <div class="auth-field"><label for="reg-email">E-mail</label><input id="reg-email" type="email" name="email" placeholder="seu@email.com" required value="${v('email')}" autocomplete="email"><div class="auth-field-hint">Use este mesmo e-mail na compra para vincular sua licença automaticamente.</div></div>
+      <div class="auth-field"><label for="reg-keycode">Chave ZVM <span style="font-weight:600;text-transform:none;letter-spacing:0;color:#5f6977">(opcional)</span></label><input id="reg-keycode" type="text" name="keycode" placeholder="zv-xxxxx-xxxxx-xxxxx" value="${v('keycode')}" maxlength="30"><div class="auth-field-hint">Se ainda não tiver uma chave, você pode vincular depois.</div></div>
+      <div class="auth-field-row">
+        <div class="auth-field"><label for="reg-pass">Senha</label><input id="reg-pass" type="password" name="pass" placeholder="Mínimo 8 caracteres" required minlength="8" autocomplete="new-password"></div>
         <div class="auth-field"><label for="reg-pass2">Confirmar senha</label><input id="reg-pass2" type="password" name="pass2" placeholder="Repita a senha" required minlength="8" autocomplete="new-password"></div>
-        <button type="submit" class="auth-submit">Criar conta<span class="auth-spinner" aria-hidden="true"></span></button>
-      </form>
-      <div class="auth-switch">Já tem conta? <a href="/cliente${safeRedirect ? '?redir=' + encodeURIComponent(safeRedirect) : ''}">Entrar</a></div>
-    </div>
-  </div>
+      </div>
+      <button type="submit" class="auth-submit">Criar conta<span class="auth-spinner" aria-hidden="true"></span></button>
+    </form>
+    <div class="auth-switch">Já tem conta? <a href="/cliente${safeRedirect ? '?redir=' + encodeURIComponent(safeRedirect) : ''}">Entrar</a></div>
+    <div class="auth-footnote">Seu acesso pode ser usado no Portal do Cliente e na extensão.</div>
+  </div></section>
 </main>
-${_standaloneFoot()}
-${_pwdToggleScript()}
-${_authSubmitLockScript()}
+${_standaloneFoot()}${_pwdToggleScript()}${_authSubmitLockScript()}
 </body></html>`;
 }
 
@@ -4294,11 +4287,23 @@ ${_toastCss()}
   .cd-num{font-size:16px}
 }
 @media(prefers-reduced-motion:reduce){.key-display,.qa-primary,.qa-btn,.nokey-cta,.dev-bar-fill,.dash-avatar,.avatar-option,.validity-bar-fill{transition:none}}
+/* ZVM Visual System R4 — dashboard do cliente */
+.page-wrap{max-width:1460px;padding:24px clamp(18px,3vw,40px)}.client-shell{grid-template-columns:276px minmax(0,1fr);gap:26px}
+.client-rail{top:24px;min-height:calc(100vh - 48px);border-radius:24px;border:1px solid #183029;background:radial-gradient(circle at 20% 0%,rgba(0,230,118,.13),transparent 28%),linear-gradient(180deg,#07130f,#060a0c 72%);padding:18px;box-shadow:0 28px 80px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.02)}
+.client-rail-brand{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:5px 5px 18px;border-bottom:1px solid #173029;margin-bottom:16px}.client-rail-logo{max-width:170px}.client-rail-brand-caption{font-size:11px;color:#6f7d78;text-transform:uppercase;letter-spacing:1.1px;font-weight:800}
+.client-nav{gap:7px}.client-nav a{padding:12px 13px;border-radius:12px;color:#9ca8a4;font-size:13px;text-decoration:none}.client-nav a:hover,.client-nav a.active{color:#18ec92;border-color:rgba(14,232,137,.3);background:rgba(14,232,137,.075);box-shadow:inset 0 0 0 1px rgba(255,255,255,.015)}
+.client-rail-card{margin-top:13px;padding:15px;border-radius:16px;border-color:#1a2924;background:rgba(5,9,8,.72)}.client-rail-kicker{color:#617069}.client-rail-value{font-size:17px}.client-rail-meta{color:#7f8d87}.client-main{padding-top:0}
+.dash-topbar{min-height:64px;padding:4px 2px 16px;border-bottom:1px solid #141d22;margin-bottom:18px}.dash-page-heading{display:flex;flex-direction:column;gap:2px}.dash-page-heading span{font-size:10.5px;color:#637078;text-transform:uppercase;letter-spacing:1.2px;font-weight:800}.dash-page-heading strong{font-size:22px;color:#f3f6f5;letter-spacing:-.4px}.dash-topbar-name{color:#aab3b7}.dash-logout{border-radius:10px;background:#090c11;border-color:#222b33;padding:8px 14px}
+.update-banner{border-radius:16px;background:linear-gradient(90deg,rgba(0,230,118,.09),rgba(0,230,118,.025));border-color:rgba(14,232,137,.28);padding:14px 18px}.update-btn{border-radius:9px;background:#0ee889}
+.dash-hero{border-radius:22px;background:linear-gradient(135deg,#0b1014,#090d11 70%);border-color:#1a252c;padding:26px;box-shadow:inset 0 1px 0 rgba(255,255,255,.018)}
+.key-card,.summary-card,.panel-card,.security-card,.devices-card{border-radius:20px!important;background:linear-gradient(180deg,#0b1014,#080c0f)!important;border-color:#1a252c!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.018)}
+.qa-primary{border-radius:12px;background:#0ee889;color:#03110b;box-shadow:0 12px 32px rgba(0,230,118,.12)}.qa-btn{border-radius:12px!important;background:#0b0f13!important;border-color:#202b33!important}.key-display{border-radius:10px!important;background:#07110e!important;border-color:rgba(14,232,137,.3)!important}.cd-box{border-radius:12px!important;background:#070a0d!important;border-color:#1d272e!important}
+@media(max-width:1000px){.client-shell{grid-template-columns:230px minmax(0,1fr);gap:18px}.client-rail{padding:14px}.client-nav a{padding:11px 10px}}@media(max-width:900px){.client-shell{grid-template-columns:1fr}.client-rail{position:relative;top:0;min-height:auto}.client-rail-brand{flex-direction:row;align-items:center}.client-rail-brand-caption{margin-left:auto}.client-nav{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
 
 <div class="client-shell">
 <aside class="client-rail" aria-label="Navegação da conta">
-  <div class="client-rail-brand"><div>${renderStandaloneBrand('compact')}</div><div><strong>Minha ZVM</strong><span>Conta premium</span></div></div>
+  <div class="client-rail-brand"><div class="client-rail-logo">${renderStandaloneBrand('compact')}</div><div class="client-rail-brand-caption">Portal do Cliente</div></div>
   <nav class="client-nav">
     <a href="/cliente" class="active">⌂ Visão geral</a>
     <a href="/planos">↻ Renovações e planos</a>
@@ -4313,7 +4318,7 @@ ${_toastCss()}
 </aside>
 <main class="client-main">
 <div class="dash-topbar">
-  <div class="dash-brand">${renderStandaloneBrand('dash')}</div>
+  <div class="dash-page-heading"><span>Minha ZVM</span><strong>Visão geral</strong></div>
   <div class="dash-topbar-user">
     <span class="dash-topbar-name">${firstName}</span>
     <a href="/cliente/logout" class="dash-logout">Sair da conta</a>
@@ -4923,6 +4928,8 @@ td.td-status{white-space:nowrap;overflow:hidden}
 /* ── Responsive ── */
 @media(max-width:1100px){.stats{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:750px){.stats{grid-template-columns:1fr 1fr};.admin-content{padding:12px};.acts{max-width:180px};.rsidebar{display:none}}
+/* ZVM Visual System R4 — moderniza o Admin sem mudar sua estrutura */
+header{height:58px;padding:0 22px;background:rgba(6,9,10,.94);backdrop-filter:blur(16px);border-bottom-color:#182229}.logo{gap:10px}.logo-ver{color:#637078}.rsidebar{top:58px;height:calc(100vh - 58px);background:linear-gradient(180deg,#07100d,#06090b);border-color:#172229}.rtab{padding-top:12px;padding-bottom:12px}.rtab.active{background:rgba(14,232,137,.075)}.admin-wrap{min-height:calc(100vh - 58px)}.admin-content{padding:22px 24px}.sc{border-radius:16px;padding:16px 17px;background:linear-gradient(180deg,#0c1114,#090d10);border-color:#1b252c}.sec{border-radius:16px;background:#090d10;border-color:#1b252c}.sh{background:#0d1216;border-color:#1b252c;padding:12px 16px}.alert-strip{border-radius:12px}.btn{border-radius:9px;padding:7px 12px}.gen-form input,.search-bar input,.search-bar select{border-radius:9px;background:#070a0d;border-color:#202a31}.bs{border-radius:6px;padding:2px 6px}th{background:#070a0d;padding-top:6px;padding-bottom:6px}td{padding-top:4px;padding-bottom:4px}.modal{border-radius:18px;background:#0a0f12;border-color:#223039}
 </style>
 </head>
 <body>
@@ -5798,33 +5805,30 @@ ${CANVAS_BG}</body></html>`;
 function renderAdminLogin(error = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM Admin</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Orbitron:wght@700;900&family=Outfit:wght@400;700;800&display=swap" rel="stylesheet">
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:#000}::-webkit-scrollbar-thumb{background:#00e67640;border-radius:10px}::-webkit-scrollbar-thumb:hover{background:#00e676}
-body{background:#000;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Outfit',sans-serif;font-size:16px;overflow:hidden}
-.card{background:#0a0a0a;border:1px solid #1a1a1a;border-radius:16px;padding:36px 32px;width:360px;position:relative;z-index:1;box-shadow:0 0 40px #00e67610,0 8px 32px #00000090}
-.logo{font-family:'Outfit',sans-serif;font-size:22px;font-weight:800;color:#00e676;margin-bottom:20px;text-align:center;letter-spacing:-0.5px;text-shadow:0 0 20px #00e67640}
-label{display:block;font-size:11px;letter-spacing:1px;color:#5a5a5a;text-transform:uppercase;margin-bottom:6px;font-family:'Outfit',sans-serif}
-input{width:100%;padding:10px 13px;background:#000;border:1px solid #1a1a1a;border-radius:7px;color:#c8cad8;font-family:'Space Mono',monospace;font-size:13px;outline:none;margin-bottom:14px;transition:border-color .18s}
-input:focus{border-color:#00e676;box-shadow:0 0 0 2px #00e67615}
-.btn{width:100%;padding:11px;background:#00e676;border:none;border-radius:7px;color:#000;font-family:'Outfit',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:opacity .2s,box-shadow .2s}
-.btn:hover{opacity:.9;box-shadow:0 4px 16px #00e67640}
-.err{background:#f0506012;border:1px solid #f0506035;border-radius:6px;color:#f05060;padding:11px 14px;font-size:13px;margin-bottom:14px;font-family:'Outfit',sans-serif}
-</style></head><body>
-<div class="card">
-  <div class="logo">⚡ ZVM Admin</div>
-  ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
-  <form method="POST" action="${R_ADMIN}/login">
-    <label>Usuário</label><input type="text" name="user" autocomplete="off">
-    <label>Senha</label><input type="password" name="pass">
-    ${TOTP_SECRET ? `<label>Código 2FA</label><input type="text" name="totp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" autocomplete="one-time-code" style="letter-spacing:4px;font-size:18px;text-align:center">` : ''}
-    <button type="submit" class="btn">Entrar</button>
-  </form>
-</div>
-${_pwdToggleScript()}${CANVAS_BG}</body></html>`;
+<title>ZVM Admin</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
+<style>${_sharedCss()}${_standaloneCss()}${_authShellCss()}
+.admin-auth-tag{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border:1px solid rgba(14,232,137,.28);border-radius:999px;background:rgba(14,232,137,.07);color:#18ec92;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.1px;margin-bottom:22px}.admin-auth-meta{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:26px}.admin-auth-meta div{padding:13px;border:1px solid #1c2930;border-radius:12px;background:rgba(4,8,9,.45)}.admin-auth-meta strong{display:block;color:#edf2f0;font-size:13px;margin-bottom:4px}.admin-auth-meta span{font-size:11px;color:#6d7a80;line-height:1.4}
+</style></head><body class="zvm-auth-immersive">
+<main class="auth-shell">
+  <section class="auth-promo" aria-hidden="true"><div class="auth-promo-inner">
+    <div class="admin-auth-tag">Área administrativa</div>
+    <h1>Controle a ZVM com <em>clareza e segurança.</em></h1>
+    <p class="auth-promo-sub">Chaves, auditoria, usuários e proteção do serviço em uma área reservada ao administrador.</p>
+    <div class="admin-auth-meta"><div><strong>Auditoria</strong><span>Histórico e alertas de segurança.</span></div><div><strong>Licenças</strong><span>Gestão de chaves e dispositivos.</span></div></div>
+  </div></section>
+  <section class="auth-form-wrap"><div class="auth-form-card">
+    <div class="auth-form-brand">${renderStandaloneBrand('auth')}</div>
+    <h2>Entrar no painel</h2><p class="auth-form-hint">Acesso administrativo ZVM.</p><div class="auth-secure-chip">Sessão administrativa protegida</div>
+    ${error ? `<div class="auth-alert err">${escHtml(error)}</div>` : ''}
+    <form method="POST" action="${R_ADMIN}/login">
+      <div class="auth-field"><label>Usuário</label><input type="text" name="user" autocomplete="username" required></div>
+      <div class="auth-field"><label>Senha</label><input type="password" name="pass" autocomplete="current-password" required></div>
+      ${TOTP_SECRET ? `<div class="auth-field"><label>Código 2FA</label><input type="text" name="totp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" autocomplete="one-time-code" style="letter-spacing:6px;font-size:18px;text-align:center"></div>` : ''}
+      <button type="submit" class="auth-submit">Entrar</button>
+    </form>
+    <div class="auth-footnote">Acesso reservado à administração.</div>
+  </div></section>
+</main>${_pwdToggleScript()}${CANVAS_BG}</body></html>`;
 }
 
 
@@ -5983,7 +5987,14 @@ function _standaloneCss() {
   @media(max-width:900px){.standalone-nav{height:64px;position:sticky}.nav-menu-toggle{display:flex}.standalone-nav .znav-links{display:none;position:absolute;top:64px;left:12px;right:12px;padding:12px;background:rgba(13,13,24,.98);border:1px solid var(--brd2);border-radius:var(--r);box-shadow:var(--shadow-lg);flex-direction:column;align-items:stretch}.standalone-nav .znav-links.is-open{display:flex}.standalone-nav .znav-links a{justify-content:center;width:100%}.standalone-nav .nav-account{justify-content:center}}
   @media(max-width:900px) and (prefers-color-scheme:light){.standalone-nav .znav-links{background:rgba(233,237,231,.98)}}
   @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.standalone-nav,.price-card,.plan-btn{animation:none;transition:none}}
-  `;
+  
+/* ZVM Visual System R4 — linguagem global inspirada na extensão */
+:root{color-scheme:dark;--bg:#05070a;--bg2:#080b10;--bg3:#0c1116;--bg4:#11181d;--brd:#192329;--brd2:#27343c;--tx:#f2f5f4;--tx2:#9ca8ac;--tx3:#66737b;--g:#0ee889;--g2:#00c977;--g-soft:rgba(14,232,137,.085);--g-brd:rgba(14,232,137,.3);--shadow-sm:0 10px 30px rgba(0,0,0,.24);--shadow-lg:0 28px 90px rgba(0,0,0,.42)}
+body{background:radial-gradient(circle at 10% 6%,rgba(0,230,118,.08),transparent 28%),radial-gradient(circle at 88% 12%,rgba(0,230,118,.035),transparent 24%),#05070a;color:var(--tx)}
+.standalone-nav{height:70px;background:rgba(5,7,10,.9);border-color:#172027;box-shadow:0 12px 40px rgba(0,0,0,.18);backdrop-filter:blur(18px)}
+.standalone-nav .znav-links a{border-radius:10px;text-transform:none;letter-spacing:0;font-size:14px}.zfooter{background:#05070a;border-color:#172027}.zfooter-links a{font-size:14px}
+@media(prefers-color-scheme:light){:root{--g:#0ee889!important;--g2:#00c977!important;--g-soft:rgba(14,232,137,.085)!important;--g-brd:rgba(14,232,137,.3)!important;--bg:#05070a!important;--bg2:#080b10!important;--bg3:#0c1116!important;--bg4:#11181d!important;--brd:#192329!important;--brd2:#27343c!important;--tx:#f2f5f4!important;--tx2:#9ca8ac!important;--tx3:#66737b!important;--red:#ff5c70!important;--orange:#f5b942!important;--blue:#6d9cff!important;color-scheme:dark!important}.standalone-nav{background:rgba(5,7,10,.9)!important}.standalone-nav .znav-links{background:rgba(8,11,16,.98)!important}.price-card{background:linear-gradient(180deg,var(--bg3),var(--bg2))!important}.checkout-dialog{background:var(--bg2)!important}}
+`;
 }
 
 function _standaloneFoot() {

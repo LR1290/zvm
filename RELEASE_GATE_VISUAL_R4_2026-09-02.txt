@@ -1,0 +1,24 @@
+ZVM Visual System R4 — RELEASE GATE
+21/21 PASS
+
+PASS | build id R4
+PASS | login inspirado na extensão
+PASS | auth split visual system
+PASS | login cliente mantém endpoint
+PASS | registro mantém endpoint
+PASS | registro mantém nomes essenciais
+PASS | dashboard cliente com rail
+PASS | dashboard cliente heading sem logo duplicada
+PASS | admin estrutura preservada
+PASS | admin login modernizado
+PASS | admin login endpoint preservado
+PASS | admin campos preservados
+PASS | logo static quebrada ausente
+PASS | brand incorporada preservada
+PASS | moderadores não reintroduzidos
+PASS | audit log preservado
+PASS | extension allowlist preservada
+PASS | package-lock v3
+PASS | lock deps = package deps | {'dotenv': '17.4.2', 'mongodb': '6.21.0'}
+PASS | lock engines = package engines | {'node': '>=24.20.0 <25'}
+PASS | Docker npm ci
