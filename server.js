@@ -1,8 +1,10 @@
-const ZVM_BUILD_ID = '2026-09-02-portal-desktop-r8';
+const ZVM_BUILD_ID = '2026-09-02-build-authority-r9';
 'use strict';
 const http   = require('http');
 const https  = require('https');
 const crypto = require('crypto');
+const fs     = require('fs');
+const path   = require('path');
 const zlib   = require('zlib');
 const net    = require('net');
 const { MongoClient } = require('mongodb');
@@ -1303,6 +1305,10 @@ async function createExtensionSession(descriptor, deps = {}) {
       deviceIdHash: descriptor.deviceId
         ? crypto.createHash('sha256').update(String(descriptor.deviceId), 'utf8').digest('hex')
         : null,
+      extensionVersion: safeScalar(descriptor.extensionVersion, 24) || null,
+      buildFingerprint: /^[a-f0-9]{64}$/i.test(String(descriptor.buildFingerprint || '')) ? String(descriptor.buildFingerprint).toLowerCase() : null,
+      extensionId: /^[a-p]{32}$/.test(String(descriptor.extensionId || '').toLowerCase()) ? String(descriptor.extensionId).toLowerCase() : null,
+      developmentAuthorized: descriptor.developmentAuthorized === true,
       entitlementRevision: descriptor.entitlementRevision,
       createdAt: now,
       lastSeenAt: now,
@@ -10573,6 +10579,145 @@ ${CANVAS_BG}</body></html>`;
 })();
 // ═══════════ FIM WSM MODULE ═══════════
 
+const ZVM_SERVER_AUTHORITY_PATCH_V1 = true;
+const ZVM_BUILD_AUTHORITY_FAILCLOSED_V2 = true;
+const ZVM_SECURITY_PROTOCOL = 1;
+const ZVM_CAPABILITY_TTL_MS = Math.max(60, Math.min(900, parseInt(process.env.ZVM_CAPABILITY_TTL_SEC || '300') || 300)) * 1000;
+// Hardening é ligado por padrão. Só um operador do servidor pode desligar
+// explicitamente por variável de ambiente durante recuperação controlada.
+const ZVM_BUILD_ENFORCE = !/^(0|false|no|off)$/i.test(String(process.env.ZVM_BUILD_ENFORCE || 'true'));
+const ZVM_SECURITY_CLOCK_SKEW_MS = 15 * 60 * 1000;
+const ZVM_SECURITY_REQUEST_TTL_MS = 20 * 60 * 1000;
+const ZVM_SECURITY_SEEN = new Map();
+
+function zvmSecurityBuildMap(raw) {
+  const out = new Map();
+  const add = (version, fp) => {
+    version = String(version || '').trim(); fp = String(fp || '').trim().toLowerCase();
+    if (!/^\d+(?:\.\d+){2,3}$/.test(version) || !/^[a-f0-9]{64}$/.test(fp)) return;
+    if (!out.has(version)) out.set(version, new Set()); out.get(version).add(fp);
+  };
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const source = raw.builds && typeof raw.builds === 'object' ? raw.builds : raw;
+    for (const [version, value] of Object.entries(source || {})) {
+      if (Array.isArray(value)) value.forEach(fp => add(version, fp)); else add(version, value);
+    }
+    return out;
+  }
+  raw = String(raw || '').trim();
+  if (!raw) return out;
+  if (raw.startsWith('{')) {
+    try { return zvmSecurityBuildMap(JSON.parse(raw)); } catch (_) {}
+  }
+  for (const item of raw.split(/[;,\n]+/)) {
+    const m = item.trim().match(/^(\d+(?:\.\d+){2,3})\s*[:@=]\s*([a-fA-F0-9]{64})$/);
+    if (m) add(m[1], m[2]);
+  }
+  return out;
+}
+function zvmSecurityMergeBuildMaps(target, source) {
+  for (const [version, set] of source || []) {
+    if (!target.has(version)) target.set(version, new Set());
+    for (const fp of set || []) target.get(version).add(fp);
+  }
+  return target;
+}
+function zvmSecurityLoadOfficialBuilds() {
+  const out = new Map();
+  const registryPath = path.join(__dirname, 'zvm-official-builds.json');
+  try {
+    const parsed = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+    zvmSecurityMergeBuildMaps(out, zvmSecurityBuildMap(parsed));
+  } catch (error) {
+    console.error('[SEC] Registro local de builds oficiais indisponível:', error.message);
+  }
+  // Permite adicionar builds de emergência no Render sem remover o registro
+  // versionado que acompanha o servidor.
+  zvmSecurityMergeBuildMaps(out, zvmSecurityBuildMap(process.env.ZVM_OFFICIAL_BUILDS || ''));
+  return out;
+}
+const ZVM_OFFICIAL_BUILDS = zvmSecurityLoadOfficialBuilds();
+
+function zvmSecurityHash(value) { return crypto.createHash('sha256').update(String(value == null ? '' : value), 'utf8').digest('hex'); }
+function zvmSecurityHashSet(raw) {
+  const out = new Set();
+  String(raw || '').split(/[;,\n\s]+/).forEach(v => { v=String(v||'').trim().toLowerCase(); if (/^[a-f0-9]{64}$/.test(v)) out.add(v); });
+  return out;
+}
+const ZVM_DEV_BUILD_ALLOW = /^(1|true|yes|on)$/i.test(String(process.env.ZVM_DEV_BUILD_ALLOW || ''));
+const ZVM_DEV_BUILD_KEY_HASHES = zvmSecurityHashSet(process.env.ZVM_DEV_BUILD_KEY_HASHES || '');
+const ZVM_DEV_BUILD_DEVICE_HASHES = zvmSecurityHashSet(process.env.ZVM_DEV_BUILD_DEVICE_HASHES || '');
+function zvmSecurityDevBuildAllowed(keyCode, deviceId) {
+  if (!ZVM_DEV_BUILD_ALLOW || !keyCode || !deviceId || !ZVM_DEV_BUILD_KEY_HASHES.size || !ZVM_DEV_BUILD_DEVICE_HASHES.size) return false;
+  return ZVM_DEV_BUILD_KEY_HASHES.has(zvmSecurityHash(String(keyCode))) && ZVM_DEV_BUILD_DEVICE_HASHES.has(zvmSecurityHash(String(deviceId)));
+}
+function zvmSecurityScope(value) { return String(value || '').replace(/[^A-Za-z0-9._:-]/g, '').slice(0, 80); }
+function zvmSecurityBuildRecognized(version, fingerprint) { const set = ZVM_OFFICIAL_BUILDS.get(String(version || '')); return !!(set && set.has(String(fingerprint || '').toLowerCase())); }
+function zvmSecurityCleanupSeen(now) {
+  if (ZVM_SECURITY_SEEN.size < 1024) return;
+  for (const [id, ts] of ZVM_SECURITY_SEEN) if (now - ts > ZVM_SECURITY_REQUEST_TTL_MS) ZVM_SECURITY_SEEN.delete(id);
+  while (ZVM_SECURITY_SEEN.size > 4096) ZVM_SECURITY_SEEN.delete(ZVM_SECURITY_SEEN.keys().next().value);
+}
+function zvmSecurityCheckClient(raw, consume, options) {
+  options = options && typeof options === 'object' ? options : {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ok:false, code:'SECURITY_CLIENT_INVALID' };
+  const protocol = Number(raw.protocol || 0);
+  const extensionVersion = String(raw.extensionVersion || '').trim();
+  const extensionId = String(raw.extensionId || '').trim().toLowerCase();
+  const buildFingerprint = String(raw.buildFingerprint || '').trim().toLowerCase();
+  const requestId = String(raw.requestId || '').trim();
+  const sentAtMs = Number(raw.sentAtMs || 0), now = Date.now();
+  if (protocol !== ZVM_SECURITY_PROTOCOL || !/^\d+(?:\.\d+){2,3}$/.test(extensionVersion) || !/^[a-f0-9]{64}$/.test(buildFingerprint) || !/^[a-p]{32}$/.test(extensionId)) return { ok:false, code:'SECURITY_CLIENT_INVALID' };
+  if (ZVM_EXTENSION_IDS.size && !ZVM_EXTENSION_IDS.has(extensionId)) return { ok:false, code:'EXTENSION_ID_NOT_ALLOWED' };
+  if (!/^[A-Za-z0-9._:-]{8,96}$/.test(requestId) || !Number.isFinite(sentAtMs) || Math.abs(now - sentAtMs) > ZVM_SECURITY_CLOCK_SKEW_MS) return { ok:false, code:'SECURITY_REQUEST_STALE' };
+  zvmSecurityCleanupSeen(now);
+  if (consume) {
+    if (ZVM_SECURITY_SEEN.has(requestId)) return { ok:false, code:'SECURITY_REPLAY_REJECTED' };
+    ZVM_SECURITY_SEEN.set(requestId, now);
+  }
+  const recognized = zvmSecurityBuildRecognized(extensionVersion, buildFingerprint);
+  const allowUnrecognized = options.allowUnrecognized === true;
+  const requireRecognized = options.requireRecognized !== false;
+  if (ZVM_BUILD_ENFORCE && requireRecognized && !recognized && !allowUnrecognized) return { ok:false, code:'BUILD_NOT_ALLOWED', recognized:false, extensionVersion, extensionId, buildFingerprint };
+  return { ok:true, recognized, developmentAuthorized:(!recognized && allowUnrecognized), extensionVersion, extensionId, buildFingerprint, requestId };
+}
+function zvmSecurityB64u(input) { return Buffer.from(input).toString('base64').replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_'); }
+function zvmSecurityB64uDecode(input) { let s=String(input||'').replace(/-/g,'+').replace(/_/g,'/'); while (s.length % 4) s += '='; return Buffer.from(s,'base64'); }
+function zvmSecuritySignToken(payload) {
+  if (!APP_SECRET) return '';
+  const body = zvmSecurityB64u(Buffer.from(JSON.stringify(payload), 'utf8'));
+  const unsigned = 'zv1.' + body;
+  const sig = zvmSecurityB64u(crypto.createHmac('sha256', APP_SECRET).update(unsigned, 'utf8').digest());
+  return unsigned + '.' + sig;
+}
+function zvmSecurityVerifyToken(token) {
+  if (!APP_SECRET || typeof token !== 'string' || token.length > 8192) return null;
+  const parts = token.split('.'); if (parts.length !== 3 || parts[0] !== 'zv1') return null;
+  const unsigned = parts[0] + '.' + parts[1];
+  const expected = crypto.createHmac('sha256', APP_SECRET).update(unsigned, 'utf8').digest();
+  let got; try { got = zvmSecurityB64uDecode(parts[2]); } catch (_) { return null; }
+  if (got.length !== expected.length || !crypto.timingSafeEqual(got, expected)) return null;
+  try { const payload = JSON.parse(zvmSecurityB64uDecode(parts[1]).toString('utf8')); return payload && typeof payload === 'object' ? payload : null; } catch (_) { return null; }
+}
+function zvmSecurityScopesForKey(keyCode) {
+  if (isFreeAuthKey(keyCode)) return ['extension.use'];
+  const k = keys[keyCode] || {};
+  const source = Array.isArray(k.permissions) && k.permissions.length ? k.permissions : FULL_PERMISSIONS;
+  const scopes = ['extension.use'];
+  for (const raw of source) { const s = zvmSecurityScope(raw); if (s && !scopes.includes(s)) scopes.push(s); }
+  if (k.modules && typeof k.modules === 'object') for (const [name, enabled] of Object.entries(k.modules)) if (enabled === true) { const s=zvmSecurityScope(name); if (s && !scopes.includes('module:'+s)) scopes.push('module:'+s); }
+  return scopes.slice(0, 128);
+}
+function zvmSecurityIssue(keyCode, client, deviceId, phoneNumber) {
+  const now = Date.now(), expiresAtMs = now + ZVM_CAPABILITY_TTL_MS, capabilityId = crypto.randomBytes(18).toString('hex');
+  const deviceIdHash = zvmSecurityHash(deviceId), phoneHash = phoneNumber ? zvmSecurityHash(phoneNumber) : '';
+  const scopes = zvmSecurityScopesForKey(keyCode);
+  const payload = { v:1, p:ZVM_SECURITY_PROTOCOL, cid:capabilityId, sub:zvmSecurityHash('key:'+keyCode), dh:deviceIdHash, ph:phoneHash, bf:client.buildFingerprint, ev:client.extensionVersion, ei:client.extensionId, dv:client.developmentAuthorized===true, scp:scopes, iat:now, exp:expiresAtMs };
+  const capability = zvmSecuritySignToken(payload);
+  if (!capability) return null;
+  return { protocol:ZVM_SECURITY_PROTOCOL, required:ZVM_BUILD_ENFORCE, recognized:client.recognized===true, capability, capabilityId, scopes, issuedAtMs:now, expiresAtMs, buildFingerprint:client.buildFingerprint, extensionVersion:client.extensionVersion, deviceIdHash };
+}
+
 async function handleRequest(req, res) {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const p   = url.pathname;
@@ -10743,6 +10888,11 @@ async function handleRequest(req, res) {
     }
     try {
       const body = await parseBody(req);
+      const keyCodeForBuild = sanitizeId(body.authKey, 32);
+      const deviceIdForBuild = String(body.deviceId || '').trim().slice(0, 160);
+      const devBuildAllowed = zvmSecurityDevBuildAllowed(keyCodeForBuild, deviceIdForBuild);
+      const buildClient = zvmSecurityCheckClient(body.clientSecurity, true, { allowUnrecognized:devBuildAllowed });
+      if (!buildClient.ok) { sendJson(res, { ok:false, errorCode:buildClient.code }, buildClient.code === 'BUILD_NOT_ALLOWED' ? 403 : 400); return; }
       const authorized = await authorizeExtensionKeySession(body);
       if (!authorized.ok) {
         const { status, ...errorBody } = authorized;
@@ -10755,6 +10905,10 @@ async function handleRequest(req, res) {
         licenseKeyCode: authorized.licenseKeyCode,
         phoneNumber: authorized.phoneNumber,
         deviceId: authorized.deviceId,
+        extensionVersion: buildClient.extensionVersion,
+        buildFingerprint: buildClient.buildFingerprint,
+        extensionId: buildClient.extensionId,
+        developmentAuthorized: buildClient.developmentAuthorized===true,
         entitlementRevision: authorized.entitlement.entitlementRevision,
       });
       const keyRecord = keys[authorized.licenseKeyCode];
@@ -10784,6 +10938,9 @@ async function handleRequest(req, res) {
     }
     try {
       const body = await parseBody(req);
+      const buildClient = zvmSecurityCheckClient(body.clientSecurity, true, { requireRecognized:false });
+      if (!buildClient.ok) { if (body && typeof body === 'object') delete body.password; sendJson(res, { ok:false, errorCode:buildClient.code }, 400); return; }
+      if (ZVM_BUILD_ENFORCE && buildClient.recognized!==true && !ZVM_DEV_BUILD_ALLOW) { if (body && typeof body === 'object') delete body.password; sendJson(res, { ok:false, errorCode:'BUILD_NOT_ALLOWED' }, 403); return; }
       const db = await getMongoDb();
       const authenticated = await authenticateExtensionAccount(body, { db });
       // Reduz a vida da senha em memória após a verificação. Ela nunca é
@@ -10794,6 +10951,11 @@ async function handleRequest(req, res) {
         sendJson(res, errorBody, status);
         return;
       }
+      const accountDevAllowed = zvmSecurityDevBuildAllowed(authenticated.licenseKeyCode, body.deviceId);
+      if (ZVM_BUILD_ENFORCE && buildClient.recognized!==true && !accountDevAllowed) {
+        sendJson(res, { ok:false, errorCode:'BUILD_NOT_ALLOWED' }, 403);
+        return;
+      }
       const issued = await createExtensionSession({
         subject: authenticated.subject,
         authMethod: 'password',
@@ -10801,6 +10963,10 @@ async function handleRequest(req, res) {
         licenseKeyCode: authenticated.licenseKeyCode,
         phoneNumber: body.phoneNumber,
         deviceId: body.deviceId,
+        extensionVersion: buildClient.extensionVersion,
+        buildFingerprint: buildClient.buildFingerprint,
+        extensionId: buildClient.extensionId,
+        developmentAuthorized: buildClient.recognized!==true && accountDevAllowed,
         entitlementRevision: authenticated.entitlement.entitlementRevision,
       }, { db });
       db.collection('portal_users').updateOne(
@@ -10856,6 +11022,62 @@ async function handleRequest(req, res) {
     return;
   }
 
+  if (p === R_EXT+'/v4/preflight' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'ext_security_preflight', 60, 60000)) { sendJson(res, { errorCode:'RATE_LIMITED' }, 429); return; }
+    const body = await parseBody(req);
+    const client = zvmSecurityCheckClient(body.clientSecurity, true, { requireRecognized:false });
+    if (!client.ok) { sendJson(res, { errorCode:client.code }, 400); return; }
+    if (ZVM_BUILD_ENFORCE && !APP_SECRET) { sendJson(res, { errorCode:'SERVER_AUTHORITY_UNAVAILABLE' }, 503); return; }
+    // Diagnóstico apenas. Uma build desconhecida NÃO recebe acesso aqui.
+    sendJson(res, { ok:true, security:{ protocol:ZVM_SECURITY_PROTOCOL, required:ZVM_BUILD_ENFORCE, recognized:client.recognized===true, capabilityAvailable:!!APP_SECRET, serverTimeMs:Date.now() } });
+    return;
+  }
+
+  if (p === R_EXT+'/v4/capability' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'ext_security_capability', 40, 60000)) { sendJson(res, { errorCode:'RATE_LIMITED' }, 429); return; }
+    const body = await parseBody(req);
+    const keyCode = sanitizeId(body.authKey, 32);
+    const deviceId = String(body.deviceId || '').trim().slice(0, 160);
+    const devBuildAllowed = zvmSecurityDevBuildAllowed(keyCode, deviceId);
+    const client = zvmSecurityCheckClient(body.clientSecurity, true, { allowUnrecognized:devBuildAllowed });
+    if (!client.ok) { sendJson(res, { errorCode:client.code }, client.code === 'BUILD_NOT_ALLOWED' ? 403 : 400); return; }
+    if (!APP_SECRET) { sendJson(res, { errorCode:'SERVER_AUTHORITY_UNAVAILABLE' }, 503); return; }
+    const phone = body.phoneNumber ? normalizePhone(body.phoneNumber) : '';
+    if (!keyCode || !deviceId) { sendJson(res, { errorCode:'SECURITY_BINDING_REQUIRED' }, 400); return; }
+    if (!isFreeAuthKey(keyCode)) {
+      const loaded = await ensureKeyLoadedEx(keyCode);
+      if (loaded.dbError) { sendJson(res, { errorCode:'SERVER_AUTHORITY_UNAVAILABLE' }, 503); return; }
+      if (!loaded.found) { sendJson(res, { errorCode:'KEY_NOT_FOUND' }, 403); return; }
+      if (isKeyExpired(keys[keyCode])) { sendJson(res, { errorCode:'KEY_EXPIRED' }, 403); return; }
+      if (!keys[keyCode].active) { sendJson(res, { errorCode:'KEY_BLOCKED' }, 403); return; }
+      if (phone) {
+        const phones = Array.isArray(keys[keyCode].phones) ? keys[keyCode].phones.map(normalizePhone).filter(Boolean) : [];
+        if (phones.length && !phones.includes(phone)) { sendJson(res, { errorCode:'PHONE_NOT_AUTHORIZED' }, 403); return; }
+      }
+    }
+    const security = zvmSecurityIssue(keyCode, client, deviceId, phone);
+    if (!security) { sendJson(res, { errorCode:'SERVER_AUTHORITY_UNAVAILABLE' }, 503); return; }
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    sendJson(res, { ok:true, security });
+    return;
+  }
+
+  if (p === R_EXT+'/v4/capability/validate' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'ext_security_validate', 120, 60000)) { sendJson(res, { errorCode:'RATE_LIMITED' }, 429); return; }
+    const body = await parseBody(req);
+    const payload = zvmSecurityVerifyToken(String(body.capability || ''));
+    const deviceId = String(body.deviceId || '').trim().slice(0, 160);
+    const client = zvmSecurityCheckClient(body.clientSecurity, true, { allowUnrecognized:!!(payload && payload.dv===true) });
+    if (!client.ok) { sendJson(res, { authorized:false, errorCode:client.code }, client.code === 'BUILD_NOT_ALLOWED' ? 403 : 400); return; }
+    const scope = zvmSecurityScope(body.scope || 'extension.use') || 'extension.use';
+    const now = Date.now();
+    const ok = !!(payload && payload.v===1 && payload.p===ZVM_SECURITY_PROTOCOL && Number(payload.exp||0)>now && Number(payload.iat||0)<=now+ZVM_SECURITY_CLOCK_SKEW_MS && payload.bf===client.buildFingerprint && payload.ev===client.extensionVersion && payload.ei===client.extensionId && payload.dh===zvmSecurityHash(deviceId) && Array.isArray(payload.scp) && (payload.scp.includes(scope)||payload.scp.includes('*')));
+    if (!ok) { sendJson(res, { authorized:false, errorCode:'SERVER_CAPABILITY_INVALID' }, 403); return; }
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    sendJson(res, { authorized:true, capabilityId:String(payload.cid||''), expiresAtMs:Number(payload.exp||0) });
+    return;
+  }
+
   if (p === R_EXT+'/v3/key' && req.method === 'POST') {
     if (!checkRateLimit(ip, 'ext_key')) {
       sendJson(res, { authError: 'rateLimited', authErrorMessage: 'Muitas tentativas. Aguarde.', isLoggedIn: false }, 429);
@@ -10870,6 +11092,14 @@ async function handleRequest(req, res) {
     const phone      = body.phoneNumber || '-';
     const wppVersion = body.wppVersion  || '-';
     const deviceId   = body.deviceId    || '';
+    if (body.clientSecurity) {
+      const devBuildAllowed = zvmSecurityDevBuildAllowed(keyCode, deviceId);
+      const buildClient = zvmSecurityCheckClient(body.clientSecurity, true, { allowUnrecognized:devBuildAllowed });
+      if (!buildClient.ok) {
+        sendJson(res, { authError:'buildNotAllowed', authErrorMessage:'Build da extensão não autorizada.', isLoggedIn:false, errorCode:buildClient.code }, buildClient.code === 'BUILD_NOT_ALLOWED' ? 403 : 400);
+        return;
+      }
+    }
 
     if (isFreeAuthKey(keyCode)) {
       sendJson(res, getFreeAuthData());
@@ -12656,6 +12886,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
       `✅ zvm-lr1290 v10 — porta ${PORT}\n` +
       `🍃 MongoDB: zapvoice.store | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}\n` +
       `🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | 2FA: ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | Webhook Vendas: ${SALE_WEBHOOK_SECRET ? 'ATIVO' : '⚠ INATIVO'} | Cakto: ${CAKTO_WEBHOOK_SECRET ? 'ATIVO' : '⚠ INATIVO'} | Partner API: ${PARTNER_API_TOKEN ? 'ATIVO' : '⚠ INATIVO'}\n` +
+      `🛡️ Build Authority: ${ZVM_BUILD_ENFORCE ? 'ATIVO' : 'DESATIVADO'} | Builds oficiais: ${Array.from(ZVM_OFFICIAL_BUILDS.values()).reduce((n,s)=>n+s.size,0)} | Dev build: ${ZVM_DEV_BUILD_ALLOW ? 'ATIVO' : 'DESATIVADO'}\n` +
       // Rota admin derivada + usuário administrativo NÃO vão pro log de boot:
       // quem operou já tem essas duas informações a partir das próprias env
       // vars (APP_SECRET/ADMIN_USER) — reimprimi-las só cria mais um lugar
@@ -12810,6 +13041,13 @@ module.exports.__test = Object.freeze({
   authenticateExtensionAccount,
   authorizeExtensionKeySession,
   refreshExtensionSession,
+  ZVM_BUILD_ENFORCE,
+  ZVM_OFFICIAL_BUILDS,
+  zvmSecurityBuildRecognized,
+  zvmSecurityCheckClient,
+  zvmSecurityDevBuildAllowed,
+  zvmSecurityIssue,
+  zvmSecurityVerifyToken,
   resolveUsageKey,
   normalizeClientIp,
   isAllowedExtensionOrigin,

@@ -13,7 +13,7 @@ RUN if [ -f package-lock.json ]; then \
     fi \
     && npm cache clean --force
 
-COPY --chown=node:node server.js mailer.js ./
+COPY --chown=node:node server.js mailer.js zvm-official-builds.json ./
 
 USER node
 EXPOSE 3000

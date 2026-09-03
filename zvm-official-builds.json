@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "builds": {
+    "0.8.91": [
+      "8113884ee4b55b7211e7f73dad58f62f7269de668a62a543e71efe100f59b4c9"
+    ],
+    "0.8.92": [
+      "918c2882cb8448ab4181b7fae5d51e198cdc86dce6c01771e82e64904a40667b"
+    ],
+    "0.8.94": [
+      "dfc802559b42b77d9e295e723b6ce248a537d0321b078e24ea2bc78669bd8fe6"
+    ],
+    "0.8.95": [
+      "3ba70156bef46a28a5be99e7c1b9e150248eb1e310a1eed2758476d22f09d123"
+    ],
+    "0.8.96": [
+      "2f3677ffa02152261bb2ce15abded0d2a6061d9e1e132b4c07fdc833b1a8b689"
+    ],
+    "0.8.97": [
+      "8abc56ae67e794d89ebab51133b15fccc1acdee13cb5131520321ed470660117"
+    ],
+    "0.8.98": [
+      "f07f02599eb4d6d174cf535ea01e6dc6b864077f9b46b7c0b6ea75ea8537fb44"
+    ],
+    "0.8.99": [
+      "f61678fc48c5c85dd3b7cfbde2e38771175d6d9e7aee002c3244f88cc8b8c932"
+    ]
+  }
+}
