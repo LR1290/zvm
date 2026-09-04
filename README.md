@@ -135,3 +135,9 @@ AUDIT_REPORT.md        histórico da consolidação anterior
 ## Licença
 
 Copyright © 2026 ZVM. Todos os direitos reservados. Consulte `LICENSE`.
+
+## Build Authority durante desenvolvimento
+
+A validação de fingerprint de build é **fail-closed em produção**. Para o ciclo de desenvolvimento interno, o ambiente do Render pode definir `ZVM_BUILD_ENFORCE=false` para evitar cadastrar cada build intermediária.
+
+Antes de uma release pública / Chrome Web Store, restaure `ZVM_BUILD_ENFORCE=true`, mantenha `ZVM_DEV_BUILD_ALLOW=false` e registre somente o fingerprint da build oficial em `zvm-official-builds.json`.

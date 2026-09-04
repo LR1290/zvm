@@ -52,3 +52,7 @@ A build de recuperação 2026-09-02 mantém esta seção como política para a f
 ## Docker
 
 O container padrão roda como usuário não-root, sem Linux capabilities, com `no-new-privileges` e filesystem somente leitura. Não execute o serviço como root sem necessidade documentada.
+## Extension authentication rate limiting
+
+Extension key authentication uses isolated rate-limit buckets for legacy auth, V4 key sessions, and V3 key activation. Each surface keeps the same 20 requests/minute and 5-minute block policy, but activity on one surface cannot pre-block a user's first request on another. Obsolete persisted `ext_key` blocks from the shared-bucket implementation are ignored during boot migration. Rate-limited extension responses include `Retry-After` and `retryAfterSeconds`.
+

@@ -266,6 +266,10 @@ async function loadDb() {
     const now = Date.now();
     if (rateBlocksDoc?.data && typeof rateBlocksDoc.data === 'object') {
       for (const [k, e] of Object.entries(rateBlocksDoc.data)) {
+        // Migration from the old shared extension bucket. Those entries were
+        // created before V3/V4/legacy authentication were isolated and can
+        // otherwise make the first activation after a deploy look rate-limited.
+        if (String(k).endsWith(':ext_key')) continue;
         if (e.blockedUntil > now) {
           rateLimitMap.set(k, { count: e.count || 999, resetAt: e.resetAt || now, blockedUntil: e.blockedUntil });
         }
@@ -798,10 +802,17 @@ function isInternalAuditProbe(req) {
 const rateLimitMap  = new Map();
 const _DEDUP_TTL_MS = 60 * 60 * 1000; // TTL para entradas de dedup de logs (1h)
 const RL_CONFIG = {
-  login:        { max: 5,  windowMs: 60000, blockMs: 10 * 60000 },
-  api:          { max: 30, windowMs: 60000, blockMs:  2 * 60000 },
-  ext_key:      { max: 20, windowMs: 60000, blockMs:  5 * 60000 },
-  check_status: { max: 60, windowMs: 60000, blockMs: 60000 },
+  login:          { max: 5,  windowMs: 60000, blockMs: 10 * 60000 },
+  api:            { max: 30, windowMs: 60000, blockMs:  2 * 60000 },
+  // Extension key authentication used to share one `ext_key` bucket across
+  // legacy auth, V4 sessions and V3 activation. A busy/blocked legacy path
+  // could therefore reject the very first legitimate V3 activation from the
+  // same public IP. Keep the same anti-bruteforce strength, but isolate each
+  // authentication surface so unrelated traffic cannot poison another path.
+  ext_key_legacy: { max: 20, windowMs: 60000, blockMs:  5 * 60000 },
+  ext_key_v4:     { max: 20, windowMs: 60000, blockMs:  5 * 60000 },
+  ext_key_v3:     { max: 20, windowMs: 60000, blockMs:  5 * 60000 },
+  check_status:   { max: 60, windowMs: 60000, blockMs: 60000 },
   checkkey:     { max: 10, windowMs: 60000, blockMs:  5 * 60000 },
   reset:        { max: 3,  windowMs: 300000, blockMs: 30 * 60000 },
   twofa:        { max: 5,  windowMs: 60000,  blockMs: 10 * 60000 },
@@ -838,6 +849,18 @@ function getRateLimitWait(ip, type = 'login') {
   const e = rateLimitMap.get(ip + ':' + type);
   if (!e || Date.now() >= e.blockedUntil) return 0;
   return Math.ceil((e.blockedUntil - Date.now()) / 60000);
+}
+
+function getRateLimitRetryAfterSeconds(ip, type = 'api') {
+  const e = rateLimitMap.get(ip + ':' + type);
+  if (!e || Date.now() >= e.blockedUntil) return 0;
+  return Math.max(1, Math.ceil((e.blockedUntil - Date.now()) / 1000));
+}
+function sendExtensionRateLimited(res, ip, type, body) {
+  const retryAfter = getRateLimitRetryAfterSeconds(ip, type);
+  if (retryAfter > 0) res.setHeader('Retry-After', String(retryAfter));
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  sendJson(res, { ...body, retryAfterSeconds: retryAfter || undefined }, 429);
 }
 
 setInterval(() => {
@@ -1517,9 +1540,6 @@ async function resolveResetToken(db, rawToken) {
 
 function isFreeAuthKey(key) {
   return key === FREE_AUTH_KEY;
-}
-function isFreePlanId(planId) {
-  return planId === FREE_PLAN_ID || planId === FREE_OWNER_ID;
 }
 function sanitizeKeyRecord(k) {
   if (!k || typeof k !== 'object') return k;
@@ -7147,89 +7167,6 @@ function renderPlanosPage(portalUser = null) {
 })();</script></body></html>`;
 }
 
-// ──────────────── FAQ ──────────────
-function renderFaqPage(portalUser = null) {
-  return `<!DOCTYPE html><html lang="pt-BR"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Perguntas Frequentes</title>
-<link rel="icon" type="image/svg+xml" href="${_FAV}">
-${_GFONTS}
-<style>
-${_sharedCss()}
-.page-hero{padding:80px 48px 64px;text-align:center;background:radial-gradient(ellipse 60% 40% at 50% 0%,#00ff870d,transparent 70%)}
-.page-hero-tag{display:inline-block;font-size:11px;font-weight:700;color:var(--g);letter-spacing:2px;text-transform:uppercase;padding:5px 14px;border:1px solid var(--g-brd);border-radius:99px;margin-bottom:20px}
-.page-hero h1{font-size:clamp(28px,5vw,48px);font-weight:900;letter-spacing:-1.5px;margin-bottom:16px}
-.page-hero p{font-size:15px;color:var(--tx2);max-width:460px;margin:0 auto;line-height:1.6}
-.faq-wrap{max-width:720px;margin:0 auto;padding:0 48px 96px}
-.faq-cat{margin-bottom:48px}
-.faq-cat-title{font-size:13px;font-weight:700;color:var(--g);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:20px;display:flex;align-items:center;gap:10px}
-.faq-cat-title::after{content:'';flex:1;height:1px;background:var(--g-brd)}
-details.faq-item{border-bottom:1px solid var(--brd)}
-details.faq-item summary{padding:18px 0;cursor:pointer;font-size:15px;font-weight:700;list-style:none;display:flex;justify-content:space-between;align-items:center;color:var(--tx);user-select:none;gap:16px}
-details.faq-item summary::-webkit-details-marker{display:none}
-details.faq-item summary::after{content:'›';font-size:22px;color:var(--tx3);transition:transform .25s;flex-shrink:0;line-height:1}
-details.faq-item[open] summary{color:var(--g)}
-details.faq-item[open] summary::after{transform:rotate(90deg);color:var(--g)}
-details.faq-item p{padding:0 0 20px;font-size:14px;color:var(--tx2);line-height:1.75}
-.cta-box{background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r-lg);padding:40px;text-align:center;margin-top:64px}
-.cta-box h3{font-size:20px;font-weight:800;margin-bottom:10px}
-.cta-box p{font-size:14px;color:var(--tx2);margin-bottom:24px}
-.cta-box a{display:inline-block;padding:13px 28px;background:var(--g);color:#000;border-radius:var(--r-sm);font-weight:800;font-size:14px;transition:all .2s}
-.cta-box a:hover{background:var(--g2)}
-@media(max-width:768px){.page-hero{padding:60px 20px 48px}.faq-wrap{padding:0 20px 64px}}
-</style></head>
-<body>
-${_sharedNav('/faq', portalUser)}
-<div class="page-hero">
-  <div class="page-hero-tag">FAQ</div>
-  <h1>Perguntas <span style="color:var(--g)">Frequentes</span></h1>
-  <p>Encontre respostas rápidas sobre a ZVM. Não achou? Fale com o suporte.</p>
-</div>
-<div class="faq-wrap">
-  <div class="faq-cat">
-    <div class="faq-cat-title">Geral</div>
-    <details class="faq-item"><summary>O que é a ZVM?</summary><p>ZVM é uma extensão Chrome para automação profissional de WhatsApp. Com ela você envia mensagens de voz, textos, imagens e vídeos em escala, controlando múltiplos dispositivos pelo mesmo painel.</p></details>
-    <details class="faq-item"><summary>Como funciona o sistema de licença?</summary><p>Ao contratar um plano, você recebe uma chave única (ex: <strong style="color:var(--g);font-family:monospace">zv-xxxxx-xxxxx-xxxxx</strong>). Essa chave é inserida na extensão para ativação e fica vinculada ao(s) número(s) do seu plano. Cada número de WhatsApp conectado ocupa um slot.</p></details>
-    <details class="faq-item"><summary>A extensão funciona em qual navegador?</summary><p>A ZVM é compatível com Google Chrome e navegadores baseados em Chromium (Edge, Brave, Opera GX). Firefox e Safari não são suportados no momento.</p></details>
-    <details class="faq-item"><summary>Preciso deixar o navegador aberto para funcionar?</summary><p>Sim. A extensão opera em conjunto com o WhatsApp Web aberto no navegador. O dispositivo precisa estar conectado à internet e com o Chrome ativo durante os disparos.</p></details>
-    <details class="faq-item"><summary>Existe risco de banimento do número?</summary><p>O ZVM possui anti-ban integrado com intervalos inteligentes e rotação de padrões de envio. Seguindo as boas práticas recomendadas (não enviar para listas frias, usar intervalos adequados), o risco é muito baixo. Nenhum sistema garante 100% de isenção, mas a ZVM é construída com isso como prioridade.</p></details>
-  </div>
-  <div class="faq-cat">
-    <div class="faq-cat-title">Chaves e Ativação</div>
-    <details class="faq-item"><summary>Como verifico se minha chave está ativa?</summary><p>Acesse <a href="/verificar" style="color:var(--g);font-weight:700">verificar chave</a> neste portal e insira o código da sua chave. O sistema retorna o status, validade, plano e dispositivos vinculados em tempo real — sem necessidade de login.</p></details>
-    <details class="faq-item"><summary>Quantos números posso conectar na minha chave?</summary><p>Depende do seu plano: <strong>Solo</strong> permite 1 número, <strong>Padrão</strong> permite 3, <strong>Pro</strong> permite 5 e <strong>Empresarial</strong> permite até 10. Você pode ver e remover dispositivos vinculados na consulta da chave ou pelo portal do cliente.</p></details>
-    <details class="faq-item"><summary>Posso transferir minha chave para outro dispositivo?</summary><p>Sim. Pelo portal do cliente ou na tela de verificação da chave, você pode remover um número vinculado para liberar o slot e vincular um novo número.</p></details>
-    <details class="faq-item"><summary>Minha chave foi desativada. O que fazer?</summary><p>Entre em contato com o suporte via WhatsApp. Causas comuns: vencimento do plano sem renovação, uso em número não autorizado ou violação dos termos de uso.</p></details>
-    <details class="faq-item"><summary>Onde fica o campo para inserir a chave na extensão?</summary><p>Ao abrir a extensão ZVM no Chrome pela primeira vez (ou após logout), há um campo "Chave de Ativação". Cole o código recebido e clique em Ativar. A chave é validada automaticamente em tempo real.</p></details>
-  </div>
-  <div class="faq-cat">
-    <div class="faq-cat-title">Portal do Cliente</div>
-    <details class="faq-item"><summary>Como acesso o portal do cliente?</summary><p>Clique em <a href="/cliente" style="color:var(--g);font-weight:700">ENTRAR</a> no menu de navegação. Se ainda não tem conta, clique em "Cadastrar" e crie seu acesso com e-mail e senha. Após o cadastro, vincule sua chave de licença na área do cliente.</p></details>
-    <details class="faq-item"><summary>O que posso fazer no portal do cliente?</summary><p>No portal você pode: ver o status e validade da sua chave, acompanhar dispositivos vinculados, verificar o plano ativo, consultar o histórico de uso e solicitar suporte. Futuras funcionalidades incluirão renovação automática e emissão de notas fiscais.</p></details>
-    <details class="faq-item"><summary>Esqueci minha senha. Como recupero?</summary><p>No momento, a recuperação de senha é feita via suporte. Entre em contato pelo WhatsApp informando o e-mail cadastrado e faremos a redefinição manualmente.</p></details>
-    <details class="faq-item"><summary>O que é a autenticação em dois fatores (2FA)?</summary><p>É uma camada extra de segurança no login do portal. Após ativar nas configurações, você precisará de um código gerado pelo aplicativo autenticador (Google Authenticator, Authy) além da senha para acessar sua conta.</p></details>
-    <details class="faq-item"><summary>Posso ter mais de uma conta no portal?</summary><p>Cada e-mail corresponde a uma conta. Você pode ter múltiplas chaves vinculadas a uma mesma conta caso possua mais de um plano. Para uso em equipe, recomendamos criar contas separadas por operador.</p></details>
-  </div>
-  <div class="faq-cat">
-    <div class="faq-cat-title">Planos e Pagamentos</div>
-    <details class="faq-item"><summary>Quais planos estão disponíveis?</summary><p>Temos 4 planos: <strong>Solo</strong> (R$39,90/mês · 1 número), <strong>Padrão</strong> (R$59,90/mês · 3 números), <strong>Pro</strong> (R$94,90/mês · 5 números) e <strong>Empresarial</strong> (R$169,90/mês · 10 números). Todos incluem acesso completo a todos os recursos por 30 dias. <a href="/planos" style="color:var(--g);font-weight:700">Ver detalhes completos →</a></p></details>
-    <details class="faq-item"><summary>Quais formas de pagamento são aceitas?</summary><p>Aceitamos PIX e transferência bancária. Após o pagamento confirmado, a chave é ativada em até alguns minutos via WhatsApp.</p></details>
-    <details class="faq-item"><summary>Posso cancelar meu plano?</summary><p>Sim. Não há fidelidade ou contrato mínimo. O cancelamento é feito via suporte e a chave é desativada ao fim do período vigente — você não perde o acesso pelo qual já pagou.</p></details>
-    <details class="faq-item"><summary>A renovação é automática?</summary><p>Não. A renovação é manual e pode ser feita pelo portal do cliente ou via suporte. Você receberá um aviso próximo ao vencimento. O tempo restante da chave anterior é somado ao novo período em renovações antecipadas.</p></details>
-    <details class="faq-item"><summary>Posso fazer upgrade de plano?</summary><p>Sim. Entre em contato com o suporte. O upgrade é aplicado à chave existente e você paga apenas a diferença proporcional ao período restante.</p></details>
-    <details class="faq-item"><summary>Existe período de teste gratuito?</summary><p>Eventualmente disponibilizamos testes limitados para novos usuários. Fale com o suporte via WhatsApp para verificar a disponibilidade no momento.</p></details>
-  </div>
-  <div class="cta-box">
-    <h3>Não encontrou o que procura?</h3>
-    <p>Nossa equipe responde em minutos pelo WhatsApp.</p>
-    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">💬 Falar com Suporte</a>
-  </div>
-</div>
-${_sharedFoot()}
-${CANVAS_BG}
-</body></html>`;
-}
-
 // ──────────────── PRIVACIDADE ──────────────
 function renderPrivacyPage(portalUser = null) {
   const updDate = new Date().toLocaleDateString('pt-BR', {month:'long',year:'numeric'});
@@ -9396,8 +9333,8 @@ const WSM = (() => {
     // Estas rotas validam chave de licença / bearer. Sem throttle era possível
     // enumerar chaves válidas em rajada (uma tentativa por request, sem limite).
     const _throttled = (action === 'login' || action === 'auth-plugin' || action === 'auth-painel');
-    if (_throttled && !checkRateLimit(_ip, 'ext_key')) {
-      sendJson(res, { success: false, msg_id: 'rate_limited' }, 429);
+    if (_throttled && !checkRateLimit(_ip, 'ext_key_legacy')) {
+      sendExtensionRateLimited(res, _ip, 'ext_key_legacy', { success: false, msg_id: 'rate_limited' });
       return true;
     }
     // "auth-painel" (Minha Conta): a extensão abre com ?token=<bearer_token> — a
@@ -10882,8 +10819,8 @@ async function handleRequest(req, res) {
   // realmente carregada do banco/cache canônico do servidor.
   if (p === R_EXT+'/v4/session/key' && req.method === 'POST') {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-    if (!checkRateLimit(ip, 'ext_key')) {
-      sendJson(res, { ok: false, errorCode: 'rate_limited', retryable: true }, 429);
+    if (!checkRateLimit(ip, 'ext_key_v4')) {
+      sendExtensionRateLimited(res, ip, 'ext_key_v4', { ok: false, errorCode: 'rate_limited', retryable: true });
       return;
     }
     try {
@@ -11079,8 +11016,8 @@ async function handleRequest(req, res) {
   }
 
   if (p === R_EXT+'/v3/key' && req.method === 'POST') {
-    if (!checkRateLimit(ip, 'ext_key')) {
-      sendJson(res, { authError: 'rateLimited', authErrorMessage: 'Muitas tentativas. Aguarde.', isLoggedIn: false }, 429);
+    if (!checkRateLimit(ip, 'ext_key_v3')) {
+      sendExtensionRateLimited(res, ip, 'ext_key_v3', { authError: 'rateLimited', authErrorMessage: 'Muitas tentativas. Aguarde.', isLoggedIn: false });
       return;
     }
     if (parseInt(req.headers['content-length'] || 0) > MAX_BODY_SIZE) {
