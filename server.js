@@ -1,4 +1,4 @@
-const ZVM_BUILD_ID = '2026-09-02-build-authority-r9';
+const ZVM_BUILD_ID = '2026-09-10-production-migration-r21';
 'use strict';
 const http   = require('http');
 const https  = require('https');
@@ -22,9 +22,28 @@ const PORT         = process.env.PORT         || 3000;
 const ADMIN_USER   = process.env.ADMIN_USER;
 const ADMIN_PASS   = process.env.ADMIN_PASS;
 
-const SALE_WEBHOOK_SECRET = process.env.SALE_WEBHOOK_SECRET || '';
 const CAKTO_WEBHOOK_SECRET = process.env.CAKTO_WEBHOOK_SECRET || '';
-const PARTNER_API_TOKEN   = process.env.PARTNER_API_TOKEN   || '';
+const CAKTO_SIGNATURE_TOLERANCE_SECONDS = Math.max(60, Math.min(900, parseInt(process.env.CAKTO_SIGNATURE_TOLERANCE_SECONDS || '300', 10) || 300));
+const CAKTO_WORKER_POLL_MS = Math.max(1000, Math.min(60000, parseInt(process.env.CAKTO_WORKER_POLL_MS || '5000', 10) || 5000));
+const CAKTO_WORKER_LEASE_MS = Math.max(30000, Math.min(10 * 60 * 1000, parseInt(process.env.CAKTO_WORKER_LEASE_MS || '120000', 10) || 120000));
+const CAKTO_WORKER_MAX_ATTEMPTS = Math.max(1, Math.min(20, parseInt(process.env.CAKTO_WORKER_MAX_ATTEMPTS || '8', 10) || 8));
+const CAKTO_WORKER_BATCH = Math.max(1, Math.min(25, parseInt(process.env.CAKTO_WORKER_BATCH || '10', 10) || 10));
+const CAKTO_EVENT_RETENTION_DAYS = Math.max(7, Math.min(365, parseInt(process.env.CAKTO_EVENT_RETENTION_DAYS || '30', 10) || 30));
+const CAKTO_DEAD_LETTER_RETENTION_DAYS = Math.max(CAKTO_EVENT_RETENTION_DAYS, Math.min(730, parseInt(process.env.CAKTO_DEAD_LETTER_RETENTION_DAYS || '90', 10) || 90));
+const CAKTO_QUEUE_MAX_ACTIVE = Math.max(100, Math.min(50000, parseInt(process.env.CAKTO_QUEUE_MAX_ACTIVE || '5000', 10) || 5000));
+const CAKTO_QUEUE_COUNTER_ID = 'cakto_active';
+const CAKTO_MAIL_MAX_ATTEMPTS = Math.max(1, Math.min(20, parseInt(process.env.CAKTO_MAIL_MAX_ATTEMPTS || '8', 10) || 8));
+const CAKTO_MAIL_BATCH = Math.max(1, Math.min(25, parseInt(process.env.CAKTO_MAIL_BATCH || '10', 10) || 10));
+const CAKTO_MAIL_RETENTION_DAYS = Math.max(7, Math.min(365, parseInt(process.env.CAKTO_MAIL_RETENTION_DAYS || '30', 10) || 30));
+const CAKTO_MAIL_DEAD_LETTER_RETENTION_DAYS = Math.max(CAKTO_MAIL_RETENTION_DAYS, Math.min(730, parseInt(process.env.CAKTO_MAIL_DEAD_LETTER_RETENTION_DAYS || '90', 10) || 90));
+const WORKER_LOCK_RETENTION_MS = Math.max(60 * 60 * 1000, Math.min(7 * 24 * 60 * 60 * 1000, (parseInt(process.env.WORKER_LOCK_RETENTION_HOURS || '24', 10) || 24) * 60 * 60 * 1000));
+const COMMERCIAL_LOCK_LEASE_MS = Math.max(30000, Math.min(5 * 60 * 1000, parseInt(process.env.COMMERCIAL_LOCK_LEASE_MS || '120000', 10) || 120000));
+const COMMERCIAL_LOCK_WAIT_MS = Math.max(0, Math.min(15000, parseInt(process.env.COMMERCIAL_LOCK_WAIT_MS || '5000', 10) || 5000));
+const COMMERCIAL_LOCK_HEARTBEAT_MS = Math.max(5000, Math.min(60000, parseInt(process.env.COMMERCIAL_LOCK_HEARTBEAT_MS || String(Math.max(10000, Math.floor(COMMERCIAL_LOCK_LEASE_MS / 3))), 10) || Math.max(10000, Math.floor(COMMERCIAL_LOCK_LEASE_MS / 3))));
+const COMMERCIAL_TX_CLAIM_LEASE_MS = Math.max(30000, Math.min(5 * 60 * 1000, parseInt(process.env.COMMERCIAL_TX_CLAIM_LEASE_MS || '120000', 10) || 120000));
+const COMMERCIAL_TX_CLAIM_WAIT_MS = Math.max(0, Math.min(15000, parseInt(process.env.COMMERCIAL_TX_CLAIM_WAIT_MS || '5000', 10) || 5000));
+const COMMERCIAL_TX_CLAIM_RETENTION_DAYS = Math.max(30, Math.min(730, parseInt(process.env.COMMERCIAL_TX_CLAIM_RETENTION_DAYS || '400', 10) || 400));
+const IS_PRODUCTION = String(process.env.NODE_ENV || '').toLowerCase() === 'production' || String(process.env.RENDER || '').toLowerCase() === 'true';
 const ANALYTICS_PASS = process.env.ANALYTICS_PASS || '';
 // Opcional: se preenchida, exige TOTP além da senha pra entrar no Analytics
 // (mesma implementação de verifyTOTP já usada pro admin — nenhuma lib nova).
@@ -32,6 +51,8 @@ const ANALYTICS_PASS = process.env.ANALYTICS_PASS || '';
 const ANALYTICS_TOTP_SECRET = process.env.ANALYTICS_TOTP_SECRET || '';
 const MONGODB_URI  = (process.env.MONGODB_URI || '').replace(/^["']|["']$/g, '');
 const APP_SECRET   = process.env.APP_SECRET   || '';
+const CAKTO_RECOVERY_SECRET = String(process.env.CAKTO_RECOVERY_SECRET || '').trim();
+const CAKTO_RECOVERY_SECRET_PREVIOUS = String(process.env.CAKTO_RECOVERY_SECRET_PREVIOUS || '').trim();
 const TOTP_SECRET  = process.env.TOTP_SECRET  || '';
 const WEBHOOK_URL  = process.env.WEBHOOK_URL  || '';
 const EXTENSION_URL = process.env.EXTENSION_URL || '';
@@ -41,8 +62,23 @@ const RESEND_API_KEY    = process.env.RESEND_API_KEY || '';
 const EMAIL_FROM        = process.env.EMAIL_FROM    || 'ZVM <noreply@zvm.app>';
 const EXTENSION_VERSION = process.env.EXTENSION_VERSION || '';
 const EXTENSION_CHANGELOG = process.env.EXTENSION_CHANGELOG || '';
+const EXTENSION_NOTIFICATIONS_JSON = String(process.env.EXTENSION_NOTIFICATIONS_JSON || '').trim();
+const EXTENSION_TUTORIALS_JSON = String(process.env.EXTENSION_TUTORIALS_JSON || '').trim();
+const EXT_COMPAT_DECODER_V1 = String(process.env.EXT_COMPAT_DECODER_V1 || '').trim();
 const TRUST_PROXY_HEADERS = process.env.TRUST_PROXY_HEADERS === '1' || String(process.env.RENDER || '').toLowerCase() === 'true';
 const ZVM_EXTENSION_IDS = new Set(String(process.env.ZVM_EXTENSION_IDS || '').split(',').map(v => v.trim().toLowerCase()).filter(v => /^[a-p]{32}$/.test(v)));
+const META_APP_ID = String(process.env.META_APP_ID || '').trim();
+const META_APP_SECRET = String(process.env.META_APP_SECRET || '').trim();
+const META_CONFIG_ID = String(process.env.META_CONFIG_ID || '').trim();
+const META_GRAPH_VERSION = /^v\d+\.\d+$/.test(String(process.env.META_GRAPH_VERSION || '').trim()) ? String(process.env.META_GRAPH_VERSION).trim() : 'v23.0';
+const META_WEBHOOK_VERIFY_TOKEN = String(process.env.META_WEBHOOK_VERIFY_TOKEN || '').trim();
+const META_TOKEN_ENCRYPTION_KEY = String(process.env.META_TOKEN_ENCRYPTION_KEY || '').trim();
+const META_AUTO_REGISTER_PHONE = String(process.env.META_AUTO_REGISTER_PHONE || '1') !== '0';
+const META_FLOW_TTL_MS = 12 * 60 * 1000;
+const META_WEBHOOK_RETENTION_DAYS = Math.max(1, Math.min(90, parseInt(process.env.META_WEBHOOK_RETENTION_DAYS || '30') || 30));
+const META_COLLECTION = 'meta_connections';
+const META_FLOW_COLLECTION = 'meta_signup_flows';
+const META_WEBHOOK_COLLECTION = 'meta_webhook_events';
 
 // Fonte comercial única do ZVM Standalone. IDs reais podem ser preenchidos
 // por ambiente quando forem conhecidos; valores vazios nunca participam da
@@ -90,8 +126,8 @@ if (!MONGODB_URI) {
   console.error('❌ ERRO CRÍTICO: Defina MONGODB_URI nas variáveis de ambiente.');
   process.exit(1);
 }
-if (!ZVM_EXTENSION_IDS.size) {
-  console.warn('[SEC] ZVM_EXTENSION_IDS vazio — callbacks chrome-extension mantêm compatibilidade ampla. Configure a allowlist no Render antes do go-live.');
+if (!ZVM_EXTENSION_IDS.size && !IS_PRODUCTION) {
+  console.warn('[SEC] ZVM_EXTENSION_IDS vazio em desenvolvimento — configure a allowlist antes de ativar ZVM_BUILD_ENFORCE.');
 }
 
 const FULL_PERMISSIONS = [
@@ -239,12 +275,31 @@ async function loadDb() {
     // Garante índices úteis (idempotente — não recria se já existe)
     db.collection('admin_audit_logs').createIndex({ ts: -1 }, { background: true }).catch(() => {});
     db.collection('portal_users').createIndex({ keyCode: 1 }, { background: true }).catch(() => {});
+    db.collection('extension_security_replay').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0, background: true }).catch(e => {
+      console.error('[SEC] Falha ao garantir TTL de anti-replay compartilhado:', e.message);
+    });
     try {
       await db.collection('webhook_events').createIndex({ eventKey: 1 }, { unique: true, background: true });
+      await db.collection('webhook_events').createIndex({ queueRef: 1 }, { unique: true, sparse: true, background: true });
+      await db.collection('webhook_events').createIndex({ status: 1, nextAttemptAt: 1, createdAt: 1 }, { background: true });
+      await db.collection('webhook_events').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0, background: true });
+      await db.collection('commercial_tx_claims').createIndex({ state: 1, leaseUntil: 1, updatedAt: 1 }, { background: true });
+      await db.collection('commercial_tx_claims').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0, background: true });
+      await db.collection('worker_locks').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0, background: true });
+      await db.collection('payments').createIndex({ txNamespace: 1, txId: 1, approved: 1 }, { background: true });
+      await db.collection('payments').createIndex({ commercialTxKey: 1 }, { unique: true, sparse: true, background: true });
+      await db.collection('cakto_mail_outbox').createIndex({ status: 1, nextAttemptAt: 1, createdAt: 1 }, { background: true });
+      await db.collection('cakto_mail_outbox').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0, background: true });
+      await backfillCaktoQueueRefs(db);
+      await backfillCaktoQueuePayloads(db);
+      await backfillCaktoPaymentTxKeys(db);
+      await reconcileCaktoQueueCounter(db);
+      if (CAKTO_WEBHOOK_SECRET) await assertCaktoQueueTransactionReady(db);
       _caktoIndexReady = true;
     } catch (e) {
       _caktoIndexReady = false;
-      console.error('[CAKTO] Falha ao garantir índice de idempotência:', e.message);
+      console.error('[CAKTO] Falha ao preparar autoridade durável:', safeScalar(e?.code || e?.message, 100, 'queue_prepare_failed'));
+      if (IS_PRODUCTION && CAKTO_WEBHOOK_SECRET) throw e;
     }
     const [keysDoc, logsDoc, alertsDoc, settingsDoc, rateBlocksDoc] = await Promise.all([
       db.collection('store').findOne({ _id: 'keys' }),
@@ -592,6 +647,10 @@ const ipBlacklist     = new Set(); // IPs bloqueados manualmente pelo admin
 const keyFailMap      = new Map(); // { keyCode -> { count, ips: Set, firstAt } } — falhas recentes por chave
 let _httpServer       = null;
 let _pingInterval     = null;
+let _caktoWorkerTimer  = null;
+let _caktoWorkerBusy   = false;
+let _caktoWorkerPromise = null;
+const _caktoWorkerId   = `${process.pid}-${crypto.randomBytes(8).toString('hex')}`;
 // /status é público; sem cache, cada refresh externo causaria um ping direto
 // no MongoDB. Uma janela curta reduz amplificação/DoS sem mascarar incidentes
 // por tempo relevante. /health continua independente e barato para o Render.
@@ -643,7 +702,7 @@ function _trackKeyFail(keyCode, ip) {
   f.count++;
   if (ip) f.ips.add(ip);
   if (f.count >= 10 && f.ips.size >= 3) {
-    addSecurityAlert('KEY_HAMMERING', `Chave "${keyCode}" recebeu ${f.count} falhas de ${f.ips.size} IPs distintos em 1h`, ip);
+    addSecurityAlert('KEY_HAMMERING', `Chave ${maskLicenseCode(keyCode)} recebeu ${f.count} falhas de ${f.ips.size} IPs distintos em 1h`, ip);
     keyFailMap.delete(keyCode); // reset para não repetir o alerta a cada request
   }
 }
@@ -685,8 +744,8 @@ function generateTOTP(secret, window = 0) {
   return ((hmac.readUInt32BE(off) & 0x7fffffff) % 1000000).toString().padStart(6, '0');
 }
 
-// Assinatura original preservada (pass, salt) — todo chamador existente (WSM
-// incluído) continua rodando com 150000 iterações exatamente como antes. O
+// Assinatura original preservada (pass, salt) — chamadores legados continuam
+// rodando com 150000 iterações exatamente como antes. O
 // 3º parâmetro é aditivo: só quem passa explicitamente um valor sai do
 // comportamento legado.
 function hashPassword(pass, salt, iterations = 150000) {
@@ -702,9 +761,7 @@ function genSalt() { return crypto.randomBytes(32).toString('hex'); }
 // 150000 iterações — comparar contra elas com 600000 nunca bateria e
 // derrubaria todo login legado. PASSWORD_ITERATIONS_LEGACY documenta esse
 // valor histórico; PASSWORD_ITERATIONS_CURRENT é o novo padrão (cadastro,
-// troca de senha, reset e rehash transparente pós-login legado). WSM não
-// participa deste esquema — continua chamando hashPassword(pass, salt) com
-// 2 argumentos, sempre 150000, intocado.
+// troca de senha, reset e rehash transparente pós-login legado).
 const PASSWORD_ITERATIONS_LEGACY  = 150000;
 const PASSWORD_ITERATIONS_CURRENT = 600000;
 
@@ -922,7 +979,7 @@ setInterval(async () => {
               keys[code].warnEmailSent = true;
               saveKey(code).catch(() => {});
             } else {
-              console.warn('[CRON] Aviso de expiração não confirmado pelo provedor — tenta de novo no próximo ciclo:', code);
+              console.warn('[CRON] Aviso de expiração não confirmado pelo provedor — tenta de novo no próximo ciclo:', maskLicenseCode(code));
             }
           }
         } catch (e) { console.warn('[CRON] Aviso expiração:', e.message); }
@@ -1057,11 +1114,16 @@ function normalizeCaktoPurchase(payload) {
   const customer = isPlainRecord(data.customer) ? data.customer : {};
   const product = isPlainRecord(data.product) ? data.product : {};
   const offer = isPlainRecord(data.offer) ? data.offer : {};
-  const rawAmount = (typeof data.amount === 'number' || typeof data.amount === 'string') ? Number(data.amount) : 0;
+  const numberOrNull = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
 
   return {
     source: 'cakto',
     event: safeScalar(payload.event, 80).toLowerCase(),
+    status: safeScalar(data.status, 40).toLowerCase(),
     txId: safeScalar(data.id, 120),
     refId: safeScalar(data.refId, 120),
     clientName: safeScalar(customer.name, 120, 'Cliente'),
@@ -1072,19 +1134,53 @@ function normalizeCaktoPurchase(payload) {
     productName: safeScalar(product.name, 200),
     offerId: safeScalar(offer.id, 120),
     offerName: safeScalar(offer.name, 200),
+    offerType: safeScalar(data.offer_type, 40).toLowerCase(),
+    parentOrder: safeScalar(data.parent_order, 120),
     checkoutUrl: normalizeCheckoutUrl(data.checkoutUrl),
-    // amount: nenhuma conversão reais/centavos é aplicada aqui — só Number()
-    // do valor bruto. Não sabemos ainda em que unidade a Cakto realmente
-    // entrega data.amount no payload real; inventar uma transformação sem
-    // prova seria pior que não ter o dado. amountRawType existe só pro
-    // diagnóstico do dry_run (ver handleCaktoWebhook) confirmar isso com o
-    // primeiro payload de verdade.
-    amount: Number.isFinite(rawAmount) && rawAmount >= 0 ? rawAmount : 0,
+    amount: numberOrNull(data.amount),
+    baseAmount: numberOrNull(data.baseAmount),
+    offerPrice: numberOrNull(offer.price),
+    discount: numberOrNull(data.discount),
+    currency: safeScalar(offer.currency, 12).toUpperCase(),
     amountRawType: typeof data.amount,
     paymentMethod: safeScalar(data.paymentMethod, 60, '-'),
     paidAt: safeScalar(data.paidAt, 80),
+    couponCode: safeScalar(data.couponCode, 80),
     tracking: extractTracking(data) || extractTracking(payload),
   };
+}
+
+function normalizeCaktoPurchases(payload) {
+  if (!isPlainRecord(payload)) return [];
+  const rows = Array.isArray(payload.data) ? payload.data : [payload.data];
+  if (!rows.length || rows.length > 64) return [];
+  const out = [];
+  for (const data of rows) {
+    if (!isPlainRecord(data)) return [];
+    const purchase = normalizeCaktoPurchase({ ...payload, data });
+    if (!purchase) return [];
+    out.push(purchase);
+  }
+  return out;
+}
+
+function selectCaktoCommercialPurchase(purchases, plans = ZVM_PLANS) {
+  if (!Array.isArray(purchases) || !purchases.length) return { ok: false, status: 400, error: 'invalid_payload' };
+  const event = safeScalar(purchases[0]?.event, 80).toLowerCase();
+  if (event !== 'purchase_approved') {
+    return { ok: true, purchase: purchases[0], plan: resolveCaktoPlan(purchases[0], plans), webhookV2: purchases.length > 1 };
+  }
+  // Webhook V2 pode agrupar pedido principal + order bump/upsell/downsell.
+  // A licença ZVM nasce somente do pedido principal; acessórios não devem
+  // criar/renovar licença nem bloquear um main válido.
+  const mains = purchases.filter(p => !p.offerType || p.offerType === 'main');
+  if (!mains.length) return { ok: false, status: 422, error: 'main_order_missing' };
+  const mapped = mains.map(purchase => ({ purchase, plan: resolveCaktoPlan(purchase, plans) })).filter(x => !!x.plan);
+  if (!mapped.length) return { ok: false, status: 422, error: 'unmapped_plan' };
+  // Mais de um main configurado no mesmo envelope é comercialmente ambíguo:
+  // não somamos duração nem escolhemos arbitrariamente. Exige revisão/reenvio.
+  if (mapped.length !== 1) return { ok: false, status: 422, error: 'ambiguous_multi_plan' };
+  return { ok: true, ...mapped[0], webhookV2: purchases.length > 1, ignoredItems: purchases.length - 1 };
 }
 
 function resolveCaktoPlan(purchase, plans = ZVM_PLANS) {
@@ -1107,11 +1203,83 @@ function resolveCaktoPlan(purchase, plans = ZVM_PLANS) {
     if (byCheckout) return byCheckout;
   }
 
-  const exactNames = [purchase.productName, purchase.offerName].map(normalizePlanName).filter(Boolean);
-  return allPlans.find(plan => {
-    const allowed = [plan.name, plan.shortName].map(normalizePlanName);
-    return exactNames.some(name => allowed.includes(name));
-  }) || null;
+  // Fail-closed: nomes comerciais são texto mutável e não são identidade.
+  // Se IDs/checkout oficial não casarem, o plano permanece não mapeado.
+  return null;
+}
+
+function maskLicenseCode(code) {
+  const value = safeScalar(code, 128);
+  if (!value) return '';
+  const digest = crypto.createHash('sha256').update(value, 'utf8').digest('hex').slice(0, 12);
+  return `key#${digest}`;
+}
+
+function maskTransactionId(value) {
+  const tx = safeScalar(value, 180);
+  if (!tx) return '';
+  return `tx#${crypto.createHash('sha256').update(tx, 'utf8').digest('hex').slice(0, 12)}`;
+}
+
+function caktoEventKey(txId) {
+  const tx = safeScalar(txId, 180);
+  if (!tx) return '';
+  const digest = crypto.createHash('sha256').update(`cakto:event\0${tx}`, 'utf8').digest('hex');
+  return `cakto:purchase_approved:evt_${digest}`;
+}
+
+function caktoQueueRef(eventKey) {
+  const key = safeScalar(eventKey, 220);
+  if (!key) return '';
+  return `cq_${crypto.createHash('sha256').update(key, 'utf8').digest('hex').slice(0, 24)}`;
+}
+
+function verifyCaktoSignature(rawBody, timestampHeader, signatureHeader, secret = CAKTO_WEBHOOK_SECRET, nowMs = Date.now()) {
+  if (!secret) return { ok: false, status: 503, error: 'webhook_disabled' };
+  const tsText = String(timestampHeader || '').trim();
+  if (!/^\d{9,12}$/.test(tsText)) return { ok: false, status: 401, error: 'signature_timestamp_missing' };
+  const ts = Number(tsText);
+  if (!Number.isFinite(ts) || Math.abs((Number(nowMs) / 1000) - ts) > CAKTO_SIGNATURE_TOLERANCE_SECONDS) {
+    return { ok: false, status: 401, error: 'signature_timestamp_stale' };
+  }
+  const signatures = String(signatureHeader || '').split(',').map(v => v.trim()).filter(Boolean);
+  const v1 = signatures.find(v => /^v1=[a-f0-9]{64}$/i.test(v));
+  if (!v1) return { ok: false, status: 401, error: 'signature_missing' };
+  const bodyBuffer = Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(String(rawBody == null ? '' : rawBody), 'utf8');
+  const expected = crypto.createHmac('sha256', secret).update(`${tsText}.`, 'utf8').update(bodyBuffer).digest('hex');
+  const a = Buffer.from(v1.toLowerCase(), 'utf8');
+  const b = Buffer.from(`v1=${expected}`, 'utf8');
+  const ok = a.length === b.length && crypto.timingSafeEqual(a, b);
+  return ok ? { ok: true } : { ok: false, status: 401, error: 'signature_invalid' };
+}
+
+function validateCaktoCommercialIntegrity(purchase, plan) {
+  if (!purchase || purchase.event !== 'purchase_approved') return { ok: true };
+  if (purchase.status !== 'paid') return { ok: false, status: 422, error: 'purchase_not_paid' };
+  if (!plan) return { ok: false, status: 422, error: 'unmapped_plan' };
+  if (purchase.offerType && purchase.offerType !== 'main') return { ok: false, status: 422, error: 'unsupported_offer_type' };
+  if (purchase.currency && purchase.currency !== 'BRL') return { ok: false, status: 422, error: 'currency_mismatch' };
+  if (plan.offerId && (!purchase.offerId || !safeCompare(purchase.offerId, plan.offerId))) return { ok: false, status: 422, error: 'offer_mismatch' };
+  if (plan.productId && (!purchase.productId || !safeCompare(purchase.productId, plan.productId))) return { ok: false, status: 422, error: 'product_mismatch' };
+
+  const expected = Number(plan.price);
+  const authoritativeBase = Number.isFinite(purchase.baseAmount) ? purchase.baseAmount : purchase.offerPrice;
+  if (!Number.isFinite(authoritativeBase) || !Number.isFinite(expected) || Math.abs(authoritativeBase - expected) > 0.011) {
+    return { ok: false, status: 422, error: 'price_mismatch' };
+  }
+  // `amount` é o valor cobrado; juros/taxas adicionais existem em campos
+  // separados no contrato Cakto. Não inferimos uma equação não documentada
+  // entre eles: exigimos presença, finitude e não-negatividade, enquanto o
+  // preço comercial canônico fica vinculado por baseAmount/offer.price.
+  if (!Number.isFinite(purchase.amount) || purchase.amount < 0) {
+    return { ok: false, status: 422, error: 'amount_invalid' };
+  }
+  // `discount` chega como decimal textual. Quando presente, precisa ser um
+  // desconto plausível sobre o preço-base; cupons legítimos continuam aceitos.
+  if (Number.isFinite(purchase.discount) && (purchase.discount < 0 || purchase.discount > authoritativeBase + 0.011)) {
+    return { ok: false, status: 422, error: 'discount_invalid' };
+  }
+  return { ok: true };
 }
 
 function maskEmail(email) {
@@ -1246,6 +1414,13 @@ function buildExtensionEntitlement({ keyCode = null, keyRecord = null, now = Dat
   const tier = licensed ? 'paid' : 'free';
   const planId = licensed ? String(keyRecord.plan_id || keyRecord.planId || 'ZV_PRO') : FREE_PLAN_ID;
   const planName = licensed ? String(keyRecord.planName || 'Licenciado') : 'Gratuito';
+  const backupOwnerId = licensed ? String(keyRecord.ownerId || 'zv-owner') : '';
+  const backupOwnerHash = backupOwnerId
+    ? crypto.createHash('sha256').update(`ext:backup-owner:v1:${backupOwnerId}`, 'utf8').digest('hex')
+    : null;
+  const backupLegacyOwnerHash = backupOwnerId
+    ? crypto.createHash('sha256').update(`zv:backup-owner:v1:${backupOwnerId}`, 'utf8').digest('hex')
+    : null;
   const revisionInput = JSON.stringify({
     tier,
     planId,
@@ -1263,6 +1438,8 @@ function buildExtensionEntitlement({ keyCode = null, keyRecord = null, now = Dat
     entitlementRevision: crypto.createHash('sha256').update(revisionInput, 'utf8').digest('hex'),
     expiresAt: new Date(leaseExpiryMs).toISOString(),
     licenseExpiresAt: licensed ? (keyRecord.expiresAt || null) : null,
+    backupOwnerHash,
+    backupLegacyOwnerHash,
     usageAuthority: 'server',
   };
 }
@@ -1306,6 +1483,8 @@ function extensionSessionSuccess(rawToken, sessionDoc, entitlement) {
       expiresAt: entitlement.expiresAt,
       planId: entitlement.planId,
       planName: entitlement.planName,
+      backupOwnerHash: entitlement.backupOwnerHash || null,
+      backupLegacyOwnerHash: entitlement.backupLegacyOwnerHash || null,
     },
   };
 }
@@ -1474,6 +1653,14 @@ async function refreshExtensionSession(rawToken, deps = {}) {
   const current = await readExtensionSession(rawToken, { ...deps, db, now });
   if (!current.ok) return extensionAuthFailure(current.errorCode, 401);
   const doc = current.doc;
+  if (zvmSecurityBuildDenied(doc.extensionVersion, doc.buildFingerprint)) {
+    await revokeExtensionSession(rawToken, { ...deps, db, now });
+    return extensionAuthFailure('BUILD_REVOKED', 403);
+  }
+  if (!zvmSecurityStoredSessionAllowed(doc)) {
+    await revokeExtensionSession(rawToken, { ...deps, db, now });
+    return extensionAuthFailure('BUILD_NOT_ALLOWED', 403);
+  }
   let entitlementResult;
   let licenseKeyCode = doc.licenseKeyCode || null;
   if (doc.authMethod === 'password') {
@@ -1828,57 +2015,6 @@ function isAllowedExtensionOrigin(origin) {
   } catch (_) { return null; }
 }
 
-function isAllowedExtensionCallback(callback) {
-  if (!callback) return null;
-  try {
-    const u = new URL(callback);
-    if (!isAllowedExtensionOrigin(`${u.protocol}//${u.host}`)) return null;
-    return u;
-  } catch (_) { return null; }
-}
-
-function redirectExtensionCallback(res, callback, plan, keyCode) {
-  const _cbUrl = isAllowedExtensionCallback(callback);
-  if (_cbUrl) {
-    if (plan === 'free') {
-      _cbUrl.searchParams.set('key', FREE_AUTH_KEY);
-      _cbUrl.searchParams.set('keyId', FREE_KEY_ID);
-      _cbUrl.searchParams.set('ownerId', FREE_OWNER_ID);
-      _cbUrl.searchParams.set('managerId', FREE_MANAGER_ID);
-      _cbUrl.searchParams.set('isPremium', 'false');
-      _cbUrl.searchParams.set('isLoggedIn', 'true');
-      _cbUrl.searchParams.set('planName', 'Gratuito');
-      _cbUrl.searchParams.set('marketplace', 'free');
-      _cbUrl.searchParams.set('username', 'Usuário Gratuito');
-      _cbUrl.searchParams.set('email', '');
-      _cbUrl.searchParams.set('plan_id', FREE_PLAN_ID);
-      _cbUrl.searchParams.set('permissions', '');
-    } else {
-      const k = keys[keyCode] || {};
-      _cbUrl.searchParams.set('key', keyCode);
-      _cbUrl.searchParams.set('keyId', k.keyId || `id-${keyCode}`);
-      _cbUrl.searchParams.set('ownerId', k.ownerId || 'zv-owner');
-      _cbUrl.searchParams.set('managerId', k.managerId || 'zv-manager');
-      _cbUrl.searchParams.set('isPremium', 'true');
-      _cbUrl.searchParams.set('isLoggedIn', 'true');
-      _cbUrl.searchParams.set('planName', k.planName || 'Pro');
-      _cbUrl.searchParams.set('marketplace', k.marketplace || 'premium');
-      _cbUrl.searchParams.set('username', k.label || '');
-      _cbUrl.searchParams.set('email', k.email || 'cliente@zapvoice.com.br');
-      _cbUrl.searchParams.set('plan_id', k.plan_id || k.planId || 'ZV_PRO');
-      _cbUrl.searchParams.set('permissions', (Array.isArray(k.permissions) && k.permissions.length ? k.permissions : FULL_PERMISSIONS).join(','));
-    }
-    res.writeHead(302, { Location: _cbUrl.toString() });
-    res.end();
-    return;
-  }
-  const title = plan === 'free' ? 'Acesso Gratuito Ativado!' : 'Chave Ativada!';
-  const label = plan === 'free' ? 'Plano Gratuito' : keyCode;
-  const page = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>ZVM - Ativado</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace}.card{background:#111118;border:1px solid #00ff8740;border-radius:18px;padding:40px 36px;width:100%;max-width:420px;text-align:center}.title{font-size:22px;font-weight:800;color:#00ff87;margin-bottom:8px}.sub{color:#8a8aaa;font-size:13px;line-height:1.6;margin-bottom:20px}.key{background:#0a0a0f;border:1px solid #00ff8730;border-radius:8px;padding:10px 16px;color:#00ff87;font-size:14px;margin-bottom:20px}</style></head><body><div class="card"><div class="title">${escHtml(title)}</div><div class="sub">Volte ao WhatsApp Web e atualize a página.</div><div class="key">${escHtml(label)}</div></div><script>setTimeout(function(){window.close();},3100);</script></body></html>`;
-  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-  res.end(page);
-}
-
 function isKeyExpired(k) {
   if (!k.expiresAt) return false;
   return new Date() > new Date(k.expiresAt);
@@ -1962,25 +2098,21 @@ function getSuspectMeta(code, k) {
 function isKeySuspect(code, k) { return getSuspectMeta(code, k).isSuspect; }
 
 let _keyStatsCache = null;
-// srcKeys/srcLogs permitem calcular stats de um mapa alternativo (ex.: chaves WSM/watidy).
-// Sem argumentos = usa o mapa global (ZVM/zapvoice) com cache.
-function getKeyStats(srcKeys, srcLogs) {
-  const useGlobal = (srcKeys === undefined);
-  if (useGlobal && _keyStatsCache) return _keyStatsCache;
-  const k  = srcKeys || keys;
-  const lg = srcLogs || logs;
-  const all = Object.values(k);
+// Estatísticas do mapa canônico de chaves, com cache curto.
+function getKeyStats() {
+  if (_keyStatsCache) return _keyStatsCache;
+  const all = Object.values(keys);
   const stats = {
-    totalKeys:   Object.keys(k).length,
+    totalKeys:   Object.keys(keys).length,
     activeKeys:  all.filter(x => x.active && !isKeyExpired(x)).length,
     expiredKeys: all.filter(x => isKeyExpired(x)).length,
     warnKeys:    all.filter(x => x.active && isKeyExpiringSoon(x)).length,
-    suspectKeys:  Object.entries(k).filter(([code, x]) => isKeySuspect(code, x)).length,
-    blockedKeys:  all.filter(x => !x.active && !isKeyExpired(x) && !(!x.expiresAt && x.expireDuration)).length,
+    suspectKeys: Object.entries(keys).filter(([code, x]) => isKeySuspect(code, x)).length,
+    blockedKeys: all.filter(x => !x.active && !isKeyExpired(x) && !(!x.expiresAt && x.expireDuration)).length,
     deferredKeys: all.filter(x => !x.expiresAt && x.expireDuration).length,
-    totalLogs:   lg.length,
+    totalLogs:   logs.length,
   };
-  if (useGlobal) _keyStatsCache = stats;
+  _keyStatsCache = stats;
   return stats;
 }
 
@@ -2004,10 +2136,10 @@ function formatValidityCell(k) {
   return `<span class="badge ${warnSoon?'wl':'on'}" style="${warnSoon?'':'background:#00ff8722;color:var(--green);border:1px solid #00ff8744'}">${remain} restantes</span><br><span style="font-size:12px;color:${warnSoon?'var(--orange)':'var(--green)'}">até ${expStr}</span>`;
 }
 
-// srcKeys/srcLogs permitem renderizar a tabela de um mapa alternativo (ex.: chaves WSM/watidy).
-function buildKeysHtml(srcKeys, srcLogs) {
-  const _keys = srcKeys || keys;
-  const _logs = srcLogs || logs;
+// Renderiza a tabela a partir do mapa canônico de chaves.
+function buildKeysHtml() {
+  const _keys = keys;
+  const _logs = logs;
   const entries = Object.entries(_keys);
   if (!entries.length) return `<tr><td colspan="12" class="empty">Nenhuma chave cadastrada</td></tr>`;
   const logByKey = new Map();
@@ -2184,7 +2316,7 @@ function getPortalUser(req) {
 // Defesa em profundidade contra CSRF nos POSTs autenticados via cookie
 // (portal/admin/analytics). SameSite=Strict já bloqueia a esmagadora
 // maioria dos casos; isto cobre navegadores antigos/extensões que não
-// respeitam SameSite. NÃO aplicar a webhooks externos (Cakto/sale/payt)
+// respeitam SameSite. NÃO aplicar ao webhook externo da Cakto
 // nem a APIs de extensão — esses são legitimamente cross-origin.
 function requireSameOriginPost(req) {
   const site = String(req.headers['sec-fetch-site'] || '').toLowerCase();
@@ -2210,7 +2342,7 @@ function isAnalyticsSession(req) {
   return true;
 }
 // ── Cookies de sessão autenticada (portal/admin/analytics) ──────────────
-// Todo cookie de sessão do namespace top-level (não-WSM) passa por aqui —
+// Todo cookie de sessão autenticada passa por aqui —
 // evita a inconsistência que existia antes (algumas limpezas de zv_portal
 // sem Secure). Nomes de cookie continuam exatamente os mesmos
 // (zv_portal/zv_admin/zv_an); só a criação/remoção foi centralizada.
@@ -2223,10 +2355,21 @@ function clearSessionCookie(res, name) {
 }
 function clearAnalyticsCookie(res) { clearSessionCookie(res, 'zv_an'); }
 
+function caktoPaymentTxKey(txId) {
+  const normalized = safeScalar(txId, 160);
+  if (!normalized) return '';
+  return `cpt_${crypto.createHash('sha256').update(`cakto\0${normalized}`, 'utf8').digest('hex')}`;
+}
+
 async function savePayment(payment, { strict = false } = {}) {
   try {
     const db = await getMongoDb();
-    return await db.collection('payments').insertOne({ ...payment, savedAt: new Date() });
+    const doc = { ...payment, savedAt: new Date() };
+    if (doc.approved === true && (doc.txNamespace === 'cakto' || doc.source === 'cakto') && doc.txId) {
+      doc.txNamespace = 'cakto';
+      doc.commercialTxKey = caktoPaymentTxKey(doc.txId);
+    }
+    return await db.collection('payments').insertOne(doc);
   } catch (e) {
     console.error('[DB] Erro ao salvar pagamento:', e.message);
     if (strict) throw e;
@@ -2234,7 +2377,278 @@ async function savePayment(payment, { strict = false } = {}) {
   }
 }
 
-async function processCommercialSale(sale, plan, deps = {}) {
+async function backfillCaktoPaymentTxKeys(db, opts = {}) {
+  if (!db || typeof db.collection !== 'function') return { scanned: 0, updated: 0, conflicts: 0 };
+  const coll = db.collection('payments');
+  const limit = Math.max(1, Math.min(10000, Number(opts.limit) || 2000));
+  const docs = await coll.find({ approved: true, txId: { $exists: true }, commercialTxKey: { $exists: false }, $or: [{ txNamespace: 'cakto' }, { source: 'cakto' }] }, { projection: { _id: 1, txId: 1 } }).limit(limit).toArray();
+  let updated = 0, conflicts = 0;
+  for (const doc of docs) {
+    const commercialTxKey = caktoPaymentTxKey(doc.txId);
+    if (!commercialTxKey) continue;
+    try {
+      const result = await coll.updateOne({ _id: doc._id, commercialTxKey: { $exists: false } }, { $set: { commercialTxKey, txNamespace: 'cakto' } });
+      if (result?.matchedCount) updated++;
+    } catch (e) {
+      if (e?.code === 11000) conflicts++;
+      else throw e;
+    }
+  }
+  return { scanned: docs.length, updated, conflicts };
+}
+
+function commercialCustomerLockId(email) {
+  const normalized = safeScalar(email, 160).toLowerCase();
+  if (!normalized) return '';
+  return `commercial:${crypto.createHash('sha256').update(normalized, 'utf8').digest('hex')}`;
+}
+
+function commercialTxNamespace(sale) {
+  if (sale?.testMode) return 'simulacao';
+  return safeScalar(sale?.source, 40).toLowerCase() === 'cakto' ? 'cakto' : 'blocked';
+}
+
+function commercialTxClaimId(sale) {
+  const txId = safeScalar(sale?.txId, 160);
+  if (!txId) return '';
+  const ns = commercialTxNamespace(sale);
+  return `commercial_tx:${crypto.createHash('sha256').update(`${ns}\0${txId}`, 'utf8').digest('hex')}`;
+}
+
+function commercialTxIdentityHash(sale, plan) {
+  const email = safeScalar(sale?.clientEmail, 160).toLowerCase();
+  if (!email || !plan) return '';
+  const entitlement = `${Number(plan.maxUses) || 0}:${Number(plan.durationDays) || 0}`;
+  return crypto.createHash('sha256').update(`${email}\0${entitlement}`, 'utf8').digest('hex');
+}
+
+function commercialTxClaimExpiry(now = new Date()) {
+  const base = now instanceof Date ? new Date(now) : new Date();
+  return new Date(base.getTime() + COMMERCIAL_TX_CLAIM_RETENTION_DAYS * 86400000);
+}
+
+function commercialOrderKeyForSale(sale, paidAtMs) {
+  const ms = Number.isFinite(Number(paidAtMs)) ? Math.max(0, Math.trunc(Number(paidAtMs))) : 0;
+  const txTie = caktoPaymentTxKey(sale?.txId || '').slice(-16) || '0000000000000000';
+  return `${String(ms).padStart(16, '0')}:${txTie}`;
+}
+
+async function acquireCommercialTxClaim(db, sale, plan, owner = crypto.randomBytes(16).toString('hex'), opts = {}) {
+  if (!db || typeof db.collection !== 'function') throw Object.assign(new Error('commercial_tx_db_unavailable'), { code: 'commercial_tx_db_unavailable' });
+  const claimId = commercialTxClaimId(sale);
+  const identityHash = commercialTxIdentityHash(sale, plan);
+  if (!claimId) return { ok: false, error: 'commercial_tx_required' };
+  if (!identityHash) return { ok: false, error: 'commercial_customer_invalid' };
+  const leaseMs = Math.max(30000, Number(opts.leaseMs) || COMMERCIAL_TX_CLAIM_LEASE_MS);
+  const waitMs = Math.max(0, Number(opts.waitMs) >= 0 ? Number(opts.waitMs) : COMMERCIAL_TX_CLAIM_WAIT_MS);
+  const started = Date.now();
+  const coll = db.collection('commercial_tx_claims');
+  do {
+    const now = opts.now instanceof Date ? new Date(opts.now) : new Date();
+    const leaseUntil = new Date(now.getTime() + leaseMs);
+    const baseDoc = {
+      _id: claimId, namespace: commercialTxNamespace(sale), identityHash,
+      entitlement: { maxUses: Number(plan.maxUses) || 0, durationDays: Number(plan.durationDays) || 0 },
+      state: 'processing', owner, fence: 1, leaseUntil, createdAt: now, updatedAt: now, expiresAt: commercialTxClaimExpiry(now),
+    };
+    try {
+      await coll.insertOne(baseDoc);
+      return { ok: true, claimId, owner, fence: 1, leaseUntil, identityHash, completed: false };
+    } catch (e) {
+      if (e?.code !== 11000) throw e;
+    }
+    const existing = await coll.findOne({ _id: claimId });
+    if (!existing) continue;
+    if (existing.identityHash !== identityHash || Number(existing.entitlement?.maxUses) !== Number(plan.maxUses) || Number(existing.entitlement?.durationDays) !== Number(plan.durationDays)) {
+      return { ok: false, claimId, owner, error: 'commercial_tx_conflict' };
+    }
+    if (existing.state === 'completed') {
+      return { ok: true, claimId, owner: null, fence: Number(existing.fence) || 0, identityHash, completed: true, duplicate: true };
+    }
+    const expired = !existing.leaseUntil || new Date(existing.leaseUntil).getTime() <= now.getTime();
+    if (existing.owner === owner || expired || existing.state === 'retryable') {
+      try {
+        const result = await coll.findOneAndUpdate(
+          { _id: claimId, identityHash, state: { $ne: 'completed' }, $or: [{ owner }, { leaseUntil: { $lte: now } }, { leaseUntil: { $exists: false } }, { state: 'retryable' }] },
+          { $set: { state: 'processing', owner, leaseUntil, updatedAt: now, expiresAt: commercialTxClaimExpiry(now) }, $inc: { fence: 1 }, $unset: { lastError: '', failureCategory: '', failureRef: '', failedAt: '' } },
+          { returnDocument: 'after' }
+        );
+        const doc = result && typeof result === 'object' && 'value' in result ? result.value : result;
+        if (doc && doc.owner === owner && doc.state === 'processing' && Number.isInteger(Number(doc.fence))) return { ok: true, claimId, owner, fence: Number(doc.fence), leaseUntil: new Date(doc.leaseUntil), identityHash, completed: false, resumed: true };
+      } catch (e) {
+        if (e?.code !== 11000) throw e;
+      }
+    }
+    if (Date.now() - started >= waitMs) break;
+    await new Promise(resolve => setTimeout(resolve, Math.min(100, Math.max(10, waitMs))));
+  } while (true);
+  return { ok: false, claimId, owner, error: 'commercial_tx_busy' };
+}
+
+async function renewCommercialTxClaim(db, claim, opts = {}) {
+  if (!db || !claim?.claimId || !claim?.owner || claim.completed) return !!claim?.completed;
+  const now = opts.now instanceof Date ? new Date(opts.now) : new Date();
+  const leaseMs = Math.max(30000, Number(opts.leaseMs) || COMMERCIAL_TX_CLAIM_LEASE_MS);
+  const leaseUntil = new Date(now.getTime() + leaseMs);
+  const result = await db.collection('commercial_tx_claims').updateOne(
+    { _id: claim.claimId, owner: claim.owner, fence: Number(claim.fence), state: 'processing' },
+    { $set: { leaseUntil, updatedAt: now } }
+  );
+  if (result?.matchedCount) claim.leaseUntil = leaseUntil;
+  return !!result?.matchedCount;
+}
+
+async function completeCommercialTxClaim(db, claim, opts = {}) {
+  if (!db || !claim?.claimId) return false;
+  if (claim.completed) return true;
+  const now = opts.now instanceof Date ? new Date(opts.now) : new Date();
+  const result = await db.collection('commercial_tx_claims').updateOne(
+    { _id: claim.claimId, owner: claim.owner, fence: Number(claim.fence), state: 'processing' },
+    { $set: { state: 'completed', completedAt: now, updatedAt: now, expiresAt: commercialTxClaimExpiry(now) }, $unset: { owner: '', leaseUntil: '', lastError: '', failureCategory: '', failureRef: '', failedAt: '' } }
+  );
+  if (result?.matchedCount) claim.completed = true;
+  return !!result?.matchedCount;
+}
+
+async function failCommercialTxClaim(db, claim, error, opts = {}) {
+  if (!db || !claim?.claimId || !claim?.owner || claim.completed) return false;
+  const now = opts.now instanceof Date ? new Date(opts.now) : new Date();
+  const result = await db.collection('commercial_tx_claims').updateOne(
+    { _id: claim.claimId, owner: claim.owner, fence: Number(claim.fence), state: 'processing' },
+    { $set: { state: 'retryable', failedAt: now, updatedAt: now, leaseUntil: new Date(0), expiresAt: commercialTxClaimExpiry(now), failureCategory: classifyCaktoQueueFailure(error), failureRef: caktoQueueFailureRef(error) }, $unset: { owner: '', lastError: '' } }
+  );
+  return !!result?.matchedCount;
+}
+
+async function findCommercialPaymentByTx(db, sale) {
+  const txId = safeScalar(sale?.txId, 160);
+  if (!txId || !db || typeof db.collection !== 'function') return null;
+  if (commercialTxNamespace(sale) !== 'cakto') return null;
+  const commercialTxKey = caktoPaymentTxKey(txId);
+  const coll = db.collection('payments');
+  const paymentQuery = { approved: true, $or: [{ commercialTxKey }, { txId, txNamespace: 'cakto' }, { txId, source: 'cakto' }] };
+  let payments;
+  if (typeof coll.find === 'function') {
+    payments = await coll.find(
+      paymentQuery,
+      { projection: { _id: 1, commercialTxKey: 1, txId: 1, txNamespace: 1, source: 1, keyCode: 1, renewed: 1, maxUses: 1, paidAt: 1 } }
+    ).limit(3).toArray();
+  } else {
+    const one = await coll.findOne(paymentQuery);
+    payments = one ? [one] : [];
+  }
+  if (!payments.length) return null;
+  const licenseCodes = new Set(payments.map(p => safeScalar(p.keyCode, 128)).filter(Boolean));
+  if (licenseCodes.size > 1) {
+    const error = new Error('commercial_payment_conflict');
+    error.code = 'commercial_payment_conflict';
+    throw error;
+  }
+  const payment = payments.find(p => p.commercialTxKey === commercialTxKey) || payments[0];
+  for (const doc of payments) {
+    if (!doc.commercialTxKey && doc._id !== undefined) {
+      await coll.updateOne({ _id: doc._id, commercialTxKey: { $exists: false } }, { $set: { commercialTxKey, txNamespace: 'cakto' } }).catch(() => {});
+    }
+  }
+  return payment;
+}
+
+async function commercialDuplicateResultFromPayment(payment, plan, deps = {}) {
+  if (!payment?.keyCode) return null;
+  const keyStore = deps.keyStore || keys;
+  if (!keyStore[payment.keyCode] && !deps.keyStore) await ensureKeyLoaded(payment.keyCode);
+  const existing = keyStore[payment.keyCode] || {};
+  return {
+    keyCode: payment.keyCode, renewed: !!payment.renewed, duplicate: true,
+    expiresAt: existing.expiresAt || null,
+    maxUses: existing.maxUses || payment.maxUses || plan.maxUses,
+    emailDelivered: false,
+  };
+}
+
+async function acquireCommercialCustomerLock(db, email, owner = crypto.randomBytes(16).toString('hex'), opts = {}) {
+  if (!db || typeof db.collection !== 'function') throw new Error('commercial_lock_db_unavailable');
+  const lockId = commercialCustomerLockId(email);
+  if (!lockId) throw new Error('commercial_customer_invalid');
+  const leaseMs = Math.max(30000, Number(opts.leaseMs) || COMMERCIAL_LOCK_LEASE_MS);
+  const waitMs = Math.max(0, Number(opts.waitMs) >= 0 ? Number(opts.waitMs) : COMMERCIAL_LOCK_WAIT_MS);
+  const started = Date.now();
+  do {
+    const now = opts.now instanceof Date ? new Date(opts.now) : new Date();
+    const leaseUntil = new Date(now.getTime() + leaseMs);
+    const expiresAt = new Date(leaseUntil.getTime() + WORKER_LOCK_RETENTION_MS);
+    try {
+      const result = await db.collection('worker_locks').findOneAndUpdate(
+        { _id: lockId, $or: [{ owner }, { leaseUntil: { $lte: now } }, { leaseUntil: { $exists: false } }] },
+        { $set: { owner, leaseUntil, expiresAt, updatedAt: now, kind: 'commercial_customer' }, $setOnInsert: { createdAt: now }, $inc: { fence: 1 } },
+        { upsert: true, returnDocument: 'after' }
+      );
+      const doc = result && typeof result === 'object' && 'value' in result ? result.value : result;
+      if (doc && doc.owner === owner && Number.isInteger(Number(doc.fence)) && new Date(doc.leaseUntil).getTime() > now.getTime()) {
+        return { ok: true, lockId, owner, fence: Number(doc.fence), leaseUntil: new Date(doc.leaseUntil), leaseMs };
+      }
+    } catch (e) {
+      if (e?.code !== 11000) throw e;
+    }
+    if (Date.now() - started >= waitMs) break;
+    await new Promise(resolve => setTimeout(resolve, Math.min(100, Math.max(10, waitMs))));
+  } while (true);
+  return { ok: false, lockId, owner, error: 'commercial_customer_busy' };
+}
+
+async function renewCommercialCustomerLock(db, lock, opts = {}) {
+  if (!db || !lock?.lockId || !lock?.owner || !Number.isInteger(Number(lock?.fence))) return false;
+  const now = opts.now instanceof Date ? new Date(opts.now) : new Date();
+  const leaseMs = Math.max(30000, Number(opts.leaseMs) || lock.leaseMs || COMMERCIAL_LOCK_LEASE_MS);
+  const leaseUntil = new Date(now.getTime() + leaseMs);
+  const expiresAt = new Date(leaseUntil.getTime() + WORKER_LOCK_RETENTION_MS);
+  const result = await db.collection('worker_locks').updateOne(
+    { _id: lock.lockId, owner: lock.owner, fence: Number(lock.fence) },
+    { $set: { leaseUntil, expiresAt, updatedAt: now } }
+  );
+  if (result?.matchedCount) lock.leaseUntil = leaseUntil;
+  return !!result?.matchedCount;
+}
+
+async function releaseCommercialCustomerLock(db, lock) {
+  if (!db || !lock?.lockId || !lock?.owner || !Number.isInteger(Number(lock?.fence))) return;
+  const now = new Date();
+  await db.collection('worker_locks').updateOne(
+    { _id: lock.lockId, owner: lock.owner, fence: Number(lock.fence) },
+    { $set: { leaseUntil: new Date(0), expiresAt: new Date(now.getTime() + WORKER_LOCK_RETENTION_MS), updatedAt: now } }
+  ).catch(() => {});
+}
+
+async function withCommercialCustomerLock(db, email, fn, opts = {}) {
+  const lock = await acquireCommercialCustomerLock(db, email, opts.owner, opts);
+  if (!lock.ok) {
+    const error = new Error(lock.error || 'commercial_customer_busy');
+    error.code = lock.error || 'commercial_customer_busy';
+    throw error;
+  }
+  let lost = false;
+  const heartbeatMs = Math.max(5000, Number(opts.heartbeatMs) || COMMERCIAL_LOCK_HEARTBEAT_MS);
+  const renewOrThrow = async () => {
+    if (lost) throw Object.assign(new Error('commercial_customer_lock_lost'), { code: 'commercial_customer_lock_lost' });
+    const ok = await renewCommercialCustomerLock(db, lock, { leaseMs: opts.leaseMs });
+    if (!ok) {
+      lost = true;
+      throw Object.assign(new Error('commercial_customer_lock_lost'), { code: 'commercial_customer_lock_lost' });
+    }
+    return true;
+  };
+  const heartbeat = opts.disableHeartbeat === true ? null : setInterval(() => {
+    renewCommercialCustomerLock(db, lock, { leaseMs: opts.leaseMs }).then(ok => { if (!ok) lost = true; }).catch(() => { lost = true; });
+  }, heartbeatMs);
+  heartbeat?.unref?.();
+  try { return await fn(lock, renewOrThrow); }
+  finally {
+    if (heartbeat) clearInterval(heartbeat);
+    await releaseCommercialCustomerLock(db, lock);
+  }
+}
+
+async function _processCommercialSaleUnlocked(sale, plan, deps = {}) {
   if (!sale || !plan) throw new Error('commercial_sale_invalid');
   const clientEmail = safeScalar(sale.clientEmail, 160).toLowerCase();
   if (!clientEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clientEmail)) throw new Error('commercial_customer_invalid');
@@ -2253,6 +2667,18 @@ async function processCommercialSale(sale, plan, deps = {}) {
   const now = deps.now instanceof Date ? new Date(deps.now) : new Date();
   const durationMs = plan.durationDays * 24 * 60 * 60 * 1000;
 
+  const rawMarkerSource = sale.testMode ? 'simulacao' : safeScalar(sale.markerSource || sale.source, 32, 'cakto').toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  const txLabel = rawMarkerSource || 'cakto';
+  const creationTxMarker = sale.txId ? `${txLabel}_tx:${sale.txId}` : null;
+  const renewalTxMarker = sale.txId ? `renovado_${txLabel}_tx:${sale.txId}` : null;
+
+  // Segunda camada de idempotência do pipeline Cakto.
+  if (sale.txId && !sale.testMode && deps.skipPaymentIdempotency !== true) {
+    const already = await findCommercialPaymentByTx(db, sale);
+    const duplicateResult = await commercialDuplicateResultFromPayment(already, plan, { ...deps, keyStore });
+    if (duplicateResult) return duplicateResult;
+  }
+
   let existingCode = null;
   const portalUser = await findPortalUser(clientEmail);
   if (portalUser?.keyCode) {
@@ -2265,20 +2691,35 @@ async function processCommercialSale(sale, plan, deps = {}) {
       return noteEmail.toLowerCase() === clientEmail;
     }) || null;
   }
+  if (!existingCode && sale.txId && !sale.testMode && db && typeof db.collection === 'function') {
+    const stored = await db.collection('store').findOne({ _id: 'keys' }, { projection: { data: 1 } });
+    const storedKeys = stored?.data && typeof stored.data === 'object' ? stored.data : {};
+    const txMarkers = [creationTxMarker, renewalTxMarker].filter(Boolean);
+    const recoveredCode = Object.keys(storedKeys).find(code => {
+      const note = String(storedKeys[code]?.note || '');
+      return txMarkers.some(marker => note.includes(marker));
+    }) || null;
+    if (recoveredCode) {
+      keyStore[recoveredCode] = storedKeys[recoveredCode];
+      existingCode = recoveredCode;
+    }
+  }
 
   // P0 — retomada de falha parcial não pode somar a duração duas vezes: se
   // persistKey/linkPortalUser/savePayment falhar DEPOIS que a chave já foi
   // mutada em memória (criada ou renovada), o evento vira "failed" e é
-  // reprocessado do zero (ver claimCaktoEvent). Sem isto, o reprocessamento
+  // reprocessado do zero. Sem isto, o reprocessamento
   // encontraria a MESMA chave via existingCode e aplicaria +duração de novo
   // por cima do que a tentativa anterior já tinha aplicado — cliente
   // recebendo o dobro dos dias por uma única compra. As marcas de txId já
   // gravadas em key.note (criação: "cakto_tx:X"; renovação: "renovado_..._tx:X")
   // servem como prova de que ESTA transação específica já mutou esta chave.
-  const txLabel = sale.testMode ? 'simulacao' : 'cakto';
-  const creationTxMarker = sale.txId ? `cakto_tx:${sale.txId}` : null;
-  const renewalTxMarker = sale.txId ? `renovado_${txLabel}_tx:${sale.txId}` : null;
-
+  const preMutationCode = existingCode || null;
+  const preMutationKey = preMutationCode && keyStore[preMutationCode]
+    ? JSON.parse(JSON.stringify(keyStore[preMutationCode]))
+    : null;
+  const incomingPaidAtMs = Number.isFinite(new Date(sale.paidAt).getTime()) ? new Date(sale.paidAt).getTime() : now.getTime();
+  const incomingOrderKey = commercialOrderKeyForSale(sale, incomingPaidAtMs);
   let keyCode;
   let renewed;
   if (existingCode) {
@@ -2295,8 +2736,14 @@ async function processCommercialSale(sale, plan, deps = {}) {
       const base = validExpiry ? currentExpiry : now;
       key.expiresAt = new Date(base.getTime() + durationMs).toISOString();
       key.expireDuration = durationMs;
-      key.maxUses = plan.maxUses;
-      key.planId = plan.id;
+      const currentPaidAtMs = Number.isFinite(new Date(key.commercialPaidAt).getTime()) ? new Date(key.commercialPaidAt).getTime() : -Infinity;
+      const currentOrderKey = key.commercialOrderKey || (Number.isFinite(currentPaidAtMs) ? `${String(Math.max(0, Math.trunc(currentPaidAtMs))).padStart(16, '0')}:` : '');
+      if (!currentOrderKey || incomingOrderKey >= currentOrderKey) {
+        key.maxUses = plan.maxUses;
+        key.planId = plan.id;
+        key.commercialPaidAt = new Date(incomingPaidAtMs).toISOString();
+        key.commercialOrderKey = incomingOrderKey;
+      }
       key.active = true;
       key.warnEmailSent = false;
       key.note = [key.note || '', renewalTxMarker || `renovado_${txLabel}`].filter(Boolean).join('\n');
@@ -2308,7 +2755,7 @@ async function processCommercialSale(sale, plan, deps = {}) {
     keyStore[keyCode] = {
       label: `${sale.testMode ? '🧪 Simulação' : 'Venda Cakto'} - ${safeScalar(sale.clientName, 120, 'Cliente')}`,
       active: true, phones: [], activations: [], uses: 0,
-      maxUses: plan.maxUses, planId: plan.id,
+      maxUses: plan.maxUses, planId: plan.id, commercialPaidAt: new Date(incomingPaidAtMs).toISOString(), commercialOrderKey: incomingOrderKey,
       expiresAt, expireDuration: durationMs,
       createdAt: now.toISOString(), lastUsed: null, lastIp: null,
       lastPhone: null, deviceId: null, wppVersion: null, warnCount: 0,
@@ -2319,18 +2766,24 @@ async function processCommercialSale(sale, plan, deps = {}) {
 
   // P0 — ordem importa pra recuperação de falha parcial: savePayment é o
   // ÚLTIMO passo mutável antes do e-mail (tolerante a falha via try/catch
-  // abaixo) porque processCaktoPurchaseEvent usa a EXISTÊNCIA do payment
-  // como segunda camada de idempotência (existingPayment) pra decidir se
-  // uma retomada pode pular processCommercialSale inteiro. Com persistKey/
-  // linkPortalUser ANTES, "payment já existe" garante que a chave e o
-  // vínculo do portal também já existem - uma retomada nunca os pula sem
-  // que já estejam feitos. Só o e-mail pode ficar sem reenvio numa falha
-  // bem rara depois deste ponto - risco aceito (preferível a duplicar
-  // e-mail, ver relatório).
-  await persistKey(keyCode);
+  // A persistência da licença e o vínculo do portal antecedem o payment final; assim, um payment existente prova que o entitlement já foi materializado.
+  const assertCommercialAuthority = typeof deps.assertCommercialAuthority === 'function' ? deps.assertCommercialAuthority : async () => true;
+  try {
+    await assertCommercialAuthority('persist_key');
+    await persistKey(keyCode);
+  } catch (e) {
+    if (preMutationKey && preMutationCode === keyCode) keyStore[keyCode] = preMutationKey;
+    else if (!preMutationKey) delete keyStore[keyCode];
+    invalidateKeysHtmlCache();
+    throw e;
+  }
+  if (typeof deps.reportCommercialPhase === 'function') await deps.reportCommercialPhase('license_persisted', { keyCode });
+  await assertCommercialAuthority('link_portal');
   await linkPortalUser(clientEmail, keyCode);
+  if (typeof deps.reportCommercialPhase === 'function') await deps.reportCommercialPhase('portal_linked', { keyCode });
+  await assertCommercialAuthority('save_payment');
   await paymentSaver({
-    source: sale.source || 'cakto', testMode: !!sale.testMode, txId: sale.txId, refId: sale.refId || '',
+    source: sale.source || 'cakto', txNamespace: commercialTxNamespace(sale), commercialTxKey: sale.testMode ? undefined : caktoPaymentTxKey(sale.txId), testMode: !!sale.testMode, txId: sale.txId, refId: sale.refId || '',
     offerId: sale.offerId || '', productId: sale.productId || '',
     checkoutUrl: sale.checkoutUrl || '', status: 'approved', approved: true,
     clientName: sale.clientName, clientEmail, clientPhone: sale.clientPhone,
@@ -2340,24 +2793,122 @@ async function processCommercialSale(sale, plan, deps = {}) {
     paidAt: Number.isFinite(new Date(sale.paidAt).getTime()) ? new Date(sale.paidAt).toISOString() : now.toISOString(),
     rawStatus: sale.event,
   });
+  if (typeof deps.reportCommercialPhase === 'function') await deps.reportCommercialPhase('payment_saved', { keyCode });
+  if (typeof deps.onPaymentCommitted === 'function') await deps.onPaymentCommitted({ keyCode });
 
-  // emailDelivered é reportado de volta ao chamador (o Laboratório de Testes
-  // depende disso pra não afirmar "e-mail enviado" quando o provedor recusou
-  // ou a chamada falhou — antes esse resultado era só logado e descartado).
+  // Delivery is durable for real Cakto sales. Payment/claim authority is already
+  // sealed, then an encrypted outbox row is required before this transaction is
+  // allowed to disappear from the webhook retry path. Test/simulation adapters
+  // keep the old direct-mail behavior and never write to the real outbox.
   let emailDelivered = false;
-  try {
-    const delivered = await deliveryMailer(clientEmail, {
-      code: keyCode, planLabel: plan.shortName, maxUses: plan.maxUses,
-      expiresAt: keyStore[keyCode].expiresAt, renewed, durationDays: plan.durationDays,
-      baseUrl: BASE_URL, extensionUrl: EXTENSION_URL,
-      ctaPath: '/cliente', // fluxo Cakto/standalone - legado (sale/payt webhook, partner API) continua em /verificar
-    });
-    emailDelivered = !!delivered;
-    if (!emailDelivered) console.warn('[CAKTO] Provedor recusou o e-mail de entrega para', maskEmail(clientEmail));
-  } catch (e) { console.warn('[CAKTO] Falha ao enviar e-mail de entrega:', e.message); }
+  let mailRef = null;
+  if (!sale.testMode && db && typeof db.collection === 'function' && caktoDurableMailEnabled()) {
+    if (typeof deps.afterPaymentCommitted === 'function') await deps.afterPaymentCommitted({ keyCode, renewed });
+    const outbox = await ensureCaktoDeliveryOutbox(db, sale, plan, { keyCode, renewed, expiresAt: keyStore[keyCode].expiresAt }, { ...deps, keyStore, now });
+    mailRef = outbox.mailRef;
+    if (deps.deferMail !== true) {
+      const attempted = await attemptCaktoMailByRef(db, mailRef, { ...deps, sendKeyDeliveryEmail: deliveryMailer, now });
+      emailDelivered = !!attempted.sent;
+    }
+  } else {
+    try {
+      const delivered = await deliveryMailer(clientEmail, {
+        code: keyCode, planLabel: plan.shortName, maxUses: plan.maxUses,
+        expiresAt: keyStore[keyCode].expiresAt, renewed, durationDays: plan.durationDays,
+        baseUrl: BASE_URL, extensionUrl: EXTENSION_URL,
+        ctaPath: safeLocalRedirect(sale.ctaPath, '/cliente'),
+      });
+      emailDelivered = !!delivered;
+      if (!emailDelivered) console.warn('[CAKTO] Provedor recusou o e-mail de entrega para', maskEmail(clientEmail));
+    } catch (e) { console.warn('[CAKTO] Falha ao enviar e-mail de entrega:', safeScalar(e?.message, 80, 'mail_failed')); }
+  }
 
   invalidateKeysHtmlCache();
-  return { keyCode, renewed, expiresAt: keyStore[keyCode].expiresAt, maxUses: plan.maxUses, emailDelivered };
+  return { keyCode, renewed, expiresAt: keyStore[keyCode].expiresAt, maxUses: plan.maxUses, emailDelivered, mailRef };
+}
+
+async function processCommercialSale(sale, plan, deps = {}) {
+  if (!sale || !plan) throw new Error('commercial_sale_invalid');
+  if (!sale.testMode && safeScalar(sale.source, 40).toLowerCase() !== 'cakto') throw Object.assign(new Error('commercial_source_not_allowed'), { code: 'commercial_source_not_allowed' });
+  // Simulações são isoladas por adapters próprios e não escrevem no estado
+  // comercial real. O bypass de testes antigo continua pulando AMBAS as
+  // autoridades distribuídas para não alterar harnesses unitários legados.
+  if (sale.testMode || deps.disableCommercialLock === true) return _processCommercialSaleUnlocked(sale, plan, deps);
+  const email = safeScalar(sale.clientEmail, 160).toLowerCase();
+  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw Object.assign(new Error('commercial_customer_invalid'), { code: 'commercial_customer_invalid' });
+  const txId = safeScalar(sale.txId, 160);
+  if (!txId && deps.allowMissingTxId !== true) throw Object.assign(new Error('commercial_tx_required'), { code: 'commercial_tx_required' });
+  const db = deps.db || await getMongoDb();
+
+  let txClaim = null;
+  if (txId && deps.disableCommercialTxClaim !== true) {
+    txClaim = await acquireCommercialTxClaim(db, sale, plan, deps.commercialTxOwner, {
+      waitMs: deps.commercialTxWaitMs,
+      leaseMs: deps.commercialTxLeaseMs,
+      now: deps.commercialTxNow,
+    });
+    if (!txClaim.ok) throw Object.assign(new Error(txClaim.error || 'commercial_tx_busy'), { code: txClaim.error || 'commercial_tx_busy' });
+    // Uma claim concluída é autoridade mais forte que qualquer input novo. Só
+    // aceitamos repetir a resposta se o payment selado existir; nunca recriamos
+    // uma licença a partir de um claim completed inconsistente.
+    if (txClaim.completed) {
+      const already = await findCommercialPaymentByTx(db, sale);
+      const duplicateResult = await commercialDuplicateResultFromPayment(already, plan, deps);
+      if (duplicateResult) return duplicateResult;
+      throw Object.assign(new Error('commercial_tx_inconsistent'), { code: 'commercial_tx_inconsistent' });
+    }
+  }
+
+  const reportCommercialPhase = txClaim ? async (phase, info = {}) => {
+    const now = new Date();
+    const set = { phase: safeScalar(phase, 40), updatedAt: now };
+    if (info.keyCode) set.licenseRef = maskLicenseCode(info.keyCode);
+    const result = await db.collection('commercial_tx_claims').updateOne(
+      { _id: txClaim.claimId, owner: txClaim.owner, fence: Number(txClaim.fence), state: 'processing' }, { $set: set }
+    );
+    if (!result?.matchedCount) throw Object.assign(new Error('commercial_tx_claim_lost'), { code: 'commercial_tx_claim_lost' });
+  } : null;
+
+  try {
+    const runUnlocked = async (assertCustomerLock) => {
+      const assertCommercialAuthority = async () => {
+        if (txClaim) {
+          const txOk = await renewCommercialTxClaim(db, txClaim, { leaseMs: deps.commercialTxLeaseMs });
+          if (!txOk) throw Object.assign(new Error('commercial_tx_claim_lost'), { code: 'commercial_tx_claim_lost' });
+        }
+        if (assertCustomerLock) await assertCustomerLock();
+        return true;
+      };
+      const onPaymentCommitted = txClaim ? async () => {
+        await assertCommercialAuthority();
+        if (!txClaim.completed) {
+          const completed = await completeCommercialTxClaim(db, txClaim);
+          if (!completed) throw Object.assign(new Error('commercial_tx_claim_lost'), { code: 'commercial_tx_claim_lost' });
+        }
+      } : null;
+      const result = await _processCommercialSaleUnlocked(sale, plan, { ...deps, db, assertCommercialAuthority, reportCommercialPhase, onPaymentCommitted });
+      if (!txClaim?.completed) {
+        await assertCommercialAuthority();
+        if (txClaim) {
+          const completed = await completeCommercialTxClaim(db, txClaim);
+          if (!completed) throw Object.assign(new Error('commercial_tx_claim_lost'), { code: 'commercial_tx_claim_lost' });
+        }
+      }
+      return result;
+    };
+
+    if (deps.disableCommercialCustomerLock === true) return await runUnlocked(null);
+    return await withCommercialCustomerLock(db, email, (_lock, assertCustomerLock) => runUnlocked(assertCustomerLock), {
+      owner: deps.commercialLockOwner,
+      waitMs: deps.commercialLockWaitMs,
+      leaseMs: deps.commercialLockLeaseMs,
+      heartbeatMs: deps.commercialLockHeartbeatMs,
+      disableHeartbeat: deps.disableCommercialHeartbeat === true,
+    });
+  } catch (e) {
+    if (txClaim && !txClaim.completed) await failCommercialTxClaim(db, txClaim, e).catch(() => {});
+    throw e;
+  }
 }
 
 // ── Laboratório de Testes (Analytics) ───────────────────────────────────
@@ -2644,15 +3195,39 @@ function readRawBody(req, maxBytes = MAX_BODY_SIZE) {
   });
 }
 
+function readRawBodyBuffer(req, maxBytes = MAX_BODY_SIZE) {
+  return new Promise(resolve => {
+    const chunks = [];
+    let size = 0, settled = false;
+    const finish = (value) => { if (settled) return; settled = true; resolve(value); };
+    req.on('data', chunk => {
+      if (settled) return;
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      size += buf.length;
+      if (size > maxBytes) {
+        const ip = getIp(req);
+        addSecurityAlert('OVERSIZED_PAYLOAD', `Payload excedeu ${maxBytes} bytes — conexão encerrada`, ip);
+        req.destroy();
+        finish(null);
+        return;
+      }
+      chunks.push(buf);
+    });
+    req.on('end', () => finish(Buffer.concat(chunks, size)));
+    req.on('error', () => finish(null));
+  });
+}
+
 function validateCaktoPayload(payload, configuredSecret = CAKTO_WEBHOOK_SECRET) {
   if (!configuredSecret) return { ok: false, status: 503, error: 'webhook_disabled' };
-  if (!isPlainRecord(payload) || !isPlainRecord(payload.data)) return { ok: false, status: 400, error: 'invalid_payload' };
+  if (!isPlainRecord(payload)) return { ok: false, status: 400, error: 'invalid_payload' };
+  if (!isPlainRecord(payload.data) && !Array.isArray(payload.data)) return { ok: false, status: 400, error: 'invalid_payload' };
   if (typeof payload.secret !== 'string') return { ok: false, status: 400, error: 'invalid_payload' };
   const receivedSecret = payload.secret;
   if (!safeCompare(receivedSecret, configuredSecret)) return { ok: false, status: 401, error: 'unauthorized' };
-  const purchase = normalizeCaktoPurchase(payload);
-  if (!purchase) return { ok: false, status: 400, error: 'invalid_payload' };
-  return { ok: true, purchase, plan: resolveCaktoPlan(purchase) };
+  const purchases = normalizeCaktoPurchases(payload);
+  if (!purchases.length) return { ok: false, status: 400, error: 'invalid_payload' };
+  return selectCaktoCommercialPurchase(purchases);
 }
 
 // P0 — recuperação de eventos "failed": um eventKey já existe (índice único
@@ -2674,96 +3249,828 @@ function validateCaktoPayload(payload, configuredSecret = CAKTO_WEBHOOK_SECRET) 
 // o que já terminou. "processing" recente (dentro da janela) também não
 // casa — não temos como saber se está genuinamente em andamento agora,
 // então não mexe.
-async function claimCaktoEvent(db, purchase, plan, opts = {}) {
-  const eventKey = `cakto:purchase_approved:${purchase.txId}`;
-  const now = opts.now instanceof Date ? opts.now : new Date();
+function compactCaktoPurchaseForQueue(purchase) {
+  return {
+    source: 'cakto', event: purchase.event, txId: purchase.txId, refId: purchase.refId || '',
+    status: purchase.status, clientName: purchase.clientName || '', clientEmail: purchase.clientEmail || '',
+    clientPhone: purchase.clientPhone || '', productId: purchase.productId || '', productShortId: purchase.productShortId || '',
+    productName: purchase.productName || '', offerId: purchase.offerId || '', offerName: purchase.offerName || '',
+    offerType: purchase.offerType || '', parentOrder: purchase.parentOrder || '', checkoutUrl: purchase.checkoutUrl || '',
+    amount: purchase.amount, baseAmount: purchase.baseAmount, offerPrice: purchase.offerPrice, discount: purchase.discount,
+    currency: purchase.currency || '', amountRawType: purchase.amountRawType || '', paymentMethod: purchase.paymentMethod || '',
+    paidAt: purchase.paidAt || '', couponCode: purchase.couponCode || '', tracking: purchase.tracking || null,
+  };
+}
+
+function encryptCaktoQueuePurchase(purchase, queueRef) {
+  const compact = compactCaktoPurchaseForQueue(purchase);
+  const enc = encryptCaktoRecoveryPayload(compact, queueRef);
+  if (!enc) throw Object.assign(new Error('cakto_queue_crypto_unavailable'), { code: 'cakto_queue_crypto_unavailable' });
+  return enc;
+}
+
+function decryptCaktoQueuePurchase(doc) {
+  if (!doc || typeof doc !== 'object') throw Object.assign(new Error('cakto_queue_document_invalid'), { code: 'cakto_queue_document_invalid' });
+  if (doc.purchaseEnc && typeof doc.purchaseEnc === 'object') {
+    const decoded = decryptCaktoRecoveryPayload(doc.purchaseEnc, doc.queueRef || caktoQueueRef(doc.eventKey));
+    if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded) || !decoded.txId) throw Object.assign(new Error('cakto_queue_payload_invalid'), { code: 'cakto_queue_payload_invalid' });
+    return decoded;
+  }
+  if (doc.purchase && typeof doc.purchase === 'object' && !Array.isArray(doc.purchase)) return compactCaktoPurchaseForQueue(doc.purchase);
+  throw Object.assign(new Error('cakto_queue_payload_unavailable'), { code: 'cakto_queue_payload_unavailable' });
+}
+
+async function migrateCaktoQueuedPurchaseDocument(db, doc) {
+  if (!db || !doc || doc.purchaseEnc || !doc.purchase || typeof doc.purchase !== 'object') return { migrated: false, doc };
+  const queueRef = doc.queueRef || caktoQueueRef(doc.eventKey);
+  const purchase = compactCaktoPurchaseForQueue(doc.purchase);
+  const purchaseEnc = encryptCaktoQueuePurchase(purchase, queueRef);
+  const filter = doc.leaseOwner ? caktoEventLeaseFilter(doc) : { _id: doc._id, eventKey: doc.eventKey, source: 'cakto', purchase: { $type: 'object' }, purchaseEnc: { $exists: false } };
+  const result = await db.collection('webhook_events').updateOne(filter, {
+    $set: { purchaseEnc, queueRef, updatedAt: new Date() },
+    $unset: { purchase: '', txId: '', refId: '' },
+  });
+  if (!result?.matchedCount) return { migrated: false, doc };
+  return { migrated: true, doc: { ...doc, queueRef, purchaseEnc, purchase } };
+}
+
+async function backfillCaktoQueuePayloads(db, opts = {}) {
+  if (!db || typeof db.collection !== 'function' || !caktoRecoverySecretRing().length) return { scanned: 0, updated: 0, skipped: true };
+  const coll = db.collection('webhook_events');
+  const limit = Math.max(1, Math.min(20000, Number(opts.limit) || 5000));
+  const docs = await coll.find({ source: 'cakto', purchase: { $type: 'object' }, purchaseEnc: { $exists: false }, status: { $in: ['pending','retry','processing','failed'] } }).limit(limit).toArray();
+  let updated = 0;
+  for (const doc of docs) {
+    const queueRef = doc.queueRef || caktoQueueRef(doc.eventKey);
+    try {
+      const purchaseEnc = encryptCaktoQueuePurchase(doc.purchase, queueRef);
+      const result = await coll.updateOne(
+        { _id: doc._id, source: 'cakto', purchase: { $type: 'object' }, purchaseEnc: { $exists: false } },
+        { $set: { queueRef, purchaseEnc, updatedAt: new Date() }, $unset: { purchase: '', txId: '', refId: '' } }
+      );
+      if (result?.matchedCount) updated++;
+    } catch (e) {
+      if (e?.code === 11000) continue;
+      throw e;
+    }
+  }
+  return { scanned: docs.length, updated, skipped: false };
+}
+
+async function backfillCaktoQueueRefs(db, opts = {}) {
+  if (!db || typeof db.collection !== 'function') return { scanned: 0, updated: 0 };
+  const coll = db.collection('webhook_events');
+  const limit = Math.max(1, Math.min(20000, Number(opts.limit) || 5000));
+  const docs = await coll.find({ source: 'cakto', eventKey: { $exists: true }, queueRef: { $exists: false } }, { projection: { _id: 1, eventKey: 1 } }).limit(limit).toArray();
+  let updated = 0;
+  for (const doc of docs) {
+    const queueRef = caktoQueueRef(doc.eventKey);
+    try {
+      const result = await coll.updateOne({ _id: doc._id, queueRef: { $exists: false } }, { $set: { queueRef } });
+      if (result?.matchedCount) updated++;
+    } catch (e) {
+      if (e?.code !== 11000) throw e;
+    }
+  }
+  return { scanned: docs.length, updated };
+}
+
+async function assertCaktoQueueTransactionReady(db, opts = {}) {
+  if (!db || typeof db.collection !== 'function') throw Object.assign(new Error('cakto_queue_db_unavailable'), { code: 'cakto_queue_db_unavailable' });
+  const client = opts.client || ((db === _mongoDb) ? _mongoClient : null);
+  if (!client || typeof client.startSession !== 'function') throw Object.assign(new Error('cakto_queue_transaction_unavailable'), { code: 'cakto_queue_transaction_unavailable' });
+  const session = client.startSession();
+  if (!session || typeof session.withTransaction !== 'function') {
+    try { if (session && typeof session.endSession === 'function') await session.endSession(); } catch (_) {}
+    throw Object.assign(new Error('cakto_queue_transaction_unavailable'), { code: 'cakto_queue_transaction_unavailable' });
+  }
   try {
-    await db.collection('webhook_events').insertOne({
-      eventKey, source: 'cakto', event: purchase.event, txId: purchase.txId,
-      refId: purchase.refId || null, planId: plan?.id || null,
-      status: plan ? 'processing' : 'CAKTO_UNMAPPED_PLAN', createdAt: now,
-      attempts: 1, lastAttemptAt: now,
-    });
-    return { claimed: true, eventKey, attempt: 1 };
-  } catch (e) {
-    if (e?.code !== 11000) throw e;
-    const staleBefore = new Date(now.getTime() - CAKTO_PROCESSING_STALE_MS);
-    const retryFilter = {
-      eventKey,
-      $or: [
-        { status: 'failed' },
-        { status: 'processing', lastAttemptAt: { $lt: staleBefore } },
-      ],
-    };
-    const retried = await db.collection('webhook_events').findOneAndUpdate(
-      retryFilter,
-      { $set: { status: 'processing', lastAttemptAt: now }, $inc: { attempts: 1 }, $unset: { lastError: '' } },
-      { returnDocument: 'after' }
-    );
-    // Driver mongodb v6: findOneAndUpdate devolve o documento direto (ou
-    // null) por padrão. Normalizado aqui só como defesa caso algum dia
-    // rode com includeResultMetadata:true (formato antigo {value}).
-    const retriedDoc = (retried && typeof retried === 'object' && 'value' in retried) ? retried.value : retried;
-    if (retriedDoc) return { claimed: true, eventKey, attempt: retriedDoc.attempts, retry: true };
-    return { claimed: false, duplicate: true, eventKey };
+    await session.withTransaction(async () => {
+      await db.collection('queue_counters').findOne({ _id: CAKTO_QUEUE_COUNTER_ID }, { projection: { _id: 1 }, session });
+    }, { readConcern: { level: 'snapshot' }, writeConcern: { w: 'majority' }, readPreference: 'primary' });
+    return true;
+  } catch (_) {
+    throw Object.assign(new Error('cakto_queue_transaction_unavailable'), { code: 'cakto_queue_transaction_unavailable' });
+  } finally {
+    try { await session.endSession(); } catch (_) {}
   }
 }
 
-async function processCaktoPurchaseEvent(purchase, plan, deps = {}) {
-  const db = deps.db || await getMongoDb();
-  const claim = await claimCaktoEvent(db, purchase, plan, { now: deps.now });
-  if (!claim.claimed) {
-    console.log('[CAKTO][DUPLICATE]', { txId: purchase.txId, refId: purchase.refId || '' });
-    return { duplicate: true };
+async function runCaktoQueueAtomic(db, work, opts = {}) {
+  if (!db || typeof db.collection !== 'function' || typeof work !== 'function') throw new Error('cakto_queue_db_unavailable');
+  const client = opts.client || ((db === _mongoDb) ? _mongoClient : null);
+  const requireTransaction = opts.requireTransaction === undefined
+    ? !!(IS_PRODUCTION && CAKTO_WEBHOOK_SECRET && db === _mongoDb)
+    : !!opts.requireTransaction;
+  if (!client || typeof client.startSession !== 'function') {
+    if (requireTransaction) throw Object.assign(new Error('cakto_queue_transaction_unavailable'), { code: 'cakto_queue_transaction_unavailable' });
+    return work(null, false);
   }
-  if (claim.retry) {
-    console.warn('[CAKTO][RETRY]', { txId: purchase.txId, attempt: claim.attempt });
+  const session = client.startSession();
+  if (!session || typeof session.withTransaction !== 'function') {
+    try { if (session && typeof session.endSession === 'function') await session.endSession(); } catch (_) {}
+    if (requireTransaction) throw Object.assign(new Error('cakto_queue_transaction_unavailable'), { code: 'cakto_queue_transaction_unavailable' });
+    return work(null, false);
   }
-
-  if (!plan) {
-    console.warn('[CAKTO][UNMAPPED]', {
-      marker: 'CAKTO_UNMAPPED_PLAN', txId: purchase.txId, refId: purchase.refId,
-      offerId: purchase.offerId, productId: purchase.productId,
-      productName: purchase.productName, checkoutUrl: purchase.checkoutUrl,
-    });
-    return { unmapped: true };
-  }
-
-  // Segunda camada de idempotência: se o pagamento já foi salvo numa
-  // tentativa anterior (mesmo que o evento tenha falhado DEPOIS disso -
-  // ver reordenação em processCommercialSale, savePayment é o último passo
-  // que "sela" a venda), uma retomada não deve rodar processCommercialSale
-  // de novo (evita segunda chave/renovação duplicada). Só finaliza o
-  // registro do evento como concluído.
-  const existingPayment = await db.collection('payments').findOne({ txId: purchase.txId, approved: true });
-  if (existingPayment) {
-    await db.collection('webhook_events').updateOne(
-      { eventKey: claim.eventKey },
-      { $set: { status: 'payment_duplicate', processedAt: new Date() } }
-    );
-    console.log('[CAKTO][DUPLICATE]', { txId: purchase.txId, layer: 'payments' });
-    return { duplicate: true };
-  }
-
+  let output;
   try {
-    const result = await processCommercialSale(purchase, plan, deps.commercialDeps || {});
-    await db.collection('webhook_events').updateOne(
-      { eventKey: claim.eventKey },
-      { $set: { status: 'processed', keyCode: result.keyCode, renewed: result.renewed, processedAt: new Date() } }
-    );
-    console.log(result.renewed ? '[CAKTO][RENEW]' : '[CAKTO][PURCHASE]', {
-      txId: purchase.txId, planId: plan.id, keyCode: result.keyCode, email: maskEmail(purchase.clientEmail),
+    await session.withTransaction(async () => { output = await work(session, true); }, {
+      readConcern: { level: 'snapshot' }, writeConcern: { w: 'majority' }, readPreference: 'primary',
     });
-    return result;
+    return output;
+  } finally {
+    try { await session.endSession(); } catch (_) {}
+  }
+}
+
+async function reconcileCaktoQueueCounter(db) {
+  if (!db || typeof db.collection !== 'function') return 0;
+  const active = Number(await db.collection('webhook_events').countDocuments({ source: 'cakto', status: { $in: ['pending','retry','processing','failed'] } })) || 0;
+  await db.collection('queue_counters').updateOne({ _id: CAKTO_QUEUE_COUNTER_ID }, { $set: { count: active, updatedAt: new Date() }, $setOnInsert: { createdAt: new Date() } }, { upsert: true });
+  return active;
+}
+
+async function reserveCaktoQueueSlot(db, maxActive = CAKTO_QUEUE_MAX_ACTIVE, opts = {}) {
+  const max = Math.max(0, Number(maxActive) || 0);
+  if (!max) return { ok: true, reserved: false };
+  const coll = db.collection('queue_counters');
+  const sessionOpt = opts.session ? { session: opts.session } : {};
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const now = new Date();
+    const result = await coll.findOneAndUpdate(
+      { _id: CAKTO_QUEUE_COUNTER_ID, count: { $lt: max } },
+      { $inc: { count: 1 }, $set: { updatedAt: now } },
+      { returnDocument: 'after', ...sessionOpt }
+    );
+    const doc = result && typeof result === 'object' && 'value' in result ? result.value : result;
+    if (doc) return { ok: true, reserved: true, count: Number(doc.count) || 0 };
+    const existing = await coll.findOne({ _id: CAKTO_QUEUE_COUNTER_ID }, sessionOpt);
+    if (existing) return { ok: false, reserved: false, error: 'cakto_queue_backpressure', count: Number(existing.count) || 0 };
+    const active = Number(await db.collection('webhook_events').countDocuments({ source: 'cakto', $or: [{ activeSlot: true }, { activeSlot: { $exists: false }, status: { $in: ['pending','retry','processing','failed'] } }] }, sessionOpt)) || 0;
+    if (active >= max) return { ok: false, reserved: false, error: 'cakto_queue_backpressure', count: active };
+    try {
+      await coll.insertOne({ _id: CAKTO_QUEUE_COUNTER_ID, count: active + 1, createdAt: now, updatedAt: now }, sessionOpt);
+      return { ok: true, reserved: true, count: active + 1 };
+    } catch (e) {
+      if (e?.code !== 11000) throw e;
+    }
+  }
+  return { ok: false, reserved: false, error: 'cakto_queue_backpressure' };
+}
+
+async function releaseCaktoQueueSlot(db, opts = {}) {
+  const coll = db.collection('queue_counters');
+  const sessionOpt = opts.session ? { session: opts.session } : {};
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const doc = await coll.findOne({ _id: CAKTO_QUEUE_COUNTER_ID }, sessionOpt);
+    const current = Number(doc?.count) || 0;
+    if (current <= 0) return false;
+    const result = await coll.updateOne({ _id: CAKTO_QUEUE_COUNTER_ID, count: current }, { $inc: { count: -1 }, $set: { updatedAt: new Date() } }, sessionOpt);
+    if (result?.matchedCount) return true;
+  }
+  return false;
+}
+
+function caktoQueueRecoveryKeyForSecret(secret, version = 2) {
+  const value = String(secret || '');
+  if (Buffer.byteLength(value, 'utf8') < 32) return null;
+  return crypto.createHash('sha256').update(`zvm:cakto:dead-letter:v${version}\0${value}`, 'utf8').digest();
+}
+
+function caktoRecoverySecretRing() {
+  const candidates = [];
+  const current = CAKTO_RECOVERY_SECRET || APP_SECRET;
+  if (current) candidates.push(current);
+  for (const item of String(CAKTO_RECOVERY_SECRET_PREVIOUS || '').split(',').map(v => v.trim()).filter(Boolean)) candidates.push(item);
+  const out = [];
+  const seen = new Set();
+  for (const secret of candidates) {
+    if (Buffer.byteLength(secret, 'utf8') < 32) continue;
+    const kid = crypto.createHash('sha256').update(`zvm:cakto:recovery:kid\0${secret}`, 'utf8').digest('hex').slice(0, 16);
+    if (seen.has(kid)) continue;
+    seen.add(kid);
+    out.push({ kid, secret, key: caktoQueueRecoveryKeyForSecret(secret, 2) });
+  }
+  return out;
+}
+
+function caktoQueueRecoveryKey() {
+  return caktoRecoverySecretRing()[0]?.key || null;
+}
+
+function encryptCaktoRecoveryPayload(purchase, aad) {
+  const current = caktoRecoverySecretRing()[0];
+  if (!current?.key) return null;
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', current.key, iv);
+  cipher.setAAD(Buffer.from(String(aad || ''), 'utf8'));
+  const data = Buffer.concat([cipher.update(JSON.stringify(purchase || {}), 'utf8'), cipher.final()]);
+  return { v: 2, alg: 'A256GCM', kid: current.kid, iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64'), data: data.toString('base64') };
+}
+
+function decodeCaktoRecoveryPayloadWithKey(payload, aad, key) {
+  if (!key || !payload || payload.alg !== 'A256GCM') throw new Error('invalid');
+  if (typeof payload.iv !== 'string' || typeof payload.tag !== 'string' || typeof payload.data !== 'string') throw new Error('invalid');
+  if (payload.iv.length > 64 || payload.tag.length > 64 || payload.data.length > 180000) throw new Error('invalid');
+  const iv = Buffer.from(payload.iv, 'base64');
+  const tag = Buffer.from(payload.tag, 'base64');
+  const ciphertext = Buffer.from(payload.data, 'base64');
+  if (iv.length !== 12 || tag.length !== 16 || ciphertext.length > 128 * 1024) throw new Error('invalid');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAAD(Buffer.from(String(aad || ''), 'utf8'));
+  decipher.setAuthTag(tag);
+  return JSON.parse(Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8'));
+}
+
+function decryptCaktoRecoveryPayload(payload, aad) {
+  if (!payload || payload.alg !== 'A256GCM') throw Object.assign(new Error('cakto_requeue_payload_unavailable'), { code: 'cakto_requeue_payload_unavailable' });
+  const keysToTry = [];
+  if (payload.v === 2 && /^[a-f0-9]{16}$/.test(String(payload.kid || ''))) {
+    const matched = caktoRecoverySecretRing().find(item => item.kid === payload.kid);
+    if (matched) keysToTry.push(matched.key);
+  } else if (payload.v === 1) {
+    const legacy = caktoQueueRecoveryKeyForSecret(APP_SECRET, 1);
+    if (legacy) keysToTry.push(legacy);
+  } else {
+    throw Object.assign(new Error('cakto_requeue_payload_unavailable'), { code: 'cakto_requeue_payload_unavailable' });
+  }
+  for (const key of keysToTry) {
+    try { return decodeCaktoRecoveryPayloadWithKey(payload, aad, key); } catch (_) {}
+  }
+  throw Object.assign(new Error('cakto_requeue_payload_invalid'), { code: 'cakto_requeue_payload_invalid' });
+}
+
+function classifyCaktoQueueFailure(error) {
+  const value = safeScalar(error?.code || error?.message || error, 120, '').toLowerCase();
+  if (/mongo|database|(?:^|\s)db(?:\s|$)|persist|storage/.test(value)) return 'storage';
+  if (/claim|lock|lease|busy|concurr/.test(value)) return 'concurrency';
+  if (/portal/.test(value)) return 'portal';
+  if (/payment|pagamento/.test(value)) return 'payment';
+  if (/integrity|invalid|plan|price|amount|offer|product|status/.test(value)) return 'validation';
+  return 'processing';
+}
+
+function caktoQueueFailureRef(error) {
+  const raw = safeScalar(error?.code || error?.message || error, 512, 'processing_failed');
+  return `err#${crypto.createHash('sha256').update(raw, 'utf8').digest('hex').slice(0, 12)}`;
+}
+
+function caktoMailRef(txId) {
+  const txKey = caktoPaymentTxKey(txId);
+  return txKey ? `cm_${crypto.createHash('sha256').update(`mail\0${txKey}`, 'utf8').digest('hex').slice(0, 32)}` : '';
+}
+
+function caktoMailSecretRing() {
+  const raw = [CAKTO_RECOVERY_SECRET || APP_SECRET, ...String(CAKTO_RECOVERY_SECRET_PREVIOUS || '').split(',').map(v => v.trim())].filter(Boolean);
+  const out = [], seen = new Set();
+  for (const secret of raw) {
+    if (Buffer.byteLength(secret, 'utf8') < 32) continue;
+    const kid = crypto.createHash('sha256').update(`zvm:cakto:recovery:kid\0${secret}`, 'utf8').digest('hex').slice(0, 16);
+    if (seen.has(kid)) continue;
+    seen.add(kid);
+    out.push({ kid, key: crypto.createHash('sha256').update(`zvm:cakto:mail:v1\0${secret}`, 'utf8').digest() });
+  }
+  return out;
+}
+
+function caktoDurableMailEnabled() { return !!caktoMailSecretRing()[0]?.key; }
+
+function encryptCaktoMailPayload(payload, aad) {
+  const current = caktoMailSecretRing()[0];
+  if (!current?.key) throw Object.assign(new Error('cakto_mail_crypto_unavailable'), { code: 'cakto_mail_crypto_unavailable' });
+  const raw = Buffer.from(JSON.stringify(payload || {}), 'utf8');
+  if (raw.length > 32 * 1024) throw Object.assign(new Error('cakto_mail_payload_too_large'), { code: 'cakto_mail_payload_too_large' });
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', current.key, iv);
+  cipher.setAAD(Buffer.from(String(aad || ''), 'utf8'));
+  const data = Buffer.concat([cipher.update(raw), cipher.final()]);
+  return { v: 1, alg: 'A256GCM', kid: current.kid, iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64'), data: data.toString('base64') };
+}
+
+function decryptCaktoMailPayload(payload, aad) {
+  if (!payload || payload.v !== 1 || payload.alg !== 'A256GCM' || !/^[a-f0-9]{16}$/.test(String(payload.kid || ''))) throw Object.assign(new Error('cakto_mail_payload_invalid'), { code: 'cakto_mail_payload_invalid' });
+  if (typeof payload.iv !== 'string' || typeof payload.tag !== 'string' || typeof payload.data !== 'string' || payload.iv.length > 64 || payload.tag.length > 64 || payload.data.length > 50000) throw Object.assign(new Error('cakto_mail_payload_invalid'), { code: 'cakto_mail_payload_invalid' });
+  const iv = Buffer.from(payload.iv, 'base64'), tag = Buffer.from(payload.tag, 'base64'), ciphertext = Buffer.from(payload.data, 'base64');
+  if (iv.length !== 12 || tag.length !== 16 || ciphertext.length > 32 * 1024) throw Object.assign(new Error('cakto_mail_payload_invalid'), { code: 'cakto_mail_payload_invalid' });
+  const matched = caktoMailSecretRing().find(item => item.kid === payload.kid);
+  if (!matched) throw Object.assign(new Error('cakto_mail_key_unavailable'), { code: 'cakto_mail_key_unavailable' });
+  try {
+    const decipher = crypto.createDecipheriv('aes-256-gcm', matched.key, iv);
+    decipher.setAAD(Buffer.from(String(aad || ''), 'utf8'));
+    decipher.setAuthTag(tag);
+    const decoded = JSON.parse(Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8'));
+    if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded)) throw new Error('shape');
+    return decoded;
+  } catch (_) {
+    throw Object.assign(new Error('cakto_mail_payload_invalid'), { code: 'cakto_mail_payload_invalid' });
+  }
+}
+
+function caktoMailRetentionDate(kind = 'sent', nowValue = new Date()) {
+  const now = nowValue instanceof Date ? new Date(nowValue) : new Date(nowValue);
+  const days = kind === 'dead_letter' ? CAKTO_MAIL_DEAD_LETTER_RETENTION_DAYS : CAKTO_MAIL_RETENTION_DAYS;
+  return new Date(now.getTime() + days * 86400000);
+}
+
+async function ensureCaktoDeliveryOutbox(db, purchase, plan, delivery, opts = {}) {
+  if (!db || !purchase?.txId || !plan?.id || !delivery?.keyCode) throw Object.assign(new Error('cakto_mail_outbox_invalid'), { code: 'cakto_mail_outbox_invalid' });
+  const mailRef = caktoMailRef(purchase.txId);
+  if (!mailRef) throw Object.assign(new Error('cakto_mail_outbox_invalid'), { code: 'cakto_mail_outbox_invalid' });
+  const keyStore = opts.keyStore || keys;
+  const key = keyStore[delivery.keyCode] || {};
+  const to = safeScalar(purchase.clientEmail, 160).toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) throw Object.assign(new Error('cakto_mail_recipient_invalid'), { code: 'cakto_mail_recipient_invalid' });
+  const now = opts.now instanceof Date ? new Date(opts.now) : new Date();
+  const payload = {
+    to, code: delivery.keyCode, planLabel: plan.shortName, maxUses: Number(plan.maxUses) || 0,
+    expiresAt: key.expiresAt || delivery.expiresAt || null, renewed: !!delivery.renewed,
+    durationDays: Number(plan.durationDays) || 0, baseUrl: BASE_URL, extensionUrl: EXTENSION_URL,
+    ctaPath: safeLocalRedirect(purchase.ctaPath, '/cliente'),
+  };
+  const payloadEnc = encryptCaktoMailPayload(payload, mailRef);
+  const coll = db.collection('cakto_mail_outbox');
+  try {
+    await coll.insertOne({ _id: mailRef, mailRef, source: 'cakto', kind: 'key_delivery', status: 'pending', payloadEnc, attempts: 0, createdAt: now, updatedAt: now, nextAttemptAt: now });
+    return { ok: true, created: true, mailRef };
   } catch (e) {
-    // lastError sanitizado (safeScalar já trunca e nunca guarda a mensagem
-    // crua completa) - nunca o secret, nunca dado sensível do payload.
-    await db.collection('webhook_events').updateOne(
-      { eventKey: claim.eventKey },
-      { $set: { status: 'failed', lastError: safeScalar(e.message, 80, 'processing_failed'), lastAttemptAt: new Date() } }
-    ).catch(() => {});
+    if (e?.code !== 11000) throw e;
+    const existing = await coll.findOne({ _id: mailRef }, { projection: { _id: 1, status: 1 } });
+    if (!existing) throw e;
+    return { ok: true, created: false, duplicate: true, mailRef, status: existing.status };
+  }
+}
+
+async function claimNextCaktoMailOutbox(db, owner = _caktoWorkerId, opts = {}) {
+  const now = opts.now instanceof Date ? new Date(opts.now) : new Date();
+  const leaseUntil = new Date(now.getTime() + CAKTO_WORKER_LEASE_MS);
+  const result = await db.collection('cakto_mail_outbox').findOneAndUpdate(
+    { source: 'cakto', payloadEnc: { $type: 'object' }, $or: [
+      { status: { $in: ['pending','retry'] }, nextAttemptAt: { $lte: now } },
+      { status: 'processing', leaseUntil: { $lte: now } },
+    ] },
+    { $set: { status: 'processing', leaseOwner: owner, leaseUntil, ...(Number.isInteger(Number(opts.workerFence)) ? { workerFence: Number(opts.workerFence) } : {}), updatedAt: now, lastAttemptAt: now }, $inc: { attempts: 1 }, $unset: { failureCategory: '', failureRef: '', lastError: '' } },
+    { sort: { nextAttemptAt: 1, createdAt: 1 }, returnDocument: 'after' }
+  );
+  return result && typeof result === 'object' && 'value' in result ? result.value : result;
+}
+
+function caktoMailLeaseFilter(doc) {
+  const filter = { _id: doc?._id, leaseOwner: doc?.leaseOwner };
+  if (Number.isInteger(Number(doc?.workerFence))) filter.workerFence = Number(doc.workerFence);
+  return filter;
+}
+
+async function markCaktoMailFailure(db, doc, error, opts = {}) {
+  const now = opts.now instanceof Date ? new Date(opts.now) : new Date();
+  const attempts = Math.max(1, Number(doc?.attempts || 1));
+  const terminal = attempts >= CAKTO_MAIL_MAX_ATTEMPTS;
+  const failureCategory = classifyCaktoQueueFailure(error);
+  const failureRef = caktoQueueFailureRef(error);
+  const update = terminal ? {
+    $set: { status: 'dead_letter', failureCategory, failureRef, failedAt: now, updatedAt: now, expiresAt: caktoMailRetentionDate('dead_letter', now) },
+    $unset: { leaseOwner: '', leaseUntil: '', workerFence: '', nextAttemptAt: '', lastError: '' },
+  } : {
+    $set: { status: 'retry', failureCategory, failureRef, nextAttemptAt: new Date(now.getTime() + caktoRetryDelayMs(attempts)), updatedAt: now },
+    $unset: { leaseOwner: '', leaseUntil: '', workerFence: '', lastError: '' },
+  };
+  const result = await db.collection('cakto_mail_outbox').updateOne(caktoMailLeaseFilter(doc), update);
+  return { terminal, matched: !!result?.matchedCount, failureCategory };
+}
+
+async function processCaktoMailOutboxItem(db, doc, deps = {}) {
+  if (!doc?._id || !doc?.payloadEnc) throw Object.assign(new Error('cakto_mail_document_invalid'), { code: 'cakto_mail_document_invalid' });
+  if (typeof deps.assertWorkerLease === 'function') await deps.assertWorkerLease();
+  const payload = decryptCaktoMailPayload(doc.payloadEnc, doc.mailRef || doc._id);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(payload.to || '')) || !safeScalar(payload.code, 128)) throw Object.assign(new Error('cakto_mail_payload_invalid'), { code: 'cakto_mail_payload_invalid' });
+  const mailer = deps.sendKeyDeliveryEmail || sendKeyDeliveryEmail;
+  const delivered = await mailer(payload.to, {
+    code: payload.code, planLabel: payload.planLabel, maxUses: payload.maxUses, expiresAt: payload.expiresAt,
+    renewed: !!payload.renewed, durationDays: payload.durationDays, baseUrl: payload.baseUrl || BASE_URL,
+    extensionUrl: payload.extensionUrl || EXTENSION_URL, ctaPath: safeLocalRedirect(payload.ctaPath, '/cliente'),
+  });
+  if (!delivered) throw Object.assign(new Error('cakto_mail_provider_rejected'), { code: 'cakto_mail_provider_rejected' });
+  if (typeof deps.assertWorkerLease === 'function') await deps.assertWorkerLease();
+  const now = deps.now instanceof Date ? new Date(deps.now) : new Date();
+  const result = await db.collection('cakto_mail_outbox').updateOne(
+    caktoMailLeaseFilter(doc),
+    { $set: { status: 'sent', sentAt: now, updatedAt: now, expiresAt: caktoMailRetentionDate('sent', now) }, $unset: { payloadEnc: '', leaseOwner: '', leaseUntil: '', workerFence: '', nextAttemptAt: '', failureCategory: '', failureRef: '', lastError: '' } }
+  );
+  if (!result?.matchedCount) throw Object.assign(new Error('cakto_mail_lease_lost'), { code: 'cakto_mail_lease_lost' });
+  return { sent: true, mailRef: doc.mailRef || doc._id };
+}
+
+async function attemptCaktoMailByRef(db, mailRef, deps = {}) {
+  const coll = db.collection('cakto_mail_outbox');
+  const doc = await coll.findOne({ _id: mailRef });
+  if (!doc) return { sent: false, missing: true };
+  if (doc.status === 'sent') return { sent: true, duplicate: true };
+  if (!['pending','retry'].includes(doc.status)) return { sent: false, deferred: true, status: doc.status };
+  const now = deps.now instanceof Date ? new Date(deps.now) : new Date();
+  const claimedResult = await coll.findOneAndUpdate(
+    { _id: mailRef, status: doc.status },
+    { $set: { status: 'processing', leaseOwner: deps.owner || `inline-${process.pid}`, leaseUntil: new Date(now.getTime() + CAKTO_WORKER_LEASE_MS), updatedAt: now, lastAttemptAt: now }, $inc: { attempts: 1 } },
+    { returnDocument: 'after' }
+  );
+  const claimed = claimedResult && typeof claimedResult === 'object' && 'value' in claimedResult ? claimedResult.value : claimedResult;
+  if (!claimed) return { sent: false, deferred: true };
+  try { return await processCaktoMailOutboxItem(db, claimed, deps); }
+  catch (e) { await markCaktoMailFailure(db, claimed, e, { now }); return { sent: false, deferred: true, errorRef: caktoQueueFailureRef(e) }; }
+}
+
+async function getCaktoMailHealth(db) {
+  if (!db || typeof db.collection !== 'function') throw new Error('cakto_mail_db_unavailable');
+  const coll = db.collection('cakto_mail_outbox');
+  const counts = {};
+  for (const status of ['pending','retry','processing','sent','dead_letter']) counts[status] = Number(await coll.countDocuments({ source: 'cakto', status })) || 0;
+  const oldest = {};
+  for (const status of ['pending','retry','processing','dead_letter']) {
+    const doc = await coll.findOne({ source: 'cakto', status }, { projection: { _id: 0, createdAt: 1, updatedAt: 1 }, sort: { createdAt: 1 } });
+    const stamp = doc?.createdAt || doc?.updatedAt || null;
+    oldest[status] = stamp ? new Date(stamp).toISOString() : null;
+  }
+  const active = counts.pending + counts.retry + counts.processing;
+  return Object.freeze({ counts, oldest, active, maxAttempts: CAKTO_MAIL_MAX_ATTEMPTS, retentionDays: { sent: CAKTO_MAIL_RETENTION_DAYS, deadLetter: CAKTO_MAIL_DEAD_LETTER_RETENTION_DAYS } });
+}
+
+async function requeueCaktoMail(db, ref, opts = {}) {
+  const mailRef = safeScalar(ref, 64);
+  if (!/^cm_[a-f0-9]{32}$/.test(mailRef)) return { ok: false, error: 'invalid_mail_ref' };
+  const now = opts.now instanceof Date ? new Date(opts.now) : new Date();
+  const result = await db.collection('cakto_mail_outbox').findOneAndUpdate(
+    { _id: mailRef, source: 'cakto', status: 'dead_letter', payloadEnc: { $type: 'object' } },
+    { $set: { status: 'pending', attempts: 0, nextAttemptAt: now, updatedAt: now }, $inc: { manualRequeues: 1 }, $unset: { failedAt: '', failureCategory: '', failureRef: '', leaseOwner: '', leaseUntil: '', workerFence: '', expiresAt: '', lastError: '' } },
+    { returnDocument: 'after' }
+  );
+  const doc = result && typeof result === 'object' && 'value' in result ? result.value : result;
+  if (!doc) return { ok: false, error: 'mail_not_requeueable' };
+  return { ok: true, mailRef: doc.mailRef || doc._id };
+}
+
+async function enqueueCaktoPurchaseEvent(db, purchase, plan, opts = {}) {
+  if (!db || !purchase?.txId || !plan?.id) throw new Error('cakto_queue_invalid');
+  const now = opts.now instanceof Date ? new Date(opts.now) : new Date();
+  const eventKey = caktoEventKey(purchase.txId);
+  if (!eventKey) throw new Error('cakto_queue_invalid');
+  const queueRef = caktoQueueRef(eventKey);
+  const coll = db.collection('webhook_events');
+  const maxActive = Math.max(0, opts.maxActive === undefined ? CAKTO_QUEUE_MAX_ACTIVE : (Number(opts.maxActive) || 0));
+  let reservedFallback = false;
+  try {
+    return await runCaktoQueueAtomic(db, async (session, transactional) => {
+      const slot = await reserveCaktoQueueSlot(db, maxActive, { session });
+      if (!slot.ok) throw Object.assign(new Error(slot.error || 'cakto_queue_backpressure'), { code: slot.error || 'cakto_queue_backpressure' });
+      if (!transactional) reservedFallback = !!slot.reserved;
+      const sessionOpt = session ? { session } : {};
+      const purchaseEnc = encryptCaktoQueuePurchase(purchase, queueRef);
+      await coll.insertOne({
+        eventKey, queueRef, source: 'cakto', event: purchase.event,
+        planId: plan.id, status: 'pending', activeSlot: true, purchaseEnc,
+        attempts: 0, createdAt: now, updatedAt: now, nextAttemptAt: now,
+      }, sessionOpt);
+      reservedFallback = false;
+      return { queued: true, duplicate: false, queueRef };
+    }, opts.atomic || {});
+  } catch (e) {
+    if (reservedFallback) await releaseCaktoQueueSlot(db).catch(() => {});
+    if (e?.code !== 11000) throw e;
+    const existing = await coll.findOne({ eventKey }, { projection: { status: 1, queueRef: 1 } }).catch(() => null);
+    return { queued: false, duplicate: true, queueRef: existing?.queueRef || queueRef, status: existing?.status || 'unknown' };
+  }
+}
+
+async function acquireCaktoWorkerLeaseToken(db, owner = _caktoWorkerId, opts = {}) {
+  const now = opts.now instanceof Date ? new Date(opts.now) : new Date();
+  const leaseUntil = new Date(now.getTime() + CAKTO_WORKER_LEASE_MS);
+  const expiresAt = new Date(leaseUntil.getTime() + WORKER_LOCK_RETENTION_MS);
+  try {
+    const result = await db.collection('worker_locks').findOneAndUpdate(
+      { _id: 'cakto', $or: [{ owner }, { leaseUntil: { $lte: now } }, { leaseUntil: { $exists: false } }] },
+      { $set: { owner, leaseUntil, expiresAt, updatedAt: now, kind: 'cakto_worker' }, $setOnInsert: { createdAt: now }, $inc: { fence: 1 } },
+      { upsert: true, returnDocument: 'after' }
+    );
+    const doc = result && typeof result === 'object' && 'value' in result ? result.value : result;
+    if (doc && doc.owner === owner && Number.isInteger(Number(doc.fence)) && new Date(doc.leaseUntil).getTime() > now.getTime()) {
+      return { ok: true, owner, fence: Number(doc.fence), leaseUntil: new Date(doc.leaseUntil) };
+    }
+    return { ok: false, owner, error: 'cakto_worker_busy' };
+  } catch (e) {
+    if (e?.code === 11000) return { ok: false, owner, error: 'cakto_worker_busy' };
     throw e;
   }
+}
+
+async function acquireCaktoWorkerLease(db, owner = _caktoWorkerId, opts = {}) {
+  return !!(await acquireCaktoWorkerLeaseToken(db, owner, opts)).ok;
+}
+
+async function renewCaktoWorkerLease(db, owner = _caktoWorkerId, opts = {}) {
+  const now = opts.now instanceof Date ? new Date(opts.now) : new Date();
+  const leaseUntil = new Date(now.getTime() + CAKTO_WORKER_LEASE_MS);
+  const expiresAt = new Date(leaseUntil.getTime() + WORKER_LOCK_RETENTION_MS);
+  const filter = { _id: 'cakto', owner };
+  if (Number.isInteger(Number(opts.fence))) filter.fence = Number(opts.fence);
+  const result = await db.collection('worker_locks').updateOne(filter, { $set: { leaseUntil, expiresAt, updatedAt: now } });
+  return !!result.matchedCount;
+}
+
+async function releaseCaktoWorkerLease(db, owner = _caktoWorkerId, opts = {}) {
+  const now = new Date();
+  const filter = { _id: 'cakto', owner };
+  if (Number.isInteger(Number(opts.fence))) filter.fence = Number(opts.fence);
+  await db.collection('worker_locks').updateOne(
+    filter,
+    { $set: { leaseUntil: new Date(0), expiresAt: new Date(now.getTime() + WORKER_LOCK_RETENTION_MS), updatedAt: now } }
+  ).catch(() => {});
+}
+
+async function claimNextCaktoQueuedEvent(db, owner = _caktoWorkerId, opts = {}) {
+  const now = opts.now instanceof Date ? new Date(opts.now) : new Date();
+  const leaseUntil = new Date(now.getTime() + CAKTO_WORKER_LEASE_MS);
+  const result = await db.collection('webhook_events').findOneAndUpdate(
+    {
+      source: 'cakto',
+      $and: [
+        { $or: [{ purchaseEnc: { $type: 'object' } }, { purchase: { $type: 'object' } }] },
+        { $or: [
+          { status: { $in: ['pending', 'retry', 'failed'] }, nextAttemptAt: { $lte: now } },
+          { status: 'processing', leaseUntil: { $lte: now } },
+        ] },
+      ],
+    },
+    {
+      $set: { status: 'processing', leaseOwner: owner, leaseUntil, ...(Number.isInteger(Number(opts.workerFence)) ? { workerFence: Number(opts.workerFence) } : {}), lastAttemptAt: now, updatedAt: now },
+      $inc: { attempts: 1 }, $unset: { lastError: '' },
+    },
+    { sort: { nextAttemptAt: 1, createdAt: 1 }, returnDocument: 'after' }
+  );
+  let doc = result && typeof result === 'object' && 'value' in result ? result.value : result;
+  if (!doc) return doc;
+  if (!doc.purchaseEnc && doc.purchase) {
+    const migrated = await migrateCaktoQueuedPurchaseDocument(db, doc);
+    if (migrated.migrated) doc = migrated.doc;
+  }
+  const purchase = decryptCaktoQueuePurchase(doc);
+  return { ...doc, purchase };
+}
+
+function caktoEventLeaseFilter(doc) {
+  const filter = { eventKey: doc?.eventKey, leaseOwner: doc?.leaseOwner };
+  if (Number.isInteger(Number(doc?.workerFence))) filter.workerFence = Number(doc.workerFence);
+  return filter;
+}
+
+function caktoRetryDelayMs(attempt) {
+  const steps = [5000, 30000, 2 * 60000, 10 * 60000, 30 * 60000, 2 * 60 * 60000, 6 * 60 * 60000, 24 * 60 * 60000];
+  return steps[Math.max(0, Math.min(steps.length - 1, Number(attempt || 1) - 1))];
+}
+
+function caktoRetentionDate(kind = 'processed', nowValue = new Date()) {
+  const now = nowValue instanceof Date ? new Date(nowValue) : new Date(nowValue);
+  const days = kind === 'dead_letter' ? CAKTO_DEAD_LETTER_RETENTION_DAYS : CAKTO_EVENT_RETENTION_DAYS;
+  return new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+async function getCaktoQueueHealth(db, opts = {}) {
+  if (!db || typeof db.collection !== 'function') throw new Error('cakto_queue_db_unavailable');
+  const coll = db.collection('webhook_events');
+  const statuses = ['pending','retry','processing','dead_letter','processed','payment_duplicate'];
+  const counts = {};
+  for (const status of statuses) counts[status] = Number(await coll.countDocuments({ source: 'cakto', status })) || 0;
+  const oldest = {};
+  for (const status of ['pending','retry','processing','dead_letter']) {
+    const doc = await coll.findOne({ source: 'cakto', status }, { projection: { _id: 0, createdAt: 1, updatedAt: 1 }, sort: { createdAt: 1 } });
+    const stamp = doc?.createdAt || doc?.updatedAt || null;
+    oldest[status] = stamp ? new Date(stamp).toISOString() : null;
+  }
+  return Object.freeze({
+    counts,
+    oldest,
+    retentionDays: { processed: CAKTO_EVENT_RETENTION_DAYS, deadLetter: CAKTO_DEAD_LETTER_RETENTION_DAYS },
+    maxAttempts: CAKTO_WORKER_MAX_ATTEMPTS,
+    maxActive: CAKTO_QUEUE_MAX_ACTIVE,
+    indexReady: opts.indexReady === undefined ? !!_caktoIndexReady : !!opts.indexReady,
+  });
+}
+
+async function markCaktoQueueFailure(db, doc, error, opts = {}) {
+  const now = opts.now instanceof Date ? new Date(opts.now) : new Date();
+  const attempts = Math.max(1, Number(doc?.attempts || 1));
+  const terminal = attempts >= CAKTO_WORKER_MAX_ATTEMPTS;
+  const failureCategory = classifyCaktoQueueFailure(error);
+  const failureRef = caktoQueueFailureRef(error);
+  let recoveryPayload = null;
+  if (terminal) {
+    try {
+      const purchase = doc?.purchase || decryptCaktoQueuePurchase(doc);
+      recoveryPayload = encryptCaktoRecoveryPayload(purchase, doc.queueRef || caktoQueueRef(doc.eventKey));
+    } catch (_) {}
+  }
+  const update = terminal ? {
+    $set: { status: 'dead_letter', activeSlot: false, failureCategory, failureRef, failedAt: now, updatedAt: now, expiresAt: caktoRetentionDate('dead_letter', now), ...(recoveryPayload ? { recoveryPayload } : {}) },
+    $unset: { leaseOwner: '', leaseUntil: '', workerFence: '', nextAttemptAt: '', purchase: '', purchaseEnc: '', txId: '', refId: '', lastError: '' },
+  } : {
+    $set: { status: 'retry', failureCategory, failureRef, nextAttemptAt: new Date(now.getTime() + caktoRetryDelayMs(attempts)), updatedAt: now },
+    $unset: { leaseOwner: '', leaseUntil: '', workerFence: '', lastError: '' },
+  };
+  let result;
+  if (terminal && doc.activeSlot !== false) {
+    result = await runCaktoQueueAtomic(db, async (session) => {
+      const sessionOpt = session ? { session } : {};
+      const changed = await db.collection('webhook_events').updateOne(caktoEventLeaseFilter(doc), update, sessionOpt);
+      if (changed?.matchedCount) {
+        const released = await releaseCaktoQueueSlot(db, { session });
+        if (!released) throw Object.assign(new Error('cakto_queue_counter_inconsistent'), { code: 'cakto_queue_counter_inconsistent' });
+      }
+      return changed;
+    }, opts.atomic || {});
+  } else {
+    result = await db.collection('webhook_events').updateOne(caktoEventLeaseFilter(doc), update);
+  }
+  return { terminal, attempts, failureCategory, matched: !!result?.matchedCount };
+}
+
+async function processCaktoQueuedEvent(db, doc, deps = {}) {
+  if (!doc?.eventKey || !doc?.planId) throw new Error('cakto_queue_document_invalid');
+  if (typeof deps.assertWorkerLease === 'function') await deps.assertWorkerLease();
+  const purchase = doc.purchase || decryptCaktoQueuePurchase(doc);
+  const plan = ZVM_PLANS[doc.planId] || null;
+  const commercialCheck = validateCaktoCommercialIntegrity(purchase, plan);
+  if (!commercialCheck.ok) throw new Error(`cakto_queue_${commercialCheck.error}`);
+
+  const existingPayment = await findCommercialPaymentByTx(db, purchase);
+  if (existingPayment) {
+    let outbox = null;
+    if (caktoDurableMailEnabled()) {
+      outbox = await ensureCaktoDeliveryOutbox(db, purchase, plan, { keyCode: existingPayment.keyCode, renewed: !!existingPayment.renewed }, deps.commercialDeps || {});
+    }
+    if (typeof deps.assertWorkerLease === 'function') await deps.assertWorkerLease();
+    await runCaktoQueueAtomic(db, async (session) => {
+      const sessionOpt = session ? { session } : {};
+      const changed = await db.collection('webhook_events').updateOne(
+        caktoEventLeaseFilter(doc),
+        { $set: { status: 'payment_duplicate', activeSlot: false, processedAt: new Date(), updatedAt: new Date(), expiresAt: caktoRetentionDate('processed') }, $unset: { leaseOwner: '', leaseUntil: '', workerFence: '', purchase: '', purchaseEnc: '', recoveryPayload: '', txId: '', refId: '' } },
+        sessionOpt
+      );
+      if (changed?.matchedCount && doc.activeSlot !== false) {
+        const released = await releaseCaktoQueueSlot(db, { session });
+        if (!released) throw Object.assign(new Error('cakto_queue_counter_inconsistent'), { code: 'cakto_queue_counter_inconsistent' });
+      }
+      return changed;
+    }, deps.atomic || {});
+    return { duplicate: true, mailRef: outbox?.mailRef || null };
+  }
+
+  const result = await processCommercialSale(purchase, plan, { ...(deps.commercialDeps || {}), db, deferMail: true });
+  if (typeof deps.assertWorkerLease === 'function') await deps.assertWorkerLease();
+  await runCaktoQueueAtomic(db, async (session) => {
+    const sessionOpt = session ? { session } : {};
+    const updateResult = await db.collection('webhook_events').updateOne(
+      caktoEventLeaseFilter(doc),
+      {
+        $set: {
+          status: 'processed', activeSlot: false, processedAt: new Date(), updatedAt: new Date(), expiresAt: caktoRetentionDate('processed'),
+          result: { renewed: !!result.renewed, licenseRef: maskLicenseCode(result.keyCode), emailDelivered: !!result.emailDelivered, mailRef: result.mailRef || null },
+        },
+        $unset: { leaseOwner: '', leaseUntil: '', workerFence: '', purchase: '', purchaseEnc: '', recoveryPayload: '', lastError: '', failureCategory: '', failureRef: '', nextAttemptAt: '', txId: '', refId: '' },
+      },
+      sessionOpt
+    );
+    if (updateResult?.matchedCount && doc.activeSlot !== false) {
+      const released = await releaseCaktoQueueSlot(db, { session });
+      if (!released) throw Object.assign(new Error('cakto_queue_counter_inconsistent'), { code: 'cakto_queue_counter_inconsistent' });
+    }
+    return updateResult;
+  }, deps.atomic || {});
+  console.log(result.renewed ? '[CAKTO][RENEW]' : '[CAKTO][PURCHASE]', {
+    txRef: maskTransactionId(purchase.txId), planId: plan.id, licenseRef: maskLicenseCode(result.keyCode), email: maskEmail(purchase.clientEmail),
+  });
+  return result;
+}
+
+async function runCaktoWorkerOnce(deps = {}) {
+  const db = deps.db || await getMongoDb();
+  const owner = deps.owner || _caktoWorkerId;
+  const lease = await acquireCaktoWorkerLeaseToken(db, owner, { now: deps.now });
+  if (!lease.ok) return { acquired: false, processed: 0, failed: 0, deadLettered: 0 };
+  let processed = 0, failed = 0, deadLettered = 0, leaseLost = false;
+  const assertWorkerLease = async () => {
+    if (leaseLost) throw Object.assign(new Error('cakto_worker_lease_lost'), { code: 'cakto_worker_lease_lost' });
+    const ok = await renewCaktoWorkerLease(db, owner, { fence: lease.fence });
+    if (!ok) {
+      leaseLost = true;
+      throw Object.assign(new Error('cakto_worker_lease_lost'), { code: 'cakto_worker_lease_lost' });
+    }
+    return true;
+  };
+  const heartbeatMs = Math.max(10000, Math.min(30000, Math.floor(CAKTO_WORKER_LEASE_MS / 3)));
+  const heartbeat = setInterval(() => {
+    renewCaktoWorkerLease(db, owner, { fence: lease.fence }).then(ok => { if (!ok) leaseLost = true; }).catch(() => { leaseLost = true; });
+  }, heartbeatMs);
+  heartbeat.unref();
+  try {
+    for (let i = 0; i < (deps.batch || CAKTO_WORKER_BATCH); i++) {
+      await assertWorkerLease();
+      const doc = await claimNextCaktoQueuedEvent(db, owner, { now: deps.now, workerFence: lease.fence });
+      if (!doc) break;
+      try {
+        await processCaktoQueuedEvent(db, doc, { ...deps, assertWorkerLease });
+        processed++;
+      } catch (e) {
+        const failure = await markCaktoQueueFailure(db, doc, e, { now: deps.now });
+        failed++;
+        if (failure.terminal) deadLettered++;
+        console.error('[CAKTO][WORKER]', { queueRef: doc.queueRef || caktoQueueRef(doc.eventKey), attempt: doc.attempts || 0, terminal: failure.terminal, category: failure.failureCategory, errorRef: caktoQueueFailureRef(e) });
+        if (e?.code === 'cakto_worker_lease_lost') break;
+      }
+    }
+    if (!leaseLost) {
+      for (let i = 0; i < (deps.mailBatch || CAKTO_MAIL_BATCH); i++) {
+        await assertWorkerLease();
+        const mailDoc = await claimNextCaktoMailOutbox(db, owner, { now: deps.now, workerFence: lease.fence });
+        if (!mailDoc) break;
+        try {
+          await processCaktoMailOutboxItem(db, mailDoc, { ...deps, assertWorkerLease });
+        } catch (e) {
+          await markCaktoMailFailure(db, mailDoc, e, { now: deps.now });
+          console.error('[CAKTO][MAIL]', { mailRef: mailDoc.mailRef || mailDoc._id, category: classifyCaktoQueueFailure(e), errorRef: caktoQueueFailureRef(e) });
+        }
+      }
+    }
+  } finally {
+    clearInterval(heartbeat);
+    await releaseCaktoWorkerLease(db, owner, { fence: lease.fence });
+  }
+  return { acquired: true, processed, failed, deadLettered, leaseLost };
+}
+
+async function requeueCaktoEvent(db, refOrKey, opts = {}) {
+  const ref = safeScalar(refOrKey, 220);
+  const isQueueRef = /^cq_[a-f0-9]{24}$/.test(ref);
+  const isEventKey = /^cakto:purchase_approved:[A-Za-z0-9._:-]{1,180}$/.test(ref);
+  if (!isQueueRef && !isEventKey) return { ok: false, error: 'invalid_queue_ref' };
+  const now = opts.now instanceof Date ? new Date(opts.now) : new Date();
+  const filter = isQueueRef ? { queueRef: ref } : { eventKey: ref };
+  const coll = db.collection('webhook_events');
+  const existing = await coll.findOne({ ...filter, source: 'cakto', status: { $in: ['dead_letter','failed','retry'] } });
+  if (!existing) return { ok: false, error: 'event_not_requeueable' };
+  let purchase = existing.purchase;
+  let slot = { ok: true, reserved: false };
+  if (existing.status === 'dead_letter') {
+    if (!purchase) {
+      try { purchase = decryptCaktoRecoveryPayload(existing.recoveryPayload, existing.queueRef || caktoQueueRef(existing.eventKey)); }
+      catch (e) { return { ok: false, error: e.code || 'cakto_requeue_payload_unavailable' }; }
+    }
+    let atomicResult = null;
+    try {
+      atomicResult = await runCaktoQueueAtomic(db, async (session, transactional) => {
+        slot = await reserveCaktoQueueSlot(db, opts.maxActive === undefined ? CAKTO_QUEUE_MAX_ACTIVE : opts.maxActive, { session });
+        if (!slot.ok) return { ok: false, error: slot.error || 'cakto_queue_backpressure' };
+        const sessionOpt = session ? { session } : {};
+        const result = await coll.findOneAndUpdate(
+          { ...filter, source: 'cakto', status: existing.status },
+          { $set: { status: 'pending', activeSlot: true, purchaseEnc: encryptCaktoQueuePurchase(purchase, existing.queueRef || caktoQueueRef(existing.eventKey)), attempts: 0, nextAttemptAt: now, updatedAt: now }, $inc: { manualRequeues: 1 }, $unset: { purchase:'', txId:'', refId:'', failedAt:'', lastError:'', failureCategory:'', failureRef:'', recoveryPayload:'', leaseOwner:'', leaseUntil:'', workerFence:'', expiresAt:'' } },
+          { returnDocument: 'after', ...sessionOpt }
+        );
+        const doc = result && typeof result === 'object' && 'value' in result ? result.value : result;
+        if (!doc) {
+          if (!transactional && slot.reserved) await releaseCaktoQueueSlot(db, { session }).catch(() => {});
+          return { ok: false, error: 'event_not_requeueable' };
+        }
+        return { ok: true, queueRef: doc.queueRef || caktoQueueRef(doc.eventKey) };
+      }, opts.atomic || {});
+    } catch (e) {
+      if (slot.reserved) await releaseCaktoQueueSlot(db).catch(() => {});
+      throw e;
+    }
+    return atomicResult;
+  }
+  const queueRef = existing.queueRef || caktoQueueRef(existing.eventKey);
+  const purchaseEnc = existing.purchaseEnc || (purchase ? encryptCaktoQueuePurchase(purchase, queueRef) : null);
+  if (!purchaseEnc) return { ok: false, error: 'cakto_requeue_payload_unavailable' };
+  const result = await coll.findOneAndUpdate(
+    { ...filter, source: 'cakto', status: existing.status },
+    { $set: { status: 'pending', activeSlot: true, purchaseEnc, attempts: 0, nextAttemptAt: now, updatedAt: now }, $inc: { manualRequeues: 1 }, $unset: { purchase:'', txId:'', refId:'', failedAt:'', lastError:'', failureCategory:'', failureRef:'', recoveryPayload:'', leaseOwner:'', leaseUntil:'', workerFence:'', expiresAt:'' } },
+    { returnDocument: 'after' }
+  );
+  const doc = result && typeof result === 'object' && 'value' in result ? result.value : result;
+  if (!doc) return { ok: false, error: 'event_not_requeueable' };
+  return { ok: true, queueRef: doc.queueRef || caktoQueueRef(doc.eventKey) };
+}
+
+function triggerCaktoWorker() {
+  if (_caktoWorkerBusy || !CAKTO_WEBHOOK_SECRET) return;
+  _caktoWorkerBusy = true;
+  _caktoWorkerPromise = new Promise(resolve => setImmediate(resolve))
+    .then(() => runCaktoWorkerOnce())
+    .catch(e => { console.error('[CAKTO][WORKER] Execução falhou:', safeScalar(e.message, 80, 'worker_failed')); })
+    .finally(() => { _caktoWorkerBusy = false; _caktoWorkerPromise = null; });
+}
+
+function startCaktoWorker() {
+  if (!CAKTO_WEBHOOK_SECRET || _caktoWorkerTimer) return;
+  triggerCaktoWorker();
+  _caktoWorkerTimer = setInterval(triggerCaktoWorker, CAKTO_WORKER_POLL_MS);
+  _caktoWorkerTimer.unref();
 }
 
 async function handleCaktoWebhook(req, res, url, ip, deps = {}) {
@@ -2774,10 +4081,21 @@ async function handleCaktoWebhook(req, res, url, ip, deps = {}) {
     console.error('[CAKTO] CAKTO_WEBHOOK_SECRET não configurado — webhook recusado (fail-closed)');
     sendJson(res, { ok: false, error: 'webhook_disabled' }, 503); return;
   }
-  const rawBody = await readRawBody(req, WEBHOOK_BODY_SIZE);
+  const rawBody = await readRawBodyBuffer(req, WEBHOOK_BODY_SIZE);
   if (rawBody === null) { sendJson(res, { ok: false, error: 'payload_too_large' }, 413); return; }
+  const signatureCheck = verifyCaktoSignature(
+    rawBody,
+    req.headers['x-cakto-timestamp'],
+    req.headers['x-cakto-signature'],
+    configuredSecret,
+    deps.nowMs !== undefined ? deps.nowMs : Date.now()
+  );
+  if (!signatureCheck.ok) {
+    addSecurityAlert('CAKTO_SIGNATURE_REJECTED', signatureCheck.error, ip);
+    sendJson(res, { ok: false, error: signatureCheck.error }, signatureCheck.status); return;
+  }
   let payload;
-  try { payload = JSON.parse(rawBody); }
+  try { payload = JSON.parse(rawBody.toString('utf8')); }
   catch { sendJson(res, { ok: false, error: 'invalid_payload' }, 400); return; }
 
   const validated = validateCaktoPayload(payload, configuredSecret);
@@ -2785,11 +4103,16 @@ async function handleCaktoWebhook(req, res, url, ip, deps = {}) {
   const { purchase, plan } = validated;
 
   if (purchase.event !== 'purchase_approved') {
-    console.log('[CAKTO] Evento reconhecido e ignorado', { event: purchase.event || 'unknown', txId: purchase.txId || '' });
+    console.log('[CAKTO] Evento reconhecido e ignorado', { event: purchase.event || 'unknown', txRef: maskTransactionId(purchase.txId || '') });
     sendJson(res, { ok: true, ignored: true }); return;
   }
   if (!purchase.txId || !purchase.clientEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(purchase.clientEmail)) {
     sendJson(res, { ok: false, error: 'invalid_purchase' }, 400); return;
+  }
+  const commercialCheck = validateCaktoCommercialIntegrity(purchase, plan);
+  if (!commercialCheck.ok) {
+    console.warn('[CAKTO][REJECT]', { txRef: maskTransactionId(purchase.txId), error: commercialCheck.error, planId: plan?.id || null });
+    sendJson(res, { ok: false, error: commercialCheck.error }, commercialCheck.status); return;
   }
 
   if (url.searchParams.get('dry_run') === '1') {
@@ -2799,7 +4122,7 @@ async function handleCaktoWebhook(req, res, url, ip, deps = {}) {
     // Nunca inclui secret/senha/token/PII crua — e-mail e telefone
     // mascarados (maskEmail/maskPhone, já usados em todo o projeto).
     const diagnostic = {
-      event: purchase.event, txId: purchase.txId, refId: purchase.refId || null,
+      event: purchase.event, txRef: maskTransactionId(purchase.txId), refRef: maskTransactionId(purchase.refId || ''),
       productId: purchase.productId || null, productShortId: purchase.productShortId || null,
       productName: purchase.productName || null,
       offerId: purchase.offerId || null, offerName: purchase.offerName || null,
@@ -2821,16 +4144,19 @@ async function handleCaktoWebhook(req, res, url, ip, deps = {}) {
 
   const indexReady = deps.indexReady !== undefined ? deps.indexReady : (deps.db ? true : _caktoIndexReady);
   if (!indexReady) {
-    console.error('[CAKTO] Índice de idempotência indisponível — webhook recusado (fail-closed)');
-    sendJson(res, { ok: false, error: 'idempotency_unavailable' }, 503); return;
+    console.error('[CAKTO] Índice da fila indisponível — webhook recusado antes do ACK');
+    sendJson(res, { ok: false, error: 'queue_unavailable' }, 503); return;
   }
 
   try {
-    const result = await processCaktoPurchaseEvent(purchase, plan, deps);
-    sendJson(res, { ok: true, duplicate: !!result.duplicate, unmapped: !!result.unmapped });
+    const db = deps.db || await getMongoDb();
+    const queued = await enqueueCaktoPurchaseEvent(db, purchase, plan, { now: deps.now });
+    sendJson(res, { ok: true, queued: !!queued.queued, duplicate: !!queued.duplicate }, 202);
+    if (!deps.db) triggerCaktoWorker();
   } catch (e) {
-    console.error('[CAKTO] Falha ao processar compra:', safeScalar(e.message, 120, 'processing_failed'));
-    sendJson(res, { ok: false, error: 'processing_failed' }, 500);
+    const code = e?.code === 'cakto_queue_backpressure' ? 'queue_backpressure' : 'queue_unavailable';
+    console.error('[CAKTO] Falha ao persistir evento antes do ACK:', safeScalar(e.message, 120, 'queue_failed'));
+    sendJson(res, { ok: false, error: code }, 503);
   }
 }
 
@@ -3171,8 +4497,6 @@ function applyStandalonePortalTheme(html) {
 // ── /cliente (deslogado) e /cliente/registro — reescritos do zero como
 // páginas standalone independentes (Parte 4/5 da rodada de polish visual).
 // NÃO reaproveitam renderPortalLogin/renderPortalRegister/renderPortalPage
-// (essas continuam servindo o WSM legado via wsmPortal(), intocadas) - zero
-// risco de regressão no WSM porque nenhuma função compartilhada foi tocada.
 // Reaproveitam sim a mesma fundação visual de /planos, /faq, /privacidade
 // (_sharedCss+_standaloneCss+_sharedNav+_standaloneFoot), pra ganhar nav
 // consistente (incl. hamburger mobile já pronto) sem duplicar essa lógica.
@@ -3346,7 +4670,7 @@ ${_standaloneFoot()}${_pwdToggleScript()}${_authSubmitLockScript()}
 
 // ── 2FA standalone — mesma família visual do login/cadastro (auth-shell).
 // NÃO reaproveita renderPortal2FAVerify/renderPortalSetup2FA (essas
-// continuam servindo o WSM legado via wsmPortal(), intocadas). Contrato
+// Contrato
 // preservado: mesmos endpoints, mesmos names de campo (code), mesma
 // sessão/redir/TOTP/rate limit — só a view muda.
 const SECURITY_BENEFITS = [
@@ -3469,7 +4793,7 @@ function renderStandaloneSetup2FA(user, pendingSecret = '', err = '', ok = '') {
 // ── Subpáginas de conta standalone (vincular/senha/email) — mesmo
 // auth-shell do login/2FA. NÃO reaproveitam renderPortalLinkKey/
 // renderPortalChangePwd/renderPortalChangeEmail (essas continuam
-// servindo o WSM legado via wsmPortal(), intocadas). Contrato
+// Contrato
 // preservado: mesmos endpoints, mesmos name= de campo, mesma sessão/
 // validação/rate-limit — só a view muda.
 function renderStandalonePortalLinkKey(err = '', ok = '', portalUser = null) {
@@ -3494,8 +4818,7 @@ function renderStandalonePortalChangeEmail(err = '', ok = '', portalUser = null)
 }
 
 // ── Recuperação de senha standalone (mesmo auth-shell, nav mínima).
-// renderPortalResetRequest/renderPortalResetForm continuam servindo o WSM
-// legado via wsmPortal(), intocadas. Contrato preservado: mesmos endpoints,
+// Contrato preservado: mesmos endpoints,
 // mesmos name= de campo (email; token/pass/pass2), mesma mensagem de que a
 // recuperação é manual (o admin envia o link por WhatsApp — não é um fluxo
 // automatizado por e-mail, isso não muda aqui).
@@ -4088,7 +5411,7 @@ function renderStandalonePortalDashboard(user, keyData, okMsg='') {
 
   const body = `
 <style>
-/* Dashboard overrides (standalone) - .page-wrap aqui e sobrescrito so pra ESTA pagina; renderPortalPage() continua com o mesmo max-width 480/760 de sempre pros outros chamadores, incl. o dashboard WSM legado (bloco style separado, acima no arquivo). */
+/* Dashboard overrides (standalone). */
 .page-wrap{max-width:1200px}
 ${_toastCss()}
 .client-shell{display:grid;grid-template-columns:250px minmax(0,1fr);gap:18px;align-items:start}
@@ -4713,25 +6036,50 @@ input[type=text].key-input:focus{border-color:#00ff87}
 ${CANVAS_BG}</body></html>`;
 }
 
-// opts permite injetar dados de outro banco (ex.: WSM/watidy). Sem opts = ZVM/zapvoice global.
+// Validadores compartilhados pelas rotas administrativas e pela auditoria interna.
+// A camada de payload permanece independente das guardas de sessão/origem.
+function normalizeAdminCreateLabel(value) {
+  if (value === undefined || value === null || value === '') return { ok: true, label: 'Cliente' };
+  if (typeof value !== 'string') return { ok: false, error: 'invalid_label_type' };
+  const label = value.trim().slice(0, 60);
+  return { ok: true, label: label || 'Cliente' };
+}
+
+function parseAdminBatchDeleteCodes(body) {
+  const rawCodes = Array.isArray(body?.codes) ? body.codes : [];
+  if (!rawCodes.length) return { ok: false, error: 'nenhum código enviado', codes: [] };
+  return { ok: true, codes: rawCodes };
+}
+
+// Dashboard administrativo do banco canônico ZVM.
 function renderAdminDashboard(opts = {}) {
-  const stats = opts.stats || getKeyStats();
-  const _keysHtml = (opts.keysHtml != null) ? opts.keysHtml : getKeysHtmlCached();
-  const _logsHtml = (opts.logsHtml != null) ? opts.logsHtml : buildLogsHtml();
+  const stats = getKeyStats();
+  const _keysHtml = getKeysHtmlCached();
+  const _logsHtml = buildLogsHtml();
   const initialPortalUsers = Array.isArray(opts.portalUsers) ? opts.portalUsers : [];
   const portalUserCount = Number(opts.portalUserCount ?? initialPortalUsers.length ?? 0);
   const initialPortalUsersJson = JSON.stringify(initialPortalUsers)
     .replace(/</g,'\\u003c').replace(/>/g,'\\u003e').replace(/&/g,'\\u0026')
     .replace(/\u2028/g,'\\u2028').replace(/\u2029/g,'\\u2029');
+  const initialPortalUsersRows = initialPortalUsers.length ? initialPortalUsers.map(u => {
+    const created = u.createdAt ? new Date(u.createdAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '-';
+    const lastLogin = u.lastLogin ? new Date(u.lastLogin).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '-';
+    const name = escHtml(u.name || u.displayName || '-');
+    const email = escHtml(u._id || u.email || '-');
+    const phone = u.phone ? `<span style="font-family:var(--mono);font-size:13px">${escHtml(u.phone)}</span>` : '<span style="color:var(--tx3)">—</span>';
+    const key = u.keyCode ? `<span class="kc" style="font-size:12px">${escHtml(u.keyCode)}</span>` : '<span style="color:var(--tx3)">—</span>';
+    const plan = u.plan ? `<span style="color:var(--g);font-weight:700;font-size:12px">${escHtml(String(u.plan).toUpperCase())}</span>` : '<span style="color:var(--tx3)">—</span>';
+    const status = u.banned ? '<span class="badge off">Banido</span>' : u.verified === false ? '<span class="badge" style="background:#ffa04020;color:var(--orange);border:1px solid #ffa04040">Pendente</span>' : '<span class="badge on">Ativo</span>';
+    return `<tr><td style="font-weight:600">${name}</td><td style="font-family:var(--mono);font-size:12px;color:var(--tx2)">${email}</td><td>${phone}</td><td>${key}</td><td>${plan}</td><td style="font-size:12px;color:var(--tx3)">${escHtml(created)}</td><td style="font-size:12px;color:var(--tx3)">${escHtml(lastLogin)}</td><td>${status}</td></tr>`;
+  }).join('') : '<tr><td colspan="8" class="empty">Nenhum usuário cadastrado.</td></tr>';
   const { expiredKeys: expiredCount, warnKeys: expiringSoon } = stats;
-  const _dashboardBrand = opts.brand === 'WSM' ? 'WSM' : 'ZVM';
-  const _adminBrand = _dashboardBrand === 'ZVM' ? renderStandaloneBrand('compact') : '⚡ WSM';
+  const _adminBrand = renderStandaloneBrand('compact');
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${_dashboardBrand} Admin v10</title>
+<title>ZVM Admin v10</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Orbitron:wght@700;900&family=Outfit:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
@@ -4914,7 +6262,7 @@ header{height:var(--hdr);padding:0 22px;background:rgba(6,10,12,.95);border-bott
 @media(max-width:750px){.rsidebar{display:none}.admin-content{padding:12px}.stats{grid-template-columns:1fr 1fr}}
 </style>
 </head>
-<body class="${_dashboardBrand==='ZVM'?'zvm-admin-r6':''}">
+<body class="zvm-admin-r6">
 <header>
   <div class="logo">
     ${_adminBrand}
@@ -4941,7 +6289,7 @@ header{height:var(--hdr);padding:0 22px;background:rgba(6,10,12,.95);border-bott
 </nav>
 <div class="admin-content">
 
-  ${_dashboardBrand==='ZVM'?`<section class="admin-overview"><div><span class="admin-overview-kicker">Centro de Operações</span><h1>Licenças, segurança e clientes em uma única leitura.</h1><p>Use esta visão para identificar rapidamente renovações, bloqueios, comportamento suspeito e crescimento do portal sem perder a densidade operacional da tabela.</p><div class="admin-overview-actions"><button class="primary" onclick="switchTab('keys')">🔑 Gerenciar chaves</button><button onclick="switchTab('users')">👥 Usuários do portal</button><button onclick="switchTab('security')">🛡 Revisar segurança</button><button onclick="switchTab('audit')">◎ Auditoria</button></div></div><div class="admin-overview-pulse"><div class="admin-pulse"><span>Ativas</span><strong id="hero-admin-active">${stats.activeKeys}</strong><small>licenças em operação</small></div><div class="admin-pulse"><span>Expiradas</span><strong id="hero-admin-expired">${expiredCount}</strong><small>renovações pendentes</small></div><div class="admin-pulse"><span>Suspeitas</span><strong id="hero-admin-suspect">${stats.suspectKeys}</strong><small>revisão recomendada</small></div><div class="admin-pulse"><span>Portal</span><strong>${portalUserCount}</strong><small>usuários cadastrados</small></div></div></section>`:''}
+  ${`<section class="admin-overview"><div><span class="admin-overview-kicker">Centro de Operações</span><h1>Licenças, segurança e clientes em uma única leitura.</h1><p>Use esta visão para identificar rapidamente renovações, bloqueios, comportamento suspeito e crescimento do portal sem perder a densidade operacional da tabela.</p><div class="admin-overview-actions"><button class="primary" onclick="switchTab('keys')">🔑 Gerenciar chaves</button><button onclick="switchTab('users')">👥 Usuários do portal</button><button onclick="switchTab('security')">🛡 Revisar segurança</button><button onclick="switchTab('audit')">◎ Auditoria</button></div></div><div class="admin-overview-pulse"><div class="admin-pulse"><span>Ativas</span><strong id="hero-admin-active">${stats.activeKeys}</strong><small>licenças em operação</small></div><div class="admin-pulse"><span>Expiradas</span><strong id="hero-admin-expired">${expiredCount}</strong><small>renovações pendentes</small></div><div class="admin-pulse"><span>Suspeitas</span><strong id="hero-admin-suspect">${stats.suspectKeys}</strong><small>revisão recomendada</small></div><div class="admin-pulse"><span>Portal</span><strong id="hero-admin-portal">${portalUserCount}</strong><small>usuários cadastrados</small></div></div></section>`}
 
 
   <div class="alert-strip" id="urgent-alert" style="${(expiredCount>0||expiringSoon>0)?'':'display:none'}">
@@ -5137,7 +6485,7 @@ header{height:var(--hdr);padding:0 22px;background:rgba(6,10,12,.95);border-bott
   <div class="sec">
     <div class="sh">
       <div>
-        <div class="st"><span class="st-accent">👥</span> Usuários do Portal <span id="users-panel-badge" style="display:none;font-size:11px;font-weight:700;color:var(--g);background:var(--g-bg);border:1px solid var(--g-brd);border-radius:99px;padding:1px 9px;margin-left:6px;vertical-align:middle">0</span></div>
+        <div class="st"><span class="st-accent">👥</span> Usuários do Portal <span id="users-panel-badge" style="display:${portalUserCount>0?'inline':'none'};font-size:11px;font-weight:700;color:var(--g);background:var(--g-bg);border:1px solid var(--g-brd);border-radius:99px;padding:1px 9px;margin-left:6px;vertical-align:middle">${portalUserCount}</span></div>
         <div style="font-size:11px;color:var(--tx3);margin-top:2px">Todos os usuários registrados no Portal do Cliente</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
@@ -5157,9 +6505,7 @@ header{height:var(--hdr);padding:0 22px;background:rgba(6,10,12,.95);border-bott
           <th>Último Login</th>
           <th>Status</th>
         </tr></thead>
-        <tbody id="users-tb">
-          <tr><td colspan="8" class="empty">Clique em ↻ Atualizar para carregar usuários.</td></tr>
-        </tbody>
+        <tbody id="users-tb">${initialPortalUsersRows}</tbody>
       </table>
     </div>
   </div>
@@ -5230,11 +6576,14 @@ header{height:var(--hdr);padding:0 22px;background:rgba(6,10,12,.95);border-bott
   </div>
 </div></div>
 
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
 <script>
 const _RA='${R_ADMIN}';
 
 function toast(msg,ok=true){
   const t=document.getElementById('toast');
+  if(!t){console.warn('[ADMIN] feedback:',msg);return;}
   t.textContent=msg;
   if(ok){t.style.background='var(--g-bg)';t.style.color='var(--g)';t.style.borderColor='var(--g-brd)';}
   else{t.style.background='var(--red-bg)';t.style.color='var(--red)';t.style.borderColor='var(--red-brd)';}
@@ -5369,6 +6718,8 @@ async function doRefresh(manual){
     const sb=document.getElementById('hdr-suspect-badge'),sbn=document.getElementById('hdr-suspect-num');
     if(sb&&sbn){sbn.textContent=suspN;sb.style.opacity=suspN>0?'1':'0.45';sb.style.pointerEvents=suspN>0?'auto':'none';}
     filterKeys();
+    const usersPanel=document.querySelector('.sec-panel[data-panel="users"]');
+    if(usersPanel&&usersPanel.classList.contains('active'))await loadUsers(true);
     if(manual)toast('Painel atualizado');
   }catch(e){console.error('Refresh error',e);if(manual)toast('Erro ao atualizar',false);}
 }
@@ -5621,7 +6972,7 @@ function switchTab(t){
   document.querySelectorAll('.rtab').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('.sec-panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===t));
   try{localStorage.setItem('zvmTab',t);}catch(e){}
-  if(t==='users')loadUsers(false);
+  if(t==='users'){renderUsersTable(_usersData);loadUsers(true);}
   if(t==='security')loadBlacklist();
 }
 (function(){switchTab(localStorage.getItem('zvmTab')||'keys');})();
@@ -5630,7 +6981,7 @@ async function loadUsers(force){
   force=!!force;
   const tb=document.getElementById('users-tb');
   if(_usersData.length&&!force){renderUsersTable(_usersData);return;}
-  if(tb&&(!_usersData.length||force))tb.innerHTML='<tr><td colspan="8" class="empty">Carregando usuários...</td></tr>';
+  if(tb&&!_usersData.length)tb.innerHTML='<tr><td colspan="8" class="empty">Carregando usuários...</td></tr>';
   try{
     const r=await fetch(_RA+'/api/portal-users',{credentials:'same-origin',headers:{'Accept':'application/json'}});
     if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.reload(),900);return;}
@@ -5657,9 +7008,11 @@ function renderUsersTable(list){
     const pb=document.getElementById('users-panel-badge');
     const hb=document.getElementById('hdr-users-num');
     const hc=document.getElementById('hdr-users-count');
+    const hp=document.getElementById('hero-admin-portal');
     if(pb){pb.textContent=n;pb.style.display=n>0?'inline':'none';}
     if(hb)hb.textContent=n;
     if(hc)hc.style.display=n>0?'inline-flex':'none';
+    if(hp)hp.textContent=n;
   };
   if(!list.length){tb.innerHTML='<tr><td colspan="8" class="empty">Nenhum usuário cadastrado.</td></tr>';setCount(0);return;}
   setCount(list.length);
@@ -5890,7 +7243,7 @@ function renderStandaloneBrand(variant = 'nav') {
 }
 
 function _sharedNav(options = '', legacyPortalUser = null) {
-  // Assinatura antiga preservada para os templates WSM que adaptam este HTML.
+  // Assinatura de string preservada para páginas antigas do portal.
   if (typeof options === 'string') {
     const activePath = options;
     const portalUser = legacyPortalUser;
@@ -7265,18 +8618,18 @@ function applyStandaloneFrame(html, { activePath = '', portalUser = null, showBa
   return html
     .replace('</style></head>', `${_standaloneCss()}</style></head>`)
     // Marcador de destino do skip-link: renderPrivacyPage/renderLandingPage
-    // (WSM, INTOCADOS) não usam <main>, então o alvo #main-content é injetado
+    // que não usam <main> recebem o alvo #main-content injetado
     // aqui, na única costura standalone-only já existente (troca da nav).
     .replace(/<nav class="znav">[\s\S]*?<\/nav>/, _sharedNav({ activePath, portalUser, showBack }) + '<div id="main-content"></div>')
     .replace(/<footer class="zfooter">[\s\S]*?<\/footer>/, _standaloneFoot());
 }
 
-// P0 — a tabela de preços de renderLandingPage() (WSM, INTOCADA) tem os 4
+// P0 — a tabela de preços base de renderLandingPage() tem os 4
 // valores por card escritos à mão no HTML. Hoje eles até batem com
 // ZVM_PLANS por coincidência de manutenção manual, mas nada garante isso no
 // futuro (mudar um preço em ZVM_PLANS não mudaria essa string). Substitui
 // aqui, só na versão standalone, pelos valores REAIS de ZVM_PLANS — a
-// landing WSM (renderLandingPage puro, usado por /WSM) nunca passa por
+// Outras renderizações que usam renderLandingPage puro nunca passam por
 // esta função e continua com o HTML original, byte a byte.
 //
 // Ordem dos 4 cards no HTML (Solo, Padrão, Pro, Empresarial) é a MESMA
@@ -7339,16 +8692,12 @@ function renderStandaloneLandingPage(portalUser = null) {
     // atual (evolução do mesmo produto/vendedor). Uma linha deixa isso
     // claro sem reescrever nem uma palavra dos textos originais.
     .replace('<h2 class="sh-title">Quem usa, aprova</h2>', '<h2 class="sh-title">Quem usa, aprova</h2>\n    <p class="sh-sub">Avaliações reais de clientes, coletadas ao longo da evolução do produto.</p>')
-    // Uniformização tipográfica (só standalone, renderLandingPage/WSM
-    // intocada): .fc-desc é o texto de corpo de cada card de recurso, mas
+    // Uniformização tipográfica do standalone: .fc-desc é o texto de corpo de cada card de recurso, mas
     // estava em 14px — menor que o próprio heading do card (.fc-name, 16px)
     // e abaixo da referência de /privacidade (16px/1.8). Só esse ponto
     // precisava de ajuste; hero/steps/pricing já estavam na faixa certa.
     .replace('</style></head>', '.fc-desc{font-size:16px;line-height:1.8}</style></head>')
-    // Auditoria de copy (só standalone — renderLandingPage/WSM intocada,
-    // wsmLandingAdapt continua com seus próprios .replace() nas mesmas
-    // strings originais, sem conflito porque cada caller parte de uma
-    // cópia própria do HTML). "100% das avaliações com 5 estrelas" e "Em
+    // Auditoria de copy do standalone. "100% das avaliações com 5 estrelas" e "Em
     // 100% das avaliações" eram números sem fonte verificável — trocados
     // por afirmações reais (dado de produto ou o mesmo texto de
     // transparência já usado na seção de depoimentos). "Anti-ban" sozinho
@@ -7385,11 +8734,11 @@ function renderStandaloneFaqPage(portalUser = null) {
   </style></head><body>${_sharedNav({activePath:'/faq',portalUser,showBack:true})}<main id="main-content"><header class="faq-hero"><div class="faq-kicker">Central de respostas</div><h1>Ajuda sem rodeios</h1><p>Compra, entrega, validade e dispositivos explicados de forma direta.</p></header><div class="faq-wrap">${content}<aside class="faq-support"><div><strong>Não encontrou sua resposta?</strong><p>O WhatsApp continua disponível como canal de suporte.</p></div><a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener noreferrer">Falar com suporte</a></aside></div></main>${_standaloneFoot()}</body></html>`;
 }
 
-// Tipografia do corpo do documento (renderPrivacyPage, WSM-compartilhada)
+// Tipografia do corpo do documento (renderPrivacyPage)
 // já estava em 16px/1.85 — dentro do pedido. O resumo, os headings e a
 // legenda de data ficavam menores que o corpo; ajuste só nesses pontos,
 // via CSS extra anexado depois de _standaloneCss (mesma técnica de
-// applyStandaloneFrame), sem tocar renderPrivacyPage nem o /WSM/privacidade.
+// applyStandaloneFrame), sem tocar renderPrivacyPage.
 function renderStandalonePrivacyPage(portalUser = null) {
   const html = applyStandaloneFrame(renderPrivacyPage(portalUser), { activePath: '/privacidade', portalUser, showBack: true });
   const css = `.page-hero h1{font-size:var(--fs-h1)}.page-hero p{font-size:var(--fs-body-lg)}.info-box{font-size:var(--fs-body-lg);line-height:1.75}.doc-section h2{font-size:var(--fs-h3)}`;
@@ -8274,24 +9623,6 @@ async function runInternalSecurityAudit() {
       : 'Não configurado — módulo 2FA desativado (opcional)',
   });
   results.push({
-    name:   'SALE_WEBHOOK_SECRET (webhook de vendas) — opcional',
-    pass:   true,
-    // O handler de /sale/webhook e /payt/webhook é fail-closed: sem o
-    // segredo configurado, o endpoint responde 503 e recusa qualquer POST
-    // (nunca "aceita qualquer origem"). Diagnóstico corrigido pra refletir
-    // o código real, não o comportamento antigo antes do fail-closed.
-    detail: SALE_WEBHOOK_SECRET && SALE_WEBHOOK_SECRET.length >= 8
-      ? `${SALE_WEBHOOK_SECRET.length} chars · ${_mask(SALE_WEBHOOK_SECRET, 4)}`
-      : 'Não configurado — webhook fail-closed (503, recusa todo POST) até ser definido (opcional, mas recomendado)',
-  });
-  results.push({
-    name:   'PARTNER_API_TOKEN (API de parceiro) — opcional',
-    pass:   true,
-    detail: PARTNER_API_TOKEN && PARTNER_API_TOKEN.length >= 8
-      ? `${PARTNER_API_TOKEN.length} chars · ${_mask(PARTNER_API_TOKEN, 4)}`
-      : 'Não configurado — endpoint /api/partner/* desativado',
-  });
-  results.push({
     name:   'ANALYTICS_PASS — opcional',
     pass:   true,
     detail: ANALYTICS_PASS && ANALYTICS_PASS.length >= 8
@@ -8505,10 +9836,11 @@ async function runInternalSecurityAudit() {
     headers: { 'Cookie': '__pentest__=1' },
     body:   { codes: [] },
   });
+  const batchEmptyGuard = parseAdminBatchDeleteCodes({ codes: [] });
   results.push({
-    name:   'DELETE batch com codes:[] retorna 400 (não deleta tudo)',
-    pass:   rBatchEmpty.status === 400 || rBatchEmpty.status === 401,
-    detail: `HTTP ${rBatchEmpty.status} (esperado 400 sem auth, ou 400 com body vazio)`,
+    name:   'DELETE batch vazio bloqueado no perímetro e no payload',
+    pass:   batchEmptyGuard.ok === false && [400,401,403].includes(rBatchEmpty.status),
+    detail: `HTTP ${rBatchEmpty.status} · payloadGuard=${batchEmptyGuard.error || 'falhou'} · 401/403=perímetro, 400=payload`,
   });
 
   // DELETE /api/keys/batch sem body deve retornar 400 ou 401
@@ -8516,10 +9848,11 @@ async function runInternalSecurityAudit() {
     method: 'DELETE',
     headers: { 'Cookie': '__pentest__=1' },
   });
+  const batchNoBodyGuard = parseAdminBatchDeleteCodes({});
   results.push({
-    name:   'DELETE batch sem body retorna 400/401 (guard)',
-    pass:   rBatchNobody.status === 400 || rBatchNobody.status === 401,
-    detail: `HTTP ${rBatchNobody.status}`,
+    name:   'DELETE batch sem body bloqueado no perímetro e no payload',
+    pass:   batchNoBodyGuard.ok === false && [400,401,403].includes(rBatchNobody.status),
+    detail: `HTTP ${rBatchNobody.status} · payloadGuard=${batchNoBodyGuard.error || 'falhou'} · 401/403=perímetro, 400=payload`,
   });
 
   // ── BLOCO 9: Cobertura Global de CSP e Blindagem XSS em Rotas de Cliente ──
@@ -8563,10 +9896,11 @@ async function runInternalSecurityAudit() {
     headers: { 'Cookie': '__pentest__=1' },
     body:    { label: { $ne: null }, maxUses: 1 },
   });
+  const adminLabelGuard = normalizeAdminCreateLabel({ $ne: null });
   results.push({
-    name:   'NoSQL injection em label (admin create) rejeitada ou bloqueada',
-    pass:   rNoSqlAdmin.status === 401 || rNoSqlAdmin.status === 400,
-    detail: `HTTP ${rNoSqlAdmin.status} (esperado 401 sem auth, ou 400 com objeto $ne)`,
+    name:   'NoSQL injection em label (admin create) bloqueada em duas camadas',
+    pass:   adminLabelGuard.ok === false && [400,401,403].includes(rNoSqlAdmin.status),
+    detail: `HTTP ${rNoSqlAdmin.status} · payloadGuard=${adminLabelGuard.error || 'falhou'} · 401/403=perímetro, 400=payload`,
   });
 
   // 9e. Whitelist — chars inválidos rejeitados (XSS payload → 400)
@@ -8607,1922 +9941,16 @@ async function runInternalSecurityAudit() {
 }
 
 
-// ═══════════════════════════════════════════════════════════════
-// WSM MODULE (WSM) — namespace /WSM com banco e estado próprios
-// ZVM continua intacto em "/" (banco: MONGODB_DB). O WSM usa
-// WSM_MONGODB_DB (default "watidy") na MESMA conexão Mongo.
-// ═══════════════════════════════════════════════════════════════
-const WSM = (() => {
-  const WSM_DB_NAME = (process.env.WSM_MONGODB_DB || 'watidy').trim();
-  const ACCESS_TOKEN = process.env.WSM_ACCESS_TOKEN || process.env.ACCESS_TOKEN || '';
-  // Sem fallback embutido: o valor antigo estava no código-fonte, ou seja, era público.
-  // Quem lesse o arquivo autenticava em /api/auth/*, /api/user/*, /api/services/*.
-  // Se WSM_ACCESS_TOKEN não estiver definido, gera um valor aleatório por boot —
-  // as rotas gated ficam inacessíveis (falha fechada) em vez de aceitarem o segredo público.
-  const criptKey = ACCESS_TOKEN || crypto.randomBytes(32).toString('hex');
-  if (!ACCESS_TOKEN) console.warn('[WSM] WSM_ACCESS_TOKEN ausente — rotas /api/auth|user|services desativadas (token aleatório por boot).');
-  const WPP_VERSION = '1.11';
-  const REMOTE_CODE_VERSION = '1.0.41';
-  const chromeStoreId = process.env.WSM_CHROME_STORE_ID || 'gjlfpggiddcminhebiejofeglfjmleli';
-  const wlId = process.env.WSM_WL_ID || 'watidy';
-  const installUrl   = process.env.WSM_INSTALL_URL   || '/WSM/obrigado-pela-instalacao';
-  const uninstallUrl = process.env.WSM_UNINSTALL_URL || '/WSM/ate-mais';
-
-  // ── Slug admin próprio do WSM (separado do ZVM) ──
-  const _wsmSecret = process.env.WSM_APP_SECRET || APP_SECRET;
-  const _wsmDeriveSlug = seed =>
-    _wsmSecret
-      ? crypto.createHmac('sha256', _wsmSecret).update('wsm-' + seed).digest('hex').slice(0, 14)
-      : null;
-  const WSM_R_ADMIN = (s => s ? '/' + s : '/wsm-admin')(_wsmDeriveSlug('admin-panel'));
-
-  // ── Estado próprio do WSM ──
-  let db = null;
-  let keys = {};
-  let keysLoaded = false;
-  let keysLoadError = false;   // true = banco inacessivel (estado desconhecido, nao desloga)
-  let changelog = [];
-  let _changelogLoaded = false;
-
-  async function getDb() {
-    if (db) return db;
-    await getMongoDb();               // garante _mongoClient conectado (conexão compartilhada)
-    db = _mongoClient.db(WSM_DB_NAME);
-    return db;
-  }
-  async function ensureKeyLoaded() {  // sombra da global — carrega o mapa inteiro do banco WSM
-    if (keysLoaded) { keysLoadError = false; return; }
-    try {
-      const d = await getDb();
-      const doc = await d.collection('store').findOne({ _id: 'keys' });
-      keys = (doc && doc.data && typeof doc.data === 'object') ? doc.data : {};
-      keysLoaded = true;
-      keysLoadError = false;
-      console.log('[WSM] ' + Object.keys(keys).length + ' chave(s) carregada(s) de ' + WSM_DB_NAME + '.store');
-    } catch (e) {
-      // Banco inacessivel: marca o estado como DESCONHECIDO. A validacao nao pode
-      // responder "token invalido" nesse caso, senao desloga chaves ATIVAS.
-      keysLoadError = true;
-      console.error('[WSM] load keys:', e.message);
-    }
-  }
-  async function saveKeyNow(code) {
-    const d = await getDb();
-    await d.collection('store').updateOne(
-      { _id: 'keys' },
-      { $set: { ['data.' + code]: keys[code], updatedAt: new Date() } },
-      { upsert: true }
-    );
-  }
-  function saveKey(code) {            // sombra da global saveKey do ZVM
-    saveKeyNow(code).catch(e => console.error('[WSM] save key:', e.message));
-    return Promise.resolve();
-  }
-  async function deleteKey(code) {
-    delete keys[code];
-    const d = await getDb();
-    await d.collection('store').updateOne(
-      { _id: 'keys' },
-      { $unset: { ['data.' + code]: '' }, $set: { updatedAt: new Date() } }
-    );
-  }
-  async function ensureChangelog() {
-    if (_changelogLoaded) return;
-    try {
-      const d = await getDb();
-      const doc = await d.collection('store').findOne({ _id: 'changelog' });
-      if (Array.isArray(doc?.data)) changelog = doc.data;
-      _changelogLoaded = true;
-    } catch (e) { console.warn('[WSM] changelog load:', e.message); }
-  }
-  async function saveChangelog() {
-    try {
-      const d = await getDb();
-      await d.collection('store').updateOne(
-        { _id: 'changelog' },
-        { $set: { _id: 'changelog', data: changelog, updatedAt: new Date() } },
-        { upsert: true }
-      );
-    } catch (e) { console.error('[WSM] changelog save:', e.message); }
-  }
-  function genWsmKey() {
-    const seg = () => crypto.randomBytes(4).toString('hex').slice(0, 5);
-    let code;
-    do { code = 'wt-' + seg() + '-' + seg() + '-' + seg(); } while (keys[code]);
-    return code;
-  }
-
-  // ── WSM DOM Config ──────────────────────────────────────────────────────────
-  const DOM_DEFAULTS = {
-    "app":                    { "model": "querySelector",    "selector": ["#app"] },
-    "afiliadoMain":           { "model": "querySelector",    "selector": ["body > div"] },
-    "paneSide":               { "model": "Element",          "selector": "#pane-side" },
-    "waPage":                 { "model": "querySelector",    "selector": ["div.two"] },
-    "two":                    { "model": "Element",          "selector": "two" },
-    "menuLateral":            { "model": "querySelector",    "selector": ["div.two > div:nth-child(5)"] },
-    "closeChat":              { "model": "Element",          "selector": "x10l6tqk" },
-    "chatListInput":          { "model": "querySelector",    "selector": [".lexical-rich-text-input > div"] },
-    "searchInput":            { "model": "querySelector",    "selector": ["[data-icon='search']"] },
-    "downAba":                { "model": "querySelector",    "selector": ["header > div > div > div > div > span > div > div:nth-child(1)", "header > div._ak0w"] },
-    "chatListHeader":         { "model": "querySelector",    "selector": ["header > header > div > span > div"] },
-    "searchCamp":             { "model": "querySelector",    "selector": ["#side div[data-testid='chat-list-search-container']"] },
-    "chatName":               { "model": "querySelector",    "selector": ["#main > header > div.x78zum5 > div > div > div > div"] },
-    "menuVertical":           { "model": "querySelector",    "selector": ["#main ._amm9", "#main .x1n2onr6.x1vjfegm.x1cqoux5.x14yy4lh"] },
-    "menuHorizontal":         { "model": "querySelector",    "selector": ["#main > header > div.x1c4vz4f > div"] },
-    "menuFooter":             { "model": "querySelector",    "selector": ["footer ._ak1m"] },
-    "respostaRapida":         { "model": "querySelector",    "selector": ["footer > div"] },
-    "footerTextArea":         { "model": "querySelector",    "selector": ["footer div[contenteditable=true]"] },
-    "mainAudio":              { "model": "querySelector",    "selector": ["footer > div.copyable-area > div"] },
-    "assChat":                { "model": "querySelector",    "selector": ["#main > div.x1n2onr6.x1vjfegm.x1cqoux5.x14yy4lh"] },
-    "assInput":               { "model": "querySelector",    "selector": ["#main > footer > div.copyable-area > div > span > div > div > div"] },
-    "assBtn":                 { "model": "querySelector",    "selector": ["#main > footer > div.copyable-area > div > span > div > div > div > div:nth-child(6)"] },
-    "assEmoji":               { "model": "querySelector",    "selector": ["#main > footer > div.copyable-area > div > span > div > div._ak1m > div > button[tabindex='-1']"] },
-    "assCitacao":             { "model": "querySelector",    "selector": ["footer div.x9f619.x1okw0bk > button > div > div > div:nth-child(1)"] },
-    "listMensages":           { "model": "querySelector",    "selector": ["div[data-scrolltracepolicy='wa.web.conversation.messages']"] },
-    "allMensages":            { "model": "querySelectorAll", "selector": ["#main div > div[data-id]"] },
-    "assistenteChat":         { "model": "querySelector",    "selector": ["#main > footer"] },
-    "trasferidos":            { "model": "querySelector",    "selector": ["#side div[tabindex='-1']"] },
-    "notification":           { "model": "querySelector",    "selector": ["#side > div:nth-child(2)"] },
-    "quotedMsg":              { "model": "querySelector",    "selector": ["#main > footer > div.x10l6tqk.x13vifvy.x1o0tod.xh8yej3 > div > div > div > span > div"] },
-    "listChats":              { "model": "querySelector",    "selector": ["#pane-side > div > div > div"] },
-    "listChatsUsers":         { "model": "querySelectorAll", "selector": ["#pane-side > div > div > div > div  div[aria-selected]", "#pane-side > div > div > div div[role='button'] > div"] },
-    "listChatAtendimento":    { "model": "Element",          "selector": "div div[data-testid='cell-frame-secondary'] div[role='gridcell']" },
-    "insertAtendente":        { "model": "Element",          "selector": "x10l6tqk xh8yej3 x1g42fcv" },
-    "updateChatList":         { "model": "querySelector",    "selector": ["#side div._ai04 > button"] },
-    "chatList":               { "model": "querySelector",    "selector": ["div.two > div._aigw"] },
-    "observerFooter":         { "model": "querySelector",    "selector": ["#main > span:nth-child(8)", "#main > :last-child"] },
-    "observerFooterNewModel": { "model": "querySelector",    "selector": ["#main > span:nth-child(7)", "#main > span:nth-child(8)", "#main > span:nth-child(9)"] },
-    "whatsModal":             { "model": "querySelector",    "selector": ["#app > div > div > span:nth-child(3)"] },
-    "whats":                  { "model": "querySelector",    "selector": ["#app > div > div.x78zum5.xdt5ytf.x5yr21d > div > header > div > div:nth-child(2) > div", "header > div > div:nth-child(2) > div"] },
-    "actionMonitor":          { "model": "querySelector",    "selector": ["#main header"] },
-    "footerIconsLeft":        { "model": "querySelector",    "selector": ["#main > footer > div.copyable-area > div > span > div > div > div"] },
-    "side":                   { "model": "querySelector",    "selector": ["#side"] },
-    "chatFilters":            { "model": "querySelectorAll", "selector": ["#side > div[aria-label='chat-list-filters'] button"] },
-    "theme":                  { "model": "querySelector",    "selector": [".os-win"] }
-  };
-  
-  function buildConfigJson() {
-    return {
-      remote_code: {
-        version: REMOTE_CODE_VERSION,
-        ambiente: 'production',
-        url: '/WSM/api/code?version=' + REMOTE_CODE_VERSION,
-      },
-      dom_selector: DOM_DEFAULTS,
-    };
-  }
-  
-  function wppUpdate() {
-    return { success: true, version: WPP_VERSION, update: false, message: 'WSM server — modulo atualizado' };
-  }
-  
-  function requireAccessToken(req) {
-    const token = String(req.headers['access-token'] || '').trim();
-    return safeCompare(token, criptKey);   // tempo constante — `===` vazava o token
-  }
-  
-  function parseBearer(req) {
-    const auth = req.headers['authorization'] || '';
-    const m = auth.match(/^Bearer\s+(.+)$/i);
-    return m ? m[1].trim() : '';
-  }
-  
-  function normKey(raw) {
-    return String(raw || '').trim().toLowerCase().slice(0, 48);
-  }
-  
-  function _synthRec(k, kv) {
-    return {
-      code: k, label: kv.label || k, active: kv.active !== false,
-      premium: !!kv.premium, expiresAt: kv.expiresAt || null,
-      phones: Array.isArray(kv.phones) ? kv.phones : [],
-      uses: kv.uses || 0, maxUses: kv.maxUses != null ? kv.maxUses : -1,
-      email: k, bearer_token: k, access_token_plugin: k,
-      user_id: 0, createdAt: kv.createdAt || new Date().toISOString(),
-      lastPhone: kv.lastPhone || '', lastIp: kv.lastIp || '', lastUsed: kv.lastUsed || null,
-    };
-  }
-  
-  async function findKeyByBearer(bearer) {
-    const b = String(bearer || '').trim();
-    if (!b) return null;
-    // Chaves do admin estao em keys[] — compara HMAC derivado ou codigo direto
-    const _sec = APP_SECRET || criptKey || 'wt-secret';
-    for (const [k, kv] of Object.entries(keys)) {
-      const exp = crypto.createHmac('sha256', _sec).update(k).digest('hex').slice(0, 40);
-      // safeCompare: o bearer é um segredo de sessão; `===` permitiria descobri-lo
-      // caractere a caractere medindo o tempo de resposta.
-      if (safeCompare(exp, b) || safeCompare(k, b)) return _synthRec(k, kv);
-    }
-    await getDb(); if (!db) return null;
-    try {
-      return await db.collection('licenses').findOne({
-        $or: [{ bearer: b }, { code: normKey(b) }, { access_token_plugin: b }, { bearer_token: b }],
-      });
-    } catch (err) {
-      console.error('[WSM] findKeyByBearer:', err.message);
-      return null;
-    }
-  }
-  
-  async function findLicenseByCode(code) {
-    const k = normKey(code);
-    if (!k) return null;
-    // Chaves do administrador estão em keys[] (store.keys), não em licenses
-    await ensureKeyLoaded(k);
-    if (keys[k]) return _synthRec(k, keys[k]);
-    await getDb(); if (!db) return null;
-    try {
-      return await db.collection('licenses').findOne({ code: k });
-    } catch (err) {
-      console.error('[WSM] findLicenseByCode:', err.message);
-      return null;
-    }
-  }
-  
-  async function updateLicense(code, patch) {
-    const k = normKey(code);
-    // Sincroniza keys[] quando a chave esta la
-    if (k && keys[k]) { Object.assign(keys[k], patch); saveKey(k); }
-    await getDb(); if (!db) return false;
-    try {
-      await db.collection('licenses').updateOne({ code: k }, { $set: patch });
-      return true;
-    } catch (err) {
-      console.error('[WSM] updateLicense:', err.message);
-      return false;
-    }
-  }
-  
-  async function getOrCreateFreeKey(extensionId, ip) {
-    const seed = String(extensionId || ip || 'anonymous');
-    const code = normKey('wt-free-' + crypto.createHash('sha256').update(seed).digest('hex').slice(0, 16));
-    const existing = await findLicenseByCode(code);
-    if (existing) return { code, rec: existing };
-    const now = new Date().toISOString();
-    const rec = {
-      code, bearer: code, user_id: 0, label: 'Usuario Gratuito',
-      email: code, active: true, premium: false,
-      expiresAt: null, expireDays: 0, maxUses: -1, phones: [], uses: 0,
-      note: 'Auto-registro free', bearer_token: code, access_token_plugin: code,
-      createdAt: now, lastUsed: null, lastIp: null, lastPhone: null,
-    };
-    try { await db.collection('licenses').insertOne(rec); } catch (_) {}
-    return { code, rec };
-  }
-  
-  function licKeyExpired(rec) {
-    if (!rec || !rec.expiresAt) return false;
-    return new Date(rec.expiresAt) < new Date();
-  }
-  
-  function isPremiumKey(code, rec) {
-    // Chaves explicitamente marcadas como plano gratuito
-    if (code === FREE_AUTH_KEY) return false;
-    if (rec.plan_id === FREE_PLAN_ID || rec.plan_id === FREE_OWNER_ID) return false;
-    // Qualquer outra chave ativa é premium (admin cria sem o campo premium=true)
-    return true;
-  }
-  
-  function keyStatus(rec, code) {
-    if (!rec || !rec.active) return 'blocked';
-    if (licKeyExpired(rec)) return 'expired';
-    return isPremiumKey(code, rec) ? 'active' : 'free';
-  }
-  
-  function buildUserPremium(code, rec) {
-    const premium = isPremiumKey(code, rec);
-    return {
-      active: rec.active && !licKeyExpired(rec),
-      premium,
-      expiresAt: rec.expiresAt || null,
-      plan: premium ? 'pro' : 'free',
-      code,
-      // Flags de liberacao PRO: a extensao checa estes campos alem de is_premium
-      // para destravar Envio em Massa, Agente de IA e demais recursos pagos.
-      // Numa chave premium liberamos tudo (teste local no servidor).
-      teste: '0',
-      allow_env_massa: premium ? 'true' : 'false',
-      allow_ia: premium ? 'true' : 'false',
-      id_assinatura: premium ? ('wsm-' + String(code).replace(/[^a-z0-9]/gi, '').slice(0, 16)) : '',
-      data_liberacao: rec.createdAt || new Date().toISOString(),
-    };
-  }
-  
-  function keyToUser(code, rec) {
-    const phones  = Array.isArray(rec.phones)  ? rec.phones  : [];
-    const devices = Array.isArray(rec.devices) ? rec.devices : [];
-    const totalUses = phones.length + devices.filter(d => d.startsWith('ip:')).length;
-    return {
-      user_id: String(rec.user_id || 0),
-      name: rec.label || 'Usuario',
-      email: rec.email || code,
-      wl_id: wlId,
-      bearer_token: rec.bearer_token || code,
-      access_token_plugin: rec.access_token_plugin || code,
-      user_premium: buildUserPremium(code, rec),
-      dataCadastro: rec.createdAt || new Date().toISOString(),
-      whatsapp_registro: rec.lastPhone || '',
-      whatsapp_plugin: rec.lastPhone || '',
-      uses: totalUses,
-      path: '', afiliado: '', campanhaID: '', start_form: true,
-      cookies: { _fbc: '', _fbp: '', _ga: '', _ttclid: '', _ttp: '' },
-    };
-  }
-  
-  const EMPTY_AUTH_GOOGLE = { success: false, token: '', email: '', name: '' };
-  
-  async function authSuccess(code, rec) {
-    const st = keyStatus(rec, code);
-    if (st === 'blocked') return { ok: false, msg_id: 'white_label_is_bloked' };
-    if (st === 'expired') return { ok: false, msg_id: 'white_label_is_bloked' };
-    const lastUsed = new Date().toISOString();
-    await updateLicense(code, { lastUsed });
-    rec.lastUsed = lastUsed;
-    return {
-      ok: true,
-      body: {
-        success: true,
-        user: keyToUser(code, rec),
-        auth_google: EMPTY_AUTH_GOOGLE,
-        user_status: st,
-      },
-    };
-  }
-  
-  // ── WSM Install / Uninstall Pages ──────────────────────────────────────────
-  function renderInstallPage() {
-    return `<!DOCTYPE html><html lang="pt-BR"><head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>WSM — Instalado com Sucesso!</title>
-  <style>
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0a0a;color:#fff;overflow:hidden}
-  .bg{position:fixed;inset:0;pointer-events:none;overflow:hidden}
-  .bg span{position:absolute;border-radius:50%;opacity:.06;animation:fl 8s ease-in-out infinite}
-  .bg span:nth-child(1){width:500px;height:500px;background:#02b875;top:-150px;left:-150px;animation-delay:0s}
-  .bg span:nth-child(2){width:350px;height:350px;background:#00ff87;bottom:-100px;right:-100px;animation-delay:3s}
-  .bg span:nth-child(3){width:250px;height:250px;background:#02b875;top:60%;left:60%;animation-delay:5s}
-  @keyframes fl{0%,100%{transform:scale(1)}50%{transform:scale(1.12) translateY(-18px)}}
-  .card{position:relative;background:rgba(255,255,255,.04);backdrop-filter:blur(24px);border:1px solid rgba(2,184,117,.2);border-radius:24px;padding:48px 40px;max-width:480px;width:90%;text-align:center;box-shadow:0 32px 64px rgba(0,0,0,.6)}
-  .icon{width:76px;height:76px;margin:0 auto 22px;background:linear-gradient(135deg,#02b875,#00cc6a);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:34px;box-shadow:0 0 40px rgba(2,184,117,.45);animation:pulse 2.2s ease-in-out infinite}
-  @keyframes pulse{0%,100%{box-shadow:0 0 40px rgba(2,184,117,.45)}50%{box-shadow:0 0 65px rgba(2,184,117,.8)}}
-  h1{font-size:26px;font-weight:700;margin-bottom:8px;background:linear-gradient(90deg,#02b875,#00ff87);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-  .sub{color:rgba(255,255,255,.55);font-size:15px;margin-bottom:30px;line-height:1.65}
-  .steps{text-align:left;background:rgba(2,184,117,.06);border:1px solid rgba(2,184,117,.12);border-radius:14px;padding:20px;margin-bottom:28px}
-  .step{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px}
-  .step:last-child{margin-bottom:0}
-  .sn{width:26px;height:26px;min-width:26px;background:linear-gradient(135deg,#02b875,#00cc6a);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#0a0a0a}
-  .st{font-size:14px;color:rgba(255,255,255,.8);line-height:1.5}
-  .btn{display:inline-block;margin-top:4px;padding:13px 30px;background:linear-gradient(135deg,#02b875,#00cc6a);color:#0a0a0a;font-weight:700;font-size:15px;border-radius:12px;text-decoration:none;transition:transform .2s,box-shadow .2s}
-  .btn:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(2,184,117,.5)}
-  .badge{margin-top:20px;font-size:12px;color:rgba(255,255,255,.28)}
-  </style></head><body>
-  <div class="bg"><span></span><span></span><span></span></div>
-  <div class="card">
-    <div class="icon">&#10003;</div>
-    <h1>Obrigado por instalar o WSM!</h1>
-    <p class="sub">Que bom ter voce aqui. Sua extensao esta pronta.<br>Siga os passos abaixo para comecar a usar.</p>
-    <div class="steps">
-      <div class="step"><div class="sn">1</div><div class="st">Abra o <strong>WhatsApp Web</strong> no seu navegador</div></div>
-      <div class="step"><div class="sn">2</div><div class="st">Clique no icone do <strong>WSM</strong> na barra de extensoes</div></div>
-      <div class="step"><div class="sn">3</div><div class="st">Insira sua chave de ativacao e clique em <strong>Ativar Agora</strong></div></div>
-      <div class="step"><div class="sn">4</div><div class="st">Aproveite todos os recursos premium do WSM!</div></div>
-    </div>
-    <a class="btn" href="https://web.whatsapp.com" target="_blank">Abrir WhatsApp Web</a>
-    <div class="badge">WSM &mdash; Automacao inteligente para WhatsApp</div>
-  </div>
-  </body></html>`;
-  }
-  
-  function renderUninstallPage() {
-    return `<!DOCTYPE html><html lang="pt-BR"><head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>WSM — Ate logo!</title>
-  <style>
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0a0a;color:#fff;overflow:hidden}
-  .bg{position:fixed;inset:0;pointer-events:none}
-  .dot{position:absolute;width:2px;height:2px;background:#02b875;border-radius:50%;opacity:0;animation:tw 3s ease-in-out infinite}
-  @keyframes tw{0%,100%{opacity:0;transform:scale(1)}50%{opacity:.7;transform:scale(1.8)}}
-  .card{position:relative;background:rgba(255,255,255,.04);backdrop-filter:blur(24px);border:1px solid rgba(2,184,117,.18);border-radius:24px;padding:48px 40px;max-width:480px;width:90%;text-align:center;box-shadow:0 32px 64px rgba(0,0,0,.65)}
-  .wave{font-size:54px;animation:wv 2s ease-in-out infinite;display:inline-block;transform-origin:bottom right}
-  @keyframes wv{0%,100%{transform:rotate(0)}20%{transform:rotate(-15deg)}40%{transform:rotate(10deg)}60%{transform:rotate(-10deg)}80%{transform:rotate(5deg)}}
-  h1{font-size:26px;font-weight:700;margin:18px 0 8px;background:linear-gradient(90deg,#02b875,#00ff87);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-  .sub{color:rgba(255,255,255,.55);font-size:15px;margin-bottom:26px;line-height:1.65}
-  .msg{background:rgba(2,184,117,.07);border-left:3px solid #02b875;border-radius:8px;padding:16px 18px;margin-bottom:26px;text-align:left;font-size:14px;color:rgba(255,255,255,.72);line-height:1.7}
-  .fb{margin-bottom:22px}
-  .fb p{font-size:13px;color:rgba(255,255,255,.45);margin-bottom:10px}
-  .sr{display:flex;gap:6px;justify-content:center}
-  .sb{font-size:28px;cursor:pointer;transition:transform .15s;filter:grayscale(1);opacity:.45}
-  .sb:hover,.sb.active{filter:none;opacity:1;transform:scale(1.2);color:#02b875}
-  .btn{display:inline-block;padding:13px 28px;background:linear-gradient(135deg,#02b875,#00cc6a);color:#0a0a0a;font-weight:700;font-size:15px;border-radius:12px;text-decoration:none;transition:transform .2s,box-shadow .2s;margin-right:8px}
-  .btn:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(2,184,117,.5)}
-  .btn-g{background:transparent;border:1px solid rgba(255,255,255,.18);color:rgba(255,255,255,.65);margin-right:0}
-  .btn-g:hover{box-shadow:0 8px 24px rgba(255,255,255,.08)}
-  .badge{margin-top:22px;font-size:12px;color:rgba(255,255,255,.22)}
-  </style></head><body>
-  <div class="bg" id="bg"></div>
-  <div class="card">
-    <div class="wave">&#128075;</div>
-    <h1>Nos vemos em breve!</h1>
-    <p class="sub">O WSM foi desinstalado do seu navegador.<br>Sentiremos sua falta por aqui.</p>
-    <div class="msg">
-      Obrigado por ter usado o WSM! Se algo nao funcionou como esperado, adorariamos saber o que aconteceu para poder melhorar. Sua opiniao e muito importante para nos.
-    </div>
-    <div class="fb">
-      <p>Como foi sua experiencia com o WSM?</p>
-      <div class="sr" id="rating">
-        <span class="sb" data-v="1">&#9733;</span>
-        <span class="sb" data-v="2">&#9733;</span>
-        <span class="sb" data-v="3">&#9733;</span>
-        <span class="sb" data-v="4">&#9733;</span>
-        <span class="sb" data-v="5">&#9733;</span>
-      </div>
-    </div>
-    <a class="btn" href="https://web.whatsapp.com" target="_blank">Reinstalar</a>
-    <a class="btn btn-g" href="mailto:suporte@watidy.com.br">Enviar Feedback</a>
-    <div class="badge">WSM &mdash; Ate a proxima!</div>
-  </div>
-  <script>
-  (function(){
-    var c=document.getElementById('bg');
-    for(var i=0;i<70;i++){
-      var d=document.createElement('div');
-      d.className='dot';
-      d.style.left=Math.random()*100+'%';
-      d.style.top=Math.random()*100+'%';
-      d.style.animationDelay=Math.random()*3+'s';
-      d.style.animationDuration=(2+Math.random()*2)+'s';
-      c.appendChild(d);
-    }
-    var btns=document.querySelectorAll('.sb');
-    btns.forEach(function(b){
-      b.addEventListener('click',function(){
-        var v=parseInt(b.dataset.v);
-        btns.forEach(function(x){x.classList.toggle('active',parseInt(x.dataset.v)<=v);});
-      });
-    });
-  })();
-  </script>
-  </body></html>`;
-  }
-  
-  // ── WSM Client Portal ───────────────────────────────────────────────────────
-  const CLIENT_PANEL_RE = /^\/([a-z0-9]{16,32})\/(auth-painel|login|recovery|auth-plugin|redirect-plugin-register|register)\/?$/i;
-  
-  function renderClientLogin(storeId) {
-    return `<!DOCTYPE html><html lang="pt-BR"><head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>WSM — Portal do Cliente</title>
-  <style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace;color:#e8e8f4}.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:40px 36px;width:100%;max-width:420px;text-align:center}.logo{font-size:24px;font-weight:800;color:#00ff87;margin-bottom:8px}.sub{color:#8a8aaa;font-size:13px;margin-bottom:24px}label{display:block;text-align:left;font-size:12px;color:#8a8aaa;text-transform:uppercase;margin-bottom:8px}input{width:100%;padding:12px 14px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:8px;color:#00ff87;font-family:monospace;font-size:14px;outline:none;margin-bottom:16px}input:focus{border-color:#00ff87}.btn{width:100%;padding:14px;background:#00ff87;border:none;border-radius:8px;color:#000;font-weight:800;font-size:15px;cursor:pointer;transition:opacity .2s}.btn:hover{opacity:.85}.err{background:#ff475715;border:1px solid #ff4757;border-radius:8px;color:#ff4757;padding:11px 14px;font-size:13px;margin-bottom:14px}</style>
-  </head><body>
-  <div class="card">
-    <div class="logo">⚡ WSM</div>
-    <div class="sub">Login — Portal do Cliente</div>
-    <form method="POST" action="/WSM/${escHtml(storeId)}/login">
-      <label>Email ou Chave</label>
-      <input type="text" name="credential" autocomplete="off" placeholder="sua@chave.com ou wt-xxxxx-xxxxx-xxxxx">
-      <label>Senha</label>
-      <input type="password" name="password">
-      <button type="submit" class="btn">Entrar</button>
-    </form>
-  </div>
-  </body></html>`;
-  }
-  
-  function renderClientRecovery(storeId) {
-    return `<!DOCTYPE html><html lang="pt-BR"><head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>WSM — Recuperação de Acesso</title>
-  <style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace;color:#e8e8f4}.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:40px 36px;width:100%;max-width:420px;text-align:center}.logo{font-size:24px;font-weight:800;color:#00ff87;margin-bottom:8px}.sub{color:#8a8aaa;font-size:13px;margin-bottom:24px}label{display:block;text-align:left;font-size:12px;color:#8a8aaa;text-transform:uppercase;margin-bottom:8px}input{width:100%;padding:12px 14px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:8px;color:#00ff87;font-family:monospace;font-size:14px;outline:none;margin-bottom:16px}input:focus{border-color:#00ff87}.btn{width:100%;padding:14px;background:#00ff87;border:none;border-radius:8px;color:#000;font-weight:800;font-size:15px;cursor:pointer;transition:opacity .2s}.btn:hover{opacity:.85}</style>
-  </head><body>
-  <div class="card">
-    <div class="logo">⚡ WSM</div>
-    <div class="sub">Recuperação de Acesso</div>
-    <form method="POST" action="/WSM/${escHtml(storeId)}/recovery">
-      <label>Email</label>
-      <input type="email" name="email" autocomplete="email" placeholder="seu@email.com">
-      <button type="submit" class="btn">Enviar Link</button>
-    </form>
-  </div>
-  </body></html>`;
-  }
-  
-  function renderClientRegister(storeId) {
-    return `<!DOCTYPE html><html lang="pt-BR"><head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>WSM — Cadastro</title>
-  <style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace;color:#e8e8f4}.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:40px 36px;width:100%;max-width:420px;text-align:center}.logo{font-size:24px;font-weight:800;color:#00ff87;margin-bottom:8px}.sub{color:#8a8aaa;font-size:13px;margin-bottom:24px}label{display:block;text-align:left;font-size:12px;color:#8a8aaa;text-transform:uppercase;margin-bottom:8px}input{width:100%;padding:12px 14px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:8px;color:#00ff87;font-family:monospace;font-size:14px;outline:none;margin-bottom:16px}input:focus{border-color:#00ff87}.btn{width:100%;padding:14px;background:#00ff87;border:none;border-radius:8px;color:#000;font-weight:800;font-size:15px;cursor:pointer;transition:opacity .2s}.btn:hover{opacity:.85}</style>
-  </head><body>
-  <div class="card">
-    <div class="logo">⚡ WSM</div>
-    <div class="sub">Criar sua conta</div>
-    <form method="POST" action="/WSM/${escHtml(storeId)}/register">
-      <label>Nome</label>
-      <input type="text" name="name" autocomplete="name" placeholder="Seu nome">
-      <label>Email</label>
-      <input type="email" name="email" autocomplete="email" placeholder="seu@email.com">
-      <label>Senha</label>
-      <input type="password" name="password" autocomplete="new-password">
-      <button type="submit" class="btn">Criar Conta</button>
-    </form>
-  </div>
-  </body></html>`;
-  }
-
-  // "Minha Conta" (auth-painel) — painel completo do cliente autenticado PELA CHAVE
-  // (bearer_token que a extensao ja possui via ?token=). NAO exige login por email/senha.
-  function renderClientAuthPainel(storeId, token, page, rec) {
-      const st = rec ? keyStatus(rec, rec.code || '') : 'blocked';
-      const premium = rec ? buildUserPremium(rec.code || '', rec) : null;
-      const name = escHtml(rec ? (rec.label || rec.code || 'Usuário') : '—');
-      const keyCode = rec ? (rec.code || token) : token;
-      const plan = premium ? (premium.premium ? 'PREMIUM' : 'Gratuito') : '—';
-      const isPremium = premium && premium.premium;
-      const isDeferred = rec && rec.expireDuration && !rec.expiresAt;
-      const statusLabel = isDeferred ? 'Aguardando 1° uso' : (st === 'active' ? 'Ativa' : st === 'free' ? 'Gratuita' : st === 'expired' ? 'Expirada' : 'Bloqueada');
-      const statusColor = isDeferred ? '#7c6fff' : (st === 'active' || st === 'free' ? '#00e676' : st === 'expired' ? '#ffa726' : '#ef5350');
-      const statusBg = isDeferred ? 'rgba(124,111,255,0.1)' : (st === 'active' || st === 'free' ? 'rgba(0,230,118,0.1)' : st === 'expired' ? 'rgba(255,167,38,0.1)' : 'rgba(239,83,80,0.1)');
-      const expiresAt = isDeferred ? 'Ativa ao 1° uso' : (rec && rec.expiresAt ? new Date(rec.expiresAt).toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric'}) : '—');
-      const createdAt = rec && rec.createdAt ? new Date(rec.createdAt).toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
-      const phones  = rec && Array.isArray(rec.phones)  ? rec.phones  : [];
-      const devicesArr = rec && Array.isArray(rec.devices) ? rec.devices : [];
-      const lastPhone = rec && rec.lastPhone ? rec.lastPhone : phones.length > 0 ? phones[phones.length-1] : '';
-      const uses = phones.length + devicesArr.filter(d => d.startsWith('ip:')).length;
-      const maxUses = rec && rec.maxUses > 0 ? rec.maxUses : '∞';
-      const devPct = rec && rec.maxUses > 0 ? Math.min(100, Math.round((uses / rec.maxUses) * 100)) : 0;
-      const keyDisplay = escHtml(keyCode);
-      const keyMasked = keyCode.length > 12 ? escHtml(keyCode.substring(0,4)) + '••••••••' + escHtml(keyCode.substring(keyCode.length-4)) : escHtml(keyCode);
-      const avatarLetter = name && name !== '—' ? name.charAt(0).toUpperCase() : 'U';
-      const planBadge = isPremium ? '<span class="plan-badge premium">✶ PREMIUM</span>' : '<span class="plan-badge free">GRATUITO</span>';
-      const year = new Date().getFullYear();
-      const keyJs = keyCode.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-    
-      const phonesHtml = phones.length === 0
-        ? '<div class="no-phones"><span>Nenhum número registrado ainda</span></div>'
-        : phones.map(function(ph){ return '<div class="phone-chip">+' + escHtml(ph) + '</div>'; }).join('');
-    
-      const devBarHtml = rec && rec.maxUses > 0
-        ? '<div class="dbw"><div class="dbl"><span>' + devPct + '% usado</span><span>' + (rec.maxUses - uses) + ' disponível</span></div><div class="db"><div class="dbf" style="width:' + devPct + '%"></div></div></div>'
-        : '';
-      const lastPhoneDisp = lastPhone ? ('+' + escHtml(lastPhone)) : '&mdash;';
-      const expClss = isDeferred ? 'purple' : '';
-    
-      const parts = [];
-      parts.push('<!DOCTYPE html><html lang="pt-BR"><head>');
-      parts.push('<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">');
-      parts.push('<title>WSM &mdash; Minha Conta</title>');
-      parts.push('<link rel="preconnect" href="https://fonts.googleapis.com">');
-      parts.push('<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>');
-      parts.push('<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Syne:wght@700;800&display=swap" rel="stylesheet">');
-      parts.push('<style>');
-      parts.push('*{box-sizing:border-box;margin:0;padding:0}');
-      parts.push(':root{');
-      parts.push('  --g:#00e676;--gd:rgba(0,230,118,.12);--gb:rgba(0,230,118,.2);');
-      parts.push('  --pu:#7c6fff;--bg:#07070f;--s1:#0d0d1a;--s2:#12121f;--s3:#17172a;');
-      parts.push('  --bd:#1c1c30;--bd2:#252540;--tx:#e4e4f0;--mu:#6e6e8e;--mu2:#454560;');
-      parts.push('  --rd:#ef5350;--am:#ffa726;--fn:"Inter",sans-serif;--fh:"Syne",sans-serif');
-      parts.push('}');
-      parts.push('body{background:var(--bg);min-height:100vh;font-family:var(--fn);color:var(--tx);-webkit-font-smoothing:antialiased;background-image:radial-gradient(ellipse 60% 40% at 50% -10%,rgba(0,230,118,.05) 0%,transparent 70%)}');
-      parts.push('::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:var(--bd);border-radius:10px}');
-      parts.push('nav{display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:60px;background:rgba(13,13,26,.85);backdrop-filter:blur(16px);border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:100}');
-      parts.push('.nb{display:flex;align-items:center;gap:10px}');
-      parts.push('.nl{width:32px;height:32px;background:var(--gd);border:1px solid var(--gb);border-radius:8px;display:flex;align-items:center;justify-content:center}');
-      parts.push('.nt{font-family:var(--fh);font-size:17px;font-weight:800;color:var(--tx);letter-spacing:-.3px}');
-      parts.push('.nt b{color:var(--g)}');
-      parts.push('.na{display:flex;align-items:center;gap:10px}');
-      parts.push('.sp{display:flex;align-items:center;gap:6px;padding:5px 12px;background:var(--gd);border:1px solid rgba(0,230,118,.15);border-radius:20px;font-size:11px;font-weight:600;color:var(--g);letter-spacing:.3px}');
-      parts.push('.sp i{width:6px;height:6px;border-radius:50%;background:var(--g);box-shadow:0 0 6px var(--g);animation:bl 2s ease-in-out infinite;font-style:normal;display:inline-block}');
-      parts.push('@keyframes bl{0%,100%{opacity:1}50%{opacity:.3}}');
-      parts.push('.blo{padding:7px 16px;background:transparent;border:1px solid var(--bd2);border-radius:8px;color:var(--mu);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--fn);transition:all .2s}');
-      parts.push('.blo:hover{border-color:var(--rd);color:var(--rd);background:rgba(239,83,80,.06)}');
-      parts.push('.wrap{max-width:900px;margin:0 auto;padding:32px 20px 60px}');
-      parts.push('.hc{position:relative;background:var(--s1);border:1px solid var(--bd);border-radius:20px;padding:32px;margin-bottom:20px;overflow:hidden}');
-      parts.push('.hc::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(0,230,118,.3),transparent)}');
-      parts.push('.hg{position:absolute;top:-60px;right:-60px;width:220px;height:220px;background:radial-gradient(circle,rgba(0,230,118,.06) 0%,transparent 70%);pointer-events:none}');
-      parts.push('.hi{display:flex;align-items:flex-start;gap:20px;position:relative}');
-      parts.push('.av{width:64px;height:64px;border-radius:16px;background:linear-gradient(135deg,rgba(0,230,118,.14),rgba(124,111,255,.1));border:1px solid var(--gb);display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-size:26px;font-weight:800;color:var(--g);flex-shrink:0}');
-      parts.push('.hb{flex:1;min-width:0}');
-      parts.push('.hn{font-family:var(--fh);font-size:24px;font-weight:800;color:var(--tx);letter-spacing:-.5px;margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}');
-      parts.push('.hk{font-family:monospace;font-size:12px;color:var(--mu);letter-spacing:1.5px;margin-bottom:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}');
-      parts.push('.hkv{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px}');
-      parts.push('.cm{background:none;border:1px solid var(--bd2);border-radius:5px;color:var(--mu);font-size:10px;padding:2px 8px;cursor:pointer;font-family:var(--fn);transition:all .15s}');
-      parts.push('.cm:hover{border-color:var(--g);color:var(--g)}');
-      parts.push('.ht{display:flex;flex-wrap:wrap;gap:8px}');
-      parts.push('.tag{display:inline-flex;align-items:center;padding:5px 13px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;border:1px solid}');
-      parts.push('.pb{display:inline-flex;align-items:center;padding:5px 13px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;border:1px solid}');
-      parts.push('.pb.pm{color:#ffd700;border-color:rgba(255,215,0,.3);background:rgba(255,215,0,.08)}');
-      parts.push('.pb.fr{color:var(--mu);border-color:var(--bd2);background:var(--s2)}');
-      parts.push('.sr{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:20px}');
-      parts.push('.sc{background:var(--s1);border:1px solid var(--bd);border-radius:12px;padding:20px 22px;transition:border-color .2s}');
-      parts.push('.sc:hover{border-color:var(--bd2)}');
-      parts.push('.si{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;margin-bottom:14px;background:var(--s2);border:1px solid var(--bd)}');
-      parts.push('.sl{font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--mu);margin-bottom:5px}');
-      parts.push('.sv{font-size:18px;font-weight:700;color:var(--tx);letter-spacing:-.3px}');
-      parts.push('.sv.sm{font-size:14px;font-family:monospace;letter-spacing:.5px}');
-      parts.push('.sv.pu{color:var(--pu)}');
-      parts.push('.dbw{margin-top:10px}');
-      parts.push('.dbl{display:flex;justify-content:space-between;font-size:11px;color:var(--mu);margin-bottom:6px}');
-      parts.push('.db{height:4px;background:var(--s3);border-radius:18px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.02)');
-      parts.push('.dbf{height:100%;background:linear-gradient(90deg,var(--g),rgba(0,230,118,.4));border-radius:10px}');
-      parts.push('.ks{background:var(--s1);border:1px solid var(--bd);border-radius:12px;padding:22px;margin-bottom:20px}');
-      parts.push('.st{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--mu);margin-bottom:16px;display:flex;align-items:center;gap:10px}');
-      parts.push('.st::after{content:"";flex:1;height:1px;background:var(--bd)}');
-      parts.push('.kd{display:flex;align-items:center;gap:10px;background:var(--s2);border:1px solid var(--bd);border-radius:9px;padding:12px 16px}');
-      parts.push('.kt{font-family:monospace;font-size:13px;color:var(--tx);letter-spacing:1.5px;flex:1;word-break:break-all;line-height:1.6}');
-      parts.push('.cb{background:var(--s3);border:1px solid var(--bd2);border-radius:7px;color:var(--mu);font-size:12px;padding:7px 14px;cursor:pointer;font-family:var(--fn);font-weight:500;transition:all .15s;white-space:nowrap}');
-      parts.push('.cb:hover{border-color:var(--g);color:var(--g);background:var(--gd)}');
-      parts.push('.ps{background:var(--s1);border:1px solid var(--bd);border-radius:12px;padding:22px;margin-bottom:20px}');
-      parts.push('.pg{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}');
-      parts.push('.pc{background:var(--s2);border:1px solid var(--bd2);border-radius:8px;padding:7px 14px;font-size:13px;color:var(--tx);font-family:monospace;transition:border-color .15s}');
-      parts.push('.pc:hover{border-color:var(--gb)}');
-      parts.push('.np{color:var(--mu);font-size:13px;padding:4px 0}');
-      parts.push('.ft{text-align:center;padding:28px 20px 20px;font-size:12px;color:var(--mu2)}');
-      parts.push('@media(max-width:600px){.hi{flex-direction:column;gap:14px}.nt{display:none}.hn{font-size:20px}.sr{grid-template-columns:1fr 1fr}.wrap{padding:20px 14px 50px}}');
-      parts.push('</style></head><body>');
-      parts.push('<nav>');
-      parts.push('  <div class="nb">');
-      parts.push('    <div class="nl"><svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4" stroke="#00e676" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="9" stroke="#00e676" stroke-width="1.5"/></svg></div>');
-      parts.push('    <span class="nt">W<b>S</b>M</span>');
-      parts.push('  </div>');
-      parts.push('  <div class="na">');
-      parts.push('    <div class="sp"><i></i>ONLINE</div>');
-      parts.push('    <button class="blo" id="btn-sair">Sair</button>');
-      parts.push('  </div>');
-      parts.push('</nav>');
-      parts.push('<div class="wrap">');
-      parts.push('  <div class="hc">');
-      parts.push('    <div class="hg"></div>');
-      parts.push('    <div class="hi">');
-      parts.push('      <div class="av">' + avatarLetter + '</div>');
-      parts.push('      <div class="hb">');
-      parts.push('        <div class="hn">' + name + '</div>');
-      parts.push('        <div class="hk"><span class="hkv">' + keyMasked + '</span><button class="cm" id="cpb-mini">Copiar</button></div>');
-      parts.push('        <div class="ht">');
-      parts.push('          <span class="tag" style="color:' + statusColor + ';border-color:' + statusColor + ';background:' + statusBg + '">' + statusLabel + '</span>');
-      parts.push('          ' + planBadge);
-      parts.push('        </div>');
-      parts.push('      </div>');
-      parts.push('    </div>');
-      parts.push('  </div>');
-      parts.push('  <div class="sr">');
-      parts.push('    <div class="sc">');
-      parts.push('      <div class="si"><svg width="16" height="16" fill="none" stroke="#00e676" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/></svg></div>');
-      parts.push('      <div class="sl">Dispositivos</div>');
-      parts.push('      <div class="sv">' + uses + ' <span style="color:var(--mu);font-size:14px">/ ' + maxUses + '</span></div>');
-      parts.push(devBarHtml);
-      parts.push('    </div>');
-      parts.push('    <div class="sc">');
-      parts.push('      <div class="si"><svg width="16" height="16" fill="none" stroke="' + (isDeferred ? '#7c6fff' : statusColor) + '" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>');
-      parts.push('      <div class="sl">Expira em</div>');
-      parts.push('      <div class="sv sm ' + expClss + '">' + expiresAt + '</div>');
-      parts.push('    </div>');
-      parts.push('    <div class="sc">');
-      parts.push('      <div class="si"><svg width="16" height="16" fill="none" stroke="#6e6e8e" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18" stroke-linecap="round"/></svg></div>');
-      parts.push('      <div class="sl">Cadastrado em</div>');
-      parts.push('      <div class="sv sm">' + createdAt + '</div>');
-      parts.push('    </div>');
-      parts.push('    <div class="sc">');
-      parts.push('      <div class="si"><svg width="16" height="16" fill="none" stroke="#6e6e8e" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg></div>');
-      parts.push('      <div class="sl">Ultimo numero</div>');
-      parts.push('      <div class="sv sm">' + lastPhoneDisp + '</div>');
-      parts.push('    </div>');
-      parts.push('  </div>');
-      parts.push('  <div class="ks">');
-      parts.push('    <div class="st">Chave de acesso</div>');
-      parts.push('    <div class="kd">');
-      parts.push('      <div class="kt" id="key-full">' + keyDisplay + '</div>');
-      parts.push('      <button class="cb" id="cpb-main">Copiar chave</button>');
-      parts.push('    </div>');
-      parts.push('  </div>');
-      parts.push('  <div class="ps">');
-      parts.push('    <div class="st">Numeros registrados (' + phones.length + ')</div>');
-      parts.push('    <div class="pg">' + phonesHtml + '</div>');
-      parts.push('  </div>');
-      parts.push('</div>');
-      parts.push('<div class="ft">&copy; ' + year + ' WSM &middot; Todos os direitos reservados</div>');
-      parts.push('<script>');
-      parts.push('(function(){');
-      parts.push('  var KEY = document.getElementById("key-full").textContent;');
-      parts.push('  var LOGOUT = "/WSM/' + storeId + '/login";');
-      parts.push('  function doCopy(btn,orig){');
-      parts.push('    navigator.clipboard.writeText(KEY).then(function(){');
-      parts.push('      btn.textContent = "Copiado!";');
-      parts.push('      setTimeout(function(){ btn.textContent = orig; }, 1500);');
-      parts.push('    });');
-      parts.push('  }');
-      parts.push('  var m = document.getElementById("cpb-mini");');
-      parts.push('  if(m) m.addEventListener("click", function(){ doCopy(m,"Copiar"); });');
-      parts.push('  var b = document.getElementById("cpb-main");');
-      parts.push('  if(b) b.addEventListener("click", function(){ doCopy(b,"Copiar chave"); });');
-      parts.push('  var s = document.getElementById("btn-sair");');
-      parts.push('  if(s) s.addEventListener("click", function(){ window.location.href = LOGOUT; });');
-      parts.push('})();');
-      parts.push('<\/script>');
-      parts.push('</body></html>');
-      return parts.join('\n');
-    }
-
-  async function handleClientPanel(req, res, pathname, url) {
-    const m = CLIENT_PANEL_RE.exec(pathname);
-    if (!m) return false;
-    const storeId = m[1];
-    const action  = m[2].toLowerCase();
-    const _ip     = getIp(req);
-    // Estas rotas validam chave de licença / bearer. Sem throttle era possível
-    // enumerar chaves válidas em rajada (uma tentativa por request, sem limite).
-    const _throttled = (action === 'login' || action === 'auth-plugin' || action === 'auth-painel');
-    if (_throttled && !checkRateLimit(_ip, 'ext_key_legacy')) {
-      sendExtensionRateLimited(res, _ip, 'ext_key_legacy', { success: false, msg_id: 'rate_limited' });
-      return true;
-    }
-    // "auth-painel" (Minha Conta): a extensão abre com ?token=<bearer_token> — a
-    // sessão que ela JÁ possui. Autenticamos por esse token e mostramos a conta,
-    // SEM exigir novo login (o cliente já entrou pela chave na extensão).
-    if (action === 'auth-painel' && req.method === 'GET') {
-      const token = ((url && url.searchParams && url.searchParams.get('token')) || '').trim();
-      const page  = (url && url.searchParams && url.searchParams.get('page')) || '';
-      if (token) {
-        let rec = await findKeyByBearer(token);
-        if (!rec) rec = await findLicenseByCode(token);
-        if (rec) { sendHtml(res, renderClientAuthPainel(storeId, token, page, rec)); return true; }
-      }
-      // Sem token válido → login por chave (fallback, ex.: aberto direto no navegador)
-      sendHtml(res, renderClientLogin(storeId));
-      return true;
-    }
-    if (action === 'login' || action === 'auth-painel') {
-      if (req.method === 'GET') {
-        sendHtml(res, renderClientLogin(storeId));
-        return true;
-      }
-      if (req.method === 'POST') {
-        const body = await parseBody(req);
-        const credential = normKey(body.credential || body.email || body.key || '');
-        const rec = await findLicenseByCode(credential);
-        if (!rec) {
-          sendJson(res, { success: false, msg_id: 'invalid_credential' }, 401);
-          return true;
-        }
-        const result = await authSuccess(credential, rec);
-        sendJson(res, result.ok ? result.body : { success: false, msg_id: result.msg_id });
-        return true;
-      }
-    }
-    if (action === 'recovery') {
-      sendHtml(res, renderClientRecovery(storeId));
-      return true;
-    }
-    if (action === 'register' || action === 'redirect-plugin-register') {
-      sendHtml(res, renderClientRegister(storeId));
-      return true;
-    }
-    if (action === 'auth-plugin') {
-      if (req.method === 'POST') {
-        const body = await parseBody(req);
-        const credential = normKey(body.credential || body.code || body.key || '');
-        const rec = await findLicenseByCode(credential);
-        if (!rec) { sendJson(res, { success: false, msg_id: 'invalid_credential' }, 401); return true; }
-        const result = await authSuccess(credential, rec);
-        sendJson(res, result.ok ? result.body : { success: false, msg_id: result.msg_id });
-        return true;
-      }
-      sendHtml(res, renderClientLogin(storeId));
-      return true;
-    }
-    return false;
-  }
-  
-
-  function renderChangelogPage() {
-    const entries = [...changelog].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-    const rows = entries.length === 0
-      ? '<div style="text-align:center;padding:40px;color:#666">Nenhuma atualização cadastrada ainda.</div>'
-      : entries.map(e => `
-        <div style="background:#1a1a2e;border:1px solid #2a2a4a;border-radius:12px;padding:24px;margin-bottom:16px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-            <span style="font-size:18px;font-weight:700;color:#3ddc84">${escHtml(e.title||'Atualização')}</span>
-            <span style="font-size:13px;color:#888;background:#111;padding:4px 10px;border-radius:20px">${escHtml(e.version||'')} — ${escHtml(e.date||'')}</span>
-          </div>
-          <ul style="margin:0;padding-left:20px;color:#ccc;line-height:1.8">
-            ${(e.items||[]).map(i=>`<li>${escHtml(i)}</li>`).join('')}
-          </ul>
-        </div>`).join('');
-    return `<!DOCTYPE html><html lang="pt-BR"><head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Atualizações — WSM</title>
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
-  <style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0d0d14;color:#e5e7eb;font-family:'Syne',sans-serif;min-height:100vh;padding:40px 20px}
-  .wrap{max-width:720px;margin:0 auto}.logo{font-size:28px;font-weight:800;color:#3ddc84;margin-bottom:8px}
-  .sub{color:#888;font-size:14px;margin-bottom:32px;border-bottom:1px solid #222;padding-bottom:20px}</style>
-  </head><body><div class="wrap">
-  <div class="logo">WSM</div>
-  <div class="sub">Histórico de Atualizações</div>
-  ${rows}
-  </div></body></html>`;
-  }
-  // ── WSM logs de LOGIN da extensão (formato do painel admin: keyCode/label/phone/ip/action) ──
-  let wsmExtLogs = [];
-  function addWsmExtLog(entry) {
-    wsmExtLogs.unshift({
-      keyCode:    String(entry.keyCode || '').slice(0, 32),
-      label:      String(entry.label || '').slice(0, 80),
-      phone:      String(entry.phone || '').slice(0, 20),
-      ip:         String(entry.ip || '').slice(0, 45),
-      wppVersion: String(entry.wppVersion || '').slice(0, 40),
-      action:     String(entry.action || 'login').slice(0, 30),
-      timestamp:  new Date().toISOString(),
-    });
-    if (wsmExtLogs.length > 500) wsmExtLogs = wsmExtLogs.slice(0, 500);
-    // persiste em watidy.store (_id:'ext_logs')
-    getDb().then(d => d.collection('store').updateOne(
-      { _id: 'ext_logs' }, { $set: { data: wsmExtLogs.slice(0, 500), updatedAt: new Date() } }, { upsert: true }
-    )).catch(() => {});
-  }
-  async function ensureExtLogsLoaded() {
-    if (wsmExtLogs.length) return;
-    try { const d = await getDb(); const doc = await d.collection('store').findOne({ _id: 'ext_logs' }); if (doc && Array.isArray(doc.data)) wsmExtLogs = doc.data; } catch {}
-  }
-
-  // ── wsmAdapt: ajusta HTML ZVM para namespace /WSM ──────────────
-  function wsmAdapt(html) {
-    const _esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const wsmAdminPath = '/WSM' + WSM_R_ADMIN;
-    return html
-      // Branding
-      .replace(/ZVM Admin v\d+/g, 'WSM Admin')
-      .replace(/\bZVM\b/g, 'WSM')
-      .replace(/ZapVoice/g, 'WSM')
-      // Prefixo de chave zv- → wt- (placeholders, exemplos e domínio de e-mail)
-      .replace(/\bzv-xxxxx/gi, 'wt-xxxxx')
-      .replace(/@zapvoice\.com\.br/gi, '@watidy.com.br')
-      .replace(/zapvoice\.com\.br/gi, 'watidy.com.br')
-      // Substitui slugs ZVM resolvidos (action/href injetados) pelo equivalente WSM
-      // ANTES de adicionar prefixo /WSM/ para não duplicar
-      .replace(new RegExp(_esc(R_ADMIN), 'g'), wsmAdminPath)
-      // Atualiza variáveis JS _RA/_RM
-      .replace(/const _RA='[^']*'/g, `const _RA='${wsmAdminPath}'`)
-      // form actions com / raiz restantes → /WSM/
-      .replace(/action="\/(?!WSM\/|http|#)/g, 'action="/WSM/')
-      // hrefs internos restantes → /WSM/
-      .replace(/href="\/(?!WSM\/|http|\/\/|#|data:)/g, 'href="/WSM/')
-      // fetch() com / raiz → /WSM/
-      .replace(/fetch\('\/(?!WSM\/)/g, "fetch('/WSM/")
-      .replace(/fetch\(`\/(?!WSM\/)/g, 'fetch(`/WSM/')
-      .replace(/fetch\("\/(?!WSM\/)/g, 'fetch("/WSM/')
-      // JS redirects
-      .replace(/location\.href\s*=\s*'\/(?!WSM\/)/g, "location.href='/WSM/")
-      .replace(/location\.href\s*=\s*`\/(?!WSM\/)/g, 'location.href=`/WSM/');
-  }
-
-  // ── wsmLandingAdapt: substitui copy ZVM por copy WSM na landing ──
-  function wsmLandingAdapt(html) {
-    return html
-      // título e meta
-      .replace('ZVM — Automatize Mensagens de Voz no WhatsApp', 'WSM — CRM, Automações e Ferramentas de Venda no WhatsApp')
-      .replace('ZVM: extensão Chrome que automatiza áudios, textos e mídias no WhatsApp em segundos. Anti-ban integrado, multi-dispositivo e ativação imediata. A partir de R$39,90/mês.', 'WSM: CRM completo dentro do WhatsApp Web. Kanban de vendas, respostas rápidas, follow-up automático, agendamentos, fluxos de atendimento e IA. Ativação imediata.')
-      // eyebrow
-      .replace('Extensão Chrome · 100% das avaliações com 5 estrelas', 'Extensão Chrome · CRM completo dentro do WhatsApp')
-      // hero H1
-      .replace('Enquanto você digita,<br><em>seu concorrente</em><span>já mandou áudio pra 1.000 clientes</span>', 'Seu WhatsApp lota de conversa.<br><em>Quantas viram</em><span>venda de verdade?</span>')
-      // hero sub
-      .replace('O ZVM dispara mensagens de voz, textos e mídias em massa no WhatsApp — com anti-ban integrado e ativação em 5 minutos. Sua lista esfriando é dinheiro evaporando.', 'O WSM transforma seu WhatsApp Web em um CRM completo: funil Kanban, respostas rápidas, follow-up automático, agendamentos e bot de atendimento — sem sair da conversa. Lead esquecido é venda perdida.')
-      // CTA primário
-      .replace('🚀 Quero disparar hoje', '🚀 Quero organizar minhas vendas')
-      // trust pills
-      .replace('<span class="trust-pill"><span class="trust-pill-icon">✓</span> Anti-ban que protege seu número</span>', '<span class="trust-pill"><span class="trust-pill-icon">✓</span> CRM no WhatsApp, ativação na hora</span>')
-      // stat 1
-      .replace('<div class="stat-item"><div class="stat-num">5×</div><div class="stat-lbl">Mais abertura que texto</div></div>', '<div class="stat-item"><div class="stat-num">+40</div><div class="stat-lbl">Ferramentas num só painel</div></div>')
-      // steps heading
-      .replace('<h2 class="sh-title">Hoje você compra.<br>Hoje você dispara.</h2>', '<h2 class="sh-title">Hoje você ativa.<br>Hoje você organiza.</h2>')
-      .replace('<p class="sh-sub">Sem reunião de onboarding, sem semana de implantação. Três passos e sua campanha está no ar.</p>', '<p class="sh-sub">Sem reunião de onboarding, sem semana de implantação. Três passos e seu CRM está rodando dentro do WhatsApp.</p>')
-      // passo 02
-      .replace('Adicione o ZVM ao Chrome, cole sua chave e conecte o WhatsApp. Se você sabe copiar e colar, você sabe usar o ZVM.', 'Adicione o WSM ao Chrome, cole sua chave e abra o WhatsApp Web. Se você sabe copiar e colar, você sabe usar o WSM.')
-      // passo 03
-      .replace('<div class="step-title">Dispare e vá cuidar do resto</div>', '<div class="step-title">Venda com processo, não com memória</div>')
-      .replace('Áudio, texto ou mídia para toda a lista, com intervalos inteligentes anti-ban. O ZVM trabalha — você só responde os interessados.', 'Arraste leads no funil, dispare respostas rápidas, deixe o follow-up e o bot trabalharem. O WSM cuida do processo — você só fecha.')
-      // features sub
-      .replace('Cada recurso existe por um motivo: colocar sua mensagem na frente do cliente sem colocar seu número em risco.', 'Cada recurso existe por um motivo: transformar conversa solta em pipeline de vendas — direto no WhatsApp Web.')
-      // 8 feature cards
-      .replace('<div class="fc"><span class="fc-icon">🎙️</span><div><div class="fc-name">Áudios em Massa</div><p class="fc-desc">Áudio é aberto até 5× mais que texto. Grave uma vez, dispare para milhares — sua voz vendendo em escala.</p></div></div>', '<div class="fc"><span class="fc-icon">📊</span><div><div class="fc-name">CRM Kanban</div><p class="fc-desc">Arraste cada conversa pelo funil: novo lead, negociando, fechado. Seu pipeline inteiro visível sem sair do WhatsApp.</p></div></div>')
-      .replace('<div class="fc"><span class="fc-icon">🛡️</span><div><div class="fc-name">Anti-Ban Avançado</div><p class="fc-desc">Intervalos inteligentes e rotação de padrões. Um número banido é uma carteira de clientes perdida — aqui isso não acontece por descuido.</p></div></div>', '<div class="fc"><span class="fc-icon">⚡</span><div><div class="fc-name">Respostas Rápidas</div><p class="fc-desc">Texto, áudio, mídia e sequências inteiras a um clique. Pare de digitar a mesma coisa 50 vezes por dia.</p></div></div>')
-      .replace('<div class="fc"><span class="fc-icon">📱</span><div><div class="fc-name">Multi-Dispositivo</div><p class="fc-desc">Até 10 números num painel só. Sua equipe inteira disparando sem trocar de aba, de conta ou de computador.</p></div></div>', '<div class="fc"><span class="fc-icon">🔁</span><div><div class="fc-name">Follow-up Automático</div><p class="fc-desc">Lead entrou na aba, o timer começa. Sem resposta em X horas? O WSM cobra por você — e para sozinho quando o cliente responde.</p></div></div>')
-      .replace('<div class="fc"><span class="fc-icon">⚡</span><div><div class="fc-name">Atualizações Automáticas</div><p class="fc-desc">O WhatsApp muda toda semana; o ZVM acompanha. Você nunca acorda com a ferramenta quebrada no meio da campanha.</p></div></div>', '<div class="fc"><span class="fc-icon">🤖</span><div><div class="fc-name">Bot de Atendimento</div><p class="fc-desc">Fluxos por palavra-chave, menus de lista e variáveis. Seu atendimento responde em segundos, 24/7, sem perder o tom humano.</p></div></div>')
-      .replace('<div class="fc"><span class="fc-icon">📤</span><div><div class="fc-name">Exportação de Contatos</div><p class="fc-desc">Exporte listas por etiqueta do WhatsApp Business e segmente na precisão. Mensagem certa para a lista certa.</p></div></div>', '<div class="fc"><span class="fc-icon">🗓️</span><div><div class="fc-name">Agendamentos</div><p class="fc-desc">Mensagem certa na hora certa, com recorrência. Cobrança, lembrete ou promoção — programada uma vez, entregue sempre.</p></div></div>')
-      // card Agendamento → Webhooks (slot 7)
-      .replace('<div class="fc"><span class="fc-icon">🗓️</span><div><div class="fc-name">Agendamento</div><p class="fc-desc">Programe o disparo para a hora que seu cliente responde. Follow-up automático enquanto você dorme.</p></div></div>', '<div class="fc"><span class="fc-icon">🔗</span><div><div class="fc-name">Webhooks e Integrações</div><p class="fc-desc">Cada evento — lead novo, follow-up, agendamento — notifica seu sistema. CRM externo, planilha ou ERP, tudo sincronizado.</p></div></div>')
-      // Quem constrói o ZVM
-      .replace('<div class="sh-tag">Quem constrói o ZVM</div>', '<div class="sh-tag">Quem constrói o WSM</div>')
-      // CTA final
-      .replace('<h2>Cada dia sem automação<br>é <em>lista esfriando</em></h2>', '<h2>Cada lead sem resposta<br>é <em>venda escapando</em></h2>')
-      .replace('Seu cliente vai receber um áudio hoje. A única dúvida é se vai ser o seu ou o do concorrente. Me chama — em 5 minutos sua chave está ativa.', 'Seu concorrente já organizou o funil e automatizou o follow-up. Me chama — em 5 minutos sua chave está ativa e seu WhatsApp vira CRM.')
-      // plans section copy
-      .replace('Acesso completo em todos os planos: mesmos recursos, mesmo anti-ban, mesmo suporte.', 'Acesso completo em todos os planos: mesmos recursos, mesma IA, mesmo suporte.');
-  }
-
-  // ── renderWsmFaq: FAQ específico do WSM ─────────────────────
-  function renderWsmFaq() {
-    const nav = wsmAdapt(_sharedNav('/faq', null));
-    const foot = wsmAdapt(_sharedFoot());
-    return `<!DOCTYPE html><html lang="pt-BR"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WSM — Perguntas Frequentes</title>
-${_GFONTS}
-<style>
-${_sharedCss()}
-.page-hero{padding:80px 48px 64px;text-align:center;background:radial-gradient(ellipse 60% 40% at 50% 0%,#00ff870d,transparent 70%)}
-.page-hero-tag{display:inline-block;font-size:11px;font-weight:700;color:var(--g);letter-spacing:2px;text-transform:uppercase;padding:5px 14px;border:1px solid var(--g-brd);border-radius:99px;margin-bottom:20px}
-.page-hero h1{font-size:clamp(28px,5vw,48px);font-weight:900;letter-spacing:-1.5px;margin-bottom:16px}
-.page-hero p{font-size:15px;color:var(--tx2);max-width:460px;margin:0 auto;line-height:1.6}
-.faq-wrap{max-width:720px;margin:0 auto;padding:0 48px 96px}
-.faq-cat{margin-bottom:48px}
-.faq-cat-title{font-size:13px;font-weight:700;color:var(--g);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:20px;display:flex;align-items:center;gap:10px}
-.faq-cat-title::after{content:'';flex:1;height:1px;background:var(--g-brd)}
-details.faq-item{border-bottom:1px solid var(--brd)}
-details.faq-item summary{padding:18px 0;cursor:pointer;font-size:15px;font-weight:700;list-style:none;display:flex;justify-content:space-between;align-items:center;color:var(--tx);user-select:none;gap:16px}
-details.faq-item summary::-webkit-details-marker{display:none}
-details.faq-item summary::after{content:'›';font-size:22px;color:var(--tx3);transition:transform .25s;flex-shrink:0;line-height:1}
-details.faq-item[open] summary{color:var(--g)}
-details.faq-item[open] summary::after{transform:rotate(90deg)}
-details.faq-item p{padding:0 0 20px;font-size:15px;color:var(--tx2);line-height:1.75}
-details.faq-item code{background:var(--bg3);border:1px solid var(--brd);border-radius:4px;padding:2px 7px;font-size:13px;color:var(--g);font-family:'Space Mono',monospace}
-@media(max-width:640px){.faq-wrap,.page-hero{padding-left:24px;padding-right:24px}}
-</style></head><body>
-${nav}
-<div class="page-hero">
-  <div class="page-hero-tag">FAQ</div>
-  <h1>Perguntas Frequentes</h1>
-  <p>Encontre respostas rápidas sobre o WSM. Não achou? Fale com o suporte.</p>
-</div>
-<div class="faq-wrap">
-
-<div class="faq-cat">
-<div class="faq-cat-title">Geral</div>
-<details class="faq-item"><summary>O que é o WSM?</summary><p>O WSM é uma extensão Chrome que transforma o WhatsApp Web em um CRM completo de vendas. Com ele você organiza leads no Kanban, envia respostas rápidas, cria follow-ups automáticos, agenda mensagens, monta fluxos de atendimento com bot e conecta IA — tudo sem sair da conversa.</p></details>
-<details class="faq-item"><summary>Como funciona o sistema de licença?</summary><p>Ao contratar um plano, você recebe uma chave única (ex: <code>wt-xxxxx-xxxxx-xxxxx</code>). Ela é inserida na extensão para ativação e fica vinculada ao(s) número(s) do seu plano. Cada número de WhatsApp conectado ocupa um slot.</p></details>
-<details class="faq-item"><summary>A extensão funciona em qual navegador?</summary><p>O WSM é compatível com Google Chrome e navegadores baseados em Chromium (Edge, Brave, Opera GX). Firefox e Safari não são suportados no momento.</p></details>
-<details class="faq-item"><summary>Preciso deixar o navegador aberto para funcionar?</summary><p>Sim. A extensão opera em conjunto com o WhatsApp Web aberto no navegador. O dispositivo precisa estar conectado à internet e com o Chrome ativo durante o uso dos recursos automáticos (follow-up, bot, agendamentos).</p></details>
-</div>
-
-<div class="faq-cat">
-<div class="faq-cat-title">Recursos</div>
-<details class="faq-item"><summary>O que é o Kanban de vendas?</summary><p>É um funil visual onde cada conversa do WhatsApp vira um card. Você cria colunas (ex: Novo Lead, Negociando, Fechado, Perdido) e arrasta os contatos conforme avançam. Assim você enxerga todo o pipeline de vendas sem precisar decorar quem está em qual etapa.</p></details>
-<details class="faq-item"><summary>Como funciona o follow-up automático?</summary><p>Você define um tempo (ex: 4 horas sem resposta) e uma mensagem de follow-up. Quando o timer expira para um contato, o WSM envia a mensagem automaticamente. Se o cliente responder antes, o timer é cancelado — sem mensagem duplicada ou fora de hora.</p></details>
-<details class="faq-item"><summary>O que são as Respostas Rápidas?</summary><p>São atalhos de teclado que expandem para mensagens completas — texto, áudio, mídia ou sequências. Você configura uma vez e dispara com um clique ou digitando o atalho na conversa. Ideal para saudações, orçamentos padrão e scripts de fechamento.</p></details>
-<details class="faq-item"><summary>Posso criar um bot de atendimento?</summary><p>Sim. O WSM tem fluxos de atendimento por palavra-chave: quando o cliente manda uma palavra específica (ex: "preço", "horário"), o bot responde com o conteúdo configurado, podendo incluir menus de lista, botões e variáveis como o nome do contato.</p></details>
-<details class="faq-item"><summary>O WSM funciona com IA?</summary><p>Sim. Você pode conectar Gemini, GPT ou Groq para sugerir e reescrever respostas antes de enviar. A IA analisa o contexto da conversa e propõe respostas — você aprova ou edita antes de disparar.</p></details>
-<details class="faq-item"><summary>Como funcionam os agendamentos?</summary><p>Você programa mensagens para uma data e hora específicas, com suporte a recorrência (diário, semanal, mensal). Funciona para cobranças, lembretes de consulta, promoções de datas comemorativas ou qualquer comunicação que precise de pontualidade.</p></details>
-</div>
-
-<div class="faq-cat">
-<div class="faq-cat-title">Chaves e Ativação</div>
-<details class="faq-item"><summary>Como verifico se minha chave está ativa?</summary><p>Acesse <a href="/WSM/verificar" style="color:var(--g)">verificar chave</a> neste portal e insira o código da sua chave. O sistema retorna o status, validade, plano e dispositivos vinculados em tempo real — sem necessidade de login.</p></details>
-<details class="faq-item"><summary>Quantos números posso conectar na minha chave?</summary><p>Depende do seu plano: Solo permite 1 número, Padrão permite 3, Pro permite 5 e Empresarial permite até 10. Você pode ver e remover dispositivos vinculados na consulta da chave ou pelo portal do cliente.</p></details>
-<details class="faq-item"><summary>Posso transferir minha chave para outro dispositivo?</summary><p>Sim. Pelo portal do cliente ou na tela de verificação da chave, você pode remover um número vinculado para liberar o slot e vincular um novo número.</p></details>
-<details class="faq-item"><summary>Onde fica o campo para inserir a chave na extensão?</summary><p>Ao abrir a extensão WSM no Chrome pela primeira vez (ou após logout), há um campo "Chave de Ativação". Cole o código recebido e clique em Ativar. A chave é validada automaticamente em tempo real.</p></details>
-</div>
-
-<div class="faq-cat">
-<div class="faq-cat-title">Portal do Cliente</div>
-<details class="faq-item"><summary>Como acesso o portal do cliente?</summary><p>Clique em ENTRAR no menu de navegação. Se ainda não tem conta, clique em "Cadastrar" e crie seu acesso com e-mail e senha. Após o cadastro, vincule sua chave de licença na área do cliente.</p></details>
-<details class="faq-item"><summary>O que posso fazer no portal do cliente?</summary><p>No portal você pode: ver o status e validade da sua chave, acompanhar dispositivos vinculados, verificar o plano ativo, consultar histórico de uso e solicitar suporte — tudo sem depender do vendedor para informações básicas.</p></details>
-<details class="faq-item"><summary>Esqueci minha senha do portal. Como recupero?</summary><p>Na tela de login clique em "Esqueci a senha". Insira seu e-mail e você receberá um link de redefinição. O link expira em 30 minutos por segurança.</p></details>
-</div>
-
-</div>
-${foot}
-${CANVAS_BG}</body></html>`;
-  }
-
-  // ── Portal do Cliente WSM (banco watidy, mesmas telas do ZVM adaptadas) ──
-  // Espelha o portal global do ZVM mas usando getDb() (watidy) e as chaves WSM.
-  // Todos os redirects apontam para /WSM/cliente*; renders passam por wsmAdapt.
-  async function wsmPortal(req, res, p, url, ip) {
-    const _redir = (loc) => { res.writeHead(302, { Location: '/WSM' + loc }); res.end(); };
-    const _html  = (h, code) => sendHtml(res, wsmAdapt(h), code || 200);
-
-    // Dashboard / raiz
-    if (p === '/cliente' || p === '/cliente/') {
-      if (!isPortalSession(req)) { _html(renderPortalLogin()); return true; }
-      const sess = getPortalUser(req);
-      try {
-        const db = await getDb();
-        const user = await db.collection('portal_users').findOne({ _id: sess.email });
-        if (!user) { res.setHeader('Set-Cookie','zv_portal=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict'); _html(renderPortalLogin()); return true; }
-        let keyData = null;
-        if (user.keyCode) {
-          await ensureKeyLoaded();
-          keyData = keys[user.keyCode] ? { ...keys[user.keyCode], code: user.keyCode } : null;
-        }
-        const _ok = url.searchParams.get('ok');
-        const _msg = _ok === '2fa_off' ? '2FA desativado com sucesso.' : _ok === '1' ? 'Operação realizada com sucesso.' : '';
-        _html(renderPortalDashboard(user, keyData, _msg)); return true;
-      } catch(e) { console.error('[WSM Portal] dashboard:', e.message); _html(renderPortalLogin('Erro temporário.')); return true; }
-    }
-
-    if (p === '/cliente/login' && req.method === 'GET') {
-      const _m = url.searchParams.get('msg');
-      if (_m === 'email_changed') { _html(renderPortalLogin('', '', 'E-mail alterado com sucesso! Faça login com o novo e-mail.')); return true; }
-      _redir('/cliente'); return true;
-    }
-    if (p === '/cliente/login' && req.method === 'POST') {
-      if (!checkRateLimit(ip, 'login')) { _html(renderPortalLogin('Muitas tentativas. Aguarde 10 minutos.'), 429); return true; }
-      const form = await parseFormBody(req);
-      const email = (form.get('email')||'').toLowerCase().trim().slice(0,100);
-      const pass  = (form.get('pass')||'').slice(0,128);
-      const redir = (form.get('redir')||'').slice(0,200);
-      if (!email || !pass) { _html(renderPortalLogin('Preencha todos os campos.')); return true; }
-      try {
-        const db = await getDb();
-        const user = await db.collection('portal_users').findOne({ _id: email });
-        if (!user) { _html(renderPortalLogin('E-mail ou senha inválidos.')); return true; }
-        const hash = await hashPassword(pass, user.salt);
-        const _ha = Buffer.from(hash, 'hex'), _hb = Buffer.from(user.passwordHash || '', 'hex');
-        const passOk = _ha.length === _hb.length && _ha.length > 0 && crypto.timingSafeEqual(_ha, _hb);
-        if (!passOk) { _html(renderPortalLogin('E-mail ou senha inválidos.')); return true; }
-        db.collection('portal_users').updateOne({ _id: email }, { $set: { lastLogin: new Date().toISOString() } }).catch(()=>{});
-        if (user.totpSecret) {
-          const pendingToken = generateToken();
-          portalSessions[pendingToken] = { email, name: user.name, pending2fa: true, redir: redir||'', expiresAt: new Date(Date.now()+5*60*1000).toISOString() };
-          res.setHeader('Set-Cookie', `zv_portal=${pendingToken}; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=300`);
-          _redir('/cliente/2fa/verificar');
-        } else {
-          const token = generateToken();
-          portalSessions[token] = { email, name: user.name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
-          res.setHeader('Set-Cookie', `zv_portal=${token}; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=86400`);
-          const dest = redir && redir.startsWith('/') ? redir : '/cliente';
-          _redir(dest);
-        }
-      } catch(e) { console.error('[WSM Portal] login:', e.message); _html(renderPortalLogin('Erro temporário.')); }
-      return true;
-    }
-
-    if (p === '/cliente/registro' && req.method === 'GET') { _html(renderPortalRegister()); return true; }
-    if (p === '/cliente/registro' && req.method === 'POST') {
-      if (!checkRateLimit(ip, 'login')) { _html(renderPortalRegister('Muitas tentativas.'), 429); return true; }
-      const form = await parseFormBody(req);
-      const name    = (form.get('name')||'').trim().slice(0,80);
-      const email   = (form.get('email')||'').toLowerCase().trim().slice(0,100);
-      const phone   = (form.get('phone')||'').replace(/\D/g,'').slice(0,20);
-      const keycode = ((form.get('keycode')||'').toLowerCase().trim()).replace(/[^a-z0-9\-_]/g,'').slice(0,30);
-      const pass    = (form.get('pass')||'').slice(0,128);
-      const pass2   = (form.get('pass2')||'').slice(0,128);
-      const vals = { name, email, phone, keycode };
-      if (!name || !email || !pass) { _html(renderPortalRegister('Preencha nome, e-mail e senha.', vals)); return true; }
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { _html(renderPortalRegister('E-mail inválido.', vals)); return true; }
-      if (pass.length < 8) { _html(renderPortalRegister('Senha: mínimo 8 caracteres.', vals)); return true; }
-      if (pass !== pass2) { _html(renderPortalRegister('As senhas não coincidem.', vals)); return true; }
-      try {
-        const db = await getDb();
-        const existing = await db.collection('portal_users').findOne({ _id: email });
-        if (existing) { _html(renderPortalRegister('E-mail já cadastrado.', vals)); return true; }
-        if (keycode) {
-          await ensureKeyLoaded();
-          if (!keys[keycode]) { _html(renderPortalRegister('Chave não encontrada. Deixe em branco para vincular depois.', vals)); return true; }
-        }
-        const salt = genSalt();
-        const passwordHash = await hashPassword(pass, salt);
-        await db.collection('portal_users').insertOne({ _id: email, name, email, phone: phone||null, passwordHash, salt, keyCode: keycode||null, createdAt: new Date().toISOString() });
-        const token = generateToken();
-        portalSessions[token] = { email, name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
-        res.setHeader('Set-Cookie', `zv_portal=${token}; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=86400`);
-        _redir('/cliente');
-      } catch(e) { console.error('[WSM Portal] registro:', e.message); _html(renderPortalRegister('Erro ao criar conta.', vals)); }
-      return true;
-    }
-
-    if (p === '/cliente/logout') {
-      const m = (req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/);
-      if (m) delete portalSessions[m[1]];
-      res.setHeader('Set-Cookie','zv_portal=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict');
-      _redir('/cliente'); return true;
-    }
-
-    if (p === '/cliente/vincular') {
-      if (!isPortalSession(req)) { _redir('/cliente'); return true; }
-      if (req.method === 'GET') { _html(renderPortalLinkKey()); return true; }
-      if (req.method === 'POST') {
-        const form = await parseFormBody(req);
-        const keycode = ((form.get('keycode')||'').toLowerCase().trim()).replace(/[^a-z0-9\-_]/g,'').slice(0,30);
-        if (!keycode) { _html(renderPortalLinkKey('Informe o código da chave.')); return true; }
-        await ensureKeyLoaded();
-        if (!keys[keycode]) { _html(renderPortalLinkKey('Chave não encontrada.')); return true; }
-        const sess = getPortalUser(req);
-        try {
-          const db = await getDb();
-          await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { keyCode: keycode } });
-          _redir('/cliente'); return true;
-        } catch(e) { _html(renderPortalLinkKey('Erro ao vincular.')); return true; }
-      }
-    }
-
-    if (p === '/cliente/desvincular' && req.method === 'POST') {
-      if (!isPortalSession(req)) { _redir('/cliente'); return true; }
-      const sess = getPortalUser(req);
-      try {
-        const db = await getDb();
-        await db.collection('portal_users').updateOne({ _id: sess.email }, { $unset: { keyCode: '' } });
-      } catch(e) { /* falha silenciosa */ }
-      _redir('/cliente'); return true;
-    }
-
-    if (p === '/cliente/email') {
-      if (!isPortalSession(req)) { _redir('/cliente'); return true; }
-      if (req.method === 'GET') { _html(renderPortalChangeEmail()); return true; }
-      if (req.method === 'POST') {
-        const sess = getPortalUser(req);
-        const form = await parseFormBody(req);
-        const newemail  = (form.get('newemail')||'').toLowerCase().trim().slice(0,120);
-        const newemail2 = (form.get('newemail2')||'').toLowerCase().trim().slice(0,120);
-        const pass = (form.get('pass')||'').slice(0,128);
-        if (!newemail || !newemail2 || !pass) { _html(renderPortalChangeEmail('Preencha todos os campos.')); return true; }
-        if (newemail !== newemail2) { _html(renderPortalChangeEmail('Os e-mails não coincidem.')); return true; }
-        if (newemail === sess.email) { _html(renderPortalChangeEmail('O novo e-mail é igual ao atual.')); return true; }
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newemail)) { _html(renderPortalChangeEmail('E-mail inválido.')); return true; }
-        try {
-          const db = await getDb();
-          const user = await db.collection('portal_users').findOne({ _id: sess.email });
-          if (!user) { _html(renderPortalChangeEmail('Sessão inválida. Faça login novamente.')); return true; }
-          const hash = await hashPassword(pass, user.salt);
-          const _ha = Buffer.from(hash,'hex'), _hb = Buffer.from(user.passwordHash||'','hex');
-          const passOk = _ha.length===_hb.length && _ha.length>0 && crypto.timingSafeEqual(_ha,_hb);
-          if (!passOk) { _html(renderPortalChangeEmail('Senha incorreta.')); return true; }
-          const exists = await db.collection('portal_users').findOne({ _id: newemail });
-          if (exists) { _html(renderPortalChangeEmail('Este e-mail já está cadastrado.')); return true; }
-          const newUser = { ...user, _id: newemail };
-          await db.collection('portal_users').insertOne(newUser);
-          await db.collection('portal_users').deleteOne({ _id: sess.email });
-          const _cookie = (req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/);
-          if (_cookie) delete portalSessions[_cookie[1]];
-          res.setHeader('Set-Cookie','zv_portal=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict');
-          _redir('/cliente/login?msg=email_changed'); return true;
-        } catch(e) { console.error('[WSM Portal] email change:', e.message); _html(renderPortalChangeEmail('Erro interno. Tente novamente.')); return true; }
-      }
-    }
-
-    if (p === '/cliente/senha') {
-      if (!isPortalSession(req)) { _redir('/cliente'); return true; }
-      if (req.method === 'GET') { const _ok=url.searchParams.get('ok'); _html(renderPortalChangePwd('', _ok?'Senha alterada com sucesso!':'')); return true; }
-      if (req.method === 'POST') {
-        const form = await parseFormBody(req);
-        const old  = (form.get('old')||'').slice(0,128);
-        const pass = (form.get('pass')||'').slice(0,128);
-        const pass2= (form.get('pass2')||'').slice(0,128);
-        if (pass.length < 8) { _html(renderPortalChangePwd('Nova senha: mínimo 8 caracteres.')); return true; }
-        if (pass !== pass2) { _html(renderPortalChangePwd('As senhas não coincidem.')); return true; }
-        const sess = getPortalUser(req);
-        try {
-          const db = await getDb();
-          const user = await db.collection('portal_users').findOne({ _id: sess.email });
-          if (!user) { _html(renderPortalChangePwd('Sessão inválida.')); return true; }
-          const oldHash = await hashPassword(old, user.salt);
-          const _oa = Buffer.from(oldHash, 'hex'), _ob = Buffer.from(user.passwordHash || '', 'hex');
-          const oldOk = _oa.length === _ob.length && _oa.length > 0 && crypto.timingSafeEqual(_oa, _ob);
-          if (!oldOk) { _html(renderPortalChangePwd('Senha atual incorreta.')); return true; }
-          const salt = genSalt();
-          const passwordHash = await hashPassword(pass, salt);
-          await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { passwordHash, salt } });
-        // Mantem a sessao atual, revoga as demais (dispositivos/invasores antigos).
-        revokePortalSessions(sess.email, ((req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/)||[])[1]);
-          _redir('/cliente/senha?ok=1'); return true;
-        } catch(e) { _html(renderPortalChangePwd('Erro ao alterar senha.')); return true; }
-      }
-    }
-
-    if (p === '/cliente/recuperar') {
-      if (req.method === 'GET') { _html(renderPortalResetRequest()); return true; }
-      if (req.method === 'POST') {
-        if (!checkRateLimit(ip, 'reset')) { _html(renderPortalResetRequest('Muitas tentativas. Aguarde 30 minutos.'), 429); return true; }
-        const form  = await parseFormBody(req);
-        const email = (form.get('email')||'').toLowerCase().trim().slice(0,100);
-        if (!email) { _html(renderPortalResetRequest('Informe seu e-mail.')); return true; }
-        const okMsg = RESEND_API_KEY
-          ? 'Se este e-mail estiver cadastrado, você receberá o link de recuperação em instantes. Verifique também o spam.'
-          : 'Se este e-mail estiver cadastrado, um link de recuperação foi gerado. Entre em contato com o suporte via WhatsApp para recebê-lo.';
-        try {
-          const db   = await getDb();
-          const user = await db.collection('portal_users').findOne({ _id: email });
-          if (user) {
-            const token     = generateToken();
-            const tokenHash = hashResetToken(token);
-            const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
-            await db.collection('password_resets').deleteMany({ email });
-            // Mesmo hardening do portal ZVM: o banco guarda somente SHA-256 do
-            // token utilizável. resolveResetToken mantém leitura de registros
-            // WSM antigos em texto puro durante a migração, sem gerar novos.
-            await db.collection('password_resets').insertOne({ _id: tokenHash, email, expiresAt });
-            const resetUrl = BASE_URL + '/WSM/cliente/redefinir?token=' + token;
-            // NUNCA logar resetUrl: o token troca a senha da conta. Logs vão para
-            // agregadores/terceiros e viram um caminho direto de account takeover.
-            console.log('[WSM Portal] Reset token gerado para', email);
-            if (RESEND_API_KEY) { const sent = await sendPasswordResetEmail(email, resetUrl); if (!sent) console.warn('[WSM Portal] Falha ao enviar email de reset para', email); }
-          }
-          _html(renderPortalResetRequest('', okMsg)); return true;
-        } catch(e) { console.error('[WSM Portal] reset:', e.message); _html(renderPortalResetRequest('Erro temporário.')); return true; }
-      }
-    }
-
-    if (p === '/cliente/redefinir') {
-      const token = (url.searchParams.get('token')||'').replace(/[^a-f0-9]/g,'').slice(0,64);
-      if (req.method === 'GET') {
-        if (!token) { _redir('/cliente/recuperar'); return true; }
-        _html(renderPortalResetForm('', '', token)); return true;
-      }
-      if (req.method === 'POST') {
-        const form  = await parseFormBody(req);
-        const tk    = (form.get('token')||'').replace(/[^a-f0-9]/g,'').slice(0,64);
-        const pass  = (form.get('pass')||'').slice(0,128);
-        const pass2 = (form.get('pass2')||'').slice(0,128);
-        if (pass.length < 8) { _html(renderPortalResetForm('Senha: mínimo 8 caracteres.', '', tk)); return true; }
-        if (pass !== pass2)  { _html(renderPortalResetForm('As senhas não coincidem.', '', tk)); return true; }
-        try {
-          const db   = await getDb();
-          const { rec, matchedId } = await resolveResetToken(db, tk);
-          if (!rec || new Date() > new Date(rec.expiresAt)) { _html(renderPortalResetForm('Link expirado ou inválido. Solicite um novo.', '', '')); return true; }
-          const salt = genSalt();
-          const passwordHash = await hashPassword(pass, salt);
-          await db.collection('portal_users').updateOne({ _id: rec.email }, { $set: { passwordHash, salt } });
-        // Reset de senha expulsa todas as sessoes existentes da conta.
-        revokePortalSessions(rec.email);
-          await db.collection('password_resets').deleteOne({ _id: matchedId });
-          _html(renderPortalResetForm('', 'Senha redefinida com sucesso!', '')); return true;
-        } catch(e) { _html(renderPortalResetForm('Erro temporário.', '', tk)); return true; }
-      }
-    }
-
-    if (p === '/cliente/2fa/verificar') {
-      const sess = getPortalUser(req);
-      if (!sess || !sess.pending2fa) { _redir('/cliente'); return true; }
-      if (req.method === 'GET') { _html(renderPortal2FAVerify()); return true; }
-      if (req.method === 'POST') {
-        if (!checkRateLimit(ip, 'twofa')) { _html(renderPortal2FAVerify('Muitas tentativas. Aguarde 10 minutos.'), 429); return true; }
-        const form = await parseFormBody(req);
-        const code = (form.get('code')||'').trim();
-        try {
-          const db   = await getDb();
-          const user = await db.collection('portal_users').findOne({ _id: sess.email });
-          if (!user || !verifyTOTP(user.totpSecret, code)) { addSecurityAlert('BRUTE_FORCE', '2FA falhou para ' + sess.email, ip); _html(renderPortal2FAVerify('Código inválido. Tente novamente.')); return true; }
-          const m = (req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/);
-          if (m) portalSessions[m[1]] = { email: sess.email, name: sess.name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
-          res.setHeader('Set-Cookie', `zv_portal=${m[1]}; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=86400`);
-          const dest = sess.redir && sess.redir.startsWith('/') ? sess.redir : '/cliente';
-          _redir(dest);
-        } catch(e) { _html(renderPortal2FAVerify('Erro temporário.')); }
-        return true;
-      }
-    }
-
-    if (p === '/cliente/2fa/setup') {
-      if (!isPortalSession(req)) { _redir('/cliente'); return true; }
-      const sess = getPortalUser(req);
-      try {
-        const db   = await getDb();
-        const user = await db.collection('portal_users').findOne({ _id: sess.email });
-        const _2faOk=url.searchParams.get('ok'); if (user && user.totpSecret) { _html(renderPortalSetup2FA(user, '', '', _2faOk?'2FA ativado com sucesso! Sua conta está protegida.':'')); return true; }
-        let pending = user && user.pendingTotpSecret && user.pendingTotpExpiresAt && new Date() < new Date(user.pendingTotpExpiresAt)
-          ? user.pendingTotpSecret : null;
-        if (!pending) {
-          pending = genTotpSecret();
-          await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { pendingTotpSecret: pending, pendingTotpExpiresAt: new Date(Date.now() + 15 * 60000) } });
-        }
-        _html(renderPortalSetup2FA(user, pending, '', '')); return true;
-      } catch(e) { _html(renderPortalSetup2FA(null, '', 'Erro ao carregar configuração.', '')); return true; }
-    }
-
-    if (p === '/cliente/2fa/ativar' && req.method === 'POST') {
-      if (!isPortalSession(req)) { _redir('/cliente'); return true; }
-      if (!checkRateLimit(ip, 'twofa')) { _html(renderPortalSetup2FA(null, '', 'Muitas tentativas. Aguarde 10 minutos.', ''), 429); return true; }
-      const sess = getPortalUser(req);
-      const form = await parseFormBody(req);
-      const code = (form.get('code')||'').trim();
-      try {
-        const db   = await getDb();
-        const user = await db.collection('portal_users').findOne({ _id: sess.email });
-        const pending = user && user.pendingTotpSecret && user.pendingTotpExpiresAt && new Date() < new Date(user.pendingTotpExpiresAt)
-          ? user.pendingTotpSecret : null;
-        if (!pending) { _html(renderPortalSetup2FA(user, '', 'Sessão expirada. Tente novamente.', '')); return true; }
-        if (!verifyTOTP(pending, code)) { _html(renderPortalSetup2FA(user, pending, 'Código inválido. Tente novamente.', '')); return true; }
-        await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { totpSecret: pending }, $unset: { pendingTotpSecret: '', pendingTotpExpiresAt: '' } });
-        _redir('/cliente/2fa/setup?ok=ativado'); return true;
-      } catch(e) { _html(renderPortalSetup2FA(null, '', 'Erro ao ativar 2FA.', '')); return true; }
-    }
-
-    if (p === '/cliente/2fa/desativar' && req.method === 'POST') {
-      if (!isPortalSession(req)) { _redir('/cliente'); return true; }
-      if (!checkRateLimit(ip, 'twofa')) { _html(renderPortalSetup2FA(null, '', 'Muitas tentativas. Aguarde.', ''), 429); return true; }
-      const sess = getPortalUser(req);
-      const form = await parseFormBody(req);
-      const code = (form.get('code')||'').trim();
-      try {
-        const db   = await getDb();
-        const user = await db.collection('portal_users').findOne({ _id: sess.email });
-        if (!user || !verifyTOTP(user.totpSecret||'', code)) { _html(renderPortalSetup2FA(user, '', 'Código 2FA inválido.', '')); return true; }
-        await db.collection('portal_users').updateOne({ _id: sess.email }, { $unset: { totpSecret: '', pendingTotpSecret: '', pendingTotpExpiresAt: '' } });
-        _redir('/cliente?ok=2fa_off'); return true;
-      } catch(e) { _html(renderPortalSetup2FA(null, '', 'Erro ao desativar 2FA.', '')); return true; }
-    }
-
-    return false;
-  }
-
-  // ── Router do namespace /WSM (p já vem SEM o prefixo) ──
-  async function route(req, res, p, url, ip) {
-    // ══ Portal do Cliente WSM (/cliente*) ══════════════════════════
-    if (p === '/cliente' || p.startsWith('/cliente/')) {
-      if (await wsmPortal(req, res, p, url, ip)) return;
-    }
-    // ══ Páginas públicas WSM ══════════════════════════════════════
-    if (p === '/' || p === '') { sendHtml(res, wsmAdapt(wsmLandingAdapt(renderLandingPage(isPortalSession(req) ? getPortalUser(req) : null)))); return; }
-    if (p === '/planos' && req.method === 'GET')     { sendHtml(res, wsmAdapt(renderLegacyPlanosPage())); return; }
-    if (p === '/faq' && req.method === 'GET')        { sendHtml(res, renderWsmFaq()); return; }
-    if (p === '/privacidade' && req.method === 'GET'){ sendHtml(res, wsmAdapt(renderPrivacyPage())); return; }
-
-    // ══ Admin WSM ════════════════════════════════════════════════
-    if (p === WSM_R_ADMIN + '/login' && req.method === 'POST') {
-      if (!checkRateLimit(ip, 'login')) {
-        const mins = getRateLimitWait(ip, 'login');
-        sendHtml(res, wsmAdapt(renderAdminLogin(`⏳ Muitas tentativas. Aguarde ${mins} minuto(s).`)), 429); return;
-      }
-      const form = await parseFormBody(req);
-      const _u  = Buffer.from(form.get('user') || '');
-      const _au = Buffer.from(ADMIN_USER || '');
-      let credOk = false;
-      try {
-        const _h = crypto.scryptSync(form.get('pass') || '', _adminPassSalt, 64, { N: 16384, r: 8, p: 1 });
-        credOk = _u.length === _au.length &&
-          crypto.timingSafeEqual(_u.length ? _u : Buffer.alloc(1), _au.length ? _au : Buffer.alloc(1)) &&
-          crypto.timingSafeEqual(_h, _adminPassHash);
-      } catch { credOk = false; }
-      const totpOk = verifyTOTP(TOTP_SECRET, (form.get('totp') || '').trim());
-      if (credOk && totpOk) {
-        rateLimitMap.delete(ip + ':login');
-        const _old = (req.headers.cookie || '').match(/zv_admin=([a-f0-9]+)/);
-        if (_old) delete sessions[_old[1]];
-        const token = generateToken();
-        sessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString(), ip, loginAt: new Date().toISOString(), createdAt: new Date().toISOString(), absoluteExpiresAt: new Date(Date.now() + SESSION_ABSOLUTE_LIMIT_MS).toISOString() };
-        setSessionCookie(res, 'zv_admin', token);
-        res.writeHead(302, { Location: '/WSM' + WSM_R_ADMIN }); res.end();
-      } else {
-        const msg = credOk ? 'Código 2FA inválido ou expirado' : 'Usuário ou senha incorretos';
-        sendHtml(res, wsmAdapt(renderAdminLogin(msg)));
-      }
-      return;
-    }
-    if (p === WSM_R_ADMIN + '/logout') {
-      clearSessionCookie(res, 'zv_admin');
-      res.writeHead(302, { Location: '/WSM' + WSM_R_ADMIN }); res.end(); return;
-    }
-    if (p === WSM_R_ADMIN || p === WSM_R_ADMIN + '/') {
-      if (!isAdminSession(req)) { sendHtml(res, wsmAdapt(renderAdminLogin())); return; }
-      await ensureKeyLoaded();
-      await ensureExtLogsLoaded();
-      // Renderiza o dashboard com as chaves e logs do banco WSM (watidy), não do ZVM (zapvoice)
-      sendHtml(res, wsmAdapt(renderAdminDashboard({
-        brand:    'WSM',
-        stats:    getKeyStats(keys, wsmExtLogs),
-        keysHtml: buildKeysHtml(keys, wsmExtLogs),
-        logsHtml: buildLogsHtml(wsmExtLogs),
-      }))); return;
-    }
-
-    if (p === '/health' && req.method === 'GET') { sendJson(res, { ok: true, tool: 'WSM', ts: new Date().toISOString() }); return; }
-    if (p === '/verificar' && req.method === 'GET') { sendHtml(res, wsmAdapt(renderClientPortal(isPortalSession(req) ? getPortalUser(req) : null))); return; }
-    // compat com patch antigo /portal?key=
-    if ((p === '/portal' || p === '/portal/') && req.method === 'GET') {
-      res.writeHead(302, { Location: '/WSM/verificar' + (url.search || '') }); res.end(); return;
-    }
-
-    // ══ Ativação da extensão via web (/extension/auth) ═══════════
-    if ((p === '/extension/auth/' || p === '/extension/auth') && req.method === 'GET') {
-      const callback = url.searchParams.get('callback') || '';
-      sendHtml(res, wsmAdapt(renderExtensionLogin({ callback }))); return;
-    }
-    if (p === '/extension/auth/verify' && req.method === 'POST') {
-      if (!checkRateLimit(ip, 'login')) {
-        const mins = getRateLimitWait(ip, 'login');
-        sendHtml(res, wsmAdapt(renderExtensionLogin({ callback: '', error: `⏳ Muitas tentativas. Aguarde ${mins} minuto(s).` })), 429); return;
-      }
-      const form     = await parseFormBody(req);
-      const mode     = (form.get('mode') || '').trim().toLowerCase();
-      const keyCode  = sanitizeId(form.get('key'), 32);
-      const callback = form.get('callback') || '';
-      if (mode === 'free') { redirectExtensionCallback(res, callback, 'free'); return; }
-      if (!keyCode) { sendHtml(res, wsmAdapt(renderExtensionLogin({ callback, error: '❌ Digite sua chave de ativação.' }))); return; }
-      await ensureKeyLoaded();
-      if (!keys[keyCode]) {
-        sendHtml(res, wsmAdapt(renderExtensionLogin({ callback, keyVal: keyCode, error: '❌ Chave não encontrada. Verifique ou entre em contato com o vendedor.' }))); return;
-      }
-      if (licKeyExpired(keys[keyCode])) {
-        keys[keyCode].active = false; await saveKeyNow(keyCode);
-        sendHtml(res, wsmAdapt(renderExtensionLogin({ callback, keyVal: keyCode, error: '⏰ Chave expirada. Renove sua chave para continuar.' }))); return;
-      }
-      if (keys[keyCode].active === false) {
-        sendHtml(res, wsmAdapt(renderExtensionLogin({ callback, keyVal: keyCode, error: '🚫 Chave bloqueada. Contate o vendedor.' }))); return;
-      }
-      keys[keyCode].lastUsed = new Date().toISOString(); keys[keyCode].lastIp = ip; await saveKeyNow(keyCode);
-      redirectExtensionCallback(res, callback, 'pro', keyCode); return;
-    }
-
-    if (p === '/client/status' && req.method === 'POST') {
-      if (!checkRateLimit(ip, 'api')) { sendJson(res, { ok: false, error: 'rate_limited' }, 429); return; }
-      const body = await parseBody(req);
-      const k = normKey(body.key || body.chave || '');
-      await ensureKeyLoaded();
-      const kv = keys[k];
-      if (!k || !kv) { sendJson(res, { ok: false }); return; }
-      sendJson(res, {
-        ok: true, label: kv.label || k, active: kv.active !== false && !licKeyExpired(kv),
-        premium: kv.premium !== false, expiresAt: kv.expiresAt || null,
-        phones: Array.isArray(kv.phones) ? kv.phones : [],
-        uses: kv.uses || 0, maxUses: kv.maxUses != null ? kv.maxUses : -1,
-        lastUsed: kv.lastUsed || null,
-      }); return;
-    }
-    if (p === '/client/remove-phone' && req.method === 'POST') {
-      if (!checkRateLimit(ip, 'api')) { sendJson(res, { ok: false, error: 'rate_limited' }, 429); return; }
-      const body = await parseBody(req);
-      const k = normKey(body.key || '');
-      const idx = parseInt(body.phoneIdx, 10);
-      await ensureKeyLoaded();
-      const kv = keys[k];
-      if (!kv || !Array.isArray(kv.phones) || isNaN(idx) || idx < 0 || idx >= kv.phones.length) {
-        sendJson(res, { ok: false, error: 'not_found' }); return;
-      }
-      // Antes fazia kv.phones.splice(idx,1) direto, sem recalcular uses nem
-      // limpar activations - centralizado em removePhoneFromKey() (mesma
-      // função usada pelas rotas administrativas), resolvendo o índice pro
-      // valor do telefone primeiro.
-      removePhoneFromKey(kv, kv.phones[idx]);
-      await saveKeyNow(k);
-      sendJson(res, { ok: true }); return;
-    }
-
-    // CSRF uniforme nas mutações do painel administrativo WSM.
-    if (p.startsWith(WSM_R_ADMIN + '/api/') && !['GET','HEAD','OPTIONS'].includes(req.method) && !requireSameOriginPost(req)) {
-      sendJson(res, { error: 'invalid_origin' }, 403); return;
-    }
-
-    // ── Administração de chaves WSM (slug próprio WSM_R_ADMIN) ──
-    if (p === WSM_R_ADMIN + '/api/keys' && req.method === 'GET') {
-      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-      await ensureKeyLoaded();
-      sendJson(res, { ok: true, db: WSM_DB_NAME, total: Object.keys(keys).length, keys }); return;
-    }
-    if (p === WSM_R_ADMIN + '/api/keys' && req.method === 'POST') {
-      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-      await ensureKeyLoaded();
-      const body = await parseBody(req);
-      const code = genWsmKey();
-      const now = new Date();
-      const expireDays = parseInt(body.expireDays, 10) || 0;
-      keys[code] = {
-        label: String(body.label || 'Cliente WSM').slice(0, 60),
-        active: true, premium: body.premium !== false,
-        phones: [], uses: 0,
-        maxUses: body.maxUses != null ? parseInt(body.maxUses, 10) || -1 : -1,
-        expiresAt: expireDays > 0 ? new Date(now.getTime() + expireDays * 864e5).toISOString() : null,
-        createdAt: now.toISOString(), lastUsed: null, lastIp: null, lastPhone: null,
-        note: String(body.note || '').slice(0, 200),
-      };
-      await saveKeyNow(code);
-      sendJson(res, { ok: true, code, key: keys[code] }); return;
-    }
-    // ── Ações por chave (toggle/renew/rename/note/max-uses/phones/...) ──
-    //    DEVE vir antes do DELETE/PATCH genéricos, senão o /phones é interceptado.
-    {
-      const _actRe = new RegExp('^' + WSM_R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '/api/keys/([^/]+)/([a-z-]+)$');
-      const _act = p.match(_actRe);
-      if (_act) {
-        if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-        await ensureKeyLoaded();
-        const code = normKey(decodeURIComponent(_act[1]));
-        const action = _act[2];
-        const k = keys[code];
-
-        if (action === 'phones' && req.method === 'GET') {
-          if (!k) { sendJson(res, { error: 'not found' }, 404); return; }
-          sendJson(res, { ok: true, phones: k.phones || [] }); return;
-        }
-        if (action === 'phones' && req.method === 'DELETE') {
-          if (!k) { sendJson(res, { error: 'not found' }, 404); return; }
-          const body = await parseBody(req);
-          if (body.all) { clearAllPhonesFromKey(k); }
-          else if (body.phone) { removePhoneFromKey(k, body.phone); }
-          else { sendJson(res, { error: 'informe phone ou all:true' }, 400); return; }
-          await saveKeyNow(code);
-          sendJson(res, { ok: true, phones: k.phones }); return;
-        }
-        if (req.method === 'POST') {
-          if (action === 'clear-suspect') { sendJson(res, { ok: true }); return; }
-          if (!k) { sendJson(res, { error: 'not found' }, 404); return; }
-          const body = await parseBody(req);
-          if (action === 'toggle') { k.active = !k.active; await saveKeyNow(code); sendJson(res, { ok: true, active: k.active }); return; }
-          if (action === 'rename' || action === 'label') { k.label = String(body.label || '').trim().slice(0, 60) || k.label; await saveKeyNow(code); sendJson(res, { ok: true, label: k.label }); return; }
-          if (action === 'note') { k.note = String(body.note || '').slice(0, 200); await saveKeyNow(code); sendJson(res, { ok: true }); return; }
-          if (action === 'max-uses') { const mu = parseInt(body.maxUses, 10); k.maxUses = isNaN(mu) ? -1 : mu; await saveKeyNow(code); sendJson(res, { ok: true, maxUses: k.maxUses }); return; }
-          if (action === 'modules') { k.modules = { ...(k.modules || {}), ...(body.modules || (body.module ? { [body.module]: body.value } : {})) }; await saveKeyNow(code); sendJson(res, { ok: true, modules: k.modules }); return; }
-          if (action === 'renew') {
-            const days = parseInt(body.days, 10) || 0, hours = parseInt(body.hours, 10) || 0, mins = parseInt(body.mins != null ? body.mins : body.minutes, 10) || 0;
-            const ms = ((days * 1440) + (hours * 60) + mins) * 60000;
-            const base = (k.expiresAt && new Date(k.expiresAt) > new Date()) ? new Date(k.expiresAt).getTime() : Date.now();
-            k.expiresAt = new Date(base + ms).toISOString();
-            k.active = true;
-            await saveKeyNow(code);
-            sendJson(res, { ok: true, expiresAt: k.expiresAt }); return;
-          }
-          sendJson(res, { ok: false, error: 'acao_desconhecida' }, 400); return;
-        }
-      }
-    }
-    if (p.startsWith(WSM_R_ADMIN + '/api/keys/') && req.method === 'DELETE') {
-      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-      await ensureKeyLoaded();
-      const code = normKey(decodeURIComponent(p.slice((WSM_R_ADMIN + '/api/keys/').length)));
-      if (!keys[code]) { sendJson(res, { ok: false, error: 'not_found' }, 404); return; }
-      await deleteKey(code);
-      sendJson(res, { ok: true, removed: code }); return;
-    }
-    if (p.startsWith(WSM_R_ADMIN + '/api/keys/') && req.method === 'PATCH') {
-      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-      await ensureKeyLoaded();
-      const code = normKey(decodeURIComponent(p.slice((WSM_R_ADMIN + '/api/keys/').length)));
-      if (!keys[code]) { sendJson(res, { ok: false, error: 'not_found' }, 404); return; }
-      const body = await parseBody(req);
-      if (body.active !== undefined)  keys[code].active  = !!body.active;
-      if (body.label !== undefined)   keys[code].label   = String(body.label).slice(0, 60);
-      if (body.maxUses !== undefined) keys[code].maxUses = parseInt(body.maxUses, 10) || -1;
-      if (body.expiresAt !== undefined) keys[code].expiresAt = body.expiresAt || null;
-      await saveKeyNow(code);
-      sendJson(res, { ok: true, key: keys[code] }); return;
-    }
-    // ── Changelog WSM (admin) ──
-    if (p === WSM_R_ADMIN + '/api/changelog' && req.method === 'GET') {
-      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-      await ensureChangelog();
-      sendJson(res, { ok: true, changelog }); return;
-    }
-    if (p === WSM_R_ADMIN + '/api/changelog' && req.method === 'POST') {
-      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-      await ensureChangelog();
-      const body = await parseBody(req);
-      const title = String(body.title || '').trim().slice(0, 120);
-      const items = (Array.isArray(body.items) ? body.items : String(body.items || '').split('\n'))
-        .map(i => String(i).trim()).filter(Boolean).slice(0, 50);
-      if (!title || items.length === 0) { sendJson(res, { error: 'title e items obrigatórios' }, 400); return; }
-      const entry = {
-        id: Date.now().toString(36), title,
-        version: String(body.version || '').trim().slice(0, 20),
-        date: String(body.date || new Date().toISOString().slice(0, 10)).trim(),
-        items, createdAt: new Date().toISOString(),
-      };
-      changelog.unshift(entry);
-      if (changelog.length > 100) changelog = changelog.slice(0, 100);
-      await saveChangelog();
-      sendJson(res, { ok: true, entry }); return;
-    }
-    if (p.startsWith(WSM_R_ADMIN + '/api/changelog/') && req.method === 'DELETE') {
-      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-      await ensureChangelog();
-      const id = p.slice((WSM_R_ADMIN + '/api/changelog/').length);
-      const before = changelog.length;
-      changelog = changelog.filter(e => e.id !== id);
-      await saveChangelog();
-      sendJson(res, { ok: true, removed: before - changelog.length }); return;
-    }
-
-    // ── WSM Admin: endpoints extras (status, data, session-info, ip-blacklist, logs, portal-users) ──
-    if (p === WSM_R_ADMIN + '/status' && req.method === 'GET') {
-      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-      await ensureKeyLoaded();
-      let dbStatus = 'unknown';
-      try { const _sdb = await getDb(); await _sdb.command({ ping: 1 }); dbStatus = 'connected'; } catch { dbStatus = 'disconnected'; }
-      sendJson(res, {
-        ok: true, db: dbStatus, uptime: Math.floor(process.uptime()), ts: new Date().toISOString(),
-        keys: Object.keys(keys).length,
-        activeSessions: Object.keys(sessions).length,
-        portalSessions: typeof portalSessions !== 'undefined' ? Object.keys(portalSessions).length : 0,
-        logs: wsmExtLogs.length, securityAlerts: 0,
-      }); return;
-    }
-    if (p === WSM_R_ADMIN + '/api/session-info' && req.method === 'GET') {
-      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-      const s = getAdminSession(req);
-      sendJson(res, { ok: true, expiresAt: s?.expiresAt || null }); return;
-    }
-    if (p === WSM_R_ADMIN + '/api/data' && req.method === 'GET') {
-      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-      await ensureKeyLoaded();
-      await ensureExtLogsLoaded();
-      // Estatísticas, tabela e logs renderizados a partir do banco WSM (watidy)
-      sendJson(res, {
-        ...getKeyStats(keys, wsmExtLogs),
-        keysHtml: buildKeysHtml(keys, wsmExtLogs),
-        logsHtml: buildLogsHtml(wsmExtLogs),
-      }); return;
-    }
-    // ── Auditoria de segurança (varredura interna) ──
-    if (p === WSM_R_ADMIN + '/api/pentest/run' && req.method === 'POST') {
-      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-      sendJson(res, await runInternalSecurityAudit()); return;
-    }
-    if (p === WSM_R_ADMIN + '/api/pentest/alerts' && req.method === 'GET') {
-      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-      sendJson(res, { ok: true, alerts: [] }); return;
-    }
-    if (p === WSM_R_ADMIN + '/api/ip-blacklist' && req.method === 'GET') {
-      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-      sendJson(res, { ok: true, ips: [] }); return;
-    }
-    if (p === WSM_R_ADMIN + '/api/ip-blacklist/add' && req.method === 'POST') {
-      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-      sendJson(res, { ok: true, ips: [] }); return;
-    }
-    if (p === WSM_R_ADMIN + '/api/ip-blacklist/remove' && req.method === 'POST') {
-      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-      sendJson(res, { ok: true, ips: [] }); return;
-    }
-    if (p === WSM_R_ADMIN + '/api/portal-users' && req.method === 'GET') {
-      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-      try {
-        const _wdb = await getDb();
-        const users = await _wdb.collection('portal_users').find({}, { projection: { passwordHash:0, salt:0 } }).sort({ createdAt: -1 }).toArray();
-        await Promise.all(users.filter(u => u.keyCode).map(u => ensureKeyLoaded().catch(()=>{})));
-        const enriched = users.map(u => {
-          const k = u.keyCode ? keys[u.keyCode] : null;
-          return { ...u, plan: k ? (k.planId || k.label || null) : null };
-        });
-        sendJson(res, { ok: true, users: enriched }); return;
-      } catch(e) { sendJson(res, { error: 'db_error', detail: e.message }, 500); return; }
-    }
-    if (p === WSM_R_ADMIN + '/api/logs' && req.method === 'GET') {
-      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-      await ensureExtLogsLoaded();
-      const date = String(url.searchParams.get('date') || '').slice(0, 10);
-      const q = String(url.searchParams.get('q') || '').toLowerCase().slice(0, 100);
-      const filtered = wsmExtLogs.filter(l => (!date || String(l.timestamp || '').startsWith(date)) && (!q || [l.keyCode,l.label,l.phone,l.ip].some(v => String(v || '').toLowerCase().includes(q))));
-      sendJson(res, { ok: true, logsHtml: buildLogsHtml(filtered) }); return;
-    }
-    // Limpar log de acessos (botão "Limpar Log" do painel) — corrige "Erro ao limpar"
-    if (p === WSM_R_ADMIN + '/api/logs' && req.method === 'DELETE') {
-      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-      await ensureExtLogsLoaded();
-      const body = await parseBody(req);
-      if (body && body.date) wsmExtLogs = wsmExtLogs.filter(l => !String(l.timestamp || '').startsWith(body.date));
-      else wsmExtLogs = [];
-      getDb().then(d => d.collection('store').updateOne(
-        { _id: 'ext_logs' }, { $set: { data: wsmExtLogs.slice(0, 500), updatedAt: new Date() } }, { upsert: true }
-      )).catch(() => {});
-      sendJson(res, { ok: true }); return;
-    }
-    // Limpar alertas de segurança (painel de auditoria)
-    if (p === WSM_R_ADMIN + '/api/security/alerts/clear' && req.method === 'POST') {
-      if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-      sendJson(res, { ok: true }); return;
-    }
-
-
-  if ((p === '/install' || p === '/bem-vindo' || p === '/obrigado-pela-instalacao') && req.method === 'GET') {
-    sendHtml(res, renderInstallPage()); return;
-  }
-  if ((p === '/obrigado' || p === '/desinstalado' || p === '/ate-logo' || p === '/ate-mais') && req.method === 'GET') {
-    sendHtml(res, renderUninstallPage()); return;
-  }
-
-  // ── WSM Client Panel ──────────────────────────────────────────────────────
-  if (await handleClientPanel(req, res, p, url)) return;
-
-  // ── WSM Extension API ─────────────────────────────────────────────────────
-  if (p.startsWith('/api/urls/install/') || p === '/api/urls/install') {
-    // A extensão abre esta URL em nova aba (chrome.tabs.create) ao instalar,
-    // por isso precisa ser ABSOLUTA (caminho relativo não abre).
-    let _url = installUrl;
-    if (!/^https?:\/\//.test(_url)) {
-      const _proto = (req.headers['x-forwarded-proto'] || '').split(',')[0].trim() || (req.socket && req.socket.encrypted ? 'https' : 'http');
-      _url = _proto + '://' + (req.headers.host || 'localhost:3000') + _url;
-    }
-    sendJson(res, { success: true, url: _url }); return;
-  }
-  if (p.startsWith('/api/urls/uninstall/') || p === '/api/urls/uninstall') {
-    res.writeHead(302, { Location: '/WSM/ate-mais' }); res.end(); return;
-  }
-  if ((p === '/api/urls/update' || p === '/api/services/update') && (req.method === 'GET' || req.method === 'POST')) {
-    sendJson(res, wppUpdate()); return;
-  }
-  if (p.startsWith('/api/urls/active-notes/') && req.method === 'GET') {
-    sendJson(res, { success: true, path_note_update: { redirect: false } }); return;
-  }
-  if (p.startsWith('/api/urls/notes/') && req.method === 'GET') {
-    sendHtml(res, (await ensureChangelog(), renderChangelogPage())); return;
-  }
-  if (p === '/api/external/is_instaled' && req.method === 'POST') {
-    sendJson(res, { success: true }); return;
-  }
-  if (p === '/api/external/ping' && req.method === 'GET') {
-    sendJson(res, { success: true, server: 'watidy', version: '1.0.0' }); return;
-  }
-  if (p === '/api/code' && req.method === 'GET') {
-    res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=3600' });
-    res.end('/* WSM remote code stub */\n'); return;
-  }
-  if (p === '/_/') {
-    sendJson(res, buildConfigJson()); return;
-  }
-
-  if (p.startsWith('/api/services/initial-data') && req.method === 'GET') {
-    sendJson(res, {
-      success: true,
-      webhooks: [],
-      meet: {},
-      urls: {},
-      migration: {},
-      meta_oficial_config: {},
-      customization: { name: wlId, primary_color: '#3ddc84' },
-    }); return;
-  }
-  if (p.startsWith('/api/notify/get/') && req.method === 'GET') {
-    // A extensao busca notificacoes/avisos direto na wascript (nao redirecionamos
-    // api/notify). Aqui so devolvemos vazio para nao injetar nada.
-    sendJson(res, { success: true, notify: [] }); return;
-  }
-
-  // ── Validation (sem access-token — guards executam primeiro) ────────────────
-  if (p.startsWith('/api/auth/validation/') && req.method === 'POST') {
-    if (!checkRateLimit(ip, 'api')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
-
-    // Guard 1: tamanho via header — não consome o stream
-    const cl = parseInt(req.headers['content-length'] || '0', 10);
-    if (cl > 250) { sendJson(res, { success: false, msg_id: 'login_not_fund' }, 400); return; }
-
-    // Guard 2: parse do body (stream intacto)
-    const body = await parseBody(req);
-
-    // Guard 3: extrair e sanitizar chave
-    let chave = String(body.chave || body.access_token_plugin || body.senha || body.email || '').trim().replace(/\s+/g, '-');
-    if (chave.length !== 20) { sendJson(res, { success: false, msg_id: 'login_not_fund' }, 400); return; }
-    if (!/^[a-zA-Z0-9-]+$/.test(chave)) { sendJson(res, { success: false, msg_id: 'login_not_fund' }, 400); return; }
-    chave = chave.toLowerCase();
-
-    // ── Login Gratuito: chave fixa especial -> conta FREE (sem premium). O botao
-    //    "Login Gratuito" da extensao envia esta chave para logar sem custo.
-    if (chave === 'wt-gratis-free-login') {
-      const freeRec = {
-        code: chave, label: 'Usuario Gratuito', active: true, premium: false,
-        expiresAt: null, phones: [], uses: 0, maxUses: -1,
-        email: chave, bearer_token: chave, access_token_plugin: chave,
-        user_id: 0, createdAt: new Date().toISOString(), plan_id: FREE_PLAN_ID,
-      };
-      const rFree = await authSuccess(chave, freeRec);
-      sendJson(res, rFree.ok ? rFree.body : { success: false, msg_id: rFree.msg_id }); return;
-    }
-
-    const telefone = String(body.telefone || body.phone || body.whatsapp || '').trim().replace(/\D/g, '').slice(0, 20);
-
-    // ── Persistência — schema EN (keys[] gerenciado pelo painel admin) ──
-    await ensureKeyLoaded(chave);
-    let rec = null;
-    if (keys[chave]) {
-      const kv = keys[chave];
-      const maxUses = kv.maxUses != null ? kv.maxUses : -1;
-      const curUses = typeof kv.uses === 'number' ? kv.uses : 0;
-      if (maxUses > 0 && curUses >= maxUses && telefone && Array.isArray(kv.phones) && !kv.phones.includes(telefone) && kv.phones.length >= maxUses) {
-        sendJson(res, { success: false, msg_id: 'white_label_is_bloked' }); return;
-      }
-      kv.uses = curUses + 1;
-      kv.lastIp = ip;
-      kv.lastUsed = new Date().toISOString();
-      if (telefone) {
-        kv.lastPhone = telefone;
-        // syncUses:false - este endpoint conta "uses" por CHAMADA (linha
-        // acima), de propósito, contrato comercial próprio e mais antigo.
-        // Só a inclusão em phones[] precisa ser atômica; uses continua
-        // inteiramente sob o controle deste endpoint.
-        await claimPhoneSlotAtomic(chave, telefone, maxUses, { syncUses: false });
-      }
-      saveKey(chave);
-      rec = _synthRec(chave, kv);
-    } else {
-      rec = await findLicenseByCode(chave);
-    }
-    if (!rec) {
-      // So dizemos "token invalido" (o que desloga a extensao) quando o banco
-      // respondeu de verdade. Se ele estava inacessivel, o estado e DESCONHECIDO:
-      // devolvemos erro temporario para a extensao tentar de novo sem deslogar.
-      if (keysLoadError || !keysLoaded) {
-        sendJson(res, { success: false, msg_id: 'validation_unavailable', retryable: true }, 503); return;
-      }
-      sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' }); return;
-    }
-    const result = await authSuccess(chave, rec);
-    if (!result.ok) {
-      addWsmExtLog({ keyCode: chave, label: (keys[chave] && keys[chave].label) || '', phone: telefone || '-', ip, wppVersion: body.wppVersion || '-', action: result.msg_id === 'white_label_is_bloked' ? 'login_blocked' : 'invalid' });
-      sendJson(res, { success: false, msg_id: result.msg_id }); return;
-    }
-    // Log de login bem-sucedido para o painel WSM
-    addWsmExtLog({ keyCode: chave, label: (keys[chave] && keys[chave].label) || (rec && rec.label) || '', phone: telefone || '-', ip, wppVersion: body.wppVersion || '-', action: 'login' });
-    sendJson(res, result.body); return;
-  }
-
-  // Routes requiring access-token (chromeStoreId suffix accepted but not validated)
-  if (p.startsWith('/api/auth/') || p.startsWith('/api/user/') || p.startsWith('/api/services/') || p.startsWith('/api/notify/')) {
-    if (!requireAccessToken(req)) { sendJson(res, { success: false, msg_id: 'invalid_access_token' }, 403); return; }
-
-    if (p.startsWith('/api/auth/login-bearer/') && req.method === 'GET') {
-      if (!checkRateLimit(ip, 'api')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
-      const bearer = parseBearer(req);
-      const rec = await findKeyByBearer(bearer);
-      if (!rec) { sendJson(res, { success: false, msg_id: 'invalid_token' }); return; }
-      const result = await authSuccess(rec.code || '', rec);
-      if (!result.ok) { sendJson(res, { success: false, msg_id: result.msg_id }); return; }
-      sendJson(res, result.body); return;
-    }
-
-    if (p.startsWith('/api/auth/register-free/') && req.method === 'POST') {
-      if (!checkRateLimit(ip, 'api')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
-      const body = await parseBody(req);
-      const { code, rec } = await getOrCreateFreeKey(body.extension_id || body.device_id, ip);
-      const result = await authSuccess(code, rec);
-      if (!result.ok) { sendJson(res, { success: false, msg_id: result.msg_id }); return; }
-      sendJson(res, result.body); return;
-    }
-
-  }
-
-      // POST /api/user/update — client-side profile update (name, whatsapp_plugin)
-    if (p === '/api/user/update' && req.method === 'POST') {
-      if (!checkRateLimit(ip, 'api')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
-      const keyCode = normKey(parseBearer(req));
-      if (!keyCode) { sendJson(res, { success: false, msg_id: 'no_token' }, 401); return; }
-      const rec = await findLicenseByCode(keyCode);
-      if (!rec || !rec.active) { sendJson(res, { success: false, msg_id: 'invalid_token' }, 401); return; }
-      const body = await parseBody(req);
-      const update = {};
-      const newName = String(body.full_name || body.name || '').trim().slice(0, 80);
-      if (newName) update.label = newName;
-      const wp = String(body.whatsapp_plugin || body.whatsapp || '').trim().replace(/\D/g, '').slice(0, 20);
-      if (wp) { update.lastPhone = wp; update.lastUsed = new Date().toISOString(); }
-      if (Object.keys(update).length === 0) { sendJson(res, { success: false, msg_id: 'no_fields' }, 400); return; }
-      await updateLicense(keyCode, update);
-      sendJson(res, { success: true, name: newName || undefined }); return;
-    }
-
-    // POST /api/client/phone — register WhatsApp phone used on login
-    if (p === '/api/client/phone' && req.method === 'POST') {
-      if (!requireAccessToken(req)) { sendJson(res, { success: false, msg_id: 'invalid_access_token' }, 403); return; }
-      const keyCode = normKey(parseBearer(req));
-      if (!keyCode) { sendJson(res, { success: false, msg_id: 'no_token' }, 401); return; }
-      const rec = await findLicenseByCode(keyCode);
-      if (!rec || !rec.active) { sendJson(res, { success: false, msg_id: 'invalid_token' }, 401); return; }
-      const body = await parseBody(req);
-      const phone = String(body.phone || body.whatsapp || body.telefone || '').trim().replace(/\D/g, '').slice(0, 20);
-      if (!phone) { sendJson(res, { success: false, msg_id: 'invalid_phone' }, 400); return; }
-      if (keys[keyCode]) {
-        // Chave gerenciada em store._id:'keys' - mesmo documento protegido
-        // por claimPhoneSlotAtomic, usa a mesma primitiva em vez de repetir
-        // o check-then-push não-atômico que existia aqui.
-        const maxUses = keys[keyCode].maxUses != null ? keys[keyCode].maxUses : -1;
-        const claim = await claimPhoneSlotAtomic(keyCode, phone, maxUses);
-        if (claim.status === 'limit_reached') { sendJson(res, { success: false, msg_id: 'limit_reached' }, 403); return; }
-        keys[keyCode].lastPhone = phone;
-        keys[keyCode].lastIp = ip;
-        saveKey(keyCode).catch(() => {});
-      } else {
-        // Registro só existe na coleção 'licenses' (produto white-label
-        // separado, fora do escopo desta correção) - comportamento original
-        // preservado sem alteração.
-        const phones = Array.isArray(rec.phones) ? rec.phones : [];
-        if (!phones.includes(phone)) {
-          const maxUses = rec.maxUses != null ? rec.maxUses : -1;
-          if (maxUses > 0 && phones.length >= maxUses) { sendJson(res, { success: false, msg_id: 'limit_reached' }, 403); return; }
-          phones.push(phone);
-          await updateLicense(keyCode, { phones, uses: phones.length, lastPhone: phone, lastIp: ip });
-        } else {
-          await updateLicense(keyCode, { lastPhone: phone, lastIp: ip });
-        }
-      }
-      sendJson(res, { success: true }); return;
-    }
-
-    // Bloqueia /admin e /wsm-admin diretos quando slug está ativo
-    if (_wsmSecret && (p === '/admin' || p.startsWith('/admin/') || p === '/wsm-admin' || p.startsWith('/wsm-admin/'))) {
-      res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('Not found'); return;
-    }
-
-    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end('WSM: rota não encontrada');
-  }
-
-  return { route, adminSlug: () => WSM_R_ADMIN };
-})();
-// ═══════════ FIM WSM MODULE ═══════════
 
 const ZVM_SERVER_AUTHORITY_PATCH_V1 = true;
 const ZVM_BUILD_AUTHORITY_FAILCLOSED_V2 = true;
 const ZVM_SECURITY_PROTOCOL = 1;
-const ZVM_CAPABILITY_TTL_MS = Math.max(60, Math.min(900, parseInt(process.env.ZVM_CAPABILITY_TTL_SEC || '300') || 300)) * 1000;
-// Hardening é ligado por padrão. Só um operador do servidor pode desligar
-// explicitamente por variável de ambiente durante recuperação controlada.
-const ZVM_BUILD_ENFORCE = !/^(0|false|no|off)$/i.test(String(process.env.ZVM_BUILD_ENFORCE || 'true'));
+const ZVM_BUILD_ENFORCE = /^(1|true|yes|on)$/i.test(String(process.env.ZVM_BUILD_ENFORCE || '').trim());
+// Compatibilidade explícita para a ZapVoice/ZVM V3 durante coexistência.
+// Com enforcement desligado, V3 segue compatível como hoje. Ao ligar o enforcement
+// para a nova ZVM, V3 fecha por padrão e só permanece ativo com opt-in operacional.
+const ZVM_LEGACY_V3_ALLOW = /^(1|true|yes|on)$/i.test(String(process.env.ZVM_LEGACY_V3_ALLOW || '').trim());
+function legacyV3Allowed() { return !ZVM_BUILD_ENFORCE || ZVM_LEGACY_V3_ALLOW; }
 const ZVM_SECURITY_CLOCK_SKEW_MS = 15 * 60 * 1000;
 const ZVM_SECURITY_REQUEST_TTL_MS = 20 * 60 * 1000;
 const ZVM_SECURITY_SEEN = new Map();
@@ -10574,6 +10002,7 @@ function zvmSecurityLoadOfficialBuilds() {
   return out;
 }
 const ZVM_OFFICIAL_BUILDS = zvmSecurityLoadOfficialBuilds();
+const ZVM_DENIED_BUILDS = zvmSecurityBuildMap(process.env.ZVM_DENIED_BUILDS || '');
 
 function zvmSecurityHash(value) { return crypto.createHash('sha256').update(String(value == null ? '' : value), 'utf8').digest('hex'); }
 function zvmSecurityHashSet(raw) {
@@ -10588,8 +10017,20 @@ function zvmSecurityDevBuildAllowed(keyCode, deviceId) {
   if (!ZVM_DEV_BUILD_ALLOW || !keyCode || !deviceId || !ZVM_DEV_BUILD_KEY_HASHES.size || !ZVM_DEV_BUILD_DEVICE_HASHES.size) return false;
   return ZVM_DEV_BUILD_KEY_HASHES.has(zvmSecurityHash(String(keyCode))) && ZVM_DEV_BUILD_DEVICE_HASHES.has(zvmSecurityHash(String(deviceId)));
 }
-function zvmSecurityScope(value) { return String(value || '').replace(/[^A-Za-z0-9._:-]/g, '').slice(0, 80); }
 function zvmSecurityBuildRecognized(version, fingerprint) { const set = ZVM_OFFICIAL_BUILDS.get(String(version || '')); return !!(set && set.has(String(fingerprint || '').toLowerCase())); }
+function zvmSecurityBuildDenied(version, fingerprint) { const set = ZVM_DENIED_BUILDS.get(String(version || '')); return !!(set && set.has(String(fingerprint || '').toLowerCase())); }
+function zvmSecurityStoredSessionAllowed(doc) {
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return false;
+  const extensionVersion = String(doc.extensionVersion || '').trim();
+  const buildFingerprint = String(doc.buildFingerprint || '').trim().toLowerCase();
+  const extensionId = String(doc.extensionId || '').trim().toLowerCase();
+  if (zvmSecurityBuildDenied(extensionVersion, buildFingerprint)) return false;
+  if (!ZVM_BUILD_ENFORCE) return true;
+  if (!/^\d+(?:\.\d+){2,3}$/.test(extensionVersion) || !/^[a-f0-9]{64}$/.test(buildFingerprint) || !/^[a-p]{32}$/.test(extensionId)) return false;
+  if (ZVM_EXTENSION_IDS.size && !ZVM_EXTENSION_IDS.has(extensionId)) return false;
+  if (zvmSecurityBuildRecognized(extensionVersion, buildFingerprint)) return true;
+  return doc.developmentAuthorized === true && ZVM_DEV_BUILD_ALLOW === true;
+}
 function zvmSecurityCleanupSeen(now) {
   if (ZVM_SECURITY_SEEN.size < 1024) return;
   for (const [id, ts] of ZVM_SECURITY_SEEN) if (now - ts > ZVM_SECURITY_REQUEST_TTL_MS) ZVM_SECURITY_SEEN.delete(id);
@@ -10605,6 +10046,7 @@ function zvmSecurityCheckClient(raw, consume, options) {
   const requestId = String(raw.requestId || '').trim();
   const sentAtMs = Number(raw.sentAtMs || 0), now = Date.now();
   if (protocol !== ZVM_SECURITY_PROTOCOL || !/^\d+(?:\.\d+){2,3}$/.test(extensionVersion) || !/^[a-f0-9]{64}$/.test(buildFingerprint) || !/^[a-p]{32}$/.test(extensionId)) return { ok:false, code:'SECURITY_CLIENT_INVALID' };
+  if (zvmSecurityBuildDenied(extensionVersion, buildFingerprint)) return { ok:false, code:'BUILD_REVOKED', recognized:false, extensionVersion, extensionId, buildFingerprint };
   if (ZVM_EXTENSION_IDS.size && !ZVM_EXTENSION_IDS.has(extensionId)) return { ok:false, code:'EXTENSION_ID_NOT_ALLOWED' };
   if (!/^[A-Za-z0-9._:-]{8,96}$/.test(requestId) || !Number.isFinite(sentAtMs) || Math.abs(now - sentAtMs) > ZVM_SECURITY_CLOCK_SKEW_MS) return { ok:false, code:'SECURITY_REQUEST_STALE' };
   zvmSecurityCleanupSeen(now);
@@ -10618,41 +10060,372 @@ function zvmSecurityCheckClient(raw, consume, options) {
   if (ZVM_BUILD_ENFORCE && requireRecognized && !recognized && !allowUnrecognized) return { ok:false, code:'BUILD_NOT_ALLOWED', recognized:false, extensionVersion, extensionId, buildFingerprint };
   return { ok:true, recognized, developmentAuthorized:(!recognized && allowUnrecognized), extensionVersion, extensionId, buildFingerprint, requestId };
 }
-function zvmSecurityB64u(input) { return Buffer.from(input).toString('base64').replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_'); }
-function zvmSecurityB64uDecode(input) { let s=String(input||'').replace(/-/g,'+').replace(/_/g,'/'); while (s.length % 4) s += '='; return Buffer.from(s,'base64'); }
-function zvmSecuritySignToken(payload) {
-  if (!APP_SECRET) return '';
-  const body = zvmSecurityB64u(Buffer.from(JSON.stringify(payload), 'utf8'));
-  const unsigned = 'zv1.' + body;
-  const sig = zvmSecurityB64u(crypto.createHmac('sha256', APP_SECRET).update(unsigned, 'utf8').digest());
-  return unsigned + '.' + sig;
+async function zvmSecurityConsumeRequestIdShared(requestId, nowMs = Date.now(), deps = {}) {
+  const db = deps.db || await getMongoDb();
+  const expiresAt = new Date(Number(nowMs) + ZVM_SECURITY_REQUEST_TTL_MS);
+  try {
+    await db.collection('extension_security_replay').insertOne({ _id: requestId, createdAt: new Date(Number(nowMs)), expiresAt });
+    return { ok: true };
+  } catch (error) {
+    if (error?.code === 11000) return { ok: false, code: 'SECURITY_REPLAY_REJECTED' };
+    console.error('[SEC] Anti-replay compartilhado indisponível:', safeScalar(error?.message, 120, 'db_error'));
+    return { ok: false, code: 'SECURITY_REPLAY_UNAVAILABLE' };
+  }
 }
-function zvmSecurityVerifyToken(token) {
-  if (!APP_SECRET || typeof token !== 'string' || token.length > 8192) return null;
-  const parts = token.split('.'); if (parts.length !== 3 || parts[0] !== 'zv1') return null;
-  const unsigned = parts[0] + '.' + parts[1];
-  const expected = crypto.createHmac('sha256', APP_SECRET).update(unsigned, 'utf8').digest();
-  let got; try { got = zvmSecurityB64uDecode(parts[2]); } catch (_) { return null; }
-  if (got.length !== expected.length || !crypto.timingSafeEqual(got, expected)) return null;
-  try { const payload = JSON.parse(zvmSecurityB64uDecode(parts[1]).toString('utf8')); return payload && typeof payload === 'object' ? payload : null; } catch (_) { return null; }
+async function zvmSecurityCheckClientShared(raw, options, deps = {}) {
+  const checked = zvmSecurityCheckClient(raw, false, options);
+  if (!checked.ok) return checked;
+  const consumed = await zvmSecurityConsumeRequestIdShared(checked.requestId, Date.now(), deps);
+  if (!consumed.ok) return { ...checked, ok: false, code: consumed.code };
+  return checked;
 }
-function zvmSecurityScopesForKey(keyCode) {
-  if (isFreeAuthKey(keyCode)) return ['extension.use'];
-  const k = keys[keyCode] || {};
-  const source = Array.isArray(k.permissions) && k.permissions.length ? k.permissions : FULL_PERMISSIONS;
-  const scopes = ['extension.use'];
-  for (const raw of source) { const s = zvmSecurityScope(raw); if (s && !scopes.includes(s)) scopes.push(s); }
-  if (k.modules && typeof k.modules === 'object') for (const [name, enabled] of Object.entries(k.modules)) if (enabled === true) { const s=zvmSecurityScope(name); if (s && !scopes.includes('module:'+s)) scopes.push('module:'+s); }
-  return scopes.slice(0, 128);
+function zvmSecurityClientErrorStatus(code) {
+  if (code === 'BUILD_NOT_ALLOWED' || code === 'BUILD_REVOKED' || code === 'EXTENSION_ID_NOT_ALLOWED') return 403;
+  if (code === 'SECURITY_REPLAY_UNAVAILABLE') return 503;
+  return 400;
 }
-function zvmSecurityIssue(keyCode, client, deviceId, phoneNumber) {
-  const now = Date.now(), expiresAtMs = now + ZVM_CAPABILITY_TTL_MS, capabilityId = crypto.randomBytes(18).toString('hex');
-  const deviceIdHash = zvmSecurityHash(deviceId), phoneHash = phoneNumber ? zvmSecurityHash(phoneNumber) : '';
-  const scopes = zvmSecurityScopesForKey(keyCode);
-  const payload = { v:1, p:ZVM_SECURITY_PROTOCOL, cid:capabilityId, sub:zvmSecurityHash('key:'+keyCode), dh:deviceIdHash, ph:phoneHash, bf:client.buildFingerprint, ev:client.extensionVersion, ei:client.extensionId, dv:client.developmentAuthorized===true, scp:scopes, iat:now, exp:expiresAtMs };
-  const capability = zvmSecuritySignToken(payload);
-  if (!capability) return null;
-  return { protocol:ZVM_SECURITY_PROTOCOL, required:ZVM_BUILD_ENFORCE, recognized:client.recognized===true, capability, capabilityId, scopes, issuedAtMs:now, expiresAtMs, buildFingerprint:client.buildFingerprint, extensionVersion:client.extensionVersion, deviceIdHash };
+
+function extensionPublicNotifications() {
+  if (!EXTENSION_NOTIFICATIONS_JSON) return [];
+  let parsed;
+  try { parsed = JSON.parse(EXTENSION_NOTIFICATIONS_JSON); } catch (_) { return []; }
+  const list = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.notifications) ? parsed.notifications : []);
+  return list.slice(0, 50).map((raw, index) => {
+    raw = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    const publishedMs = Date.parse(String(raw.publishedAt || raw.createdAt || raw.date || ''));
+    const category = raw.category === 'updates' || raw.type === 'update' || raw.type === 'version' ? 'updates' : 'announcements';
+    const priorityRaw = String(raw.priority || 'normal').toLowerCase();
+    const priority = ['normal','high','urgent'].includes(priorityRaw) ? priorityRaw : 'normal';
+    const out = {
+      id: String(raw.id || raw.notificationId || ('notice-' + index)).replace(/[^A-Za-z0-9._:-]/g, '').slice(0, 100) || ('notice-' + index),
+      category,
+      title: String(raw.title || raw.subject || 'Comunicado').slice(0, 160),
+      body: String(raw.body || raw.message || raw.text || '').slice(0, 4000),
+      priority,
+    };
+    if (Number.isFinite(publishedMs)) out.publishedAt = new Date(publishedMs).toISOString();
+    return out;
+  });
+}
+function extensionPublicTutorials() {
+  const out = new Map();
+  if (!EXTENSION_TUTORIALS_JSON) return out;
+  let parsed;
+  try { parsed = JSON.parse(EXTENSION_TUTORIALS_JSON); } catch (_) { return out; }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return out;
+  for (const [rawKey, rawValue] of Object.entries(parsed).slice(0, 100)) {
+    const key = String(rawKey || '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 80);
+    if (!key) continue;
+    try {
+      const url = new URL(String(rawValue || ''));
+      const host = url.hostname.toLowerCase();
+      if (url.protocol !== 'https:' || !['youtube.com','www.youtube.com','youtu.be','www.youtube-nocookie.com'].includes(host)) continue;
+      out.set(key, url.toString());
+    } catch (_) {}
+  }
+  return out;
+}
+const EXTENSION_PUBLIC_NOTIFICATIONS = Object.freeze(extensionPublicNotifications());
+const EXTENSION_PUBLIC_TUTORIALS = extensionPublicTutorials();
+let _metaIndexesReady = false;
+function metaEncryptionKey() {
+  if (!META_TOKEN_ENCRYPTION_KEY) return null;
+  let key = null;
+  if (/^[a-f0-9]{64}$/i.test(META_TOKEN_ENCRYPTION_KEY)) key = Buffer.from(META_TOKEN_ENCRYPTION_KEY, 'hex');
+  else {
+    try { key = Buffer.from(META_TOKEN_ENCRYPTION_KEY, 'base64'); } catch (_) { key = null; }
+  }
+  return key && key.length === 32 ? key : null;
+}
+function metaConfigured() {
+  return !!(META_APP_ID && META_APP_SECRET && META_CONFIG_ID && metaEncryptionKey());
+}
+function metaPublicConfig() {
+  return { configured: metaConfigured(), graphVersion: META_GRAPH_VERSION, webhookConfigured: !!META_WEBHOOK_VERIFY_TOKEN };
+}
+function metaEncrypt(value, aad) {
+  const key = metaEncryptionKey();
+  if (!key) throw Object.assign(new Error('Meta encryption key unavailable'), { code: 'META_CRYPTO_UNAVAILABLE' });
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  if (aad) cipher.setAAD(Buffer.from(String(aad), 'utf8'));
+  const encrypted = Buffer.concat([cipher.update(String(value), 'utf8'), cipher.final()]);
+  return { v: 1, alg: 'A256GCM', iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64'), data: encrypted.toString('base64') };
+}
+function metaDecrypt(box, aad) {
+  const key = metaEncryptionKey();
+  if (!key || !box || box.v !== 1 || box.alg !== 'A256GCM') throw Object.assign(new Error('Meta secret unavailable'), { code: 'META_SECRET_INVALID' });
+  const iv = Buffer.from(String(box.iv || ''), 'base64');
+  const tag = Buffer.from(String(box.tag || ''), 'base64');
+  const data = Buffer.from(String(box.data || ''), 'base64');
+  if (iv.length !== 12 || tag.length !== 16 || data.length > 16384) throw Object.assign(new Error('Meta secret invalid'), { code: 'META_SECRET_INVALID' });
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+  if (aad) decipher.setAAD(Buffer.from(String(aad), 'utf8'));
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8');
+}
+async function ensureMetaIndexes(db) {
+  if (_metaIndexesReady) return;
+  await Promise.all([
+    db.collection(META_FLOW_COLLECTION).createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0, name: 'meta_flow_ttl' }),
+    db.collection(META_FLOW_COLLECTION).createIndex({ ownerId: 1, status: 1 }, { name: 'meta_flow_owner_status' }),
+    db.collection(META_COLLECTION).createIndex({ phoneNumberId: 1 }, { unique: true, sparse: true, name: 'meta_phone_unique' }),
+    db.collection(META_COLLECTION).createIndex({ wabaId: 1 }, { name: 'meta_waba' }),
+    db.collection(META_WEBHOOK_COLLECTION).createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0, name: 'meta_webhook_ttl' }),
+    db.collection(META_WEBHOOK_COLLECTION).createIndex({ eventKey: 1 }, { unique: true, name: 'meta_webhook_dedupe' }),
+  ]);
+  _metaIndexesReady = true;
+}
+function metaError(code, message, status = 502) {
+  const error = new Error(message || code); error.code = code; error.status = status; return error;
+}
+async function metaFetch(pathname, token, options = {}) {
+  const clean = String(pathname || '').replace(/^\/+/, '');
+  if (!/^[A-Za-z0-9_.?=&,%+\-\/]+$/.test(clean)) throw metaError('META_PATH_INVALID', 'Caminho Meta inválido.', 400);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const headers = { Accept: 'application/json', Authorization: 'Bearer ' + token, ...(options.headers || {}) };
+    const response = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/${clean}`, { ...options, headers, redirect: 'error', cache: 'no-store', signal: controller.signal });
+    const text = await response.text();
+    if (Buffer.byteLength(text, 'utf8') > 1024 * 1024) throw metaError('META_RESPONSE_TOO_LARGE', 'Resposta da Meta excedeu o limite seguro.');
+    let data = {};
+    try { data = text ? JSON.parse(text) : {}; } catch (_) { throw metaError('META_RESPONSE_INVALID', 'A Meta retornou uma resposta inválida.'); }
+    if (!response.ok) {
+      const msg = safeScalar(data?.error?.message || `Meta HTTP ${response.status}`, 240, 'Falha na Meta');
+      const error = metaError('META_HTTP_' + response.status, msg, response.status === 401 || response.status === 403 ? 401 : 502);
+      error.metaCode = data?.error?.code || null;
+      throw error;
+    }
+    return data;
+  } catch (error) {
+    if (error?.name === 'AbortError') throw metaError('META_TIMEOUT', 'A Meta demorou para responder.');
+    throw error;
+  } finally { clearTimeout(timer); }
+}
+async function metaExchangeCode(code) {
+  code = String(code || '').trim();
+  if (!code || code.length > 4096) throw metaError('META_CODE_INVALID', 'Código de autorização inválido.', 400);
+  const qs = new URLSearchParams({ client_id: META_APP_ID, client_secret: META_APP_SECRET, code });
+  const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(`https://graph.facebook.com/${META_GRAPH_VERSION}/oauth/access_token?${qs.toString()}`, { method: 'GET', headers: { Accept: 'application/json' }, redirect: 'error', cache: 'no-store', signal: controller.signal });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.access_token) throw metaError('META_TOKEN_EXCHANGE_FAILED', safeScalar(data?.error?.message, 220, 'Não foi possível concluir a autorização da Meta.'));
+    return String(data.access_token);
+  } catch (error) {
+    if (error?.name === 'AbortError') throw metaError('META_TIMEOUT', 'A Meta demorou para concluir a autorização.');
+    throw error;
+  } finally { clearTimeout(timer); }
+}
+async function metaValidateAccessToken(token) {
+  const appToken = `${META_APP_ID}|${META_APP_SECRET}`;
+  const data = await metaFetch(`debug_token?input_token=${encodeURIComponent(token)}`, appToken);
+  const info = data?.data || {};
+  if (info.is_valid !== true || String(info.app_id || '') !== META_APP_ID) throw metaError('META_TOKEN_INVALID', 'A autorização retornada não pertence ao aplicativo ZVM.', 403);
+  return info;
+}
+async function metaValidateAssets(token, wabaId, phoneNumberId) {
+  if (!/^\d{5,40}$/.test(wabaId) || !/^\d{5,40}$/.test(phoneNumberId)) throw metaError('META_ASSET_INVALID', 'Identificadores da conta Meta inválidos.', 400);
+  const result = await metaFetch(`${wabaId}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating&limit=100`, token);
+  const phones = Array.isArray(result.data) ? result.data : [];
+  const phone = phones.find(item => String(item?.id || '') === phoneNumberId);
+  if (!phone) throw metaError('META_PHONE_NOT_IN_WABA', 'O número selecionado não pertence à conta WhatsApp Business autorizada.', 403);
+  return phone;
+}
+async function metaSubscribeWaba(token, wabaId) {
+  const result = await metaFetch(`${wabaId}/subscribed_apps`, token, { method: 'POST' });
+  if (!(result && (result.success === true || result.success === 'true'))) throw metaError('META_SUBSCRIBE_FAILED', 'Não foi possível ativar os webhooks desta conta.');
+  return true;
+}
+function metaRegistrationPin() { return String(crypto.randomInt(0, 1000000)).padStart(6, '0'); }
+async function metaRegisterPhone(token, phoneNumberId, pin) {
+  const result = await metaFetch(`${phoneNumberId}/register`, token, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messaging_product: 'whatsapp', pin }) });
+  return !!(result && (result.success === true || result.success === 'true'));
+}
+async function metaResolveOwner(req, body = {}) {
+  const bearer = getExtensionBearerToken(req);
+  if (bearer) {
+    const refreshed = await refreshExtensionSession(bearer).catch(() => null);
+    if (!refreshed?.ok || !refreshed.sessionDoc?.subject?.id) return null;
+    if (!Array.isArray(refreshed.entitlement?.capabilities) || !refreshed.entitlement.capabilities.includes('integrations.manage')) return null;
+    return { ownerId: refreshed.sessionDoc.subject.id, auth: 'v4', subject: refreshed.sessionDoc.subject };
+  }
+  if (ZVM_BUILD_ENFORCE) return null;
+  const keyCode = sanitizeId(body.authKey, 32);
+  const deviceId = safeScalar(body.deviceId, 160);
+  if (!keyCode || isFreeAuthKey(keyCode) || !deviceId) return null;
+  const loaded = await ensureKeyLoadedEx(keyCode);
+  if (!loaded.found || loaded.dbError || !extensionLicenseIsUsable(keys[keyCode])) return null;
+  return { ownerId: extensionSubject('license', keyCode).id, auth: 'v254-compat', subject: extensionSubject('license', keyCode) };
+}
+function metaPublicConnection(rec) {
+  if (!rec) return null;
+  return {
+    connectionMode: 'embedded', wabaId: String(rec.wabaId || ''), phoneNumberId: String(rec.phoneNumberId || ''),
+    verifiedName: String(rec.verifiedName || ''), displayPhoneNumber: String(rec.displayPhoneNumber || ''), qualityRating: String(rec.qualityRating || ''),
+    graphVersion: META_GRAPH_VERSION, status: String(rec.status || 'connected'), registrationStatus: String(rec.registrationStatus || 'unknown'),
+    webhookStatus: String(rec.webhookStatus || 'unknown'), connectedAt: rec.connectedAt || null, lastValidatedAt: rec.lastValidatedAt || null,
+  };
+}
+async function metaGetConnection(ownerId) {
+  const db = await getMongoDb(); await ensureMetaIndexes(db);
+  return db.collection(META_COLLECTION).findOne({ _id: ownerId });
+}
+function metaSignupHtml(flowId) {
+  const nonce = crypto.randomBytes(18).toString('base64');
+  const flow = JSON.stringify(flowId), appId = JSON.stringify(META_APP_ID), configId = JSON.stringify(META_CONFIG_ID), version = JSON.stringify(META_GRAPH_VERSION);
+  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ZVM · Conectar com a Meta</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b141a;color:#e9edef;font-family:system-ui,-apple-system,Segoe UI,sans-serif}.c{width:min(520px,calc(100% - 32px));padding:34px;border:1px solid #26323a;border-radius:22px;background:#111b21;box-shadow:0 28px 70px #0008}.m{width:52px;height:52px;border-radius:16px;display:grid;place-items:center;background:#1877f2;color:white;font-size:28px;font-weight:800}.k{margin-top:18px;color:#8696a0;font-size:11px;font-weight:800;letter-spacing:.12em}h1{font-size:28px;margin:8px 0}p{color:#aebac1;line-height:1.55}button{width:100%;margin-top:18px;border:0;border-radius:12px;padding:13px 16px;background:#1877f2;color:#fff;font-weight:800;cursor:pointer}.s{margin-top:16px;padding:12px;border:1px solid #25313a;border-radius:12px;color:#8696a0;font-size:12px}.ok{color:#21c063}.err{color:#ff6b72}</style></head><body><main class="c"><div class="m">M</div><div class="k">WHATSAPP BUSINESS PLATFORM</div><h1>Conectar com a Meta</h1><p>Entre na sua conta Meta, escolha a empresa e o número do WhatsApp Business e autorize a ZVM.</p><button id="connect">Continuar com a Meta</button><div id="status" class="s">Aguardando início da conexão.</div></main><script nonce="${nonce}">window.fbAsyncInit=function(){FB.init({appId:${appId},autoLogAppEvents:false,xfbml:false,version:${version}})};(function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0];if(d.getElementById(id))return;js=d.createElement(s);js.id=id;js.src='https://connect.facebook.net/pt_BR/sdk.js';js.crossOrigin='anonymous';fjs.parentNode.insertBefore(js,fjs)}(document,'script','facebook-jssdk'));var code='',session={};function st(t,c){var e=document.getElementById('status');e.textContent=t;e.className='s '+(c||'')}function finish(){if(!code||!session.waba_id||!session.phone_number_id)return;st('Concluindo conexão…');fetch('/extension/v3/meta/embedded-signup/complete',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({flowId:${flow},code:code,wabaId:String(session.waba_id),phoneNumberId:String(session.phone_number_id)})}).then(function(r){return r.json().then(function(j){return{r:r,j:j}})}).then(function(x){if(!x.r.ok)throw new Error(x.j.message||x.j.error||'Falha ao concluir');st('Conta conectada. Você pode fechar esta janela.','ok');setTimeout(function(){window.close()},1300)}).catch(function(e){st(e.message,'err')})}window.addEventListener('message',function(event){if(event.origin!=='https://www.facebook.com'&&event.origin!=='https://web.facebook.com')return;try{var d=typeof event.data==='string'?JSON.parse(event.data):event.data;if(d&&d.type==='WA_EMBEDDED_SIGNUP'&&d.event==='FINISH'){session=d.data||{};finish()}}catch(_){}});document.getElementById('connect').onclick=function(){if(!window.FB){st('Carregando a Meta…');return}st('Abra a janela da Meta e conclua as etapas.');FB.login(function(response){if(response&&response.authResponse&&response.authResponse.code){code=response.authResponse.code;finish()}else st('A autorização não foi concluída.','err')},{config_id:${configId},response_type:'code',override_default_response_type:true,extras:{setup:{},featureType:'whatsapp_business_app_onboarding',sessionInfoVersion:'3'}})};</script></body></html>`;
+  return { html, nonce };
+}
+function sendMetaSignupHtml(res, payload, status = 200) {
+  const csp = `default-src 'none'; script-src 'nonce-${payload.nonce}' https://connect.facebook.net; style-src 'unsafe-inline'; connect-src 'self' https://graph.facebook.com https://www.facebook.com; frame-src https://www.facebook.com https://web.facebook.com; img-src 'self' data: https://www.facebook.com https://static.xx.fbcdn.net; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`;
+  res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': csp, 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer', 'Permissions-Policy': 'camera=(), microphone=(), geolocation=()', 'Cross-Origin-Opener-Policy': 'same-origin-allow-popups' });
+  res.end(payload.html);
+}
+function metaVerifyWebhookSignature(rawBody, signature) {
+  if (!META_APP_SECRET || typeof signature !== 'string' || !signature.startsWith('sha256=')) return false;
+  const expected = 'sha256=' + crypto.createHmac('sha256', META_APP_SECRET).update(rawBody).digest('hex');
+  return safeCompare(signature, expected);
+}
+function metaWebhookEventKeys(payload, rawBody) {
+  const keys = [];
+  for (const entry of Array.isArray(payload?.entry) ? payload.entry : []) {
+    for (const change of Array.isArray(entry?.changes) ? entry.changes : []) {
+      const value = change?.value || {};
+      for (const msg of Array.isArray(value.messages) ? value.messages : []) if (msg?.id) keys.push('msg:' + String(msg.id).slice(0, 180));
+      for (const st of Array.isArray(value.statuses) ? value.statuses : []) if (st?.id) keys.push('status:' + String(st.id).slice(0, 180) + ':' + String(st.status || '').slice(0, 40));
+    }
+  }
+  if (!keys.length) keys.push('body:' + crypto.createHash('sha256').update(rawBody).digest('hex'));
+  return [...new Set(keys)].slice(0, 50);
+}
+async function storeMetaWebhook(payload, rawBody) {
+  const db = await getMongoDb(); await ensureMetaIndexes(db);
+  const now = new Date(), expiresAt = new Date(now.getTime() + META_WEBHOOK_RETENTION_DAYS * 86400000);
+  const object = safeScalar(payload?.object, 80);
+  const entries = Array.isArray(payload?.entry) ? payload.entry : [];
+  const summaries = [];
+  for (const entry of entries.slice(0, 10)) for (const change of (Array.isArray(entry?.changes) ? entry.changes : []).slice(0, 20)) {
+    const value = change?.value || {}, metadata = value?.metadata || {};
+    summaries.push({ field: safeScalar(change?.field, 60), wabaId: safeScalar(entry?.id, 60), phoneNumberId: safeScalar(metadata?.phone_number_id, 60), messages: Array.isArray(value.messages) ? value.messages.length : 0, statuses: Array.isArray(value.statuses) ? value.statuses.length : 0 });
+  }
+  for (const eventKey of metaWebhookEventKeys(payload, rawBody)) {
+    await db.collection(META_WEBHOOK_COLLECTION).updateOne({ eventKey }, { $setOnInsert: { eventKey, object, summaries, receivedAt: now, expiresAt } }, { upsert: true }).catch(error => { if (error?.code !== 11000) throw error; });
+  }
+}
+
+// ── HTTP traffic telemetry (privacy-safe, in-memory only) ───────────────────
+// Purpose: identify route amplification without recording IPs, query strings,
+// request bodies, license identifiers or user/customer data. Route names are
+// reduced to a fixed low-cardinality vocabulary and retained for at most 24h.
+const HTTP_TRAFFIC_BUCKET_MS = 5 * 60 * 1000;
+const HTTP_TRAFFIC_RETENTION_MS = 24 * 60 * 60 * 1000;
+const HTTP_TRAFFIC_MAX_ENTRIES = 4096;
+const _httpTrafficBuckets = new Map();
+const HTTP_TRAFFIC_PUBLIC_PATHS = new Set([
+  '/', '/health', '/status', '/robots.txt', '/client/status', '/client/remove-phone',
+  '/api/checkkey', '/cakto/webhook', '/meta/webhook', '/faq', '/planos', '/privacidade',
+]);
+const HTTP_TRAFFIC_EXTENSION_PATHS = new Set([
+  '/v3/key', '/v3/check-status', '/v3/usage', '/v3/get-usage', '/v3/sync-usage',
+  '/v4/session/key', '/v4/session/login', '/v4/session/refresh', '/v4/session/logout',
+  '/v4/backup/decoder-material', '/v3/meta/embedded-signup/start',
+  '/v3/meta/embedded-signup/complete', '/v3/meta/embedded-signup/status',
+  '/v3/meta/connection/validate', '/v3/meta/messages/test', '/v3/meta/connection/disconnect',
+]);
+const HTTP_TRAFFIC_ADMIN_PATHS = new Set([
+  '/', '/login', '/logout', '/status', '/api/data', '/api/portal-users',
+  '/api/ip-blacklist', '/api/session-info', '/api/security/alerts/clear',
+  '/api/pentest/run', '/api/pentest/alerts', '/api/export/csv',
+  '/api/cakto-queue', '/api/cakto-queue/requeue', '/api/cakto-mail',
+  '/api/cakto-mail/requeue', '/api/traffic-summary',
+]);
+const HTTP_TRAFFIC_ADMIN_KEY_ACTIONS = new Set(['toggle','renew','max-uses','label','phones','note','modules','clear-suspect']);
+
+function normalizeTrafficPath(rawUrl) {
+  const path = String(rawUrl || '/').split('?')[0] || '/';
+  if (HTTP_TRAFFIC_PUBLIC_PATHS.has(path)) return path;
+
+  if (path === R_EXT || path.startsWith(R_EXT + '/')) {
+    const suffix = path.slice(R_EXT.length) || '/';
+    if (HTTP_TRAFFIC_EXTENSION_PATHS.has(suffix)) return R_EXT + suffix;
+    if (suffix.startsWith('/v3/meta/')) return R_EXT + '/v3/meta/other';
+    if (suffix.startsWith('/v4/')) return R_EXT + '/v4/other';
+    if (suffix.startsWith('/v3/')) return R_EXT + '/v3/other';
+    return R_EXT + '/other';
+  }
+
+  if (path === R_ADMIN || path.startsWith(R_ADMIN + '/')) {
+    const suffix = path.slice(R_ADMIN.length) || '/';
+    if (HTTP_TRAFFIC_ADMIN_PATHS.has(suffix)) return '/{admin}' + suffix;
+    if (/^\/api\/keys(?:\/batch)?$/.test(suffix)) return '/{admin}' + suffix;
+    const keyMatch = suffix.match(/^\/api\/keys\/[^/]+(?:\/([^/]+))?$/);
+    if (keyMatch) {
+      const action = HTTP_TRAFFIC_ADMIN_KEY_ACTIONS.has(keyMatch[1]) ? '/' + keyMatch[1] : '';
+      return '/{admin}/api/keys/:id' + action;
+    }
+    if (suffix.startsWith('/api/portal-users/')) return '/{admin}/api/portal-users/:id';
+    if (suffix.startsWith('/api/')) return '/{admin}/api/other';
+    return '/{admin}/other';
+  }
+
+  return '/other';
+}
+
+function _pruneHttpTraffic(nowMs) {
+  const cutoff = nowMs - HTTP_TRAFFIC_RETENTION_MS;
+  for (const [key, row] of _httpTrafficBuckets.entries()) {
+    if (row.bucketStart < cutoff) _httpTrafficBuckets.delete(key);
+  }
+  if (_httpTrafficBuckets.size <= HTTP_TRAFFIC_MAX_ENTRIES) return;
+  const oldest = [..._httpTrafficBuckets.entries()].sort((a,b) => a[1].bucketStart - b[1].bucketStart);
+  for (let i = 0; i < oldest.length - HTTP_TRAFFIC_MAX_ENTRIES; i++) _httpTrafficBuckets.delete(oldest[i][0]);
+}
+
+function recordHttpTraffic(method, normalizedPath, statusCode, durationMs, nowMs = Date.now()) {
+  const route = normalizeTrafficPath(normalizedPath);
+  const verb = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)$/.test(String(method || '').toUpperCase()) ? String(method).toUpperCase() : 'OTHER';
+  const status = Number.isInteger(Number(statusCode)) && Number(statusCode) >= 100 && Number(statusCode) <= 599 ? Number(statusCode) : 0;
+  const bucketStart = Math.floor(Number(nowMs) / HTTP_TRAFFIC_BUCKET_MS) * HTTP_TRAFFIC_BUCKET_MS;
+  const key = `${bucketStart}|${verb}|${route}|${status}`;
+  const row = _httpTrafficBuckets.get(key) || { bucketStart, method: verb, path: route, status, count: 0, durationTotalMs: 0, durationMaxMs: 0 };
+  const elapsed = Math.max(0, Math.min(120000, Number(durationMs) || 0));
+  row.count += 1;
+  row.durationTotalMs += elapsed;
+  row.durationMaxMs = Math.max(row.durationMaxMs, elapsed);
+  _httpTrafficBuckets.set(key, row);
+  if ((_httpTrafficBuckets.size & 31) === 0) _pruneHttpTraffic(Number(nowMs));
+}
+
+function httpTrafficSnapshot(windowMinutes = 60, nowMs = Date.now()) {
+  const minutes = Math.max(5, Math.min(1440, parseInt(windowMinutes, 10) || 60));
+  const cutoff = Number(nowMs) - minutes * 60 * 1000;
+  _pruneHttpTraffic(Number(nowMs));
+  const agg = new Map();
+  let totalRequests = 0;
+  for (const row of _httpTrafficBuckets.values()) {
+    if (row.bucketStart + HTTP_TRAFFIC_BUCKET_MS <= cutoff) continue;
+    const key = `${row.method}|${row.path}|${row.status}`;
+    const out = agg.get(key) || { method: row.method, path: row.path, status: row.status, count: 0, durationTotalMs: 0, maxMs: 0 };
+    out.count += row.count;
+    out.durationTotalMs += row.durationTotalMs;
+    out.maxMs = Math.max(out.maxMs, row.durationMaxMs);
+    agg.set(key, out);
+    totalRequests += row.count;
+  }
+  const rows = [...agg.values()].map(row => ({
+    method: row.method, path: row.path, status: row.status, count: row.count,
+    avgMs: row.count ? Math.round(row.durationTotalMs / row.count) : 0, maxMs: Math.round(row.maxMs),
+  })).sort((a,b) => b.count - a.count || a.path.localeCompare(b.path)).slice(0, 64);
+  return { windowMinutes: minutes, totalRequests, rows };
+}
+
+function observeHttpTraffic(req, res) {
+  const startedAt = Date.now();
+  const method = String(req.method || 'OTHER').toUpperCase();
+  const route = normalizeTrafficPath(req.url);
+  res.once('finish', () => recordHttpTraffic(method, route, res.statusCode, Date.now() - startedAt));
 }
 
 async function handleRequest(req, res) {
@@ -10711,25 +10484,17 @@ async function handleRequest(req, res) {
     'Access-Control-Allow-Origin':  (()=>{
       const o=req.headers.origin||'';
       if(p.startsWith(R_ADMIN)||(R_ANALYTICS&&p.startsWith(R_ANALYTICS))){return 'null';}
-      // /WSM/* é o namespace legado — comportamento de CORS preservado
-      // exatamente como estava, sem tocar (fora de escopo desta rodada).
-      if (/^\/wsm(\/|$)/i.test(p)) return o || '*';
       // Extension API: nunca refletir uma Origin web arbitrária. Quando a
       // allowlist está configurada, só IDs oficiais passam; enquanto ela ainda
       // estiver vazia, preservamos compatibilidade aceitando apenas o formato
       // chrome-extension://<id-válido>, nunca https://evil.example.
       if (p.startsWith(R_EXT)) return isAllowedExtensionOrigin(o) || 'null';
-      // Partner API pode ter consumidor web autorizado por token; comportamento
-      // existente preservado. Webhooks são server-to-server e não precisam de
-      // CORS de navegador — negar CORS não interfere em Cakto/Payt.
-      if (p.startsWith('/api/partner')) return o || '*';
-      if (p === '/cakto/webhook' || p === '/sale/webhook' || p === '/payt/webhook') return 'null';
+      if (p === '/cakto/webhook') return 'null';
       return 'null';
     })(),
     'Access-Control-Allow-Methods': 'POST,GET,OPTIONS,DELETE',
-    // Inclui os headers que a extensão WSM/WaTiDy envia (access-token, Accept, Authorization),
-    // senão o preflight CORS falha e a extensão mostra "Erro no servidor de autenticação".
-    'Access-Control-Allow-Headers': 'Content-Type,Accept,access-token,x-access-token,Authorization,x-app-date,x-app-sig,x-app-ts',
+    // Headers usados pelas APIs atuais da extensão.
+    'Access-Control-Allow-Headers': 'Content-Type,Accept,x-access-token,Authorization,x-app-date,x-app-sig,x-app-ts',
     'Access-Control-Max-Age':       '86400',
     'Vary':                         'Origin',
     'X-Content-Type-Options':       'nosniff',
@@ -10742,74 +10507,116 @@ async function handleRequest(req, res) {
   Object.entries(_corsH).forEach(([k, v]) => res.setHeader(k, v));
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
-  // ═══ Namespace WSM (WSM) — /WSM/* com banco e endpoints próprios ═══
-  if (/^\/wsm(\/|$)/i.test(p)) {
-    const wsmPath = p.replace(/^\/wsm/i, '') || '/';
-    await WSM.route(req, res, wsmPath, url, ip);
+  // ── Meta Official / Embedded Signup ─────────────────────────────────
+  if (p === '/meta/webhook' && req.method === 'GET') {
+    const mode = url.searchParams.get('hub.mode'), token = url.searchParams.get('hub.verify_token'), challenge = url.searchParams.get('hub.challenge');
+    if (mode === 'subscribe' && META_WEBHOOK_VERIFY_TOKEN && safeCompare(String(token || ''), META_WEBHOOK_VERIFY_TOKEN) && /^\d{1,30}$/.test(String(challenge || ''))) {
+      res.writeHead(200, { 'Content-Type':'text/plain; charset=utf-8', 'Cache-Control':'no-store', ..._SEC_HEADERS }); res.end(String(challenge)); return;
+    }
+    addSecurityAlert('META_WEBHOOK_VERIFY_FAIL', 'Falha de verificação do webhook Meta', ip);
+    res.writeHead(403, { 'Content-Type':'text/plain; charset=utf-8', 'Cache-Control':'no-store', ..._SEC_HEADERS }); res.end('Forbidden'); return;
+  }
+  if (p === '/meta/webhook' && req.method === 'POST') {
+    const raw = await readRawBody(req, 1024 * 1024);
+    if (raw === null) { sendJson(res, { ok:false, error:'payload_too_large' }, 413); return; }
+    if (!metaVerifyWebhookSignature(raw, req.headers['x-hub-signature-256'])) { addSecurityAlert('META_WEBHOOK_SIGNATURE_FAIL', 'Assinatura Meta inválida', ip); sendJson(res, { ok:false, error:'invalid_signature' }, 401); return; }
+    let payload; try { payload = JSON.parse(raw); } catch (_) { sendJson(res, { ok:false, error:'invalid_payload' }, 400); return; }
+    try { await storeMetaWebhook(payload, raw); sendJson(res, { ok:true }); } catch (error) { console.error('[META] webhook store:', safeScalar(error.message, 120)); sendJson(res, { ok:false, error:'temporarily_unavailable' }, 503); }
     return;
   }
-
+  if (p === R_EXT+'/v3/notifications' && req.method === 'GET') {
+    if (!checkRateLimit(ip, 'ext_public_notifications', 120, 60000)) { sendJson(res, { errorCode:'RATE_LIMITED' }, 429); return; }
+    res.setHeader('Cache-Control', 'no-store');
+    sendJson(res, { notifications: EXTENSION_PUBLIC_NOTIFICATIONS }); return;
+  }
+  if (p === R_EXT+'/v3/tutorial' && req.method === 'GET') {
+    if (!checkRateLimit(ip, 'ext_public_tutorial', 120, 60000)) { sendJson(res, { errorCode:'RATE_LIMITED' }, 429); return; }
+    const feature = String(url.searchParams.get('feature') || '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 80);
+    if (!feature) { sendJson(res, { errorCode:'TUTORIAL_FEATURE_INVALID' }, 400); return; }
+    const tutorialUrl = EXTENSION_PUBLIC_TUTORIALS.get(feature) || '';
+    if (!tutorialUrl) { sendJson(res, { errorCode:'TUTORIAL_NOT_FOUND' }, 404); return; }
+    res.setHeader('Cache-Control', 'no-store');
+    sendJson(res, { feature, url:tutorialUrl }); return;
+  }
+  if (p === R_EXT+'/v3/meta/config' && req.method === 'GET') { sendJson(res, metaPublicConfig()); return; }
+  if (p === R_EXT+'/v3/meta/embedded-signup/start' && req.method === 'POST') {
+    if (!metaConfigured()) { sendJson(res, { code:'META_NOT_CONFIGURED', message:'A conexão automática com a Meta ainda não foi configurada no servidor.' }, 503); return; }
+    if (!checkRateLimit(ip, 'meta_signup_start', 8, 60000)) { sendJson(res, { code:'RATE_LIMITED', message:'Aguarde antes de iniciar outra conexão.' }, 429); return; }
+    const body = await parseBody(req), owner = await metaResolveOwner(req, body);
+    if (!owner) { sendJson(res, { code:'META_UNAUTHORIZED', message:'Sessão ZVM inválida para conectar a Meta.' }, 403); return; }
+    const db = await getMongoDb(); await ensureMetaIndexes(db);
+    await db.collection(META_FLOW_COLLECTION).deleteMany({ ownerId:owner.ownerId, status:{ $in:['pending','processing'] } }).catch(()=>{});
+    const flowId = crypto.randomBytes(24).toString('hex'), expiresAt = new Date(Date.now()+META_FLOW_TTL_MS);
+    await db.collection(META_FLOW_COLLECTION).insertOne({ _id:flowId, ownerId:owner.ownerId, auth:owner.auth, status:'pending', createdAt:new Date(), expiresAt, ipHash:crypto.createHash('sha256').update(ip).digest('hex') });
+    const authUrl = new URL('/cliente/integracoes/meta', BASE_URL); authUrl.searchParams.set('flow', flowId);
+    if (process.env.NODE_ENV === 'production' && authUrl.protocol !== 'https:') { sendJson(res,{code:'META_HTTPS_REQUIRED',message:'O onboarding Meta exige HTTPS.'},503); return; }
+    sendJson(res, { flowId, authUrl:authUrl.toString(), status:'pending' }); return;
+  }
+  if (p === '/cliente/integracoes/meta' && req.method === 'GET') {
+    if (!metaConfigured()) { sendHtml(res,'<!doctype html><meta charset="utf-8"><title>Meta indisponível</title><p>Integração Meta ainda não configurada.</p>',503); return; }
+    const flowId = String(url.searchParams.get('flow')||'');
+    if (!/^[a-f0-9]{48}$/.test(flowId)) { sendHtml(res,'<!doctype html><meta charset="utf-8"><p>Conexão inválida.</p>',400); return; }
+    const db=await getMongoDb(); await ensureMetaIndexes(db); const flow=await db.collection(META_FLOW_COLLECTION).findOne({_id:flowId});
+    if(!flow||flow.status!=='pending'||new Date(flow.expiresAt).getTime()<Date.now()){sendHtml(res,'<!doctype html><meta charset="utf-8"><p>Esta conexão expirou. Volte à ZVM e tente novamente.</p>',410);return;}
+    sendMetaSignupHtml(res, metaSignupHtml(flowId)); return;
+  }
+  if (p === R_EXT+'/v3/meta/embedded-signup/complete' && req.method === 'POST') {
+    if (!metaConfigured()) { sendJson(res,{code:'META_NOT_CONFIGURED',message:'Integração Meta não configurada.'},503);return; }
+    if (!requireSameOriginPost(req)) { sendJson(res,{code:'META_INVALID_ORIGIN',message:'Origem inválida.'},403);return; }
+    if (!checkRateLimit(ip,'meta_signup_complete',12,60000)) { sendJson(res,{code:'RATE_LIMITED',message:'Muitas tentativas.'},429);return; }
+    const body=await parseBody(req),flowId=String(body.flowId||''),code=String(body.code||''),wabaId=String(body.wabaId||'').replace(/\D/g,''),phoneNumberId=String(body.phoneNumberId||'').replace(/\D/g,'');
+    if(!/^[a-f0-9]{48}$/.test(flowId)||!code||code.length>4096||!/^\d{5,40}$/.test(wabaId)||!/^\d{5,40}$/.test(phoneNumberId)){sendJson(res,{code:'META_SIGNUP_INVALID',message:'Dados de autorização incompletos.'},400);return;}
+    const db=await getMongoDb(); await ensureMetaIndexes(db);
+    const claimed=await db.collection(META_FLOW_COLLECTION).findOneAndUpdate({_id:flowId,status:'pending',expiresAt:{$gt:new Date()}},{$set:{status:'processing',processingAt:new Date()}},{returnDocument:'after'});
+    const flow=claimed&&typeof claimed==='object'&&'value'in claimed?claimed.value:claimed;
+    if(!flow){sendJson(res,{code:'META_SIGNUP_EXPIRED',message:'Esta autorização expirou ou já foi utilizada.'},410);return;}
+    try {
+      const token=await metaExchangeCode(code); await metaValidateAccessToken(token); const phone=await metaValidateAssets(token,wabaId,phoneNumberId); await metaSubscribeWaba(token,wabaId);
+      let registrationStatus='not_attempted', pinBox=null;
+      if(META_AUTO_REGISTER_PHONE){const pin=metaRegistrationPin();pinBox=metaEncrypt(pin,flow.ownerId+':pin');try{registrationStatus=await metaRegisterPhone(token,phoneNumberId,pin)?'registered':'needs_attention';}catch(regErr){registrationStatus='needs_attention';console.warn('[META] registro do número requer atenção:',safeScalar(regErr.message,120));}}
+      const now=new Date(); const tokenBox=metaEncrypt(token,flow.ownerId+':token');
+      await db.collection(META_COLLECTION).updateOne({_id:flow.ownerId},{$set:{token:tokenBox,registrationPin:pinBox,wabaId,phoneNumberId,verifiedName:safeScalar(phone.verified_name,160),displayPhoneNumber:safeScalar(phone.display_phone_number,60),qualityRating:safeScalar(phone.quality_rating,40),status:'connected',registrationStatus,webhookStatus:'subscribed',connectedAt:now,lastValidatedAt:now,updatedAt:now}},{upsert:true});
+      await db.collection(META_FLOW_COLLECTION).updateOne({_id:flowId,status:'processing'},{$set:{status:'connected',connectedAt:now},$unset:{processingAt:''}});
+      sendJson(res,{ok:true,status:'connected',registrationStatus});return;
+    } catch(error) {
+      await db.collection(META_FLOW_COLLECTION).updateOne({_id:flowId},{$set:{status:'failed',failedAt:new Date(),message:safeScalar(error.message,200,'Falha Meta')}}).catch(()=>{});
+      addSecurityAlert('META_SIGNUP_FAILED', safeScalar(error.code||error.message,120), ip);
+      sendJson(res,{code:error.code||'META_SIGNUP_FAILED',message:error.message||'Não foi possível concluir a autorização.'},error.status&&error.status>=400&&error.status<600?error.status:502);return;
+    }
+  }
+  if (p === R_EXT+'/v3/meta/embedded-signup/status' && req.method === 'POST') {
+    if(!checkRateLimit(ip,'meta_status',60,60000)){sendJson(res,{code:'RATE_LIMITED',message:'Muitas consultas.'},429);return;}
+    const body=await parseBody(req),owner=await metaResolveOwner(req,body);if(!owner){sendJson(res,{code:'META_UNAUTHORIZED',message:'Sessão ZVM inválida.'},403);return;}
+    const flowId=String(body.flowId||'');if(!/^[a-f0-9]{48}$/.test(flowId)){sendJson(res,{code:'META_FLOW_INVALID',message:'Conexão inválida.'},400);return;}
+    const db=await getMongoDb();await ensureMetaIndexes(db);const flow=await db.collection(META_FLOW_COLLECTION).findOne({_id:flowId,ownerId:owner.ownerId});if(!flow){sendJson(res,{code:'META_FLOW_NOT_FOUND',message:'Conexão não encontrada.'},404);return;}
+    const rec=flow.status==='connected'?await db.collection(META_COLLECTION).findOne({_id:owner.ownerId}):null;sendJson(res,{status:flow.status,message:flow.status==='failed'?safeScalar(flow.message,200):'',connection:metaPublicConnection(rec)});return;
+  }
+  if (p === R_EXT+'/v3/meta/connection/validate' && req.method === 'POST') {
+    if(!checkRateLimit(ip,'meta_validate',15,60000)){sendJson(res,{code:'RATE_LIMITED'},429);return;}const body=await parseBody(req),owner=await metaResolveOwner(req,body);if(!owner){sendJson(res,{code:'META_UNAUTHORIZED',message:'Sessão ZVM inválida.'},403);return;}const rec=await metaGetConnection(owner.ownerId);if(!rec){sendJson(res,{code:'META_NOT_CONNECTED',message:'Nenhuma conta Meta conectada.'},404);return;}
+    try{const token=metaDecrypt(rec.token,owner.ownerId+':token'),phone=await metaValidateAssets(token,String(rec.wabaId),String(rec.phoneNumberId)),now=new Date(),next={verifiedName:safeScalar(phone.verified_name,160),displayPhoneNumber:safeScalar(phone.display_phone_number,60),qualityRating:safeScalar(phone.quality_rating,40),lastValidatedAt:now,updatedAt:now,status:'connected'};const db=await getMongoDb();await db.collection(META_COLLECTION).updateOne({_id:owner.ownerId},{$set:next});sendJson(res,{ok:true,connection:metaPublicConnection({...rec,...next})});return;}catch(error){if(error.status===401){const db=await getMongoDb();await db.collection(META_COLLECTION).updateOne({_id:owner.ownerId},{$set:{status:'reauthorization_required',updatedAt:new Date()}}).catch(()=>{});}sendJson(res,{code:error.code||'META_VALIDATE_FAILED',message:error.message||'Falha ao validar a conta.'},error.status||502);return;}
+  }
+  if (p === R_EXT+'/v3/meta/templates' && req.method === 'POST') {
+    if(!checkRateLimit(ip,'meta_templates',20,60000)){sendJson(res,{code:'RATE_LIMITED'},429);return;}const body=await parseBody(req),owner=await metaResolveOwner(req,body);if(!owner){sendJson(res,{code:'META_UNAUTHORIZED',message:'Sessão ZVM inválida.'},403);return;}const rec=await metaGetConnection(owner.ownerId);if(!rec){sendJson(res,{code:'META_NOT_CONNECTED',message:'Nenhuma conta Meta conectada.'},404);return;}try{const token=metaDecrypt(rec.token,owner.ownerId+':token'),data=await metaFetch(`${rec.wabaId}/message_templates?fields=name,status,language,category&limit=100`,token);sendJson(res,{data:Array.isArray(data.data)?data.data.slice(0,100):[]});return;}catch(error){sendJson(res,{code:error.code||'META_TEMPLATES_FAILED',message:error.message||'Falha ao consultar templates.'},error.status||502);return;}
+  }
+  if (p === R_EXT+'/v3/meta/messages/test' && req.method === 'POST') {
+    if(!checkRateLimit(ip,'meta_send',8,60000)){sendJson(res,{code:'RATE_LIMITED',message:'Aguarde antes de enviar novamente.'},429);return;}const body=await parseBody(req),owner=await metaResolveOwner(req,body);if(!owner){sendJson(res,{code:'META_UNAUTHORIZED',message:'Sessão ZVM inválida.'},403);return;}const to=normalizePhone(body.to),message=safeScalar(body.body,4096);if(!to||to.length<8||!message){sendJson(res,{code:'META_SEND_INVALID',message:'Destino ou mensagem inválidos.'},400);return;}const rec=await metaGetConnection(owner.ownerId);if(!rec){sendJson(res,{code:'META_NOT_CONNECTED',message:'Nenhuma conta Meta conectada.'},404);return;}try{const token=metaDecrypt(rec.token,owner.ownerId+':token'),data=await metaFetch(`${rec.phoneNumberId}/messages`,token,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messaging_product:'whatsapp',recipient_type:'individual',to,type:'text',text:{preview_url:false,body:message}})});sendJson(res,data);return;}catch(error){sendJson(res,{code:error.code||'META_SEND_FAILED',message:error.message||'Falha ao enviar pela Meta.'},error.status||502);return;}
+  }
+  if (p === R_EXT+'/v3/meta/connection/disconnect' && req.method === 'POST') {
+    if(!checkRateLimit(ip,'meta_disconnect',8,60000)){sendJson(res,{code:'RATE_LIMITED'},429);return;}const body=await parseBody(req),owner=await metaResolveOwner(req,body);if(!owner){sendJson(res,{code:'META_UNAUTHORIZED',message:'Sessão ZVM inválida.'},403);return;}const db=await getMongoDb();await ensureMetaIndexes(db);await db.collection(META_COLLECTION).deleteOne({_id:owner.ownerId});await db.collection(META_FLOW_COLLECTION).deleteMany({ownerId:owner.ownerId});sendJson(res,{ok:true,disconnected:true});return;
+  }
 
   if (APP_SECRET) {
     if (p === '/admin' || p.startsWith('/admin/')) { res.writeHead(404); res.end('Not found'); return; }
     if (p === '/analytics' || p.startsWith('/analytics/')) { res.writeHead(404); res.end('Not found'); return; }
   }
 
-  if ((p === R_EXT+'/auth/' || p === R_EXT+'/auth') && req.method === 'GET') {
-    const callback = url.searchParams.get('callback') || '';
-    sendHtml(res, renderExtensionLogin({ callback })); return;
-  }
-
-  if (p === R_EXT+'/auth/verify' && req.method === 'POST') {
-    if (!checkRateLimit(ip, 'login')) {
-      const mins = getRateLimitWait(ip, 'login');
-      sendHtml(res, renderExtensionLogin({ callback: '', error: `⏳ Muitas tentativas. Aguarde ${mins} minuto(s).` }), 429);
-      return;
-    }
-    const form     = await parseFormBody(req);
-    const mode     = (form.get('mode') || '').trim().toLowerCase();
-    const keyCode  = sanitizeId(form.get('key'), 32);
-    const callback = form.get('callback') || '';
-
-    if (mode === 'free') {
-      addLog({ keyCode: FREE_AUTH_KEY, label: 'Gratuito', phone: '-', ip, wppVersion: '-', action: 'free_login' }).catch(() => {});
-      redirectExtensionCallback(res, callback, 'free');
-      return;
-    }
-
-    if (!keyCode) {
-      sendHtml(res, renderExtensionLogin({ callback, error: '❌ Digite sua chave de ativação.' }));
-      return;
-    }
-    const _lg = await ensureKeyLoadedEx(keyCode);
-    if (_lg.dbError) {
-      // Nao acusar "chave inexistente" durante uma queda do banco: o cliente
-      // acharia que perdeu a licenca e abriria chamado. Pedimos nova tentativa.
-      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '⏳ Instabilidade momentânea no servidor. Tente novamente em alguns segundos.' }));
-      return;
-    }
-    if (!_lg.found) {
-      await addLog({ keyCode, label: '-', phone: '-', ip, wppVersion: '-', action: 'key_not_found' });
-      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '❌ Chave não encontrada. Verifique ou entre em contato com o vendedor.' }));
-      return;
-    }
-    if (isKeyExpired(keys[keyCode])) {
-      keys[keyCode].active = false;
-      await addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'expired' });
-      saveKey(keyCode);
-      fireWebhook('key_expired', keyCode, 'Expiração detectada no login');
-      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '⏰ Chave expirada. Use "Entrar Gratuitamente" para acessar backups ou renove sua chave.' }));
-      return;
-    }
-    if (!keys[keyCode].active) {
-      await addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'login_blocked' });
-      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '🚫 Chave bloqueada. Use "Entrar Gratuitamente" para acessar backups ou contate o vendedor.' }));
-      return;
-    }
-    keys[keyCode].lastUsed = new Date().toISOString();
-    keys[keyCode].lastIp   = ip;
-    saveKey(keyCode);
-    redirectExtensionCallback(res, callback, 'pro', keyCode);
+  // Fluxo web legado do produto standalone descontinuado. A V611 autentica
+  // exclusivamente pela API V4 dentro da extensão; manter este redirect antigo
+  // exporia credenciais em query string.
+  if (((p === R_EXT+'/auth/' || p === R_EXT+'/auth') && req.method === 'GET') ||
+      (p === R_EXT+'/auth/verify' && req.method === 'POST')) {
+    res.writeHead(410, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ..._SEC_HEADERS });
+    res.end(JSON.stringify({ ok:false, error:'legacy_web_auth_retired', use:'/extension/v4/session/login' }));
     return;
   }
 
@@ -10828,8 +10635,8 @@ async function handleRequest(req, res) {
       const keyCodeForBuild = sanitizeId(body.authKey, 32);
       const deviceIdForBuild = String(body.deviceId || '').trim().slice(0, 160);
       const devBuildAllowed = zvmSecurityDevBuildAllowed(keyCodeForBuild, deviceIdForBuild);
-      const buildClient = zvmSecurityCheckClient(body.clientSecurity, true, { allowUnrecognized:devBuildAllowed });
-      if (!buildClient.ok) { sendJson(res, { ok:false, errorCode:buildClient.code }, buildClient.code === 'BUILD_NOT_ALLOWED' ? 403 : 400); return; }
+      const buildClient = await zvmSecurityCheckClientShared(body.clientSecurity, { allowUnrecognized:devBuildAllowed });
+      if (!buildClient.ok) { sendJson(res, { ok:false, errorCode:buildClient.code }, zvmSecurityClientErrorStatus(buildClient.code)); return; }
       const authorized = await authorizeExtensionKeySession(body);
       if (!authorized.ok) {
         const { status, ...errorBody } = authorized;
@@ -10875,8 +10682,8 @@ async function handleRequest(req, res) {
     }
     try {
       const body = await parseBody(req);
-      const buildClient = zvmSecurityCheckClient(body.clientSecurity, true, { requireRecognized:false });
-      if (!buildClient.ok) { if (body && typeof body === 'object') delete body.password; sendJson(res, { ok:false, errorCode:buildClient.code }, 400); return; }
+      const buildClient = await zvmSecurityCheckClientShared(body.clientSecurity, {});
+      if (!buildClient.ok) { if (body && typeof body === 'object') delete body.password; sendJson(res, { ok:false, errorCode:buildClient.code }, zvmSecurityClientErrorStatus(buildClient.code)); return; }
       if (ZVM_BUILD_ENFORCE && buildClient.recognized!==true && !ZVM_DEV_BUILD_ALLOW) { if (body && typeof body === 'object') delete body.password; sendJson(res, { ok:false, errorCode:'BUILD_NOT_ALLOWED' }, 403); return; }
       const db = await getMongoDb();
       const authenticated = await authenticateExtensionAccount(body, { db });
@@ -10941,6 +10748,43 @@ async function handleRequest(req, res) {
     return;
   }
 
+
+  if (p === R_EXT+'/v4/backup/decoder-material' && req.method === 'POST') {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    if (!checkRateLimit(ip, 'ext_backup_decoder', 20, 60000)) {
+      sendJson(res, { ok: false, errorCode: 'rate_limited', retryable: true }, 429);
+      return;
+    }
+    const token = getExtensionBearerToken(req);
+    if (!token) { sendJson(res, { ok: false, errorCode: 'invalid_session' }, 401); return; }
+    try {
+      const refreshed = await refreshExtensionSession(token);
+      if (!refreshed.ok) {
+        const { status, ...errorBody } = refreshed;
+        sendJson(res, errorBody, status);
+        return;
+      }
+      if (refreshed.entitlement?.tier !== 'paid') {
+        sendJson(res, { ok: false, errorCode: 'paid_plan_required' }, 403);
+        return;
+      }
+      const body = await parseBody(req);
+      if (String(body?.formatRevision || '') !== '1') {
+        sendJson(res, { ok: false, errorCode: 'unsupported_format_revision' }, 400);
+        return;
+      }
+      if (EXT_COMPAT_DECODER_V1.length < 12 || EXT_COMPAT_DECODER_V1.length > 256) {
+        sendJson(res, { ok: false, errorCode: 'decoder_material_unavailable', retryable: true }, 503);
+        return;
+      }
+      sendJson(res, { ok: true, formatRevision: '1', material: EXT_COMPAT_DECODER_V1 });
+    } catch (error) {
+      console.error('[extension-v4] backup decoder indisponível:', error.message);
+      sendJson(res, { ok: false, errorCode: 'temporarily_unavailable', retryable: true }, 503);
+    }
+    return;
+  }
+
   if (p === R_EXT+'/v4/session/logout' && req.method === 'POST') {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     if (!checkRateLimit(ip, 'api')) {
@@ -10959,62 +10803,6 @@ async function handleRequest(req, res) {
     return;
   }
 
-  if (p === R_EXT+'/v4/preflight' && req.method === 'POST') {
-    if (!checkRateLimit(ip, 'ext_security_preflight', 60, 60000)) { sendJson(res, { errorCode:'RATE_LIMITED' }, 429); return; }
-    const body = await parseBody(req);
-    const client = zvmSecurityCheckClient(body.clientSecurity, true, { requireRecognized:false });
-    if (!client.ok) { sendJson(res, { errorCode:client.code }, 400); return; }
-    if (ZVM_BUILD_ENFORCE && !APP_SECRET) { sendJson(res, { errorCode:'SERVER_AUTHORITY_UNAVAILABLE' }, 503); return; }
-    // Diagnóstico apenas. Uma build desconhecida NÃO recebe acesso aqui.
-    sendJson(res, { ok:true, security:{ protocol:ZVM_SECURITY_PROTOCOL, required:ZVM_BUILD_ENFORCE, recognized:client.recognized===true, capabilityAvailable:!!APP_SECRET, serverTimeMs:Date.now() } });
-    return;
-  }
-
-  if (p === R_EXT+'/v4/capability' && req.method === 'POST') {
-    if (!checkRateLimit(ip, 'ext_security_capability', 40, 60000)) { sendJson(res, { errorCode:'RATE_LIMITED' }, 429); return; }
-    const body = await parseBody(req);
-    const keyCode = sanitizeId(body.authKey, 32);
-    const deviceId = String(body.deviceId || '').trim().slice(0, 160);
-    const devBuildAllowed = zvmSecurityDevBuildAllowed(keyCode, deviceId);
-    const client = zvmSecurityCheckClient(body.clientSecurity, true, { allowUnrecognized:devBuildAllowed });
-    if (!client.ok) { sendJson(res, { errorCode:client.code }, client.code === 'BUILD_NOT_ALLOWED' ? 403 : 400); return; }
-    if (!APP_SECRET) { sendJson(res, { errorCode:'SERVER_AUTHORITY_UNAVAILABLE' }, 503); return; }
-    const phone = body.phoneNumber ? normalizePhone(body.phoneNumber) : '';
-    if (!keyCode || !deviceId) { sendJson(res, { errorCode:'SECURITY_BINDING_REQUIRED' }, 400); return; }
-    if (!isFreeAuthKey(keyCode)) {
-      const loaded = await ensureKeyLoadedEx(keyCode);
-      if (loaded.dbError) { sendJson(res, { errorCode:'SERVER_AUTHORITY_UNAVAILABLE' }, 503); return; }
-      if (!loaded.found) { sendJson(res, { errorCode:'KEY_NOT_FOUND' }, 403); return; }
-      if (isKeyExpired(keys[keyCode])) { sendJson(res, { errorCode:'KEY_EXPIRED' }, 403); return; }
-      if (!keys[keyCode].active) { sendJson(res, { errorCode:'KEY_BLOCKED' }, 403); return; }
-      if (phone) {
-        const phones = Array.isArray(keys[keyCode].phones) ? keys[keyCode].phones.map(normalizePhone).filter(Boolean) : [];
-        if (phones.length && !phones.includes(phone)) { sendJson(res, { errorCode:'PHONE_NOT_AUTHORIZED' }, 403); return; }
-      }
-    }
-    const security = zvmSecurityIssue(keyCode, client, deviceId, phone);
-    if (!security) { sendJson(res, { errorCode:'SERVER_AUTHORITY_UNAVAILABLE' }, 503); return; }
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-    sendJson(res, { ok:true, security });
-    return;
-  }
-
-  if (p === R_EXT+'/v4/capability/validate' && req.method === 'POST') {
-    if (!checkRateLimit(ip, 'ext_security_validate', 120, 60000)) { sendJson(res, { errorCode:'RATE_LIMITED' }, 429); return; }
-    const body = await parseBody(req);
-    const payload = zvmSecurityVerifyToken(String(body.capability || ''));
-    const deviceId = String(body.deviceId || '').trim().slice(0, 160);
-    const client = zvmSecurityCheckClient(body.clientSecurity, true, { allowUnrecognized:!!(payload && payload.dv===true) });
-    if (!client.ok) { sendJson(res, { authorized:false, errorCode:client.code }, client.code === 'BUILD_NOT_ALLOWED' ? 403 : 400); return; }
-    const scope = zvmSecurityScope(body.scope || 'extension.use') || 'extension.use';
-    const now = Date.now();
-    const ok = !!(payload && payload.v===1 && payload.p===ZVM_SECURITY_PROTOCOL && Number(payload.exp||0)>now && Number(payload.iat||0)<=now+ZVM_SECURITY_CLOCK_SKEW_MS && payload.bf===client.buildFingerprint && payload.ev===client.extensionVersion && payload.ei===client.extensionId && payload.dh===zvmSecurityHash(deviceId) && Array.isArray(payload.scp) && (payload.scp.includes(scope)||payload.scp.includes('*')));
-    if (!ok) { sendJson(res, { authorized:false, errorCode:'SERVER_CAPABILITY_INVALID' }, 403); return; }
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-    sendJson(res, { authorized:true, capabilityId:String(payload.cid||''), expiresAtMs:Number(payload.exp||0) });
-    return;
-  }
-
   if (p === R_EXT+'/v3/key' && req.method === 'POST') {
     if (!checkRateLimit(ip, 'ext_key_v3')) {
       sendExtensionRateLimited(res, ip, 'ext_key_v3', { authError: 'rateLimited', authErrorMessage: 'Muitas tentativas. Aguarde.', isLoggedIn: false });
@@ -11029,11 +10817,15 @@ async function handleRequest(req, res) {
     const phone      = body.phoneNumber || '-';
     const wppVersion = body.wppVersion  || '-';
     const deviceId   = body.deviceId    || '';
+    if (!legacyV3Allowed() && !body.clientSecurity) {
+      sendJson(res, { authError:'buildNotAllowed', authErrorMessage:'Build da extensão não autorizada.', isLoggedIn:false, errorCode:'SECURITY_CLIENT_REQUIRED' }, 403);
+      return;
+    }
     if (body.clientSecurity) {
       const devBuildAllowed = zvmSecurityDevBuildAllowed(keyCode, deviceId);
-      const buildClient = zvmSecurityCheckClient(body.clientSecurity, true, { allowUnrecognized:devBuildAllowed });
+      const buildClient = await zvmSecurityCheckClientShared(body.clientSecurity, { allowUnrecognized:devBuildAllowed });
       if (!buildClient.ok) {
-        sendJson(res, { authError:'buildNotAllowed', authErrorMessage:'Build da extensão não autorizada.', isLoggedIn:false, errorCode:buildClient.code }, buildClient.code === 'BUILD_NOT_ALLOWED' ? 403 : 400);
+        sendJson(res, { authError:'buildNotAllowed', authErrorMessage:'Build da extensão não autorizada.', isLoggedIn:false, errorCode:buildClient.code }, zvmSecurityClientErrorStatus(buildClient.code));
         return;
       }
     }
@@ -11180,6 +10972,7 @@ async function handleRequest(req, res) {
   }
 
   if (p === R_EXT+'/v3/check-status' && req.method === 'POST') {
+    if (!legacyV3Allowed()) { sendJson(res, { error:'legacy_endpoint_disabled', retryable:false }, 403); return; }
     if (!checkRateLimit(ip, 'check_status', 60, 60000)) {
       // Estado incerto não renova acesso. O cliente pode aplicar a grace de
       // rede já existente, mas não recebe um novo veredito active:true.
@@ -11249,6 +11042,10 @@ async function handleRequest(req, res) {
     }
     const body = await parseBody(req);
     const keyCode = await resolveUsageKey(body);
+    if (!legacyV3Allowed() && keyCode && keyCode !== FREE_AUTH_KEY) {
+      sendJson(res, { ok:false, status:false, data:{ errorType:'LEGACY_PAID_USAGE_DISABLED' } }, 403);
+      return;
+    }
     if (!keyCode) {
       sendJson(res, { ok: false, status: false, data: { errorType: 'KEY_NOT_FOUND' } }, 404);
       return;
@@ -11309,6 +11106,7 @@ async function handleRequest(req, res) {
   }
 
   if (p === R_EXT+'/v3/get-usage' && req.method === 'POST') {
+    if (!legacyV3Allowed()) { sendJson(res, { ok:false, status:false, data:{ errorType:'LEGACY_ENDPOINT_DISABLED' } }, 403); return; }
     if (!checkRateLimit(ip, 'api')) {
       sendJson(res, { ok: false, status: false, data: { errorType: 'RATE_LIMITED' } }, 429);
       return;
@@ -11330,6 +11128,7 @@ async function handleRequest(req, res) {
   }
 
   if (p === R_EXT+'/v3/sync-usage' && req.method === 'POST') {
+    if (!legacyV3Allowed()) { sendJson(res, { ok:false, status:false, data:{ errorType:'LEGACY_ENDPOINT_DISABLED' } }, 403); return; }
     if (!checkRateLimit(ip, 'api')) {
       sendJson(res, { ok: false, status: false, data: { errorType: 'RATE_LIMITED' } }, 429);
       return;
@@ -11378,33 +11177,6 @@ async function handleRequest(req, res) {
     return;
   }
 
-  if (p === R_EXT+'/v3/create-user-event' && req.method === 'POST') {
-    if (!checkRateLimit(ip, 'api')) {
-      sendJson(res, { status: 'error' }, 429);
-      return;
-    }
-    const body = await parseBody(req);
-    const eventType = String(body.event_type || '').slice(0, 64);
-    if (!eventType) {
-      sendJson(res, { status: 'error' }, 400);
-      return;
-    }
-    try {
-      const db = await getMongoDb();
-      await db.collection('user_events').insertOne({
-        event_type: eventType,
-        keyId: String(body.keyId || '').slice(0, 64),
-        userId: String(body.userId || '').slice(0, 64),
-        metadata: body.metadata && typeof body.metadata === 'object' ? body.metadata : {},
-        createdAt: new Date(),
-        ip,
-      });
-    } catch (e) {
-      console.warn('[EVENT] Falha ao persistir:', e.message);
-    }
-    sendJson(res, { status: 'success' });
-    return;
-  }
 
   if ([R_EXT+'/v3/usage', R_EXT+'/v3/get-usage', R_EXT+'/v3/sync-usage'].includes(p)) {
     sendJson(res, { ok: false, status: false, data: { errorType: 'METHOD_NOT_ALLOWED' } }, 405);
@@ -11470,18 +11242,95 @@ async function handleRequest(req, res) {
     sendJson(res, { error: 'invalid_origin' }, 403); return;
   }
 
+  if (p === R_ADMIN+'/api/traffic-summary' && req.method === 'GET') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const minutes = Math.max(5, Math.min(1440, parseInt(url.searchParams.get('minutes') || '60', 10) || 60));
+    sendJson(res, { ok: true, ...httpTrafficSnapshot(minutes) }); return;
+  }
+
   // /status — diagnóstico completo do servidor (admin-gated, substitui /health público)
   if (p === R_ADMIN+'/status' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const uptimeSec = Math.floor(process.uptime());
     let dbStatus = 'unknown';
-    try { const _sdb = await getMongoDb(); await _sdb.command({ ping: 1 }); dbStatus = 'connected'; } catch { dbStatus = 'disconnected'; }
+    let caktoQueue = null, caktoMail = null;
+    try {
+      const _sdb = await getMongoDb();
+      await _sdb.command({ ping: 1 });
+      dbStatus = 'connected';
+      try { caktoQueue = await getCaktoQueueHealth(_sdb); } catch { caktoQueue = null; }
+      try { caktoMail = await getCaktoMailHealth(_sdb); } catch { caktoMail = null; }
+    } catch { dbStatus = 'disconnected'; }
     sendJson(res, {
       ok: true, db: dbStatus, uptime: uptimeSec, ts: new Date().toISOString(),
       keys: Object.keys(keys).length, activeSessions: Object.keys(sessions).length,
       portalSessions: Object.keys(portalSessions).length,
       logs: logs.length, securityAlerts: securityAlerts.length,
+      caktoQueue, caktoMail,
     }); return;
+  }
+
+  if (p === R_ADMIN+'/api/cakto-queue' && req.method === 'GET') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const allowed = new Set(['pending','retry','processing','dead_letter','processed','payment_duplicate']);
+    const status = allowed.has(String(url.searchParams.get('status') || 'dead_letter')) ? String(url.searchParams.get('status') || 'dead_letter') : 'dead_letter';
+    const limit = Math.max(1, Math.min(100, parseInt(url.searchParams.get('limit') || '50', 10) || 50));
+    try {
+      const db = await getMongoDb();
+      await backfillCaktoQueueRefs(db, { limit: Math.max(100, limit * 2) });
+      const rawRows = await db.collection('webhook_events').find({ source: 'cakto', status, queueRef: { $exists: true } }, {
+        projection: { _id:0, queueRef:1, planId:1, status:1, attempts:1, failureCategory:1, createdAt:1, updatedAt:1, lastAttemptAt:1, nextAttemptAt:1, failedAt:1 }
+      }).sort({ updatedAt: -1, createdAt: -1 }).limit(limit).toArray();
+      const rows = [];
+      for (const row of rawRows) {
+        rows.push({ queueRef: row.queueRef, planId: row.planId || null, status: row.status, attempts: row.attempts || 0, failureCategory: row.failureCategory || null, createdAt: row.createdAt || null, updatedAt: row.updatedAt || null, lastAttemptAt: row.lastAttemptAt || null, nextAttemptAt: row.nextAttemptAt || null, failedAt: row.failedAt || null });
+      }
+      sendJson(res, { ok: true, status, items: rows });
+    } catch (_) { sendJson(res, { ok: false, error: 'queue_unavailable' }, 503); }
+    return;
+  }
+  if (p === R_ADMIN+'/api/cakto-queue/requeue' && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const body = await parseBody(req);
+    const queueRef = safeScalar(body.queueRef, 64);
+    try {
+      const db = await getMongoDb();
+      const result = await requeueCaktoEvent(db, queueRef);
+      if (!result.ok) { sendJson(res, { ok: false, error: result.error }, result.error === 'invalid_queue_ref' ? 400 : 409); return; }
+      addAdminAuditLog({ actor: 'admin', action: 'cakto_event_requeue', keyCode: '-', label: '-', detail: result.queueRef }).catch(()=>{});
+      triggerCaktoWorker();
+      sendJson(res, { ok: true, queueRef: result.queueRef });
+    } catch (_) { sendJson(res, { ok: false, error: 'queue_unavailable' }, 503); }
+    return;
+  }
+
+  if (p === R_ADMIN+'/api/cakto-mail' && req.method === 'GET') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const allowed = new Set(['pending','retry','processing','sent','dead_letter']);
+    const status = allowed.has(String(url.searchParams.get('status') || 'dead_letter')) ? String(url.searchParams.get('status') || 'dead_letter') : 'dead_letter';
+    const limit = Math.max(1, Math.min(100, parseInt(url.searchParams.get('limit') || '50', 10) || 50));
+    try {
+      const db = await getMongoDb();
+      const rows = await db.collection('cakto_mail_outbox').find({ source: 'cakto', status }, {
+        projection: { _id:0, mailRef:1, status:1, attempts:1, failureCategory:1, createdAt:1, updatedAt:1, lastAttemptAt:1, nextAttemptAt:1, failedAt:1, sentAt:1 }
+      }).sort({ updatedAt: -1, createdAt: -1 }).limit(limit).toArray();
+      sendJson(res, { ok: true, status, items: rows.map(row => ({ mailRef: row.mailRef, status: row.status, attempts: row.attempts || 0, failureCategory: row.failureCategory || null, createdAt: row.createdAt || null, updatedAt: row.updatedAt || null, lastAttemptAt: row.lastAttemptAt || null, nextAttemptAt: row.nextAttemptAt || null, failedAt: row.failedAt || null, sentAt: row.sentAt || null })) });
+    } catch (_) { sendJson(res, { ok: false, error: 'mail_queue_unavailable' }, 503); }
+    return;
+  }
+  if (p === R_ADMIN+'/api/cakto-mail/requeue' && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const body = await parseBody(req);
+    const mailRef = safeScalar(body.mailRef, 64);
+    try {
+      const db = await getMongoDb();
+      const result = await requeueCaktoMail(db, mailRef);
+      if (!result.ok) { sendJson(res, { ok: false, error: result.error }, result.error === 'invalid_mail_ref' ? 400 : 409); return; }
+      addAdminAuditLog({ actor: 'admin', action: 'cakto_mail_requeue', keyCode: '-', label: '-', detail: result.mailRef }).catch(()=>{});
+      triggerCaktoWorker();
+      sendJson(res, { ok: true, mailRef: result.mailRef });
+    } catch (_) { sendJson(res, { ok: false, error: 'mail_queue_unavailable' }, 503); }
+    return;
   }
 
   // ── IP Blacklist ──────────────────────────────────────────────────────────────
@@ -11556,11 +11405,13 @@ async function handleRequest(req, res) {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
     const body = await parseBody(req);
+    const labelResult = normalizeAdminCreateLabel(body.label);
+    if (!labelResult.ok) { sendJson(res, { error: labelResult.error }, 400); return; }
     const code = generateCode();
     const { expiresAt, expireDuration } = parseKeyExpiryFromBody(body, { allowMinutes: true });
     const maxUses = (body.maxUses !== undefined) ? parseInt(body.maxUses) : MAX_USES;
     keys[code] = {
-      label: (typeof body.label === 'string' ? body.label.trim().slice(0, 60) : '') || 'Cliente', active: true, createdAt: new Date().toISOString(),
+      label: labelResult.label, active: true, createdAt: new Date().toISOString(),
       uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null,
       deviceId: null, wppVersion: null, note: '',
       expiresAt, expireDuration: expireDuration || null,
@@ -11681,9 +11532,9 @@ async function handleRequest(req, res) {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
     const body = await parseBody(req);
-    const rawCodes = Array.isArray(body.codes) ? body.codes : [];
-    if (!rawCodes.length) { sendJson(res, { error: 'nenhum código enviado' }, 400); return; }
-    const validCodes = rawCodes.map(c => sanitizeId(String(c || ''), 40)).filter(c => c && keys[c]);
+    const batchInput = parseAdminBatchDeleteCodes(body);
+    if (!batchInput.ok) { sendJson(res, { error: batchInput.error }, 400); return; }
+    const validCodes = batchInput.codes.map(c => sanitizeId(String(c || ''), 40)).filter(c => c && keys[c]);
     await Promise.all(validCodes.map(c => deleteKeyFromDb(c).catch(e => console.error('[DB] batch del:', e.message))));
     addAdminAuditLog({ actor: 'admin', action: 'key_batch_deleted', keyCode: '-', label: '-', detail: `${validCodes.length} chave(s): ${validCodes.slice(0,5).join(', ')}` }).catch(()=>{});
     sendJson(res, { ok: true, deleted: validCodes.length }); return;
@@ -11875,7 +11726,7 @@ async function handleRequest(req, res) {
   }
 
   // ── Laboratório de Testes (Analytics) ─────────────────────────────────
-  // Nunca reutiliza CAKTO_WEBHOOK_SECRET/SALE_WEBHOOK_SECRET/PARTNER_API_TOKEN.
+  // Cakto uses its own dedicated webhook authentication path.
   // Autenticação é só a sessão do Analytics + CSRF same-origin + rate limit
   // próprio. O browser manda SOMENTE planId — preço/limite/duração sempre
   // resolvem de ZVM_PLANS no servidor (ver simulateCommercialSale).
@@ -11906,7 +11757,7 @@ async function handleRequest(req, res) {
         planId: body.planId, name: body.name, email: body.email, phone: body.phone,
         method: body.method, execute: true, sendRealEmail: !!body.sendRealEmail,
       });
-      console.log('[LAB] simulate', maskEmail(body.email || ''), result.txId);
+      console.log('[LAB] simulate', maskEmail(body.email || ''), maskTransactionId(result.txId || ''));
       sendJson(res, result); return;
     } catch (e) {
       sendJson(res, { error: e.code || 'lab_simulate_failed' }, 400); return;
@@ -11997,246 +11848,7 @@ async function handleRequest(req, res) {
     return;
   }
 
-  if ((p === '/sale/webhook' || p === '/payt/webhook') && req.method === 'POST') {
-    // Throttle: sem isto, um atacante pode martelar o endpoint tentando adivinhar
-    // SALE_WEBHOOK_SECRET indefinidamente (e cada tentativa custa um parse de 256 KB).
-    if (!checkRateLimit(ip, 'api')) { res.writeHead(429); res.end('Too Many Requests'); return; }
-    const rawBody = await readRawBody(req, WEBHOOK_BODY_SIZE);
-    if (rawBody === null) { res.writeHead(413); res.end('Payload Too Large'); return; }
-
-    let payload;
-    try { payload = JSON.parse(rawBody); }
-    catch { try { payload = Object.fromEntries(new URLSearchParams(rawBody).entries()); } catch { res.writeHead(400); res.end('Bad Request'); return; } }
-
-    // Este endpoint CRIA/RENOVA chaves de licença a partir do corpo da requisição.
-    // Sem segredo configurado ele aceitaria qualquer POST anônimo — qualquer pessoa
-    // emitiria licenças pagas de graça. Fail-CLOSED: sem segredo, endpoint desativado.
-    if (!SALE_WEBHOOK_SECRET) {
-      console.error('[SALE] SALE_WEBHOOK_SECRET não configurado — webhook recusado (fail-closed)');
-      addSecurityAlert('WEBHOOK_DISABLED', 'POST em /sale/webhook com SALE_WEBHOOK_SECRET ausente', ip);
-      res.writeHead(503); res.end('Webhook disabled'); return;
-    }
-    {
-      const authHeader  = req.headers['authorization'] || '';
-      const bearerToken = (authHeader.match(/^Bearer\s+(.+)$/i) || [])[1] || '';
-      const headerToken = String(req.headers['x-webhook-token'] || req.headers['x-payt-token'] || '');
-      const bodyKey     = typeof payload.integration_key === 'string' ? payload.integration_key : '';
-      // safeCompare: comparação em tempo constante — `===` vazaria o segredo
-      // byte a byte para quem medisse o tempo de resposta.
-      const validBearer = safeCompare(bearerToken, SALE_WEBHOOK_SECRET);
-      const validHeader = safeCompare(headerToken, SALE_WEBHOOK_SECRET);
-      const validBody   = safeCompare(bodyKey,     SALE_WEBHOOK_SECRET);
-      if (!validBearer && !validHeader && !validBody) {
-        console.warn('[SALE] Token/integration_key inválido — ignorado');
-        addSecurityAlert('WEBHOOK_INVALID_TOKEN', `token inválido recebido — status="${payload.status||'?'}" tx="${String(payload.transaction_id||'').slice(0,30)}"`, ip);
-        res.writeHead(401); res.end('Unauthorized'); return;
-      }
-    }
-
-    if (payload.test === true) {
-      res.writeHead(200); res.end('test_ignored'); return;
-    }
-
-    const status   = String(payload.status || payload.payment_status || payload.sale_status || '').toLowerCase();
-    const APPROVED = ['venda_paga','approved','paid','completed','finished','aprovada','finalizada','active','confirmed'];
-    const approved = APPROVED.some(s => status === s || status.includes(s));
-
-    const txId = String(payload.transaction_id || payload.sale_id || payload.cart_id || payload.id || '').trim();
-
-    const customer    = (payload.customer && typeof payload.customer === 'object') ? payload.customer
-                      : (payload.buyer    && typeof payload.buyer    === 'object') ? payload.buyer
-                      : (payload.client   && typeof payload.client   === 'object') ? payload.client : {};
-    // String()+slice: campos vindos do gateway podem ser objetos/arrays. Sem coerção,
-    // `clientEmail.toLowerCase()` lança TypeError (500) e um objeto {$gt:""} chegaria
-    // cru no findOne() do Mongo como operador (NoSQL injection).
-    const clientName  = String(customer.name  || customer.full_name || payload.customer_name || payload.buyer_name || 'Cliente').slice(0, 120);
-    const clientEmail = String(customer.email || payload.customer_email || payload.buyer_email || payload.email || '').trim().toLowerCase().slice(0, 160);
-    const clientPhone = String(customer.phone || customer.cellphone || customer.phone_number || payload.customer_phone || '').slice(0, 40);
-
-    let productNameRaw = '-';
-    let amount = 0;
-    if (Array.isArray(payload.products) && payload.products.length > 0) {
-      productNameRaw = payload.products.map(pr => pr.name || pr.title || '').filter(Boolean).join(' + ') || '-';
-      amount = payload.products.reduce((s, pr) => s + (parseFloat(String(pr.price||pr.value||0).replace(',','.')) || 0), 0);
-    }
-    if (productNameRaw === '-') {
-      const offer = (payload.offer && typeof payload.offer === 'object') ? payload.offer
-                  : (payload.product && typeof payload.product === 'object') ? payload.product : {};
-      productNameRaw = offer.name || offer.title || payload.product_name || payload.offer_name || payload.plan_name || '-';
-    }
-    productNameRaw = String(productNameRaw || '-').slice(0, 200);
-    if (!amount) {
-      const raw = payload.amount || payload.value || payload.price || payload.sale_amount || payload.total || 0;
-      amount = parseFloat(String(raw).replace(',','.')) || 0;
-    }
-    const paymentMethod  = String(payload.payment_method || payload.charge_type || payload.method || payload.payment_type || '-').slice(0, 60);
-    const productNameLow = productNameRaw.toLowerCase();
-    const tracking = extractTracking(payload);
-
-    if (!approved) {
-      if (txId) savePayment({ txId, status: status||'unknown', approved: false, clientName, clientEmail, clientPhone, productName: productNameRaw, amount, paymentMethod, tracking, keyCode: null, paidAt: new Date().toISOString(), rawStatus: status }).catch(()=>{});
-      res.writeHead(200); res.end('ignored'); return;
-    }
-
-    if (txId) {
-      if (Object.values(keys).some(k => k.note && (k.note.includes('payt_tx:'+txId) || k.note.includes('renovado_payt_tx:'+txId) || k.note.includes('sale_tx:'+txId) || k.note.includes('renovado_sale_tx:'+txId)))) {
-        res.writeHead(200); res.end('ok'); return;
-      }
-      try {
-        const _db = await getMongoDb();
-        const _ex = await _db.collection('payments').findOne({ txId, approved: true });
-        if (_ex) { res.writeHead(200); res.end('ok'); return; }
-      } catch(e) { console.warn('[SALE] Erro idempotencia:', e.message); }
-    }
-
-    let maxUses = 3;
-    if      (productNameLow.match(/\b1\b|individual|solo|basico|starter/))        maxUses = 1;
-    else if (productNameLow.match(/\b10\b|empresarial|enterprise|escala/))        maxUses = 10;
-    else if (productNameLow.match(/\b5\b|multi|team|equipe|avancado|pro\b/))      maxUses = 5;
-    else if (productNameLow.match(/\b3\b|trio|standard|padrao/))                  maxUses = 3;
-
-    let existingCode = null;
-    if (clientEmail) {
-      // Check portal_users first (linked key)
-      try {
-        const _pdb = await getMongoDb();
-        const _pu = await _pdb.collection('portal_users').findOne({ _id: clientEmail.toLowerCase() });
-        if (_pu && _pu.keyCode && keys[_pu.keyCode]) existingCode = _pu.keyCode;
-      } catch(e) { console.warn('[SALE] portal_users lookup:', e.message); }
-      // Fallback: scan note field
-      if (!existingCode) {
-        existingCode = Object.keys(keys).find(c => {
-          const emailMatch = (keys[c].note||'').match(/Email: (\S+)/);
-          return emailMatch && emailMatch[1].toLowerCase() === clientEmail.toLowerCase() && keys[c].active;
-        });
-      }
-    }
-
-    const now        = new Date();
-    const durationMs = 31 * 24 * 60 * 60 * 1000;
-
-    if (existingCode) {
-      const k    = keys[existingCode];
-      const base = (k.expiresAt && new Date(k.expiresAt) > now) ? new Date(k.expiresAt) : now;
-      k.expiresAt = new Date(base.getTime() + durationMs).toISOString();
-      k.active    = true;
-      k.note      = k.note + (txId ? '\nrenovado_sale_tx:'+txId : '\nrenovado');
-      saveKey(existingCode);
-      await savePayment({ txId: txId||existingCode, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, tracking, keyCode:existingCode, maxUses, renewed:true, paidAt:now.toISOString(), rawStatus:status });
-      // Sync portal_users record with renewed key
-      if (clientEmail) { getMongoDb().then(d=>d.collection('portal_users').updateOne({_id:clientEmail.toLowerCase()},{$set:{keyCode:existingCode}})).catch(e=>console.warn('[SALE] portal sync:',e.message)); }
-      console.log('[SALE] Chave renovada:', existingCode, 'email:', clientEmail);
-      if (clientEmail) sendKeyDeliveryEmail(clientEmail, { code:existingCode, planLabel:planLabelForMaxUses(maxUses), maxUses, expiresAt:k.expiresAt, renewed:true, baseUrl:BASE_URL, extensionUrl:EXTENSION_URL }).catch(e=>console.warn('[MAILER] envio chave renovada:',e.message));
-      res.writeHead(200); res.end('ok'); return;
-    }
-
-    const code    = generateCode();
-    const expires = new Date(now.getTime() + durationMs);
-    keys[code] = { label:'Venda - '+clientName, active:true, phones:[], uses:0, maxUses, expiresAt:expires.toISOString(), expireDuration:durationMs, createdAt:now.toISOString(), lastUsed:null, lastIp:null, lastPhone:null, deviceId:null, wppVersion:null, warnCount:0, tracking:tracking||null, note:['Pedido automatico','Email: '+clientEmail,txId?'sale_tx:'+txId:null,tracking?'Origem: '+tracking.compact:null].filter(Boolean).join('\n') };
-    saveKey(code);
-    await savePayment({ txId:txId||code, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, tracking, keyCode:code, maxUses, renewed:false, paidAt:now.toISOString(), rawStatus:status });
-    // Link to portal_users if registered with same email
-    if (clientEmail) { getMongoDb().then(d=>d.collection('portal_users').updateOne({_id:clientEmail.toLowerCase()},{$set:{keyCode:code}})).catch(e=>console.warn('[SALE] portal link:',e.message)); }
-    console.log('[SALE] Nova chave gerada:', code, 'email:', maskEmail(clientEmail));
-    if (clientEmail) sendKeyDeliveryEmail(clientEmail, { code, planLabel:planLabelForMaxUses(maxUses), maxUses, expiresAt:expires.toISOString(), renewed:false, baseUrl:BASE_URL, extensionUrl:EXTENSION_URL }).catch(e=>console.warn('[MAILER] envio chave nova:',e.message));
-    res.writeHead(200); res.end('ok'); return;
-  }
-
-  // ─── API de parceiro (Bearer PARTNER_API_TOKEN) ───
-  // Permite que um sistema externo autorizado gere/renove chaves e consulte status,
-  // sem depender de um gateway de pagamento específico.
-  if (p === '/api/partner/keys' && req.method === 'POST') {
-    if (!PARTNER_API_TOKEN) { sendJson(res, { error: 'partner_api_disabled' }, 503); return; }
-    const authHeader = req.headers['authorization'] || '';
-    const token = (authHeader.match(/^Bearer\s+(.+)$/i) || [])[1] || '';
-    if (!safeCompare(token, PARTNER_API_TOKEN)) {
-      addSecurityAlert('WEBHOOK_INVALID_TOKEN', 'Bearer inválido em /api/partner/keys', ip);
-      sendJson(res, { error: 'unauthorized' }, 401); return;
-    }
-    if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
-
-    const body = await parseBody(req);
-    const clientName    = String(body.clientName || body.customer_name || 'Cliente').slice(0, 120);
-    const clientEmail   = String(body.clientEmail || body.customer_email || '').trim().toLowerCase().slice(0, 160);
-    const clientPhone   = String(body.clientPhone || body.customer_phone || '').slice(0, 40);
-    const productNameRaw = String(body.productName || body.plan || '').slice(0, 120);
-    const productNameLow = productNameRaw.toLowerCase();
-    const txId = String(body.transactionId || body.transaction_id || '').trim().slice(0, 120);
-    const amount = parseFloat(String(body.amount || 0).replace(',', '.')) || 0;
-    const paymentMethod = String(body.paymentMethod || body.payment_method || 'partner').slice(0, 40);
-    const tracking = extractTracking(body);
-
-    if (!clientEmail) { sendJson(res, { error: 'clientEmail_required' }, 400); return; }
-
-    let maxUses = 3;
-    if      (productNameLow.match(/\b1\b|individual|solo|basico|starter/))   maxUses = 1;
-    else if (productNameLow.match(/\b10\b|empresarial|enterprise|escala/))   maxUses = 10;
-    else if (productNameLow.match(/\b5\b|multi|team|equipe|avancado|pro\b/)) maxUses = 5;
-    else if (productNameLow.match(/\b3\b|trio|standard|padrao/))             maxUses = 3;
-    if (Number.isInteger(body.maxUses) && body.maxUses > 0) maxUses = body.maxUses;
-
-    if (txId && Object.values(keys).some(k => k.note && (k.note.includes('sale_tx:'+txId) || k.note.includes('renovado_sale_tx:'+txId)))) {
-      sendJson(res, { ok: true, duplicate: true }); return;
-    }
-
-    let existingCode = null;
-    try {
-      const _pdb = await getMongoDb();
-      const _pu = await _pdb.collection('portal_users').findOne({ _id: clientEmail });
-      if (_pu && _pu.keyCode && keys[_pu.keyCode]) existingCode = _pu.keyCode;
-    } catch (e) { console.warn('[PARTNER] portal_users lookup:', e.message); }
-
-    const now = new Date();
-    const durationMs = 31 * 24 * 60 * 60 * 1000;
-
-    if (existingCode) {
-      const k = keys[existingCode];
-      const base = (k.expiresAt && new Date(k.expiresAt) > now) ? new Date(k.expiresAt) : now;
-      k.expiresAt = new Date(base.getTime() + durationMs).toISOString();
-      k.active = true;
-      k.note = k.note + (txId ? '\nrenovado_sale_tx:'+txId : '\nrenovado');
-      saveKey(existingCode);
-      await savePayment({ txId: txId||existingCode, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, tracking, keyCode:existingCode, maxUses, renewed:true, paidAt:now.toISOString(), rawStatus:'approved' });
-      console.log('[PARTNER] Chave renovada:', existingCode, 'email:', clientEmail);
-      sendKeyDeliveryEmail(clientEmail, { code:existingCode, planLabel:planLabelForMaxUses(maxUses), maxUses, expiresAt:k.expiresAt, renewed:true, baseUrl:BASE_URL, extensionUrl:EXTENSION_URL }).catch(e=>console.warn('[MAILER] envio chave renovada:',e.message));
-      sendJson(res, { ok: true, renewed: true, code: existingCode, expiresAt: k.expiresAt, maxUses });
-      return;
-    }
-
-    const code = generateCode();
-    const expires = new Date(now.getTime() + durationMs);
-    keys[code] = { label:'Parceiro - '+clientName, active:true, phones:[], uses:0, maxUses, expiresAt:expires.toISOString(), expireDuration:durationMs, createdAt:now.toISOString(), lastUsed:null, lastIp:null, lastPhone:null, deviceId:null, wppVersion:null, warnCount:0, tracking:tracking||null, note:['Pedido via API de parceiro','Email: '+clientEmail,txId?'sale_tx:'+txId:null,tracking?'Origem: '+tracking.compact:null].filter(Boolean).join('\n') };
-    saveKey(code);
-    await savePayment({ txId:txId||code, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, tracking, keyCode:code, maxUses, renewed:false, paidAt:now.toISOString(), rawStatus:'approved' });
-    if (clientEmail) { getMongoDb().then(d=>d.collection('portal_users').updateOne({_id:clientEmail},{$set:{keyCode:code}},{upsert:false})).catch(e=>console.warn('[PARTNER] portal link:',e.message)); }
-    console.log('[PARTNER] Nova chave gerada:', code, 'email:', maskEmail(clientEmail));
-    sendKeyDeliveryEmail(clientEmail, { code, planLabel:planLabelForMaxUses(maxUses), maxUses, expiresAt:expires.toISOString(), renewed:false, baseUrl:BASE_URL, extensionUrl:EXTENSION_URL }).catch(e=>console.warn('[MAILER] envio chave nova:',e.message));
-    sendJson(res, { ok: true, renewed: false, code, expiresAt: expires.toISOString(), maxUses });
-    return;
-  }
-
-  if (p.startsWith('/api/partner/keys/') && req.method === 'GET') {
-    if (!PARTNER_API_TOKEN) { sendJson(res, { error: 'partner_api_disabled' }, 503); return; }
-    const authHeader = req.headers['authorization'] || '';
-    const token = (authHeader.match(/^Bearer\s+(.+)$/i) || [])[1] || '';
-    if (!safeCompare(token, PARTNER_API_TOKEN)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
-
-    const code = sanitizeId(p.slice('/api/partner/keys/'.length).trim().toLowerCase(), 20);
-    if (!code || !await ensureKeyLoaded(code)) { sendJson(res, { error: 'not_found' }, 404); return; }
-    const k = keys[code];
-    sendJson(res, {
-      code,
-      label: k.label || null,
-      active: k.active && !isKeyExpired(k),
-      expired: isKeyExpired(k),
-      expiresAt: k.expiresAt || null,
-      maxUses: k.maxUses === -1 ? null : (k.maxUses > 0 ? k.maxUses : MAX_USES),
-      phones: (k.phones || []).length,
-      createdAt: k.createdAt || null,
-    });
-    return;
-  }
+  // Legacy commercial ingress retired; Cakto is the sole production payment authority.
 
   if (p === '/client/status' && req.method === 'POST') {
     if (!isInternalAuditProbe(req) && !checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
@@ -12776,6 +12388,7 @@ async function gracefulShutdown(signal, exitCode = 0) {
 
   // 1. Para o timer de keep-alive para não criar conexões novas durante o dreno
   if (_pingInterval) { clearInterval(_pingInterval); _pingInterval = null; }
+  if (_caktoWorkerTimer) { clearInterval(_caktoWorkerTimer); _caktoWorkerTimer = null; }
 
   // 2. Janela de segurança: força saída após 8s caso o dreno trave
   const forceExit = setTimeout(() => {
@@ -12795,11 +12408,16 @@ async function gracefulShutdown(signal, exitCode = 0) {
     console.log('[SHUTDOWN] HTTP server drenado');
   }
 
-  // 4. Descarrega gravações pendentes (debounce) ANTES de fechar o Mongo —
-  //    sem isso, alterações feitas até 2s antes do shutdown são perdidas
+  // 4. Aguarda o worker financeiro ativo concluir ou devolver o evento à fila
+  //    antes de fechar o Mongo. A janela é limitada pelo timeout global acima.
+  if (_caktoWorkerPromise) {
+    await Promise.race([_caktoWorkerPromise, new Promise(resolve => setTimeout(resolve, 5000))]);
+  }
+
+  // 5. Descarrega gravações pendentes (debounce) ANTES de fechar o Mongo.
   try { await flushPendingSaves(); } catch(e) { console.error('[SHUTDOWN] Erro ao gravar pendências:', e.message); }
 
-  // 5. Fecha pool do MongoDB — somente após HTTP drenar e pendências gravarem
+  // 6. Fecha pool do MongoDB — somente após HTTP/worker drenarem e pendências gravarem
   try {
     if (_mongoClient) { await _mongoClient.close(); console.log('[SHUTDOWN] MongoDB desconectado'); }
   } catch(e) { console.error('[SHUTDOWN] Erro ao fechar MongoDB:', e.message); }
@@ -12807,48 +12425,89 @@ async function gracefulShutdown(signal, exitCode = 0) {
   clearTimeout(forceExit);
   process.exit(exitCode);
 }
+function validateProductionSecurityConfig() {
+  if (!IS_PRODUCTION) return { ok: true, production: false };
+  const errors = [];
+  // Durante a migração, o Render pode operar com enforcement desligado para não
+  // quebrar a ZapVoice V3. Quando o enforcement é ligado, a allowlist volta a ser
+  // mandatória e o comportamento permanece fail-closed para a nova ZVM.
+  if (ZVM_BUILD_ENFORCE && !ZVM_EXTENSION_IDS.size) errors.push('ZVM_EXTENSION_IDS_required');
+  if (Buffer.byteLength(String(APP_SECRET || ''), 'utf8') < 32) errors.push('APP_SECRET_too_weak');
+  if (CAKTO_WEBHOOK_SECRET && Buffer.byteLength(String(CAKTO_WEBHOOK_SECRET), 'utf8') < 32) errors.push('CAKTO_WEBHOOK_SECRET_too_weak');
+  if (CAKTO_WEBHOOK_SECRET) {
+    const effectiveRecoverySecret = CAKTO_RECOVERY_SECRET || APP_SECRET;
+    if (Buffer.byteLength(String(effectiveRecoverySecret || ''), 'utf8') < 32) errors.push('CAKTO_RECOVERY_SECRET_required_or_too_weak');
+    for (const previous of String(CAKTO_RECOVERY_SECRET_PREVIOUS || '').split(',').map(v => v.trim()).filter(Boolean)) {
+      if (Buffer.byteLength(previous, 'utf8') < 32) errors.push('CAKTO_RECOVERY_SECRET_PREVIOUS_too_weak');
+    }
+    for (const plan of Object.values(ZVM_PLANS)) {
+      if (!safeScalar(plan.offerId, 120)) errors.push(`CAKTO_${plan.id.toUpperCase()}_OFFER_ID_required`);
+      if (!safeScalar(plan.productId, 120)) errors.push(`CAKTO_${plan.id.toUpperCase()}_PRODUCT_ID_required`);
+    }
+  }
+  if (errors.length) {
+    const error = new Error(`PRODUCTION_SECURITY_CONFIG_INVALID:${errors.join(',')}`);
+    error.code = 'PRODUCTION_SECURITY_CONFIG_INVALID';
+    error.problems = errors;
+    throw error;
+  }
+  return { ok: true, production: true, buildEnforcement: ZVM_BUILD_ENFORCE, legacyV3: legacyV3Allowed() };
+}
+
 if (require.main === module) {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
 (async () => {
   try {
+    validateProductionSecurityConfig();
     const loaded = await loadDb();
     keys           = loaded.keys || {};
     logs           = loaded.logs || [];
     securityAlerts = []; // inicia sessão limpa — histórico preservado no Mongo via "Limpar" explícito
     for (const code of Object.keys(keys)) sanitizeKeyRecord(keys[code]);
     serverReady = true;
+    startCaktoWorker();
 
     console.log(
       `✅ zvm-lr1290 v10 — porta ${PORT}\n` +
       `🍃 MongoDB: zapvoice.store | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}\n` +
-      `🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | 2FA: ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | Webhook Vendas: ${SALE_WEBHOOK_SECRET ? 'ATIVO' : '⚠ INATIVO'} | Cakto: ${CAKTO_WEBHOOK_SECRET ? 'ATIVO' : '⚠ INATIVO'} | Partner API: ${PARTNER_API_TOKEN ? 'ATIVO' : '⚠ INATIVO'}\n` +
-      `🛡️ Build Authority: ${ZVM_BUILD_ENFORCE ? 'ATIVO' : 'DESATIVADO'} | Builds oficiais: ${Array.from(ZVM_OFFICIAL_BUILDS.values()).reduce((n,s)=>n+s.size,0)} | Dev build: ${ZVM_DEV_BUILD_ALLOW ? 'ATIVO' : 'DESATIVADO'}\n` +
+      `🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | 2FA: ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | Cakto: ${CAKTO_WEBHOOK_SECRET ? 'ATIVO' : '⚠ INATIVO'}\n` +
+      `🛡️ Build Authority: ${ZVM_BUILD_ENFORCE ? 'ATIVO' : 'DESATIVADO'} | Builds oficiais: ${Array.from(ZVM_OFFICIAL_BUILDS.values()).reduce((n,s)=>n+s.size,0)} | Dev build: ${ZVM_DEV_BUILD_ALLOW ? 'ATIVO' : 'DESATIVADO'} | Legacy V3: ${legacyV3Allowed() ? 'ATIVO' : 'INATIVO'}\n` +
       // Rota admin derivada + usuário administrativo NÃO vão pro log de boot:
       // quem operou já tem essas duas informações a partir das próprias env
       // vars (APP_SECRET/ADMIN_USER) — reimprimi-las só cria mais um lugar
       // (agregador de log, dashboard do host) onde um segredo pode vazar.
       `🔑 Admin ZVM: configurado (rota derivada de APP_SECRET)\n` +
-      `🔑 Admin WSM: configurado (banco: ${process.env.WSM_MONGODB_DB || 'watidy'})\n` +
       `📊 Analytics: ${ANALYTICS_PASS ? 'ATIVO' : '⚠ INATIVO'} | Extension: ${R_EXT}/v3/key | Webhook: ${WEBHOOK_URL || 'não configurado'}\n` +
       `🗂  Logs: retenção ${LOG_RETENTION_DAYS}d (LGPD) | máx ${LOG_MAX} em memória`
     );
 
+    if (META_APP_ID || META_APP_SECRET || META_CONFIG_ID || META_TOKEN_ENCRYPTION_KEY || META_WEBHOOK_VERIFY_TOKEN) {
+      if (!metaConfigured()) console.warn('[META] Configuração incompleta — Embedded Signup permanecerá fail-closed.');
+      if (!META_WEBHOOK_VERIFY_TOKEN) console.warn('[META] META_WEBHOOK_VERIFY_TOKEN ausente — verificação de webhook ficará indisponível.');
+    }
+
     const safeHandler = (req, res) => {
+      observeHttpTraffic(req, res);
       handleRequest(req, res).catch(err => {
         console.error(`[ERRO] ${req.method} ${req.url.split('?')[0]}:`, err.message||err);
         if (res.headersSent) return;
-        // Navegação real de navegador fora de /wsm|/WSM ganha a página de
-        // indisponibilidade temporária do standalone; qualquer outro caso
-        // (API, extensão, rotas WSM) mantém o texto plano de sempre.
+        // Navegação real de navegador ganha a página de indisponibilidade
+        // temporária do standalone; APIs continuam com resposta textual.
         const _path = (req.url || '').split('?')[0];
-        const _isHtmlNav = req.method === 'GET' && (req.headers.accept || '').includes('text/html') && !/^\/wsm(\/|$)/i.test(_path);
+        const _isHtmlNav = req.method === 'GET' && (req.headers.accept || '').includes('text/html');
         if (_isHtmlNav) {
           try { res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(renderStandalone500Page()); return; } catch (_) { /* fallback abaixo */ }
         }
         res.writeHead(500); res.end('Internal Server Error');
       });
     };
+
+    const _trafficSummaryTimer = setInterval(() => {
+      const snap = httpTrafficSnapshot(15);
+      console.log('[TRAFFIC] ' + JSON.stringify({ windowMinutes: snap.windowMinutes, totalRequests: snap.totalRequests, top: snap.rows.slice(0, 8) }));
+    }, 15 * 60 * 1000);
+    _trafficSummaryTimer.unref();
 
     let _fatalShutdownStarted = false;
     const fatalShutdown = (kind, err) => {
@@ -12872,8 +12531,8 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
       if (err.code === 'EADDRINUSE') {
         console.error(`\n❌ A porta ${PORT} já está sendo usada por outro programa.`);
         console.error(`   Feche o outro servidor OU rode este em outra porta, ex.:`);
-        console.error(`   set PORT=3001 && node ZVMeWSM.js   (Windows CMD)`);
-        console.error(`   $env:PORT=3001; node ZVMeWSM.js    (PowerShell)\n`);
+        console.error(`   set PORT=3001 && node server.js   (Windows CMD)`);
+        console.error(`   $env:PORT=3001; node server.js    (PowerShell)\n`);
       } else {
         console.error('❌ Erro no servidor HTTP:', err.message);
       }
@@ -12903,18 +12562,88 @@ module.exports.__test = Object.freeze({
   _writeKeyToDbStrict,
   ZVM_PLANS,
   normalizeCaktoPurchase,
+  normalizeCaktoPurchases,
+  selectCaktoCommercialPurchase,
   normalizeCheckoutUrl,
   resolveCaktoPlan,
   validateCaktoPayload,
-  claimCaktoEvent,
+  verifyCaktoSignature,
+  validateCaktoCommercialIntegrity,
+  maskTransactionId,
+  caktoEventKey,
+  caktoQueueRef,
+  compactCaktoPurchaseForQueue,
+  encryptCaktoQueuePurchase,
+  decryptCaktoQueuePurchase,
+  migrateCaktoQueuedPurchaseDocument,
+  backfillCaktoQueuePayloads,
+  caktoPaymentTxKey,
+  backfillCaktoPaymentTxKeys,
+  backfillCaktoQueueRefs,
+  reconcileCaktoQueueCounter,
+  reserveCaktoQueueSlot,
+  releaseCaktoQueueSlot,
+  assertCaktoQueueTransactionReady,
+  runCaktoQueueAtomic,
+  encryptCaktoRecoveryPayload,
+  decryptCaktoRecoveryPayload,
+  caktoMailRef,
+  caktoDurableMailEnabled,
+  encryptCaktoMailPayload,
+  decryptCaktoMailPayload,
+  caktoMailRetentionDate,
+  ensureCaktoDeliveryOutbox,
+  claimNextCaktoMailOutbox,
+  caktoMailLeaseFilter,
+  markCaktoMailFailure,
+  processCaktoMailOutboxItem,
+  attemptCaktoMailByRef,
+  getCaktoMailHealth,
+  requeueCaktoMail,
+  classifyCaktoQueueFailure,
+  caktoQueueFailureRef,
+  enqueueCaktoPurchaseEvent,
+  acquireCaktoWorkerLeaseToken,
+  acquireCaktoWorkerLease,
+  renewCaktoWorkerLease,
+  releaseCaktoWorkerLease,
+  claimNextCaktoQueuedEvent,
+  caktoEventLeaseFilter,
+  caktoRetryDelayMs,
+  caktoRetentionDate,
+  getCaktoQueueHealth,
+  CAKTO_QUEUE_MAX_ACTIVE,
+  CAKTO_MAIL_MAX_ATTEMPTS,
+  CAKTO_MAIL_BATCH,
+  WORKER_LOCK_RETENTION_MS,
+  markCaktoQueueFailure,
+  processCaktoQueuedEvent,
+  runCaktoWorkerOnce,
+  requeueCaktoEvent,
+  commercialTxNamespace,
+  commercialTxClaimId,
+  commercialTxIdentityHash,
+  commercialTxClaimExpiry,
+  commercialOrderKeyForSale,
+  acquireCommercialTxClaim,
+  renewCommercialTxClaim,
+  completeCommercialTxClaim,
+  failCommercialTxClaim,
+  findCommercialPaymentByTx,
+  commercialCustomerLockId,
+  acquireCommercialCustomerLock,
+  renewCommercialCustomerLock,
+  releaseCommercialCustomerLock,
+  withCommercialCustomerLock,
   processCommercialSale,
-  processCaktoPurchaseEvent,
   handleCaktoWebhook,
   safeLocalRedirect,
   getVerifyRedirect,
   renderPlanosPage,
   renderPortalDashboard: renderStandalonePortalDashboard,
   renderAdminDashboard,
+  normalizeAdminCreateLabel,
+  parseAdminBatchDeleteCodes,
   renderAnalyticsLogin,
   renderAnalyticsDashboard,
   renderStandalonePortalLogin,
@@ -12979,15 +12708,38 @@ module.exports.__test = Object.freeze({
   authorizeExtensionKeySession,
   refreshExtensionSession,
   ZVM_BUILD_ENFORCE,
+  ZVM_LEGACY_V3_ALLOW,
+  legacyV3Allowed,
   ZVM_OFFICIAL_BUILDS,
+  ZVM_DENIED_BUILDS,
   zvmSecurityBuildRecognized,
+  zvmSecurityBuildDenied,
+  zvmSecurityStoredSessionAllowed,
   zvmSecurityCheckClient,
+  zvmSecurityCheckClientShared,
+  zvmSecurityConsumeRequestIdShared,
+  zvmSecurityClientErrorStatus,
   zvmSecurityDevBuildAllowed,
-  zvmSecurityIssue,
-  zvmSecurityVerifyToken,
   resolveUsageKey,
   normalizeClientIp,
   isAllowedExtensionOrigin,
-  isAllowedExtensionCallback,
+  getIp,
+  checkRateLimit,
+  getRateLimitWait,
+  handleRequest,
+  validateProductionSecurityConfig,
+  normalizeTrafficPath,
+  recordHttpTraffic,
+  httpTrafficSnapshot,
+  caktoDurableMailEnabled,
+  maskLicenseCode,
+  metaEncryptionKey,
+  metaConfigured,
+  metaPublicConfig,
+  metaEncrypt,
+  metaDecrypt,
+  metaVerifyWebhookSignature,
+  metaWebhookEventKeys,
+  metaPublicConnection,
   _SEC_HEADERS,
 });
