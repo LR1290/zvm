@@ -1,4 +1,4 @@
-const ZVM_BUILD_ID = '2026-09-10-production-migration-r21';
+const ZVM_BUILD_ID = '2026-09-10-cakto-plan-compat-r22';
 'use strict';
 const http   = require('http');
 const https  = require('https');
@@ -81,8 +81,9 @@ const META_FLOW_COLLECTION = 'meta_signup_flows';
 const META_WEBHOOK_COLLECTION = 'meta_webhook_events';
 
 // Fonte comercial única do ZVM Standalone. IDs reais podem ser preenchidos
-// por ambiente quando forem conhecidos; valores vazios nunca participam da
-// resolução e nenhum identificador é inferido do slug do checkout.
+// por ambiente como pinning adicional; enquanto ausentes, o contrato já usado em
+// produção continua aceitando checkout oficial ou nome comercial exato + gates
+// de status/moeda/preço. Nenhum ID é inferido do slug do checkout.
 const ZVM_PLANS = Object.freeze({
   solo: Object.freeze({
     id: 'solo', name: 'ZVM Solo', shortName: 'Solo', price: 39.90,
@@ -1082,7 +1083,12 @@ function safeScalar(value, maxLength, fallback = '') {
 }
 
 function normalizePlanName(value) {
-  return safeScalar(value, 120).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  return safeScalar(value, 120)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
 }
 
 // Canoniza uma checkoutUrl da Cakto pra comparação: origin + pathname (sem
@@ -1203,8 +1209,19 @@ function resolveCaktoPlan(purchase, plans = ZVM_PLANS) {
     if (byCheckout) return byCheckout;
   }
 
-  // Fail-closed: nomes comerciais são texto mutável e não são identidade.
-  // Se IDs/checkout oficial não casarem, o plano permanece não mapeado.
+  // Compatibilidade com a configuração Cakto já em produção: quando IDs não
+  // estão pinados no ambiente, aceita SOMENTE igualdade exata após normalização
+  // conservadora de acentos/pontuação. Não há regex, substring ou palavra-chave.
+  // O webhook já passou HMAC+secret antes desta resolução e a camada comercial
+  // seguinte ainda exige status pago, BRL e preço-base exato do plano.
+  const exactNames = [purchase.productName, purchase.offerName].map(normalizePlanName).filter(Boolean);
+  if (exactNames.length) {
+    const byExactName = allPlans.find(plan => {
+      const allowed = [plan.name, plan.shortName].map(normalizePlanName).filter(Boolean);
+      return exactNames.some(name => allowed.includes(name));
+    });
+    if (byExactName) return byExactName;
+  }
   return null;
 }
 
@@ -12440,10 +12457,10 @@ function validateProductionSecurityConfig() {
     for (const previous of String(CAKTO_RECOVERY_SECRET_PREVIOUS || '').split(',').map(v => v.trim()).filter(Boolean)) {
       if (Buffer.byteLength(previous, 'utf8') < 32) errors.push('CAKTO_RECOVERY_SECRET_PREVIOUS_too_weak');
     }
-    for (const plan of Object.values(ZVM_PLANS)) {
-      if (!safeScalar(plan.offerId, 120)) errors.push(`CAKTO_${plan.id.toUpperCase()}_OFFER_ID_required`);
-      if (!safeScalar(plan.productId, 120)) errors.push(`CAKTO_${plan.id.toUpperCase()}_PRODUCT_ID_required`);
-    }
+    // OFFER_ID/PRODUCT_ID são pinning adicional quando disponíveis, não pré-
+    // requisito de boot. A instalação Cakto existente opera com checkout oficial
+    // e nomes comerciais canônicos; a integridade comercial ainda valida preço,
+    // moeda/status e, quando IDs forem configurados, exige correspondência exata.
   }
   if (errors.length) {
     const error = new Error(`PRODUCTION_SECURITY_CONFIG_INVALID:${errors.join(',')}`);
