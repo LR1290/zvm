@@ -1,4 +1,4 @@
-const ZVM_BUILD_ID = '2026-09-11-security-closure-r23';
+const ZVM_BUILD_ID = '2026-09-11-security-hardening-r24';
 'use strict';
 const http   = require('http');
 const https  = require('https');
@@ -885,6 +885,16 @@ function _portalTotpDecodeKey(raw) {
     if (decoded.length === 32 && decoded.toString('base64').replace(/=+$/,'') === value.replace(/=+$/,'')) return decoded;
   } catch (_) {}
   return null;
+}
+
+function portalTotpDedicatedKeyValid() {
+  return !!_portalTotpDecodeKey(PORTAL_TOTP_ENCRYPTION_KEY);
+}
+
+function portalTotpCryptoMode() {
+  if (portalTotpDedicatedKeyValid()) return 'DEDICATED';
+  if (Buffer.byteLength(String(APP_SECRET || ''), 'utf8') >= 32) return 'FALLBACK';
+  return 'UNAVAILABLE';
 }
 
 function portalTotpKeyRing() {
@@ -2509,6 +2519,25 @@ function isPortalSession(req) {
 function getPortalUser(req) {
   const m = (req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/);
   return m ? portalSessions[m[1]] : null;
+}
+
+function _sanitizeRequestTraceId(value) {
+  const s = String(value || '').trim();
+  return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(s) ? s : '';
+}
+
+function getOrCreateRequestId(req) {
+  const headers = req && req.headers ? req.headers : {};
+  return _sanitizeRequestTraceId(headers['rndr-id']) || crypto.randomUUID();
+}
+
+function applyRequestContext(req, res) {
+  const id = getOrCreateRequestId(req);
+  req.zvmRequestId = id;
+  const cfRay = _sanitizeRequestTraceId(req.headers && req.headers['cf-ray']);
+  if (cfRay) req.zvmCfRay = cfRay;
+  try { res.setHeader('X-Request-Id', id); } catch (_) {}
+  return id;
 }
 
 // Defesa em profundidade contra CSRF nos POSTs autenticados via cookie
@@ -9781,7 +9810,7 @@ async function runInternalSecurityAudit() {
   function _probe(path, opts = {}) {
     return new Promise(resolve => {
       const bodyStr = opts.body ? JSON.stringify(opts.body) : null;
-      const headers = { 'x-zvm-internal-audit': INTERNAL_AUDIT_TOKEN, ...(opts.headers || {}) };
+      const headers = { 'x-zvm-internal-audit': INTERNAL_AUDIT_TOKEN, 'sec-fetch-site': 'same-origin', ...(opts.headers || {}) };
       if (bodyStr) {
         headers['Content-Type'] = headers['Content-Type'] || 'application/json';
         if (headers['Content-Length'] == null && headers['content-length'] == null) headers['Content-Length'] = Buffer.byteLength(bodyStr);
@@ -9803,7 +9832,6 @@ async function runInternalSecurityAudit() {
 
   function _ct(r)       { return r.headers['content-type'] || ''; }
   function _jp(r)       { try { return JSON.parse(r.body); } catch { return {}; } }
-  function _mask(s, n=4){ return s && s.length > n ? '*'.repeat(s.length - n) + s.slice(-n) : '***'; }
 
   // ── BLOCO 1: Config Hardening ────────────────────────────────────────────
   const MIN_SECRET_LEN = 16;
@@ -9818,7 +9846,7 @@ async function runInternalSecurityAudit() {
   results.push({
     name:   'APP_SECRET (HMAC slug) configurado',
     pass:   !!(APP_SECRET && APP_SECRET.length >= MIN_SECRET_LEN),
-    detail: APP_SECRET ? `${APP_SECRET.length} chars · ${_mask(APP_SECRET, 4)}` : 'AUSENTE — rotas /admin visíveis',
+    detail: APP_SECRET ? `${APP_SECRET.length} chars · configurado` : 'AUSENTE — rotas /admin visíveis',
   });
   results.push({
     name:   'TOTP_SECRET (2FA admin) — opcional',
@@ -9830,7 +9858,7 @@ async function runInternalSecurityAudit() {
   results.push({
     name:   'Portal 2FA — segredo protegido em repouso',
     pass:   portalTotpKeyRing().length > 0,
-    detail: portalTotpKeyRing().length ? `AES-256-GCM · chave=${portalTotpKeyRing()[0].source} · migração legada=${PORTAL_TOTP_MIGRATE_LEGACY?'ativa':'controlada'}` : 'Criptografia TOTP indisponível',
+    detail: portalTotpKeyRing().length ? `AES-256-GCM · modo=${portalTotpCryptoMode()} · migração legada=${PORTAL_TOTP_MIGRATE_LEGACY?'ativa':'controlada'}` : 'Criptografia TOTP indisponível',
   });
   results.push({
     name:   'ANALYTICS_PASS — opcional',
@@ -11412,6 +11440,7 @@ async function handleRequest(req, res) {
   }
 
   if (p === R_ADMIN+'/login' && req.method === 'POST') {
+    if (!requireSameOriginPost(req)) { sendHtml(res, 'Forbidden', 403); return; }
     if (!checkRateLimit(ip, 'login')) {
       const mins = getRateLimitWait(ip, 'login');
       sendHtml(res, renderAdminLogin(`⏳ Muitas tentativas. Aguarde ${mins} minuto(s).`), 429); return;
@@ -11906,6 +11935,7 @@ async function handleRequest(req, res) {
   }
 
   if (p === R_ANALYTICS+'/login' && req.method === 'POST') {
+    if (!requireSameOriginPost(req)) { sendHtml(res, 'Forbidden', 403); return; }
     if (!ANALYTICS_PASS) { res.writeHead(404); res.end('Not found'); return; }
     if (!checkRateLimit(ip, 'login')) {
       const mins = getRateLimitWait(ip, 'login');
@@ -12274,6 +12304,7 @@ async function handleRequest(req, res) {
     res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
 
   if (p === '/cliente/login' && req.method === 'POST') {
+    if (!requireSameOriginPost(req)) { sendHtml(res, 'Forbidden', 403); return; }
     if (!checkRateLimit(ip, 'login')) { sendHtml(res, renderStandalonePortalLogin('Muitas tentativas. Aguarde 10 minutos.'), 429); return; }
     const form = await parseFormBody(req);
     const email = (form.get('email')||'').toLowerCase().trim().slice(0,100);
@@ -12308,6 +12339,7 @@ async function handleRequest(req, res) {
   if (p === '/cliente/registro' && req.method === 'GET') { sendHtml(res, renderStandalonePortalRegister('', {}, safeLocalRedirect(url.searchParams.get('redir') || ''))); return; }
 
   if (p === '/cliente/registro' && req.method === 'POST') {
+    if (!requireSameOriginPost(req)) { sendHtml(res, 'Forbidden', 403); return; }
     if (!checkRateLimit(ip, 'login')) { sendHtml(res, renderStandalonePortalRegister('Muitas tentativas.'), 429); return; }
     const form = await parseFormBody(req);
     const name    = (form.get('name')||'').trim().slice(0,80);
@@ -12727,7 +12759,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     console.log(
       `✅ ZVM Server ${ZVM_BUILD_ID} — porta ${PORT}\n` +
       `🍃 MongoDB: zapvoice.store | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}\n` +
-      `🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | 2FA: ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | Cakto: ${CAKTO_WEBHOOK_SECRET ? 'ATIVO' : '⚠ INATIVO'}\n` +
+      `🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | 2FA: ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | TOTP crypto: ${portalTotpCryptoMode()} | Cakto: ${CAKTO_WEBHOOK_SECRET ? 'ATIVO' : '⚠ INATIVO'}\n` +
       `🛡️ Build Authority: ${ZVM_BUILD_ENFORCE ? 'ATIVO' : 'DESATIVADO'} | Builds oficiais: ${Array.from(ZVM_OFFICIAL_BUILDS.values()).reduce((n,s)=>n+s.size,0)} | Dev build: ${ZVM_DEV_BUILD_ALLOW ? 'ATIVO' : 'DESATIVADO'} | Legacy V3: ${legacyV3Allowed() ? 'ATIVO' : 'INATIVO'}\n` +
       // Rota admin derivada + usuário administrativo NÃO vão pro log de boot:
       // quem operou já tem essas duas informações a partir das próprias env
@@ -12744,9 +12776,10 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     }
 
     const safeHandler = (req, res) => {
+      applyRequestContext(req, res);
       observeHttpTraffic(req, res);
       handleRequest(req, res).catch(err => {
-        console.error(`[ERRO] ${req.method} ${req.url.split('?')[0]}:`, err.message||err);
+        console.error(`[ERRO][rid=${req.zvmRequestId || 'n/a'}] ${req.method} ${req.url.split('?')[0]}:`, err.message||err);
         if (res.headersSent) return;
         // Navegação real de navegador ganha a página de indisponibilidade
         // temporária do standalone; APIs continuam com resposta textual.
@@ -12822,6 +12855,8 @@ module.exports.__test = Object.freeze({
   deleteKeyFromDb,
   deleteKeysFromDbStrict,
   portalTotpKeyRing,
+  portalTotpDedicatedKeyValid,
+  portalTotpCryptoMode,
   portalTotpEncrypt,
   portalTotpDecrypt,
   portalTotpHasSecret,
@@ -12937,6 +12972,8 @@ module.exports.__test = Object.freeze({
   renderStandalone404Page,
   renderStandalone500Page,
   requireSameOriginPost,
+  getOrCreateRequestId,
+  applyRequestContext,
   simulateCommercialSale,
   resolveLabPlan,
   previewAnalyticsPurge,
