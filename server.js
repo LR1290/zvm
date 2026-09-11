@@ -1,4 +1,4 @@
-const ZVM_BUILD_ID = '2026-09-10-cakto-plan-compat-r22';
+const ZVM_BUILD_ID = '2026-09-11-security-closure-r23';
 'use strict';
 const http   = require('http');
 const https  = require('https');
@@ -54,6 +54,11 @@ const APP_SECRET   = process.env.APP_SECRET   || '';
 const CAKTO_RECOVERY_SECRET = String(process.env.CAKTO_RECOVERY_SECRET || '').trim();
 const CAKTO_RECOVERY_SECRET_PREVIOUS = String(process.env.CAKTO_RECOVERY_SECRET_PREVIOUS || '').trim();
 const TOTP_SECRET  = process.env.TOTP_SECRET  || '';
+const PORTAL_TOTP_ENCRYPTION_KEY = String(process.env.PORTAL_TOTP_ENCRYPTION_KEY || '').trim();
+const PORTAL_TOTP_ENCRYPTION_KEY_PREVIOUS = String(process.env.PORTAL_TOTP_ENCRYPTION_KEY_PREVIOUS || '').trim();
+const PORTAL_TOTP_MIGRATE_LEGACY = /^(1|true|yes|on)$/i.test(String(process.env.PORTAL_TOTP_MIGRATE_LEGACY || ''));
+const PORTAL_TOTP_ENCRYPTED_SENTINEL = '__ZVM_TOTP_ENCRYPTED_V1__';
+const CAKTO_ALLOW_DRY_RUN = /^(1|true|yes|on)$/i.test(String(process.env.CAKTO_ALLOW_DRY_RUN || ''));
 const WEBHOOK_URL  = process.env.WEBHOOK_URL  || '';
 const EXTENSION_URL = process.env.EXTENSION_URL || '';
 const EXPIRY_WARN_HOURS = Math.max(1, Math.min(720, parseInt(process.env.EXPIRY_WARN_HOURS || '48') || 48));
@@ -270,9 +275,9 @@ setInterval(async () => {
   catch { _mongoDb = null; _mongoClient = null; console.warn('[DB] Conexão perdida — reconectando na próxima operação'); }
 }, 5 * 60 * 1000);
 
-async function loadDb() {
+async function loadDb(opts = {}) {
   try {
-    const db = await getMongoDb();
+    const db = await (opts.getDb || getMongoDb)();
     // Garante índices úteis (idempotente — não recria se já existe)
     db.collection('admin_audit_logs').createIndex({ ts: -1 }, { background: true }).catch(() => {});
     db.collection('portal_users').createIndex({ keyCode: 1 }, { background: true }).catch(() => {});
@@ -338,7 +343,8 @@ async function loadDb() {
     };
   } catch (e) {
     console.error('[DB] Erro ao carregar:', e.message);
-    return { keys: {}, logs: [], securityAlerts: [] };
+    if (opts.allowEmptyOnFailure === true) return { keys: {}, logs: [], securityAlerts: [] };
+    throw e;
   }
 }
 
@@ -400,6 +406,35 @@ async function _writeKeyToDbStrict(code, deps = {}) {
     { upsert: true }
   );
 }
+
+function cloneKeyRecordForCommit(record) {
+  if (!record || typeof record !== 'object') return record;
+  return JSON.parse(JSON.stringify(record));
+}
+
+async function commitAdminKeyRecordStrict(code, record, deps = {}) {
+  const keyCode = String(code || '');
+  if (!keyCode || !record || typeof record !== 'object') throw new Error('invalid_key_record');
+  const next = cloneKeyRecordForCommit(record);
+  const db = deps.db || await getMongoDb();
+  await db.collection('store').updateOne(
+    { _id: 'keys' },
+    { $set: { [`data.${keyCode}`]: next, updatedAt: new Date() } },
+    { upsert: true }
+  );
+  keys[keyCode] = next;
+  invalidateKeysHtmlCache();
+  return keys[keyCode];
+}
+
+async function mutateAdminKeyRecordStrict(code, mutator, deps = {}) {
+  const keyCode = String(code || '');
+  const current = keys[keyCode];
+  if (!current) return null;
+  const draft = cloneKeyRecordForCommit(current);
+  await mutator(draft);
+  return commitAdminKeyRecordStrict(keyCode, draft, deps);
+}
 function saveKey(code) {
   if (_saveDebounce.has(code)) clearTimeout(_saveDebounce.get(code));
   const tid = setTimeout(() => { _saveDebounce.delete(code); _writeKeyToDb(code); }, 2000);
@@ -417,17 +452,33 @@ async function flushPendingSaves() {
   await Promise.allSettled(pending.map(c => _writeKeyToDb(c)));
 }
 
-async function deleteKeyFromDb(code) {
-  if (_saveDebounce.has(code)) { clearTimeout(_saveDebounce.get(code)); _saveDebounce.delete(code); }
-  delete keys[code];
-  invalidateKeysHtmlCache();
-  const db = await getMongoDb();
+async function deleteKeyFromDb(code, deps = {}) {
+  const db = deps.db || await getMongoDb();
+  // DB-first: só remove do estado da instância depois que o Mongo confirmou.
   await db.collection('store').updateOne(
     { _id: 'keys' },
     { $unset: { [`data.${code}`]: '' }, $set: { updatedAt: new Date() } }
   );
-  // Clear portal_users references to this deleted key
+  if (_saveDebounce.has(code)) { clearTimeout(_saveDebounce.get(code)); _saveDebounce.delete(code); }
+  delete keys[code];
+  invalidateKeysHtmlCache();
+  // Referência de portal é limpeza auxiliar; falha não reverte a exclusão já confirmada.
   db.collection('portal_users').updateMany({ keyCode: code }, { $unset: { keyCode: '' } }).catch(() => {});
+}
+
+async function deleteKeysFromDbStrict(codes, deps = {}) {
+  const unique = [...new Set((codes || []).map(v => String(v || '')).filter(Boolean))];
+  if (!unique.length) return 0;
+  const db = deps.db || await getMongoDb();
+  const unset = Object.fromEntries(unique.map(code => [`data.${code}`, '']));
+  await db.collection('store').updateOne({ _id: 'keys' }, { $unset: unset, $set: { updatedAt: new Date() } });
+  for (const code of unique) {
+    if (_saveDebounce.has(code)) { clearTimeout(_saveDebounce.get(code)); _saveDebounce.delete(code); }
+    delete keys[code];
+  }
+  invalidateKeysHtmlCache();
+  db.collection('portal_users').updateMany({ keyCode: { $in: unique } }, { $unset: { keyCode: '' } }).catch(() => {});
+  return unique.length;
 }
 
 async function activateDeferredKey(code) {
@@ -824,6 +875,123 @@ function verifyTOTP(secret, token) {
   return false;
 }
 
+
+function _portalTotpDecodeKey(raw) {
+  const value = String(raw || '').trim();
+  if (!value) return null;
+  if (/^[a-f0-9]{64}$/i.test(value)) return Buffer.from(value, 'hex');
+  try {
+    const decoded = Buffer.from(value, 'base64');
+    if (decoded.length === 32 && decoded.toString('base64').replace(/=+$/,'') === value.replace(/=+$/,'')) return decoded;
+  } catch (_) {}
+  return null;
+}
+
+function portalTotpKeyRing() {
+  const candidates = [];
+  const currentExplicit = _portalTotpDecodeKey(PORTAL_TOTP_ENCRYPTION_KEY);
+  if (currentExplicit) candidates.push({ source: 'explicit', key: currentExplicit });
+  for (const raw of String(PORTAL_TOTP_ENCRYPTION_KEY_PREVIOUS || '').split(',').map(v => v.trim()).filter(Boolean)) {
+    const key = _portalTotpDecodeKey(raw);
+    if (key) candidates.push({ source: 'previous', key });
+  }
+  // Compatibilidade segura de transição: se ainda não houver chave dedicada,
+  // usa uma chave derivada e domain-separated do APP_SECRET já obrigatório.
+  // Mesmo depois que a chave dedicada for configurada, a derivada continua no
+  // ring para decifrar registros criados antes da rotação.
+  if (Buffer.byteLength(String(APP_SECRET || ''), 'utf8') >= 32) {
+    candidates.push({ source: 'app-secret', key: crypto.createHash('sha256').update('zvm:portal:totp:v1\0' + APP_SECRET, 'utf8').digest() });
+  }
+  const out = [], seen = new Set();
+  for (const item of candidates) {
+    const kid = crypto.createHash('sha256').update(Buffer.concat([Buffer.from('zvm:portal:totp:kid\0'), item.key])).digest('hex').slice(0, 16);
+    if (seen.has(kid)) continue;
+    seen.add(kid); out.push({ ...item, kid });
+  }
+  return out;
+}
+
+function _portalTotpAad(email) {
+  return `zvm:portal:totp:${String(email || '').toLowerCase().trim()}`;
+}
+
+function portalTotpEncrypt(secret, email) {
+  const current = portalTotpKeyRing()[0];
+  if (!current?.key) throw Object.assign(new Error('portal_totp_crypto_unavailable'), { code: 'PORTAL_TOTP_CRYPTO_UNAVAILABLE' });
+  const value = String(secret || '').trim();
+  if (!/^[A-Z2-7]{16,128}$/i.test(value)) throw Object.assign(new Error('portal_totp_secret_invalid'), { code: 'PORTAL_TOTP_SECRET_INVALID' });
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', current.key, iv);
+  cipher.setAAD(Buffer.from(_portalTotpAad(email), 'utf8'));
+  const data = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
+  return { v: 1, alg: 'A256GCM', kid: current.kid, iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64'), data: data.toString('base64') };
+}
+
+function portalTotpDecrypt(box, email) {
+  if (!box || box.v !== 1 || box.alg !== 'A256GCM' || !/^[a-f0-9]{16}$/.test(String(box.kid || ''))) throw Object.assign(new Error('portal_totp_secret_invalid'), { code: 'PORTAL_TOTP_SECRET_INVALID' });
+  const iv = Buffer.from(String(box.iv || ''), 'base64');
+  const tag = Buffer.from(String(box.tag || ''), 'base64');
+  const data = Buffer.from(String(box.data || ''), 'base64');
+  if (iv.length !== 12 || tag.length !== 16 || data.length < 1 || data.length > 256) throw Object.assign(new Error('portal_totp_secret_invalid'), { code: 'PORTAL_TOTP_SECRET_INVALID' });
+  const item = portalTotpKeyRing().find(x => x.kid === box.kid);
+  if (!item) throw Object.assign(new Error('portal_totp_key_unavailable'), { code: 'PORTAL_TOTP_KEY_UNAVAILABLE' });
+  try {
+    const decipher = crypto.createDecipheriv('aes-256-gcm', item.key, iv);
+    decipher.setAAD(Buffer.from(_portalTotpAad(email), 'utf8'));
+    decipher.setAuthTag(tag);
+    const secret = Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8');
+    if (!/^[A-Z2-7]{16,128}$/i.test(secret)) throw new Error('shape');
+    return secret;
+  } catch (_) {
+    throw Object.assign(new Error('portal_totp_secret_invalid'), { code: 'PORTAL_TOTP_SECRET_INVALID' });
+  }
+}
+
+function portalTotpHasSecret(user) {
+  return !!(user && (user.totpSecretEnc || user.totpSecret));
+}
+
+function portalTotpActiveFields(secret, email) {
+  return {
+    totpSecret: PORTAL_TOTP_ENCRYPTED_SENTINEL,
+    totpSecretEnc: portalTotpEncrypt(secret, email),
+  };
+}
+
+function portalTotpReadSecret(user, email) {
+  if (!user) return '';
+  if (user.totpSecretEnc) return portalTotpDecrypt(user.totpSecretEnc, email || user._id || user.email || '');
+  const legacy = typeof user.totpSecret === 'string' ? user.totpSecret.trim() : '';
+  if (legacy === PORTAL_TOTP_ENCRYPTED_SENTINEL) {
+    throw Object.assign(new Error('portal_totp_ciphertext_missing'), { code: 'PORTAL_TOTP_CIPHERTEXT_MISSING' });
+  }
+  return legacy;
+}
+
+function portalTotpReadPendingSecret(user, email) {
+  if (!user) return '';
+  if (user.pendingTotpSecretEnc) return portalTotpDecrypt(user.pendingTotpSecretEnc, email || user._id || user.email || '');
+  return typeof user.pendingTotpSecret === 'string' ? user.pendingTotpSecret.trim() : '';
+}
+
+async function migratePortalTotpLegacy(db, user, email, opts = {}) {
+  if (!db || !user) return user;
+  if (opts.force !== true && !PORTAL_TOTP_MIGRATE_LEGACY) return user;
+  const id = String(email || user._id || user.email || '').toLowerCase().trim();
+  if (!id) return user;
+  const set = {}, unset = {};
+  if (user.totpSecret && !user.totpSecretEnc && user.totpSecret !== PORTAL_TOTP_ENCRYPTED_SENTINEL) {
+    Object.assign(set, portalTotpActiveFields(user.totpSecret, id));
+  }
+  if (user.pendingTotpSecret && !user.pendingTotpSecretEnc) {
+    set.pendingTotpSecretEnc = portalTotpEncrypt(user.pendingTotpSecret, id);
+    unset.pendingTotpSecret = '';
+  }
+  if (!Object.keys(set).length) return user;
+  await db.collection('portal_users').updateOne({ _id: id }, { $set: set, $unset: unset });
+  return { ...user, ...set, pendingTotpSecret: undefined };
+}
+
 // Regra de login do Analytics: senha sempre obrigatória; TOTP só é exigido
 // quando expectedTotpSecret (ANALYTICS_TOTP_SECRET) está preenchida —
 // verifyTOTP() já retorna true sozinha nesse caso, então esta função nunca
@@ -990,23 +1158,32 @@ setInterval(async () => {
   if (expired > 0) { invalidateKeysHtmlCache(); console.log(`[CRON] ${expired} chave(s) expirada(s).`); }
 }, 60 * 60 * 1000);
 
+function parseSafeWebhookUrl(raw) {
+  try {
+    const url = new URL(String(raw || '').trim());
+    if (url.protocol !== 'https:' || !url.hostname || url.username || url.password) return null;
+    return url;
+  } catch (_) { return null; }
+}
+
 function fireWebhook(event, keyCode, reason) {
   if (!WEBHOOK_URL) return;
+  const url = parseSafeWebhookUrl(WEBHOOK_URL);
+  if (!url) { console.warn('[WEBHOOK] URL recusada — somente HTTPS sem credenciais embutidas é permitido'); return; }
   const k = keys[keyCode];
   const payload = {
-    event, keyCode,
-    label:     k?.label || '-',
-    phone:     k?.lastPhone || '-',
-    reason,
+    event,
+    keyCode:   maskLicenseCode(keyCode),
+    label:     safeScalar(k?.label || '-', 60),
+    phone:     maskPhone(k?.lastPhone || ''),
+    reason:    safeScalar(reason, 120, '-'),
     timestamp: new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
   };
   try {
-    const transport = WEBHOOK_URL.startsWith('https') ? https : http;
-    const url  = new URL(WEBHOOK_URL);
     const data = JSON.stringify(payload);
-    const req  = transport.request({
+    const req  = https.request({
       hostname: url.hostname,
-      port:     url.port || (WEBHOOK_URL.startsWith('https') ? 443 : 80),
+      port:     url.port || 443,
       path:     url.pathname + url.search,
       method:   'POST',
       headers:  { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
@@ -1603,11 +1780,15 @@ async function authenticateExtensionAccount(input, deps = {}) {
   if (!user || !await verifyPassword(password, user)) {
     return extensionAuthFailure('invalid_credentials', 401);
   }
-  if (user.totpSecret) {
+  if (portalTotpHasSecret(user)) {
     const totpCode = String(input?.totpCode || '').trim();
     if (!totpCode) return extensionAuthFailure('mfa_required', 401, { mfaRequired: true });
     const verifyMfa = deps.verifyTotp || verifyTOTP;
-    if (!verifyMfa(user.totpSecret, totpCode)) return extensionAuthFailure('invalid_totp', 401);
+    let mfaSecret;
+    try { mfaSecret = portalTotpReadSecret(user, email); }
+    catch (_) { return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true }); }
+    if (!mfaSecret || !verifyMfa(mfaSecret, totpCode)) return extensionAuthFailure('invalid_totp', 401);
+    if (user.totpSecret && !user.totpSecretEnc) migratePortalTotpLegacy(db, user, email).catch(() => {});
   }
   const entitlementResult = await resolveExtensionAccountEntitlement(user, { ...deps, db });
   if (!entitlementResult.ok) return entitlementResult;
@@ -4090,6 +4271,12 @@ function startCaktoWorker() {
   _caktoWorkerTimer.unref();
 }
 
+function caktoDryRunAllowed(opts = {}) {
+  const production = opts.production === undefined ? IS_PRODUCTION : !!opts.production;
+  const explicitEnable = opts.explicitEnable === undefined ? CAKTO_ALLOW_DRY_RUN : !!opts.explicitEnable;
+  return !production || explicitEnable;
+}
+
 async function handleCaktoWebhook(req, res, url, ip, deps = {}) {
   const configuredSecret = deps.secret !== undefined ? deps.secret : CAKTO_WEBHOOK_SECRET;
   const rateLimit = deps.rateLimit || checkRateLimit;
@@ -4133,6 +4320,7 @@ async function handleCaktoWebhook(req, res, url, ip, deps = {}) {
   }
 
   if (url.searchParams.get('dry_run') === '1') {
+    if (!caktoDryRunAllowed()) { sendJson(res, { ok: false, error: 'dry_run_disabled' }, 403); return; }
     // Diagnóstico completo pro primeiro payload real da Cakto — campos
     // comerciais/técnicos necessários pra configurar CAKTO_*_OFFER_ID/
     // PRODUCT_ID e confirmar o formato de amount (reais vs. centavos).
@@ -4247,7 +4435,7 @@ const _SEC_HEADERS = {
   'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
   // frame-src/media-src precisam citar o YouTube: sem eles o iframe do tutorial cai
   // no default-src 'self' e o navegador bloqueia com ERR_BLOCKED_BY_CSP.
-  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https://api.qrserver.com https://pps.whatsapp.net https://i.ytimg.com; connect-src 'self'; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; media-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests",
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https://pps.whatsapp.net https://i.ytimg.com; connect-src 'self'; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; media-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests",
   'Server': 'ZVM',
 };
 
@@ -4724,7 +4912,7 @@ const ZVM_FAQ_ITEMS = [
   ['Como vincular uma chave que já tenho?', 'Em Minha Conta, acesse "Vincular chave" e informe o código recebido — ela passa a aparecer no seu painel.'],
   ['Minha chave expirou. O que faço?', 'Entre no portal e clique em "Renovar agora" — a validade é atualizada assim que o pagamento é confirmado. Seus dispositivos vinculados continuam salvos e voltam a funcionar assim que a chave é renovada.'],
   ['Preciso usar o mesmo e-mail na compra?', 'Sim. Use o mesmo e-mail cadastrado na sua conta ZVM na página de pagamento da Cakto pra chave ser vinculada automaticamente.'],
-  ['Como funciona o 2FA?', 'Ative em Segurança 2FA: escaneie o QR code com um app autenticador e confirme com o código de 6 dígitos a cada login.'],
+  ['Como funciona o 2FA?', 'Ative em Segurança 2FA: adicione a chave de configuração no seu aplicativo autenticador e confirme com o código de 6 dígitos a cada login.'],
   ['Onde baixo a versão mais recente?', 'No banner de atualização no topo do painel, quando houver uma versão nova disponível.'],
   ['Minha compra foi aprovada mas a chave não apareceu.', 'Aguarde alguns minutos para o processamento automático. Se persistir, fale com o suporte.'],
   ['Esqueci minha senha. Como recupero?', 'Na tela de login, escolha "Esqueci minha senha". Se o e-mail estiver cadastrado, você receberá um link seguro de redefinição.'],
@@ -4769,7 +4957,7 @@ ${_authSubmitLockScript()}
 function renderStandaloneSetup2FA(user, pendingSecret = '', err = '', ok = '') {
   const errHtml = err ? `<div class="auth-alert err" role="alert">⚠ ${escHtml(err)}</div>` : '';
   const okHtml = ok ? `<div class="auth-alert ok" role="status">✅ ${escHtml(ok)}</div>` : '';
-  const has2fa = !!(user && user.totpSecret);
+  const has2fa = portalTotpHasSecret(user);
   let content;
   if (has2fa) {
     content = `
@@ -4782,12 +4970,12 @@ function renderStandaloneSetup2FA(user, pendingSecret = '', err = '', ok = '') {
       </form>
       <div class="auth-switch"><a href="/cliente">← Voltar ao painel</a></div>`;
   } else if (pendingSecret) {
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&ecc=M&data=${encodeURIComponent('otpauth://totp/ZVM:'+encodeURIComponent((user&&user.email)||'')+'?secret='+pendingSecret+'&issuer=ZVM&algorithm=SHA1&digits=6&period=30')}`;
+    const setupKey = escHtml(String(pendingSecret).toUpperCase().replace(/(.{4})/g, '$1 ').trim());
     content = `
       <h2>Ativar 2FA</h2>
-      <p class="auth-form-hint">Escaneie o QR code com o Google Authenticator ou Authy, depois confirme com o código gerado.</p>
+      <p class="auth-form-hint">No Google Authenticator, Authy ou outro autenticador, escolha <strong>Inserir chave de configuração</strong>, use o e-mail da conta como nome e informe a chave abaixo. Ela é exibida somente nesta configuração e nunca é enviada a um serviço de QR externo.</p>
       ${errHtml}
-      <div style="text-align:center;margin-bottom:20px"><img src="${qrUrl}" alt="QR Code para configurar autenticação em duas etapas" width="220" height="220" style="border-radius:10px;border:1px solid var(--brd2);background:#fff;padding:6px"><p style="font-size:11.5px;color:var(--tx3);margin-top:10px">Link válido por 15 minutos</p></div>
+      <div style="margin:0 0 20px;padding:16px;border:1px solid var(--brd2);border-radius:10px;background:var(--bg2);text-align:center"><div style="font-size:11px;color:var(--tx3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Chave de configuração</div><code style="font-size:16px;font-weight:800;letter-spacing:2px;word-break:break-all;user-select:all">${setupKey}</code><p style="font-size:11.5px;color:var(--tx3);margin-top:10px">Válida por 15 minutos · Tipo: baseado em tempo (TOTP)</p></div>
       <form method="POST" action="/cliente/2fa/ativar">
         <div class="auth-field"><label for="twofa-on-code">Código de 6 dígitos</label><input id="twofa-on-code" type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required autocomplete="one-time-code" style="letter-spacing:8px;font-size:22px;text-align:center"></div>
         <button type="submit" class="auth-submit">Ativar 2FA<span class="auth-spinner" aria-hidden="true"></span></button>
@@ -5006,7 +5194,7 @@ function renderPortalDashboard(user, keyData, okMsg='') {
     </details>`).join('');
 
   const hasKey = !!keyData;
-  const has2fa = !!(user && user.totpSecret);
+  const has2fa = portalTotpHasSecret(user);
   // String(): registros de portal_users criados por importação/webhook podem não ter
   // "name"; .split de undefined derrubava o dashboard inteiro para "Erro temporário".
   const firstName = escHtml(String(user.name || user.email || 'Cliente').split(' ')[0]);
@@ -5360,7 +5548,7 @@ function renderStandalonePortalDashboard(user, keyData, okMsg='') {
     </details>`).join('');
 
   const hasKey = !!keyData;
-  const has2fa = !!(user && user.totpSecret);
+  const has2fa = portalTotpHasSecret(user);
   // String(): registros de portal_users criados por importação/webhook podem não ter
   // "name"; .split de undefined derrubava o dashboard inteiro para "Erro temporário".
   const fullName = String(user.name || '').trim();
@@ -5921,7 +6109,7 @@ function renderPortal2FAVerify(err='') {
 function renderPortalSetup2FA(user, pendingSecret='', err='', ok='') {
   const errHtml = err ? `<div class="err">⚠ ${escHtml(err)}</div>` : '';
   const okHtml  = ok  ? `<div class="ok">✅ ${escHtml(ok)}</div>` : '';
-  const has2fa  = !!(user && user.totpSecret);
+  const has2fa  = portalTotpHasSecret(user);
   const body = `
 <div class="nav-hdr">
   <a href="/cliente" class="nav-logo">⚡ ZVM</a>
@@ -5938,10 +6126,10 @@ function renderPortalSetup2FA(user, pendingSecret='', err='', ok='') {
     <button type="submit" class="btn btn-danger">Desativar 2FA</button>
   </form>
   ` : pendingSecret ? `
-  <p style="font-size:12px;color:var(--tx2);font-family:'Outfit',sans-serif;margin-bottom:16px;line-height:1.7">Escaneie o QR code abaixo com <strong style="color:var(--tx)">Google Authenticator</strong> ou <strong style="color:var(--tx)">Authy</strong>, depois insira o código de 6 dígitos gerado para confirmar.</p>
-  <div style="text-align:center;margin-bottom:18px">
-    <img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&ecc=M&data=${encodeURIComponent('otpauth://totp/ZVM:'+encodeURIComponent((user&&user.email)||'')+'?secret='+pendingSecret+'&issuer=ZVM&algorithm=SHA1&digits=6&period=30')}" alt="QR Code 2FA" style="border-radius:8px;border:2px solid var(--g-brd);width:220px;height:220px;background:#fff;padding:4px">
-    <p style="font-size:11px;color:var(--tx3);margin-top:10px;font-family:'Outfit',sans-serif">Escaneie com o app autenticador · Link válido por 15 minutos</p>
+  <p style="font-size:12px;color:var(--tx2);font-family:'Outfit',sans-serif;margin-bottom:16px;line-height:1.7">No Google Authenticator, Authy ou outro autenticador, escolha <strong style="color:var(--tx)">Inserir chave de configuração</strong> e informe a chave abaixo. Nenhum segredo 2FA é enviado a um gerador de QR externo.</p>
+  <div style="text-align:center;margin-bottom:18px;padding:14px;border:1px solid var(--g-brd);border-radius:8px">
+    <code style="font-size:16px;font-weight:800;letter-spacing:2px;word-break:break-all;user-select:all">${escHtml(String(pendingSecret).toUpperCase().replace(/(.{4})/g,'$1 ').trim())}</code>
+    <p style="font-size:11px;color:var(--tx3);margin-top:10px;font-family:'Outfit',sans-serif">Tipo: baseado em tempo (TOTP) · válido por 15 minutos</p>
   </div>
   <form method="POST" action="/cliente/2fa/ativar">
     <div class="fi"><label>Código de 6 dígitos para confirmar</label><input type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required autocomplete="one-time-code" style="letter-spacing:8px;font-size:22px;text-align:center"></div>
@@ -9640,6 +9828,11 @@ async function runInternalSecurityAudit() {
       : 'Não configurado — módulo 2FA desativado (opcional)',
   });
   results.push({
+    name:   'Portal 2FA — segredo protegido em repouso',
+    pass:   portalTotpKeyRing().length > 0,
+    detail: portalTotpKeyRing().length ? `AES-256-GCM · chave=${portalTotpKeyRing()[0].source} · migração legada=${PORTAL_TOTP_MIGRATE_LEGACY?'ativa':'controlada'}` : 'Criptografia TOTP indisponível',
+  });
+  results.push({
     name:   'ANALYTICS_PASS — opcional',
     pass:   true,
     detail: ANALYTICS_PASS && ANALYTICS_PASS.length >= 8
@@ -9754,6 +9947,12 @@ async function runInternalSecurityAudit() {
     name:   '/health endpoint operacional',
     pass:   rHealth.status === 200,
     detail: `HTTP ${rHealth.status} · ${_ct(rHealth) || 'sem content-type'} · body="${rHealth.body.slice(0,10)}"`,
+  });
+  const rReady = await _probe('/ready');
+  results.push({
+    name:   '/ready confirma aplicação + Mongo + autoridade Cakto',
+    pass:   rReady.status === 200,
+    detail: `HTTP ${rReady.status} · ${_ct(rReady) || 'sem content-type'}`,
   });
 
   // ── BLOCO 4: Estado do MongoDB ───────────────────────────────────────────
@@ -10471,6 +10670,18 @@ async function handleRequest(req, res) {
     return;
   }
 
+  if (p === '/ready' && req.method === 'GET') {
+    let ready = !!serverReady;
+    if (ready && CAKTO_WEBHOOK_SECRET && !_caktoIndexReady) ready = false;
+    if (ready) {
+      try { const db = await getMongoDb(); await db.command({ ping: 1 }); }
+      catch (_) { ready = false; }
+    }
+    res.writeHead(ready ? 200 : 503, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ..._SEC_HEADERS });
+    res.end(JSON.stringify({ ok: ready, build: ZVM_BUILD_ID }));
+    return;
+  }
+
   if (p === '/status' && req.method === 'GET') {
     // Página pública de status operacional — propositalmente NÃO revela
     // métricas de negócio (contagem de chaves ativas/totais) nem estado
@@ -10519,7 +10730,7 @@ async function handleRequest(req, res) {
     'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
     'Referrer-Policy':              'no-referrer',
     'Permissions-Policy':           'geolocation=(), microphone=(), camera=()',
-    'Content-Security-Policy':      "default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://i.ytimg.com https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; media-src https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests",
+    'Content-Security-Policy':      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://i.ytimg.com https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; media-src https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests",
   };
   Object.entries(_corsH).forEach(([k, v]) => res.setHeader(k, v));
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
@@ -11427,7 +11638,7 @@ async function handleRequest(req, res) {
     const code = generateCode();
     const { expiresAt, expireDuration } = parseKeyExpiryFromBody(body, { allowMinutes: true });
     const maxUses = (body.maxUses !== undefined) ? parseInt(body.maxUses) : MAX_USES;
-    keys[code] = {
+    const createdKey = {
       label: labelResult.label, active: true, createdAt: new Date().toISOString(),
       uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null,
       deviceId: null, wppVersion: null, note: '',
@@ -11435,7 +11646,8 @@ async function handleRequest(req, res) {
       maxUses: isNaN(maxUses) ? MAX_USES : maxUses, warnCount: 0,
       modules: { ...DEFAULT_MODULES, zapSaver: true },
     };
-    saveKey(code);
+    try { await commitAdminKeyRecordStrict(code, createdKey); }
+    catch (e) { console.error('[ADMIN] create key persist:', e.message); sendJson(res, { ok:false, error:'db_unavailable', retryable:true }, 503); return; }
     addAdminAuditLog({ actor: 'admin', action: 'key_created', keyCode: code, label: keys[code].label }).catch(()=>{});
     sendJson(res, { ok: true, key: code }); return;
   }
@@ -11445,11 +11657,12 @@ async function handleRequest(req, res) {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const k = await adminGetKey(codeToggle);
     if (!k) { sendJson(res, { error: 'not found' }, 404); return; }
-    k.active = !k.active;
-    saveKey(codeToggle);
-    if (!k.active) fireWebhook('key_blocked', codeToggle, 'Bloqueio manual pelo admin');
-    addAdminAuditLog({ actor: 'admin', action: k.active ? 'key_enabled' : 'key_disabled', keyCode: codeToggle, label: k.label }).catch(()=>{});
-    sendJson(res, { ok: true, active: k.active }); return;
+    let savedToggle;
+    try { savedToggle = await mutateAdminKeyRecordStrict(codeToggle, draft => { draft.active = !draft.active; }); }
+    catch (e) { console.error('[ADMIN] toggle key persist:', e.message); sendJson(res, { ok:false, error:'db_unavailable', retryable:true }, 503); return; }
+    if (!savedToggle.active) fireWebhook('key_blocked', codeToggle, 'Bloqueio manual pelo admin');
+    addAdminAuditLog({ actor: 'admin', action: savedToggle.active ? 'key_enabled' : 'key_disabled', keyCode: codeToggle, label: savedToggle.label }).catch(()=>{});
+    sendJson(res, { ok: true, active: savedToggle.active }); return;
   }
 
   const codeClearSuspect = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/clear-suspect$`));
@@ -11457,9 +11670,10 @@ async function handleRequest(req, res) {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const kCs = await adminGetKey(codeClearSuspect);
     if (!kCs) { sendJson(res, { error: 'not found' }, 404); return; }
-    kCs.suspectClearedAt = new Date().toISOString();
-    saveKey(codeClearSuspect);
-    addAdminAuditLog({ actor: 'admin', action: 'suspect_cleared', keyCode: codeClearSuspect, label: kCs.label }).catch(()=>{});
+    let savedCs;
+    try { savedCs = await mutateAdminKeyRecordStrict(codeClearSuspect, draft => { draft.suspectClearedAt = new Date().toISOString(); }); }
+    catch (e) { console.error('[ADMIN] clear suspect persist:', e.message); sendJson(res, { ok:false, error:'db_unavailable', retryable:true }, 503); return; }
+    addAdminAuditLog({ actor: 'admin', action: 'suspect_cleared', keyCode: codeClearSuspect, label: savedCs.label }).catch(()=>{});
     sendJson(res, { ok: true }); return;
   }
 
@@ -11474,14 +11688,15 @@ async function handleRequest(req, res) {
     const addMs = ((days*1440)+(hours*60)+mins)*60000;
     const base  = (kRenew.expiresAt && !isKeyExpired(kRenew))
       ? new Date(kRenew.expiresAt).getTime() : Date.now();
-    kRenew.expiresAt = new Date(base+addMs).toISOString();
-    kRenew.expireDuration = null;
-    kRenew.active = true;
-    kRenew.warnEmailSent = false;
-    saveKey(codeRenew);
-    await addLog({ keyCode: codeRenew, label: kRenew.label, phone: '-', ip, wppVersion: '-', action: 'renewed' });
-    addAdminAuditLog({ actor: 'admin', action: 'key_renewed', keyCode: codeRenew, label: kRenew.label, detail: `+${days}d${hours}h${mins}m` }).catch(()=>{});
-    sendJson(res, { ok: true, expiresAt: kRenew.expiresAt }); return;
+    const renewedExpiresAt = new Date(base+addMs).toISOString();
+    let savedRenew;
+    try { savedRenew = await mutateAdminKeyRecordStrict(codeRenew, draft => {
+      draft.expiresAt = renewedExpiresAt; draft.expireDuration = null; draft.active = true; draft.warnEmailSent = false;
+    }); }
+    catch (e) { console.error('[ADMIN] renew key persist:', e.message); sendJson(res, { ok:false, error:'db_unavailable', retryable:true }, 503); return; }
+    await addLog({ keyCode: codeRenew, label: savedRenew.label, phone: '-', ip, wppVersion: '-', action: 'renewed' });
+    addAdminAuditLog({ actor: 'admin', action: 'key_renewed', keyCode: codeRenew, label: savedRenew.label, detail: `+${days}d${hours}h${mins}m` }).catch(()=>{});
+    sendJson(res, { ok: true, expiresAt: savedRenew.expiresAt }); return;
   }
 
   const codeMaxUses = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/max-uses$`));
@@ -11492,9 +11707,10 @@ async function handleRequest(req, res) {
     const body = await parseBody(req);
     const maxUses = parseInt(body.maxUses);
     if (isNaN(maxUses) || maxUses < -1) { sendJson(res, { error: 'invalid' }, 400); return; }
-    kMu.maxUses = maxUses;
-    saveKey(codeMaxUses);
-    addAdminAuditLog({ actor: 'admin', action: 'key_maxuses', keyCode: codeMaxUses, label: kMu.label, detail: `maxUses=${maxUses}` }).catch(()=>{});
+    let savedMu;
+    try { savedMu = await mutateAdminKeyRecordStrict(codeMaxUses, draft => { draft.maxUses = maxUses; }); }
+    catch (e) { console.error('[ADMIN] max-uses persist:', e.message); sendJson(res, { ok:false, error:'db_unavailable', retryable:true }, 503); return; }
+    addAdminAuditLog({ actor: 'admin', action: 'key_maxuses', keyCode: codeMaxUses, label: savedMu.label, detail: `maxUses=${maxUses}` }).catch(()=>{});
     sendJson(res, { ok: true, maxUses }); return;
   }
 
@@ -11506,8 +11722,8 @@ async function handleRequest(req, res) {
     const body  = await parseBody(req);
     const label = String(body.label||'').trim().slice(0, 60);
     if (!label) { sendJson(res, { error: 'label vazio' }, 400); return; }
-    kLbl.label = label;
-    saveKey(codeLabel).catch(()=>{});
+    try { await mutateAdminKeyRecordStrict(codeLabel, draft => { draft.label = label; }); }
+    catch (e) { console.error('[ADMIN] label persist:', e.message); sendJson(res, { ok:false, error:'db_unavailable', retryable:true }, 503); return; }
     addAdminAuditLog({ actor: 'admin', action: 'key_renamed', keyCode: codeLabel, label, detail: `→ ${label}` }).catch(()=>{});
     sendJson(res, { ok: true, label }); return;
   }
@@ -11526,13 +11742,17 @@ async function handleRequest(req, res) {
     const kPhDel = await adminGetKey(codePhonesDelete);
     if (!kPhDel) { sendJson(res, { error: 'not found' }, 404); return; }
     const body = await parseBody(req);
-    if (body.all) {
-      clearAllPhonesFromKey(kPhDel);
-    } else if (body.phone) {
-      removePhoneFromKey(kPhDel, body.phone);
-    } else { sendJson(res, { error: 'informe phone ou all:true' }, 400); return; }
-    saveKey(codePhonesDelete).catch(()=>{});
-    sendJson(res, { ok: true, phones: kPhDel.phones }); return;
+    let savedPhones;
+    try { savedPhones = await mutateAdminKeyRecordStrict(codePhonesDelete, draft => {
+      if (body.all) clearAllPhonesFromKey(draft);
+      else if (body.phone) removePhoneFromKey(draft, body.phone);
+      else throw Object.assign(new Error('invalid_phone_delete'), { code:'invalid_phone_delete' });
+    }); }
+    catch (e) {
+      if (e.code === 'invalid_phone_delete') { sendJson(res, { error: 'informe phone ou all:true' }, 400); return; }
+      console.error('[ADMIN] phones persist:', e.message); sendJson(res, { ok:false, error:'db_unavailable', retryable:true }, 503); return;
+    }
+    sendJson(res, { ok: true, phones: savedPhones.phones }); return;
   }
 
   const codeResetWarn = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/reset-warn$`));
@@ -11540,8 +11760,8 @@ async function handleRequest(req, res) {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const kRw = await adminGetKey(codeResetWarn);
     if (!kRw) { sendJson(res, { error: 'not found' }, 404); return; }
-    kRw.warnCount = 0;
-    saveKey(codeResetWarn);
+    try { await mutateAdminKeyRecordStrict(codeResetWarn, draft => { draft.warnCount = 0; }); }
+    catch (e) { console.error('[ADMIN] reset warn persist:', e.message); sendJson(res, { ok:false, error:'db_unavailable', retryable:true }, 503); return; }
     sendJson(res, { ok: true }); return;
   }
 
@@ -11552,8 +11772,9 @@ async function handleRequest(req, res) {
     const batchInput = parseAdminBatchDeleteCodes(body);
     if (!batchInput.ok) { sendJson(res, { error: batchInput.error }, 400); return; }
     const validCodes = batchInput.codes.map(c => sanitizeId(String(c || ''), 40)).filter(c => c && keys[c]);
-    await Promise.all(validCodes.map(c => deleteKeyFromDb(c).catch(e => console.error('[DB] batch del:', e.message))));
-    addAdminAuditLog({ actor: 'admin', action: 'key_batch_deleted', keyCode: '-', label: '-', detail: `${validCodes.length} chave(s): ${validCodes.slice(0,5).join(', ')}` }).catch(()=>{});
+    try { await deleteKeysFromDbStrict(validCodes); }
+    catch (e) { console.error('[DB] batch delete:', e.message); sendJson(res, { ok:false, error:'db_unavailable', retryable:true, deleted:0 }, 503); return; }
+    addAdminAuditLog({ actor: 'admin', action: 'key_batch_deleted', keyCode: '-', label: '-', detail: `${validCodes.length} chave(s): ${validCodes.slice(0,5).map(maskLicenseCode).join(', ')}` }).catch(()=>{});
     sendJson(res, { ok: true, deleted: validCodes.length }); return;
   }
 
@@ -11563,8 +11784,9 @@ async function handleRequest(req, res) {
     const kNote = await adminGetKey(codeNote);
     if (!kNote) { sendJson(res, { error: 'not found' }, 404); return; }
     const body = await parseBody(req);
-    kNote.note = String(body.note||'').slice(0, 500);
-    saveKey(codeNote);
+    const note = String(body.note||'').slice(0, 500);
+    try { await mutateAdminKeyRecordStrict(codeNote, draft => { draft.note = note; }); }
+    catch (e) { console.error('[ADMIN] note persist:', e.message); sendJson(res, { ok:false, error:'db_unavailable', retryable:true }, 503); return; }
     sendJson(res, { ok: true }); return;
   }
 
@@ -11650,10 +11872,13 @@ async function handleRequest(req, res) {
     const moduleName = AVAILABLE_MODULES.find(m => m.toLowerCase() === moduleRaw.toLowerCase()) || '';
     const enabled    = !!body.enabled;
     if (!moduleName) { sendJson(res, { error: 'modulo_invalido', module: moduleRaw }, 400); return; }
-    if (!kMod.modules) kMod.modules = { ...DEFAULT_MODULES };
-    kMod.modules[moduleName] = enabled;
-    saveKey(codeModules);
-    sendJson(res, { ok: true, module: moduleName, enabled, modules: kMod.modules }); return;
+    let savedMod;
+    try { savedMod = await mutateAdminKeyRecordStrict(codeModules, draft => {
+      if (!draft.modules) draft.modules = { ...DEFAULT_MODULES };
+      draft.modules[moduleName] = enabled;
+    }); }
+    catch (e) { console.error('[ADMIN] module persist:', e.message); sendJson(res, { ok:false, error:'db_unavailable', retryable:true }, 503); return; }
+    sendJson(res, { ok: true, module: moduleName, enabled, modules: savedMod.modules }); return;
   }
 
   if (p === R_ADMIN+'/api/export/csv' && req.method === 'GET') {
@@ -11912,9 +12137,10 @@ async function handleRequest(req, res) {
     const phones = keys[keyCode].phones || [];
     const phone = resolvePhoneToRemove(phones, { phoneIdx, phoneTxt });
     if (!phone) { sendJson(res, { error: 'numero nao encontrado' }, 404); return; }
-    removePhoneFromKey(keys[keyCode], phone);
-    saveKey(keyCode).catch(()=>{});
-    sendJson(res, { ok: true, phones: keys[keyCode].phones }); return;
+    let savedClientPhones;
+    try { savedClientPhones = await mutateAdminKeyRecordStrict(keyCode, draft => { removePhoneFromKey(draft, phone); }); }
+    catch (e) { console.error('[CLIENT] remove phone persist:', e.message); sendJson(res, { ok:false, error:'temporarily_unavailable', retryable:true }, 503); return; }
+    sendJson(res, { ok: true, phones: savedClientPhones.phones }); return;
   }
 
   if (req.method === 'GET' && (p === '/dashboard/backup-fixer' || p === '/dashboard/converter')) {
@@ -12062,7 +12288,8 @@ async function handleRequest(req, res) {
       if (!passOk) { sendHtml(res, renderStandalonePortalLogin('E-mail ou senha inválidos.')); return; }
       maybeRehashPortalPassword(db, email, pass, user);
       db.collection('portal_users').updateOne({ _id: email }, { $set: { lastLogin: new Date().toISOString() } }).catch(()=>{});
-      if (user.totpSecret) {
+      if (portalTotpHasSecret(user)) {
+        if (user.totpSecret && !user.totpSecretEnc) await migratePortalTotpLegacy(db, user, email);
         const pendingToken = generateToken();
         portalSessions[pendingToken] = { email, name: user.name, pending2fa: true, redir: redir||'', expiresAt: new Date(Date.now()+5*60*1000).toISOString() };
         setSessionCookie(res, 'zv_portal', pendingToken, 300);
@@ -12322,8 +12549,12 @@ async function handleRequest(req, res) {
       const code = (form.get('code')||'').trim();
       try {
         const db   = await getMongoDb();
-        const user = await db.collection('portal_users').findOne({ _id: sess.email });
-        if (!user || !verifyTOTP(user.totpSecret, code)) { addSecurityAlert('BRUTE_FORCE', '2FA falhou para ' + sess.email, ip); sendHtml(res, renderStandalone2FAVerify('Código inválido. Tente novamente.')); return; }
+        let user = await db.collection('portal_users').findOne({ _id: sess.email });
+        let activeSecret = '';
+        try { activeSecret = portalTotpReadSecret(user, sess.email); }
+        catch (_) { sendHtml(res, renderStandalone2FAVerify('2FA temporariamente indisponível. Tente novamente.')); return; }
+        if (!user || !activeSecret || !verifyTOTP(activeSecret, code)) { addSecurityAlert('BRUTE_FORCE', '2FA falhou para ' + maskEmail(sess.email), ip); sendHtml(res, renderStandalone2FAVerify('Código inválido. Tente novamente.')); return; }
+        if (user.totpSecret && !user.totpSecretEnc) user = await migratePortalTotpLegacy(db, user, sess.email);
         const m = (req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/);
         if (m) portalSessions[m[1]] = { email: sess.email, name: sess.name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
         setSessionCookie(res, 'zv_portal', m[1], 86400);
@@ -12339,13 +12570,14 @@ async function handleRequest(req, res) {
     const sess = getPortalUser(req);
     try {
       const db   = await getMongoDb();
-      const user = await db.collection('portal_users').findOne({ _id: sess.email });
-      const _2faOk=url.searchParams.get('ok'); if (user && user.totpSecret) { sendHtml(res, renderStandaloneSetup2FA(user, '', '', _2faOk?'2FA ativado com sucesso! Sua conta está protegida.':'')); return; }
-      let pending = user && user.pendingTotpSecret && user.pendingTotpExpiresAt && new Date() < new Date(user.pendingTotpExpiresAt)
-        ? user.pendingTotpSecret : null;
+      let user = await db.collection('portal_users').findOne({ _id: sess.email });
+      if (user) user = await migratePortalTotpLegacy(db, user, sess.email);
+      const _2faOk=url.searchParams.get('ok'); if (portalTotpHasSecret(user)) { sendHtml(res, renderStandaloneSetup2FA(user, '', '', _2faOk?'2FA ativado com sucesso! Sua conta está protegida.':'')); return; }
+      let pending = user && user.pendingTotpExpiresAt && new Date() < new Date(user.pendingTotpExpiresAt)
+        ? portalTotpReadPendingSecret(user, sess.email) : null;
       if (!pending) {
         pending = genTotpSecret();
-        await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { pendingTotpSecret: pending, pendingTotpExpiresAt: new Date(Date.now() + 15 * 60000) } });
+        await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { pendingTotpSecretEnc: portalTotpEncrypt(pending, sess.email), pendingTotpExpiresAt: new Date(Date.now() + 15 * 60000) }, $unset: { pendingTotpSecret: '' } });
       }
       sendHtml(res, renderStandaloneSetup2FA(user, pending, '', '')); return;
     } catch(e) { sendHtml(res, renderStandaloneSetup2FA(null, '', 'Erro ao carregar configuração.', '')); return; }
@@ -12360,12 +12592,13 @@ async function handleRequest(req, res) {
     const code = (form.get('code')||'').trim();
     try {
       const db   = await getMongoDb();
-      const user = await db.collection('portal_users').findOne({ _id: sess.email });
-      const pending = user && user.pendingTotpSecret && user.pendingTotpExpiresAt && new Date() < new Date(user.pendingTotpExpiresAt)
-        ? user.pendingTotpSecret : null;
+      let user = await db.collection('portal_users').findOne({ _id: sess.email });
+      if (user) user = await migratePortalTotpLegacy(db, user, sess.email);
+      const pending = user && user.pendingTotpExpiresAt && new Date() < new Date(user.pendingTotpExpiresAt)
+        ? portalTotpReadPendingSecret(user, sess.email) : null;
       if (!pending) { sendHtml(res, renderStandaloneSetup2FA(user, '', 'Sessão expirada. Tente novamente.', '')); return; }
       if (!verifyTOTP(pending, code)) { sendHtml(res, renderStandaloneSetup2FA(user, pending, 'Código inválido. Tente novamente.', '')); return; }
-      await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { totpSecret: pending }, $unset: { pendingTotpSecret: '', pendingTotpExpiresAt: '' } });
+      await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: portalTotpActiveFields(pending, sess.email), $unset: { pendingTotpSecret: '', pendingTotpSecretEnc: '', pendingTotpExpiresAt: '' } });
       const updated = await db.collection('portal_users').findOne({ _id: sess.email });
       res.writeHead(302, { Location: '/cliente/2fa/setup?ok=ativado' }); res.end(); return;
     } catch(e) { sendHtml(res, renderStandaloneSetup2FA(null, '', 'Erro ao ativar 2FA.', '')); return; }
@@ -12380,9 +12613,12 @@ async function handleRequest(req, res) {
     const code = (form.get('code')||'').trim();
     try {
       const db   = await getMongoDb();
-      const user = await db.collection('portal_users').findOne({ _id: sess.email });
-      if (!user || !verifyTOTP(user.totpSecret||'', code)) { sendHtml(res, renderStandaloneSetup2FA(user, '', 'Código 2FA inválido.', '')); return; }
-      await db.collection('portal_users').updateOne({ _id: sess.email }, { $unset: { totpSecret: '', pendingTotpSecret: '', pendingTotpExpiresAt: '' } });
+      let user = await db.collection('portal_users').findOne({ _id: sess.email });
+      if (user) user = await migratePortalTotpLegacy(db, user, sess.email);
+      let activeSecret = '';
+      try { activeSecret = portalTotpReadSecret(user, sess.email); } catch (_) {}
+      if (!user || !activeSecret || !verifyTOTP(activeSecret, code)) { sendHtml(res, renderStandaloneSetup2FA(user, '', 'Código 2FA inválido.', '')); return; }
+      await db.collection('portal_users').updateOne({ _id: sess.email }, { $unset: { totpSecret: '', totpSecretEnc: '', pendingTotpSecret: '', pendingTotpSecretEnc: '', pendingTotpExpiresAt: '' } });
       res.writeHead(302, { Location: '/cliente?ok=2fa_off' }); res.end(); return;
     } catch(e) { sendHtml(res, renderStandaloneSetup2FA(null, '', 'Erro ao desativar 2FA.', '')); return; }
   }
@@ -12450,6 +12686,9 @@ function validateProductionSecurityConfig() {
   // mandatória e o comportamento permanece fail-closed para a nova ZVM.
   if (ZVM_BUILD_ENFORCE && !ZVM_EXTENSION_IDS.size) errors.push('ZVM_EXTENSION_IDS_required');
   if (Buffer.byteLength(String(APP_SECRET || ''), 'utf8') < 32) errors.push('APP_SECRET_too_weak');
+  if (PORTAL_TOTP_ENCRYPTION_KEY && !_portalTotpDecodeKey(PORTAL_TOTP_ENCRYPTION_KEY)) errors.push('PORTAL_TOTP_ENCRYPTION_KEY_invalid');
+  if (!portalTotpKeyRing().length) errors.push('PORTAL_TOTP_CRYPTO_UNAVAILABLE');
+  if (WEBHOOK_URL && !parseSafeWebhookUrl(WEBHOOK_URL)) errors.push('WEBHOOK_URL_https_required');
   if (CAKTO_WEBHOOK_SECRET && Buffer.byteLength(String(CAKTO_WEBHOOK_SECRET), 'utf8') < 32) errors.push('CAKTO_WEBHOOK_SECRET_too_weak');
   if (CAKTO_WEBHOOK_SECRET) {
     const effectiveRecoverySecret = CAKTO_RECOVERY_SECRET || APP_SECRET;
@@ -12480,13 +12719,13 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     const loaded = await loadDb();
     keys           = loaded.keys || {};
     logs           = loaded.logs || [];
-    securityAlerts = []; // inicia sessão limpa — histórico preservado no Mongo via "Limpar" explícito
+    securityAlerts = loaded.securityAlerts || []; // restaura histórico persistido para a aba Segurança/Auditoria
     for (const code of Object.keys(keys)) sanitizeKeyRecord(keys[code]);
     serverReady = true;
     startCaktoWorker();
 
     console.log(
-      `✅ zvm-lr1290 v10 — porta ${PORT}\n` +
+      `✅ ZVM Server ${ZVM_BUILD_ID} — porta ${PORT}\n` +
       `🍃 MongoDB: zapvoice.store | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}\n` +
       `🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | 2FA: ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | Cakto: ${CAKTO_WEBHOOK_SECRET ? 'ATIVO' : '⚠ INATIVO'}\n` +
       `🛡️ Build Authority: ${ZVM_BUILD_ENFORCE ? 'ATIVO' : 'DESATIVADO'} | Builds oficiais: ${Array.from(ZVM_OFFICIAL_BUILDS.values()).reduce((n,s)=>n+s.size,0)} | Dev build: ${ZVM_DEV_BUILD_ALLOW ? 'ATIVO' : 'DESATIVADO'} | Legacy V3: ${legacyV3Allowed() ? 'ATIVO' : 'INATIVO'}\n` +
@@ -12495,7 +12734,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
       // vars (APP_SECRET/ADMIN_USER) — reimprimi-las só cria mais um lugar
       // (agregador de log, dashboard do host) onde um segredo pode vazar.
       `🔑 Admin ZVM: configurado (rota derivada de APP_SECRET)\n` +
-      `📊 Analytics: ${ANALYTICS_PASS ? 'ATIVO' : '⚠ INATIVO'} | Extension: ${R_EXT}/v3/key | Webhook: ${WEBHOOK_URL || 'não configurado'}\n` +
+      `📊 Analytics: ${ANALYTICS_PASS ? 'ATIVO' : '⚠ INATIVO'} | Extension: ${R_EXT}/v3/key | Webhook: ${WEBHOOK_URL ? (parseSafeWebhookUrl(WEBHOOK_URL) ? 'ATIVO' : '⚠ URL RECUSADA') : 'não configurado'}\n` +
       `🗂  Logs: retenção ${LOG_RETENTION_DAYS}d (LGPD) | máx ${LOG_MAX} em memória`
     );
 
@@ -12576,7 +12815,23 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
 
 module.exports.__test = Object.freeze({
   keys,
+  loadDb,
   _writeKeyToDbStrict,
+  commitAdminKeyRecordStrict,
+  mutateAdminKeyRecordStrict,
+  deleteKeyFromDb,
+  deleteKeysFromDbStrict,
+  portalTotpKeyRing,
+  portalTotpEncrypt,
+  portalTotpDecrypt,
+  portalTotpHasSecret,
+  portalTotpActiveFields,
+  PORTAL_TOTP_ENCRYPTED_SENTINEL,
+  portalTotpReadSecret,
+  portalTotpReadPendingSecret,
+  migratePortalTotpLegacy,
+  caktoDryRunAllowed,
+  parseSafeWebhookUrl,
   ZVM_PLANS,
   normalizeCaktoPurchase,
   normalizeCaktoPurchases,
