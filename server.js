@@ -1,4 +1,4 @@
-const ZVM_BUILD_ID = '2026-09-16-build-authority-r26';
+const ZVM_BUILD_ID = '2026-09-16-search-console-verification-r27';
 'use strict';
 
 function sanitizeStartupErrorMessage(error) {
@@ -10801,6 +10801,23 @@ function observeHttpTraffic(req, res) {
   res.once('finish', () => recordHttpTraffic(method, route, res.statusCode, Date.now() - startedAt));
 }
 
+const SEARCH_CONSOLE_VERIFICATION_PATH = '/googleb72a9c76039b24b4.html';
+const SEARCH_CONSOLE_VERIFICATION_BODY = 'google-site-verification: googleb72a9c76039b24b4.html';
+
+function handleSearchConsoleVerification(req, res, pathname) {
+  const method = String(req.method || '').toUpperCase();
+  if (pathname !== SEARCH_CONSOLE_VERIFICATION_PATH || (method !== 'GET' && method !== 'HEAD')) return false;
+  const body = Buffer.from(SEARCH_CONSOLE_VERIFICATION_BODY, 'utf8');
+  res.writeHead(200, {
+    'Content-Type': 'text/plain; charset=utf-8',
+    'Content-Length': body.length,
+    'Cache-Control': 'no-store',
+    ..._SEC_HEADERS,
+  });
+  res.end(method === 'HEAD' ? undefined : body);
+  return true;
+}
+
 async function handleRequest(req, res) {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const p   = url.pathname;
@@ -10812,6 +10829,8 @@ async function handleRequest(req, res) {
     res.end('403 Forbidden');
     return;
   }
+
+  if (handleSearchConsoleVerification(req, res, p)) return;
 
   // /robots.txt — bloqueia crawlers e indexadores de todas as rotas
   if (p === '/robots.txt' && req.method === 'GET') {
