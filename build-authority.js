@@ -193,6 +193,7 @@ function createBuildAuthority(config = {}, deps = {}) {
     registryV2: config.registryV2 instanceof Map ? config.registryV2 : new Map(),
     runtimeEnv: String(config.runtimeEnv || '').trim().toLowerCase(),
     devBuildAllow: config.devBuildAllow === true,
+    devCohostAllow: config.devCohostAllow === true,
     devBuildKeyHashes: config.devBuildKeyHashes instanceof Set ? config.devBuildKeyHashes : new Set(),
     devBuildDeviceHashes: config.devBuildDeviceHashes instanceof Set ? config.devBuildDeviceHashes : new Set(),
     clockSkewMs: Number(config.clockSkewMs || 15 * 60 * 1000),
@@ -239,6 +240,7 @@ function createBuildAuthority(config = {}, deps = {}) {
       const entry = state.registryV2.get(buildId);
       if (entry) {
         if (entry.status === 'revoked') return false;
+        if (entry.channel === 'dev' && state.runtimeEnv === 'production' && state.devCohostAllow !== true) return false;
         return entry.securityProtocol === 2 &&
           entry.extensionVersion === extensionVersion &&
           entry.channel === channel &&
@@ -367,7 +369,9 @@ function createBuildAuthority(config = {}, deps = {}) {
     }
     if (channel === 'dev' && profile !== 'dev') return { ok: false, code: 'BUILD_PROFILE_MISMATCH' };
     if ((channel === 'beta' || channel === 'production') && profile !== 'release') return { ok: false, code: 'BUILD_PROFILE_MISMATCH' };
-    if (channel === 'dev' && state.runtimeEnv !== 'staging') return { ok: false, code: 'DEV_BUILD_NOT_AUTHORIZED' };
+    if (channel === 'dev' && state.runtimeEnv !== 'staging' && !(state.runtimeEnv === 'production' && state.devCohostAllow === true)) {
+      return { ok: false, code: 'DEV_BUILD_NOT_AUTHORIZED' };
+    }
     // 5. Build ID syntax
     if (!/^zvm-(dev|beta|production)-\d+(?:\.\d+){2,3}-s[a-f0-9]{12}$/.test(buildId)) {
       return { ok: false, code: 'BUILD_ID_NOT_ALLOWED' };
@@ -456,6 +460,7 @@ function createBuildAuthority(config = {}, deps = {}) {
       registryV2ActiveCount: Array.from(state.registryV2.values()).filter(entry => entry.status === 'active').length,
       runtimeEnv: state.runtimeEnv,
       devBuildAllow: state.devBuildAllow,
+      devCohostAllow: state.devCohostAllow,
       legacyV3: legacyV3Allowed(),
     });
   }

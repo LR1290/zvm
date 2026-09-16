@@ -1,4 +1,4 @@
-const ZVM_BUILD_ID = '2026-09-16-v736-beta-binding-r28';
+const ZVM_BUILD_ID = '2026-09-16-v738-two-profile-dev-cohost-r30';
 'use strict';
 
 function sanitizeStartupErrorMessage(error) {
@@ -10413,6 +10413,7 @@ try {
 }
 const ZVM_RUNTIME_ENV = String(process.env.ZVM_RUNTIME_ENV || '').trim().toLowerCase();
 const ZVM_DEV_BUILD_ALLOW = ZVM_LOCAL_SAFE_MODE ? false : /^(1|true|yes|on)$/i.test(String(process.env.ZVM_DEV_BUILD_ALLOW || ''));
+const ZVM_DEV_COHOST_ALLOW = ZVM_LOCAL_SAFE_MODE ? false : /^(1|true|yes|on)$/i.test(String(process.env.ZVM_DEV_COHOST_ALLOW || ''));
 const ZVM_DEV_BUILD_KEY_HASHES = zvmSecurityHashSet(process.env.ZVM_DEV_BUILD_KEY_HASHES || '');
 const ZVM_DEV_BUILD_DEVICE_HASHES = zvmSecurityHashSet(process.env.ZVM_DEV_BUILD_DEVICE_HASHES || '');
 
@@ -10439,6 +10440,7 @@ const ZVM_BUILD_AUTHORITY = createBuildAuthority({
   registryV2: ZVM_BUILD_REGISTRY_V2,
   runtimeEnv: ZVM_RUNTIME_ENV,
   devBuildAllow: ZVM_DEV_BUILD_ALLOW,
+  devCohostAllow: ZVM_DEV_COHOST_ALLOW,
   devBuildKeyHashes: ZVM_DEV_BUILD_KEY_HASHES,
   devBuildDeviceHashes: ZVM_DEV_BUILD_DEVICE_HASHES,
   clockSkewMs: ZVM_SECURITY_CLOCK_SKEW_MS,
@@ -12948,7 +12950,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
       `✅ ZVM Server ${ZVM_BUILD_ID} — porta ${PORT}\n` +
       `🍃 MongoDB: zapvoice.store | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}\n` +
       `🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | 2FA: ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | TOTP crypto: ${portalTotpCryptoMode()} | Cakto: ${CAKTO_WEBHOOK_SECRET ? 'ATIVO' : '⚠ INATIVO'}\n` +
-      `🛡️ Runtime: ${buildAuthorityState.runtimeEnv || 'não definido'} | Build Authority: ${buildAuthorityState.buildEnforce ? 'ATIVO' : 'DESATIVADO'} | Registry V2 active: ${buildAuthorityState.registryV2ActiveCount} | DEV bypass: ${buildAuthorityState.devBuildAllow ? 'ATIVO' : 'INATIVO'} | Legacy V3: ${buildAuthorityState.legacyV3 ? 'ATIVO' : 'INATIVO'}\n` +
+      `🛡️ Runtime: ${buildAuthorityState.runtimeEnv || 'não definido'} | Build Authority: ${buildAuthorityState.buildEnforce ? 'ATIVO' : 'DESATIVADO'} | Registry V2 active: ${buildAuthorityState.registryV2ActiveCount} | DEV bypass: ${buildAuthorityState.devBuildAllow ? 'ATIVO' : 'INATIVO'} | DEV cohost: ${buildAuthorityState.devCohostAllow ? 'ATIVO' : 'INATIVO'} | Legacy V3: ${buildAuthorityState.legacyV3 ? 'ATIVO' : 'INATIVO'}\n` +
       `🧪 Local safe mode: ${ZVM_LOCAL_SAFE_MODE ? 'ATIVO — jobs autônomos desativados' : 'INATIVO'}\n` +
       // Rota admin derivada + usuário administrativo NÃO vão pro log de boot:
       // quem operou já tem essas duas informações a partir das próprias env

@@ -60,6 +60,51 @@
       "sourceRevision": null,
       "sourceTreeSha256": "096dd7e3288f0c7bf44683c68400cf5e73b5f3bbe3540caa3ac23137959248f9",
       "status": "active"
+    },
+    {
+      "buildFingerprint": "80b2c0340e4bd2b41047c464d5756ab9e3822441b3c4593a5b7c6c1c60ce10a6",
+      "buildId": "zvm-beta-0.8.532-s6388dbbc9f51",
+      "channel": "beta",
+      "createdAt": "2026-09-16T05:30:00.000Z",
+      "extensionIds": [
+        "bdhnikgcdccjabkmbfcakgjkkgdlmgja"
+      ],
+      "extensionVersion": "0.8.532",
+      "profile": "release",
+      "securityProtocol": 2,
+      "sourceRevision": null,
+      "sourceTreeSha256": "6388dbbc9f5149db38c17d4550ec98bc0f553306bd3b1788c2d7ac8ba040f918",
+      "status": "active"
+    },
+    {
+      "buildFingerprint": "0437f5fc6b1a4f0ae8fb088f8bbc2f3c3d4162fa33b27fed8fb42fb25ccd0c62",
+      "buildId": "zvm-dev-0.8.533-sc27d790503ee",
+      "channel": "dev",
+      "createdAt": "2026-09-16T05:55:00.000Z",
+      "extensionIds": [
+        "ckbffcbmanboelbihfkhiahgafnimcho"
+      ],
+      "extensionVersion": "0.8.533",
+      "profile": "dev",
+      "securityProtocol": 2,
+      "sourceRevision": null,
+      "sourceTreeSha256": "c27d790503eedf3057c7291884959ea0aa10e8bae1eb51e1b15deea0dea4e26c",
+      "status": "active"
+    },
+    {
+      "buildFingerprint": "10337972d91192126c976daa58a4156d0c3d0ca2f26b6b3579271d6cdb903050",
+      "buildId": "zvm-beta-0.8.533-sc27d790503ee",
+      "channel": "beta",
+      "createdAt": "2026-09-16T05:55:00.000Z",
+      "extensionIds": [
+        "bdhnikgcdccjabkmbfcakgjkkgdlmgja"
+      ],
+      "extensionVersion": "0.8.533",
+      "profile": "release",
+      "securityProtocol": 2,
+      "sourceRevision": null,
+      "sourceTreeSha256": "c27d790503eedf3057c7291884959ea0aa10e8bae1eb51e1b15deea0dea4e26c",
+      "status": "active"
     }
   ]
 }
