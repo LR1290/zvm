@@ -1,0 +1,35 @@
+{
+  "schema": 2,
+  "builds": [
+    {
+      "buildFingerprint": "b0879ed739522bc15ec02a9cba0d9139a68bf61e845d29cb74bd56cea785914c",
+      "buildId": "zvm-beta-0.8.528-sd88c00dcccd8",
+      "channel": "beta",
+      "createdAt": "2026-09-15T20:08:11.000Z",
+      "extensionIds": [
+        "bdhnikgcdccjabkmbfcakgjkkgdlmgja"
+      ],
+      "extensionVersion": "0.8.528",
+      "profile": "release",
+      "securityProtocol": 2,
+      "sourceRevision": null,
+      "sourceTreeSha256": "d88c00dcccd83bd5910b3e791a8ff63b5ea71896f70d115a485690d51bec8477",
+      "status": "active"
+    },
+    {
+      "buildFingerprint": "eb950fe22062de65e2058e232b734c8241eebbdc0b66aecb2d4b947b6665d63e",
+      "buildId": "zvm-beta-0.8.529-s3b3cdbbe7fe4",
+      "channel": "beta",
+      "createdAt": "2026-09-16T01:41:09.000Z",
+      "extensionIds": [
+        "bdhnikgcdccjabkmbfcakgjkkgdlmgja"
+      ],
+      "extensionVersion": "0.8.529",
+      "profile": "release",
+      "securityProtocol": 2,
+      "sourceRevision": null,
+      "sourceTreeSha256": "3b3cdbbe7fe4ec21b8d35735015dc69b6bc19f665548f1d8d26189c2d5252e24",
+      "status": "active"
+    }
+  ]
+}

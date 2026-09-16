@@ -1,4 +1,4 @@
-FROM node:24.20.0-alpine
+FROM node:24.21.0-alpine
 
 ENV NODE_ENV=production \
     PORT=3000
@@ -13,7 +13,8 @@ RUN if [ -f package-lock.json ]; then \
     fi \
     && npm cache clean --force
 
-COPY --chown=node:node server.js mailer.js zvm-official-builds.json ./
+COPY --chown=node:node server.js mailer.js zvm-official-builds.json zvm-build-registry-v2.json ./
+COPY --chown=node:node security ./security
 
 USER node
 EXPOSE 3000

