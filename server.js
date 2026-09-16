@@ -1,4 +1,4 @@
-const ZVM_BUILD_ID = '2026-09-16-v739-signed-dev-r31';
+const ZVM_BUILD_ID = '2026-09-16-v739-admin-dev-access-r32';
 'use strict';
 
 function sanitizeStartupErrorMessage(error) {
@@ -460,6 +460,15 @@ async function mutateAdminKeyRecordStrict(code, mutator, deps = {}) {
   const draft = cloneKeyRecordForCommit(current);
   await mutator(draft);
   return commitAdminKeyRecordStrict(keyCode, draft, deps);
+}
+
+async function setAdminKeyDevAccessStrict(code, enabled, deps = {}) {
+  if (typeof enabled !== 'boolean') {
+    const error = new Error('invalid_dev_access');
+    error.code = 'invalid_dev_access';
+    throw error;
+  }
+  return mutateAdminKeyRecordStrict(code, draft => { draft.devAccess = enabled; }, deps);
 }
 function saveKey(code) {
   if (_saveDebounce.has(code)) clearTimeout(_saveDebounce.get(code));
@@ -2573,6 +2582,9 @@ function buildKeysHtml() {
     <button class="bs bg" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${Number.isFinite(k.maxUses)?k.maxUses:MAX_USES})">Usos</button>
     <button class="bs bg" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">Renomear</button>
     ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Números</button>`:''}
+    <label class="bs ${k.devAccess===true?'bg':'bw'}" title="Acesso DEV: autoriza esta licença a usar builds DEV assinadas" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;user-select:none">
+      <input type="checkbox" class="dev-access-switch" ${k.devAccess===true?'checked':''} onchange="toggleDevAccess('${escHtml(code)}',this.checked,this)" style="accent-color:var(--g);width:13px;height:13px;margin:0"> Acesso DEV
+    </label>
     <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
     ${isSuspect?`<button class="bs bsusp" onclick="clearSuspect('${escHtml(code)}')">🕵️ Suspeita</button>`:''}
     <button class="bs ${zsOn?'bg':'bw'}" title="ZapSaver" onclick="toggleModule('${escHtml(code)}','zapSaver',${zsOn?'false':'true'})">💾</button>
@@ -7420,6 +7432,19 @@ async function saveNote(){
 async function exportCSV(){
   try{const r=await fetch(_RA+'/api/export/csv');if(r.status===401){toast('Sessão expirada',false);return;}const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='zvm-chaves-'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(url);toast('CSV exportado!');}catch(e){toast('Erro ao exportar',false);}
 }
+async function toggleDevAccess(code,enabled,input){
+  const desired=enabled===true;
+  if(input)input.disabled=true;
+  try{
+    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/dev-access',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:desired})});
+    const d=await r.json();
+    if(!r.ok||!d.ok){if(input)input.checked=!desired;toast('Erro: '+(d.error||'não foi possível alterar Acesso DEV'),false);return;}
+    toast(d.devAccess?'Acesso DEV ativado':'Acesso DEV desativado');
+    await doRefresh();
+  }catch(e){if(input)input.checked=!desired;toast('Erro de rede ao alterar Acesso DEV',false);}
+  finally{if(input&&document.body.contains(input))input.disabled=false;}
+}
+
 async function toggleModule(code,module,enabled){
   try{
     const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/modules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({module,enabled: enabled==='true'||enabled===true})});
@@ -10773,7 +10798,7 @@ const HTTP_TRAFFIC_ADMIN_PATHS = new Set([
   '/api/cakto-queue', '/api/cakto-queue/requeue', '/api/cakto-mail',
   '/api/cakto-mail/requeue', '/api/traffic-summary',
 ]);
-const HTTP_TRAFFIC_ADMIN_KEY_ACTIONS = new Set(['toggle','renew','max-uses','label','phones','note','modules','clear-suspect']);
+const HTTP_TRAFFIC_ADMIN_KEY_ACTIONS = new Set(['toggle','renew','max-uses','label','phones','note','modules','clear-suspect','dev-access']);
 
 function normalizeTrafficPath(rawUrl) {
   const path = String(rawUrl || '/').split('?')[0] || '/';
@@ -11942,6 +11967,27 @@ async function handleRequest(req, res) {
     if (!savedToggle.active) fireWebhook('key_blocked', codeToggle, 'Bloqueio manual pelo admin');
     addAdminAuditLog({ actor: 'admin', action: savedToggle.active ? 'key_enabled' : 'key_disabled', keyCode: codeToggle, label: savedToggle.label }).catch(()=>{});
     sendJson(res, { ok: true, active: savedToggle.active }); return;
+  }
+
+  const codeDevAccess = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/dev-access$`));
+  if (codeDevAccess && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
+    const kDevAccess = await adminGetKey(codeDevAccess);
+    if (!kDevAccess) { sendJson(res, { error: 'not found' }, 404); return; }
+    const body = await parseBody(req);
+    if (typeof body.enabled !== 'boolean') { sendJson(res, { error: 'invalid_dev_access' }, 400); return; }
+    let savedDevAccess;
+    try { savedDevAccess = await setAdminKeyDevAccessStrict(codeDevAccess, body.enabled); }
+    catch (e) { console.error('[ADMIN] dev-access persist:', e.message); sendJson(res, { ok:false, error:'db_unavailable', retryable:true }, 503); return; }
+    addAdminAuditLog({
+      actor: 'admin',
+      action: savedDevAccess.devAccess ? 'dev_access_enabled' : 'dev_access_disabled',
+      keyCode: codeDevAccess,
+      label: savedDevAccess.label,
+      detail: savedDevAccess.devAccess ? 'DEV access enabled' : 'DEV access disabled',
+    }).catch(()=>{});
+    sendJson(res, { ok:true, devAccess:savedDevAccess.devAccess === true }); return;
   }
 
   const codeClearSuspect = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/clear-suspect$`));
@@ -13145,6 +13191,7 @@ module.exports.__test = Object.freeze({
   _writeKeyToDbStrict,
   commitAdminKeyRecordStrict,
   mutateAdminKeyRecordStrict,
+  setAdminKeyDevAccessStrict,
   deleteKeyFromDb,
   deleteKeysFromDbStrict,
   portalTotpKeyRing,
