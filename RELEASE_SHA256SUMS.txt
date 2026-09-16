@@ -1,6 +1,6 @@
 bcbcf651a7b0fc74d65192c5adb73cf0b6f1d56a59dd57f936bf64286efa2ac9  ./.dockerignore
-fa86dd270e9f9feb98aac403203429918bd999bd444df5b7d672b95ac4ecf334  ./.env.example
-fe2cdf526042fbe21d66c85bd84b3873c748d18a95fba31bdd54e0823852d37e  ./.github/workflows/release-integrity.yml
+0ff7927624a07504e9a86c9139c120ff3012b610b911ab0caf08232e92795c3f  ./.env.example
+302c2d9d61e3dde6f4adad851666e13cfa1e543910dee571ead417281caea751  ./.github/workflows/release-integrity.yml
 a24e5b75f6cf576465a2d791b6b2186efb680ec4d31de2117662617d6fc43b6a  ./.github/workflows/server-ci.yml
 d1e832a2f4f381d9b186bfb8f8a872dc93b1fd78fc84abbabf3d9021820fa0c9  ./.gitignore
 c670d629bd770c3e2fd5ff734b524e9a14426c045b9acb4475c939607b569bd2  ./Dockerfile
@@ -8,12 +8,12 @@ c670d629bd770c3e2fd5ff734b524e9a14426c045b9acb4475c939607b569bd2  ./Dockerfile
 003836c41534a1e81cce307a4b0cfc025b0b3010f6daa31a32a7e758c41cdf10  ./mailer.js
 7d6e40e5d96687ab1ff9241dc525036bb9f32f8772e45864067849405cb176c9  ./package-lock.json
 b9a07419383a9ea8294e8c333710ca499d1f1dc652a5bd821a751e1da1901aa7  ./package.json
-8bf04770143d5ce1bec5c25a5e47d4df486d0fbc06f379be14513523c1289135  ./release/ZVM_RELEASE_MANIFEST.json
-dec4d82ae76d2ddc37926ce6d05f16166dfbb973c01fb5ae187e03241f941e97  ./release/verify-release-assets.mjs
-79623d493d0b12140e71181891c109b1563a205cba065099ed4ed5497553d650  ./release/verify-release-manifest.mjs
+7379bcd31023d6491ebc76617f66b507eabdbfa470269fa2c0b805aa2d3985db  ./release/ZVM_RELEASE_MANIFEST.json
+032b5e0c7e6d7b18af22520ef9ace91b39403dc2d4f8b79a2fede921859b022d  ./release/verify-release-assets.mjs
+4144539bd5c1d33e539ea93e4633834854f59ce078566a158f7fd1dbf3673d38  ./release/verify-release-manifest.mjs
 79b5c2b418723ce0aa84b5203e0d50bae102acdf6dd2b4acfbd5cbfa902e384d  ./runtime-config.js
 8d4d0da7e097da67e3cb2a63204eeefd8bf5efe463ed78e1b39b8cc6c86c27c0  ./security/build-authority.js
 04f2aab8f6e5b0d73954aacc862d5ba5743732b37aceb81fcb56395117d0758b  ./security/runtime-config.js
 c61d92563eb1635bca6294e5e151090f0ffa1fef5252d4c6e381a9fd17d727f2  ./server.js
-f8443e903a450e567e125919cafd49ae9cb47539dc39973437e7b9852326b202  ./zvm-build-registry-v2.json
+499c40c5d45e7d9f785ad8808a231b2db0ef020d45a5accd48da9c247ecce111  ./zvm-build-registry-v2.json
 1c8cea3bbb7203320f3df403e23bbc9d5f2ba31fafa71ce52dba139ab88fd411  ./zvm-official-builds.json

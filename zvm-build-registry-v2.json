@@ -29,6 +29,21 @@
       "securityProtocol": 2,
       "sourceRevision": null,
       "sourceTreeSha256": "3b3cdbbe7fe4ec21b8d35735015dc69b6bc19f665548f1d8d26189c2d5252e24",
+      "status": "revoked"
+    },
+    {
+      "buildFingerprint": "c607af91769a2370cd4dfac2b81f18d15064acfbd0ccff031e342c37990954b0",
+      "buildId": "zvm-beta-0.8.530-s57956462e9f3",
+      "channel": "beta",
+      "createdAt": "2026-09-16T03:10:00.000Z",
+      "extensionIds": [
+        "bdhnikgcdccjabkmbfcakgjkkgdlmgja"
+      ],
+      "extensionVersion": "0.8.530",
+      "profile": "release",
+      "securityProtocol": 2,
+      "sourceRevision": null,
+      "sourceTreeSha256": "57956462e9f34c1c9a7395572b942812ee10711787b0d395f6d28f4a6c9ce556",
       "status": "active"
     }
   ]
