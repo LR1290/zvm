@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const fs = require('fs');
+const { verifyDevBuildAttestation } = require('./dev-build-signing');
 
 function parseBuildMap(raw) {
   const out = new Map();
@@ -194,12 +195,19 @@ function createBuildAuthority(config = {}, deps = {}) {
     runtimeEnv: String(config.runtimeEnv || '').trim().toLowerCase(),
     devBuildAllow: config.devBuildAllow === true,
     devCohostAllow: config.devCohostAllow === true,
+    devSignedBuildsAllow: config.devSignedBuildsAllow === true,
+    devSigningPublicKeys: config.devSigningPublicKeys instanceof Map ? config.devSigningPublicKeys : new Map(),
+    devExtensionId: String(config.devExtensionId || '').trim().toLowerCase(),
+    devBuildMaxAgeMs: Number(config.devBuildMaxAgeMs || 7 * 24 * 60 * 60 * 1000),
     devBuildKeyHashes: config.devBuildKeyHashes instanceof Set ? config.devBuildKeyHashes : new Set(),
     devBuildDeviceHashes: config.devBuildDeviceHashes instanceof Set ? config.devBuildDeviceHashes : new Set(),
     clockSkewMs: Number(config.clockSkewMs || 15 * 60 * 1000),
     requestTtlMs: Number(config.requestTtlMs || 20 * 60 * 1000),
   };
   const now = typeof deps.now === 'function' ? deps.now : Date.now;
+  const verifySignedDevAttestation = typeof deps.verifyDevBuildAttestation === 'function'
+    ? deps.verifyDevBuildAttestation
+    : verifyDevBuildAttestation;
   const seen = deps.seen instanceof Map ? deps.seen : new Map();
 
   function buildRecognized(version, fingerprint) {
@@ -221,6 +229,46 @@ function createBuildAuthority(config = {}, deps = {}) {
     return !state.buildEnforce || state.legacyV3Allow;
   }
 
+  function normalizedVerifiedAttestation(verified) {
+    return Object.freeze({
+      schema: 1,
+      algorithm: 'Ed25519',
+      keyId: verified.keyId,
+      descriptor: Object.freeze({ ...verified.descriptor }),
+      signedAt: verified.signedAt,
+      expiresAt: verified.expiresAt,
+      signature: verified.signature,
+    });
+  }
+
+  function signedDevIdentityDecision(identity, attestation, timestamp = Number(now())) {
+    if (state.runtimeEnv !== 'production' || state.devCohostAllow !== true || state.devSignedBuildsAllow !== true) {
+      return { ok: false, code: 'DEV_BUILD_NOT_AUTHORIZED' };
+    }
+    if (!attestation) return { ok: false, code: 'DEV_BUILD_ATTESTATION_REQUIRED' };
+    if (!/^[a-p]{32}$/.test(state.devExtensionId) || !state.devSigningPublicKeys.size) {
+      return { ok: false, code: 'DEV_BUILD_NOT_AUTHORIZED' };
+    }
+    const verified = verifySignedDevAttestation(attestation, {
+      publicKeys: state.devSigningPublicKeys,
+      expectedExtensionId: state.devExtensionId,
+      nowMs: Number(timestamp),
+      maxBuildAgeMs: state.devBuildMaxAgeMs,
+      clockSkewMs: state.clockSkewMs,
+    });
+    if (!verified?.ok) return { ok: false, code: verified?.code || 'DEV_BUILD_ATTESTATION_INVALID' };
+    const descriptor = verified.descriptor || {};
+    const matches = descriptor.securityProtocol === 2 &&
+      descriptor.buildId === String(identity.buildId || '').toLowerCase() &&
+      descriptor.channel === 'dev' && String(identity.channel || '').toLowerCase() === 'dev' &&
+      descriptor.profile === 'dev' && String(identity.profile || '').toLowerCase() === 'dev' &&
+      descriptor.extensionVersion === String(identity.extensionVersion || '') &&
+      descriptor.extensionId === String(identity.extensionId || '').toLowerCase() &&
+      descriptor.buildFingerprint === String(identity.buildFingerprint || '').toLowerCase();
+    if (!matches) return { ok: false, code: 'DEV_BUILD_ATTESTATION_INVALID' };
+    return { ok: true, verified, attestation: normalizedVerifiedAttestation(verified) };
+  }
+
   function storedSessionAllowed(doc) {
     if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return false;
     const extensionVersion = String(doc.extensionVersion || '').trim();
@@ -236,6 +284,7 @@ function createBuildAuthority(config = {}, deps = {}) {
       if (!/^\d+(?:\.\d+){2,3}$/.test(extensionVersion) || !/^[a-f0-9]{64}$/.test(buildFingerprint) || !/^[a-p]{32}$/.test(extensionId)) return false;
       if (!/^zvm-(dev|beta|production)-\d+(?:\.\d+){2,3}-s[a-f0-9]{12}$/.test(buildId)) return false;
       if (state.extensionIds.size && !state.extensionIds.has(extensionId)) return false;
+      if (buildDenied(extensionVersion, buildFingerprint)) return false;
 
       const entry = state.registryV2.get(buildId);
       if (entry) {
@@ -247,6 +296,10 @@ function createBuildAuthority(config = {}, deps = {}) {
           entry.profile === profile &&
           entry.buildFingerprint === buildFingerprint &&
           entry.extensionIds.includes(extensionId);
+      }
+
+      if (doc.signedDev === true) {
+        return signedDevIdentityDecision({ buildId, channel, profile, extensionVersion, extensionId, buildFingerprint }, doc.devAttestation).ok;
       }
 
       if (doc.developmentAuthorized !== true) return false;
@@ -274,8 +327,22 @@ function createBuildAuthority(config = {}, deps = {}) {
     if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return { ok: false, code: 'BUILD_NOT_ALLOWED' };
     if (Number(doc.securityProtocol || 1) === 2) {
       const buildId = String(doc.buildId || '').trim().toLowerCase();
+      const extensionVersion = String(doc.extensionVersion || '').trim();
+      const buildFingerprint = String(doc.buildFingerprint || '').trim().toLowerCase();
+      if (buildDenied(extensionVersion, buildFingerprint)) return { ok: false, code: 'BUILD_REVOKED' };
       const entry = state.registryV2.get(buildId);
       if (entry?.status === 'revoked') return { ok: false, code: 'BUILD_REVOKED' };
+      if (!entry && doc.signedDev === true) {
+        const signed = signedDevIdentityDecision({
+          buildId,
+          channel: doc.channel,
+          profile: doc.profile,
+          extensionVersion,
+          extensionId: doc.extensionId,
+          buildFingerprint,
+        }, doc.devAttestation);
+        if (!signed.ok) return { ok: false, code: signed.code || 'BUILD_NOT_ALLOWED' };
+      }
     } else if (buildDenied(doc.extensionVersion, doc.buildFingerprint)) {
       return { ok: false, code: 'BUILD_REVOKED' };
     }
@@ -378,17 +445,32 @@ function createBuildAuthority(config = {}, deps = {}) {
     }
     // 6. fingerprint syntax
     if (!/^[a-f0-9]{64}$/.test(buildFingerprint)) return { ok: false, code: 'SECURITY_CLIENT_INVALID' };
-    // 7. registry lookup / revocation
+    // 7. registry lookup / revocation. Fingerprint denylist always wins,
+    // including for dynamically signed DEV builds.
+    if (buildDenied(extensionVersion, buildFingerprint)) {
+      return { ok: false, code: 'BUILD_REVOKED', recognized: false, buildId };
+    }
     const entry = state.registryV2.get(buildId);
     let recognized = true;
     let developmentAuthorized = false;
+    let signedDev = false;
+    let normalizedDevAttestation = null;
     if (!entry) {
       if (channel !== 'dev') return { ok: false, code: 'BUILD_ID_NOT_ALLOWED' };
-      if (!devV2Allowed({ extensionId, channel, profile, installationId }, options)) {
-        return { ok: false, code: 'DEV_BUILD_NOT_AUTHORIZED' };
+      if (state.runtimeEnv === 'production' && state.devCohostAllow === true && state.devSignedBuildsAllow === true) {
+        const signed = signedDevIdentityDecision({ buildId, channel, profile, extensionVersion, extensionId, buildFingerprint }, raw.devAttestation, timestamp);
+        if (!signed.ok) return { ok: false, code: signed.code || 'DEV_BUILD_ATTESTATION_INVALID' };
+        recognized = false;
+        developmentAuthorized = true;
+        signedDev = true;
+        normalizedDevAttestation = signed.attestation;
+      } else {
+        if (!devV2Allowed({ extensionId, channel, profile, installationId }, options)) {
+          return { ok: false, code: 'DEV_BUILD_NOT_AUTHORIZED' };
+        }
+        recognized = false;
+        developmentAuthorized = true;
       }
-      recognized = false;
-      developmentAuthorized = true;
     } else {
       if (entry.status === 'revoked') return { ok: false, code: 'BUILD_REVOKED', recognized: false, buildId };
       if (entry.channel !== channel) return { ok: false, code: 'BUILD_CHANNEL_MISMATCH' };
@@ -410,6 +492,8 @@ function createBuildAuthority(config = {}, deps = {}) {
       securityProtocol: 2,
       recognized,
       developmentAuthorized,
+      signedDev,
+      devAttestation: normalizedDevAttestation,
       extensionVersion,
       extensionId,
       buildId,
@@ -447,7 +531,7 @@ function createBuildAuthority(config = {}, deps = {}) {
   }
 
   function clientErrorStatus(code) {
-    if (['BUILD_NOT_ALLOWED','BUILD_ID_NOT_ALLOWED','BUILD_REVOKED','BUILD_CHANNEL_MISMATCH','BUILD_PROFILE_MISMATCH','EXTENSION_ID_NOT_ALLOWED','INSTALLATION_NOT_AUTHORIZED','DEV_BUILD_NOT_AUTHORIZED'].includes(code)) return 403;
+    if (['BUILD_NOT_ALLOWED','BUILD_ID_NOT_ALLOWED','BUILD_REVOKED','BUILD_CHANNEL_MISMATCH','BUILD_PROFILE_MISMATCH','EXTENSION_ID_NOT_ALLOWED','INSTALLATION_NOT_AUTHORIZED','DEV_BUILD_NOT_AUTHORIZED','DEV_BUILD_ATTESTATION_REQUIRED','DEV_BUILD_ATTESTATION_INVALID','DEV_BUILD_EXPIRED','DEV_ACCESS_REQUIRED'].includes(code)) return 403;
     if (code === 'SECURITY_REPLAY_UNAVAILABLE') return 503;
     return 400;
   }
@@ -461,6 +545,8 @@ function createBuildAuthority(config = {}, deps = {}) {
       runtimeEnv: state.runtimeEnv,
       devBuildAllow: state.devBuildAllow,
       devCohostAllow: state.devCohostAllow,
+      devSignedBuildsAllow: state.devSignedBuildsAllow,
+      devSigningKeyCount: state.devSigningPublicKeys.size,
       legacyV3: legacyV3Allowed(),
     });
   }

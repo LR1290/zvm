@@ -1,4 +1,4 @@
-const ZVM_BUILD_ID = '2026-09-16-v738-two-profile-dev-cohost-r30';
+const ZVM_BUILD_ID = '2026-09-16-v739-signed-dev-r31';
 'use strict';
 
 function sanitizeStartupErrorMessage(error) {
@@ -36,6 +36,7 @@ const {
   loadRegistryV2: zvmSecurityLoadRegistryV2,
 } = require('./build-authority');
 const { validateRuntimeSecurityConfig } = require('./runtime-config');
+const { loadDevBuildSigningConfig, createDevBuildSigningService } = require('./dev-build-signing');
 
 const PORT         = process.env.PORT         || 3000;
 const ADMIN_USER   = process.env.ADMIN_USER;
@@ -1101,6 +1102,7 @@ const RL_CONFIG = {
   cakto:        { max: 30, windowMs: 60000,  blockMs:  5 * 60000 },
   analytics_lab:{ max: 20, windowMs: 60000,  blockMs:  5 * 60000 },
   analytics_purge:{ max: 5, windowMs: 60000, blockMs: 10 * 60000 }, // operação destrutiva — bem mais restrito que o resto do Lab
+  dev_sign:      { max: 20, windowMs: 60000, blockMs: 10 * 60000 },
 };
 
 function checkRateLimit(ip, type = 'api', maxReq = 0, windowMs = 0) {
@@ -1656,6 +1658,13 @@ function extensionLicenseIsUsable(keyRecord, nowValue = Date.now()) {
   return Number.isFinite(expiresAt) && expiresAt > new Date(nowValue).getTime();
 }
 
+function extensionDevAccessAllowed(keyCode, keyRecord) {
+  if (!keyCode || !keyRecord || keyRecord.active !== true) return false;
+  if (keyRecord.devAccess === true) return true;
+  const keyHash = crypto.createHash('sha256').update(String(keyCode), 'utf8').digest('hex');
+  return ZVM_DEV_LICENSE_KEY_HASHES.has(keyHash);
+}
+
 function buildExtensionEntitlement({ keyCode = null, keyRecord = null, now = Date.now() } = {}) {
   const nowDate = now instanceof Date ? new Date(now) : new Date(now);
   const nowMs = Number.isFinite(nowDate.getTime()) ? nowDate.getTime() : Date.now();
@@ -1745,6 +1754,11 @@ function extensionSessionSuccess(rawToken, sessionDoc, entitlement) {
 
 function extensionSessionSecurityFields(buildClient) {
   const protocol = Number(buildClient?.securityProtocol) === 2 ? 2 : 1;
+  const signedDev = protocol === 2 && buildClient?.signedDev === true && String(buildClient?.channel || '').toLowerCase() === 'dev';
+  let devAttestation = null;
+  if (signedDev && buildClient?.devAttestation && typeof buildClient.devAttestation === 'object') {
+    try { devAttestation = JSON.parse(JSON.stringify(buildClient.devAttestation)); } catch (_) { devAttestation = null; }
+  }
   return {
     securityProtocol: protocol,
     buildId: protocol === 2 ? String(buildClient?.buildId || '').toLowerCase() || null : null,
@@ -1755,6 +1769,8 @@ function extensionSessionSecurityFields(buildClient) {
     buildFingerprint: String(buildClient?.buildFingerprint || '').toLowerCase() || null,
     installationId: protocol === 2 ? String(buildClient?.installationId || '') || null : null,
     developmentAuthorized: buildClient?.developmentAuthorized === true,
+    signedDev,
+    devAttestation,
   };
 }
 
@@ -1765,6 +1781,17 @@ async function createExtensionSession(descriptor, deps = {}) {
   for (let attempt = 0; attempt < 3; attempt++) {
     const rawToken = (deps.generateToken || generateToken)();
     const tokenHash = hashExtensionSessionToken(rawToken);
+    const signedDev = Number(descriptor.securityProtocol) === 2 && descriptor.signedDev === true && String(descriptor.channel || '').toLowerCase() === 'dev';
+    let devAttestation = null;
+    let sessionExpiryMs = now.getTime() + EXTENSION_SESSION_TTL_MS;
+    if (signedDev) {
+      if (!descriptor.devAttestation || typeof descriptor.devAttestation !== 'object') throw new Error('DEV_BUILD_ATTESTATION_INVALID');
+      try { devAttestation = JSON.parse(JSON.stringify(descriptor.devAttestation)); } catch (_) { throw new Error('DEV_BUILD_ATTESTATION_INVALID'); }
+      const buildExpiryMs = Date.parse(String(devAttestation.expiresAt || ''));
+      if (!Number.isFinite(buildExpiryMs) || buildExpiryMs <= now.getTime()) throw new Error('DEV_BUILD_EXPIRED');
+      const devTtlMs = Number(ZVM_DEV_SIGNING_CONFIG?.sessionTtlMs || 12 * 60 * 60 * 1000);
+      sessionExpiryMs = Math.min(now.getTime() + devTtlMs, buildExpiryMs);
+    }
     const doc = {
       _id: tokenHash,
       sessionId: crypto.randomUUID(),
@@ -1793,10 +1820,12 @@ async function createExtensionSession(descriptor, deps = {}) {
       buildFingerprint: /^[a-f0-9]{64}$/i.test(String(descriptor.buildFingerprint || '')) ? String(descriptor.buildFingerprint).toLowerCase() : null,
       extensionId: /^[a-p]{32}$/.test(String(descriptor.extensionId || '').toLowerCase()) ? String(descriptor.extensionId).toLowerCase() : null,
       developmentAuthorized: descriptor.developmentAuthorized === true,
+      signedDev,
+      devAttestation,
       entitlementRevision: descriptor.entitlementRevision,
       createdAt: now,
       lastSeenAt: now,
-      expiresAt: new Date(now.getTime() + EXTENSION_SESSION_TTL_MS),
+      expiresAt: new Date(sessionExpiryMs),
       revokedAt: null,
     };
     try {
@@ -1846,14 +1875,14 @@ async function resolveExtensionAccountEntitlement(user, deps = {}) {
   const now = extensionNow(deps);
   const keyStore = deps.keyStore || keys;
   const keyCode = sanitizeId(user?.keyCode, 32);
-  if (!keyCode) return { ok: true, keyCode: null, entitlement: buildExtensionEntitlement({ now }) };
+  if (!keyCode) return { ok: true, keyCode: null, devAccess:false, entitlement: buildExtensionEntitlement({ now }) };
   const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(keyCode);
   if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
   const keyRecord = loaded.found ? keyStore[keyCode] : null;
   if (!extensionLicenseIsUsable(keyRecord, now)) {
-    return { ok: true, keyCode: null, entitlement: buildExtensionEntitlement({ now }) };
+    return { ok: true, keyCode: null, devAccess:false, entitlement: buildExtensionEntitlement({ now }) };
   }
-  return { ok: true, keyCode, entitlement: buildExtensionEntitlement({ keyCode, keyRecord, now }) };
+  return { ok: true, keyCode, devAccess:extensionDevAccessAllowed(keyCode, keyRecord), entitlement: buildExtensionEntitlement({ keyCode, keyRecord, now }) };
 }
 
 async function authenticateExtensionAccount(input, deps = {}) {
@@ -1887,6 +1916,7 @@ async function authenticateExtensionAccount(input, deps = {}) {
     subject: extensionSubject('account', email),
     accountEmail: email,
     licenseKeyCode: entitlementResult.keyCode,
+    devAccess: entitlementResult.devAccess === true,
     entitlement: entitlementResult.entitlement,
   };
 }
@@ -1928,6 +1958,7 @@ async function authorizeExtensionKeySession(input, deps = {}) {
     licenseKeyCode: keyCode,
     phoneNumber,
     deviceId,
+    devAccess: extensionDevAccessAllowed(keyCode, keyStore[keyCode]),
     entitlement,
     newlyClaimed: claim.status === 'claimed',
   };
@@ -2005,11 +2036,16 @@ async function refreshExtensionSession(rawToken, deps = {}) {
     entitlementResult = {
       ok: true,
       keyCode: doc.licenseKeyCode,
+      devAccess: extensionDevAccessAllowed(doc.licenseKeyCode, keyRecord),
       entitlement: buildExtensionEntitlement({ keyCode: doc.licenseKeyCode, keyRecord, now }),
     };
   } else {
     await revokeExtensionSession(rawToken, { ...deps, db, now });
     return extensionAuthFailure('invalid_session', 401);
+  }
+  if (doc.signedDev === true && entitlementResult.devAccess !== true) {
+    await revokeExtensionSession(rawToken, { ...deps, db, now });
+    return extensionAuthFailure('DEV_ACCESS_REQUIRED', 403);
   }
   await db.collection(EXTENSION_SESSION_COLLECTION).updateOne(
     { _id: doc._id, revokedAt: null },
@@ -10416,6 +10452,23 @@ const ZVM_DEV_BUILD_ALLOW = ZVM_LOCAL_SAFE_MODE ? false : /^(1|true|yes|on)$/i.t
 const ZVM_DEV_COHOST_ALLOW = ZVM_LOCAL_SAFE_MODE ? false : /^(1|true|yes|on)$/i.test(String(process.env.ZVM_DEV_COHOST_ALLOW || ''));
 const ZVM_DEV_BUILD_KEY_HASHES = zvmSecurityHashSet(process.env.ZVM_DEV_BUILD_KEY_HASHES || '');
 const ZVM_DEV_BUILD_DEVICE_HASHES = zvmSecurityHashSet(process.env.ZVM_DEV_BUILD_DEVICE_HASHES || '');
+const ZVM_DEV_LICENSE_KEY_HASHES = zvmSecurityHashSet(process.env.ZVM_DEV_LICENSE_KEY_HASHES || '');
+const ZVM_DEV_SIGNED_BUILDS_ALLOW = ZVM_LOCAL_SAFE_MODE ? false : /^(1|true|yes|on)$/i.test(String(process.env.ZVM_DEV_SIGNED_BUILDS_ALLOW || ''));
+let ZVM_DEV_SIGNING_CONFIG;
+let ZVM_DEV_SIGNING_CONFIG_ERROR = null;
+try {
+  ZVM_DEV_SIGNING_CONFIG = loadDevBuildSigningConfig(process.env);
+} catch (error) {
+  ZVM_DEV_SIGNING_CONFIG_ERROR = error;
+  ZVM_DEV_SIGNING_CONFIG = Object.freeze({
+    enabled: false, keyId: '', privateKey: null, publicKeys: new Map(),
+    expectedExtensionId: String(process.env.ZVM_DEV_EXTENSION_ID || '').trim().toLowerCase(),
+    agentTokenHash: '', maxBuildAgeMs: 7 * 24 * 60 * 60 * 1000, sessionTtlMs: 12 * 60 * 60 * 1000,
+  });
+}
+const ZVM_DEV_SIGNING_SERVICE = ZVM_DEV_SIGNING_CONFIG.enabled === true && !ZVM_DEV_SIGNING_CONFIG_ERROR
+  ? createDevBuildSigningService(ZVM_DEV_SIGNING_CONFIG)
+  : null;
 
 async function zvmSecurityConsumeRequestIdSharedImpl(requestId, nowMs = Date.now(), deps = {}) {
   const db = deps.db || await getMongoDb();
@@ -10441,6 +10494,10 @@ const ZVM_BUILD_AUTHORITY = createBuildAuthority({
   runtimeEnv: ZVM_RUNTIME_ENV,
   devBuildAllow: ZVM_DEV_BUILD_ALLOW,
   devCohostAllow: ZVM_DEV_COHOST_ALLOW,
+  devSignedBuildsAllow: ZVM_DEV_SIGNED_BUILDS_ALLOW,
+  devSigningPublicKeys: ZVM_DEV_SIGNING_CONFIG.publicKeys,
+  devExtensionId: ZVM_DEV_SIGNING_CONFIG.expectedExtensionId,
+  devBuildMaxAgeMs: ZVM_DEV_SIGNING_CONFIG.maxBuildAgeMs,
   devBuildKeyHashes: ZVM_DEV_BUILD_KEY_HASHES,
   devBuildDeviceHashes: ZVM_DEV_BUILD_DEVICE_HASHES,
   clockSkewMs: ZVM_SECURITY_CLOCK_SKEW_MS,
@@ -10930,6 +10987,41 @@ async function handleRequest(req, res) {
     try { await storeMetaWebhook(payload, raw); sendJson(res, { ok:true }); } catch (error) { console.error('[META] webhook store:', safeScalar(error.message, 120)); sendJson(res, { ok:false, error:'temporarily_unavailable' }, 503); }
     return;
   }
+  // ── Internal DEV build signer: descriptor/hash metadata only ──────────
+  if (p === '/internal/dev-build/sign' && req.method === 'POST') {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    if (!ZVM_DEV_SIGNED_BUILDS_ALLOW || !ZVM_DEV_SIGNING_SERVICE) {
+      sendJson(res, { ok:false, errorCode:'not_found' }, 404); return;
+    }
+    if (!checkRateLimit(ip, 'dev_sign')) {
+      sendJson(res, { ok:false, errorCode:'rate_limited', retryable:true }, 429); return;
+    }
+    const declaredLength = Number(req.headers['content-length'] || 0);
+    if (Number.isFinite(declaredLength) && declaredLength > 32 * 1024) {
+      sendJson(res, { ok:false, errorCode:'payload_too_large' }, 413); return;
+    }
+    try {
+      const body = await parseBody(req);
+      const descriptor = body && typeof body === 'object' && !Array.isArray(body) && body.descriptor
+        ? body.descriptor : body;
+      const signed = ZVM_DEV_SIGNING_SERVICE.sign(descriptor, req.headers.authorization || '');
+      sendJson(res, signed, 200);
+    } catch (error) {
+      const code = String(error?.message || 'DEV_BUILD_SIGNING_FAILED').slice(0, 80);
+      if (code === 'DEV_BUILD_AGENT_UNAUTHORIZED') {
+        sendJson(res, { ok:false, errorCode:'unauthorized' }, 401); return;
+      }
+      const safeCodes = new Set([
+        'DEV_BUILD_DESCRIPTOR_INVALID','DEV_EXTENSION_VERSION_INVALID','DEV_EXTENSION_ID_INVALID','DEV_EXTENSION_ID_NOT_ALLOWED',
+        'DEV_SOURCE_TREE_SHA256_INVALID','DEV_BUILD_FINGERPRINT_INVALID','DEV_BUILD_ID_INVALID','DEV_BUILD_ID_VERSION_MISMATCH',
+        'DEV_BUILD_ID_SOURCE_MISMATCH','DEV_PROTECTED_FILES_INVALID','DEV_BUILD_CREATED_AT_INVALID','DEV_BUILD_CREATED_AT_FUTURE',
+        'DEV_BUILD_TOO_OLD','DEV_BUILD_MAX_AGE_INVALID','DEV_SIGNING_TIME_INVALID'
+      ]);
+      sendJson(res, { ok:false, errorCode: safeCodes.has(code) ? code : 'DEV_BUILD_SIGNING_FAILED' }, 400);
+    }
+    return;
+  }
+
   if (p === R_EXT+'/v3/notifications' && req.method === 'GET') {
     if (!checkRateLimit(ip, 'ext_public_notifications', 120, 60000)) { sendJson(res, { errorCode:'RATE_LIMITED' }, 429); return; }
     res.setHeader('Cache-Control', 'no-store');
@@ -11049,6 +11141,9 @@ async function handleRequest(req, res) {
         sendJson(res, errorBody, status);
         return;
       }
+      if (buildClient.signedDev === true && authorized.devAccess !== true) {
+        sendJson(res, { ok:false, errorCode:'DEV_ACCESS_REQUIRED' }, 403); return;
+      }
       const issued = await createExtensionSession({
         subject: authorized.subject,
         authMethod: 'license_key',
@@ -11110,6 +11205,9 @@ async function handleRequest(req, res) {
           return;
         }
         if (buildClient.recognized !== true && accountDevAllowed) buildClient = { ...buildClient, developmentAuthorized:true };
+      }
+      if (buildClient.signedDev === true && authenticated.devAccess !== true) {
+        sendJson(res, { ok:false, errorCode:'DEV_ACCESS_REQUIRED' }, 403); return;
       }
       const issued = await createExtensionSession({
         subject: authenticated.subject,
@@ -12888,6 +12986,9 @@ function validateProductionSecurityConfig() {
     devKeyHashCount: ZVM_DEV_BUILD_KEY_HASHES.size,
     devDeviceHashCount: ZVM_DEV_BUILD_DEVICE_HASHES.size,
     registryV2Error: !!ZVM_BUILD_REGISTRY_V2_ERROR,
+    devSignedBuildsAllow: ZVM_DEV_SIGNED_BUILDS_ALLOW,
+    devSigningKeyCount: ZVM_DEV_SIGNING_CONFIG.publicKeys.size,
+    devSigningConfigured: ZVM_DEV_SIGNING_CONFIG.enabled === true && !ZVM_DEV_SIGNING_CONFIG_ERROR,
   };
   const runtimeState = validateRuntimeSecurityConfig(process.env, authorityState, {
     productionDbName: 'zapvoice',
@@ -13207,6 +13308,7 @@ module.exports.__test = Object.freeze({
   hashExtensionSessionToken,
   extensionSubject,
   extensionLicenseIsUsable,
+  extensionDevAccessAllowed,
   buildExtensionEntitlement,
   extensionSessionSuccess,
   extensionSessionSecurityFields,
@@ -13231,6 +13333,8 @@ module.exports.__test = Object.freeze({
   zvmSecurityConsumeRequestIdShared,
   zvmSecurityClientErrorStatus,
   zvmSecurityDevBuildAllowed,
+  ZVM_DEV_SIGNED_BUILDS_ALLOW,
+  ZVM_DEV_SIGNING_CONFIG,
   resolveUsageKey,
   normalizeClientIp,
   replaceIpBlacklist,

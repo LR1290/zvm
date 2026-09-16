@@ -29,12 +29,16 @@ function validateRuntimeSecurityConfig(env = {}, authorityState = {}, featureSta
   const requestedDevCohostAllow = typeof authorityState.devCohostAllow === 'boolean'
     ? authorityState.devCohostAllow
     : envTrue(env.ZVM_DEV_COHOST_ALLOW);
+  const requestedDevSignedBuildsAllow = typeof authorityState.devSignedBuildsAllow === 'boolean'
+    ? authorityState.devSignedBuildsAllow
+    : envTrue(env.ZVM_DEV_SIGNED_BUILDS_ALLOW);
   // Local Safe Mode is an operator safety boundary: never inherit production
   // build enforcement or DEV bypass from a reused .env. The launcher also
   // overlays these values, but the validator remains fail-safe on its own.
   const buildEnforce = localSafeMode ? false : requestedBuildEnforce;
   const devBuildAllow = localSafeMode ? false : requestedDevBuildAllow;
   const devCohostAllow = localSafeMode ? false : requestedDevCohostAllow;
+  const devSignedBuildsAllow = localSafeMode ? false : requestedDevSignedBuildsAllow;
   const extensionIdCount = Number.isInteger(authorityState.extensionIdCount)
     ? authorityState.extensionIdCount
     : countExtensionIds(env.ZVM_EXTENSION_IDS);
@@ -47,6 +51,8 @@ function validateRuntimeSecurityConfig(env = {}, authorityState = {}, featureSta
   const registryV2ActiveCount = Number.isInteger(authorityState.registryV2ActiveCount)
     ? authorityState.registryV2ActiveCount
     : 0;
+  const devSigningKeyCount = Number.isInteger(authorityState.devSigningKeyCount) ? authorityState.devSigningKeyCount : 0;
+  const devSigningConfigured = authorityState.devSigningConfigured === true;
 
   if (localSafeMode && renderRuntime) problems.push('ZVM_LOCAL_SAFE_MODE_forbidden_on_render');
 
@@ -54,12 +60,15 @@ function validateRuntimeSecurityConfig(env = {}, authorityState = {}, featureSta
     if (buildEnforce && extensionIdCount < 1) problems.push('ZVM_EXTENSION_IDS_required');
     if (buildEnforce && registryV2ActiveCount < 1) problems.push('ZVM_BUILD_REGISTRY_V2_active_required');
     if (devBuildAllow) problems.push('ZVM_DEV_BUILD_ALLOW_forbidden_in_production');
-    if (devCohostAllow && registryV2ActiveCount < 1) problems.push('ZVM_BUILD_REGISTRY_V2_active_required_for_dev_cohost');
+    if (devCohostAllow && registryV2ActiveCount < 1 && !devSignedBuildsAllow) problems.push('ZVM_BUILD_REGISTRY_V2_active_required_for_dev_cohost');
+    if (devSignedBuildsAllow && !devCohostAllow) problems.push('ZVM_DEV_COHOST_ALLOW_required_for_signed_dev');
+    if (devSignedBuildsAllow && (!devSigningConfigured || devSigningKeyCount < 1)) problems.push('ZVM_DEV_SIGNING_CONFIG_required');
     if (authorityState.registryV2Error === true) problems.push('ZVM_BUILD_REGISTRY_V2_invalid');
   }
 
   if (runtimeEnv === 'staging') {
     if (devCohostAllow) problems.push('ZVM_DEV_COHOST_ALLOW_forbidden_in_staging');
+    if (devSignedBuildsAllow) problems.push('ZVM_DEV_SIGNED_BUILDS_ALLOW_forbidden_in_staging');
     if (!buildEnforce) problems.push('ZVM_BUILD_ENFORCE_required_in_staging');
     if (extensionIdCount < 1) problems.push('ZVM_EXTENSION_IDS_required');
     if (devBuildAllow && devKeyHashCount < 1) problems.push('ZVM_DEV_BUILD_KEY_HASHES_required');
@@ -89,6 +98,7 @@ function validateRuntimeSecurityConfig(env = {}, authorityState = {}, featureSta
     buildEnforce,
     devBuildAllow,
     devCohostAllow,
+    devSignedBuildsAllow,
     extensionIdCount,
     devKeyHashCount,
     devDeviceHashCount,
