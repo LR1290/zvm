@@ -1,4 +1,4 @@
-const ZVM_BUILD_ID = '2026-09-15-build-authority-r25';
+const ZVM_BUILD_ID = '2026-09-16-build-authority-r26';
 'use strict';
 
 function sanitizeStartupErrorMessage(error) {
@@ -34,8 +34,8 @@ const {
   mergeBuildMaps: zvmSecurityMergeBuildMaps,
   hashSet: zvmSecurityHashSet,
   loadRegistryV2: zvmSecurityLoadRegistryV2,
-} = require('./security/build-authority');
-const { validateRuntimeSecurityConfig } = require('./security/runtime-config');
+} = require('./build-authority');
+const { validateRuntimeSecurityConfig } = require('./runtime-config');
 
 const PORT         = process.env.PORT         || 3000;
 const ADMIN_USER   = process.env.ADMIN_USER;
