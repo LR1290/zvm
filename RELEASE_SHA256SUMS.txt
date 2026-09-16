@@ -1,5 +1,5 @@
 bcbcf651a7b0fc74d65192c5adb73cf0b6f1d56a59dd57f936bf64286efa2ac9  ./.dockerignore
-0ff7927624a07504e9a86c9139c120ff3012b610b911ab0caf08232e92795c3f  ./.env.example
+96b278e37180e452c64f59b63c05c80b9ae67703f72c0042ea6b7d5a84714751  ./.env.example
 302c2d9d61e3dde6f4adad851666e13cfa1e543910dee571ead417281caea751  ./.github/workflows/release-integrity.yml
 a24e5b75f6cf576465a2d791b6b2186efb680ec4d31de2117662617d6fc43b6a  ./.github/workflows/server-ci.yml
 d1e832a2f4f381d9b186bfb8f8a872dc93b1fd78fc84abbabf3d9021820fa0c9  ./.gitignore
@@ -8,12 +8,12 @@ c670d629bd770c3e2fd5ff734b524e9a14426c045b9acb4475c939607b569bd2  ./Dockerfile
 003836c41534a1e81cce307a4b0cfc025b0b3010f6daa31a32a7e758c41cdf10  ./mailer.js
 7d6e40e5d96687ab1ff9241dc525036bb9f32f8772e45864067849405cb176c9  ./package-lock.json
 b9a07419383a9ea8294e8c333710ca499d1f1dc652a5bd821a751e1da1901aa7  ./package.json
-af6cc4c28919ac28ae5db0a29f56f36b0f8b1ee71b305391b01897746a2db54e  ./release/ZVM_RELEASE_MANIFEST.json
+4341508f0e3b72be7389f99ed3d8f7b57fc2b74f10ebe9fbf2cb59300f9acf0e  ./release/ZVM_RELEASE_MANIFEST.json
 032b5e0c7e6d7b18af22520ef9ace91b39403dc2d4f8b79a2fede921859b022d  ./release/verify-release-assets.mjs
-3f50f67439f6b3aa3d5971f9c550c184bb70a7b4402b53ec9244d7f74cdd306c  ./release/verify-release-manifest.mjs
+74743925e88f8874b55e0f966de0785683b89cfc2922343f964dc6695de4079c  ./release/verify-release-manifest.mjs
 79b5c2b418723ce0aa84b5203e0d50bae102acdf6dd2b4acfbd5cbfa902e384d  ./runtime-config.js
 8d4d0da7e097da67e3cb2a63204eeefd8bf5efe463ed78e1b39b8cc6c86c27c0  ./security/build-authority.js
 04f2aab8f6e5b0d73954aacc862d5ba5743732b37aceb81fcb56395117d0758b  ./security/runtime-config.js
-ee36a548040aeaa97b4dd39faece0edcad1ac43beef2f9622c42b7efc4e6218b  ./server.js
-499c40c5d45e7d9f785ad8808a231b2db0ef020d45a5accd48da9c247ecce111  ./zvm-build-registry-v2.json
+e910ada7428c014ba86f84afb9e7a769df0f9db7bfbbceff5c3fed5c39aca3a7  ./server.js
+f47bdd5ebd812183893a750294addbcaae7885c5514efc418f9a2ad0c6187565  ./zvm-build-registry-v2.json
 1c8cea3bbb7203320f3df403e23bbc9d5f2ba31fafa71ce52dba139ab88fd411  ./zvm-official-builds.json

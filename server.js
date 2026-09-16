@@ -1,4 +1,4 @@
-const ZVM_BUILD_ID = '2026-09-16-search-console-verification-r27';
+const ZVM_BUILD_ID = '2026-09-16-v736-beta-binding-r28';
 'use strict';
 
 function sanitizeStartupErrorMessage(error) {
