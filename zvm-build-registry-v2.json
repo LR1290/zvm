@@ -107,18 +107,18 @@
       "status": "active"
     },
     {
-      "buildFingerprint": "75cb11522e49e36ae6ddf1c4e534ceb9f6b2816d126f57947909d20705c5a315",
-      "buildId": "zvm-beta-0.8.536-s1fa796f0b4bf",
+      "buildFingerprint": "25109d437a7994831ba3c5e4752075a68291adba6a998ed062ccadfcb9a0b0af",
+      "buildId": "zvm-beta-0.8.537-sec877bc9a6c0",
       "channel": "beta",
-      "createdAt": "2026-09-17T04:50:00.000Z",
+      "createdAt": "2026-09-17T06:05:00.000Z",
       "extensionIds": [
         "bdhnikgcdccjabkmbfcakgjkkgdlmgja"
       ],
-      "extensionVersion": "0.8.536",
+      "extensionVersion": "0.8.537",
       "profile": "release",
       "securityProtocol": 2,
       "sourceRevision": null,
-      "sourceTreeSha256": "1fa796f0b4bf8911c33081334f9dd06ef4a10a5efee580e77175e237864220ae",
+      "sourceTreeSha256": "ec877bc9a6c0c95412f632831545751a9f02a8e7f883f098e93b3453096646ca",
       "status": "active"
     }
   ]

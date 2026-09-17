@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "releaseId": "ZVM-V741-BETA-0.8.536-R32-REGISTRY-UPDATE",
-  "releaseState": "beta-0.8.536-cws-candidate-registry-ready-no-deploy",
+  "releaseId": "ZVM-V742-BETA-0.8.537-R32-REGISTRY-UPDATE",
+  "releaseState": "beta-0.8.537-cws-candidate-registry-ready-no-deploy",
   "server": {
     "buildId": "2026-09-16-v739-admin-dev-access-r32",
     "serverJsSha256": "d5436c3e12f813976f8ef1fdbd24cc5f4bd42306ae6ea87e2c81dd24ed4281b4",
@@ -51,26 +51,26 @@
       "authorization": "signed-attestation-after-r31-activation"
     },
     "beta": {
-      "version": "0.8.536",
-      "buildId": "zvm-beta-0.8.536-s1fa796f0b4bf",
+      "version": "0.8.537",
+      "buildId": "zvm-beta-0.8.537-sec877bc9a6c0",
       "channel": "beta",
       "profile": "release",
       "securityProtocol": 2,
-      "sourceTreeSha256": "1fa796f0b4bf8911c33081334f9dd06ef4a10a5efee580e77175e237864220ae",
-      "buildFingerprint": "75cb11522e49e36ae6ddf1c4e534ceb9f6b2816d126f57947909d20705c5a315",
-      "zipFile": "ZVM_AUTOMACOES_V741_BETA_CWS.zip",
-      "zipSha256": "5c97be2dcee8837c16fc436e6b61f535c7d00e7eea4f4ef20e1378a1b5473d2d",
-      "zipBytes": 3015078,
+      "sourceTreeSha256": "ec877bc9a6c0c95412f632831545751a9f02a8e7f883f098e93b3453096646ca",
+      "buildFingerprint": "25109d437a7994831ba3c5e4752075a68291adba6a998ed062ccadfcb9a0b0af",
+      "zipFile": "ZVM_AUTOMACOES_V742_BETA_CWS.zip",
+      "zipSha256": "ec78530d1f46613b2b78b1cbec37ae08c63d852121fda9f65961ad9ee5dd6077",
+      "zipBytes": 3015182,
       "extensionId": "bdhnikgcdccjabkmbfcakgjkkgdlmgja",
       "runtimeAuthorized": true,
       "storeState": "update-candidate",
       "sourceRevision": null,
-      "createdAt": "2026-09-17T04:50:00.000Z",
+      "createdAt": "2026-09-17T06:05:00.000Z",
       "protectedFileCount": 265,
       "zipEntryCount": 266,
       "manifestName": "ZVM - Automações BETA",
       "dashboardListingTitle": "ZVM - Automações BETA",
-      "transformationPolicy": "cws-safe-cached-release-transforms-plus-readable-changed-files",
+      "transformationPolicy": "cws-safe-cached-release-transforms-plus-readable-changed-files-store-metadata-v2",
       "transformedFileCount": 210,
       "releaseCandidate": true,
       "promotionTargetName": "ZVM - Automações"
@@ -98,9 +98,9 @@
       "buildFingerprint": "10337972d91192126c976daa58a4156d0c3d0ca2f26b6b3579271d6cdb903050"
     },
     "v2BetaCurrent": {
-      "extensionVersion": "0.8.536",
-      "buildId": "zvm-beta-0.8.536-s1fa796f0b4bf",
-      "buildFingerprint": "75cb11522e49e36ae6ddf1c4e534ceb9f6b2816d126f57947909d20705c5a315",
+      "extensionVersion": "0.8.537",
+      "buildId": "zvm-beta-0.8.537-sec877bc9a6c0",
+      "buildFingerprint": "25109d437a7994831ba3c5e4752075a68291adba6a998ed062ccadfcb9a0b0af",
       "authorization": "registry-v2-exact"
     },
     "v2DevCurrent": {
@@ -125,7 +125,7 @@
     "realChromeStoreInstallSmokePassed": false,
     "chromeWebStoreSubmissionAllowed": false,
     "chromeWebStoreExpectedBetaManifestName": "ZVM - Automações BETA",
-    "chromeWebStoreExpectedBetaVersion": "0.8.536",
+    "chromeWebStoreExpectedBetaVersion": "0.8.537",
     "node24LocalGatePassed": true,
     "v738TwoProfilePolicyPassed": true,
     "devReadableGatePassed": true,
@@ -134,19 +134,18 @@
     "v739DevSignedGatePassed": true,
     "v738BetaFrozen": true,
     "adminDevAccessGatePassed": true,
-    "v741StoreManifestIntegrityLocalGatePassed": true,
-    "v741DeterministicBuildGatePassed": true,
-    "v741ChromiumNativePackGatePassed": true,
-    "v741RegistryPrepared": true,
-    "v740DevSignedGatePassed": true
+    "v740DevSignedGatePassed": true,
+    "v742StoreManifestIntegrityLocalGatePassed": true,
+    "v742DeterministicBuildGatePassed": true,
+    "v742ChromiumNativePackGatePassed": true,
+    "v742RegistryPrepared": true
   },
   "notes": [
-    "Release evidence is aligned to latest internal DEV V740 / 0.8.535 and new BETA V741 / 0.8.536 while server runtime remains R32.",
-    "V741 promotes the latest V740 functional source into BETA 0.8.536 and fixes Chrome Web Store manifest materialization false positives without disabling fail-closed integrity.",
-    "manifest.json uses manifest-json-v1 canonical integrity: only the top-level Chrome-managed key field is excluded; every other manifest field remains protected.",
-    "The manifest integrity mode is included in the build fingerprint, so changing the normalization policy without rebuilding is rejected.",
-    "210 unchanged first-party JS/MJS release transformations are reused byte-for-byte from the previously qualified V738 BETA; changed security/functional files remain readable for CWS review.",
-    "BETA 0.8.533 remains active as a controlled rollback entry until the real Store-installed 0.8.536 smoke passes.",
+    "Release evidence is aligned to latest internal DEV V740 / 0.8.535 and new BETA V742 / 0.8.537 while server runtime remains R32.",
+    "V742 supersedes the unpublished V741 candidate after direct Opera/Chrome Web Store evidence proved Store materialization adds both key and update_url.",
+    "manifest.json uses manifest-json-v1 canonical integrity: top-level key is browser-managed; update_url is ignored only when exactly https://clients2.google.com/service/update2/crx; all other manifest fields remain protected.",
+    "The manifest integrity mode remains included in the build fingerprint, so changing normalization policy without rebuilding is rejected.",
+    "BETA 0.8.533 remains active as a controlled rollback entry until the real Store-installed 0.8.537 smoke passes.",
     "This package prepares GitHub/Render registry state only. No Render deployment is performed by artifact generation."
   ]
 }

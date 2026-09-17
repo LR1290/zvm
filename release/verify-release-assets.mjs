@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 
 const SHA256 = /^[a-f0-9]{64}$/;
 const MANIFEST_MODE = 'manifest-json-v1';
-const BROWSER_MANAGED_TOP_LEVEL_FIELDS = new Set(['key']);
+const TRUSTED_UPDATE_URL = 'https://clients2.google.com/service/update2/crx';
+const BROWSER_MANAGED_TOP_LEVEL_FIELDS = new Set(['key','update_url']);
 function fail(message) { throw new Error(`RELEASE_ASSET_INVALID:${message}`); }
 function assert(condition, message) { if (!condition) fail(message); }
 function sha256Bytes(bytes) { return crypto.createHash('sha256').update(bytes).digest('hex'); }
@@ -35,7 +36,8 @@ function normalizeManifest(value, depth = 0) {
   if (value && typeof value === 'object') {
     const out = {};
     for (const key of Object.keys(value).sort(asciiCompare)) {
-      if (depth === 0 && BROWSER_MANAGED_TOP_LEVEL_FIELDS.has(key)) continue;
+      if (depth === 0 && key === 'key') { if (typeof value[key] !== 'string' || !value[key].trim()) fail('manifest:key-invalid'); continue; }
+    if (depth === 0 && key === 'update_url') { if (value[key] !== TRUSTED_UPDATE_URL) fail('manifest:update-url-untrusted'); continue; }
       assert(value[key] !== undefined, 'manifest-canonical:undefined');
       out[key] = normalizeManifest(value[key], depth + 1);
     }
