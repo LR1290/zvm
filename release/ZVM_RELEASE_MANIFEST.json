@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "releaseId": "ZVM-V742-BETA-0.8.537-R32-REGISTRY-UPDATE",
-  "releaseState": "beta-0.8.537-cws-candidate-registry-ready-no-deploy",
+  "releaseId": "ZVM-V743-BETA-0.8.538-R32-REGISTRY-UPDATE",
+  "releaseState": "beta-0.8.538-cws-candidate-registry-ready-no-deploy",
   "server": {
     "buildId": "2026-09-16-v739-admin-dev-access-r32",
     "serverJsSha256": "d5436c3e12f813976f8ef1fdbd24cc5f4bd42306ae6ea87e2c81dd24ed4281b4",
@@ -51,29 +51,39 @@
       "authorization": "signed-attestation-after-r31-activation"
     },
     "beta": {
-      "version": "0.8.537",
-      "buildId": "zvm-beta-0.8.537-sec877bc9a6c0",
+      "version": "0.8.538",
+      "buildId": "zvm-beta-0.8.538-sfd6042e42478",
       "channel": "beta",
       "profile": "release",
       "securityProtocol": 2,
-      "sourceTreeSha256": "ec877bc9a6c0c95412f632831545751a9f02a8e7f883f098e93b3453096646ca",
-      "buildFingerprint": "25109d437a7994831ba3c5e4752075a68291adba6a998ed062ccadfcb9a0b0af",
-      "zipFile": "ZVM_AUTOMACOES_V742_BETA_CWS.zip",
-      "zipSha256": "ec78530d1f46613b2b78b1cbec37ae08c63d852121fda9f65961ad9ee5dd6077",
-      "zipBytes": 3015182,
+      "sourceTreeSha256": "fd6042e424789117685ecbb23ef11cb73cedea6a25ccf2fcc6c308ee80f694fe",
+      "buildFingerprint": "6c6effd303185ef456ffde231dcbf8dfc286122f82e51a49471972a02f026d50",
+      "zipFile": "ZVM_AUTOMACOES_V743_BETA_CWS.zip",
+      "zipSha256": "4c32affeefe406410e33a430f2d25015ef5723aabc4cdf41dae13a54dff7eb3b",
+      "zipBytes": 3016841,
       "extensionId": "bdhnikgcdccjabkmbfcakgjkkgdlmgja",
       "runtimeAuthorized": true,
       "storeState": "update-candidate",
       "sourceRevision": null,
-      "createdAt": "2026-09-17T06:05:00.000Z",
-      "protectedFileCount": 265,
-      "zipEntryCount": 266,
+      "createdAt": "2026-09-17T13:44:00.000Z",
+      "protectedFileCount": 266,
+      "zipEntryCount": 267,
       "manifestName": "ZVM - Automações BETA",
       "dashboardListingTitle": "ZVM - Automações BETA",
-      "transformationPolicy": "cws-safe-cached-release-transforms-plus-readable-changed-files-store-metadata-v2",
+      "transformationPolicy": "cws-safe-cached-release-transforms-plus-readable-changed-files-store-metadata-v2-browser-icon-semantic-v1",
       "transformedFileCount": 210,
       "releaseCandidate": true,
-      "promotionTargetName": "ZVM - Automações"
+      "promotionTargetName": "ZVM - Automações",
+      "runtimeSemanticIntegrityModes": {
+        "browser-icon-v1": [
+          "assets/icons/icon16.png",
+          "assets/icons/icon32.png",
+          "assets/icons/icon48.png",
+          "assets/icons/icon64.png",
+          "assets/icons/icon128.png",
+          "assets/icons/icon128-action.png"
+        ]
+      }
     }
   },
   "compatibility": {
@@ -93,14 +103,14 @@
       "buildFingerprint": "b0879ed739522bc15ec02a9cba0d9139a68bf61e845d29cb74bd56cea785914c"
     },
     "v2BetaPrevious": {
-      "extensionVersion": "0.8.533",
-      "buildId": "zvm-beta-0.8.533-sc27d790503ee",
-      "buildFingerprint": "10337972d91192126c976daa58a4156d0c3d0ca2f26b6b3579271d6cdb903050"
-    },
-    "v2BetaCurrent": {
       "extensionVersion": "0.8.537",
       "buildId": "zvm-beta-0.8.537-sec877bc9a6c0",
-      "buildFingerprint": "25109d437a7994831ba3c5e4752075a68291adba6a998ed062ccadfcb9a0b0af",
+      "buildFingerprint": "25109d437a7994831ba3c5e4752075a68291adba6a998ed062ccadfcb9a0b0af"
+    },
+    "v2BetaCurrent": {
+      "extensionVersion": "0.8.538",
+      "buildId": "zvm-beta-0.8.538-sfd6042e42478",
+      "buildFingerprint": "6c6effd303185ef456ffde231dcbf8dfc286122f82e51a49471972a02f026d50",
       "authorization": "registry-v2-exact"
     },
     "v2DevCurrent": {
@@ -125,7 +135,7 @@
     "realChromeStoreInstallSmokePassed": false,
     "chromeWebStoreSubmissionAllowed": false,
     "chromeWebStoreExpectedBetaManifestName": "ZVM - Automações BETA",
-    "chromeWebStoreExpectedBetaVersion": "0.8.537",
+    "chromeWebStoreExpectedBetaVersion": "0.8.538",
     "node24LocalGatePassed": true,
     "v738TwoProfilePolicyPassed": true,
     "devReadableGatePassed": true,
@@ -138,14 +148,20 @@
     "v742StoreManifestIntegrityLocalGatePassed": true,
     "v742DeterministicBuildGatePassed": true,
     "v742ChromiumNativePackGatePassed": true,
-    "v742RegistryPrepared": true
+    "v742RegistryPrepared": true,
+    "v743BrowserIconSemanticIntegrityLocalGatePassed": true,
+    "v743RuntimeTransformedIconRegressionPassed": true,
+    "v743CriticalRawTamperRegressionPassed": true,
+    "v743DeterministicBuildGatePassed": true,
+    "v743ChromiumNativePackGatePassed": true,
+    "v743RegistryPrepared": true
   },
   "notes": [
-    "Release evidence is aligned to latest internal DEV V740 / 0.8.535 and new BETA V742 / 0.8.537 while server runtime remains R32.",
-    "V742 supersedes the unpublished V741 candidate after direct Opera/Chrome Web Store evidence proved Store materialization adds both key and update_url.",
-    "manifest.json uses manifest-json-v1 canonical integrity: top-level key is browser-managed; update_url is ignored only when exactly https://clients2.google.com/service/update2/crx; all other manifest fields remain protected.",
-    "The manifest integrity mode remains included in the build fingerprint, so changing normalization policy without rebuilding is rejected.",
-    "BETA 0.8.533 remains active as a controlled rollback entry until the real Store-installed 0.8.537 smoke passes.",
+    "Release evidence is aligned to internal DEV V740 / 0.8.535 and BETA V743 / 0.8.538 while server runtime remains R32.",
+    "V743 fixes the live Store/Opera root cause observed on V742: exactly six browser-owned PNG icons were materialized with different byte sizes and SHA-256 while 259/265 other protected files remained byte-identical.",
+    "The six exact browser icon paths use browser-icon-v1 semantic runtime validation (PNG signature, expected dimensions, bounded size). Their frozen release bytes remain SHA-256/size protected in CI and release assets.",
+    "All non-browser-icon protected files remain exact byte/size/hash fail-closed at runtime. manifest.json remains manifest-json-v1 canonical with only trusted Store-managed key/update_url handling.",
+    "BETA 0.8.537 remains an active previous entry. V734 / 0.8.529 remains revoked. No broad extension-ID or build-authority bypass is introduced.",
     "This package prepares GitHub/Render registry state only. No Render deployment is performed by artifact generation."
   ]
 }

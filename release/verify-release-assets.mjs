@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 
 const SHA256 = /^[a-f0-9]{64}$/;
 const MANIFEST_MODE = 'manifest-json-v1';
+const BROWSER_ICON_MODE = 'browser-icon-v1';
+const BROWSER_ICON_PATHS = new Set(['assets/icons/icon16.png','assets/icons/icon32.png','assets/icons/icon48.png','assets/icons/icon64.png','assets/icons/icon128.png','assets/icons/icon128-action.png']);
 const TRUSTED_UPDATE_URL = 'https://clients2.google.com/service/update2/crx';
 const BROWSER_MANAGED_TOP_LEVEL_FIELDS = new Set(['key','update_url']);
 function fail(message) { throw new Error(`RELEASE_ASSET_INVALID:${message}`); }
@@ -101,7 +103,7 @@ export function verifyZipArtifact(zipPath, expected, options = {}) {
       assert(!seen.has(p), `${expected.zipFile}:integrity-duplicate:${p}`); seen.add(p);
       assert(SHA256.test(digest), `${expected.zipFile}:integrity-sha:${p}`);
       assert(Number.isInteger(size) && size >= 0, `${expected.zipFile}:integrity-size:${p}`);
-      if (mode !== null) assert(p === 'manifest.json' && mode === MANIFEST_MODE, `${expected.zipFile}:integrity-mode:${p}`);
+      if (mode !== null) assert((p === 'manifest.json' && mode === MANIFEST_MODE) || (BROWSER_ICON_PATHS.has(p) && mode === BROWSER_ICON_MODE), `${expected.zipFile}:integrity-mode:${p}`);
       const out = { path:p, sha256:digest, size };
       if (mode) out.mode = mode;
       return out;
@@ -128,6 +130,14 @@ export function verifyZipArtifact(zipPath, expected, options = {}) {
     assert(seen.has('manifest.json'), `${expected.zipFile}:manifest-not-protected`);
     assert(seen.has('app/security/build-identity.json'), `${expected.zipFile}:identity-not-protected`);
     assert(!seen.has('app/security/integrity.json'), `${expected.zipFile}:integrity-self-reference`);
+    const browserIconEntries = canonical.filter(x => x.mode === BROWSER_ICON_MODE);
+    if (expected.runtimeSemanticIntegrityModes?.[BROWSER_ICON_MODE]) {
+      const want=[...expected.runtimeSemanticIntegrityModes[BROWSER_ICON_MODE]].sort(asciiCompare);
+      const got=browserIconEntries.map(x=>x.path).sort(asciiCompare);
+      assert(JSON.stringify(got)===JSON.stringify(want), `${expected.zipFile}:browser-icon-mode-paths`);
+    } else {
+      assert(browserIconEntries.length===0, `${expected.zipFile}:unexpected-browser-icon-mode`);
+    }
 
     if (expected.channel === 'dev' && expected.registryPreRegistrationRequired === false) {
       const authority = options.signingAuthority || {};

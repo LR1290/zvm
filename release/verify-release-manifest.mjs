@@ -8,8 +8,8 @@ const EXT_ID=/^[a-p]{32}$/;
 const VERSION=/^\d+(?:\.\d+){2,3}$/;
 const DEV_ID='ckbffcbmanboelbihfkhiahgafnimcho';
 const BETA_ID='bdhnikgcdccjabkmbfcakgjkkgdlmgja';
-const BETA=Object.freeze({version:'0.8.537',buildId:'zvm-beta-0.8.537-sec877bc9a6c0',fingerprint:'25109d437a7994831ba3c5e4752075a68291adba6a998ed062ccadfcb9a0b0af',source:'ec877bc9a6c0c95412f632831545751a9f02a8e7f883f098e93b3453096646ca'});
-const PREVIOUS_BETA=Object.freeze({version:'0.8.533',buildId:'zvm-beta-0.8.533-sc27d790503ee',fingerprint:'10337972d91192126c976daa58a4156d0c3d0ca2f26b6b3579271d6cdb903050'});
+const BETA=Object.freeze({version:'0.8.538',buildId:'zvm-beta-0.8.538-sfd6042e42478',fingerprint:'6c6effd303185ef456ffde231dcbf8dfc286122f82e51a49471972a02f026d50',source:'fd6042e424789117685ecbb23ef11cb73cedea6a25ccf2fcc6c308ee80f694fe'});
+const PREVIOUS_BETA=Object.freeze({version:'0.8.537',buildId:'zvm-beta-0.8.537-sec877bc9a6c0',fingerprint:'25109d437a7994831ba3c5e4752075a68291adba6a998ed062ccadfcb9a0b0af'});
 const ROLLBACK_BETA=Object.freeze({version:'0.8.528',buildId:'zvm-beta-0.8.528-sd88c00dcccd8',fingerprint:'b0879ed739522bc15ec02a9cba0d9139a68bf61e845d29cb74bd56cea785914c'});
 const V731_FP='ed0459294aac386126a817aac3f3a845a4df2f4b66ace95a165a63306be31f62';
 function die(m){throw new Error(`RELEASE_MANIFEST_INVALID:${m}`)}
@@ -32,7 +32,7 @@ function validateRecord(key,r){
 }
 export function verifyReleaseManifest(root){
  const m=readJson(path.join(root,'release/ZVM_RELEASE_MANIFEST.json')); const v1=readJson(path.join(root,'zvm-official-builds.json')); const v2=readJson(path.join(root,'zvm-build-registry-v2.json'));
- assert(m.schema===1,'schema'); assert(m.releaseId==='ZVM-V742-BETA-0.8.537-R32-REGISTRY-UPDATE','releaseId');
+ assert(m.schema===1,'schema'); assert(m.releaseId==='ZVM-V743-BETA-0.8.538-R32-REGISTRY-UPDATE','releaseId');
  assert(m.server?.buildId==='2026-09-16-v739-admin-dev-access-r32','server:buildId'); assert(m.server?.signedDevAuthority===true,'server:signedDevAuthority'); assert(m.server?.adminDevAccessControl===true,'server:adminDevAccessControl');
  assert(SHA256.test(String(m.server?.serverJsSha256||'')),'server:sha-format'); assert(shaFile(path.join(root,'server.js'))===m.server.serverJsSha256,'server:sha-mismatch');
  assert(m.server.nodeRuntime==='24.21.0','server:node'); assert(m.server.devCohostRequired===true,'server:cohost');
@@ -53,7 +53,7 @@ export function verifyReleaseManifest(root){
  assert(v1.schemaVersion===1&&Array.isArray(v1.builds?.['0.8.526'])&&v1.builds['0.8.526'].includes(V731_FP),'v1:rollback');
  const c=m.compatibility||{}; assert(c.v2DevCurrent?.authorization==='signed-dev-attestation','compat:dev-signed'); assert(c.v2DevCurrent?.registryPreRegistrationRequired===false,'compat:dev-no-prereg');
  assert(c.v2BetaCurrent?.authorization==='registry-v2-exact'&&c.v2BetaCurrent?.buildId===BETA.buildId,'compat:beta-exact'); assert(c.v2BetaPrevious?.buildId===PREVIOUS_BETA.buildId&&c.v2BetaPrevious?.buildFingerprint===PREVIOUS_BETA.fingerprint,'compat:beta-previous'); assert(c.legacyV3Allowed===true&&c.destructiveMigration===false,'compat:legacy');
- const g=m.prelaunchGates||{}; assert(g.node24LocalGatePassed===true,'gate:node24'); assert(g.adminDevAccessGatePassed===true,'gate:admin-dev-access'); assert(g.signedDevAuthorityLocalGatePassed===true,'gate:signed-dev'); assert(g.v739DevSignedGatePassed===true,'gate:v739'); assert(g.v740DevSignedGatePassed===true,'gate:v740'); assert(g.v742StoreManifestIntegrityLocalGatePassed===true,'gate:v742-manifest-integrity'); assert(g.v742DeterministicBuildGatePassed===true,'gate:v742-deterministic'); assert(g.v742ChromiumNativePackGatePassed===true,'gate:v742-chromium-pack'); assert(g.v742RegistryPrepared===true,'gate:v742-registry'); assert(g.realChromeStoreInstallSmokePassed===false,'gate:store-smoke-must-remain-open');
+ const g=m.prelaunchGates||{}; assert(g.node24LocalGatePassed===true,'gate:node24'); assert(g.adminDevAccessGatePassed===true,'gate:admin-dev-access'); assert(g.signedDevAuthorityLocalGatePassed===true,'gate:signed-dev'); assert(g.v739DevSignedGatePassed===true,'gate:v739'); assert(g.v740DevSignedGatePassed===true,'gate:v740'); assert(g.v743BrowserIconSemanticIntegrityLocalGatePassed===true,'gate:v743-browser-icon'); assert(g.v743RuntimeTransformedIconRegressionPassed===true,'gate:v743-runtime-icon-regression'); assert(g.v743CriticalRawTamperRegressionPassed===true,'gate:v743-critical-raw'); assert(g.v743DeterministicBuildGatePassed===true,'gate:v743-deterministic'); assert(g.v743ChromiumNativePackGatePassed===true,'gate:v743-chromium-pack'); assert(g.v743RegistryPrepared===true,'gate:v743-registry'); assert(g.realChromeStoreInstallSmokePassed===false,'gate:store-smoke-must-remain-open');
  return {releaseId:m.releaseId,devBuildId:dev.buildId,betaBuildId:beta.buildId,serverJsSha256:m.server.serverJsSha256};
 }
 function rootArg(argv){const i=argv.indexOf('--root');return i>=0&&argv[i+1]?path.resolve(argv[i+1]):path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..')}
