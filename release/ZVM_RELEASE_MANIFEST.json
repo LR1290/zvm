@@ -1,10 +1,10 @@
 {
   "schema": 1,
-  "releaseId": "ZVM-V743-BETA-0.8.538-R32-REGISTRY-UPDATE",
-  "releaseState": "beta-0.8.538-cws-candidate-registry-ready-no-deploy",
+  "releaseId": "ZVM-V746-0.8.541-R34-BUILD3-LEGACY-COMPAT-ASSET-REFRESH",
+  "releaseState": "server-r34-build3-legacy-v3-unpacked-cors-hotfix-master-legacy-switch-with-v746-current-artifacts-google-oauth-pending",
   "server": {
-    "buildId": "2026-09-16-v739-admin-dev-access-r32",
-    "serverJsSha256": "d5436c3e12f813976f8ef1fdbd24cc5f4bd42306ae6ea87e2c81dd24ed4281b4",
+    "buildId": "2026-09-18-build3-v3-unpacked-compat-r34",
+    "serverJsSha256": "53948d0609e934e78c59033680558040a1e1f99f38495c5d762663262778b794",
     "nodeRuntime": "24.21.0",
     "registryProtocol": 2,
     "devCohostRequired": true,
@@ -16,64 +16,42 @@
       "buildMaxAgeDays": 7,
       "sessionTtlHours": 12
     },
-    "adminDevAccessControl": true
+    "adminDevAccessControl": true,
+    "legacyBuild3UnpackedCorsCompat": true
   },
   "extensions": {
     "dev": {
-      "version": "0.8.535",
-      "buildId": "zvm-dev-0.8.535-sbde999c02196",
+      "version": "0.8.541",
+      "buildId": "zvm-dev-0.8.541-s203ccc488981",
       "channel": "dev",
       "profile": "dev",
       "securityProtocol": 2,
-      "sourceTreeSha256": "bde999c021963ac0393a09fb9aa2b23811f47e4af596e8357dad1b004093f0e4",
-      "buildFingerprint": "c32c96e4b226718dfe63ea4f8da673ab8e7e5a50a8ccd3ab6dc3cfe8faa1db25",
-      "zipFile": "ZVM_AUTOMACOES_V740_CRM_VALORES_ENTREGAS_DEV_SIGNED.zip",
-      "zipSha256": "5ed9159c4e286d294b9ea042e4c2ebbb109257df11162ae2726c014d3b5254e4",
-      "zipBytes": 3216475,
+      "sourceTreeSha256": "203ccc4889818720c5da6fbedfe6acfc29afe33977e055f885efa52090de7145",
+      "buildFingerprint": "44420b8eae9f7de4341b41807d25bb82a247b6e8fed53ae647bc133166cc8ceb",
+      "zipFile": "ZVM_AUTOMACOES_V746_DEV_BROWSER_TEST_SIGNED.zip",
+      "zipSha256": "314de75cbbbbd6c103d850c683c58bb099c1f18d592cbe8e1b65131d6bb21e37",
+      "zipBytes": 3253531,
       "extensionId": "ckbffcbmanboelbihfkhiahgafnimcho",
       "runtimeAuthorized": "signed-attestation-after-r31-activation",
-      "storeState": "internal-unpacked",
+      "storeState": "internal-unpacked-browser-test",
       "sourceRevision": null,
-      "createdAt": "2026-09-17T02:14:38.000Z",
-      "protectedFileCount": 264,
-      "zipEntryCount": 265,
+      "createdAt": "2026-09-18T14:28:57.292Z",
+      "protectedFileCount": 274,
+      "zipEntryCount": 275,
       "manifestName": "ZVM - Automações DEV",
-      "transformationPolicy": "none-readable-internal",
+      "transformationPolicy": "none-readable-internal-dev-profile",
       "transformedFileCount": 0,
       "releaseCandidate": false,
+      "googleDriveOAuthQualified": false,
+      "oauthState": "pending-real-client-id-omitted",
       "devAttestation": {
         "algorithm": "Ed25519",
         "keyId": "dev-2026-01",
-        "signedAt": "2026-09-17T02:14:38.000Z",
-        "expiresAt": "2026-09-24T02:14:38.000Z"
+        "signedAt": "2026-09-18T14:28:57.419Z",
+        "expiresAt": "2026-09-25T14:28:57.292Z"
       },
       "registryPreRegistrationRequired": false,
-      "authorization": "signed-attestation-after-r31-activation"
-    },
-    "beta": {
-      "version": "0.8.538",
-      "buildId": "zvm-beta-0.8.538-sfd6042e42478",
-      "channel": "beta",
-      "profile": "release",
-      "securityProtocol": 2,
-      "sourceTreeSha256": "fd6042e424789117685ecbb23ef11cb73cedea6a25ccf2fcc6c308ee80f694fe",
-      "buildFingerprint": "6c6effd303185ef456ffde231dcbf8dfc286122f82e51a49471972a02f026d50",
-      "zipFile": "ZVM_AUTOMACOES_V743_BETA_CWS.zip",
-      "zipSha256": "4c32affeefe406410e33a430f2d25015ef5723aabc4cdf41dae13a54dff7eb3b",
-      "zipBytes": 3016841,
-      "extensionId": "bdhnikgcdccjabkmbfcakgjkkgdlmgja",
-      "runtimeAuthorized": true,
-      "storeState": "update-candidate",
-      "sourceRevision": null,
-      "createdAt": "2026-09-17T13:44:00.000Z",
-      "protectedFileCount": 266,
-      "zipEntryCount": 267,
-      "manifestName": "ZVM - Automações BETA",
-      "dashboardListingTitle": "ZVM - Automações BETA",
-      "transformationPolicy": "cws-safe-cached-release-transforms-plus-readable-changed-files-store-metadata-v2-browser-icon-semantic-v1",
-      "transformedFileCount": 210,
-      "releaseCandidate": true,
-      "promotionTargetName": "ZVM - Automações",
+      "authorization": "signed-attestation-after-r31-activation",
       "runtimeSemanticIntegrityModes": {
         "browser-icon-v1": [
           "assets/icons/icon16.png",
@@ -84,10 +62,56 @@
           "assets/icons/icon128-action.png"
         ]
       }
+    },
+    "beta": {
+      "version": "0.8.541",
+      "buildId": "zvm-beta-0.8.541-s203ccc488981",
+      "channel": "beta",
+      "profile": "release",
+      "securityProtocol": 2,
+      "sourceTreeSha256": "203ccc4889818720c5da6fbedfe6acfc29afe33977e055f885efa52090de7145",
+      "buildFingerprint": "573f75cb7a704e99d2746fcb2ec4a0411f7a66b75446eb4653b28c8b8213e857",
+      "zipFile": "ZVM_AUTOMACOES_V746_BETA_BROWSER_TEST_OAUTH_PENDING.zip",
+      "zipSha256": "5c0f5326ddf348831ba790daeedcdaa06fc22ff41ed359138ca1f1f869be055a",
+      "zipBytes": 3078477,
+      "extensionId": "bdhnikgcdccjabkmbfcakgjkkgdlmgja",
+      "runtimeAuthorized": false,
+      "storeState": "oauth-pending-not-for-cws-promotion",
+      "sourceRevision": null,
+      "createdAt": "2026-09-18T15:03:40.678Z",
+      "protectedFileCount": 274,
+      "zipEntryCount": 275,
+      "manifestName": "ZVM - Automações BETA",
+      "dashboardListingTitle": "ZVM - Automações BETA",
+      "transformationPolicy": "release-minification-v1:197-qualified-cache+32-ast-trivia-minify-v1+4-vendor-byte-preserved",
+      "transformedFileCount": 229,
+      "releaseCandidate": false,
+      "promotionTargetName": "ZVM - Automações",
+      "googleDriveOAuthQualified": false,
+      "oauthState": "pending-real-client-id-omitted",
+      "registryPreRegistrationRequired": true,
+      "authorization": "pending-registry-v2-and-real-google-oauth",
+      "runtimeSemanticIntegrityModes": {
+        "browser-icon-v1": [
+          "assets/icons/icon16.png",
+          "assets/icons/icon32.png",
+          "assets/icons/icon48.png",
+          "assets/icons/icon64.png",
+          "assets/icons/icon128.png",
+          "assets/icons/icon128-action.png"
+        ]
+      },
+      "minification": {
+        "firstPartyJsTotal": 229,
+        "cachedQualifiedReleaseTransforms": 197,
+        "astTriviaMinified": 32,
+        "firstPartyReadableCopyThrough": 0,
+        "vendorJsBytePreserved": 4
+      }
     }
   },
   "compatibility": {
-    "policy": "two-profile-current-plus-known-good-rollback",
+    "policy": "server-r33-current-plus-v746-bundled-artifacts-and-known-good-beta-rollback",
     "v1Rollback": {
       "extensionVersion": "0.8.526",
       "buildFingerprint": "ed0459294aac386126a817aac3f3a845a4df2f4b66ace95a165a63306be31f62"
@@ -103,28 +127,49 @@
       "buildFingerprint": "b0879ed739522bc15ec02a9cba0d9139a68bf61e845d29cb74bd56cea785914c"
     },
     "v2BetaPrevious": {
-      "extensionVersion": "0.8.537",
-      "buildId": "zvm-beta-0.8.537-sec877bc9a6c0",
-      "buildFingerprint": "25109d437a7994831ba3c5e4752075a68291adba6a998ed062ccadfcb9a0b0af"
-    },
-    "v2BetaCurrent": {
       "extensionVersion": "0.8.538",
       "buildId": "zvm-beta-0.8.538-sfd6042e42478",
-      "buildFingerprint": "6c6effd303185ef456ffde231dcbf8dfc286122f82e51a49471972a02f026d50",
+      "buildFingerprint": "6c6effd303185ef456ffde231dcbf8dfc286122f82e51a49471972a02f026d50"
+    },
+    "v2BetaCurrentActive": {
+      "extensionVersion": "0.8.539",
+      "buildId": "zvm-beta-0.8.539-s5a6b9d982a41",
+      "buildFingerprint": "dd455c29552bcebec6a3296f12727c9dba0e4251582bdf1c6216ac4c1e44a3e9",
       "authorization": "registry-v2-exact"
     },
-    "v2DevCurrent": {
-      "extensionVersion": "0.8.535",
-      "buildId": "zvm-dev-0.8.535-sbde999c02196",
-      "buildFingerprint": "c32c96e4b226718dfe63ea4f8da673ab8e7e5a50a8ccd3ab6dc3cfe8faa1db25",
+    "v2DevBundledLatest": {
+      "extensionVersion": "0.8.541",
+      "buildId": "zvm-dev-0.8.541-s203ccc488981",
+      "buildFingerprint": "44420b8eae9f7de4341b41807d25bb82a247b6e8fed53ae647bc133166cc8ceb",
       "authorization": "signed-dev-attestation",
-      "registryPreRegistrationRequired": false
+      "registryPreRegistrationRequired": false,
+      "googleDriveOAuthQualified": false
+    },
+    "v2BetaBundledLatest": {
+      "extensionVersion": "0.8.541",
+      "buildId": "zvm-beta-0.8.541-s203ccc488981",
+      "buildFingerprint": "573f75cb7a704e99d2746fcb2ec4a0411f7a66b75446eb4653b28c8b8213e857",
+      "authorization": "pending-registry-v2-and-real-google-oauth",
+      "runtimeAuthorized": false,
+      "googleDriveOAuthQualified": false
     },
     "v2BetaRevoked": {
       "extensionVersion": "0.8.529",
       "buildId": "zvm-beta-0.8.529-s3b3cdbbe7fe4",
       "buildFingerprint": "eb950fe22062de65e2058e232b734c8241eebbdc0b66aecb2d4b947b6665d63e",
       "reason": "integrity-runtime-ordering-mismatch"
+    },
+    "legacyV3UnpackedBuild3": {
+      "extensionVersion": "0.2.7",
+      "artifactSha256": "0a5ee8280bbfa71396fdde22dcdff26b8c87b3f1ab9982648891f96a0284dc39",
+      "manifestKeyPresent": false,
+      "installationMode": "unpacked",
+      "corsPaths": [
+        "/extension/v3/key",
+        "/extension/v3/check-status"
+      ],
+      "originPolicy": "valid-chrome-extension-origin-on-exact-legacy-paths-only",
+      "noClientUpdateRequired": true
     }
   },
   "prelaunchGates": {
@@ -135,33 +180,27 @@
     "realChromeStoreInstallSmokePassed": false,
     "chromeWebStoreSubmissionAllowed": false,
     "chromeWebStoreExpectedBetaManifestName": "ZVM - Automações BETA",
-    "chromeWebStoreExpectedBetaVersion": "0.8.538",
+    "chromeWebStoreExpectedBetaVersion": "0.8.541",
     "node24LocalGatePassed": true,
-    "v738TwoProfilePolicyPassed": true,
-    "devReadableGatePassed": true,
-    "betaHardeningGatePassed": true,
-    "signedDevAuthorityLocalGatePassed": true,
-    "v739DevSignedGatePassed": true,
-    "v738BetaFrozen": true,
+    "serverR33Build3CompatLocalGatePassed": true,
     "adminDevAccessGatePassed": true,
-    "v740DevSignedGatePassed": true,
-    "v742StoreManifestIntegrityLocalGatePassed": true,
-    "v742DeterministicBuildGatePassed": true,
-    "v742ChromiumNativePackGatePassed": true,
-    "v742RegistryPrepared": true,
-    "v743BrowserIconSemanticIntegrityLocalGatePassed": true,
-    "v743RuntimeTransformedIconRegressionPassed": true,
-    "v743CriticalRawTamperRegressionPassed": true,
-    "v743DeterministicBuildGatePassed": true,
-    "v743ChromiumNativePackGatePassed": true,
-    "v743RegistryPrepared": true
+    "signedDevAuthorityLocalGatePassed": true,
+    "v746ShowcaseFlowGatePassed": true,
+    "v746DevSignedGatePassed": true,
+    "v746BetaArtifactGatePassed": true,
+    "v746BetaFirstPartyReadableCopyThroughZero": true,
+    "v746GoogleOAuthRealGatePassed": false,
+    "v746BetaRegistryPrepared": false,
+    "v746ChromeWebStorePromotionAllowed": false
   },
   "notes": [
-    "Release evidence is aligned to internal DEV V740 / 0.8.535 and BETA V743 / 0.8.538 while server runtime remains R32.",
-    "V743 fixes the live Store/Opera root cause observed on V742: exactly six browser-owned PNG icons were materialized with different byte sizes and SHA-256 while 259/265 other protected files remained byte-identical.",
-    "The six exact browser icon paths use browser-icon-v1 semantic runtime validation (PNG signature, expected dimensions, bounded size). Their frozen release bytes remain SHA-256/size protected in CI and release assets.",
-    "All non-browser-icon protected files remain exact byte/size/hash fail-closed at runtime. manifest.json remains manifest-json-v1 canonical with only trusted Store-managed key/update_url handling.",
-    "BETA 0.8.537 remains an active previous entry. V734 / 0.8.529 remains revoked. No broad extension-ID or build-authority bypass is introduced.",
-    "This package prepares GitHub/Render registry state only. No Render deployment is performed by artifact generation."
+    "Server runtime advanced to R34: the Build 3 compatibility hotfix now depends only on the existing ZVM_LEGACY_V3_ALLOW master switch, eliminating the second compatibility env as an accidental failure mode.",
+    "The production startup evidence already shows Legacy V3 active; therefore R34 requires no new compatibility environment variable to restore unpacked Build 3 CORS on its two exact endpoints.",
+    "The bundled V746 DEV artifact is institutionally signed and locally authorized through the signed-DEV lane, but Google Drive OAuth remains pending because the real DEV OAuth Client ID has not been supplied.",
+    "The bundled V746 BETA artifact is minified and integrity-qualified, but intentionally omits oauth2 until the real BETA Google OAuth Client ID is supplied. It is NOT marked runtime-authorized, registry-active, release-candidate, or CWS-promotion-ready.",
+    "The currently active Registry V2 BETA remains V744 / 0.8.539. This is intentional and avoids registering a BETA that is not Google Drive OAuth-qualified.",
+    "V744 DEV/BETA artifacts are preserved under release-assets/rollback-v744 for rollback/reference only; they are no longer the current root release-assets.",
+    "Build 3 / 0.2.7 remains an unpacked extension without manifest.key. R33 permits syntactically valid chrome-extension:// origins outside ZVM_EXTENSION_IDS only on /extension/v3/key and /extension/v3/check-status while legacy compatibility is enabled.",
+    "No Render deploy, GitHub push, Chrome Web Store publication, or customer extension update is performed by this package generation."
   ]
 }

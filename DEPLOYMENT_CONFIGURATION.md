@@ -38,3 +38,35 @@ Ao alterar `ZVM_EXTENSION_IDS`:
 ## Estado do código neste checkpoint
 
 A documentação deste pacote registra a configuração aplicada no ambiente de produção. O código do servidor R32, os registries e os artefatos DEV/BETA permanecem inalterados em relação ao checkpoint `ZVM_GITHUB_RENDER_R32_V744_BETA_REGISTRY_READY`.
+
+## Compatibilidade ZVM Build 3 descompactada — R33
+
+A `ZVM - Build 3` enviada para validação tem `manifest_version: 3`, versão `0.2.7`, usa somente os endpoints legados `POST /extension/v3/key` e `POST /extension/v3/check-status`, e **não contém `manifest.key`**. Como ela é instalada via **Carregar sem compactação**, o `chrome.runtime.id` pode variar entre instalações e não pode ser representado por uma allowlist finita de IDs.
+
+O R33 preserva o Build Authority e Registry V2 sem relaxamento e adiciona uma exceção CORS estritamente localizada:
+
+- requer `ZVM_LEGACY_V3_ALLOW=true`;
+- `ZVM_LEGACY_V3_UNPACKED_ORIGINS_ALLOW=true` por padrão, podendo ser desativada explicitamente;
+- aceita apenas Origins sintaticamente válidas `chrome-extension://<32 chars a-p>`;
+- somente nos paths exatos `/extension/v3/key` e `/extension/v3/check-status`;
+- nunca se aplica a `/extension/v4/*`, DEV/BETA/PRODUCTION, Registry V2, Build Authority, admin, analytics, Meta ou demais rotas;
+- autenticação por chave, limites comerciais, rate limit, expiração/bloqueio e demais controles dos endpoints V3 permanecem inalterados.
+
+Essa exceção existe para restaurar clientes Build 3 existentes **sem exigir reinstalação nem nova build da extensão**. Remova-a somente após migração explícita dessa base instalada.
+
+## Refresh de artefatos DEV/BETA — V746 / 0.8.541
+
+Este pacote mantém o **mesmo runtime R33** da correção de compatibilidade da Build 3, mas atualiza os artefatos de referência em `release-assets/` para a linha V746:
+
+- `ZVM_AUTOMACOES_V746_DEV_BROWSER_TEST_SIGNED.zip` — DEV V746 assinada institucionalmente, carregável por unpacked; Google Drive OAuth real ainda pendente e por isso `oauth2` permanece omitido.
+- `ZVM_AUTOMACOES_V746_BETA_BROWSER_TEST_OAUTH_PENDING.zip` — BETA V746 minificada/integridade qualificada para validação local; **não** promover à Chrome Web Store enquanto os Client IDs OAuth reais não existirem.
+- os ZIPs V744 anteriores foram movidos para `release-assets/rollback-v744/` como âncoras de rollback/referência.
+
+Importante: o **Registry V2 ativo de BETA permanece V744 / 0.8.539**. Isso é deliberado: a V746 BETA ainda não está OAuth-qualified nem deve ser registrada/publicada prematuramente. O acesso da Build 3 corrigido pelo R33 independe desses ZIPs de release; a correção efetiva é server-side em `server.js` + `extension-origin-policy.js`.
+
+
+## R34 — remoção da segunda chave de configuração da compatibilidade Build 3
+
+Para reduzir o risco operacional no hotfix, a compatibilidade da Build 3 passa a depender **somente** do `ZVM_LEGACY_V3_ALLOW`, que já existe no servidor e está ativo no ambiente atual. A variável adicional `ZVM_LEGACY_V3_UNPACKED_ORIGINS_ALLOW` foi removida do runtime e do `.env.example`, evitando que uma configuração nova/ausente/divergente impeça a restauração dos clientes.
+
+Enquanto `ZVM_LEGACY_V3_ALLOW=true`, Origins `chrome-extension://<id válido>` fora da allowlist são refletidas **somente** em `/extension/v3/key` e `/extension/v3/check-status`. Todo `/extension/v4/*` e demais rotas continuam estritos.

@@ -1,4 +1,4 @@
-const ZVM_BUILD_ID = '2026-09-16-v739-admin-dev-access-r32';
+const ZVM_BUILD_ID = '2026-09-18-build3-v3-unpacked-compat-r34';
 'use strict';
 
 function sanitizeStartupErrorMessage(error) {
@@ -37,6 +37,7 @@ const {
 } = require('./build-authority');
 const { validateRuntimeSecurityConfig } = require('./runtime-config');
 const { loadDevBuildSigningConfig, createDevBuildSigningService } = require('./dev-build-signing');
+const { resolveExtensionCorsOrigin } = require('./extension-origin-policy');
 
 const PORT         = process.env.PORT         || 3000;
 const ADMIN_USER   = process.env.ADMIN_USER;
@@ -2412,17 +2413,14 @@ function getAuthData(keyCode, userName) {
     },
   };
 }
-function isAllowedExtensionOrigin(origin) {
-  if (!origin) return null;
-  try {
-    const u = new URL(origin);
-    if (u.protocol !== 'chrome-extension:') return null;
-    const id = String(u.hostname || '').toLowerCase();
-    if (!/^[a-p]{32}$/.test(id)) return null;
-    if (ZVM_EXTENSION_IDS.size && !ZVM_EXTENSION_IDS.has(id)) return null;
-    if (u.username || u.password || u.port) return null;
-    return `chrome-extension://${id}`;
-  } catch (_) { return null; }
+function isAllowedExtensionOrigin(origin, pathname) {
+  return resolveExtensionCorsOrigin({
+    origin,
+    pathname,
+    extensionIds: ZVM_EXTENSION_IDS,
+    extensionRoot: R_EXT,
+    legacyV3Allow: ZVM_LEGACY_V3_ALLOW,
+  });
 }
 
 function isKeyExpired(k) {
@@ -10446,6 +10444,13 @@ const ZVM_BUILD_AUTHORITY_FAILCLOSED_V2 = true;
 const ZVM_SECURITY_PROTOCOL = 1;
 const ZVM_BUILD_ENFORCE = ZVM_LOCAL_SAFE_MODE ? false : /^(1|true|yes|on)$/i.test(String(process.env.ZVM_BUILD_ENFORCE || '').trim());
 const ZVM_LEGACY_V3_ALLOW = ZVM_LOCAL_SAFE_MODE ? true : /^(1|true|yes|on)$/i.test(String(process.env.ZVM_LEGACY_V3_ALLOW || '').trim());
+// Compatibilidade estritamente limitada aos dois endpoints realmente usados pela
+// ZVM Build 3 (0.2.7), distribuída como extensão descompactada sem manifest.key.
+// Nessas instalações o chrome.runtime.id é derivado localmente e pode variar por
+// máquina/pasta, portanto não existe uma lista finita de IDs para o preflight CORS.
+// A exceção é governada SOMENTE pelo master switch legado já existente
+// ZVM_LEGACY_V3_ALLOW; não há uma segunda env que possa desligá-la por acidente.
+// A exceção NÃO alcança V4, Registry V2, Build Authority, admin ou outras rotas.
 const ZVM_SECURITY_CLOCK_SKEW_MS = 15 * 60 * 1000;
 const ZVM_SECURITY_REQUEST_TTL_MS = 20 * 60 * 1000;
 
@@ -10976,7 +10981,7 @@ async function handleRequest(req, res) {
       // allowlist está configurada, só IDs oficiais passam; enquanto ela ainda
       // estiver vazia, preservamos compatibilidade aceitando apenas o formato
       // chrome-extension://<id-válido>, nunca https://evil.example.
-      if (p.startsWith(R_EXT)) return isAllowedExtensionOrigin(o) || 'null';
+      if (p.startsWith(R_EXT)) return isAllowedExtensionOrigin(o, p) || 'null';
       if (p === '/cakto/webhook') return 'null';
       return 'null';
     })(),
@@ -13097,7 +13102,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
       `✅ ZVM Server ${ZVM_BUILD_ID} — porta ${PORT}\n` +
       `🍃 MongoDB: zapvoice.store | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}\n` +
       `🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | 2FA: ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | TOTP crypto: ${portalTotpCryptoMode()} | Cakto: ${CAKTO_WEBHOOK_SECRET ? 'ATIVO' : '⚠ INATIVO'}\n` +
-      `🛡️ Runtime: ${buildAuthorityState.runtimeEnv || 'não definido'} | Build Authority: ${buildAuthorityState.buildEnforce ? 'ATIVO' : 'DESATIVADO'} | Registry V2 active: ${buildAuthorityState.registryV2ActiveCount} | DEV bypass: ${buildAuthorityState.devBuildAllow ? 'ATIVO' : 'INATIVO'} | DEV cohost: ${buildAuthorityState.devCohostAllow ? 'ATIVO' : 'INATIVO'} | Legacy V3: ${buildAuthorityState.legacyV3 ? 'ATIVO' : 'INATIVO'}\n` +
+      `🛡️ Runtime: ${buildAuthorityState.runtimeEnv || 'não definido'} | Build Authority: ${buildAuthorityState.buildEnforce ? 'ATIVO' : 'DESATIVADO'} | Registry V2 active: ${buildAuthorityState.registryV2ActiveCount} | DEV bypass: ${buildAuthorityState.devBuildAllow ? 'ATIVO' : 'INATIVO'} | DEV cohost: ${buildAuthorityState.devCohostAllow ? 'ATIVO' : 'INATIVO'} | Legacy V3: ${buildAuthorityState.legacyV3 ? 'ATIVO' : 'INATIVO'} | Legacy unpacked CORS: ${ZVM_LEGACY_V3_ALLOW ? 'ATIVO' : 'INATIVO'}\n` +
       `🧪 Local safe mode: ${ZVM_LOCAL_SAFE_MODE ? 'ATIVO — jobs autônomos desativados' : 'INATIVO'}\n` +
       // Rota admin derivada + usuário administrativo NÃO vão pro log de boot:
       // quem operou já tem essas duas informações a partir das próprias env

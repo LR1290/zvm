@@ -1,0 +1,72 @@
+ZVM SERVER R33 — BUILD 3 LEGACY V3 UNPACKED COMPATIBILITY HOTFIX
+================================================================
+Date: 2026-09-18
+Build ID: 2026-09-18-build3-v3-unpacked-compat-r33
+Baseline: R32 / V744 server package
+Client artifact inspected: ZVM - Build 3(2).zip
+Client version: 0.2.7
+Client artifact SHA-256: 0a5ee8280bbfa71396fdde22dcdff26b8c87b3f1ab9982648891f96a0284dc39
+
+ROOT CAUSE
+----------
+- Build 3 is Manifest V3 and is installed unpacked.
+- Its manifest.json has no top-level `key` / manifest.key identity pin.
+- It sends POST requests to exactly:
+  * /extension/v3/key
+  * /extension/v3/check-status
+- Both requests use application/json and therefore depend on browser CORS/preflight behavior.
+- R32's CORS policy accepts chrome-extension:// origins only when chrome.runtime.id
+  is present in the fixed ZVM_EXTENSION_IDS allowlist.
+- Unpacked Chrome extensions without manifest.key can have installation-specific IDs,
+  so a finite global list cannot represent every already-installed Build 3 copy.
+- Build Authority itself is not the direct V3 login blocker: production boot evidence
+  showed Build Authority active while Legacy V3 remained active. The incompatible layer
+  is the extension-origin allowlist applied before the V3 POST reaches its route logic.
+
+R33 FIX
+-------
+- Added extension-origin-policy.js as the single focused CORS origin policy helper.
+- Existing listed official IDs remain accepted exactly as before.
+- Unlisted chrome-extension:// IDs are accepted ONLY when all are true:
+  1) ZVM_LEGACY_V3_ALLOW=true;
+  2) ZVM_LEGACY_V3_UNPACKED_ORIGINS_ALLOW is not explicitly false;
+  3) Origin is exactly chrome-extension://<32 chars a-p> with no credentials/port;
+  4) path is exactly /extension/v3/key or /extension/v3/check-status.
+- /extension/v4/* remains strict.
+- Build Authority, Registry V2, signed DEV, BETA/production identities remain strict.
+- Admin, analytics, Meta and all other routes remain unchanged.
+- Key validation, phone limits, expiration/blocking, rate limits and all V3 commercial
+  controls remain unchanged.
+- No client/extension update is required.
+
+CONFIGURATION
+-------------
+ZVM_LEGACY_V3_ALLOW=true
+ZVM_LEGACY_V3_UNPACKED_ORIGINS_ALLOW=true
+
+The second flag defaults to enabled in R33 for continuity and can be disabled explicitly
+with false/0/off. The first flag remains the existing master switch for legacy V3.
+
+FRESH VALIDATION
+----------------
+- node --check server.js: PASS
+- node --check extension-origin-policy.js: PASS
+- npm run check: PASS
+- focused legacy compatibility tests: 6/6 PASS
+- release manifest verifier: PASS
+- release asset verifier: PASS
+- DEV V744 release asset unchanged/valid: PASS
+- BETA V744 release asset unchanged/valid: PASS
+- Registry V2 unchanged: PASS
+- secret/private-key scan: 0 findings
+- Build 3 input ZIP unchanged SHA-256: PASS
+- Local runtime used for these source checks: Node v22.16.0
+- Release manifest retains the previously qualified production runtime target Node 24.21.0.
+
+DEPLOYMENT IMPACT
+-----------------
+- Requires only a SERVER code deployment.
+- Does NOT require reinstalling or updating Build 3 on customer machines.
+- Does NOT require Chrome Web Store publication.
+- Does NOT require changing the V744 DEV/BETA Registry V2 identities.
+- No Render deployment was performed while generating this package.

@@ -1,0 +1,121 @@
+ZVM SERVER R34 + V746 ASSET REFRESH — BUILD 3 LEGACY COMPATIBILITY
+=================================================================
+Date: 2026-09-18
+Server Build ID: 2026-09-18-build3-v3-unpacked-compat-r34
+Baseline runtime: R33 Build 3 compatibility hotfix
+Bundled extensions: V746 / 0.8.541 DEV + BETA OAuth-pending validation artifact
+Client artifact inspected: ZVM - Build 3(2).zip
+Client version: 0.2.7
+Client artifact SHA-256: 0a5ee8280bbfa71396fdde22dcdff26b8c87b3f1ab9982648891f96a0284dc39
+
+PRODUCTION EVIDENCE BEFORE DEPLOY
+---------------------------------
+Connected Render production service startup evidence (2026-09-18T01:34:51Z):
+- Runtime: production
+- Build Authority: ACTIVE
+- Registry V2 active entries: 9
+- DEV bypass: INACTIVE
+- DEV cohost: ACTIVE
+- Legacy V3: ACTIVE
+
+This matters because R34 now depends only on the already-existing master switch
+ZVM_LEGACY_V3_ALLOW for the Build 3 unpacked compatibility lane. There is no new
+secondary compatibility environment variable that can accidentally remain disabled.
+
+ROOT CAUSE CONFIRMED
+--------------------
+- Build 3 is Manifest V3, version 0.2.7, installed unpacked.
+- Its manifest has no top-level manifest.key identity pin.
+- It uses the legacy endpoints /extension/v3/key and /extension/v3/check-status.
+- The check-status request is an application/json POST from the extension runtime.
+- R32/R33 pre-hotfix strict CORS accepted only fixed ZVM_EXTENSION_IDS.
+- Unpacked Chrome extension IDs without manifest.key may vary by installation,
+  making a finite global Extension ID allowlist insufficient for existing Build 3 copies.
+- The failure occurs at extension-origin/CORS policy before the legacy business logic,
+  while Build Authority remains a separate V4/Protocol V2 authority layer.
+
+R34 FIX
+-------
+- extension-origin-policy.js parses only syntactically valid chrome-extension:// IDs.
+- Official allowlisted IDs continue to work on all permitted extension routes.
+- An unlisted unpacked extension ID is reflected ONLY when:
+  * ZVM_LEGACY_V3_ALLOW=true; and
+  * path is exactly /extension/v3/key or /extension/v3/check-status.
+- There is NO second environment switch in R34.
+- /extension/v4/*, Build Authority, Registry V2, signed DEV, admin, analytics, Meta,
+  and all other V3 paths remain strict.
+- License/key validation, expiration, blocking, activation limits, phone rules and
+  rate limits are unchanged.
+- No Build 3 client update/reinstall is required.
+
+FRESH R34 VALIDATION
+--------------------
+- npm run check: PASS
+- JavaScript syntax checks in server check script: PASS
+- focused + wiring tests: 9/9 PASS
+  * official ID remains accepted on V4
+  * unknown unpacked ID accepted on exact V3 key/check-status only
+  * unknown unpacked ID rejected on V4 and other V3 routes
+  * Legacy V3 master switch off rejects fallback
+  * malformed/web origins rejected
+  * exact path matcher rejects trailing/near-match paths
+  * server.js CORS wiring uses pathname-aware policy
+  * R34 has no second compatibility env switch
+  * extension root remains /extension
+- release manifest verifier: PASS
+- release asset verifier: PASS for both bundled V746 artifacts
+- owner signing private key / Build Agent token exact leak scan: 0 findings
+- private-key PEM marker scan: 0 findings
+- Build 3 submitted ZIP SHA-256 unchanged: PASS
+- local runtime for these source/package checks: Node v22.16.0
+- production target retained from the qualified server line: Node 24.21.0
+
+V746 BUNDLED ARTIFACTS
+----------------------
+DEV:
+- Version: 0.8.541
+- Build ID: zvm-dev-0.8.541-s203ccc488981
+- Source tree SHA-256: 203ccc4889818720c5da6fbedfe6acfc29afe33977e055f885efa52090de7145
+- Build fingerprint: 44420b8eae9f7de4341b41807d25bb82a247b6e8fed53ae647bc133166cc8ceb
+- ZIP SHA-256: 314de75cbbbbd6c103d850c683c58bb099c1f18d592cbe8e1b65131d6bb21e37
+- Ed25519 institutional DEV attestation: PASS
+- Google Drive OAuth: PENDING; oauth2 intentionally omitted until real DEV Client ID exists.
+
+BETA bundled validation artifact:
+- Version: 0.8.541
+- Build ID: zvm-beta-0.8.541-s203ccc488981
+- Source tree SHA-256: 203ccc4889818720c5da6fbedfe6acfc29afe33977e055f885efa52090de7145
+- Build fingerprint: 573f75cb7a704e99d2746fcb2ec4a0411f7a66b75446eb4653b28c8b8213e857
+- ZIP SHA-256: 5c0f5326ddf348831ba790daeedcdaa06fc22ff41ed359138ca1f1f869be055a
+- First-party readable copy-through: 0
+- Google Drive OAuth: PENDING; oauth2 intentionally omitted until real BETA Client ID exists.
+- Runtime authorization / Registry V2 promotion: NOT performed.
+- Chrome Web Store promotion: NOT allowed from this artifact.
+
+REGISTRY / ROLLBACK
+-------------------
+- Active BETA in Registry V2 remains V744 / 0.8.539 intentionally.
+- V746 BETA is not registered prematurely while Google OAuth is pending.
+- V746 DEV uses signed-DEV authorization and does not require Registry pre-registration.
+- Previous V744 DEV/BETA ZIPs are preserved under release-assets/rollback-v744/.
+
+DEPLOYMENT CONFIDENCE
+---------------------
+No software deployment can be guaranteed at an absolute 100% before the exact production
+process completes and an actual client smoke test is observed. R34 removes the main
+configuration uncertainty present in R33 by relying only on the already-active Legacy V3
+master switch. The remaining deployment risks are operational/infrastructure risks such as
+an incorrect GitHub upload, a failed Render build, unrelated environment drift, database or
+network failure, or an unexpected production-only condition.
+
+Recommended post-deploy acceptance evidence:
+1) startup log reports Build Authority ACTIVE, Legacy V3 ACTIVE and Legacy unpacked CORS ACTIVE;
+2) /ready returns healthy;
+3) one existing Build 3 client with a previously failing unpacked ID logs in successfully;
+4) V746 DEV/BETA/V4 paths remain accepted/rejected according to their existing authorities.
+
+EXTERNAL ACTIONS
+----------------
+- Render production deployed by this package generation: NO
+- GitHub pushed by this package generation: NO
+- Chrome Web Store modified: NO
