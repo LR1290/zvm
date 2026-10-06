@@ -1,4 +1,4 @@
-const ZVM_BUILD_ID = '2026-10-06-build3-server-shield-r42';
+const ZVM_BUILD_ID = '2026-10-06-privacy-oauth-release-r43';
 const { resolveClientIp } = require('./client-ip-policy');
 'use strict';
 
