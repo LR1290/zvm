@@ -50,3 +50,18 @@ test('R41 contract: FREE/Basic remains an explicit branch rather than inferred f
   assert.match(normalize, /const isBasic = !!k\?\.isBasicPlan;/);
   assert.doesNotMatch(normalize, /planName|plan_id|planId/);
 });
+
+
+test('R41 contract: check-status reconciles entitlement without adding a new polling endpoint', () => {
+  const statusRoute = section("if (p === R_EXT+'/v3/check-status' && req.method === 'POST')", "if (p === R_EXT+'/v3/usage' && req.method === 'POST')");
+  assert.match(statusRoute, /isPremium:\s*!_k\.isBasicPlan/);
+  assert.match(statusRoute, /isFreePlan:\s*false/);
+  assert.match(statusRoute, /isBasicPlan:\s*!!_k\.isBasicPlan/);
+  assert.match(statusRoute, /planId:\s*_k\.plan_id \|\| _k\.planId \|\| 'ZV_PRO'/);
+  assert.match(statusRoute, /usageAuthority:\s*'server'/);
+  assert.match(statusRoute, /isFreeAuthKey\(keyCode\)[\s\S]*?isPremium:\s*false[\s\S]*?isFreePlan:\s*true/);
+});
+
+test('R41 contract: server runtime identity advances from R40 to R41', () => {
+  assert.match(source, /const ZVM_BUILD_ID = '2026-10-06-build3-entitlement-reconcile-r41';/);
+});
