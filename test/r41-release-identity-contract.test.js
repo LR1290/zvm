@@ -44,12 +44,12 @@ test('R41 identity contract: Protocol V2 still requires both global and per-buil
 
 test('R41 release contract: production 0.8.748 exact identity is Registry V2 active', () => {
   const expected = {
-    buildId: 'zvm-production-0.8.748-s19ed39fbb148',
+    buildId: 'zvm-production-0.8.748-s3d9be10c5719',
     channel: 'production',
     profile: 'release',
     extensionVersion: '0.8.748',
-    sourceTreeSha256: '19ed39fbb148cf134c706a499c89d8429b53ce8faf42cc7212ee71c97d09346c',
-    buildFingerprint: '3e01bbedce52b323bffb0f08b3385371a899285b8576427c322a64bfc96ef72b',
+    sourceTreeSha256: '3d9be10c57196d0a47cea97f806ed545511eb986b61e717f7b95dc15369cbc2a',
+    buildFingerprint: 'bf889fe0fb00f761d68ca4422f638e06938ddd3de305434742fc793a5ffb9237',
     extensionIds: [CWS_BETA_ID],
     securityProtocol: 2,
     status: 'active',
@@ -62,7 +62,7 @@ test('R41 release contract: production 0.8.748 exact identity is Registry V2 act
 });
 
 test('R41 release contract: DEV and production identities stay separated', () => {
-  const prod = registry.builds.find(b => b.buildId === 'zvm-production-0.8.748-s19ed39fbb148');
+  const prod = registry.builds.find(b => b.buildId === 'zvm-production-0.8.748-s3d9be10c5719');
   assert.equal(prod.channel, 'production');
   assert.equal(prod.profile, 'release');
   assert.deepEqual(prod.extensionIds, [CWS_BETA_ID]);
