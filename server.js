@@ -1,4 +1,4 @@
-const ZVM_BUILD_ID = '2026-10-06-license-data-build3-usage-compat-r40';
+const ZVM_BUILD_ID = '2026-10-06-build3-entitlement-reconcile-r41';
 const { resolveClientIp } = require('./client-ip-policy');
 'use strict';
 
@@ -11572,7 +11572,22 @@ async function handleRequest(req, res) {
     if (!serverReady) { sendJson(res, { error: 'temporarily_unavailable', retryable: true }, 503); return; }
     if (!keyCode)     { sendJson(res, { error: 'invalid_request' }, 400); return; }
     if (isFreeAuthKey(keyCode)) {
-      sendJson(res, { active: true, expiringSoon: false, hoursLeft: null, modules: { ...DEFAULT_MODULES }, ts: Date.now() });
+      sendJson(res, {
+        active: true,
+        expiringSoon: false,
+        hoursLeft: null,
+        daysLeft: null,
+        expiresAt: null,
+        deferred: false,
+        isPremium: false,
+        isFreePlan: true,
+        isBasicPlan: false,
+        planId: FREE_PLAN_ID,
+        planName: 'Gratuito',
+        usageAuthority: 'server',
+        modules: { ...DEFAULT_MODULES },
+        ts: Date.now()
+      });
       return;
     }
     const _cs = await ensureKeyLoadedEx(keyCode);
@@ -11610,16 +11625,22 @@ async function handleRequest(req, res) {
     }
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    const _k = keys[keyCode];
+    const _k = sanitizeKeyRecord(keys[keyCode]);
     sendJson(res, {
-      active:       true,
-      expiringSoon: isKeyExpiringSoon(_k),
-      hoursLeft:    hoursUntilExpiry(_k),
-      daysLeft:     daysUntilExpiry(_k),
-      expiresAt:    _k.expiresAt || null,
-      deferred:     !!(_k.expireDuration && !_k.expiresAt),
-      modules:      { ...DEFAULT_MODULES, ...(_k.modules || {}) },
-      ts:           Date.now()
+      active:         true,
+      expiringSoon:   isKeyExpiringSoon(_k),
+      hoursLeft:      hoursUntilExpiry(_k),
+      daysLeft:       daysUntilExpiry(_k),
+      expiresAt:      _k.expiresAt || null,
+      deferred:       !!(_k.expireDuration && !_k.expiresAt),
+      isPremium:      !_k.isBasicPlan,
+      isFreePlan:     false,
+      isBasicPlan:    !!_k.isBasicPlan,
+      planId:         _k.plan_id || _k.planId || 'ZV_PRO',
+      planName:       _k.planName || (_k.isBasicPlan ? 'Basic' : 'Pro'),
+      usageAuthority: 'server',
+      modules:        { ...DEFAULT_MODULES, ...(_k.modules || {}) },
+      ts:             Date.now()
     });
     return;
   }
