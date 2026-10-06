@@ -6,7 +6,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check mailer.js && node --check build-authority.js && node --check runtime-config.js && node --check security/build-authority.js && node --check security/runtime-config.js && node --check dev-build-signing.js && node --check security/dev-build-signing.js && node --check extension-origin-policy.js",
+    "check": "node --check server.js && node --check mailer.js && node --check build-authority.js && node --check runtime-config.js && node --check security/build-authority.js && node --check security/runtime-config.js && node --check dev-build-signing.js && node --check security/dev-build-signing.js && node --check extension-origin-policy.js && node --check client-ip-policy.js",
     "audit:prod": "npm audit --omit=dev",
     "test": "node --test test/*.test.js",
     "test:local": "node --require ./test/fixtures/runtime-preload.js --test test/*.test.js"

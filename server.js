@@ -1,4 +1,5 @@
-const ZVM_BUILD_ID = '2026-09-18-build3-v3-unpacked-compat-r34';
+const ZVM_BUILD_ID = '2026-10-06-extension-0.8.745-build3-compat-r39';
+const { resolveClientIp } = require('./client-ip-policy');
 'use strict';
 
 function sanitizeStartupErrorMessage(error) {
@@ -1754,6 +1755,7 @@ function extensionSessionSuccess(rawToken, sessionDoc, entitlement) {
       entitlementRevision: entitlement.entitlementRevision,
       capabilities: [...entitlement.capabilities],
       expiresAt: entitlement.expiresAt,
+      licenseExpiresAt: entitlement.licenseExpiresAt || null,
       planId: entitlement.planId,
       planName: entitlement.planName,
       backupOwnerHash: entitlement.backupOwnerHash || null,
@@ -2697,12 +2699,13 @@ function isIpBlacklisted(value) {
   return !!ip && ipBlacklist.has(ip);
 }
 function getIp(req) {
-  const socketIp = normalizeClientIp(req.socket?.remoteAddress) || 'N/A';
-  if (!TRUST_PROXY_HEADERS) return socketIp;
-  const direct = normalizeClientIp(req.headers['cf-connecting-ip']) || normalizeClientIp(req.headers['x-real-ip']);
-  if (direct) return direct;
-  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',').map(v => normalizeClientIp(v)).filter(Boolean);
-  return forwarded[0] || socketIp;
+  return resolveClientIp({
+    headers: req.headers || {},
+    remoteAddress: req.socket?.remoteAddress || '',
+    trustProxyHeaders: TRUST_PROXY_HEADERS,
+    isRender: String(process.env.RENDER || '').toLowerCase() === 'true',
+    normalize: normalizeClientIp,
+  });
 }
 
 // Limite absoluto pra sessões privilegiadas (admin/analytics — NÃO o
@@ -10599,11 +10602,14 @@ function metaEncryptionKey() {
   }
   return key && key.length === 32 ? key : null;
 }
+function metaSecretStorageConfigured() {
+  return !!metaEncryptionKey();
+}
 function metaConfigured() {
-  return !!(META_APP_ID && META_APP_SECRET && META_CONFIG_ID && metaEncryptionKey());
+  return !!(META_APP_ID && META_APP_SECRET && META_CONFIG_ID && metaSecretStorageConfigured());
 }
 function metaPublicConfig() {
-  return { configured: metaConfigured(), graphVersion: META_GRAPH_VERSION, webhookConfigured: !!META_WEBHOOK_VERIFY_TOKEN };
+  return { configured: metaConfigured(), manualConfigured: metaSecretStorageConfigured(), graphVersion: META_GRAPH_VERSION, webhookConfigured: !!META_WEBHOOK_VERIFY_TOKEN };
 }
 function metaEncrypt(value, aad) {
   const key = metaEncryptionKey();
@@ -10724,7 +10730,7 @@ async function metaResolveOwner(req, body = {}) {
 function metaPublicConnection(rec) {
   if (!rec) return null;
   return {
-    connectionMode: 'embedded', wabaId: String(rec.wabaId || ''), phoneNumberId: String(rec.phoneNumberId || ''),
+    connectionMode: String(rec.connectionMode || 'embedded') === 'manual' ? 'manual' : 'embedded', wabaId: String(rec.wabaId || ''), phoneNumberId: String(rec.phoneNumberId || ''),
     verifiedName: String(rec.verifiedName || ''), displayPhoneNumber: String(rec.displayPhoneNumber || ''), qualityRating: String(rec.qualityRating || ''),
     graphVersion: META_GRAPH_VERSION, status: String(rec.status || 'connected'), registrationStatus: String(rec.registrationStatus || 'unknown'),
     webhookStatus: String(rec.webhookStatus || 'unknown'), connectedAt: rec.connectedAt || null, lastValidatedAt: rec.lastValidatedAt || null,
@@ -10737,7 +10743,7 @@ async function metaGetConnection(ownerId) {
 function metaSignupHtml(flowId) {
   const nonce = crypto.randomBytes(18).toString('base64');
   const flow = JSON.stringify(flowId), appId = JSON.stringify(META_APP_ID), configId = JSON.stringify(META_CONFIG_ID), version = JSON.stringify(META_GRAPH_VERSION);
-  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ZVM · Conectar com a Meta</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b141a;color:#e9edef;font-family:system-ui,-apple-system,Segoe UI,sans-serif}.c{width:min(520px,calc(100% - 32px));padding:34px;border:1px solid #26323a;border-radius:22px;background:#111b21;box-shadow:0 28px 70px #0008}.m{width:52px;height:52px;border-radius:16px;display:grid;place-items:center;background:#1877f2;color:white;font-size:28px;font-weight:800}.k{margin-top:18px;color:#8696a0;font-size:11px;font-weight:800;letter-spacing:.12em}h1{font-size:28px;margin:8px 0}p{color:#aebac1;line-height:1.55}button{width:100%;margin-top:18px;border:0;border-radius:12px;padding:13px 16px;background:#1877f2;color:#fff;font-weight:800;cursor:pointer}.s{margin-top:16px;padding:12px;border:1px solid #25313a;border-radius:12px;color:#8696a0;font-size:12px}.ok{color:#21c063}.err{color:#ff6b72}</style></head><body><main class="c"><div class="m">M</div><div class="k">WHATSAPP BUSINESS PLATFORM</div><h1>Conectar com a Meta</h1><p>Entre na sua conta Meta, escolha a empresa e o número do WhatsApp Business e autorize a ZVM.</p><button id="connect">Continuar com a Meta</button><div id="status" class="s">Aguardando início da conexão.</div></main><script nonce="${nonce}">window.fbAsyncInit=function(){FB.init({appId:${appId},autoLogAppEvents:false,xfbml:false,version:${version}})};(function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0];if(d.getElementById(id))return;js=d.createElement(s);js.id=id;js.src='https://connect.facebook.net/pt_BR/sdk.js';js.crossOrigin='anonymous';fjs.parentNode.insertBefore(js,fjs)}(document,'script','facebook-jssdk'));var code='',session={};function st(t,c){var e=document.getElementById('status');e.textContent=t;e.className='s '+(c||'')}function finish(){if(!code||!session.waba_id||!session.phone_number_id)return;st('Concluindo conexão…');fetch('/extension/v3/meta/embedded-signup/complete',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({flowId:${flow},code:code,wabaId:String(session.waba_id),phoneNumberId:String(session.phone_number_id)})}).then(function(r){return r.json().then(function(j){return{r:r,j:j}})}).then(function(x){if(!x.r.ok)throw new Error(x.j.message||x.j.error||'Falha ao concluir');st('Conta conectada. Você pode fechar esta janela.','ok');setTimeout(function(){window.close()},1300)}).catch(function(e){st(e.message,'err')})}window.addEventListener('message',function(event){if(event.origin!=='https://www.facebook.com'&&event.origin!=='https://web.facebook.com')return;try{var d=typeof event.data==='string'?JSON.parse(event.data):event.data;if(d&&d.type==='WA_EMBEDDED_SIGNUP'&&d.event==='FINISH'){session=d.data||{};finish()}}catch(_){}});document.getElementById('connect').onclick=function(){if(!window.FB){st('Carregando a Meta…');return}st('Abra a janela da Meta e conclua as etapas.');FB.login(function(response){if(response&&response.authResponse&&response.authResponse.code){code=response.authResponse.code;finish()}else st('A autorização não foi concluída.','err')},{config_id:${configId},response_type:'code',override_default_response_type:true,extras:{setup:{},featureType:'whatsapp_business_app_onboarding',sessionInfoVersion:'3'}})};</script></body></html>`;
+  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ZVM · Conectar com a Meta</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b141a;color:#e9edef;font-family:system-ui,-apple-system,Segoe UI,sans-serif}.c{width:min(520px,calc(100% - 32px));padding:34px;border:1px solid #26323a;border-radius:22px;background:#111b21;box-shadow:0 28px 70px #0008}.m{width:52px;height:52px;border-radius:16px;display:grid;place-items:center;background:#1877f2;color:white;font-size:28px;font-weight:800}.k{margin-top:18px;color:#8696a0;font-size:11px;font-weight:800;letter-spacing:.12em}h1{font-size:28px;margin:8px 0}p{color:#aebac1;line-height:1.55}button{width:100%;margin-top:18px;border:0;border-radius:12px;padding:13px 16px;background:#1877f2;color:#fff;font-weight:800;cursor:pointer}.s{margin-top:16px;padding:12px;border:1px solid #25313a;border-radius:12px;color:#8696a0;font-size:12px}.ok{color:#21c063}.err{color:#ff6b72}</style></head><body><main class="c"><div class="m">M</div><div class="k">WHATSAPP BUSINESS PLATFORM</div><h1>Conectar com a Meta</h1><p>Entre na sua conta Meta, escolha a empresa e o número do WhatsApp Business e autorize a ZVM.</p><button id="connect">Continuar com a Meta</button><div id="status" class="s">Aguardando início da conexão.</div></main><script nonce="${nonce}">window.fbAsyncInit=function(){FB.init({appId:${appId},autoLogAppEvents:false,xfbml:false,version:${version}})};(function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0];if(d.getElementById(id))return;js=d.createElement(s);js.id=id;js.src='https://connect.facebook.net/pt_BR/sdk.js';js.crossOrigin='anonymous';fjs.parentNode.insertBefore(js,fjs)}(document,'script','facebook-jssdk'));var code='',session={};function st(t,c){var e=document.getElementById('status');e.textContent=t;e.className='s '+(c||'')}function finish(){if(!code||!session.waba_id||!session.phone_number_id)return;st('Concluindo conexão…');fetch('/extension/v3/meta/embedded-signup/complete',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({flowId:${flow},code:code,wabaId:String(session.waba_id),phoneNumberId:String(session.phone_number_id)})}).then(function(r){return r.json().then(function(j){return{r:r,j:j}})}).then(function(x){if(!x.r.ok)throw new Error(x.j.message||x.j.error||'Falha ao concluir');st('Conta conectada. Você pode fechar esta janela.','ok');setTimeout(function(){window.close()},1300)}).catch(function(e){st(e.message,'err')})}function trustedMetaOrigin(origin){try{var u=new URL(String(origin||''));return u.protocol==='https:'&&(u.hostname==='facebook.com'||u.hostname.endsWith('.facebook.com'))}catch(_){return false}}window.addEventListener('message',function(event){if(!trustedMetaOrigin(event.origin))return;try{var d=typeof event.data==='string'?JSON.parse(event.data):event.data;if(!d||d.type!=='WA_EMBEDDED_SIGNUP')return;if(d.event==='FINISH'){session=d.data||{};finish();return}if(d.event==='CANCEL'){st('A conexão foi cancelada antes da conclusão.','err');return}if(d.event==='ERROR'){st(String(d.data&&d.data.error_message||'A Meta não concluiu a conexão.'),'err')}}catch(_){}});document.getElementById('connect').onclick=function(){if(!window.FB){st('Carregando a Meta…');return}st('Abra a janela da Meta e conclua as etapas.');FB.login(function(response){if(response&&response.authResponse&&response.authResponse.code){code=response.authResponse.code;finish()}else st('A autorização não foi concluída.','err')},{config_id:${configId},response_type:'code',override_default_response_type:true,extras:{setup:{},sessionInfoVersion:'3'}})};</script></body></html>`;
   return { html, nonce };
 }
 function sendMetaSignupHtml(res, payload, status = 200) {
@@ -10793,7 +10799,7 @@ const HTTP_TRAFFIC_EXTENSION_PATHS = new Set([
   '/v3/key', '/v3/check-status', '/v3/usage', '/v3/get-usage', '/v3/sync-usage',
   '/v4/session/key', '/v4/session/login', '/v4/session/refresh', '/v4/session/logout',
   '/v4/backup/decoder-material', '/v3/meta/embedded-signup/start',
-  '/v3/meta/embedded-signup/complete', '/v3/meta/embedded-signup/status',
+  '/v3/meta/embedded-signup/complete', '/v3/meta/embedded-signup/status', '/v3/meta/manual/connect',
   '/v3/meta/connection/validate', '/v3/meta/messages/test', '/v3/meta/connection/disconnect',
 ]);
 const HTTP_TRAFFIC_ADMIN_PATHS = new Set([
@@ -11067,6 +11073,27 @@ async function handleRequest(req, res) {
     sendJson(res, { feature, url:tutorialUrl }); return;
   }
   if (p === R_EXT+'/v3/meta/config' && req.method === 'GET') { sendJson(res, metaPublicConfig()); return; }
+  if (p === R_EXT+'/v3/meta/manual/connect' && req.method === 'POST') {
+    if (!metaSecretStorageConfigured()) { sendJson(res, { code:'META_CRYPTO_UNAVAILABLE', message:'O cofre seguro da Meta ainda não foi configurado no servidor.' }, 503); return; }
+    if (!checkRateLimit(ip,'meta_manual_connect',6,60000)) { sendJson(res,{code:'RATE_LIMITED',message:'Aguarde antes de tentar conectar novamente.'},429);return; }
+    const body=await parseBody(req),owner=await metaResolveOwner(req,body);
+    if(!owner){sendJson(res,{code:'META_UNAUTHORIZED',message:'Sessão ZVM inválida para conectar a Meta.'},403);return;}
+    const accessToken=safeScalar(body.accessToken,8192),wabaId=String(body.wabaId||'').trim(),phoneNumberId=String(body.phoneNumberId||'').trim();
+    if(accessToken.length<20||/[\s\x00-\x1f\x7f]/.test(accessToken)){sendJson(res,{code:'META_TOKEN_INVALID',message:'Token de acesso da Meta inválido.'},400);return;}
+    if(!/^\d{5,40}$/.test(wabaId)||!/^\d{5,40}$/.test(phoneNumberId)){sendJson(res,{code:'META_ASSET_INVALID',message:'WABA ID ou Phone Number ID inválido.'},400);return;}
+    try{
+      const phone=await metaValidateAssets(accessToken,wabaId,phoneNumberId),now=new Date(),tokenBox=metaEncrypt(accessToken,owner.ownerId+':token'),db=await getMongoDb();
+      await ensureMetaIndexes(db);
+      const previous=await db.collection(META_COLLECTION).findOne({_id:owner.ownerId},{projection:{connectedAt:1}}).catch(()=>null);
+      const next={connectionMode:'manual',token:tokenBox,wabaId,phoneNumberId,verifiedName:safeScalar(phone.verified_name,160),displayPhoneNumber:safeScalar(phone.display_phone_number,60),qualityRating:safeScalar(phone.quality_rating,40),status:'connected',registrationStatus:'manual',webhookStatus:'manual_setup',connectedAt:previous&&previous.connectedAt||now,lastValidatedAt:now,updatedAt:now};
+      await db.collection(META_COLLECTION).updateOne({_id:owner.ownerId},{$set:next,$unset:{registrationPin:''}},{upsert:true});
+      sendJson(res,{ok:true,connection:metaPublicConnection(next)});return;
+    }catch(error){
+      if(error&&error.code===11000){sendJson(res,{code:'META_PHONE_ALREADY_CONNECTED',message:'Este Phone Number ID já está conectado a outra conta ZVM.'},409);return;}
+      addSecurityAlert('META_MANUAL_CONNECT_FAILED',safeScalar(error&&error.code||error&&error.message,120,'Falha Meta'),ip);
+      sendJson(res,{code:error&&error.code||'META_MANUAL_CONNECT_FAILED',message:error&&error.message||'Não foi possível validar a conexão manual.'},error&&error.status||502);return;
+    }
+  }
   if (p === R_EXT+'/v3/meta/embedded-signup/start' && req.method === 'POST') {
     if (!metaConfigured()) { sendJson(res, { code:'META_NOT_CONFIGURED', message:'A conexão automática com a Meta ainda não foi configurada no servidor.' }, 503); return; }
     if (!checkRateLimit(ip, 'meta_signup_start', 8, 60000)) { sendJson(res, { code:'RATE_LIMITED', message:'Aguarde antes de iniciar outra conexão.' }, 429); return; }
@@ -11103,7 +11130,7 @@ async function handleRequest(req, res) {
       let registrationStatus='not_attempted', pinBox=null;
       if(META_AUTO_REGISTER_PHONE){const pin=metaRegistrationPin();pinBox=metaEncrypt(pin,flow.ownerId+':pin');try{registrationStatus=await metaRegisterPhone(token,phoneNumberId,pin)?'registered':'needs_attention';}catch(regErr){registrationStatus='needs_attention';console.warn('[META] registro do número requer atenção:',safeScalar(regErr.message,120));}}
       const now=new Date(); const tokenBox=metaEncrypt(token,flow.ownerId+':token');
-      await db.collection(META_COLLECTION).updateOne({_id:flow.ownerId},{$set:{token:tokenBox,registrationPin:pinBox,wabaId,phoneNumberId,verifiedName:safeScalar(phone.verified_name,160),displayPhoneNumber:safeScalar(phone.display_phone_number,60),qualityRating:safeScalar(phone.quality_rating,40),status:'connected',registrationStatus,webhookStatus:'subscribed',connectedAt:now,lastValidatedAt:now,updatedAt:now}},{upsert:true});
+      await db.collection(META_COLLECTION).updateOne({_id:flow.ownerId},{$set:{connectionMode:'embedded',token:tokenBox,registrationPin:pinBox,wabaId,phoneNumberId,verifiedName:safeScalar(phone.verified_name,160),displayPhoneNumber:safeScalar(phone.display_phone_number,60),qualityRating:safeScalar(phone.quality_rating,40),status:'connected',registrationStatus,webhookStatus:'subscribed',connectedAt:now,lastValidatedAt:now,updatedAt:now}},{upsert:true});
       await db.collection(META_FLOW_COLLECTION).updateOne({_id:flowId,status:'processing'},{$set:{status:'connected',connectedAt:now},$unset:{processingAt:''}});
       sendJson(res,{ok:true,status:'connected',registrationStatus});return;
     } catch(error) {
@@ -11213,8 +11240,10 @@ async function handleRequest(req, res) {
       let buildClient = await zvmSecurityCheckClientShared(body.clientSecurity, {});
       const deferredDevV2 = !buildClient.ok && buildClient.code === 'DEV_BUILD_NOT_AUTHORIZED' &&
         Number(body.clientSecurity?.protocol) === 2 && String(body.clientSecurity?.channel || '').toLowerCase() === 'dev';
+      const deferredSignedDevV2 = buildClient.ok === true && buildClient.signedDev === true && buildClient.recognized !== true &&
+        Number(body.clientSecurity?.protocol) === 2 && String(body.clientSecurity?.channel || '').toLowerCase() === 'dev';
       if (!buildClient.ok && !deferredDevV2) { if (body && typeof body === 'object') delete body.password; sendJson(res, { ok:false, errorCode:buildClient.code }, zvmSecurityClientErrorStatus(buildClient.code)); return; }
-      if (!deferredDevV2 && ZVM_BUILD_ENFORCE && buildClient.recognized!==true && !ZVM_DEV_BUILD_ALLOW) { if (body && typeof body === 'object') delete body.password; sendJson(res, { ok:false, errorCode:'BUILD_NOT_ALLOWED' }, 403); return; }
+      if (!deferredDevV2 && !deferredSignedDevV2 && ZVM_BUILD_ENFORCE && buildClient.recognized!==true && !ZVM_DEV_BUILD_ALLOW) { if (body && typeof body === 'object') delete body.password; sendJson(res, { ok:false, errorCode:'BUILD_NOT_ALLOWED' }, 403); return; }
       const db = await getMongoDb();
       const authenticated = await authenticateExtensionAccount(body, { db });
       // Reduz a vida da senha em memória após a verificação. Ela nunca é
@@ -11225,7 +11254,7 @@ async function handleRequest(req, res) {
         sendJson(res, errorBody, status);
         return;
       }
-      if (deferredDevV2) {
+      if (deferredDevV2 || deferredSignedDevV2) {
         buildClient = await zvmSecurityCheckClientShared(body.clientSecurity, { licenseKey:authenticated.licenseKeyCode || '' });
         if (!buildClient.ok) { sendJson(res, { ok:false, errorCode:buildClient.code }, zvmSecurityClientErrorStatus(buildClient.code)); return; }
       } else if (Number(buildClient.securityProtocol || 1) === 1) {
@@ -13102,7 +13131,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
       `✅ ZVM Server ${ZVM_BUILD_ID} — porta ${PORT}\n` +
       `🍃 MongoDB: zapvoice.store | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}\n` +
       `🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | 2FA: ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | TOTP crypto: ${portalTotpCryptoMode()} | Cakto: ${CAKTO_WEBHOOK_SECRET ? 'ATIVO' : '⚠ INATIVO'}\n` +
-      `🛡️ Runtime: ${buildAuthorityState.runtimeEnv || 'não definido'} | Build Authority: ${buildAuthorityState.buildEnforce ? 'ATIVO' : 'DESATIVADO'} | Registry V2 active: ${buildAuthorityState.registryV2ActiveCount} | DEV bypass: ${buildAuthorityState.devBuildAllow ? 'ATIVO' : 'INATIVO'} | DEV cohost: ${buildAuthorityState.devCohostAllow ? 'ATIVO' : 'INATIVO'} | Legacy V3: ${buildAuthorityState.legacyV3 ? 'ATIVO' : 'INATIVO'} | Legacy unpacked CORS: ${ZVM_LEGACY_V3_ALLOW ? 'ATIVO' : 'INATIVO'}\n` +
+      `🛡️ Runtime: ${buildAuthorityState.runtimeEnv || 'não definido'} | Build Authority: ${buildAuthorityState.buildEnforce ? 'ATIVO' : 'DESATIVADO'} | Registry V2 active: ${buildAuthorityState.registryV2ActiveCount} | DEV bypass: ${buildAuthorityState.devBuildAllow ? 'ATIVO' : 'INATIVO'} | DEV cohost: ${buildAuthorityState.devCohostAllow ? 'ATIVO' : 'INATIVO'} | Legacy V3: ${buildAuthorityState.legacyV3 ? 'ATIVO' : 'INATIVO'} | Legacy V3 endpoints: ${ZVM_LEGACY_V3_ALLOW ? 'ATIVOS (Build 3 unpacked compat: key/check-status only)' : 'INATIVOS'}\n` +
       `🧪 Local safe mode: ${ZVM_LOCAL_SAFE_MODE ? 'ATIVO — jobs autônomos desativados' : 'INATIVO'}\n` +
       // Rota admin derivada + usuário administrativo NÃO vão pro log de boot:
       // quem operou já tem essas duas informações a partir das próprias env
