@@ -1,6 +1,13 @@
 'use strict';
 
 const EXTENSION_ID_RE = /^[a-p]{32}$/;
+const LEGACY_V3_UNPACKED_COMPAT_SUFFIXES = Object.freeze([
+  '/v3/key',
+  '/v3/check-status',
+  '/v3/usage',
+  '/v3/get-usage',
+  '/v3/sync-usage',
+]);
 
 function parseChromeExtensionOrigin(origin) {
   if (!origin) return null;
@@ -18,7 +25,7 @@ function parseChromeExtensionOrigin(origin) {
 
 function isLegacyV3UnpackedCompatPath(pathname, extensionRoot = '/extension') {
   const root = String(extensionRoot || '/extension').replace(/\/$/, '');
-  return pathname === `${root}/v3/key` || pathname === `${root}/v3/check-status`;
+  return LEGACY_V3_UNPACKED_COMPAT_SUFFIXES.some(suffix => pathname === `${root}${suffix}`);
 }
 
 function resolveExtensionCorsOrigin({
@@ -32,22 +39,19 @@ function resolveExtensionCorsOrigin({
   if (!parsed) return null;
 
   const ids = extensionIds instanceof Set ? extensionIds : new Set(extensionIds || []);
-  const listed = ids.has(parsed.id);
-  if (listed) return parsed.origin;
+  if (ids.has(parsed.id)) return parsed.origin;
 
-  // R39: preserve the narrow Build 3 compatibility lane from production R34.
-  // Only syntactically valid chrome-extension origins may bypass the fixed ID
-  // allowlist, only when the existing legacy master switch is enabled, and
-  // only for the two exact legacy endpoints used by Build 3 (0.2.7).
-  // V4, Meta, admin and every other V3 path remain strict.
+  // R40: Build 3 (0.2.7) is unpacked and therefore has a variable extension
+  // ID. Preserve only the five V3 endpoints its historical contract actually
+  // uses. V4, Meta, admin and every other path remain strict.
   const legacyUnpackedCompat = legacyV3Allow === true &&
     isLegacyV3UnpackedCompatPath(String(pathname || ''), extensionRoot);
-
   return legacyUnpackedCompat ? parsed.origin : null;
 }
 
 module.exports = Object.freeze({
   EXTENSION_ID_RE,
+  LEGACY_V3_UNPACKED_COMPAT_SUFFIXES,
   parseChromeExtensionOrigin,
   isLegacyV3UnpackedCompatPath,
   resolveExtensionCorsOrigin,

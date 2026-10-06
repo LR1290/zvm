@@ -1,4 +1,4 @@
-const ZVM_BUILD_ID = '2026-10-06-extension-0.8.745-build3-compat-r39';
+const ZVM_BUILD_ID = '2026-10-06-license-data-build3-usage-compat-r40';
 const { resolveClientIp } = require('./client-ip-policy');
 'use strict';
 
@@ -1686,8 +1686,19 @@ function buildExtensionEntitlement({ keyCode = null, keyRecord = null, now = Dat
     ? Math.min(nowMs + EXTENSION_ENTITLEMENT_LEASE_MS, licenseExpiryMs)
     : nowMs + EXTENSION_ENTITLEMENT_LEASE_MS;
   const tier = licensed ? 'paid' : 'free';
-  const planId = licensed ? String(keyRecord.plan_id || keyRecord.planId || 'ZV_PRO') : FREE_PLAN_ID;
-  const planName = licensed ? String(keyRecord.planName || 'Licenciado') : 'Gratuito';
+  const rawPlanId = licensed ? String(keyRecord.plan_id || keyRecord.planId || '').trim() : '';
+  const commercialPlan = licensed ? (ZVM_PLANS[rawPlanId.toLowerCase()] || null) : null;
+  const planId = licensed ? (rawPlanId || 'ZV_PRO') : FREE_PLAN_ID;
+  // Legacy/admin-created keys predate explicit plan metadata. Their historical
+  // contract was PRO, so keep that fallback instead of exposing a generic
+  // "Licenciado" label that loses useful license information.
+  const planName = licensed ? String(keyRecord.planName || commercialPlan?.shortName || commercialPlan?.name || 'Pro') : 'Gratuito';
+  const rawMaxUses = licensed && typeof keyRecord.maxUses === 'number' ? keyRecord.maxUses : null;
+  const accessUnlimited = rawMaxUses === -1;
+  const accessLimit = licensed && Number.isInteger(rawMaxUses) && rawMaxUses >= 0 ? rawMaxUses : null;
+  const accessUsed = licensed
+    ? (Array.isArray(keyRecord.phones) ? keyRecord.phones.length : Math.max(0, Number(keyRecord.uses) || 0))
+    : 0;
   const backupOwnerId = licensed ? String(keyRecord.ownerId || 'zv-owner') : '';
   const backupOwnerHash = backupOwnerId
     ? crypto.createHash('sha256').update(`ext:backup-owner:v1:${backupOwnerId}`, 'utf8').digest('hex')
@@ -1698,6 +1709,11 @@ function buildExtensionEntitlement({ keyCode = null, keyRecord = null, now = Dat
   const revisionInput = JSON.stringify({
     tier,
     planId,
+    planName,
+    accessLimit,
+    accessUsed,
+    accessUnlimited,
+    usageAuthority: 'server',
     capabilities,
     licenseExpiresAt: licensed ? (keyRecord.expiresAt || null) : null,
     modules: licensed ? { ...DEFAULT_MODULES, ...(keyRecord.modules || {}) } : { ...DEFAULT_MODULES },
@@ -1708,6 +1724,9 @@ function buildExtensionEntitlement({ keyCode = null, keyRecord = null, now = Dat
     tier: licensed ? 'paid' : 'free',
     planId,
     planName,
+    accessLimit,
+    accessUsed,
+    accessUnlimited,
     capabilities,
     entitlementRevision: crypto.createHash('sha256').update(revisionInput, 'utf8').digest('hex'),
     expiresAt: new Date(leaseExpiryMs).toISOString(),
@@ -1758,6 +1777,10 @@ function extensionSessionSuccess(rawToken, sessionDoc, entitlement) {
       licenseExpiresAt: entitlement.licenseExpiresAt || null,
       planId: entitlement.planId,
       planName: entitlement.planName,
+      accessLimit: entitlement.accessLimit,
+      accessUsed: entitlement.accessUsed,
+      accessUnlimited: entitlement.accessUnlimited === true,
+      usageAuthority: entitlement.usageAuthority || 'server',
       backupOwnerHash: entitlement.backupOwnerHash || null,
       backupLegacyOwnerHash: entitlement.backupLegacyOwnerHash || null,
     },
@@ -13131,7 +13154,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
       `✅ ZVM Server ${ZVM_BUILD_ID} — porta ${PORT}\n` +
       `🍃 MongoDB: zapvoice.store | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}\n` +
       `🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | 2FA: ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | TOTP crypto: ${portalTotpCryptoMode()} | Cakto: ${CAKTO_WEBHOOK_SECRET ? 'ATIVO' : '⚠ INATIVO'}\n` +
-      `🛡️ Runtime: ${buildAuthorityState.runtimeEnv || 'não definido'} | Build Authority: ${buildAuthorityState.buildEnforce ? 'ATIVO' : 'DESATIVADO'} | Registry V2 active: ${buildAuthorityState.registryV2ActiveCount} | DEV bypass: ${buildAuthorityState.devBuildAllow ? 'ATIVO' : 'INATIVO'} | DEV cohost: ${buildAuthorityState.devCohostAllow ? 'ATIVO' : 'INATIVO'} | Legacy V3: ${buildAuthorityState.legacyV3 ? 'ATIVO' : 'INATIVO'} | Legacy V3 endpoints: ${ZVM_LEGACY_V3_ALLOW ? 'ATIVOS (Build 3 unpacked compat: key/check-status only)' : 'INATIVOS'}\n` +
+      `🛡️ Runtime: ${buildAuthorityState.runtimeEnv || 'não definido'} | Build Authority: ${buildAuthorityState.buildEnforce ? 'ATIVO' : 'DESATIVADO'} | Registry V2 active: ${buildAuthorityState.registryV2ActiveCount} | DEV bypass: ${buildAuthorityState.devBuildAllow ? 'ATIVO' : 'INATIVO'} | DEV cohost: ${buildAuthorityState.devCohostAllow ? 'ATIVO' : 'INATIVO'} | Legacy V3: ${buildAuthorityState.legacyV3 ? 'ATIVO' : 'INATIVO'} | Legacy V3 endpoints: ${ZVM_LEGACY_V3_ALLOW ? 'ATIVOS (Build 3 unpacked: key/check-status/usage/get-usage/sync-usage)' : 'INATIVOS'}\n` +
       `🧪 Local safe mode: ${ZVM_LOCAL_SAFE_MODE ? 'ATIVO — jobs autônomos desativados' : 'INATIVO'}\n` +
       // Rota admin derivada + usuário administrativo NÃO vão pro log de boot:
       // quem operou já tem essas duas informações a partir das próprias env
