@@ -62,6 +62,6 @@ test('R41 contract: check-status reconciles entitlement without adding a new pol
   assert.match(statusRoute, /isFreeAuthKey\(keyCode\)[\s\S]*?isPremium:\s*false[\s\S]*?isFreePlan:\s*true/);
 });
 
-test('R41 contract: server runtime identity advances from R40 to R41', () => {
-  assert.match(source, /const ZVM_BUILD_ID = '2026-10-06-build3-entitlement-reconcile-r41';/);
+test('R42 contract: server runtime identity advances while preserving R41 entitlement behavior', () => {
+  assert.match(source, /const ZVM_BUILD_ID = '2026-10-06-build3-server-shield-r42';/);
 });
