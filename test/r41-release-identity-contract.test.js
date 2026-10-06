@@ -8,7 +8,7 @@ const root = path.join(__dirname,'..');
 const verifier = fs.readFileSync(path.join(root,'release','verify-release-assets.mjs'),'utf8');
 const authority = fs.readFileSync(path.join(root,'build-authority.js'),'utf8');
 const registry = JSON.parse(fs.readFileSync(path.join(root,'zvm-build-registry-v2.json'),'utf8'));
-const releaseManifest = JSON.parse(fs.readFileSync(path.join(root,'release','ZVM_RELEASE_MANIFEST.json'),'utf8');
+const releaseManifest = JSON.parse(fs.readFileSync(path.join(root,'release','ZVM_RELEASE_MANIFEST.json'),'utf8'));
 
 const CWS_BETA_ID = 'bdhnikgcdccjabkmbfcakgjkkgdlmgja';
 
