@@ -58,7 +58,7 @@ class LegacyV3Shield {
   constructor(options = {}) {
     this.now = typeof options.now === 'function' ? options.now : Date.now;
     this.checkTtlMs = Math.max(1000, Number(options.checkTtlMs) || 120000);
-    this.keyTtlMs = Math.max(1000, Number(options.keyTtlMs) || 1800000);
+    this.keyTtlMs = Math.max(1000, Number(options.keyTtlMs) || 3600000);
     this.maxEntries = Math.max(64, Number(options.maxEntries) || 2048);
     this.check = new Map();
     this.key = new Map();
