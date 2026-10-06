@@ -1,4 +1,4 @@
-const ZVM_BUILD_ID = '2026-10-06-build3-entitlement-reconcile-r41';
+const ZVM_BUILD_ID = '2026-10-06-build3-server-shield-r42';
 const { resolveClientIp } = require('./client-ip-policy');
 'use strict';
 
@@ -39,6 +39,11 @@ const {
 const { validateRuntimeSecurityConfig } = require('./runtime-config');
 const { loadDevBuildSigningConfig, createDevBuildSigningService } = require('./dev-build-signing');
 const { resolveExtensionCorsOrigin } = require('./extension-origin-policy');
+const {
+  LegacyV3Shield,
+  legacyKeyStateSignature,
+  legacyReloginCacheKey,
+} = require('./legacy-v3-shield');
 
 const PORT         = process.env.PORT         || 3000;
 const ADMIN_USER   = process.env.ADMIN_USER;
@@ -95,6 +100,29 @@ const EXTENSION_TUTORIALS_JSON = String(process.env.EXTENSION_TUTORIALS_JSON || 
 const EXT_COMPAT_DECODER_V1 = String(process.env.EXT_COMPAT_DECODER_V1 || '').trim();
 const TRUST_PROXY_HEADERS = process.env.TRUST_PROXY_HEADERS === '1' || String(process.env.RENDER || '').toLowerCase() === 'true';
 const ZVM_EXTENSION_IDS = new Set(String(process.env.ZVM_EXTENSION_IDS || '').split(',').map(v => v.trim().toLowerCase()).filter(v => /^[a-p]{32}$/.test(v)));
+const ZVM_LEGACY_SHIELD_CHECK_TTL_MS = Math.max(30000, Math.min(15 * 60 * 1000, parseInt(process.env.ZVM_LEGACY_SHIELD_CHECK_TTL_MS || '300000', 10) || 300000));
+const ZVM_LEGACY_SHIELD_KEY_TTL_MS = Math.max(5 * 60 * 1000, Math.min(2 * 60 * 60 * 1000, parseInt(process.env.ZVM_LEGACY_SHIELD_KEY_TTL_MS || '1800000', 10) || 1800000));
+const ZVM_LEGACY_SHIELD_MAX_ENTRIES = Math.max(128, Math.min(10000, parseInt(process.env.ZVM_LEGACY_SHIELD_MAX_ENTRIES || '2048', 10) || 2048));
+const ZVM_LEGACY_V3_SHIELD = new LegacyV3Shield({
+  checkTtlMs: ZVM_LEGACY_SHIELD_CHECK_TTL_MS,
+  keyTtlMs: ZVM_LEGACY_SHIELD_KEY_TTL_MS,
+  maxEntries: ZVM_LEGACY_SHIELD_MAX_ENTRIES,
+});
+let _legacyShieldLoggedHits = 0;
+function maybeLogLegacyV3Shield() {
+  const snap = ZVM_LEGACY_V3_SHIELD.snapshot();
+  const hits = snap.checkHits + snap.keyHits;
+  if (hits < 1 || (hits !== 1 && hits - _legacyShieldLoggedHits < 250)) return;
+  _legacyShieldLoggedHits = hits;
+  console.log(
+    '[LEGACY-SHIELD] ' +
+    'check=' + snap.checkHits + '/' + snap.checkMisses +
+    ' key=' + snap.keyHits + '/' + snap.keyMisses +
+    ' bypass=' + snap.keyBypasses +
+    ' avoidedDbWrites~=' + snap.estimatedDbWritesAvoided +
+    ' entries=' + snap.checkEntries + '+' + snap.keyEntries
+  );
+}
 const META_APP_ID = String(process.env.META_APP_ID || '').trim();
 const META_APP_SECRET = String(process.env.META_APP_SECRET || '').trim();
 const META_CONFIG_ID = String(process.env.META_CONFIG_ID || '').trim();
@@ -11470,6 +11498,9 @@ async function handleRequest(req, res) {
     // uses ficam intocados, exatamente como sempre.
     let claimResult = { status: 'already_member' };
 
+    let _legacyReloginCacheKey = '';
+    let _legacyReloginSignature = '';
+
     if (hasPhone) {
       // Teto global de segurança (independente de maxUses por chave) -
       // checagem best-effort em memória, preservando o comportamento não-
@@ -11482,6 +11513,31 @@ async function handleRequest(req, res) {
         addSecurityAlert('PHONE_CAP', `Chave atingiu teto global de ${MAX_PHONES_GLOBAL} telefones`, ip);
         sendJson(res, { authError: 'phoneLimitGlobal', isLoggedIn: false, data: { message: 'Limite máximo de dispositivos atingido.', permissions: [] } }, 403);
         return;
+      }
+
+      // R42 — Build 3 congelado faz relogin a cada 5 min. Só usamos o
+      // fast-path quando o telefone JÁ é membro, uses está consistente e
+      // não há ativação diferida pendente. Mudanças comerciais/autorização
+      // alteram a assinatura e invalidam o cache imediatamente.
+      const _usesConsistent = Number(keys[keyCode].uses || 0) === keys[keyCode].phones.length;
+      const _deferredPending = !!(keys[keyCode].expireDuration && !keys[keyCode].expiresAt);
+      if (alreadyKnown && _usesConsistent && !_deferredPending) {
+        _legacyReloginSignature = legacyKeyStateSignature(keys[keyCode]);
+        _legacyReloginCacheKey = legacyReloginCacheKey({
+          keyCode, phone, deviceId, ip, wppVersion, userName: body.userName || ''
+        });
+        const _legacyReloginCached = ZVM_LEGACY_V3_SHIELD.getKey(_legacyReloginCacheKey, _legacyReloginSignature);
+        if (_legacyReloginCached) {
+          // Mantém frescor operacional em memória sem gerar escrita periódica.
+          keys[keyCode].lastUsed = new Date().toISOString();
+          ZVM_LEGACY_V3_SHIELD.noteDbWritesAvoided(deviceId ? 2 : 1);
+          maybeLogLegacyV3Shield();
+          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+          sendJson(res, _legacyReloginCached);
+          return;
+        }
+      } else {
+        ZVM_LEGACY_V3_SHIELD.noteKeyBypass();
       }
 
       claimResult = await claimPhoneSlotAtomic(keyCode, phone, keyMaxUses);
@@ -11552,11 +11608,23 @@ async function handleRequest(req, res) {
     else { keys[keyCode].deviceHistory.unshift(_dhEntry); if (keys[keyCode].deviceHistory.length > 20) keys[keyCode].deviceHistory.pop(); }
 
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-    sendJson(res, getAuthData(keyCode, body.userName || ''));
+    const _legacyAuthPayload = getAuthData(keyCode, body.userName || '');
+    sendJson(res, _legacyAuthPayload);
 
     const _action = isNewPhone ? 'login_ok' : 'relogin_ok';
     addLog({ keyCode, label: keys[keyCode].label, phone, ip, wppVersion, action: _action }).catch(()=>{});
     saveKey(keyCode).catch(()=>{}); // não-crítico: lastUsed/lastIp/wppVersion
+
+    // Semeia o fast-path só DEPOIS do caminho autoritativo completo.
+    if (hasPhone && Array.isArray(keys[keyCode].phones) &&
+        Number(keys[keyCode].uses || 0) === keys[keyCode].phones.length &&
+        !(keys[keyCode].expireDuration && !keys[keyCode].expiresAt)) {
+      const _seedSignature = legacyKeyStateSignature(keys[keyCode]);
+      const _seedCacheKey = legacyReloginCacheKey({
+        keyCode, phone, deviceId, ip, wppVersion, userName: body.userName || ''
+      });
+      ZVM_LEGACY_V3_SHIELD.setKey(_seedCacheKey, _seedSignature, _legacyAuthPayload);
+    }
     return;
   }
 
@@ -11600,33 +11668,59 @@ async function handleRequest(req, res) {
     if (!_cs.found) {
       sendJson(res, { active: false, reason: 'not_found' }); return;
     }
-    if (isKeyExpired(keys[keyCode])) {
-      keys[keyCode].active = false;
+    const _k = sanitizeKeyRecord(keys[keyCode]);
+    const _csPhone = body.phoneNumber ? normalizePhone(body.phoneNumber) : '';
+    const _csCacheKey = keyCode + '|' + _csPhone;
+
+    // Expiração é verificada ANTES do cache porque avança com o relógio mesmo
+    // quando o registro não muda. A primeira detecção persiste active=false;
+    // chamadas subsequentes batem no cache negativo e não regravam o Mongo.
+    if (isKeyExpired(_k)) {
+      _k.active = false;
+      const _expiredSig = legacyKeyStateSignature(_k);
+      const _expiredCached = ZVM_LEGACY_V3_SHIELD.getCheck(_csCacheKey, _expiredSig);
+      if (_expiredCached) {
+        maybeLogLegacyV3Shield();
+        sendJson(res, _expiredCached); return;
+      }
+      const _expiredPayload = { active: false, reason: 'expired' };
+      ZVM_LEGACY_V3_SHIELD.setCheck(_csCacheKey, _expiredSig, _expiredPayload);
       saveKey(keyCode).catch(()=>{});
-      sendJson(res, { active: false, reason: 'expired' }); return;
+      sendJson(res, _expiredPayload); return;
     }
-    if (!keys[keyCode].active) {
-      addLog({ keyCode, label: keys[keyCode].label||'-', phone: '-', ip, wppVersion: '-', action: 'check_blocked' }).catch(()=>{});
-      sendJson(res, { active: false, reason: 'blocked' }); return;
+
+    const _csSig = legacyKeyStateSignature(_k);
+    const _csCached = ZVM_LEGACY_V3_SHIELD.getCheck(_csCacheKey, _csSig);
+    if (_csCached) {
+      maybeLogLegacyV3Shield();
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      sendJson(res, _csCached);
+      return;
     }
+
+    if (!_k.active) {
+      const _blockedPayload = { active: false, reason: 'blocked' };
+      ZVM_LEGACY_V3_SHIELD.setCheck(_csCacheKey, _csSig, _blockedPayload);
+      addLog({ keyCode, label: _k.label||'-', phone: '-', ip, wppVersion: '-', action: 'check_blocked' }).catch(()=>{});
+      sendJson(res, _blockedPayload); return;
+    }
+
     // Extensão opt-in, retrocompatível: corpo legado {authKey} nunca passa
     // por aqui (phoneNumber ausente). Se o cliente novo mandar phoneNumber,
-    // confirma que esse telefone especificamente ainda está autorizado
-    // nesta chave - cobre o caso do admin remover só esse telefone
-    // enquanto a chave segue ativa pra outros.
-    const _csPhone = body.phoneNumber ? normalizePhone(body.phoneNumber) : '';
+    // confirma que esse telefone especificamente ainda está autorizado.
     if (_csPhone) {
-      const _csPhones = Array.isArray(keys[keyCode].phones) ? keys[keyCode].phones : [];
+      const _csPhones = Array.isArray(_k.phones) ? _k.phones : [];
       const _csStillAuthorized = _csPhones.some(p => normalizePhone(p) === _csPhone);
       if (!_csStillAuthorized) {
-        addLog({ keyCode, label: keys[keyCode].label||'-', phone: body.phoneNumber, ip, wppVersion: '-', action: 'check_phone_removed' }).catch(()=>{});
-        sendJson(res, { active: false, reason: 'phone_removed' }); return;
+        const _removedPayload = { active: false, reason: 'phone_removed' };
+        ZVM_LEGACY_V3_SHIELD.setCheck(_csCacheKey, _csSig, _removedPayload);
+        addLog({ keyCode, label: _k.label||'-', phone: body.phoneNumber, ip, wppVersion: '-', action: 'check_phone_removed' }).catch(()=>{});
+        sendJson(res, _removedPayload); return;
       }
     }
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    const _k = sanitizeKeyRecord(keys[keyCode]);
-    sendJson(res, {
+
+    const _activePayload = {
       active:         true,
       expiringSoon:   isKeyExpiringSoon(_k),
       hoursLeft:      hoursUntilExpiry(_k),
@@ -11641,7 +11735,11 @@ async function handleRequest(req, res) {
       usageAuthority: 'server',
       modules:        { ...DEFAULT_MODULES, ...(_k.modules || {}) },
       ts:             Date.now()
-    });
+    };
+    ZVM_LEGACY_V3_SHIELD.setCheck(_csCacheKey, _csSig, _activePayload);
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    sendJson(res, _activePayload);
     return;
   }
 
