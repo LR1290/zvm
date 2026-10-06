@@ -101,7 +101,7 @@ const EXT_COMPAT_DECODER_V1 = String(process.env.EXT_COMPAT_DECODER_V1 || '').tr
 const TRUST_PROXY_HEADERS = process.env.TRUST_PROXY_HEADERS === '1' || String(process.env.RENDER || '').toLowerCase() === 'true';
 const ZVM_EXTENSION_IDS = new Set(String(process.env.ZVM_EXTENSION_IDS || '').split(',').map(v => v.trim().toLowerCase()).filter(v => /^[a-p]{32}$/.test(v)));
 const ZVM_LEGACY_SHIELD_CHECK_TTL_MS = Math.max(30000, Math.min(15 * 60 * 1000, parseInt(process.env.ZVM_LEGACY_SHIELD_CHECK_TTL_MS || '300000', 10) || 300000));
-const ZVM_LEGACY_SHIELD_KEY_TTL_MS = Math.max(5 * 60 * 1000, Math.min(2 * 60 * 60 * 1000, parseInt(process.env.ZVM_LEGACY_SHIELD_KEY_TTL_MS || '1800000', 10) || 1800000));
+const ZVM_LEGACY_SHIELD_KEY_TTL_MS = Math.max(5 * 60 * 1000, Math.min(2 * 60 * 60 * 1000, parseInt(process.env.ZVM_LEGACY_SHIELD_KEY_TTL_MS || '3600000', 10) || 3600000));
 const ZVM_LEGACY_SHIELD_MAX_ENTRIES = Math.max(128, Math.min(10000, parseInt(process.env.ZVM_LEGACY_SHIELD_MAX_ENTRIES || '2048', 10) || 2048));
 const ZVM_LEGACY_V3_SHIELD = new LegacyV3Shield({
   checkTtlMs: ZVM_LEGACY_SHIELD_CHECK_TTL_MS,
