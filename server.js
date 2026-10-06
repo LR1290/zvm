@@ -8570,7 +8570,7 @@ a{text-decoration:none;color:inherit}
         <a href="/planos" class="lookup-link">💳 Ver Planos</a>
         <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener" class="lookup-link wa" style="grid-column:span 2">💬 Falar com Suporte no WhatsApp</a>
       </div>
-      <p class="privacy">🔒 Ao consultar, você concorda com nossa <a href="/privacidade">Política de Privacidade</a> e com a coleta de dados de uso para fins de licenciamento (LGPD).</p>
+      <p class="privacy">🔒 Ao consultar, você concorda com nossa <a href="/privacidade">Política de Privacidade</a> e com o tratamento mínimo de dados necessário para licença e segurança (LGPD).</p>
     </div>
   </div>
 </div>
@@ -9095,58 +9095,83 @@ ${_sharedNav('/privacidade', portalUser)}
   <p>Última atualização: ${updDate}</p>
 </div>
 <div class="doc-wrap">
-  <div class="info-box"><strong>Resumo:</strong> Coletamos apenas os dados necessários para operar o serviço. Não vendemos seus dados. Você pode solicitar exclusão a qualquer momento pelo suporte.</div>
+  <div class="info-box"><strong>Resumo:</strong> A ZVM não usa telemetria comportamental, publicidade ou rastreamento de navegação. Tratamos apenas os dados necessários para conta, licença, segurança e recursos que o próprio usuário ativa. Não vendemos dados pessoais.</div>
   <div class="doc-section">
-    <h2><span class="sec-num">1</span>Dados que coletamos</h2>
-    <p>Coletamos somente as informações necessárias para a prestação do serviço:</p>
+    <h2><span class="sec-num">1</span>Dados tratados pela ZVM</h2>
+    <p>Tratamos somente as informações necessárias para prestar e proteger o serviço:</p>
     <ul>
-      <li>Nome, e-mail e telefone fornecidos no cadastro</li>
-      <li>Chave de licença e dispositivos vinculados</li>
-      <li>Logs de uso da extensão (sem conteúdo de mensagens)</li>
-      <li>Endereço IP para controle de acesso e segurança</li>
+      <li>Nome, e-mail e telefone quando o usuário cria uma conta no Portal do Cliente</li>
+      <li>Chave de licença, plano e números/dispositivos vinculados à licença</li>
+      <li>Dados técnicos mínimos de segurança e autenticação, como endereço IP, data/hora, sessão e eventos de acesso</li>
+      <li>Erros técnicos necessários para diagnóstico, sem registrar o conteúdo de mensagens do WhatsApp</li>
+    </ul>
+    <p>CRM, fluxos, biblioteca, notas, preferências e outros conteúdos criados pelo usuário permanecem localmente no navegador por padrão. A ZVM não coleta histórico de navegação nem mantém analytics comportamental sobre cliques, rolagem ou uso da interface.</p>
+  </div>
+  <div class="doc-section">
+    <h2><span class="sec-num">2</span>Como usamos os dados</h2>
+    <ul>
+      <li>Autenticar a conta, validar a licença e manter a sessão</li>
+      <li>Aplicar limites comerciais e permitir o gerenciamento de números/dispositivos autorizados</li>
+      <li>Detectar abuso, fraude, acesso indevido e falhas operacionais</li>
+      <li>Executar recursos solicitados pelo usuário, como integrações, IA, webhooks, consultas de endereço e backups</li>
+      <li>Prestar suporte quando solicitado pelo próprio usuário</li>
+    </ul>
+    <p>Não usamos dados para publicidade, criação de perfil comercial do usuário, venda a terceiros, concessão de crédito ou finalidades alheias ao funcionamento da ZVM.</p>
+  </div>
+  <div class="doc-section">
+    <h2><span class="sec-num">3</span>Integrações opcionais e terceiros</h2>
+    <p>A ZVM só transmite conteúdo a serviços externos quando o usuário ativa explicitamente o recurso correspondente.</p>
+    <ul>
+      <li>OpenAI, Google Gemini ou xAI: somente quando o usuário configura a própria credencial e solicita um recurso de IA; apenas o conteúdo necessário à solicitação é enviado ao provedor escolhido</li>
+      <li>Meta: somente quando o usuário configura e ativa o envio de eventos</li>
+      <li>ViaCEP e IBGE: somente quando o usuário utiliza consulta de CEP/UF e cidades</li>
+      <li>Webhooks e ações externas: somente para endereços configurados pelo próprio usuário</li>
+      <li>Provedores de infraestrutura podem processar dados estritamente para hospedagem, banco de dados, entrega de e-mail e segurança do serviço</li>
+    </ul>
+    <p>Não vendemos ou alugamos dados pessoais. Não transferimos dados para redes de publicidade, data brokers ou serviços de crédito.</p>
+  </div>
+  <div class="doc-section">
+    <h2><span class="sec-num">4</span>Armazenamento e retenção</h2>
+    <ul>
+      <li>Dados funcionais da extensão são armazenados localmente no navegador sempre que possível</li>
+      <li>Conta, licença e informações necessárias ao licenciamento ficam armazenadas no backend da ZVM</li>
+      <li>Logs operacionais e de segurança podem conter IP, chave/licença e data/hora, sem conteúdo de mensagens, e são mantidos por até 90 dias</li>
+      <li>Credenciais de integrações configuradas na extensão são protegidas localmente e não entram em backups comuns</li>
     </ul>
   </div>
   <div class="doc-section">
-    <h2><span class="sec-num">2</span>Como usamos seus dados</h2>
+    <h2><span class="sec-num">5</span>Segurança</h2>
+    <p>Adotamos medidas técnicas e organizacionais para proteger os dados:</p>
     <ul>
-      <li>Gerenciar sua licença e acesso ao serviço</li>
-      <li>Enviar notificações sobre renovações e atualizações</li>
-      <li>Detectar e prevenir usos não autorizados</li>
-      <li>Melhorar a performance e estabilidade da plataforma</li>
-    </ul>
-  </div>
-  <div class="doc-section">
-    <h2><span class="sec-num">3</span>Compartilhamento de dados</h2>
-    <p>Não vendemos, alugamos ou compartilhamos seus dados pessoais com terceiros, exceto quando exigido por lei ou para prestação direta do serviço (ex: provedores de infraestrutura).</p>
-  </div>
-  <div class="doc-section">
-    <h2><span class="sec-num">4</span>Segurança</h2>
-    <p>Adotamos medidas técnicas e organizacionais para proteger seus dados:</p>
-    <ul>
-      <li>Senhas armazenadas com hash PBKDF2 (jamais em texto puro)</li>
-      <li>Comunicação via HTTPS com TLS</li>
+      <li>Senhas armazenadas com hash forte e salt, nunca em texto puro</li>
+      <li>Comunicação com o backend via HTTPS/TLS</li>
       <li>Autenticação em dois fatores disponível no portal</li>
-      <li>Sessões com expiração automática</li>
+      <li>Sessões com expiração e controles de abuso</li>
+      <li>Credenciais de integrações não são exibidas novamente após serem salvas</li>
     </ul>
   </div>
   <div class="doc-section">
-    <h2><span class="sec-num">5</span>Seus direitos (LGPD)</h2>
-    <p>De acordo com a Lei Geral de Proteção de Dados (Lei 13.709/2018), você tem direito a:</p>
+    <h2><span class="sec-num">6</span>Seus direitos (LGPD)</h2>
+    <p>De acordo com a Lei Geral de Proteção de Dados (Lei 13.709/2018), você pode solicitar:</p>
     <ul>
-      <li>Acessar os dados que temos sobre você</li>
-      <li>Corrigir dados incompletos ou desatualizados</li>
-      <li>Solicitar a exclusão dos seus dados</li>
-      <li>Revogar consentimento a qualquer momento</li>
+      <li>Acesso aos dados pessoais mantidos pela ZVM</li>
+      <li>Correção de dados incompletos ou desatualizados</li>
+      <li>Exclusão dos dados quando aplicável</li>
+      <li>Revogação de consentimento e informações sobre o tratamento</li>
     </ul>
-    <p>Para exercer esses direitos, entre em contato pelo WhatsApp.</p>
+    <p>Para exercer esses direitos, entre em contato pelo suporte.</p>
   </div>
   <div class="doc-section">
-    <h2><span class="sec-num">6</span>Cookies</h2>
-    <p>Usamos apenas cookies essenciais para manter sua sessão autenticada no portal. Nenhum cookie de rastreamento ou publicidade é utilizado.</p>
+    <h2><span class="sec-num">7</span>Cookies e rastreamento</h2>
+    <p>O Portal do Cliente utiliza apenas cookies essenciais de sessão. A ZVM não utiliza cookies de publicidade, pixels de rastreamento próprios ou analytics comportamental para monitorar a navegação dos usuários.</p>
   </div>
   <div class="doc-section">
-    <h2><span class="sec-num">7</span>Contato</h2>
-    <p>Dúvidas sobre privacidade? Entre em contato:<br>
+    <h2><span class="sec-num">8</span>Chrome Web Store e Uso Limitado</h2>
+    <p>O uso de informações recebidas por meio das APIs do Google seguirá a Política de Dados do Usuário da Chrome Web Store, incluindo os requisitos de Uso Limitado. A ZVM limita o tratamento de dados ao seu propósito declarado e às operações solicitadas pelo usuário.</p>
+  </div>
+  <div class="doc-section">
+    <h2><span class="sec-num">9</span>Contato</h2>
+    <p>Dúvidas sobre privacidade ou solicitações relacionadas a dados:<br>
     <a href="https://wa.me/5521996771552" style="color:var(--g);font-weight:700" target="_blank" rel="noopener">WhatsApp: (21) 99677-1552</a></p>
   </div>
 </div>
