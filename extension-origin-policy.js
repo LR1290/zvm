@@ -14,7 +14,9 @@ function parseChromeExtensionOrigin(origin) {
   try {
     const u = new URL(String(origin));
     if (u.protocol !== 'chrome-extension:') return null;
-    if (u.username || u.password || u.port) return null;
+    // R41: CORS Origin must be the bare extension origin. Reject path/query/hash
+    // instead of silently canonicalizing chrome-extension://<id>/anything.
+    if (u.username || u.password || u.port || (u.pathname && u.pathname !== '/') || u.search || u.hash) return null;
     const id = String(u.hostname || '').toLowerCase();
     if (!EXTENSION_ID_RE.test(id)) return null;
     return Object.freeze({ id, origin: `chrome-extension://${id}` });
@@ -41,7 +43,7 @@ function resolveExtensionCorsOrigin({
   const ids = extensionIds instanceof Set ? extensionIds : new Set(extensionIds || []);
   if (ids.has(parsed.id)) return parsed.origin;
 
-  // R40: Build 3 (0.2.7) is unpacked and therefore has a variable extension
+  // R41: Build 3 (0.2.7/0.2.8) is unpacked and therefore has a variable extension
   // ID. Preserve only the five V3 endpoints its historical contract actually
   // uses. V4, Meta, admin and every other path remain strict.
   const legacyUnpackedCompat = legacyV3Allow === true &&
