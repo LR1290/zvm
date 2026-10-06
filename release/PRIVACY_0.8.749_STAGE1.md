@@ -22,14 +22,23 @@ Current privacy disclosure now states:
 
 The public policy wording was updated in server.js on this branch.
 
-## 0.8.749 manifest candidate — Stage 1
+## 0.8.749 manifest candidate — Stage 1 CORRECTED AFTER LIBRARY RECOVERY
 
-From qualified DEV 0.8.748:
+The official Google OAuth configuration already existed and was recovered from the user's Library.
+
+RELEASE/CWS profile:
 - version -> 0.8.749
-- removed named permission: identity
-- removed required host: https://www.googleapis.com/*
-- oauth2 remains absent
-- Google Drive remains unavailable in this line until official OAuth is configured
+- KEEP named permission: identity
+- KEEP Google Drive access only for the explicit Backup-to-Drive feature
+- add oauth2.client_id: 761881043178-1gibo5ci5op3meqdsp0gsb8cq4gj85h6.apps.googleusercontent.com
+- add oauth2.scopes: https://www.googleapis.com/auth/drive.file
+- OAuth client is bound to CWS Extension/Item ID bdhnikgcdccjabkmbfcakgjkkgdlmgja
+- no client_secret is embedded in the extension
+
+DEV profile:
+- DEV Extension ID remains ckbffcbmanboelbihfkhiahgafnimcho
+- MUST NOT reuse the CWS OAuth client
+- Google Drive stays fail-closed in DEV until a DEV-specific Chrome Extension OAuth client exists
 
 Remaining named permissions:
 - storage
@@ -53,14 +62,20 @@ Remaining required host permissions at this checkpoint:
 Existing optional host scope remains:
 - https://*/*
 
-## Why identity is removed
+## Why identity stays in RELEASE
 
-The 0.8.748 code contains a Google Drive authority that requires:
-- chrome.identity
-- manifest.oauth2.client_id
-- drive.file scope
+The recovered Google Cloud configuration proves that the RELEASE/CWS item already has a real Chrome Extension OAuth client for Google Drive.
 
-But 0.8.748 has no oauth2 block. The feature therefore reports OAuth not configured and cannot legitimately justify identity in this build.
+Recovered evidence:
+- project: zvm-automacoes
+- OAuth client type: Chrome Extension
+- OAuth client name: ZVM - Automacoes BETA
+- bound CWS Item/Extension ID: bdhnikgcdccjabkmbfcakgjkkgdlmgja
+- scope: https://www.googleapis.com/auth/drive.file
+- client ID: 761881043178-1gibo5ci5op3meqdsp0gsb8cq4gj85h6.apps.googleusercontent.com
+- no client secret is required/embedded
+
+The actual defect was pipeline drift: later CWS artifacts kept the identity permission and Drive code but omitted the oauth2 manifest block. Stage 2 must repair that packaging path rather than remove identity.
 
 ## CWS disclosure categories still expected after Stage 1
 
