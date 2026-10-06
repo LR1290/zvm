@@ -103,3 +103,35 @@ test('R42 estimated write counter is explicit observability only', () => {
   assert.equal(s.estimatedDbWritesAvoided,3);
   assert.equal(s.keyBypasses,1);
 });
+
+
+test('R42 60-minute sustained legacy load keeps >90% relogin hits and invalidates mutations', () => {
+  let now = 0;
+  const shield = new LegacyV3Shield({ now:() => now, checkTtlMs:300000, keyTtlMs:3600000, maxEntries:2048 });
+  const contexts = 200;
+  const rows = Array.from({length:contexts}, (_,i) => ({
+    code:'K'+i,
+    state:{active:true,expiresAt:'2030-01-01T00:00:00.000Z',isBasicPlan:false,maxUses:3,uses:1,phones:['55319999'+String(i).padStart(5,'0')]}
+  }));
+  let keyHits=0, keyMisses=0, invalidated=0;
+  for (let ms=0; ms<60*60*1000; ms+=300000) {
+    now=ms;
+    if (ms===20*60*1000) {
+      for(let i=0;i<10;i++) rows[i].state.active=false;
+      for(let i=10;i<20;i++) rows[i].state.isBasicPlan=true;
+    }
+    for(let i=0;i<contexts;i++) {
+      const row=rows[i];
+      const sig=legacyKeyStateSignature(row.state);
+      const rk=legacyReloginCacheKey({keyCode:row.code,phone:row.state.phones[0],deviceId:'ext-'+i,ip:'10.0.0.'+(i%250),wppVersion:'2.0',userName:'U'});
+      if (shield.getKey(rk,sig)) keyHits++;
+      else {
+        keyMisses++;
+        shield.setKey(rk,sig,{isLoggedIn:row.state.active,isBasicPlan:row.state.isBasicPlan});
+        if(ms===20*60*1000 && i<20) invalidated++;
+      }
+    }
+  }
+  assert.ok(keyHits/(keyHits+keyMisses) >= 0.90, {keyHits,keyMisses});
+  assert.equal(invalidated,20);
+});
