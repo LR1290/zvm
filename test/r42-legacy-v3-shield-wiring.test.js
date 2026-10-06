@@ -6,10 +6,10 @@ const path = require('node:path');
 
 const source = fs.readFileSync(path.join(__dirname,'..','server.js'),'utf8');
 
-test('R42 server loads the bounded legacy shield and exposes no new endpoint', () => {
+test('R43 server preserves the bounded legacy shield and exposes no new endpoint', () => {
   assert.match(source, /require\('\.\/legacy-v3-shield'\)/);
   assert.match(source, /new LegacyV3Shield\(/);
-  assert.match(source, /const ZVM_BUILD_ID = '2026-10-06-build3-server-shield-r42';/);
+  assert.match(source, /const ZVM_BUILD_ID = '2026-10-06-privacy-oauth-release-r43';/);
   for (const suffix of ['/v3/key','/v3/check-status','/v3/usage','/v3/get-usage','/v3/sync-usage']) {
     assert.ok(source.includes(`R_EXT+'${suffix}'`) || source.includes(`'${suffix}'`), suffix);
   }
