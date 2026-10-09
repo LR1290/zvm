@@ -68,7 +68,9 @@ async function scenario(db, coll, runId) {
   } catch(e) {
     txn=isDup(e)?'duplicate_key':'other_error';
   } finally { await session.endSession(); }
-  assertResult(['committed','duplicate_key','other_error'].includes(txn),'txn_outcome_recorded');mark('txn_outcome_recorded');
+  // Unsupported transactions (standalone Mongo, network/permission errors) are a
+  // failed gate, not evidence that transfer semantics were tested.
+  assertResult(txn === 'committed' || txn === 'duplicate_key','txn_outcome_recorded');mark('txn_outcome_recorded');
   const ownerCount=await coll.countDocuments({keyCode:'valid-a'});
   assertResult(ownerCount===1,'unique_invariant_after_transaction');mark('unique_invariant_after_transaction');
   if(txn!=='committed') {
