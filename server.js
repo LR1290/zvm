@@ -3263,6 +3263,14 @@ async function withCommercialCustomerLock(db, email, fn, opts = {}) {
   }
 }
 
+// Transaction IDs are opaque. Prefix matching can mark a distinct paid order as
+// already processed, or recover a different customer's license. Match the whole
+// persisted note line only; historical markers remain readable unchanged.
+function caktoNoteHasExactMarker(note, marker) {
+  if (!marker || /[\r\n]/.test(String(marker))) return false;
+  return String(note || '').split(/\r?\n/).some(line => line === marker);
+}
+
 async function _processCommercialSaleUnlocked(sale, plan, deps = {}) {
   if (!sale || !plan) throw new Error('commercial_sale_invalid');
   const clientEmail = safeScalar(sale.clientEmail, 160).toLowerCase();
@@ -3312,7 +3320,7 @@ async function _processCommercialSaleUnlocked(sale, plan, deps = {}) {
     const txMarkers = [creationTxMarker, renewalTxMarker].filter(Boolean);
     const recoveredCode = Object.keys(storedKeys).find(code => {
       const note = String(storedKeys[code]?.note || '');
-      return txMarkers.some(marker => note.includes(marker));
+      return txMarkers.some(marker => caktoNoteHasExactMarker(note, marker));
     }) || null;
     if (recoveredCode) {
       keyStore[recoveredCode] = storedKeys[recoveredCode];
@@ -3340,8 +3348,8 @@ async function _processCommercialSaleUnlocked(sale, plan, deps = {}) {
   if (existingCode) {
     keyCode = existingCode;
     const key = keyStore[keyCode];
-    const alreadyRenewedThisTx = !!(renewalTxMarker && key.note && key.note.includes(renewalTxMarker));
-    const alreadyCreatedThisTx = !alreadyRenewedThisTx && !!(creationTxMarker && key.note && key.note.includes(creationTxMarker));
+    const alreadyRenewedThisTx = !!(renewalTxMarker && key.note && caktoNoteHasExactMarker(key.note, renewalTxMarker));
+    const alreadyCreatedThisTx = !alreadyRenewedThisTx && !!(creationTxMarker && key.note && caktoNoteHasExactMarker(key.note, creationTxMarker));
     if (alreadyRenewedThisTx || alreadyCreatedThisTx) {
       renewed = alreadyRenewedThisTx;
     } else {
