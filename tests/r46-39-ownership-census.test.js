@@ -9,6 +9,7 @@ const {audit,pipeline}=require('../tools/r46-39-ownership-census');
   insertOne(){writes++;throw Error('write forbidden')},updateOne(){writes++;throw Error('write forbidden')}
  }}};
  const r=await audit(db);
+ assert.notEqual(r.duplicates[0].keyHash,require('node:crypto').createHash('sha256').update(rows[0]._id).digest('hex').slice(0,12),'unsalted IDs must not be exposed');
  assert.equal(collName,'portal_users');assert.equal(writes,0);
  assert.equal(options.allowDiskUse,false);assert.equal(options.maxTimeMS,8000);
  assert.equal(r.duplicateGroups,2);assert.equal(r.duplicates[0].holders,2);
