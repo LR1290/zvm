@@ -1,9 +1,39 @@
 node_modules/
-zvm.env
+
+# Env files: never commit secrets; keep documented examples
 .env
+.env.*
+!.env.example
+zvm.env
+zvm.env.*
+!zvm.env.example
+
+# Logs and temporary files
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 *.pid
 *.bak
 *.tmp
-*.zip
+*.orig
+*.swp
+*.swo
+coverage/
+.nyc_output/
+
+# Secrets and private certificates
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+
+# OS and local archives
 .DS_Store
+Thumbs.db
+*.zip
+backups/
+dumps/
