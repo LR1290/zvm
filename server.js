@@ -5103,6 +5103,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '7be30b7da0a12b9f4e2aa8d447529c9cf3f1da7e1a3b0e2500d74c4bb46e751a',
     compressible: true,
   }),
+  '/assets/zvm-terms.f1c470efdbbb.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-terms.f1c470efdbbb.css'),
+    sha256: 'f1c470efdbbbdffa93c1fa09ab4f516b2634e495aba755cdaf5aabbf206af00a',
+    compressible: true,
+  }),
   '/assets/zvm-plans-page.9dcee339fb9b.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-plans-page.9dcee339fb9b.css'),
