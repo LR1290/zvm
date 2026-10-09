@@ -5,27 +5,46 @@ const { audit: auditDuplicates } = require('./r46-39-ownership-census');
 const { MongoClient } = (() => { try { return require('mongodb'); } catch { return {}; } })();
 
 function eligibleNonEmptyKeyFilter(filter) {
-  if (!filter || typeof filter !== 'object') return false;
-  const parts = Array.isArray(filter.$and) ? filter.$and : [filter];
-  // A missing, null, blank or non-string key must never participate in the unique constraint.
-  // Be conservative: don't claim readiness for unrelated/unknown partial filter shapes.
-  const constraints = parts.map(part => part && part.keyCode).filter(Boolean);
-  const typed = constraints.some(value => value.$type === 'string');
-  const nonBlank = constraints.some(value => value.$gt === '');
-  return typed && nonBlank;
+  // Only recognize the exact contract: string keyCode with value greater than
+  // the empty string. An extra email/status predicate would make an index
+  // conditional on an unrelated field and silently leave accounts unprotected.
+  // Unknown filter/collation forms fail CLOSED: they are not evidence of safety.
+  if (!filter || typeof filter !== 'object' || Array.isArray(filter)) return false;
+  let clauses;
+  if (Object.keys(filter).length === 1 && Array.isArray(filter.$and)) {
+    clauses = filter.$and;
+  } else if (Object.keys(filter).length === 1 && Object.hasOwn(filter, 'keyCode')) {
+    clauses = [filter];
+  } else return false;
+  if (clauses.length < 1 || clauses.length > 2) return false;
+  const ops = new Map();
+  for (const clause of clauses) {
+    if (!clause || typeof clause !== 'object' || Array.isArray(clause) ||
+        Object.keys(clause).length !== 1 || !Object.hasOwn(clause, 'keyCode')) return false;
+    const value = clause.keyCode;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    for (const [operator, operand] of Object.entries(value)) {
+      if (operator !== '$type' && operator !== '$gt') return false;
+      if (ops.has(operator)) return false;
+      ops.set(operator, operand);
+    }
+  }
+  return ops.size === 2 && ops.get('$type') === 'string' && ops.get('$gt') === '';
 }
 
 function describeIndex(index) {
   const exactKey = index && Object.keys(index.key || {}).length === 1 && index.key.keyCode === 1;
   if (!exactKey) return null;
   const filter = index.partialFilterExpression || null;
+  const collation = index.collation || null;
+  const simpleCollation = !collation || collation.locale === 'simple';
   return {
     unique: index.unique === true,
     sparse: index.sparse === true,
     partial: !!filter,
     // Report presence, not raw arbitrary metadata supplied by the database.
     nameClass: index.name === 'keyCode_1' ? 'legacy_default' : 'custom',
-    partialExcludesEmpty: eligibleNonEmptyKeyFilter(filter),
+    partialExcludesEmpty: simpleCollation && eligibleNonEmptyKeyFilter(filter),
   };
 }
 
