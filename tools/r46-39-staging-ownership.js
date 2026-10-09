@@ -108,5 +108,10 @@ async function main(argv=process.argv.slice(2),env=process.env) {
   try{await client.connect();const r=await runWithClient(client,cfg);console.log(JSON.stringify(r));}
   finally{await client.close();}
 }
-if(require.main===module)main().catch(e=>{console.error('[R46.39] staging scenario failed:',isDup(e)?'duplicate_key':String(e?.code||e?.message).slice(0,48));process.exitCode=1;});
+if(require.main===module)main().catch(e=>{
+  // Fail closed without echoing driver error messages that may contain credentials/hosts.
+  const known=new Set(['staging_flag_required','staging_approval_required','staging_database_name_required','mongodb_staging_uri_required','remote_staging_not_approved','production_target_forbidden']);
+  console.error('[R46.39] staging scenario failed:',isDup(e)?'duplicate_key':known.has(e?.message)?e.message:'staging_execution_failed');
+  process.exitCode=1;
+});
 module.exports={APPROVAL,NAME_PREFIX,PARTIAL_UNIQUE,configFrom,isDup,fixtureName,checkSyntheticName,scenario,runWithClient};
