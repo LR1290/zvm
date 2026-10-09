@@ -5,15 +5,19 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN if [ -f package-lock.json ]; then \
-      npm ci --omit=dev --ignore-scripts --no-audit --no-fund; \
-    else \
-      npm install --omit=dev --ignore-scripts --no-audit --no-fund; \
-    fi \
+# Reproducible production dependency install: require committed lockfile.
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
     && npm cache clean --force
 
-COPY --chown=node:node server.js mailer.js zvm-official-builds.json zvm-build-registry-v2.json ./
+# Only runtime modules, signed build metadata, web content and security files.
+# Do not copy .env, test fixtures, release archives or audit reports into image.
+COPY --chown=node:node \
+    server.js mailer.js build-authority.js client-ip-policy.js \
+    dev-build-signing.js extension-origin-policy.js legacy-v3-shield.js \
+    runtime-config.js zvm-official-builds.json zvm-build-registry-v2.json ./
+COPY --chown=node:node src ./src
+COPY --chown=node:node assets ./assets
 COPY --chown=node:node security ./security
 
 USER node
