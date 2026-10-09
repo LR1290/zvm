@@ -2112,6 +2112,12 @@ async function authorizeExtensionKeySession(input, deps = {}) {
   if (!snapshot.keyRecord) return extensionAuthFailure('invalid_key', 401);
   const keyRecord = snapshot.keyRecord;
   if (keyRecord.active !== true) return extensionAuthFailure('key_blocked', 403);
+  // Legacy first-activation/phone-claim helpers still require a memory record.
+  // Seed it from the durable snapshot only for the real server path; do not
+  // let an old cache become the source of authorization.
+  if (!deps.keyStore && !deps.ensureKeyLoadedEx && !deps.readExtensionKeySnapshot) {
+    keys[keyCode] = sanitizeKeyRecord(cloneKeyRecordForCommit(keyRecord));
+  }
   // Diferente do helper legado isKeyExpired(), este guard também falha
   // fechado para expiresAt malformado em vez de autenticar a chave e só
   // depois degradar silenciosamente o entitlement.
@@ -2132,6 +2138,12 @@ async function authorizeExtensionKeySession(input, deps = {}) {
   const finalSnapshot = await readExtensionFreshKeySnapshot(keyCode, deps);
   if (finalSnapshot.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
   if (!extensionLicenseIsUsable(finalSnapshot.keyRecord)) return extensionAuthFailure('key_expired', 403);
+  // A concurrent device unlink must never be bypassed by the in-memory
+  // already_member shortcut in the legacy slot-claim helper.
+  if (!Array.isArray(finalSnapshot.keyRecord.phones) ||
+      !finalSnapshot.keyRecord.phones.some(value => normalizePhone(value) === phoneNumber)) {
+    return extensionAuthFailure('phone_removed', 403);
+  }
   const now = extensionNow(deps);
   const entitlement = buildExtensionEntitlement({ keyCode, keyRecord: finalSnapshot.keyRecord, now });
   return {
