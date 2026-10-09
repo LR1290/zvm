@@ -8,36 +8,36 @@ const TERMS = Object.freeze({
       "tag": "Documento institucional",
       "lead": "Condições para utilizar o site, o Portal do Cliente e a extensão ZVM - Automações.",
       "date": "Atualizado em 9 de outubro de 2026",
-      "effective": "Vigência: após aprovação jurídica e publicação da versão definitiva.",
+      "summaryLabel": "Resumo",
       "toc": "Neste documento",
       "privacy": "Política de Privacidade",
       "home": "Página inicial",
       "support": "Falar com o suporte",
-      "review": "Minuta para revisão jurídica: a identificação completa do fornecedor e a data final de vigência devem ser confirmadas antes da publicação."
+      "summary": "Estes Termos explicam como funcionam o cadastro, as licenças, os pagamentos, as renovações, os recursos disponíveis e o suporte da ZVM. O uso deve respeitar as regras das plataformas integradas e a legislação aplicável, sem limitar os direitos do consumidor."
     },
     "pt-PT": {
       "title": "Termos de Serviço",
       "tag": "Documento institucional",
       "lead": "Condições para utilizar o sítio, a Área de Cliente e a extensão ZVM - Automações.",
       "date": "Atualizado em 9 de outubro de 2026",
-      "effective": "Entrada em vigor: após revisão jurídica e publicação da versão definitiva.",
+      "summaryLabel": "Resumo",
       "toc": "Neste documento",
       "privacy": "Política de Privacidade",
       "home": "Página inicial",
       "support": "Contactar o apoio",
-      "review": "Minuta para revisão jurídica: a identificação completa do fornecedor e a data definitiva devem ser confirmadas antes da publicação."
+      "summary": "Estes Termos explicam o registo, as licenças, os pagamentos, as renovações, as funcionalidades disponíveis e o apoio da ZVM. A utilização deve respeitar as regras das plataformas integradas e a lei aplicável, sem limitar os direitos do consumidor."
     },
     "en": {
       "title": "Terms of Service",
       "tag": "Institutional document",
       "lead": "Conditions for using the ZVM - Automações website, Customer Portal, and browser extension.",
       "date": "Last updated October 9, 2026",
-      "effective": "Effective date: upon legal approval and publication of the final version.",
+      "summaryLabel": "Summary",
       "toc": "On this page",
       "privacy": "Privacy Policy",
       "home": "Home",
       "support": "Contact support",
-      "review": "Draft pending legal review: the provider’s full legal identity and final effective date must be confirmed before publication."
+      "summary": "These Terms explain ZVM accounts, licenses, payments, renewals, available features, and customer support. Use must comply with applicable platform rules and laws, without waiving mandatory consumer rights."
     }
   },
   "sections": [
@@ -51,15 +51,15 @@ const TERMS = Object.freeze({
       "paragraphs": {
         "pt-BR": [
           "A ZVM - Automações é uma extensão de navegador voltada à organização de atendimento e à automação de atividades no WhatsApp Web, acompanhada de um site e Portal do Cliente para cadastro, licenciamento e suporte. Não é um serviço oficial do WhatsApp ou da Meta.",
-          "ZVM - Automações é a identificação comercial do serviço. A identificação civil ou empresarial completa do fornecedor deve ser confirmada na documentação de contratação antes da publicação definitiva destes Termos. O canal público de atendimento está disponível ao final deste documento."
+          "ZVM - Automações é a identificação comercial do serviço. Para esclarecer a identificação do fornecedor e as condições de uma contratação, utilize o canal oficial de suporte indicado ao final deste documento."
         ],
         "pt-PT": [
           "A ZVM - Automações é uma extensão de navegador para organizar o atendimento e automatizar atividades no WhatsApp Web, acompanhada de um sítio e Área de Cliente para registo, licenciamento e apoio. Não é um serviço oficial do WhatsApp nem da Meta.",
-          "ZVM - Automações é a designação comercial do serviço. A identificação civil ou empresarial completa do fornecedor deve ser confirmada nos documentos contratuais antes da publicação definitiva destes Termos. O contacto público de apoio encontra-se no final do documento."
+          "ZVM - Automações é a designação comercial do serviço. Para esclarecer a identificação do fornecedor e as condições de contratação, contacte o canal oficial de apoio indicado no final deste documento."
         ],
         "en": [
           "ZVM - Automações is a browser extension for organizing customer service and automating tasks in WhatsApp Web, supported by a website and Customer Portal for registration, licensing, and support. It is not an official WhatsApp or Meta service.",
-          "ZVM - Automações is the service's trade name. The provider's full legal identity must be verified against the contracting documents before these Terms receive final publication approval. The public support contact appears at the end of this document."
+          "ZVM - Automações is the service's trade name. For questions about the provider’s identity and purchase terms, use the official support channel listed at the end of this document."
         ]
       }
     },
@@ -358,15 +358,15 @@ const TERMS = Object.freeze({
       ],
       "paragraphs": {
         "pt-BR": [
-          "Estes Termos apresentam uma data de atualização e deverão indicar a data de entrada em vigor após a aprovação da versão definitiva. Mudanças relevantes nas obrigações, no tratamento de dados ou nas condições comerciais deverão ser divulgadas de modo acessível, respeitando a legislação e os contratos já celebrados.",
+          "Estes Termos indicam a data da última atualização. Mudanças relevantes nas obrigações, no tratamento de dados ou nas condições comerciais deverão ser divulgadas de modo acessível, respeitando a legislação e os contratos já celebrados.",
           "A continuidade do uso não pode ser interpretada como renúncia automática a direitos legais. Quando a legislação ou a natureza da alteração exigir consentimento específico, esse consentimento deverá ser solicitado."
         ],
         "pt-PT": [
-          "Estes Termos indicam a data de atualização e deverão apresentar a data de entrada em vigor após a aprovação final. Mudanças relevantes nas obrigações, tratamento de dados ou condições comerciais deverão ser comunicadas de forma acessível, respeitando a lei e os contratos existentes.",
+          "Estes Termos indicam a data da última atualização. Mudanças relevantes nas obrigações, tratamento de dados ou condições comerciais deverão ser comunicadas de forma acessível, respeitando a lei e os contratos existentes.",
           "A continuação da utilização não representa renúncia automática a direitos legais. Quando for necessário consentimento específico, este deverá ser pedido."
         ],
         "en": [
-          "These Terms show their last update and must state an effective date after final approval. Material changes to obligations, data handling, or commercial terms must be communicated accessibly, in accordance with law and existing agreements.",
+          "These Terms display their last-update date. Material changes to obligations, data handling, or commercial terms must be communicated accessibly, in accordance with law and existing agreements.",
           "Continued use does not constitute automatic waiver of statutory rights. Where a specific consent is legally required, it must be requested."
         ]
       }
@@ -401,8 +401,8 @@ function escapeHtml(value) {
 function renderTermsDocument(locale='pt-BR', supportUrl='/') {
  const lang=Object.hasOwn(TERMS.copy,locale)?locale:'pt-BR';
  const t=TERMS.copy[lang];
- const headings=TERMS.sections.map((section,i)=>`<li><a href="#${section.id}"><span class="terms-index-num">${String(i+1).padStart(2,'0')}</span>${escapeHtml(section.titles[['pt-BR','pt-PT','en'].indexOf(lang)])}</a></li>`).join('');
- const sections=TERMS.sections.map((section,i)=>`<section class="doc-section terms-section" id="${section.id}" aria-labelledby="heading-${section.id}"><h2 id="heading-${section.id}"><span class="sec-num">${i+1}</span>${escapeHtml(section.titles[['pt-BR','pt-PT','en'].indexOf(lang)])}</h2>${section.paragraphs[lang].map(p=>`<p>${escapeHtml(p)}</p>`).join('')}</section>`).join('');
- return `<header class="page-hero terms-hero"><span class="page-hero-tag">${escapeHtml(t.tag)}</span><h1>${escapeHtml(t.title)}</h1><p class="terms-lead">${escapeHtml(t.lead)}</p><p class="terms-date"><time datetime="${TERMS.version}">${escapeHtml(t.date)}</time><span aria-hidden="true"> · </span>${escapeHtml(t.effective)}</p></header><div class="doc-wrap terms-wrap"><p class="terms-review" role="note">${escapeHtml(t.review)}</p><nav class="terms-toc" aria-label="${escapeHtml(t.toc)}"><h2>${escapeHtml(t.toc)}</h2><ol>${headings}</ol></nav><div class="terms-body">${sections}</div><div class="terms-ending"><a href="/privacidade">${escapeHtml(t.privacy)}</a><a href="/">${escapeHtml(t.home)}</a><a href="${escapeHtml(supportUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(t.support)}</a></div></div>`;
+ const headings=TERMS.sections.map((section,i)=>`<li><a href="#${section.id}"><span class="terms-index-num" aria-hidden="true">${String(i+1).padStart(2,'0')}</span> <span class="terms-index-label">${escapeHtml(section.titles[['pt-BR','pt-PT','en'].indexOf(lang)])}</span></a></li>`).join('');
+ const sections=TERMS.sections.map((section,i)=>`<section class="doc-section terms-section" id="${section.id}" aria-labelledby="heading-${section.id}"><h2 id="heading-${section.id}"><span class="sec-num">${i+1}</span> ${escapeHtml(section.titles[['pt-BR','pt-PT','en'].indexOf(lang)])}</h2>${section.paragraphs[lang].map(p=>`<p>${escapeHtml(p)}</p>`).join('')}</section>`).join('');
+ return `<header class="page-hero terms-hero"><span class="page-hero-tag">${escapeHtml(t.tag)}</span><h1>${escapeHtml(t.title)}</h1><p class="terms-lead">${escapeHtml(t.lead)}</p><p class="terms-date"><time datetime="${TERMS.version}">${escapeHtml(t.date)}</time></p></header><div class="doc-wrap terms-wrap"><div class="info-box terms-summary"><strong>${escapeHtml(t.summaryLabel)}:</strong> ${escapeHtml(t.summary)}</div><nav class="terms-toc" aria-label="${escapeHtml(t.toc)}"><h2>${escapeHtml(t.toc)}</h2><ol>${headings}</ol></nav><div class="terms-body">${sections}</div><div class="terms-ending"><a href="/privacidade">${escapeHtml(t.privacy)}</a> <a href="/">${escapeHtml(t.home)}</a> <a href="${escapeHtml(supportUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(t.support)}</a></div></div>`;
 }
 module.exports={TERMS,renderTermsDocument};
