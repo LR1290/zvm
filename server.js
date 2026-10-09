@@ -2,6 +2,7 @@ const ZVM_BUILD_ID = '2026-10-08-r46-16-cakto-queue-recovery';
 const { resolveClientIp } = require('./client-ip-policy');
 const { createLandingRenderer } = require('./src/web/public/landing/render');
 const { renderPublicFooter } = require('./src/web/public/footer');
+const portalLicenseOwner = require('./src/portal-license-owner');
 const { TERMS, renderTermsDocument } = require('./src/web/public/terms');
 const { SUPPORT_URL: ZVM_SUPPORT_URL } = require('./src/support-contact');
 const { resolvePublicLocale, localizePublicHtml, localizeAuthHtml, setLanguageCookie } = require('./src/web/public/i18n');
@@ -3280,7 +3281,14 @@ async function _processCommercialSaleUnlocked(sale, plan, deps = {}) {
   const keyStore = deps.keyStore || keys;
   const db = deps.db || await getMongoDb();
   const findPortalUser = deps.findPortalUser || (email => db.collection('portal_users').findOne({ _id: email }));
-  const linkPortalUser = deps.linkPortalUser || ((email, keyCode) => db.collection('portal_users').updateOne({ _id: email }, { $set: { keyCode } }, { upsert: false }));
+  const linkPortalUser = deps.linkPortalUser || (async (email, keyCode) => {
+    // A customer without Portal registration still receives the paid entitlement.
+    // Existing accounts must pass the same global ownership constraint as the UI.
+    const user = await db.collection('portal_users').findOne({ _id: email }, { projection: { _id: 1 } });
+    if (!user) return { matchedCount: 0 };
+    await portalLicenseOwner.bind(db, email, keyCode);
+    return { matchedCount: 1 };
+  });
   const persistKey = deps.persistKey || (code => db.collection('store').updateOne(
     { _id: 'keys' },
     { $set: { [`data.${code}`]: keyStore[code], updatedAt: new Date() } },
@@ -9993,20 +10001,20 @@ async function handleRequest(req, res) {
       if (keycode) {
         await ensureKeyLoaded(keycode);
         if (!keys[keycode]) { sendAuthHtml(res, renderStandalonePortalRegister('Chave não encontrada. Deixe em branco para vincular depois.', vals, redir)); return; }
-        // Guarda de aplicação: uma licença comercial pertence a uma única conta
-        // do portal. Sem isto, a mesma keyCode poderia ser vinculada a vários
-        // portal_users simultaneamente (cada um veria/gerenciaria a licença do
-        // outro). Checagem em tempo de escrita — não depende de índice único.
-        const alreadyLinked = await db.collection('portal_users').findOne({ keyCode: keycode });
-        if (alreadyLinked) { sendAuthHtml(res, renderStandalonePortalRegister('Esta chave já está vinculada a outra conta. Entre em contato com o suporte se isso for um engano.', vals, redir)); return; }
+        // Only the Mongo partial unique index is authoritative for ownership.
+        // Concurrent inserts are arbitrated atomically by MongoDB.
       }
       const newPass = await hashNewPortalPassword(pass);
-      await db.collection('portal_users').insertOne({ _id: email, name, email, phone: phone||null, ...newPass, keyCode: keycode||null, createdAt: new Date().toISOString() });
+      await portalLicenseOwner.register(db, { _id: email, name, email, phone: phone||null, ...newPass, keyCode: keycode||null, createdAt: new Date().toISOString() });
       const token = generateToken();
       portalSessions[token] = { email, name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
       setSessionCookie(res, 'zv_portal', token, 86400);
       res.writeHead(302, { Location: redir || '/cliente' }); res.end();
-    } catch(e) { console.error('[Portal] registro:', e.message); sendAuthHtml(res, renderStandalonePortalRegister('Erro ao criar conta.', vals, redir)); return; }
+    } catch(e) {
+      const duplicate = e?.code === 'account_or_license_already_used';
+      console.error('[Portal] registro indisponível:', duplicate ? 'duplicate' : (e?.code || 'unknown'));
+      sendAuthHtml(res, renderStandalonePortalRegister(duplicate ? 'E-mail ou chave já vinculados. Verifique seus dados.' : 'Cadastro temporariamente indisponível.', vals, redir)); return;
+    }
     return;
   }
 
@@ -10030,15 +10038,12 @@ async function handleRequest(req, res) {
       if (!keys[keycode]) { sendAuthHtml(res, renderStandalonePortalLinkKey('Chave não encontrada.', '', sess)); return; }
       try {
         const db = await getMongoDb();
-        // Guarda de aplicação: uma licença comercial pertence a uma única conta
-        // do portal. Sem isto, dois portal_users diferentes poderiam vincular a
-        // mesma keyCode simultaneamente (cada um veria/gerenciaria a licença do
-        // outro). Checagem em tempo de escrita — não depende de índice único.
-        const alreadyLinked = await db.collection('portal_users').findOne({ keyCode: keycode, _id: { $ne: sess.email } });
-        if (alreadyLinked) { sendAuthHtml(res, renderStandalonePortalLinkKey('Esta chave já está vinculada a outra conta. Entre em contato com o suporte se isso for um engano.', '', sess)); return; }
-        await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { keyCode: keycode } });
+        await portalLicenseOwner.bind(db, sess.email, keycode);
         res.writeHead(302, { Location: '/cliente' }); res.end(); return;
-      } catch(e) { sendAuthHtml(res, renderStandalonePortalLinkKey('Erro ao vincular.', '', sess)); return; }
+      } catch(e) {
+        const conflict = e?.code === 'license_already_linked';
+        sendAuthHtml(res, renderStandalonePortalLinkKey(conflict ? 'Chave já vinculada a outra conta.' : 'Não foi possível vincular a licença. Tente novamente mais tarde.', '', sess)); return;
+      }
     }
   }
 
@@ -10048,8 +10053,9 @@ async function handleRequest(req, res) {
     const sess = getPortalUser(req);
     try {
       const db = await getMongoDb();
-      await db.collection('portal_users').updateOne({ _id: sess.email }, { $unset: { keyCode: '' } });
-    } catch(e) { /* falha silenciosa — redireciona de qualquer forma */ }
+      const owner = await db.collection('portal_users').findOne({ _id: sess.email }, { projection: { keyCode: 1 } });
+      if (owner?.keyCode) await portalLicenseOwner.unbind(db, sess.email, owner.keyCode);
+    } catch(e) { sendJson(res, { error: 'ownership_update_unavailable' }, 503); return; }
     res.writeHead(302, { Location: '/cliente' }); res.end(); return;
   }
 
@@ -10098,28 +10104,14 @@ async function handleRequest(req, res) {
         if (!passOk) { sendAuthHtml(res, renderStandalonePortalChangeEmail('Senha incorreta.', '', sess)); return; }
         const exists = await db.collection('portal_users').findOne({ _id: newemail });
         if (exists) { sendAuthHtml(res, renderStandalonePortalChangeEmail('Este e-mail já está cadastrado.', '', sess)); return; }
-        const operationId = crypto.randomBytes(16).toString('hex');
-        const claimed = await claimPortalEmailChange(db, sess.email, { operationId, targetEmail: newemail, startedAt: new Date() });
-        if (!claimed) { sendAuthHtml(res, renderStandalonePortalChangeEmail('Uma alteração de e-mail já está em andamento. Tente novamente.', '', sess)); return; }
-        let targetCreated = false;
+        // Mongo _id is the email and encrypted TOTP AAD is bound to that email.
+        // An incomplete transfer must roll back with the source account intact.
+        if (!_mongoClient || typeof _mongoClient.startSession !== 'function') throw new Error('transactions_required');
+        const mongoSession = _mongoClient.startSession();
         try {
-          const newUser = preparePortalUserForEmailChange(user, sess.email, newemail);
-          await db.collection('portal_users').insertOne(newUser);
-          targetCreated = true;
-          const finalized = await finalizePortalEmailChange(db, sess.email, operationId);
-          if (!finalized) {
-            await db.collection('portal_users').deleteOne({ _id: newemail }).catch(()=>{});
-            await releasePortalEmailChange(db, sess.email, operationId).catch(()=>{});
-            sendAuthHtml(res, renderStandalonePortalChangeEmail('Erro temporário. Tente novamente.', '', sess)); return;
-          }
-        } catch (moveErr) {
-          if (targetCreated) await db.collection('portal_users').deleteOne({ _id: newemail }).catch(()=>{});
-          await releasePortalEmailChange(db, sess.email, operationId).catch(()=>{});
-          if (moveErr?.code === 11000) {
-            sendAuthHtml(res, renderStandalonePortalChangeEmail('Este e-mail já está cadastrado.', '', sess)); return;
-          }
-          throw moveErr;
-        }
+          await portalLicenseOwner.transferEmail(db, mongoSession, sess.email, newemail,
+            (latest, target) => preparePortalUserForEmailChange(latest, sess.email, target));
+        } finally { await mongoSession.endSession(); }
         // Uma troca de identidade revoga todas as sessões da conta antiga.
         revokePortalSessions(sess.email);
         clearSessionCookie(res, 'zv_portal');
