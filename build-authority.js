@@ -193,6 +193,7 @@ function createBuildAuthority(config = {}, deps = {}) {
     deniedBuilds: config.deniedBuilds instanceof Map ? config.deniedBuilds : new Map(),
     registryV2: config.registryV2 instanceof Map ? config.registryV2 : new Map(),
     runtimeEnv: String(config.runtimeEnv || '').trim().toLowerCase(),
+    cwsCompatEnabled: /^(1|true|yes|on)$/i.test(String(process.env.ZVM_CWS_COMPAT || '')),
     devBuildAllow: config.devBuildAllow === true,
     devCohostAllow: config.devCohostAllow === true,
     devSignedBuildsAllow: config.devSignedBuildsAllow === true,
@@ -218,6 +219,22 @@ function createBuildAuthority(config = {}, deps = {}) {
   function buildDenied(version, fingerprint) {
     const set = state.deniedBuilds.get(String(version || ''));
     return !!(set && set.has(String(fingerprint || '').toLowerCase()));
+  }
+
+  // Reversible emergency concession for already-installed public store builds.
+  // License/authentication/device enforcement is still performed by the server.
+  function cwsReleaseCompatibility(identity) {
+    if (!state.cwsCompatEnabled || state.runtimeEnv !== 'production') return false;
+    const officialExtensionId = 'bdhnikgcdccjabkmbfcakgjkkgdlmgja';
+    if (identity.extensionId !== officialExtensionId || !state.extensionIds.has(officialExtensionId)) return false;
+    if (identity.channel && !['production', 'beta'].includes(identity.channel)) return false;
+    if (identity.profile && identity.profile !== 'release') return false;
+    const version = String(identity.extensionVersion || '');
+    const parts = version.split('.').map(Number);
+    if (parts.length < 3 || parts.length > 4 || parts.some(n => !Number.isSafeInteger(n) || n < 0)) return false;
+    if (parts[0] !== 0 || parts[1] < 8 || (parts[1] === 8 && parts[2] < 750)) return false;
+    if (identity.buildId && !identity.buildId.startsWith(`zvm-${identity.channel}-${version}-s`)) return false;
+    return true;
   }
 
   function devBuildAllowed(keyCode, deviceId) {
@@ -297,9 +314,10 @@ function createBuildAuthority(config = {}, deps = {}) {
           entry.extensionVersion === extensionVersion &&
           entry.channel === channel &&
           entry.profile === profile &&
-          entry.buildFingerprint === buildFingerprint &&
+          (entry.buildFingerprint === buildFingerprint || cwsReleaseCompatibility({ extensionVersion, extensionId, channel, profile, buildId })) &&
           entry.extensionIds.includes(extensionId);
       }
+      if (cwsReleaseCompatibility({ extensionVersion, extensionId, channel, profile, buildId }) && doc.signedDev !== true) return true;
 
       if (doc.signedDev === true) {
         return signedDevIdentityDecision({ buildId, channel, profile, extensionVersion, extensionId, buildFingerprint }, doc.devAttestation).ok;
@@ -323,6 +341,7 @@ function createBuildAuthority(config = {}, deps = {}) {
     if (!/^\d+(?:\.\d+){2,3}$/.test(extensionVersion) || !/^[a-f0-9]{64}$/.test(buildFingerprint) || !/^[a-p]{32}$/.test(extensionId)) return false;
     if (state.extensionIds.size && !state.extensionIds.has(extensionId)) return false;
     if (buildRecognized(extensionVersion, buildFingerprint)) return true;
+    if (cwsReleaseCompatibility({ extensionVersion, extensionId })) return true;
     return doc.developmentAuthorized === true && state.devBuildAllow === true;
   }
 
@@ -382,7 +401,7 @@ function createBuildAuthority(config = {}, deps = {}) {
       seen.set(requestId, timestamp);
     }
 
-    const recognized = buildRecognized(extensionVersion, buildFingerprint);
+    const recognized = buildRecognized(extensionVersion, buildFingerprint) || cwsReleaseCompatibility({ extensionVersion, extensionId });
     const allowUnrecognized = options.allowUnrecognized === true;
     const requireRecognized = options.requireRecognized !== false;
     if (state.buildEnforce && requireRecognized && !recognized && !allowUnrecognized) {
@@ -454,13 +473,16 @@ function createBuildAuthority(config = {}, deps = {}) {
       return { ok: false, code: 'BUILD_REVOKED', recognized: false, buildId };
     }
     const entry = state.registryV2.get(buildId);
+    const releaseCompatibility = cwsReleaseCompatibility({ extensionVersion, extensionId, channel, profile, buildId });
     let recognized = true;
     let developmentAuthorized = false;
     let signedDev = false;
     let normalizedDevAttestation = null;
     if (!entry) {
-      if (channel !== 'dev') return { ok: false, code: 'BUILD_ID_NOT_ALLOWED' };
-      if (state.runtimeEnv === 'production' && state.devCohostAllow === true && state.devSignedBuildsAllow === true) {
+      if (releaseCompatibility) {
+        // Store build admitted, but the normal license/account authentication still applies.
+      } else if (channel !== 'dev') return { ok: false, code: 'BUILD_ID_NOT_ALLOWED' };
+      else if (state.runtimeEnv === 'production' && state.devCohostAllow === true && state.devSignedBuildsAllow === true) {
         const signed = signedDevIdentityDecision({ buildId, channel, profile, extensionVersion, extensionId, buildFingerprint }, raw.devAttestation, timestamp);
         if (!signed.ok) return { ok: false, code: signed.code || 'DEV_BUILD_ATTESTATION_INVALID' };
         recognized = false;
@@ -478,7 +500,8 @@ function createBuildAuthority(config = {}, deps = {}) {
       if (entry.status === 'revoked') return { ok: false, code: 'BUILD_REVOKED', recognized: false, buildId };
       if (entry.channel !== channel) return { ok: false, code: 'BUILD_CHANNEL_MISMATCH' };
       if (entry.profile !== profile) return { ok: false, code: 'BUILD_PROFILE_MISMATCH' };
-      if (entry.extensionVersion !== extensionVersion || entry.buildFingerprint !== buildFingerprint || entry.securityProtocol !== 2) {
+      if (entry.extensionVersion !== extensionVersion || entry.securityProtocol !== 2 ||
+          (entry.buildFingerprint !== buildFingerprint && !releaseCompatibility)) {
         return { ok: false, code: 'BUILD_NOT_ALLOWED', recognized: false, buildId };
       }
       if (!entry.extensionIds.includes(extensionId)) return { ok: false, code: 'EXTENSION_ID_NOT_ALLOWED' };
@@ -550,6 +573,7 @@ function createBuildAuthority(config = {}, deps = {}) {
       devCohostAllow: state.devCohostAllow,
       devSignedBuildsAllow: state.devSignedBuildsAllow,
       devSigningKeyCount: state.devSigningPublicKeys.size,
+      cwsCompatibility: state.cwsCompatEnabled && state.runtimeEnv === 'production',
       legacyV3: legacyV3Allowed(),
     });
   }
