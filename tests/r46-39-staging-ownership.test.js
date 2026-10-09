@@ -40,7 +40,7 @@ function fakeClient(mode = 'reserve') {
  const coll=new FakeCollection(state);
  const db={collection(name){assert.ok(checkSyntheticName(name));return coll;},async createCollection(name){assert.ok(checkSyntheticName(name));state.created=true;},listCollections(){return{toArray:async()=>state.dropped?[]:[{name:'still_present'}]}}};
  const client={db(name){assert.match(name,/^zvm_r4639_stage_/);return db},startSession(){return {
-   async withTransaction(fn){const snapshot=clone([...state.docs.entries()]);state.reserveSnapshot=snapshot;try{await fn();}catch(err){state.docs=new Map(snapshot);throw err}finally{state.reserveSnapshot=null}},
+   async withTransaction(fn){if(state.mode==='unsupported')throw Error('transactions_unsupported');const snapshot=clone([...state.docs.entries()]);state.reserveSnapshot=snapshot;try{await fn();}catch(err){state.docs=new Map(snapshot);throw err}finally{state.reserveSnapshot=null}},
    async endSession(){} }}};
  return {state,client};
 }
@@ -67,5 +67,8 @@ function fakeClient(mode = 'reserve') {
  assert.ok(result.checks.includes('rollback_keeps_owner'));n++;
  const permissive=fakeClient('release'); const possible=await runWithClient(permissive.client,{name:valid.ZVM_R4639_STAGING_DB});
  assert.equal(possible.transactionTransfer,'committed');assert.equal(possible.tested,20);assert.equal(permissive.state.dropped,true);n++;
+ const unsupported=fakeClient('unsupported');
+ await assert.rejects(()=>runWithClient(unsupported.client,{name:valid.ZVM_R4639_STAGING_DB}),/staging_assert_txn_outcome_recorded/);
+ assert.equal(unsupported.state.dropped,true,'fixtures must be cleaned on unsupported transactions');n++;
  console.log('R46.39 isolated Mongo staging fixture: PASS '+n+' guard groups; '+result.tested+' scenario checks; no external DB');
 })().catch(e=>{console.error(e);process.exitCode=1});
