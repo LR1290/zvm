@@ -2,6 +2,7 @@ const ZVM_BUILD_ID = '2026-10-08-r46-16-cakto-queue-recovery';
 const { resolveClientIp } = require('./client-ip-policy');
 const { createLandingRenderer } = require('./src/web/public/landing/render');
 const { renderPublicFooter } = require('./src/web/public/footer');
+const { TERMS, renderTermsDocument } = require('./src/web/public/terms');
 const { SUPPORT_URL: ZVM_SUPPORT_URL } = require('./src/support-contact');
 const { resolvePublicLocale, localizePublicHtml, localizeAuthHtml, setLanguageCookie } = require('./src/web/public/i18n');
 'use strict';
@@ -5287,7 +5288,7 @@ function sendPublicHtml(res, html, status = 200) {
   const request = res.req || {};
   const currentPath = new URL(String(request.url || '/'), 'https://zvm.invalid').pathname;
   const localeInfo = resolvePublicLocale(request);
-  if (['/', '/planos', '/faq', '/privacidade'].includes(currentPath) && status === 200) {
+  if (['/', '/planos', '/faq', '/privacidade', '/termos'].includes(currentPath) && status === 200) {
     html = localizePublicHtml(html, localeInfo.locale, { path: currentPath });
     res.setHeader('Content-Language', localeInfo.locale);
     _appendVary(res, 'Accept-Language');
@@ -6435,6 +6436,7 @@ const _CSS_CLIENT_WORKSPACE = '<link rel="stylesheet" href="/assets/zvm-r46-clie
 const _CSS_LANDING = '<link rel="stylesheet" href="/assets/zvm-r46-landing.af4c6e5c623b.css">';
 const _CSS_FAQ = '<link rel="stylesheet" href="/assets/zvm-faq.b388ca55cbf4.css">';
 const _CSS_PRIVACY = '<link rel="stylesheet" href="/assets/zvm-privacy.7be30b7da0a1.css">';
+const _CSS_TERMS = '<link rel="stylesheet" href="/assets/zvm-terms.f1c470efdbbb.css">';
 const _CSS_PLANS = '<link rel="stylesheet" href="/assets/zvm-plans-page.9dcee339fb9b.css">';
 const _CSS_ERROR_404 = '<link rel="stylesheet" href="/assets/zvm-error-404.bea758f1e983.css">';
 const _CSS_ERROR_500 = '<link rel="stylesheet" href="/assets/zvm-error-500.c2528a1f4a3c.css">';
@@ -6515,6 +6517,7 @@ function _sharedNav(options = '', legacyPortalUser = null) {
     ['/planos', 'Planos'],
     ['/faq', 'FAQ'],
     ['/privacidade', 'Privacidade'],
+    ['/termos', 'Termos de Serviço'],
   ];
   const mainLinksHtml = mainLinks.map(([href, label]) => {
     const route = href.split('#')[0] || '/';
@@ -6742,6 +6745,7 @@ ${_sharedNav({activePath:'/privacidade',portalUser,showBack:true})}
   <div class="doc-section">
     <h2><span class="sec-num">8</span>Chrome Web Store e Uso Limitado</h2>
     <p>O uso de informações recebidas por meio das APIs do Google seguirá a Política de Dados do Usuário da Chrome Web Store, incluindo os requisitos de Uso Limitado. A ZVM limita o tratamento de dados ao seu propósito declarado e às operações solicitadas pelo usuário.</p>
+    <p>Google OAuth (em homologação): integrações futuras com Google Drive ou Google People API só poderão acessar dados após autorização específica do usuário. Antes de cada ativação, a ZVM deverá informar quais arquivos ou contatos serão acessados, para que finalidade, onde poderão ser tratados ou armazenados e como revogar o acesso. O uso dos dados recebidos das APIs do Google deve respeitar a Política de Dados do Usuário dos Serviços de API do Google e seus requisitos de Uso Limitado; a ativação ou disponibilidade geral dessas integrações ainda não é afirmada.</p>
   </div>
   <div class="doc-section">
     <h2><span class="sec-num">9</span>Contato</h2>
@@ -6792,6 +6796,30 @@ function renderStandaloneFaqPage(portalUser = null) {
 // applyStandaloneFrame), sem tocar renderPrivacyPage.
 function renderStandalonePrivacyPage(portalUser = null) {
   return applyStandaloneFrame(renderPrivacyPage(portalUser), { activePath: '/privacidade', portalUser, showBack: true });
+}
+
+function renderStandaloneTermsPage(portalUser = null, locale = 'pt-BR') {
+  const lang = Object.hasOwn(TERMS.copy, locale) ? locale : 'pt-BR';
+  const t = TERMS.copy[lang];
+  const description = lang === 'en'
+    ? 'ZVM - Automações Terms of Service covering licenses, billing, responsible messaging, privacy and integrations.'
+    : lang === 'pt-PT'
+    ? 'Termos de Serviço da ZVM - Automações: licenças, pagamentos, utilização responsável, privacidade e integrações.'
+    : 'Termos de Serviço da ZVM - Automações: licenças, pagamentos, automações, privacidade e integrações.';
+  const canonical = lang === 'pt-BR' ? '/termos' : '/termos?lang=' + lang;
+  return `<!DOCTYPE html><html lang="${lang}"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZVM — ${t.title}</title><meta name="description" content="${description}">
+<link rel="canonical" href="https://zvm.onrender.com${canonical}">
+<link rel="alternate" hreflang="pt-BR" href="https://zvm.onrender.com/termos">
+<link rel="alternate" hreflang="pt-PT" href="https://zvm.onrender.com/termos?lang=pt-PT">
+<link rel="alternate" hreflang="en" href="https://zvm.onrender.com/termos?lang=en">
+<link rel="alternate" hreflang="x-default" href="https://zvm.onrender.com/termos">
+<link rel="icon" type="image/svg+xml" href="${_FAV}">
+${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PRIVACY}${_CSS_TERMS}${_CSS_SYSTEM}</head>
+<body class="zvm-terms-page">${_sharedNav({activePath:'/termos',portalUser,showBack:true})}
+<main id="main-content" class="terms-main">${renderTermsDocument(lang, ZVM_SUPPORT_URL)}</main>
+${_standaloneFoot()}</body></html>`;
 }
 
 function renderStandalone404Page(portalUser = null) {
@@ -7925,7 +7953,7 @@ const HTTP_TRAFFIC_MAX_ENTRIES = 4096;
 const _httpTrafficBuckets = new Map();
 const HTTP_TRAFFIC_PUBLIC_PATHS = new Set([
   '/', '/health', '/status', '/robots.txt', '/client/status', '/client/remove-phone',
-  '/api/checkkey', '/cakto/webhook', '/meta/webhook', '/faq', '/planos', '/privacidade',
+  '/api/checkkey', '/cakto/webhook', '/meta/webhook', '/faq', '/planos', '/privacidade', '/termos',
   ZVM_BRAND_ICON_ASSET, ZVM_FOUNDER_AVATAR_ASSET,
 ]);
 const HTTP_TRAFFIC_EXTENSION_PATHS = new Set([
@@ -9776,6 +9804,12 @@ async function handleRequest(req, res) {
     sendPublicHtml(res, renderStandalonePrivacyPage(_sess)); return;
   }
 
+  if (p === '/termos' && req.method === 'GET') {
+    const _sess = isPortalSession(req) ? getPortalUser(req) : null;
+    const locale = resolvePublicLocale(req).locale;
+    sendPublicHtml(res, renderStandaloneTermsPage(_sess, locale)); return;
+  }
+
   // ── Label validation endpoint (usado pelo pentest interno) ──────────────
   if (p === R_EXT + '/v3/labels' && req.method === 'POST') {
     if (!checkRateLimit(ip, 'api')) {
@@ -10603,6 +10637,7 @@ module.exports.__test = Object.freeze({
   renderStandaloneLandingPage,
   renderStandaloneFaqPage,
   renderStandalonePrivacyPage,
+  renderStandaloneTermsPage,
   renderStandalone2FAVerify,
   renderStandaloneSetup2FA,
   renderStandalonePortalLinkKey,
