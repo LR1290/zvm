@@ -49,8 +49,8 @@ function auditPublicAssets(root) {
       continue;
     }
     const ext = path.extname(asset.file).toLowerCase();
-    const expectedMime = {'.css':'text/css','.js':'application/javascript','.png':'image/png','.svg':'image/svg+xml','.webp':'image/webp','.jpg':'image/jpeg','.jpeg':'image/jpeg','.ico':'image/'};
-    if (!expectedMime[ext] || !asset.mime.startsWith(expectedMime[ext]))
+    const expectedMime = {'.css':'text/css','.js':['application/javascript','text/javascript'],'.png':'image/png','.svg':'image/svg+xml','.webp':'image/webp','.jpg':'image/jpeg','.jpeg':'image/jpeg','.ico':'image/'};
+    if (!expectedMime[ext] || !(Array.isArray(expectedMime[ext]) ? expectedMime[ext] : [expectedMime[ext]]).some(type => asset.mime.startsWith(type)))
       errors.push('asset_mime_invalid:' + asset.route);
     const fingerprint = asset.file.match(/\.([a-f0-9]{12})\.[a-z0-9]+$/)?.[1];
     if (!fingerprint || !asset.hash.startsWith(fingerprint))
