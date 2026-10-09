@@ -2,7 +2,11 @@
 // Read-only preflight: the database account must have MongoDB read privilege only.
 // Does not output emails, raw key codes, IPs or customer records.
 const crypto=require('node:crypto');
-function shortHash(value){return crypto.createHash('sha256').update(String(value),'utf8').digest('hex').slice(0,12);}
+// Ephemeral keyed pseudonymization: a plain SHA-256 of a license could be
+// brute-forced when key formats are predictable. The key is never persisted
+// or included in logs, and identifiers cannot be correlated across runs.
+const auditSalt=crypto.randomBytes(32);
+function shortHash(value){return crypto.createHmac('sha256',auditSalt).update(String(value),'utf8').digest('hex').slice(0,12);}
 const pipeline = Object.freeze([
  {$match:{keyCode:{$type:'string',$ne:''}}},
  {$group:{_id:'$keyCode',owners:{$sum:1}}},
