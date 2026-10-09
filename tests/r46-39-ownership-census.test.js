@@ -12,6 +12,8 @@ const {audit,pipeline}=require('../tools/r46-39-ownership-census');
  assert.notEqual(r.duplicates[0].keyHash,require('node:crypto').createHash('sha256').update(rows[0]._id).digest('hex').slice(0,12),'unsalted IDs must not be exposed');
  assert.equal(collName,'portal_users');assert.equal(writes,0);
  assert.equal(options.allowDiskUse,false);assert.equal(options.maxTimeMS,8000);
+ assert.ok(JSON.stringify(pipeline).includes('canonicalKey'),'duplicate detection must normalize case/outer whitespace');
+ assert.ok(JSON.stringify(pipeline).includes('$type'),'arrays must not be treated as string licenses');
  assert.equal(r.duplicateGroups,2);assert.equal(r.duplicates[0].holders,2);
  assert.match(r.duplicates[0].keyHash,/^[a-f0-9]{12}$/);
  assert.ok(!JSON.stringify(r).includes('a-secret-license'));
