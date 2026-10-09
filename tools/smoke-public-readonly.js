@@ -27,18 +27,15 @@ function linksFromPublicPage(html) {
 async function request(origin, resource, fetcher, timeoutMs) {
   const url = new URL(resource, origin);
   if (url.origin !== origin) throw Error('smoke_cross_origin_denied');
-  const controller = new AbortController();
-  const clock = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetcher(url.href, {
-      method: 'GET', redirect: 'manual', credentials: 'omit',
-      headers: { Accept: resource === '/ready' ? 'application/json' : '*/*' },
-      signal: controller.signal,
-    });
-    if (response.status !== 200) throw Error('smoke_http_' + response.status + ':' + resource);
-    if (response.headers?.get?.('location')) throw Error('smoke_unexpected_redirect:' + resource);
-    return response;
-  } finally { clearTimeout(clock); }
+  // AbortSignal.timeout remains active until response body is consumed.
+  const response = await fetcher(url.href, {
+    method: 'GET', redirect: 'manual', credentials: 'omit',
+    headers: { Accept: resource === '/ready' ? 'application/json' : '*/*' },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (response.status !== 200) throw Error('smoke_http_' + response.status + ':' + resource);
+  if (response.headers?.get?.('location')) throw Error('smoke_unexpected_redirect:' + resource);
+  return response;
 }
 async function audit({origin = DEFAULT_ORIGIN, fetcher = fetch, timeoutMs = 8000} = {}) {
   origin = canonicalOrigin(origin);
