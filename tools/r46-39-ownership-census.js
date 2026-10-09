@@ -1,0 +1,38 @@
+'use strict';
+// Read-only preflight: the database account must have MongoDB read privilege only.
+// Does not output emails, raw key codes, IPs or customer records.
+const crypto=require('node:crypto');
+// Ephemeral keyed pseudonymization: a plain SHA-256 of a license could be
+// brute-forced when key formats are predictable. The key is never persisted
+// or included in logs, and identifiers cannot be correlated across runs.
+const auditSalt=crypto.randomBytes(32);
+function shortHash(value){return crypto.createHmac('sha256',auditSalt).update(String(value),'utf8').digest('hex').slice(0,12);}
+const pipeline = Object.freeze([
+ // Aggregation $type evaluates the field itself, not individual array elements.
+ {$match:{$expr:{$eq:[{$type:'$keyCode'},'string']}}},
+ // Portal registration lowercases/trims input. Group canonical equivalents so
+ // an uppercase or padded legacy record cannot evade the duplicate census.
+ {$project:{canonicalKey:{$toLower:{$trim:{input:'$keyCode'}}}}},
+ {$match:{canonicalKey:{$ne:''}}},
+ {$group:{_id:'$canonicalKey',owners:{$sum:1}}},
+ {$match:{owners:{$gt:1}}},
+ {$sort:{owners:-1}},
+ {$limit:50}
+]);
+async function audit(db) {
+ if(!db || typeof db.collection!=='function')throw Error('db_readonly_required');
+ const rows=await db.collection('portal_users').aggregate(pipeline,{allowDiskUse:false,maxTimeMS:8000}).toArray();
+ return {status:'read_only',complete:rows.length<50,duplicateGroups:rows.length,
+  duplicates: rows.map(r=>({keyHash:shortHash(r._id),holders:Number(r.owners)||0}))};
+}
+async function main(argv=process.argv.slice(2),env=process.env){
+ if(argv.length!==1 || argv[0]!=='--audit' || env.ZVM_AUDIT_READONLY!=='1' || !env.ZVM_AUDIT_MONGODB_URI || !env.ZVM_AUDIT_DB_NAME){
+  throw Error('requires --audit, ZVM_AUDIT_READONLY=1, ZVM_AUDIT_MONGODB_URI, ZVM_AUDIT_DB_NAME');
+ }
+ const {MongoClient}=require('mongodb');
+ const client=new MongoClient(env.ZVM_AUDIT_MONGODB_URI,{serverSelectionTimeoutMS:5000,connectTimeoutMS:5000,maxPoolSize:1});
+ try {await client.connect();const report=await audit(client.db(env.ZVM_AUDIT_DB_NAME));console.log(JSON.stringify(report));}
+ finally {await client.close();}
+}
+if(require.main===module) main().catch(e=>{console.error('R46.39 census failed:',e.code||'audit_failed');process.exitCode=1});
+module.exports={pipeline,audit,shortHash};
