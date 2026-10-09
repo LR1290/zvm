@@ -2908,7 +2908,17 @@ function isPortalSession(req) {
 }
 function getPortalUser(req) {
   const m = (req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/);
-  return m ? portalSessions[m[1]] : null;
+  if (!m) return null;
+  const session = portalSessions[m[1]];
+  if (!session) return null;
+  // Pending 2FA has a 5-minute deadline; it must not be extended simply because
+  // the hourly cleanup has not run yet. Also invalidate expired full sessions.
+  const deadline = new Date(session.expiresAt).getTime();
+  if (!Number.isFinite(deadline) || Date.now() >= deadline) {
+    delete portalSessions[m[1]];
+    return null;
+  }
+  return session;
 }
 
 function _sanitizeRequestTraceId(value) {
@@ -5935,7 +5945,7 @@ function renderStandalonePortalDashboard(user, keyData, okMsg='') {
   // Dispositivos cadastrados — só phones (número + posição do slot), nunca
   // IP/versão do WPP/último acesso técnico (isso fica só no painel admin).
   const deviceListHtml = (keyData && (keyData.phones||[]).length)
-    ? (keyData.phones||[]).map((phone,index)=>`<div class="device-row"><div class="device-num" aria-hidden="true">#${index+1}</div><div class="device-info"><div class="device-phone">${escHtml(phone)}</div><div class="device-meta">Slot ${index+1} de ${devMax||'∞'}</div></div><form method="POST" action="/cliente/dispositivos/remover" data-confirm="Remover este número da licença? O dispositivo perderá o acesso."><input type="hidden" name="index" value="${index}"><button type="submit" class="device-remove" aria-label="Remover número ${escHtml(phone)}">Remover</button></form></div>`).join('')
+    ? (keyData.phones||[]).map((phone,index)=>`<div class="device-row"><div class="device-num" aria-hidden="true">#${index+1}</div><div class="device-info"><div class="device-phone">${escHtml(phone)}</div><div class="device-meta">Slot ${index+1} de ${devMax||'∞'}</div></div><form method="POST" action="/cliente/dispositivos/remover" data-confirm="Remover este número da licença? O dispositivo perderá o acesso."><input type="hidden" name="phone" value="${escHtml(phone)}"><button type="submit" class="device-remove" aria-label="Remover número ${escHtml(phone)}">Remover</button></form></div>`).join('')
     : '<div class="device-empty">Nenhum número vinculado. O primeiro acesso da extensão ocupará um slot.</div>';
 
   // ── Bloco de contagem regressiva — só existe pra chaves não-deferred com
@@ -10064,20 +10074,31 @@ async function handleRequest(req, res) {
     if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
     const sess = getPortalUser(req);
     const form = await parseFormBody(req);
-    const indexRaw = String(form.get('index') || '');
-    if (!/^\d{1,3}$/.test(indexRaw)) { sendJson(res, { error: 'invalid_device' }, 400); return; }
+    // A slot index is not stable: concurrent admin/extension edits may reorder
+    // phones[] between the page render and form submission. Fail closed for old
+    // cached forms instead of removing a different user's device by position.
+    const phone = normalizePhone(form.get('phone'));
+    if (!phone || phone.length > 20) { sendJson(res, { error: 'stale_device_form', retryable: true }, 409); return; }
     try {
       const db = await getMongoDb();
       const user = await db.collection('portal_users').findOne({ _id: sess.email });
-      if (!user?.keyCode || !await ensureKeyLoaded(user.keyCode)) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
-      const key = keys[user.keyCode];
-      const phone = Array.isArray(key.phones) ? key.phones[Number(indexRaw)] : null;
-      if (!phone) { sendJson(res, { error: 'device_not_found' }, 404); return; }
-      removePhoneFromKey(key, phone);
-      await _writeKeyToDbStrict(user.keyCode);
+      if (!user?.keyCode) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
+      // Reuse the existing persisted compare-and-swap primitive. Unlike a
+      // cache-first write, this cannot clobber a concurrent Cakto/admin update.
+      const updated = await mutateAdminKeyRecordStrict(user.keyCode, draft => {
+        if (!Array.isArray(draft.phones) || !draft.phones.some(p => normalizePhone(p) === phone)) {
+          const error = new Error('device_not_found');
+          error.code = 'device_not_found';
+          throw error;
+        }
+        removePhoneFromKey(draft, phone);
+      }, { db });
+      if (!updated) { sendJson(res, { error: 'license_not_found' }, 404); return; }
       res.writeHead(302, { Location: '/cliente?ok=1' }); res.end(); return;
     } catch (e) {
-      console.error('[Portal] remoção de dispositivo:', e.message);
+      if (e?.code === 'key_write_conflict') { sendJson(res, { error: 'concurrent_update', retryable: true }, 409); return; }
+      if (e?.code === 'device_not_found') { sendJson(res, { error: 'device_not_found' }, 404); return; }
+      console.error('[Portal] remoção de dispositivo indisponível:', Number(e?.code) || 'unknown');
       sendJson(res, { error: 'temporarily_unavailable' }, 503); return;
     }
   }
@@ -10230,8 +10251,14 @@ async function handleRequest(req, res) {
         catch (_) { sendAuthHtml(res, renderStandalone2FAVerify('2FA temporariamente indisponível. Tente novamente.')); return; }
         if (!user || !activeSecret || !verifyTOTP(activeSecret, code)) { addSecurityAlert('BRUTE_FORCE', '2FA falhou para ' + maskEmail(sess.email), ip); sendAuthHtml(res, renderStandalone2FAVerify('Código inválido. Tente novamente.')); return; }
         if (user.totpSecret && !user.totpSecretEnc) user = await migratePortalTotpLegacy(db, user, sess.email);
+        // Revalidate after the asynchronous TOTP/DB round trip.
+        if (getPortalUser(req) !== sess || !sess.pending2fa) {
+          clearSessionCookie(res, 'zv_portal');
+          res.writeHead(302, { Location: '/cliente' }); res.end(); return;
+        }
         const m = (req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/);
-        if (m) portalSessions[m[1]] = { email: sess.email, name: sess.name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
+        if (!m) { sendJson(res, { error: 'session_expired' }, 401); return; }
+        portalSessions[m[1]] = { email: sess.email, name: sess.name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
         setSessionCookie(res, 'zv_portal', m[1], 86400);
         const dest = sess.redir && sess.redir.startsWith('/') ? sess.redir : '/cliente';
         res.writeHead(302, { Location: dest }); res.end();
@@ -10678,6 +10705,9 @@ module.exports.__test = Object.freeze({
   clearSessionCookie,
   isAdminSession,
   isAnalyticsSession,
+  getPortalUser,
+  portalSessions,
+  removePhoneFromKey,
   sessions,
   analyticsSessions,
   SESSION_ABSOLUTE_LIMIT_MS,
