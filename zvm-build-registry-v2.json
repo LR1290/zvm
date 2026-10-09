@@ -195,6 +195,21 @@
       "sourceRevision": null,
       "sourceTreeSha256": "a571c90cbb2e119682c470fe7c847a2daff69aaecc2ca69be5da18c1a7f3f27f",
       "status": "active"
+    },
+    {
+      "buildFingerprint": "439d8e8ac64e365558e01c638cd7635fa17d854630c9e7048bef82b01725a781",
+      "buildId": "zvm-production-0.9.1-s48a0402db356",
+      "channel": "production",
+      "createdAt": "2026-10-09T20:02:12.358Z",
+      "extensionIds": [
+        "bdhnikgcdccjabkmbfcakgjkkgdlmgja"
+      ],
+      "extensionVersion": "0.9.1",
+      "profile": "release",
+      "securityProtocol": 2,
+      "sourceRevision": null,
+      "sourceTreeSha256": "48a0402db356151d30dc6d0b403962f8ea80dd674df42c9d2bdc56afcf4dc460",
+      "status": "active"
     }
   ]
 }
