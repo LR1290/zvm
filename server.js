@@ -363,7 +363,10 @@ async function loadDb(opts = {}) {
     const db = await (opts.getDb || getMongoDb)();
     // Garante índices úteis (idempotente — não recria se já existe)
     db.collection('admin_audit_logs').createIndex({ ts: -1 }, { background: true }).catch(() => {});
-    db.collection('portal_users').createIndex({ keyCode: 1 }, { background: true }).catch(() => {});
+    db.collection('portal_users').createIndex({ keyCode: 1 }, { background: true }).catch(error => {
+      // Do not expose index driver messages: they may contain raw license codes.
+      console.error('[DB] portal_users.keyCode index unavailable; code:', Number(error?.code) || 'unknown');
+    });
     if (!ZVM_LOCAL_SAFE_MODE) {
       db.collection('password_resets').createIndex(
         { expiresAt: 1 },
@@ -10137,7 +10140,7 @@ async function handleRequest(req, res) {
         revokePortalSessions(sess.email);
         clearSessionCookie(res, 'zv_portal');
         res.writeHead(302, { Location: '/cliente/login?msg=email_changed' }); res.end(); return;
-      } catch(e) { console.error('[Portal] email change:', e.message); sendAuthHtml(res, renderStandalonePortalChangeEmail('Erro interno. Tente novamente.', '', sess)); return; }
+      } catch(e) { console.error('[Portal] email change unavailable; code:', Number(e?.code) || 'unknown'); sendAuthHtml(res, renderStandalonePortalChangeEmail('Erro interno. Tente novamente.', '', sess)); return; }
     }
   }
 
