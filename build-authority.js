@@ -226,7 +226,10 @@ function createBuildAuthority(config = {}, deps = {}) {
   }
 
   function legacyV3Allowed() {
-    return !state.buildEnforce || state.legacyV3Allow;
+    // Legacy V3 is an explicit compatibility surface, not a side effect of
+    // disabling modern build enforcement. The dedicated master switch is
+    // authoritative in every environment.
+    return state.legacyV3Allow;
   }
 
   function normalizedVerifiedAttestation(verified) {

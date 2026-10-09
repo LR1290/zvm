@@ -1,0 +1,25 @@
+/* ZVM R46.27 — shared client workspace contents; sidebar/shell come from client dashboard. */
+.client-workspace-main{min-width:0;width:100%;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+.client-app-card button,.client-app-card .auth-btn,.client-app-card .auth-switch a{min-height:44px}
+.client-app-hero{display:flex;align-items:center;justify-content:space-between;gap:22px;padding:26px 0 22px;border-bottom:1px solid #14271f}
+.client-app-kicker{display:block;margin-bottom:6px;color:#72dca9;font-size:14px;font-weight:750}
+.client-app-hero h1{margin:0;color:#f5faf7;font-size:clamp(28px,3vw,38px);line-height:1.1;letter-spacing:-.04em}
+.client-app-hero p{max-width:680px;margin:8px 0 0;color:#93a59c;font-size:15px;line-height:1.55}
+.client-app-hero-side{display:flex;gap:8px}
+.client-app-hero-note{min-width:170px;padding:11px 12px;border:1px solid #1a382b;border-radius:12px;background:#07100c}
+.client-app-hero-note span{display:block;color:#74887e;font-size:14px}
+.client-app-hero-note strong{display:block;margin-top:3px;color:#dce8e1;font-size:14px;line-height:1.35}
+.client-app-grid{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:18px;margin-top:20px}
+.client-app-card{min-width:0}.client-app-aside{display:flex;flex-direction:column;gap:12px}
+.client-app-mini{padding:16px;border:1px solid #19372a;border-radius:14px;background:#070d0a}
+.client-app-mini span{display:block;color:#72dca9;font-size:14px;font-weight:700}
+.client-app-mini strong{display:block;margin-top:5px;color:#edf5f1;font-size:16px}
+.client-app-mini p{margin:6px 0 0;color:#81958a;font-size:14px;line-height:1.5}
+.client-app-card .auth-form-card{box-sizing:border-box;width:100%;max-width:none;margin:0;padding:24px;border-radius:16px}
+.client-app-card .auth-form-card h2{font-size:22px}.client-app-card .auth-switch{text-align:left}
+@media(max-width:1100px){.client-app-grid{grid-template-columns:1fr}.client-app-aside{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.client-app-hero-side{display:none}}
+@media(max-width:760px){.client-app-hero{padding-top:20px}.client-app-aside{grid-template-columns:1fr}}
+@media(max-width:480px){.client-app-hero h1{font-size:28px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:.001ms!important}}
+@media(prefers-contrast:more){.client-app-mini{border-color:#416a55}.client-app-hero p,.client-app-mini p{color:#becbc4}}
+:focus-visible{outline:2px solid #10e889;outline-offset:3px}

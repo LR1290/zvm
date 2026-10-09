@@ -1,0 +1,26 @@
+'use strict';
+const fs=require('node:fs');
+const assert=require('node:assert/strict');
+const crypto=require('node:crypto');
+const cssName=fs.readdirSync('assets').find(x=>/^zvm-admin-dashboard\.[0-9a-f]{12}\.css$/.test(x));
+assert(cssName,'versioned admin stylesheet available');
+const css=fs.readFileSync('assets/'+cssName,'utf8');
+const server=fs.readFileSync('server.js','utf8');
+const hash=crypto.createHash('sha256').update(css).digest('hex');
+assert.equal(cssName.match(/\.([a-f0-9]{12})\.css$/)[1],hash.slice(0,12),'content hash matches');
+assert(server.includes('/assets/'+cssName),'server must serve the new stylesheet');
+function rule(selector,expression,desc){const found=css.match(new RegExp(selector.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*\\{([^}]*)\\}'));assert(found,`missing ${selector}`);assert(expression.test(found[1]),`${desc} should be compact; was ${found[1]}`);}
+rule('html body.zvm-admin-r6',/font-size:\s*13px!important/,'base typography');
+rule('body.zvm-admin-r6 .logo-ver',/font-size:\s*12\.5px!important/,'brand subtitle');
+rule('body.zvm-admin-r6 .hdr-meta',/font-size:\s*12\.5px!important/,'header metadata');
+rule('th',/font-size:\s*12\.5px/,'column labels');
+rule('td',/font-size:\s*12\.5px/,'license data');
+rule('.badge',/font-size:\s*11\.5px/,'status badges');
+rule('.btn',/font-size:\s*12\.5px/,'header and toolbar buttons');
+rule('.zvm-admin-r6 .admin-overview h1',/font-size:\s*clamp\(21px,2vw,27px\)/,'overview title');
+assert(css.includes('.zvm-admin-r6 .sc .n{font-size:19px'),'compact KPI override');
+rule('.zvm-admin-r6 .acts .bs',/font-size:\s*11px/,'direct toolbar buttons');
+assert(css.includes('prefers-reduced-motion:reduce'));
+assert(server.includes("const AVAILABLE_MODULES = ['zapSaver']"),'Build 3 registry preserved');
+assert(!server.includes('id="admin-key-drawer"'),'retired drawer removed');
+console.log('R46.29 admin typography regression PASS');
