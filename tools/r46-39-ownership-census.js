@@ -8,8 +8,13 @@ const crypto=require('node:crypto');
 const auditSalt=crypto.randomBytes(32);
 function shortHash(value){return crypto.createHmac('sha256',auditSalt).update(String(value),'utf8').digest('hex').slice(0,12);}
 const pipeline = Object.freeze([
- {$match:{keyCode:{$type:'string',$ne:''}}},
- {$group:{_id:'$keyCode',owners:{$sum:1}}},
+ // Aggregation $type evaluates the field itself, not individual array elements.
+ {$match:{$expr:{$eq:[{$type:'$keyCode'},'string']}}},
+ // Portal registration lowercases/trims input. Group canonical equivalents so
+ // an uppercase or padded legacy record cannot evade the duplicate census.
+ {$project:{canonicalKey:{$toLower:{$trim:{input:'$keyCode'}}}}},
+ {$match:{canonicalKey:{$ne:''}}},
+ {$group:{_id:'$canonicalKey',owners:{$sum:1}}},
  {$match:{owners:{$gt:1}}},
  {$sort:{owners:-1}},
  {$limit:50}
