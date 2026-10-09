@@ -1,0 +1,24 @@
+/* ZVM R46.22 — accessible, responsive, no-script locale selector */
+.standalone-nav>.zvm-language{margin-left:10px;order:2}
+.standalone-nav .nav-menu-toggle{order:3}
+.zvm-language{position:relative;z-index:20;flex:0 0 auto;font-size:12px;color:#c8e9d7}
+.zvm-language>summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;min-height:36px;padding:0 12px;border:1px solid rgba(31,226,135,.27);border-radius:10px;background:rgba(7,33,22,.7);font-weight:750;letter-spacing:.02em;white-space:nowrap}
+.zvm-language>summary::-webkit-details-marker{display:none}
+.zvm-language>summary:focus-visible,.zvm-language-list a:focus-visible{outline:2px solid #18f295;outline-offset:3px}
+.zvm-language[open]>summary{border-color:#19df89}
+.zvm-language-list{position:absolute;top:calc(100% + 8px);right:0;min-width:210px;padding:6px;border:1px solid rgba(31,226,135,.32);border-radius:12px;background:#092016;box-shadow:0 18px 44px rgba(0,0,0,.45);display:grid;gap:2px;z-index:100}
+.zvm-language-list a{display:block!important;width:auto!important;min-height:36px;padding:10px 12px!important;color:#e6f6ed!important;border-radius:7px;text-decoration:none;white-space:nowrap;text-align:left!important}
+.zvm-language-list a:hover,.zvm-language-list a[aria-current=true]{background:rgba(18,219,125,.16)!important;color:#32f1a1!important}
+@media(max-width:900px){.standalone-nav>.zvm-language{margin-left:auto}.zvm-language-list{right:0;min-width:210px;max-width:calc(100vw - 24px)}.standalone-nav .nav-menu-toggle{margin-left:6px}}
+
+.zvm-currency-note{margin:14px 0 2px;color:#b3cdbf;font-size:13px;text-align:center}
+
+/* Login, cadastro e recuperação: idioma fora dos formulários, sem alterar a disposição dos campos */
+.zvm-auth-language{position:fixed;top:14px;right:max(18px,calc((100vw - 1760px)/2));z-index:1100}
+.zvm-auth-language .zvm-language-list{z-index:1110}
+@media(max-width:600px){.zvm-auth-language{top:8px;right:10px}.zvm-auth-language .zvm-language>summary{padding-inline:10px;min-height:32px}.zvm-auth-language .zvm-language-list{min-width:200px}}
+
+/* R46.24 — accessible flag-led selector; local names remain visible in the menu. */
+.zvm-language-flag{font-family:system-ui, sans-serif;font-size:21px;line-height:1;display:inline-block;min-width:22px;text-align:center}
+.zvm-language-list a{display:flex!important;align-items:center;gap:10px}
+.zvm-language>summary{min-width:55px;gap:8px}

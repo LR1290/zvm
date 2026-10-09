@@ -1,0 +1,1 @@
+(function(){document.querySelectorAll('form').forEach(function(f){f.addEventListener('submit',function(){var btn=f.querySelector('.auth-submit');if(!btn||btn.disabled)return;btn.disabled=true;var sp=btn.querySelector('.auth-spinner');if(sp)sp.style.display='inline-block';});});})();

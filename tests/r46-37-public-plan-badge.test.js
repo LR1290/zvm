@@ -1,0 +1,15 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs');const path=require('node:path');
+const root=path.join(__dirname,'..');
+const server=fs.readFileSync(path.join(root,'server.js'),'utf8');
+const render=server.slice(server.indexOf('function renderPlanosPage('), server.indexOf('function renderPrivacyPage('));
+assert.match(render,/<div class="client-plan-tags">/,'public cards use in-flow badge row');
+assert.match(render, /Mais popular/, 'public badge uses portal wording');
+assert.doesNotMatch(render, /<div class="price-badge">Mais popular<\/div>/,'floating popular tag was removed');
+const list=fs.readdirSync(path.join(root,'assets'));
+const css=fs.readFileSync(path.join(root,'assets',list.find(x=>/^zvm-plans-page\.[a-f0-9]{12}\.css$/.test(x))),'utf8');
+assert.match(css, /\.plans-wrap \.client-plan-tags\{/, 'matching portal badge row');
+assert.match(css, /\.plans-wrap \.price-card\{overflow:hidden/, 'card clips decorative backgrounds only');
+assert.match(css, /position:static!important/, 'badge does not cross card border');
+console.log('R46.37 public plan badge parity: PASS');

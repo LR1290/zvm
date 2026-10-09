@@ -1,0 +1,14 @@
+/* ZVM R46.25: shared disclosure for existing authenticated actions; no JS dependency. */
+.zvm-action-hub{position:relative;z-index:75;flex:0 0 auto;min-width:0;color:#e8f6ef;font:600 14px/1.3 Inter,ui-sans-serif,system-ui,sans-serif}
+.zvm-action-hub>summary{display:flex;align-items:center;justify-content:center;gap:9px;min-height:42px;padding:9px 14px;border:1px solid rgba(17,229,135,.3);border-radius:11px;background:rgba(8,35,23,.88);list-style:none;cursor:pointer;white-space:nowrap;transition:background .15s,border-color .15s}
+.zvm-action-hub>summary::-webkit-details-marker{display:none}
+.zvm-action-hub[open]>summary,.zvm-action-hub>summary:hover{border-color:#16e691;background:rgba(13,63,40,.96)}
+.zvm-action-hub>summary:focus-visible,.zvm-action-hub-menu :is(a,button):focus-visible{outline:2px solid #15efa0;outline-offset:3px}
+.zvm-action-hub-menu{position:absolute;z-index:250;top:calc(100% + 8px);right:0;width:max-content;min-width:min(265px,calc(100vw - 32px));max-width:calc(100vw - 24px);display:grid;gap:4px;padding:8px;border-radius:14px;border:1px solid #26513a;background:#08170f;box-shadow:0 20px 55px rgba(0,0,0,.55)}
+.zvm-action-hub-menu :is(a,button){display:block;width:100%;box-sizing:border-box;min-height:42px;padding:11px 13px;border:0;border-radius:9px;background:transparent;color:#d5e9dd;text-align:left;text-decoration:none;font:inherit;cursor:pointer;white-space:normal}
+.zvm-action-hub-menu :is(a,button):hover{background:#123525;color:#80ffc1}
+@media(max-width:700px){.zvm-action-hub>summary{min-height:40px;padding:8px 10px;font-size:13px}.client-app-user,.dash-topbar-user{flex-wrap:wrap}.zvm-admin-r6 .zvm-action-hub-menu{right:auto;left:0}}
+@media(prefers-reduced-motion:reduce){.zvm-action-hub>summary{transition:none}}
+
+/* Admin topbar must be above the rail and dashboard while its action menu is open. */
+body.zvm-admin-r6>header{z-index:210}
