@@ -98,6 +98,11 @@ const metaDescriptions = Object.freeze({
     'pt-PT':'Saiba como a ZVM trata dados da conta, licença e segurança e protege a sua privacidade.',
     en:'Learn how ZVM handles account, licensing, and security data and protects your privacy.'
   },
+  '/termos': {
+    'pt-BR':'Termos de Serviço da ZVM - Automações: licenças, pagamentos, automações, privacidade e integrações.',
+    'pt-PT':'Termos de Serviço da ZVM - Automações: licenças, pagamentos, utilização responsável, privacidade e integrações.',
+    en:'ZVM - Automações Terms of Service covering licenses, payments, responsible use, privacy, and integrations.'
+  },
   '/faq': {
     'pt-BR':'Tire suas dúvidas sobre instalação, planos, licenças e suporte da ZVM.',
     'pt-PT':'Esclareça dúvidas sobre instalação, planos, licenças e apoio da ZVM.',

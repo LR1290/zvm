@@ -2,6 +2,7 @@
 // Textos aprovados para a experiência pública (sem strings de APIs, licenças ou pagamentos).
 // A coluna PT-BR é a fonte canônica; PT-PT e EN são adaptações editoriais, não tradução de chaves técnicas.
 const rows = [
+['Termos de Serviço','Termos de Serviço','Termos de Serviço','Terms of Service'],
 // R46.24 — Plan teaser copy reuses canonical server prices and the existing locale system.
 ['Planos e preços','Planos e preços','Planos e preços','Plans and pricing'],
 ['Mais escolhido','Mais escolhido','Mais escolhido','Most popular'],
