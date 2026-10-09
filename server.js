@@ -2027,14 +2027,37 @@ function extensionAuthFailure(errorCode, status, extra = {}) {
   return { ok: false, errorCode, status, ...extra };
 }
 
+// EXT-EXPIRY: extension session authorization must read the durable license snapshot.
+// The legacy cache-first ensureKeyLoadedEx remains for compatibility-only callers.
+async function readExtensionFreshKeySnapshot(keyCode, deps = {}) {
+  if (!keyCode) return { keyRecord: null, dbError: false };
+  try {
+    // Explicit injected reader allows isolated tests without production Mongo.
+    if (typeof deps.readExtensionKeySnapshot === 'function') {
+      const keyRecord = await deps.readExtensionKeySnapshot(keyCode);
+      return { keyRecord: keyRecord || null, dbError: false };
+    }
+    // Retain the existing dependency-injection contract for older unit fixtures.
+    if (typeof deps.ensureKeyLoadedEx === 'function' && deps.keyStore) {
+      const loaded = await deps.ensureKeyLoadedEx(keyCode);
+      return { keyRecord: loaded.found ? deps.keyStore[keyCode] || null : null, dbError: loaded.dbError === true };
+    }
+    const db = deps.db || await getMongoDb();
+    const keyRecord = await readPortalKeySnapshot(keyCode, { db });
+    return { keyRecord: keyRecord || null, dbError: false };
+  } catch (error) {
+    console.error('[auth] consulta fresca da licença indisponível:', safeScalar(error?.code || error?.message, 80, 'db_unavailable'));
+    return { keyRecord: null, dbError: true };
+  }
+}
+
 async function resolveExtensionAccountEntitlement(user, deps = {}) {
   const now = extensionNow(deps);
-  const keyStore = deps.keyStore || keys;
   const keyCode = sanitizeId(user?.keyCode, 32);
   if (!keyCode) return { ok: true, keyCode: null, devAccess:false, entitlement: buildExtensionEntitlement({ now }) };
-  const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(keyCode);
-  if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
-  const keyRecord = loaded.found ? keyStore[keyCode] : null;
+  const snapshot = await readExtensionFreshKeySnapshot(keyCode, deps);
+  if (snapshot.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
+  const keyRecord = snapshot.keyRecord;
   if (!extensionLicenseIsUsable(keyRecord, now)) {
     return { ok: true, keyCode: null, devAccess:false, entitlement: buildExtensionEntitlement({ now }) };
   }
@@ -2084,11 +2107,10 @@ async function authorizeExtensionKeySession(input, deps = {}) {
   if (!keyCode || isFreeAuthKey(keyCode) || !phoneNumber || !deviceId) {
     return extensionAuthFailure('invalid_request', 400);
   }
-  const keyStore = deps.keyStore || keys;
-  const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(keyCode);
-  if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
-  if (!loaded.found || !keyStore[keyCode]) return extensionAuthFailure('invalid_key', 401);
-  const keyRecord = keyStore[keyCode];
+  const snapshot = await readExtensionFreshKeySnapshot(keyCode, deps);
+  if (snapshot.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
+  if (!snapshot.keyRecord) return extensionAuthFailure('invalid_key', 401);
+  const keyRecord = snapshot.keyRecord;
   if (keyRecord.active !== true) return extensionAuthFailure('key_blocked', 403);
   // Diferente do helper legado isKeyExpired(), este guard também falha
   // fechado para expiresAt malformado em vez de autenticar a chave e só
@@ -2106,15 +2128,19 @@ async function authorizeExtensionKeySession(input, deps = {}) {
     const activated = await (deps.activateDeferredKey || activateDeferredKey)(keyCode);
     if (!activated) return extensionAuthFailure('activation_failed', 503, { retryable: true });
   }
+  // Recheck after the phone claim/activation; a concurrent block or expiry must win.
+  const finalSnapshot = await readExtensionFreshKeySnapshot(keyCode, deps);
+  if (finalSnapshot.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
+  if (!extensionLicenseIsUsable(finalSnapshot.keyRecord)) return extensionAuthFailure('key_expired', 403);
   const now = extensionNow(deps);
-  const entitlement = buildExtensionEntitlement({ keyCode, keyRecord: keyStore[keyCode], now });
+  const entitlement = buildExtensionEntitlement({ keyCode, keyRecord: finalSnapshot.keyRecord, now });
   return {
     ok: true,
     subject: extensionSubject('license', keyCode),
     licenseKeyCode: keyCode,
     phoneNumber,
     deviceId,
-    devAccess: extensionDevAccessAllowed(keyCode, keyStore[keyCode]),
+    devAccess: extensionDevAccessAllowed(keyCode, finalSnapshot.keyRecord),
     entitlement,
     newlyClaimed: claim.status === 'claimed',
   };
@@ -2177,12 +2203,16 @@ async function refreshExtensionSession(rawToken, deps = {}) {
     }
     entitlementResult = await resolveExtensionAccountEntitlement(user, { ...deps, db, now });
     if (!entitlementResult.ok) return entitlementResult;
+    // A session originally issued with a paid key must not silently become free.
+    if (doc.licenseKeyCode && entitlementResult.entitlement.tier !== 'paid') {
+      await revokeExtensionSession(rawToken, { ...deps, db, now });
+      return extensionAuthFailure('entitlement_revoked', 403);
+    }
     licenseKeyCode = entitlementResult.keyCode;
   } else if (doc.authMethod === 'license_key') {
-    const keyStore = deps.keyStore || keys;
-    const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(doc.licenseKeyCode);
-    if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
-    const keyRecord = loaded.found ? keyStore[doc.licenseKeyCode] : null;
+    const snapshot = await readExtensionFreshKeySnapshot(doc.licenseKeyCode, { ...deps, db });
+    if (snapshot.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
+    const keyRecord = snapshot.keyRecord;
     const phoneStillAllowed = !doc.phoneNumber || (Array.isArray(keyRecord?.phones)
       && keyRecord.phones.some(value => normalizePhone(value) === doc.phoneNumber));
     if (!extensionLicenseIsUsable(keyRecord, now) || !phoneStillAllowed) {
