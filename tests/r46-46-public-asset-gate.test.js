@@ -12,7 +12,7 @@ const assetDir = path.join(root, 'assets');
 fs.mkdirSync(assetDir);
 const content = 'body{color:#00ff87}\n';
 const hash = crypto.createHash('sha256').update(content).digest('hex');
-const file = 'unit-' + hash.slice(0, 12) + '.css';
+const file = 'unit.' + hash.slice(0, 12) + '.css';
 const route = '/assets/' + file;
 function manifest({url=route,name=file,sha=hash,mime='text/css; charset=utf-8'} = {}) {
   return [
