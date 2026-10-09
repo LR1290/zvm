@@ -23,6 +23,9 @@ for(const lang of ['pt-BR','pt-PT','en']) {
  assert.equal((doc.match(/class="terms-index-num"/g)||[]).length,16);
  for(const id of ids)assert.ok(doc.includes('href="#'+id+'"') && doc.includes('id="'+id+'"'),id);
  assert.doesNotMatch(doc,/<script\b/i);
+ assert.match(doc,/class="info-box terms-summary"/);
+ assert.doesNotMatch(doc,/Minuta para revisão jurídica|Draft pending legal review|after final approval|após aprovação jurídica|após revisão jurídica/i);
+ assert.match(doc,/class="terms-index-label"/);
  assert.match(doc,/href="\/privacidade"/);
  assert.match(doc,/rel="noopener noreferrer"/);
  assert.doesNotMatch(doc,/client_secret|AIza[0-9a-z]/i);
@@ -43,6 +46,10 @@ const screenshots=[];
    assert.match(common[route],/href="\/termos"/);
    assert.equal((common[route].match(/class="r466-footer"/g)||[]).length,1);
   }
+  const css=await get('/assets/zvm-terms.f1c470efdbbb.css');
+  assert.equal(css.status,200,'terms CSS is registered in canonical asset allowlist');
+  assert.match(css.headers.get('content-type')||'',/text\/css/);
+  assert.match(await css.text(),/\.terms-toc/);
   const gsc=await get('/googleb72a9c76039b24b4.html');
   assert.equal(gsc.status,200,'Search Console verification remains publicly available');
   assert.equal(await gsc.text(),'google-site-verification: googleb72a9c76039b24b4.html');
@@ -75,6 +82,6 @@ const screenshots=[];
   assert.match(common['/'],/ZVM - Automações|ZVM/);
   // Legacy Search Console ownership is not handled or rewritten by /termos.
   assert.ok(!source.includes('app.get('));
-  console.log('R46.40 public terms: 16 sections, 3 locales, 200/304/404, nav/footer, CSP, no secrets — PASS');
+  console.log('R46.40.1 public terms: CSS 200, privacy-style summary, 16 sections, 3 locales — PASS');
  }finally{await new Promise(ok=>server.close(ok))}
 })().catch(e=>{console.error(e);process.exitCode=1});
