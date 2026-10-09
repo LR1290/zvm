@@ -1,5 +1,6 @@
 'use strict';
-// R46.39 staging contract. Not wired to HTTP or payments until Mongo staging passes.
+// R46.44 STAGING ONLY: wired to Portal and Cakto on this candidate branch.
+// Do not deploy until the unique-index migration and email transfer pass real Mongo staging.
 // portal_users.keyCode stays the sole ownership authority (no second ledger).
 const FILTER=Object.freeze({keyCode:{$type:'string',$gt:''}});
 const invalid=(code)=>Object.assign(new Error(code),{code});
