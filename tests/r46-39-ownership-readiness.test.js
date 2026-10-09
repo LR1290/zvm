@@ -37,6 +37,22 @@ function makeDB({owners=[],indexes=[],active=0,bound=0,fail=null}={}){
  assert.equal(describeIndex({key:{keyCode:1},unique:true,partialFilterExpression:{keyCode:{$type:'string',$gt:''}}}).partialExcludesEmpty,true);checks++;
  assert.equal(describeIndex({key:{keyCode:1},unique:true,partialFilterExpression:{other:{$gt:''},keyCode:{$exists:true}}}).partialExcludesEmpty,false);checks++;
  assert.equal(describeIndex({key:{keyCode:1},unique:true,partialFilterExpression:{keyCode:{$gt:''}}}).partialExcludesEmpty,false);checks++;
+ // False positives found in the previous preflight: an unrelated predicate
+ // narrows index coverage and cannot establish global license exclusivity.
+ const extraEmail={key:{keyCode:1},unique:true,partialFilterExpression:{$and:[{keyCode:{$type:'string'}},{keyCode:{$gt:''}},{email:'chosen@example.invalid'}]}};
+ assert.equal(describeIndex(extraEmail).partialExcludesEmpty,false);checks++;
+ const extraStatus={key:{keyCode:1},unique:true,partialFilterExpression:{keyCode:{$type:'string',$gt:''},active:true}};
+ assert.equal(describeIndex(extraStatus).partialExcludesEmpty,false);checks++;
+ const extraOperator={key:{keyCode:1},unique:true,partialFilterExpression:{keyCode:{$type:'string',$gt:'',$lt:'zz'}}};
+ assert.equal(describeIndex(extraOperator).partialExcludesEmpty,false);checks++;
+ const andExact={key:{keyCode:1},unique:true,partialFilterExpression:{$and:[{keyCode:{$gt:''}},{keyCode:{$type:'string'}}]}};
+ assert.equal(describeIndex(andExact).partialExcludesEmpty,true);checks++;
+ const customCollation={key:{keyCode:1},unique:true,collation:{locale:'en',strength:2},partialFilterExpression:{keyCode:{$type:'string',$gt:''}}};
+ assert.equal(describeIndex(customCollation).partialExcludesEmpty,false);checks++;
+ const falseReady=await inspect(makeDB({indexes:[extraEmail]}).db);
+ assert.equal(falseReady.bindingIndexUniquePartial,false);
+ assert.ok(falseReady.migrationBlockers.includes('unique_partial_index_missing'));checks++;
+
  for(const where of ['aggregate','indexes']){
    await assert.rejects(()=>inspect(makeDB({indexes:legacy,fail:where}).db));checks++;
  }
