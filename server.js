@@ -68,6 +68,13 @@ const {
 const { validateRuntimeSecurityConfig } = require('./runtime-config');
 const { loadDevBuildSigningConfig, createDevBuildSigningService } = require('./dev-build-signing');
 const { resolveExtensionCorsOrigin } = require('./extension-origin-policy');
+const { createFreeQuotaService } = require('./security/free-quota-v4');
+const _zvmFreeQuotaServices = new WeakMap();
+function zvmFreeQuotaServiceFor(db) {
+  let service = _zvmFreeQuotaServices.get(db);
+  if (!service) { service = createFreeQuotaService({ db }); _zvmFreeQuotaServices.set(db, service); }
+  return service;
+}
 const {
   LegacyV3Shield,
   legacyKeyStateSignature,
@@ -7964,7 +7971,7 @@ const HTTP_TRAFFIC_PUBLIC_PATHS = new Set([
 ]);
 const HTTP_TRAFFIC_EXTENSION_PATHS = new Set([
   '/v3/key', '/v3/check-status', '/v3/usage', '/v3/get-usage', '/v3/sync-usage',
-  '/v4/session/key', '/v4/session/login', '/v4/session/refresh', '/v4/session/logout',
+  '/v4/session/key', '/v4/session/login', '/v4/session/refresh', '/v4/session/logout', '/v4/usage',
   '/v4/backup/decoder-material', '/v3/meta/embedded-signup/start',
   '/v3/meta/embedded-signup/complete', '/v3/meta/embedded-signup/status', '/v3/meta/manual/connect',
   '/v3/meta/connection/validate', '/v3/meta/messages/test', '/v3/meta/connection/disconnect',
@@ -8499,6 +8506,54 @@ async function handleRequest(req, res) {
     return;
   }
 
+
+  // V4 FREE: durable quota scoped to an authenticated account subject.
+  // Keep Build 3 /v3/usage intact; paid tiers do not use this route.
+  if (p === R_EXT+'/v4/usage' && req.method === 'POST') {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    if (!checkRateLimit(ip, 'api')) {
+      sendJson(res, { ok:false, errorCode:'rate_limited', retryable:true }, 429); return;
+    }
+    const token = getExtensionBearerToken(req);
+    if (!token) { sendJson(res, { ok:false, errorCode:'invalid_session' }, 401); return; }
+    try {
+      const body = await parseBody(req);
+      const db = await getMongoDb();
+      const refreshed = await refreshExtensionSession(token, {
+        db, clientSecurity:body?.clientSecurity || null, requireCurrentClientSecurity:true,
+      });
+      if (!refreshed.ok) {
+        const { status, ...errorBody } = refreshed;
+        sendJson(res, errorBody, status); return;
+      }
+      if (refreshed.entitlement?.tier !== 'free') {
+        sendJson(res, { ok:false, errorCode:'paid_plan_use_paid_path' }, 403); return;
+      }
+      if (refreshed.sessionDoc?.authMethod !== 'password' ||
+          refreshed.sessionDoc?.subject?.type !== 'account' ||
+          !/^[a-f0-9]{64}$/.test(String(refreshed.sessionDoc?.subject?.id || ''))) {
+        sendJson(res, { ok:false, errorCode:'quota_identity_required' }, 403); return;
+      }
+      const result = await zvmFreeQuotaServiceFor(db).execute({
+        subjectId:refreshed.sessionDoc.subject.id,
+        action:body?.action, itemType:body?.itemType,
+        operationId:body?.operationId, scheduledItems:body?.scheduledItems,
+      });
+      if (!result || result.free !== true || !result.limits || typeof result.limits !== 'object') {
+        throw new Error('QUOTA_RESULT_INVALID');
+      }
+      sendJson(res, { ok:true, ...result }, 200);
+    } catch (error) {
+      const code = String(error?.code || 'QUOTA_STORAGE_UNAVAILABLE');
+      const known = new Set(['QUOTA_LIMIT_REACHED','QUOTA_TYPE_INVALID','QUOTA_ACTION_INVALID',
+        'QUOTA_OPERATION_REQUIRED','QUOTA_COUNT_INVALID','QUOTA_IDENTITY_REQUIRED']);
+      const status = code === 'QUOTA_LIMIT_REACHED' ? 403 : known.has(code) ? 400 : 503;
+      sendJson(res, { ok:false,
+        errorCode: known.has(code) || code === 'QUOTA_LIMIT_REACHED' ? code : 'temporarily_unavailable',
+        retryable:status===503 }, status);
+    }
+    return;
+  }
 
   if (p === R_EXT+'/v4/backup/decoder-material' && req.method === 'POST') {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
