@@ -205,13 +205,22 @@ const ZVM_PLANS = Object.freeze({
   }),
 });
 
-// SOLO is a distinct existing commercial offer. Retain its original checkout,
-// license identity and pricing; never reuse its product/offer ID for START.
+// The public offers reuse the original Cakto products at their exact historical
+// prices and limits. Never change provider IDs or real licensing contracts to
+// accommodate a presentation rename (Padrão -> START).
+const ZVM_CONFIGURED_V2_PLANS = readNewCatalog(process.env);
 const ZVM_PUBLIC_PLANS = Object.freeze({
-  solo: Object.freeze({ ...ZVM_PLANS.solo, shortName: 'SOLO', subtitle: '1 número de WhatsApp', enabled: true }),
-  ...readNewCatalog(process.env),
+  solo: Object.freeze({ ...ZVM_PLANS.solo, shortName: 'SOLO', subtitle: 'Uso individual', enabled: true }),
+  padrao: Object.freeze({ ...ZVM_PLANS.padrao, shortName: 'START', subtitle: 'Até 3 números de WhatsApp', enabled: true }),
+  pro: Object.freeze({ ...ZVM_PLANS.pro, shortName: 'PRO', subtitle: 'Até 5 números de WhatsApp', enabled: true }),
+  enterprise_v2: ZVM_CONFIGURED_V2_PLANS.enterprise_v2,
 });
-const ZVM_PAYMENT_PLANS = Object.freeze({ ...ZVM_PLANS, ...Object.fromEntries(Object.entries(ZVM_PUBLIC_PLANS).filter(([,p]) => p.enabled)) });
+// Preserve resolution of pre-existing v2 Cakto contracts even while offering
+// historical pricing on the public page.
+const ZVM_PAYMENT_PLANS = Object.freeze({
+  ...ZVM_PLANS,
+  ...Object.fromEntries(Object.entries(ZVM_CONFIGURED_V2_PLANS).filter(([,p]) => p.enabled))
+});
 
 const LOG_RETENTION_DAYS = Math.max(1, parseInt(process.env.LOG_RETENTION_DAYS || '90') || 90);
 
@@ -3439,7 +3448,7 @@ async function _processCommercialSaleUnlocked(sale, plan, deps = {}) {
   if (typeof deps.reportCommercialPhase === 'function') await deps.reportCommercialPhase('portal_linked', { keyCode });
   await assertCommercialAuthority('save_payment');
   await paymentSaver({
-    source: sale.source || 'cakto', txNamespace: commercialTxNamespace(sale), commercialTxKey: sale.testMode ? undefined : caktoPaymentTxKey(sale.txId), testMode: !!sale.testMode, txId: sale.txId, refId: sale.refId || '', subscriptionId: sale.subscriptionId || '',
+    source: sale.source || 'cakto', txNamespace: commercialTxNamespace(sale), ...(sale.testMode ? {} : { commercialTxKey: caktoPaymentTxKey(sale.txId) }), testMode: !!sale.testMode, txId: sale.txId, refId: sale.refId || '', subscriptionId: sale.subscriptionId || '',
     offerId: sale.offerId || '', productId: sale.productId || '',
     checkoutUrl: sale.checkoutUrl || '', status: 'approved', approved: true,
     clientName: sale.clientName, clientEmail, clientPhone: sale.clientPhone,
@@ -6079,7 +6088,7 @@ function renderStandalonePortalPlans(user, keyData){
   const modal=`<dialog class="checkout-dialog" aria-labelledby="checkout-title"><div class="dialog-inner"><div class="modal-icon" aria-hidden="true">↗</div><h2 id="checkout-title">Confirmar plano</h2><div class="modal-plan-summary"><div class="modal-plan-name" id="modal-plan-name">—</div><div class="modal-plan-meta" id="modal-plan-meta">—</div><div class="modal-plan-price" id="modal-plan-price">—</div></div><div class="modal-account"><span class="modal-account-label">Compra vinculada à conta</span><strong class="modal-email">${escHtml(user?.email||'')}</strong></div><p class="modal-hint">Use este mesmo e-mail na página de pagamento para que sua licença seja ativada ou renovada automaticamente.</p><div class="modal-actions"><button type="button" class="modal-cancel">Voltar</button><a class="modal-continue" href="#" target="_blank" rel="noopener noreferrer">Continuar para pagamento →</a></div></div></dialog>`;
   const body=`<div class="client-shell">${renderClientPortalRail('plans')}<main id="main-content" class="client-main client-plans-main" tabindex="-1">
     <div class="dash-topbar"><div class="dash-page-heading"><span>Minha ZVM</span><strong>Renovações e planos</strong></div><div class="dash-topbar-user">${renderClientAccountIdentity(user)}<a href="/cliente/logout" class="dash-logout">Sair da conta</a></div></div>
-    <section class="client-plans-public-style"><header class="client-plans-public-head client-plan-intro"><span>Renove ou altere seu plano</span><h1>Escolha o plano ideal</h1><p>SOLO para uso individual, START para começar, PRO para operação completa e ENTERPRISE sob consulta.</p></header>${needPicker}${legacyRenewal}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section><p class="plans-footnote">Precisa de mais de 10 números? <a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Falar com suporte</a></p></section>
+    <section class="client-plans-public-style"><header class="client-plans-public-head client-plan-intro"><span>Renove ou altere seu plano</span><h1>Escolha o plano ideal</h1><p>SOLO para 1 número, START para até 3, PRO para até 5 e ENTERPRISE sob consulta.</p></header>${needPicker}${legacyRenewal}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section><p class="plans-footnote">Precisa de mais de 10 números? <a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Falar com suporte</a></p></section>
     ${modal}<script src="/assets/zvm-plans.26a755b1251d.js" defer></script>
   </main></div>`;
   return renderPortalPage(body,'ZVM — Renovações e Planos','',_CSS_PLANS);
@@ -6657,8 +6666,9 @@ const PLAN_IDENTITY = {
   enterprise_v2: { subtitle: 'Implantação sob consulta' },
 };
 const NEED_OPTIONS = [
-  { planId:'start_v2', label:'1' },
-  { planId:'pro_v2', label:'Até 3' },
+  { planId:'solo', label:'1' },
+  { planId:'padrao', label:'Até 3' },
+  { planId:'pro', label:'Até 5' },
   { planId:'enterprise_v2', label:'Até 10' },
 ];
 
@@ -6715,7 +6725,7 @@ function renderPlanosPage(portalUser = null) {
 
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="Planos ZVM SOLO, START, PRO e ENTERPRISE para 1, 3 ou até 10 números de WhatsApp, com entrega automática e 30 dias de acesso.">
+<meta name="description" content="Planos ZVM SOLO (R$39,90, 1 número), START (R$59,90, 3 números), PRO (R$94,90, 5 números) e ENTERPRISE sob consulta.">
 <title>ZVM — Planos e Preços</title><link rel="icon" type="image/svg+xml" href="${_FAV}">
 ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PLANS}${_CSS_SYSTEM}</head><body>${_sharedNav({activePath:'/planos',portalUser,showBack:true})}
 <main id="main-content"><header class="page-hero"><div class="page-hero-tag">Licenças ZVM</div><h1>Escolha seu <span>ritmo de operação</span></h1><p>Todos os planos têm os mesmos recursos. O limite muda apenas conforme a quantidade de números conectados.</p></header>

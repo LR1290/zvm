@@ -7,8 +7,8 @@ const {readNewCatalog}=require('../src/commercial-public-catalog');
 const {buildKeyDeliveryDesign}=require('../src/email-key-delivery-design');
 const {buildKeyDeliveryEmail}=require('../mailer');
 assert.equal(displayLicensePlan({planId:'solo',maxUses:1}).label,'SOLO');
-assert.equal(displayLicensePlan({planId:'padrao',maxUses:3}).label,'PRO');
-assert.equal(displayLicensePlan({planId:'pro',maxUses:5}).label,'PRO - contrato anterior');
+assert.equal(displayLicensePlan({planId:'padrao',maxUses:3}).label,'START');
+assert.equal(displayLicensePlan({planId:'pro',maxUses:5}).label,'PRO');
 assert.equal(displayLicensePlan({planId:'empresarial',maxUses:10}).tone,'enterprise');
 assert.equal(displayLicensePlan({planId:'solo',maxUses:3}).ambiguous,true);
 assert.equal(displayLicensePlan({maxUses:-1}).label,'Licença sem limite');
@@ -25,8 +25,8 @@ assert.equal(historicalCheckout.start_v2.enabled,false,'must not relabel legacy 
 const active=readNewCatalog({ZVM_START_V2_CHECKOUT_URL:'https://pay.cakto.com.br/new-start_20261013',CAKTO_START_V2_OFFER_ID:'new_start_20261013',ZVM_PRO_V2_CHECKOUT_URL:'https://pay.cakto.com.br/new-pro_20261013',CAKTO_PRO_V2_OFFER_ID:'new_pro_20261013'});
 assert(active.start_v2.enabled&&active.pro_v2.enabled);
 assert.equal(active.enterprise_v2.enabled,false);
-for(const row of [{id:'solo',name:'SOLO'},{id:'padrao',name:'PRO'},{id:'empresarial',name:'ENTERPRISE'}]){
- const letter=buildKeyDeliveryDesign({planId:row.id,maxUses:row.id==='solo'?1:row.id==='padrao'?3:10,code:'zv-synthetic-key-1234',expiresAt:'2026-11-14T03:00:00.000Z',baseUrl:'https://zvm.onrender.com',ctaPath:'/cliente'});
+for(const row of [{id:'solo',name:'SOLO'},{id:'padrao',name:'START'},{id:'pro',name:'PRO'},{id:'empresarial',name:'ENTERPRISE'}]){
+ const letter=buildKeyDeliveryDesign({planId:row.id,maxUses:row.id==='solo'?1:row.id==='padrao'?3:row.id==='pro'?5:10,code:'zv-synthetic-key-1234',expiresAt:'2026-11-14T03:00:00.000Z',baseUrl:'https://zvm.onrender.com',ctaPath:'/cliente'});
  assert.match(letter.html,new RegExp(row.name),'correct theme label');
  assert.match(letter.html,/14\/11\/2026/,'actual expiry in Sao Paulo');
  assert.match(letter.html,/zv-synthetic-key-1234/);
@@ -38,7 +38,7 @@ assert(!xss.html.includes('<script>'),'XSS must be escaped');
 assert(xss.html.includes('&lt;script&gt;'));
 assert(xss.html.includes('Consulte no Portal do Cliente'));
 const oldOutbox=buildKeyDeliveryEmail({planLabel:'Padrão',maxUses:3,code:'test',renewed:true,expiresAt:'2026-11-14T03:00:00.000Z'});
-assert.match(oldOutbox.html,/PRO/,'pre-existing encrypted mail queued before migration remains renderable');
+assert.match(oldOutbox.html,/START/,'pre-existing encrypted mail queued before migration remains renderable');
 assert.equal(oldOutbox.subject,'ZVM — Renovação confirmada');
 assert(!oldOutbox.html.includes('BEM-VINDO(A)'),'renewal copy must differ from new order');
 assert(!buildKeyDeliveryEmail({planId:'solo',maxUses:3,code:'test'}).html.includes('ZVM START'),'inconsistent persisted license must not be misbranded');
@@ -55,16 +55,18 @@ try{
 }finally{Module._load=load;}
 const site=api.renderPlanosPage();
 assert(site.includes('SOLO')&&site.includes('START')&&site.includes('PRO')&&site.includes('ENTERPRISE'));
-assert(site.includes('59<span>,90')&&site.includes('149<span>,90')&&site.includes('Sob consulta'));
+assert(site.includes('39<span>,90')&&site.includes('59<span>,90')&&site.includes('94<span>,90')&&site.includes('Sob consulta'));
+assert(!site.includes('149<span>,90'),'former unconfigured PRO v2 price is not public');
 assert(site.includes('data-plan-id="solo"') && site.includes('39<span>,90'), 'SOLO public card must preserve historical R$39,90 price');
-assert(!site.includes('94<span>,90'), 'old PRO pricing must not be advertised as new PRO');
+assert(site.includes('data-plan-id="padrao"') && site.includes('data-plan-id="pro"'), 'START/PRO reuse the verified original Cakto contracts');
 assert(!site.includes('data-buy-plan="enterprise_v2"'));
-assert(!site.includes('data-buy-plan="padrao"')&&!site.includes('data-buy-plan="pro"'), 'no other legacy offers published');
-assert(!site.includes('data-buy-plan="start_v2"'),'unconfigured checkout must be disabled');
+assert(site.includes('data-login-plan="padrao"') && site.includes('data-login-plan="pro"'), 'authenticated checkout required for each original Cakto offer');
+assert(!site.includes('data-buy-plan="start_v2"'),'inactive v2 checkout must never be substituted for the original offer');
 const portal=api.renderPortalPlans({email:'example@example.com'},{planId:'solo',maxUses:1});
-assert(portal.includes('149<span>,90')&&portal.includes('Sob consulta'));
+assert(portal.includes('94<span>,90')&&portal.includes('Sob consulta'));
 assert(portal.includes('data-plan-id="solo"')&&portal.includes('39<span>,90'), 'SOLO must be available to portal customer without changing their legacy contract');
-assert(!portal.includes('data-buy-plan="start_v2"'),'legacy checkout must not leak to new site');
+assert(portal.includes('data-buy-plan="padrao"') && portal.includes('data-buy-plan="pro"'), 'original Cakto offers may be purchased by authenticated users');
+assert(!portal.includes('data-buy-plan="start_v2"'),'inactive v2 offer must remain distinct');
 assert(portal.includes('Renovar contrato anterior'),'legacy subscribers retain checkout while the new catalog has disabled checkout');
 assert(portal.includes('https://pay.cakto.com.br/7kzktq2_1000035'),'legacy SOLO keeps its own price and checkout');
 assert(!api.renderPortalPlans({email:'example@example.com'},{planId:'start_v2',maxUses:1}).includes('Renovar contrato anterior'),'v2 plans never silently fallback to old checkout');
