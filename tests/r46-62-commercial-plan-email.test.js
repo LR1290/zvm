@@ -26,7 +26,7 @@ const active=readNewCatalog({ZVM_START_V2_CHECKOUT_URL:'https://pay.cakto.com.br
 assert(active.start_v2.enabled&&active.pro_v2.enabled);
 assert.equal(active.enterprise_v2.enabled,false);
 for(const row of [{id:'solo',name:'SOLO'},{id:'padrao',name:'START'},{id:'pro',name:'PRO'},{id:'empresarial',name:'ENTERPRISE'}]){
- const letter=buildKeyDeliveryDesign({planId:row.id,maxUses:row.id==='solo'?1:row.id==='padrao'?3:10,code:'zv-synthetic-key-1234',expiresAt:'2026-11-14T03:00:00.000Z',baseUrl:'https://zvm.onrender.com',ctaPath:'/cliente'});
+ const letter=buildKeyDeliveryDesign({planId:row.id,maxUses:row.id==='solo'?1:row.id==='padrao'?3:row.id==='pro'?5:10,code:'zv-synthetic-key-1234',expiresAt:'2026-11-14T03:00:00.000Z',baseUrl:'https://zvm.onrender.com',ctaPath:'/cliente'});
  assert.match(letter.html,new RegExp(row.name),'correct theme label');
  assert.match(letter.html,/14\/11\/2026/,'actual expiry in Sao Paulo');
  assert.match(letter.html,/zv-synthetic-key-1234/);
