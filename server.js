@@ -6038,6 +6038,14 @@ ${noKeySection}
 
 function renderStandalonePortalPlans(user, keyData){
   const currentPlanId=String(keyData?.planId||'');
+  // Preserve renewal for an existing historic contract independently of new v2 offers.
+  const renewalPlan = Object.prototype.hasOwnProperty.call(ZVM_PLANS,currentPlanId) ? ZVM_PLANS[currentPlanId] : null;
+  const legacyRenewal = renewalPlan && keyData?.planId
+    ? `<section class="client-legacy-renewal" aria-label="Renovação do contrato vigente" style="margin:16px auto;padding:18px;max-width:960px;border:1px solid var(--border,#295247);border-radius:14px;">
+      <h2 style="font-size:18px;margin:0 0 8px;">Renovar contrato anterior</h2>
+      <p style="margin:0 0 12px;">Sua licença atual é do plano ${escHtml(displayLicensePlan({planId:currentPlanId,maxUses:keyData?.maxUses}).label)}. Você pode renovar esse contrato sem migrar automaticamente para os novos planos.</p>
+      <a class="plan-btn plan-btn-outline" href="${escHtml(checkoutUrlForPortal(renewalPlan.checkoutUrl,user?.keyCode,user?.email,APP_SECRET))}" target="_blank" rel="noopener noreferrer">Renovar meu contrato atual</a>
+    </section>` : '';
   const cards=Object.values(ZVM_PUBLIC_PLANS).map(plan=>{
     const price=formatPlanPrice(plan.price);
     const perDevice=plan.consult?'':(plan.price/plan.maxUses).toFixed(2).replace('.',',');
@@ -6066,7 +6074,7 @@ function renderStandalonePortalPlans(user, keyData){
   const modal=`<dialog class="checkout-dialog" aria-labelledby="checkout-title"><div class="dialog-inner"><div class="modal-icon" aria-hidden="true">↗</div><h2 id="checkout-title">Confirmar plano</h2><div class="modal-plan-summary"><div class="modal-plan-name" id="modal-plan-name">—</div><div class="modal-plan-meta" id="modal-plan-meta">—</div><div class="modal-plan-price" id="modal-plan-price">—</div></div><div class="modal-account"><span class="modal-account-label">Compra vinculada à conta</span><strong class="modal-email">${escHtml(user?.email||'')}</strong></div><p class="modal-hint">Use este mesmo e-mail na página de pagamento para que sua licença seja ativada ou renovada automaticamente.</p><div class="modal-actions"><button type="button" class="modal-cancel">Voltar</button><a class="modal-continue" href="#" target="_blank" rel="noopener noreferrer">Continuar para pagamento →</a></div></div></dialog>`;
   const body=`<div class="client-shell">${renderClientPortalRail('plans')}<main id="main-content" class="client-main client-plans-main" tabindex="-1">
     <div class="dash-topbar"><div class="dash-page-heading"><span>Minha ZVM</span><strong>Renovações e planos</strong></div><div class="dash-topbar-user">${renderClientAccountIdentity(user)}<a href="/cliente/logout" class="dash-logout">Sair da conta</a></div></div>
-    <section class="client-plans-public-style"><header class="client-plans-public-head client-plan-intro"><span>Renove ou altere seu plano</span><h1>Escolha o plano ideal</h1><p>START para começar, PRO para a operação completa e ENTERPRISE sob consulta.</p></header>${needPicker}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section><p class="plans-footnote">Precisa de mais de 10 números? <a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Falar com suporte</a></p></section>
+    <section class="client-plans-public-style"><header class="client-plans-public-head client-plan-intro"><span>Renove ou altere seu plano</span><h1>Escolha o plano ideal</h1><p>START para começar, PRO para a operação completa e ENTERPRISE sob consulta.</p></header>${needPicker}${legacyRenewal}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section><p class="plans-footnote">Precisa de mais de 10 números? <a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Falar com suporte</a></p></section>
     ${modal}<script src="/assets/zvm-plans.26a755b1251d.js" defer></script>
   </main></div>`;
   return renderPortalPage(body,'ZVM — Renovações e Planos','',_CSS_PLANS);
