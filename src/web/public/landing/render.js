@@ -43,18 +43,18 @@ function createLandingRenderer({ escHtml, favicon, sharedCssLink, landingCssLink
   // No checkout links, copy of prices, or separate plan selection state.
   function renderLandingPlans() {
     return Object.values(plans).map(plan => {
-      if (!['solo','padrao','pro','empresarial'].includes(plan.id)) return '';
-      const value = Number(plan.price);
+      if (!['start_v2','pro_v2','enterprise_v2'].includes(plan.id)) return '';
+      const value = plan.consult ? null : Number(plan.price);
       const devices = Number(plan.maxUses);
-      if (!Number.isFinite(value) || value <= 0 || !Number.isSafeInteger(devices) || devices <= 0) return '';
-      const price = 'R$ ' + value.toFixed(2).replace('.', ',');
+      if ((!plan.consult && (!Number.isFinite(value) || value <= 0)) || !Number.isSafeInteger(devices) || devices <= 0) return '';
+      const price = plan.consult ? 'Sob consulta' : 'R$ ' + value.toFixed(2).replace('.', ',');
       const id = escHtml(plan.id);
-      const popular = plan.id === 'padrao';
+      const popular = plan.id === 'pro_v2';
       return `<a class="r4624-plan-card${popular?' is-popular':''}" data-plan-id="${id}" href="/planos?plano=${id}">
-        ${popular?'<span class="r4624-plan-popular">Mais escolhido</span>':''}
+        ${popular?'<span class="r4624-plan-popular">Mais escolhido</span>':''}${plan.consult?'<span class="r4624-plan-popular">Sob consulta</span>':''}
         <h3>${escHtml(plan.shortName || plan.name || plan.id)}</h3>
-        <p>${devices} ${devices===1?'número':'números'} de WhatsApp</p>
-        <strong>${price}</strong><span class="r4624-plan-period">30 dias de acesso</span>
+        <p>${escHtml(plan.subtitle || '')} · ${devices} ${devices===1?'número':'números'} de WhatsApp</p>
+        <strong>${price}</strong><span class="r4624-plan-period">${plan.consult?'Implantação personalizada':'por mês'}</span>
         <span class="r4624-plan-link">Ver detalhes do plano <span aria-hidden="true">→</span></span>
       </a>`;
     }).join('');
