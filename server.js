@@ -69,6 +69,7 @@ const { validateRuntimeSecurityConfig } = require('./runtime-config');
 const { loadDevBuildSigningConfig, createDevBuildSigningService } = require('./dev-build-signing');
 const { resolveExtensionCorsOrigin } = require('./extension-origin-policy');
 const { checkoutUrlForPortal, readCheckoutBinding, isZvmCheckoutBinding } = require('./src/cakto-checkout-binding');
+const { displayLicensePlan } = require('./src/commercial-plan-labels');
 const {
   LegacyV3Shield,
   legacyKeyStateSignature,
@@ -288,8 +289,7 @@ async function loadAdminPortalUsers({ limit = 1000 } = {}) {
     const enriched = users.map(u => {
       const code = typeof u.keyCode === 'string' ? u.keyCode : '';
       const k = code ? (keys[code] || sourceKeys[code] || null) : null;
-      let plan = k ? (k.planId || k.plan_id || k.plan || null) : null;
-      if (!plan && k) plan = k.maxUses === -1 ? 'BUSINESS' : k.maxUses === 1 ? 'STARTER' : k.maxUses >= 3 ? 'PRO' : null;
+      const plan = k ? displayLicensePlan({ planId: k.planId || k.plan_id || k.plan, planLabel: k.planName, maxUses: k.maxUses }).label : null;
       return {
         _id: String(u._id || ''), name: u.name || '', displayName: u.displayName || '', phone: u.phone || '',
         keyCode: code, createdAt: u.createdAt || null, lastLogin: u.lastLogin || null,
@@ -3466,7 +3466,7 @@ async function _processCommercialSaleUnlocked(sale, plan, deps = {}) {
   } else {
     try {
       const delivered = await deliveryMailer(clientEmail, {
-        code: keyCode, planLabel: plan.shortName, maxUses: plan.maxUses,
+        code: keyCode, planId: keyStore[keyCode].planId || plan.id, planLabel: plan.shortName, maxUses: keyStore[keyCode].maxUses,
         expiresAt: keyStore[keyCode].expiresAt, renewed, durationDays: plan.durationDays,
         baseUrl: BASE_URL, extensionUrl: EXTENSION_URL,
         ctaPath: safeLocalRedirect(sale.ctaPath, '/cliente'),
@@ -4267,7 +4267,7 @@ async function ensureCaktoDeliveryOutbox(db, purchase, plan, delivery, opts = {}
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) throw Object.assign(new Error('cakto_mail_recipient_invalid'), { code: 'cakto_mail_recipient_invalid' });
   const now = opts.now instanceof Date ? new Date(opts.now) : new Date();
   const payload = {
-    to, code: delivery.keyCode, planLabel: plan.shortName, maxUses: Number(plan.maxUses) || 0,
+    to, code: delivery.keyCode, planId: key.planId || plan.id, planLabel: plan.shortName, maxUses: Number(key.maxUses) || Number(plan.maxUses) || 0,
     expiresAt: key.expiresAt || delivery.expiresAt || null, renewed: !!delivery.renewed,
     durationDays: Number(plan.durationDays) || 0, baseUrl: BASE_URL, extensionUrl: EXTENSION_URL,
     ctaPath: safeLocalRedirect(purchase.ctaPath, '/cliente'),
@@ -4329,7 +4329,7 @@ async function processCaktoMailOutboxItem(db, doc, deps = {}) {
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(payload.to || '')) || !safeScalar(payload.code, 128)) throw Object.assign(new Error('cakto_mail_payload_invalid'), { code: 'cakto_mail_payload_invalid' });
   const mailer = deps.sendKeyDeliveryEmail || sendKeyDeliveryEmail;
   const delivered = await mailer(payload.to, {
-    code: payload.code, planLabel: payload.planLabel, maxUses: payload.maxUses, expiresAt: payload.expiresAt,
+    code: payload.code, planId: payload.planId || '', planLabel: payload.planLabel, maxUses: payload.maxUses, expiresAt: payload.expiresAt,
     renewed: !!payload.renewed, durationDays: payload.durationDays, baseUrl: payload.baseUrl || BASE_URL,
     extensionUrl: payload.extensionUrl || EXTENSION_URL, ctaPath: safeLocalRedirect(payload.ctaPath, '/cliente'),
   });
@@ -9710,9 +9710,9 @@ async function handleRequest(req, res) {
     let built;
     try {
       if (template === 'delivery_new') {
-        built = buildKeyDeliveryEmail({ code: 'ZV-DEMO-0000-0000', planLabel: 'Padrão', maxUses: 3, expiresAt: sampleExpiresAt, renewed: false, baseUrl: BASE_URL, extensionUrl: EXTENSION_URL, ctaPath: '/cliente' });
+        built = buildKeyDeliveryEmail({ code: 'ZV-DEMO-0000-0000', planId: 'padrao', planLabel: 'Padrão', maxUses: 3, expiresAt: sampleExpiresAt, renewed: false, baseUrl: BASE_URL, extensionUrl: EXTENSION_URL, ctaPath: '/cliente' });
       } else if (template === 'delivery_renewal') {
-        built = buildKeyDeliveryEmail({ code: 'ZV-DEMO-0000-0000', planLabel: 'Padrão', maxUses: 3, expiresAt: sampleExpiresAt, renewed: true, durationDays: 30, baseUrl: BASE_URL, extensionUrl: EXTENSION_URL, ctaPath: '/cliente' });
+        built = buildKeyDeliveryEmail({ code: 'ZV-DEMO-0000-0000', planId: 'padrao', planLabel: 'Padrão', maxUses: 3, expiresAt: sampleExpiresAt, renewed: true, durationDays: 30, baseUrl: BASE_URL, extensionUrl: EXTENSION_URL, ctaPath: '/cliente' });
       } else if (template === 'expiry_warning') {
         built = buildKeyExpiryWarningEmail({ code: 'ZV-DEMO-0000-0000', hoursLeft: 48, planLabel: 'Padrão', maxUses: 3, expiresAt: new Date(Date.now() + 48 * 3600000).toISOString(), baseUrl: BASE_URL, ctaPath: '/cliente' });
       } else if (template === 'password_reset') {
