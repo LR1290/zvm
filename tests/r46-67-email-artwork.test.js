@@ -20,7 +20,7 @@ const expected={start:'db2f32248d60f41e78ae0f7cf8675d25a550402671068f6311dc5efa0
    assert(b.html.includes('data-zvm-live="'+field+'"'));
    assert(b.html.includes(value),'literal selectable '+field);
   }
-  assert.match(b.html,/href="https:\/\/zvm.onrender.com\/cliente#copy-license-key"/);
+  assert.match(b.html,/href="https:\/\/zvm.onrender.com\/cliente\?copy=1"/);
   const parts=regions(tone); assert.equal(parts.length,14);
   const originalArea=parts.reduce((total,p)=>total+(p.w*p.h),0);
   assert.equal(originalArea,1024*1536,'artwork portions must have 100% coverage with no missing pixels');

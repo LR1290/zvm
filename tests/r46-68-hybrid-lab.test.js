@@ -18,7 +18,7 @@ const {buildKeyDeliveryEmail,prepareKeyDeliveryArtwork}=require('../mailer');
   assert(delivery.html.includes('ZV-TEST-KEY-47'),'key live after rendering');
   assert(preview.html.includes('data:image/jpeg;base64,'));
   assert(delivery.html.includes('https://zvm.onrender.com/assets/zvm-email-art/r46-69/'+tone+'/copy-button.jpg'));
-  assert(mail.html.includes('href="https://zvm.onrender.com/cliente#copy-license-key"'));
+  assert(mail.html.includes('href="https://zvm.onrender.com/cliente?copy=1"'));
  }
  const injected=buildKeyDeliveryEmail({planId:'padrao',maxUses:3,code:'<script>alert(1)</script>'});
  assert(!injected.html.includes('<script>')&&injected.html.includes('&lt;script&gt;'));
