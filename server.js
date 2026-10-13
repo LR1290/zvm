@@ -9025,6 +9025,13 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // Recarregar /login apos um POST recusado deve voltar a tela canonica,
+  // sem criar uma segunda implementacao de login nem expor dados internos.
+  if (p === R_ADMIN+'/login' && req.method === 'GET') {
+    res.writeHead(302, { Location: R_ADMIN, 'Cache-Control': 'no-store' });
+    res.end(); return;
+  }
+
   if (p === R_ADMIN+'/login' && req.method === 'POST') {
     if (!requireSameOriginPost(req)) { sendHtml(res, 'Forbidden', 403); return; }
     if (!checkRateLimit(ip, 'login')) {
@@ -9550,6 +9557,12 @@ async function handleRequest(req, res) {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="zvm-chaves-${new Date().toISOString().slice(0,10)}.csv"`);
     res.writeHead(200); res.end('\uFEFF' + csv); return;
+  }
+
+  // Mesmo contrato para Analytics; a autenticacao permanece independente.
+  if (p === R_ANALYTICS+'/login' && req.method === 'GET') {
+    res.writeHead(302, { Location: R_ANALYTICS, 'Cache-Control': 'no-store' });
+    res.end(); return;
   }
 
   if (p === R_ANALYTICS+'/login' && req.method === 'POST') {
