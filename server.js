@@ -7147,7 +7147,7 @@ async function renderAnalyticsDashboard(fixture = null) {
               <option value="empresarial">Empresarial (contrato histórico) — R$169,90 · 10 números</option>
             </select>
           </div>
-          <div class="lab-field"><label for="lab-type">Operação</label><select id="lab-type"><option value="new">Nova licença</option><option value="renewal">Renovação</option></select></div>
+          <input type="hidden" id="lab-type" value="auto"><p class="lab-email-tip">Nova licença ou renovação é determinada pela existência de uma chave sandbox associada ao e-mail do cenário.</p>
           <div class="lab-field"><label for="lab-name">Nome fictício</label><input id="lab-name" type="text" value="Cliente Teste" maxlength="80"></div>
           <div class="lab-field"><label for="lab-email">E-mail do cenário</label><input id="lab-email" type="email" placeholder="teste@dominio-valido.com" maxlength="160"></div>
           <div class="lab-field"><label for="lab-phone">Telefone fictício (opcional)</label><input id="lab-phone" type="text" maxlength="20" placeholder="11999990000"></div>
