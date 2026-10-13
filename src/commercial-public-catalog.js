@@ -17,8 +17,9 @@ function readNewCatalog(env=process.env){
  const startId=String(env.CAKTO_START_V2_OFFER_ID||'').trim();
  const proId=String(env.CAKTO_PRO_V2_OFFER_ID||'').trim();
  const pinOk=id=>/^[a-zA-Z0-9_-]{6,128}$/.test(id);
- const startReady=!!startUrl&&pinOk(startId);
- const proReady=!!proUrl&&pinOk(proId)&&proId!==startId;
+ const oldIds=[env.CAKTO_SOLO_OFFER_ID,env.CAKTO_PADRAO_OFFER_ID,env.CAKTO_PRO_OFFER_ID,env.CAKTO_EMPRESARIAL_OFFER_ID].filter(Boolean).map(String);
+ const startReady=!!startUrl&&pinOk(startId)&&!oldIds.includes(startId)&&(!proUrl||startUrl!==proUrl);
+ const proReady=!!proUrl&&pinOk(proId)&&proId!==startId&&!oldIds.includes(proId)&&(!startUrl||proUrl!==startUrl);
  return Object.freeze({
   start_v2:Object.freeze({id:'start_v2',name:'ZVM START',shortName:'START',price:59.90,maxUses:1,durationDays:30,
     checkoutUrl:startReady?startUrl:'',offerId:startReady?startId:'',productId:'',enabled:startReady,subtitle:'Quem está começando'}),
