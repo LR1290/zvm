@@ -58,6 +58,7 @@ const {
   sendPasswordResetEmail, sendKeyDeliveryEmail, sendKeyExpiryWarningEmail, sendEmail,
   buildPasswordResetEmail, buildKeyDeliveryEmail, buildKeyExpiryWarningEmail, prepareKeyDeliveryArtwork,
 } = require('./mailer');
+const { decorativeSlices: zvmEmailArtSlices } = require('./src/email-pixel-fidelity');
 const {
   createBuildAuthority,
   parseBuildMap: zvmSecurityBuildMap,
@@ -8222,6 +8223,24 @@ async function handleRequest(req, res) {
     res.writeHead(ready ? 200 : 503, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ..._SEC_HEADERS });
     res.end(JSON.stringify({ ok: ready, build: ZVM_BUILD_ID }));
     return;
+  }
+
+  // Public, immutable decorative slices from the original ZVM license art.
+  // No keys, plans tied to customers, emails or other personal data are exposed.
+  // Strictly whitelisted 3 tones x 14 names; no filesystem path supplied by caller.
+  if (req.method === 'GET' && p.startsWith('/assets/zvm-email-art/')) {
+    const matched = new RegExp('^/assets/zvm-email-art/r46-69/(start|pro|enterprise)/([a-z-]+)[.]jpg$').exec(p);
+    if (!matched) { res.writeHead(404, { 'Cache-Control':'no-store', ..._SEC_HEADERS }); res.end(); return; }
+    try {
+      const catalog = await zvmEmailArtSlices(matched[1]);
+      const slice = Object.hasOwn(catalog, matched[2]) ? catalog[matched[2]] : null;
+      if (!slice) { res.writeHead(404, { 'Cache-Control':'no-store', ..._SEC_HEADERS }); res.end(); return; }
+      res.writeHead(200, { 'Content-Type':'image/jpeg', 'Content-Length':slice.buffer.length,
+        'Cache-Control':'public, max-age=31536000, immutable', ..._SEC_HEADERS });
+      res.end(slice.buffer); return;
+    } catch (_) {
+      res.writeHead(503, { 'Cache-Control':'no-store', ..._SEC_HEADERS }); res.end(); return;
+    }
   }
 
   if (p === '/status' && req.method === 'GET') {
