@@ -70,6 +70,7 @@ const { loadDevBuildSigningConfig, createDevBuildSigningService } = require('./d
 const { resolveExtensionCorsOrigin } = require('./extension-origin-policy');
 const { checkoutUrlForPortal, readCheckoutBinding, isZvmCheckoutBinding } = require('./src/cakto-checkout-binding');
 const { displayLicensePlan } = require('./src/commercial-plan-labels');
+const { readNewCatalog } = require('./src/commercial-public-catalog');
 const {
   LegacyV3Shield,
   legacyKeyStateSignature,
@@ -203,6 +204,9 @@ const ZVM_PLANS = Object.freeze({
     productId: process.env.CAKTO_EMPRESARIAL_PRODUCT_ID || '',
   }),
 });
+
+const ZVM_PUBLIC_PLANS = readNewCatalog(process.env);
+const ZVM_PAYMENT_PLANS = Object.freeze({ ...ZVM_PLANS, ...Object.fromEntries(Object.entries(ZVM_PUBLIC_PLANS).filter(([,p]) => p.enabled)) });
 
 const LOG_RETENTION_DAYS = Math.max(1, parseInt(process.env.LOG_RETENTION_DAYS || '90') || 90);
 
@@ -1541,7 +1545,7 @@ function isCaktoPaidEntitlementEvent(event) {
   return value === 'purchase_approved' || value === 'subscription_renewed';
 }
 
-function selectCaktoCommercialPurchase(purchases, plans = ZVM_PLANS) {
+function selectCaktoCommercialPurchase(purchases, plans = ZVM_PAYMENT_PLANS) {
   if (!Array.isArray(purchases) || !purchases.length) return { ok: false, status: 400, error: 'invalid_payload' };
   const event = safeScalar(purchases[0]?.event, 80).toLowerCase();
   if (!isCaktoPaidEntitlementEvent(event)) {
@@ -1560,7 +1564,7 @@ function selectCaktoCommercialPurchase(purchases, plans = ZVM_PLANS) {
   return { ok: true, ...mapped[0], webhookV2: purchases.length > 1, ignoredItems: purchases.length - 1 };
 }
 
-function resolveCaktoPlan(purchase, plans = ZVM_PLANS) {
+function resolveCaktoPlan(purchase, plans = ZVM_PAYMENT_PLANS) {
   if (!purchase || typeof purchase !== 'object') return null;
   const allPlans = Object.values(plans);
   const byConfiguredId = (field, configField) => {
@@ -1812,7 +1816,7 @@ function buildExtensionEntitlement({ keyCode = null, keyRecord = null, now = Dat
     : nowMs + EXTENSION_ENTITLEMENT_LEASE_MS;
   const tier = licensed ? 'paid' : 'free';
   const rawPlanId = licensed ? String(keyRecord.plan_id || keyRecord.planId || '').trim() : '';
-  const commercialPlan = licensed ? (ZVM_PLANS[rawPlanId.toLowerCase()] || null) : null;
+  const commercialPlan = licensed ? (ZVM_PAYMENT_PLANS[rawPlanId.toLowerCase()] || null) : null;
   const planId = licensed ? (rawPlanId || 'ZV_PRO') : FREE_PLAN_ID;
   // Legacy/admin-created keys predate explicit plan metadata. Their historical
   // contract was PRO, so keep that fallback instead of exposing a generic
@@ -4585,7 +4589,7 @@ async function processCaktoQueuedEvent(db, doc, deps = {}) {
   if (!doc?.eventKey || !doc?.planId) throw new Error('cakto_queue_document_invalid');
   if (typeof deps.assertWorkerLease === 'function') await deps.assertWorkerLease();
   const purchase = doc.purchase || decryptCaktoQueuePurchase(doc);
-  const plan = ZVM_PLANS[doc.planId] || null;
+  const plan = ZVM_PAYMENT_PLANS[doc.planId] || null;
   const commercialCheck = validateCaktoCommercialIntegrity(purchase, plan);
   if (!commercialCheck.ok) throw new Error(`cakto_queue_${commercialCheck.error}`);
 
@@ -5918,7 +5922,7 @@ function renderStandalonePortalDashboard(user, keyData, okMsg='') {
   const mainStatusClass = expired ? 'bd-red' : deferred ? 'bd-blue' : active ? 'bd-green' : 'bd-red';
   const mainStatusTxt   = expired ? 'Expirada' : deferred ? 'Aguardando 1º uso' : active ? 'Ativa' : 'Inativa';
   const mainStatusGlow  = expired ? '#f0506044' : deferred ? '#5588ff44' : active ? '#00e67644' : '#f0506044';
-  const planName = keyData ? (ZVM_PLANS[keyData.planId]?.shortName || planLabelForMaxUses(keyData.maxUses || 1)) : '';
+  const planName = keyData ? displayLicensePlan({planId:keyData.planId,planLabel:keyData.planName,maxUses:keyData.maxUses}).label : '';
   const expiryDateText = keyData?.expiresAt && Number.isFinite(new Date(keyData.expiresAt).getTime())
     ? new Date(keyData.expiresAt).toLocaleDateString('pt-BR') : deferred ? 'No primeiro uso' : 'Sem expiração';
 
@@ -6608,7 +6612,7 @@ const renderLandingPage = createLandingRenderer({
   sharedCssLink: _CSS_SHARED + _CSS_STANDALONE,
   landingCssLink: _CSS_LANDING + _CSS_SYSTEM,
   chromeStoreBadge: renderChromeStoreBadge,
-  plans: ZVM_PLANS,
+  plans: ZVM_PUBLIC_PLANS,
   publicNav: portalUser => _sharedNav({ activePath: '/', portalUser, showBack: false }),
 });
 
@@ -10597,6 +10601,8 @@ module.exports.__test = Object.freeze({
   caktoDryRunAllowed,
   parseSafeWebhookUrl,
   ZVM_PLANS,
+  ZVM_PUBLIC_PLANS,
+  ZVM_PAYMENT_PLANS,
   normalizeCaktoPurchase,
   normalizeCaktoPurchases,
   isCaktoPaidEntitlementEvent,
