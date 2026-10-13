@@ -69,6 +69,8 @@ const { validateRuntimeSecurityConfig } = require('./runtime-config');
 const { loadDevBuildSigningConfig, createDevBuildSigningService } = require('./dev-build-signing');
 const { resolveExtensionCorsOrigin } = require('./extension-origin-policy');
 const { checkoutUrlForPortal, readCheckoutBinding, isZvmCheckoutBinding } = require('./src/cakto-checkout-binding');
+const { displayLicensePlan } = require('./src/commercial-plan-labels');
+const { readNewCatalog } = require('./src/commercial-public-catalog');
 const {
   LegacyV3Shield,
   legacyKeyStateSignature,
@@ -203,6 +205,9 @@ const ZVM_PLANS = Object.freeze({
   }),
 });
 
+const ZVM_PUBLIC_PLANS = readNewCatalog(process.env);
+const ZVM_PAYMENT_PLANS = Object.freeze({ ...ZVM_PLANS, ...Object.fromEntries(Object.entries(ZVM_PUBLIC_PLANS).filter(([,p]) => p.enabled)) });
+
 const LOG_RETENTION_DAYS = Math.max(1, parseInt(process.env.LOG_RETENTION_DAYS || '90') || 90);
 
 const LOG_MAX = Math.min(parseInt(process.env.LOG_MAX || '500'), 2000);
@@ -288,8 +293,7 @@ async function loadAdminPortalUsers({ limit = 1000 } = {}) {
     const enriched = users.map(u => {
       const code = typeof u.keyCode === 'string' ? u.keyCode : '';
       const k = code ? (keys[code] || sourceKeys[code] || null) : null;
-      let plan = k ? (k.planId || k.plan_id || k.plan || null) : null;
-      if (!plan && k) plan = k.maxUses === -1 ? 'BUSINESS' : k.maxUses === 1 ? 'STARTER' : k.maxUses >= 3 ? 'PRO' : null;
+      const plan = k ? displayLicensePlan({ planId: k.planId || k.plan_id || k.plan, planLabel: k.planName, maxUses: k.maxUses }).label : null;
       return {
         _id: String(u._id || ''), name: u.name || '', displayName: u.displayName || '', phone: u.phone || '',
         keyCode: code, createdAt: u.createdAt || null, lastLogin: u.lastLogin || null,
@@ -1327,7 +1331,7 @@ if (!ZVM_LOCAL_SAFE_MODE) {
               // no ar). Falhando, o próximo ciclo horário tenta de novo — sem risco
               // de loop de spam, porque um sucesso interrompe as tentativas.
               const warnSent = await sendKeyExpiryWarningEmail(_pu._id, {
-                code, hoursLeft, planLabel: planLabelForMaxUses(k.maxUses), maxUses: k.maxUses,
+                code, hoursLeft, planLabel: displayLicensePlan({planId:k.planId,planLabel:k.planName,maxUses:k.maxUses}).label, maxUses: k.maxUses,
                 expiresAt: k.expiresAt, baseUrl: BASE_URL, ctaPath: '/cliente',
               });
               if (warnSent) {
@@ -1427,14 +1431,6 @@ function renderTrackingChips(k) {
   const t = getKeyTracking(k);
   if (!t) return `<span style="color:var(--tx3)">—</span>`;
   return `<div class="trk">${t.src?`<span class="trk-chip trk-src">🎯 ${escHtml(t.src)}</span>`:''}${t.medium?`<span class="trk-chip trk-med">📡 ${escHtml(t.medium)}</span>`:''}${t.campaign?`<span class="trk-chip trk-camp">📣 ${escHtml(t.campaign)}</span>`:''}${(!t.src&&t.ref)?`<span class="trk-chip trk-ref">🔗 ${escHtml(t.ref)}</span>`:''}</div>`;
-}
-
-function planLabelForMaxUses(n) {
-  if (n === 1) return 'Solo';
-  if (n === 3) return 'Padrão';
-  if (n === 5) return 'Pro';
-  if (n === 10) return 'Empresarial';
-  return `${n} número(s)`;
 }
 
 function isPlainRecord(value) {
@@ -1541,7 +1537,7 @@ function isCaktoPaidEntitlementEvent(event) {
   return value === 'purchase_approved' || value === 'subscription_renewed';
 }
 
-function selectCaktoCommercialPurchase(purchases, plans = ZVM_PLANS) {
+function selectCaktoCommercialPurchase(purchases, plans = ZVM_PAYMENT_PLANS) {
   if (!Array.isArray(purchases) || !purchases.length) return { ok: false, status: 400, error: 'invalid_payload' };
   const event = safeScalar(purchases[0]?.event, 80).toLowerCase();
   if (!isCaktoPaidEntitlementEvent(event)) {
@@ -1560,7 +1556,7 @@ function selectCaktoCommercialPurchase(purchases, plans = ZVM_PLANS) {
   return { ok: true, ...mapped[0], webhookV2: purchases.length > 1, ignoredItems: purchases.length - 1 };
 }
 
-function resolveCaktoPlan(purchase, plans = ZVM_PLANS) {
+function resolveCaktoPlan(purchase, plans = ZVM_PAYMENT_PLANS) {
   if (!purchase || typeof purchase !== 'object') return null;
   const allPlans = Object.values(plans);
   const byConfiguredId = (field, configField) => {
@@ -1587,11 +1583,13 @@ function resolveCaktoPlan(purchase, plans = ZVM_PLANS) {
   // seguinte ainda exige status pago, BRL e preço-base exato do plano.
   const exactNames = [purchase.productName, purchase.offerName].map(normalizePlanName).filter(Boolean);
   if (exactNames.length) {
-    const byExactName = allPlans.find(plan => {
+    const matching = allPlans.filter(plan => {
       const allowed = [plan.name, plan.shortName].map(normalizePlanName).filter(Boolean);
       return exactNames.some(name => allowed.includes(name));
     });
-    if (byExactName) return byExactName;
+    // Names are not a safe selector when historic and v2 contracts collide.
+    // Require a distinct configured offer/product ID or matching checkout.
+    if (matching.length === 1) return matching[0];
   }
   return null;
 }
@@ -1812,7 +1810,7 @@ function buildExtensionEntitlement({ keyCode = null, keyRecord = null, now = Dat
     : nowMs + EXTENSION_ENTITLEMENT_LEASE_MS;
   const tier = licensed ? 'paid' : 'free';
   const rawPlanId = licensed ? String(keyRecord.plan_id || keyRecord.planId || '').trim() : '';
-  const commercialPlan = licensed ? (ZVM_PLANS[rawPlanId.toLowerCase()] || null) : null;
+  const commercialPlan = licensed ? (ZVM_PAYMENT_PLANS[rawPlanId.toLowerCase()] || null) : null;
   const planId = licensed ? (rawPlanId || 'ZV_PRO') : FREE_PLAN_ID;
   // Legacy/admin-created keys predate explicit plan metadata. Their historical
   // contract was PRO, so keep that fallback instead of exposing a generic
@@ -3466,7 +3464,7 @@ async function _processCommercialSaleUnlocked(sale, plan, deps = {}) {
   } else {
     try {
       const delivered = await deliveryMailer(clientEmail, {
-        code: keyCode, planLabel: plan.shortName, maxUses: plan.maxUses,
+        code: keyCode, planId: keyStore[keyCode].planId || plan.id, planLabel: plan.shortName, maxUses: keyStore[keyCode].maxUses,
         expiresAt: keyStore[keyCode].expiresAt, renewed, durationDays: plan.durationDays,
         baseUrl: BASE_URL, extensionUrl: EXTENSION_URL,
         ctaPath: safeLocalRedirect(sale.ctaPath, '/cliente'),
@@ -4267,7 +4265,7 @@ async function ensureCaktoDeliveryOutbox(db, purchase, plan, delivery, opts = {}
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) throw Object.assign(new Error('cakto_mail_recipient_invalid'), { code: 'cakto_mail_recipient_invalid' });
   const now = opts.now instanceof Date ? new Date(opts.now) : new Date();
   const payload = {
-    to, code: delivery.keyCode, planLabel: plan.shortName, maxUses: Number(plan.maxUses) || 0,
+    to, code: delivery.keyCode, planId: key.planId || plan.id, planLabel: plan.shortName, maxUses: Number(key.maxUses) || Number(plan.maxUses) || 0,
     expiresAt: key.expiresAt || delivery.expiresAt || null, renewed: !!delivery.renewed,
     durationDays: Number(plan.durationDays) || 0, baseUrl: BASE_URL, extensionUrl: EXTENSION_URL,
     ctaPath: safeLocalRedirect(purchase.ctaPath, '/cliente'),
@@ -4329,7 +4327,7 @@ async function processCaktoMailOutboxItem(db, doc, deps = {}) {
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(payload.to || '')) || !safeScalar(payload.code, 128)) throw Object.assign(new Error('cakto_mail_payload_invalid'), { code: 'cakto_mail_payload_invalid' });
   const mailer = deps.sendKeyDeliveryEmail || sendKeyDeliveryEmail;
   const delivered = await mailer(payload.to, {
-    code: payload.code, planLabel: payload.planLabel, maxUses: payload.maxUses, expiresAt: payload.expiresAt,
+    code: payload.code, planId: payload.planId || '', planLabel: payload.planLabel, maxUses: payload.maxUses, expiresAt: payload.expiresAt,
     renewed: !!payload.renewed, durationDays: payload.durationDays, baseUrl: payload.baseUrl || BASE_URL,
     extensionUrl: payload.extensionUrl || EXTENSION_URL, ctaPath: safeLocalRedirect(payload.ctaPath, '/cliente'),
   });
@@ -4585,7 +4583,7 @@ async function processCaktoQueuedEvent(db, doc, deps = {}) {
   if (!doc?.eventKey || !doc?.planId) throw new Error('cakto_queue_document_invalid');
   if (typeof deps.assertWorkerLease === 'function') await deps.assertWorkerLease();
   const purchase = doc.purchase || decryptCaktoQueuePurchase(doc);
-  const plan = ZVM_PLANS[doc.planId] || null;
+  const plan = ZVM_PAYMENT_PLANS[doc.planId] || null;
   const commercialCheck = validateCaktoCommercialIntegrity(purchase, plan);
   if (!commercialCheck.ok) throw new Error(`cakto_queue_${commercialCheck.error}`);
 
@@ -5611,7 +5609,7 @@ const ZVM_FAQ_ITEMS = [
   ['Como recebo minha licença depois da compra?', 'Assim que o pagamento é aprovado, sua chave é gerada e enviada automaticamente por e-mail. Você também acompanha tudo pelo painel Minha Conta.'],
   ['Preciso criar uma conta antes de comprar?', 'Não é obrigatório, mas é recomendado: entrando antes da compra, sua chave é vinculada automaticamente à sua conta. Sem login, você recebe a chave só por e-mail.'],
   ['Como instalar e acessar a ZVM?', 'Use sempre o link oficial disponibilizado pela ZVM, instale a extensão no navegador compatível e entre com sua conta. Se a licença ainda não estiver vinculada, faça a vinculação pelo Portal do Cliente.'],
-  ['Quantos números posso usar?', 'Depende do seu plano: Solo permite 1 número, Padrão 3, Pro 5 e Empresarial até 10.'],
+  ['Quantos números posso usar?', 'Nos novos planos, START oferece 1 acesso e PRO oferece até 3. ENTERPRISE é sob consulta e não está disponível para compra automática. Contratos anteriores preservam seus limites.'],
   ['Como renovo minha licença?', 'No portal, acesse "Renovar / Alterar Plano" e conclua a compra pela Cakto — a renovação é aplicada automaticamente à sua chave.'],
   ['Posso alterar meu plano?', 'Sim. Escolha outro plano em Planos; a chave existente passa a usar o novo limite de dispositivos.'],
   ['Onde vejo a validade da minha licença?', 'No painel Minha Conta, nas seções "Minha licença" e "Resumo da conta".'],
@@ -5918,7 +5916,7 @@ function renderStandalonePortalDashboard(user, keyData, okMsg='') {
   const mainStatusClass = expired ? 'bd-red' : deferred ? 'bd-blue' : active ? 'bd-green' : 'bd-red';
   const mainStatusTxt   = expired ? 'Expirada' : deferred ? 'Aguardando 1º uso' : active ? 'Ativa' : 'Inativa';
   const mainStatusGlow  = expired ? '#f0506044' : deferred ? '#5588ff44' : active ? '#00e67644' : '#f0506044';
-  const planName = keyData ? (ZVM_PLANS[keyData.planId]?.shortName || planLabelForMaxUses(keyData.maxUses || 1)) : '';
+  const planName = keyData ? displayLicensePlan({planId:keyData.planId,planLabel:keyData.planName,maxUses:keyData.maxUses}).label : '';
   const expiryDateText = keyData?.expiresAt && Number.isFinite(new Date(keyData.expiresAt).getTime())
     ? new Date(keyData.expiresAt).toLocaleDateString('pt-BR') : deferred ? 'No primeiro uso' : 'Sem expiração';
 
@@ -6039,31 +6037,44 @@ ${noKeySection}
 
 
 function renderStandalonePortalPlans(user, keyData){
-  const currentMax=Number(keyData?.maxUses||0);
-  const cards=Object.values(ZVM_PLANS).map(plan=>{
+  const currentPlanId=String(keyData?.planId||'');
+  // Preserve renewal for an existing historic contract independently of new v2 offers.
+  const renewalPlan = Object.prototype.hasOwnProperty.call(ZVM_PLANS,currentPlanId) ? ZVM_PLANS[currentPlanId] : null;
+  const legacyRenewal = renewalPlan && keyData?.planId
+    ? `<section class="client-legacy-renewal" aria-label="Renovação do contrato vigente" style="margin:16px auto;padding:18px;max-width:960px;border:1px solid var(--border,#295247);border-radius:14px;">
+      <h2 style="font-size:18px;margin:0 0 8px;">Renovar contrato anterior</h2>
+      <p style="margin:0 0 12px;">Sua licença atual é do plano ${escHtml(displayLicensePlan({planId:currentPlanId,maxUses:keyData?.maxUses}).label)}. Você pode renovar esse contrato sem migrar automaticamente para os novos planos.</p>
+      <a class="plan-btn plan-btn-outline" href="${escHtml(checkoutUrlForPortal(renewalPlan.checkoutUrl,user?.keyCode,user?.email,APP_SECRET))}" target="_blank" rel="noopener noreferrer">Renovar meu contrato atual</a>
+    </section>` : '';
+  const cards=Object.values(ZVM_PUBLIC_PLANS).map(plan=>{
     const price=formatPlanPrice(plan.price);
-    const perDevice=(plan.price/plan.maxUses).toFixed(2).replace('.',',');
-    const popular=plan.id==='padrao';
-    const isCurrent=currentMax===plan.maxUses;
-    const identity=PLAN_IDENTITY[plan.id]||{subtitle:''};
+    const perDevice=plan.consult?'':(plan.price/plan.maxUses).toFixed(2).replace('.',',');
+    const popular=plan.id==='pro_v2';
+    const isCurrent=currentPlanId===plan.id;
+    const identity=PLAN_IDENTITY[plan.id]||{subtitle:plan.subtitle||''};
+    const action = plan.consult
+      ? ''
+      : !plan.enabled
+        ? '<button type="button" class="plan-btn plan-btn-outline" disabled title="Aguardando liberação do checkout Cakto">Compra indisponível no momento</button>'
+        : '<button type="button" class="plan-btn '+(popular?'plan-btn-primary':'plan-btn-outline')+'" data-buy-plan="'+plan.id+'" data-checkout="'+escHtml(checkoutUrlForPortal(plan.checkoutUrl,user?.keyCode,user?.email,APP_SECRET))+'" data-plan-name="'+escHtml(plan.shortName)+'" data-devices="'+plan.maxUses+'" data-duration="'+plan.durationDays+'" data-price="'+price.whole+','+price.cents+'">'+(isCurrent?'Renovar este plano':'Escolher este plano')+'</button>';
     return `<article class="price-card${popular?' featured':''}${isCurrent?' current-plan':''}" aria-labelledby="client-plan-${plan.id}" data-plan-id="${plan.id}">
-      <div class="client-plan-tags">${isCurrent?'<span class="price-suggested-tag current-plan-tag">Plano atual</span>':''}${popular?'<span class="price-badge">Mais popular</span>':''}</div>
+      <div class="client-plan-tags">${isCurrent?'<span class="price-suggested-tag current-plan-tag">Plano atual</span>':''}${popular?'<span class="price-badge">Mais popular</span>':''}${plan.consult?'<span class="price-badge">Sob consulta</span>':''}</div>
       <span class="price-icon" aria-hidden="true">${PLAN_ICONS[plan.id]||''}</span>
       <h2 class="price-tier" id="client-plan-${plan.id}">${escHtml(plan.shortName)}</h2>
       <p class="price-subtitle">${escHtml(identity.subtitle||'')}</p>
       <p class="price-devices">${plan.maxUses===1?'1 número':`Até ${plan.maxUses} números`} de WhatsApp</p>
-      <div class="price-val"><sup>R$</sup>${price.whole}<span>,${price.cents}</span><sub>/30 dias</sub></div>
-      <p class="price-per${plan.maxUses>1?' price-per-strong':''}">R$ ${perDevice} por número</p>
+      <div class="price-val">${plan.consult?'Sob consulta':`<sup>R$</sup>${price.whole}<span>,${price.cents}</span><sub>/mês</sub>`}</div>
+      <p class="price-per${plan.maxUses>1?' price-per-strong':''}">${plan.consult?'Implantação empresarial personalizada':'R$ '+perDevice+' por número'}</p>
       <div class="price-divider"></div>
       <ul class="price-feats"><li><span class="chk">✓</span>Todos os recursos inclusos</li><li><span class="chk">✓</span>${plan.durationDays} dias de acesso</li><li><span class="chk">✓</span>Entrega automática por e-mail</li><li><span class="chk">✓</span>Renovação e troca pelo portal</li></ul>
-      <button type="button" class="plan-btn ${isCurrent||popular?'plan-btn-primary':'plan-btn-outline'}" data-buy-plan="${plan.id}" data-checkout="${escHtml(checkoutUrlForPortal(plan.checkoutUrl,user?.keyCode,user?.email,APP_SECRET))}" data-plan-name="${escHtml(plan.shortName)}" data-devices="${plan.maxUses}" data-duration="${plan.durationDays}" data-price="${price.whole},${price.cents}">${isCurrent?'Renovar este plano':'Escolher este plano'}</button>
+      ${action}
     </article>`;
   }).join('');
   const needPicker=`<div class="need-picker" role="radiogroup" aria-labelledby="client-need-picker-label"><p class="need-picker-label" id="client-need-picker-label">Quantos números você precisa conectar?</p><div class="need-options">${NEED_OPTIONS.map(opt=>`<label class="need-opt"><input type="radio" name="need" value="${opt.planId}"><span>${opt.label}</span></label>`).join('')}</div></div>`;
   const modal=`<dialog class="checkout-dialog" aria-labelledby="checkout-title"><div class="dialog-inner"><div class="modal-icon" aria-hidden="true">↗</div><h2 id="checkout-title">Confirmar plano</h2><div class="modal-plan-summary"><div class="modal-plan-name" id="modal-plan-name">—</div><div class="modal-plan-meta" id="modal-plan-meta">—</div><div class="modal-plan-price" id="modal-plan-price">—</div></div><div class="modal-account"><span class="modal-account-label">Compra vinculada à conta</span><strong class="modal-email">${escHtml(user?.email||'')}</strong></div><p class="modal-hint">Use este mesmo e-mail na página de pagamento para que sua licença seja ativada ou renovada automaticamente.</p><div class="modal-actions"><button type="button" class="modal-cancel">Voltar</button><a class="modal-continue" href="#" target="_blank" rel="noopener noreferrer">Continuar para pagamento →</a></div></div></dialog>`;
   const body=`<div class="client-shell">${renderClientPortalRail('plans')}<main id="main-content" class="client-main client-plans-main" tabindex="-1">
     <div class="dash-topbar"><div class="dash-page-heading"><span>Minha ZVM</span><strong>Renovações e planos</strong></div><div class="dash-topbar-user">${renderClientAccountIdentity(user)}<a href="/cliente/logout" class="dash-logout">Sair da conta</a></div></div>
-    <section class="client-plans-public-style"><header class="client-plans-public-head client-plan-intro"><span>Renove ou altere seu plano</span><h1>Escolha o plano ideal</h1><p>Os recursos são os mesmos. Escolha quantos números deseja conectar.</p></header>${needPicker}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section><p class="plans-footnote">Precisa de mais de 10 números? <a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Falar com suporte</a></p></section>
+    <section class="client-plans-public-style"><header class="client-plans-public-head client-plan-intro"><span>Renove ou altere seu plano</span><h1>Escolha o plano ideal</h1><p>START para começar, PRO para a operação completa e ENTERPRISE sob consulta.</p></header>${needPicker}${legacyRenewal}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section><p class="plans-footnote">Precisa de mais de 10 números? <a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Falar com suporte</a></p></section>
     ${modal}<script src="/assets/zvm-plans.26a755b1251d.js" defer></script>
   </main></div>`;
   return renderPortalPage(body,'ZVM — Renovações e Planos','',_CSS_PLANS);
@@ -6608,7 +6619,7 @@ const renderLandingPage = createLandingRenderer({
   sharedCssLink: _CSS_SHARED + _CSS_STANDALONE,
   landingCssLink: _CSS_LANDING + _CSS_SYSTEM,
   chromeStoreBadge: renderChromeStoreBadge,
-  plans: ZVM_PLANS,
+  plans: ZVM_PUBLIC_PLANS,
   publicNav: portalUser => _sharedNav({ activePath: '/', portalUser, showBack: false }),
 });
 
@@ -6627,39 +6638,48 @@ const PLAN_ICONS = {
   padrao: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>',
   pro: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5c3 2 5 6 5 9.7 0 1.7-.4 3-1 4l-4 4.3-4-4.3c-.6-1-1-2.3-1-4 0-3.7 2-7.7 5-9.7Z"/><circle cx="12" cy="10.5" r="1.6"/><path d="M8.5 16.5l-2.8 2.8M15.5 16.5l2.8 2.8"/></svg>',
   empresarial: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="10" height="18" rx="1"/><path d="M14 21h6V9l-6-3"/><path d="M7.5 7h1M7.5 11h1M7.5 15h1M11 7h1M11 11h1M11 15h1"/></svg>',
+  start_v2: '<span aria-hidden="true">&#128994;</span>',
+  pro_v2: '<span aria-hidden="true">&#9889;</span>',
+  enterprise_v2: '<span aria-hidden="true">&#128995;</span>',
 };
 const PLAN_IDENTITY = {
   solo: { subtitle: 'Ideal para começar' },
   padrao: { subtitle: 'Melhor custo-benefício' },
   pro: { subtitle: 'Para equipes' },
   empresarial: { subtitle: 'Maior economia por número' },
+  start_v2: { subtitle: 'Quem está começando' },
+  pro_v2: { subtitle: 'Operação completa' },
+  enterprise_v2: { subtitle: 'Implantação sob consulta' },
 };
 const NEED_OPTIONS = [
-  { planId: 'solo', label: '1' },
-  { planId: 'padrao', label: 'Até 3' },
-  { planId: 'pro', label: 'Até 5' },
-  { planId: 'empresarial', label: 'Até 10' },
+  { planId:'start_v2', label:'1' },
+  { planId:'pro_v2', label:'Até 3' },
+  { planId:'enterprise_v2', label:'Até 10' },
 ];
 
 function renderPlanosPage(portalUser = null) {
   const isLoggedIn = !!portalUser;
-  const cards = Object.values(ZVM_PLANS).map(plan => {
+  const cards = Object.values(ZVM_PUBLIC_PLANS).map(plan => {
     const price = formatPlanPrice(plan.price);
-    const perDevice = (plan.price / plan.maxUses).toFixed(2).replace('.', ',');
-    const popular = plan.id === 'padrao';
+    const perDevice = plan.consult ? '' : (plan.price / plan.maxUses).toFixed(2).replace('.', ',');
+    const popular = plan.id === 'pro_v2';
     const identity = PLAN_IDENTITY[plan.id] || { subtitle: '' };
     const icon = PLAN_ICONS[plan.id] || '';
-    const action = isLoggedIn
-      ? `<button type="button" class="plan-btn ${popular?'plan-btn-primary':'plan-btn-outline'}" data-buy-plan="${plan.id}" data-checkout="${escHtml(checkoutUrlForPortal(plan.checkoutUrl,portalUser?.keyCode,portalUser?.email,APP_SECRET))}" data-plan-name="${escHtml(plan.shortName)}" data-devices="${plan.maxUses}" data-duration="${plan.durationDays}" data-price="${price.whole},${price.cents}">🛒 Comprar ${escHtml(plan.shortName)}</button>`
-      : `<button type="button" class="plan-btn plan-btn-locked" data-login-plan="${plan.id}" aria-label="Entre para comprar o plano ${escHtml(plan.shortName)}">🔒 Entre para comprar</button>`;
+    const action = plan.consult
+      ? ''
+      : !plan.enabled
+        ? '<button class="plan-btn plan-btn-outline" type="button" disabled title="Checkout Cakto ainda não vinculado a esta oferta">Compra indisponível no momento</button>'
+        : isLoggedIn
+          ? '<button type="button" class="plan-btn '+(popular?'plan-btn-primary':'plan-btn-outline')+'" data-buy-plan="'+plan.id+'" data-checkout="'+escHtml(checkoutUrlForPortal(plan.checkoutUrl,portalUser?.keyCode,portalUser?.email,APP_SECRET))+'" data-plan-name="'+escHtml(plan.shortName)+'" data-devices="'+plan.maxUses+'" data-duration="'+plan.durationDays+'" data-price="'+price.whole+','+price.cents+'">Comprar '+escHtml(plan.shortName)+'</button>'
+          : '<button type="button" class="plan-btn plan-btn-locked" data-login-plan="'+plan.id+'">Entre para comprar</button>';
     return `<article class="price-card${popular?' featured':''}" aria-labelledby="plan-${plan.id}" data-plan-id="${plan.id}">
-      <div class="client-plan-tags">${popular?'<span class="price-badge">Mais popular</span>':''}<span class="price-suggested-tag" aria-hidden="true">Sugerido pra você</span></div>
+      <div class="client-plan-tags">${popular?'<span class="price-badge">Mais popular</span>':''}${plan.consult?'<span class="price-badge">Sob consulta</span>':''}</div>
       <span class="price-icon" aria-hidden="true">${icon}</span>
       <h2 class="price-tier" id="plan-${plan.id}">${escHtml(plan.shortName)}</h2>
       ${identity.subtitle ? `<p class="price-subtitle">${escHtml(identity.subtitle)}</p>` : ''}
       <p class="price-devices">${plan.maxUses} ${plan.maxUses===1?'número':'números'} de WhatsApp</p>
-      <div class="price-val"><sup>R$</sup>${price.whole}<span>,${price.cents}</span><sub>/30 dias</sub></div>
-      <p class="price-per${plan.maxUses>1?' price-per-strong':''}">R$ ${perDevice} por número</p>
+      <div class="price-val">${plan.consult?'Sob consulta':`<sup>R$</sup>${price.whole}<span>,${price.cents}</span><sub>/mês</sub>`}</div>
+      <p class="price-per${plan.maxUses>1?' price-per-strong':''}">${plan.consult?'Implantação personalizada':'R$ '+perDevice+' por número'}</p>
       <div class="price-divider"></div>
       <ul class="price-feats">
         <li><span class="chk">✓</span>Todos os recursos inclusos</li>
@@ -7087,10 +7107,10 @@ async function renderAnalyticsDashboard(fixture = null) {
           <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:13px;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:.4px">Simular venda</div>
           <div class="lab-field"><label for="lab-plan">Plano</label>
             <select id="lab-plan">
-              <option value="solo">Solo — R$39,90 · 1 número</option>
-              <option value="padrao">Padrão — R$59,90 · 3 números</option>
-              <option value="pro">Pro — R$94,90 · 5 números</option>
-              <option value="empresarial">Empresarial — R$169,90 · 10 números</option>
+              <option value="solo">Solo (contrato anterior) — R$39,90 · 1 número</option>
+              <option value="padrao">Padrão (contrato anterior) — R$59,90 · 3 números</option>
+              <option value="pro">Pro (contrato anterior) — R$94,90 · 5 números</option>
+              <option value="empresarial">Empresarial (contrato anterior) — R$169,90 · 10 números</option>
             </select>
           </div>
           <div class="lab-field"><label for="lab-type">Tipo</label>
@@ -7115,8 +7135,14 @@ async function renderAnalyticsDashboard(fixture = null) {
           <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:13px;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:.4px">📧 Testar e-mail</div>
           <div class="lab-field"><label for="lab-tpl">Template</label>
             <select id="lab-tpl">
-              <option value="delivery_new">Nova licença</option>
-              <option value="delivery_renewal">Renovação</option>
+              <option value="delivery_start">START · Nova licença</option>
+              <option value="delivery_pro">PRO · Nova licença</option>
+              <option value="delivery_enterprise">ENTERPRISE · Nova licença (prévia)</option>
+              <option value="delivery_renewal_start">START · Renovação</option>
+              <option value="delivery_renewal_pro">PRO · Renovação</option>
+              <option value="delivery_renewal_enterprise">ENTERPRISE · Renovação (prévia)</option>
+              <option value="delivery_new">Nova licença (compatibilidade)</option>
+              <option value="delivery_renewal">Renovação (compatibilidade)</option>
               <option value="expiry_warning">Aviso de expiração</option>
               <option value="password_reset">Recuperação de senha</option>
             </select>
@@ -9709,10 +9735,14 @@ async function handleRequest(req, res) {
     const sampleExpiresAt = new Date(Date.now() + 30 * 86400000).toISOString();
     let built;
     try {
-      if (template === 'delivery_new') {
-        built = buildKeyDeliveryEmail({ code: 'ZV-DEMO-0000-0000', planLabel: 'Padrão', maxUses: 3, expiresAt: sampleExpiresAt, renewed: false, baseUrl: BASE_URL, extensionUrl: EXTENSION_URL, ctaPath: '/cliente' });
-      } else if (template === 'delivery_renewal') {
-        built = buildKeyDeliveryEmail({ code: 'ZV-DEMO-0000-0000', planLabel: 'Padrão', maxUses: 3, expiresAt: sampleExpiresAt, renewed: true, durationDays: 30, baseUrl: BASE_URL, extensionUrl: EXTENSION_URL, ctaPath: '/cliente' });
+      if (['delivery_new','delivery_renewal','delivery_start','delivery_pro','delivery_enterprise','delivery_renewal_start','delivery_renewal_pro','delivery_renewal_enterprise'].includes(template)) {
+        const tier = template.endsWith('_start') ? 'start_v2' : template.endsWith('_enterprise') ? 'enterprise_v2' : 'pro_v2';
+        const info = { start_v2: ['START',1], pro_v2: ['PRO',3], enterprise_v2: ['ENTERPRISE',10] }[tier];
+        built = buildKeyDeliveryEmail({
+          code: 'ZV-DEMO-0000-0000', planId: tier, planLabel: info[0], maxUses: info[1],
+          expiresAt: sampleExpiresAt, renewed: template.startsWith('delivery_renewal'), durationDays: 30,
+          baseUrl: BASE_URL, extensionUrl: EXTENSION_URL, ctaPath: '/cliente'
+        });
       } else if (template === 'expiry_warning') {
         built = buildKeyExpiryWarningEmail({ code: 'ZV-DEMO-0000-0000', hoursLeft: 48, planLabel: 'Padrão', maxUses: 3, expiresAt: new Date(Date.now() + 48 * 3600000).toISOString(), baseUrl: BASE_URL, ctaPath: '/cliente' });
       } else if (template === 'password_reset') {
@@ -10597,6 +10627,8 @@ module.exports.__test = Object.freeze({
   caktoDryRunAllowed,
   parseSafeWebhookUrl,
   ZVM_PLANS,
+  ZVM_PUBLIC_PLANS,
+  ZVM_PAYMENT_PLANS,
   normalizeCaktoPurchase,
   normalizeCaktoPurchases,
   isCaktoPaidEntitlementEvent,

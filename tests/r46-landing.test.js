@@ -1,7 +1,7 @@
 'use strict';
 const assert=require('assert');
 const { createLandingRenderer }=require('../src/web/public/landing/render');
-const plans={solo:{id:'solo',price:39.9,durationDays:30,maxUses:1},padrao:{id:'padrao',price:59.9,durationDays:30,maxUses:3},pro:{id:'pro',price:94.9,durationDays:30,maxUses:5},empresarial:{id:'empresarial',price:169.9,durationDays:30,maxUses:10}};
+const plans={start_v2:{id:'start_v2',shortName:'START',price:59.9,durationDays:30,maxUses:1},pro_v2:{id:'pro_v2',shortName:'PRO',price:149.9,durationDays:30,maxUses:3},enterprise_v2:{id:'enterprise_v2',shortName:'ENTERPRISE',price:null,durationDays:30,maxUses:10,consult:true}};
 const chromeStoreUrl='https://chromewebstore.google.com/detail/zvm-automações/bdhnikgcdccjabkmbfcakgjkkgdlmgja';
 const render=createLandingRenderer({escHtml:s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),plans,favicon:'data:x',sharedCssLink:'<link rel="stylesheet" href="/shared.css">',landingCssLink:'<link rel="stylesheet" href="/landing.css">',chromeStoreUrl,chromeStoreBadge:()=>`<a class="chrome-store-banner" href="${chromeStoreUrl}">ZVM - Automações</a>`,publicNav:()=>'<nav class="znav standalone-nav"><div class="znav-links"><div class="znav-main-links"><a href="/#produto">Ferramenta</a><a href="/faq">FAQ</a><a href="/privacidade">Privacidade</a></div><div class="znav-action-links"><a href="/cliente">Entrar</a></div></div></nav>'});
 const html=render(null);
@@ -28,6 +28,6 @@ assert(html.includes('href="/faq"') && html.includes('href="/privacidade"'),'FAQ
 assert(html.includes('r4612-scroll-cue') && html.includes('r4612-scroll-mouse'),'animated scroll affordance present');
 assert(html.includes('r4612-product-head'),'product intro aligned as one centered block');
 assert(!html.includes('r4611-hero-orbits'),'decorative feature orbits removed');
-assert(!html.includes('class="price-card'),'checkout components stay on /planos');assert.equal((html.match(/class="r4624-plan-card/g)||[]).length,4,'four lightweight price cards');
+assert(!html.includes('class="price-card'),'checkout components stay on /planos');assert.equal((html.match(/class="r4624-plan-card/g)||[]).length,3,'three public commercial tiers');
 assert(html.includes('href="/planos"'),'plans CTA goes to canonical purchase route');
 console.log('R46.23 conversion landing contract: PASS');

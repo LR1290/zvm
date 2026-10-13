@@ -5,7 +5,7 @@ const path = require('node:path');
 const {createLandingRenderer} = require('../src/web/public/landing/render');
 const {localizePublicHtml, languageOptionsMarkup} = require('../src/web/public/i18n');
 const store='https://chromewebstore.google.com/detail/zvm/official-id';
-const plans={solo:{id:'solo',shortName:'Solo',price:39.9,maxUses:1,durationDays:30},padrao:{id:'padrao',shortName:'Padrão',price:59.9,maxUses:3,durationDays:30},pro:{id:'pro',shortName:'Pro',price:94.9,maxUses:5,durationDays:30},empresarial:{id:'empresarial',shortName:'Empresarial',price:169.9,maxUses:10,durationDays:30}};
+const plans={start_v2:{id:'start_v2',shortName:'START',price:59.9,maxUses:1,durationDays:30},pro_v2:{id:'pro_v2',shortName:'PRO',price:149.9,maxUses:3,durationDays:30},enterprise_v2:{id:'enterprise_v2',shortName:'ENTERPRISE',price:null,maxUses:10,durationDays:30,consult:true}};
 const badge=()=>`<a class="chrome-store-banner" href="${store}" data-store-badge="canonical">ZVM - Automações</a>`;
 const render=createLandingRenderer({escHtml:s=>String(s),favicon:'data:,',sharedCssLink:'',landingCssLink:'',chromeStoreUrl:store,chromeStoreBadge:badge,plans,publicNav:()=>'<nav class="znav standalone-nav"><div class="znav-main-links"></div><div class="znav-action-links"><a href="/cliente">Entrar</a></div></nav>'});
 const html=render();
@@ -15,11 +15,11 @@ assert.doesNotMatch(html,/Instalar gratuitamente|Instalar pela Chrome Web Store|
 assert.match(html,/Ver como funciona/,'one secondary hero action retained');
 assert.match(html,/<footer class="r466-footer">/,'footer landmark stays');
 assert.match(html,/r466-footer-inner/,'footer background spans viewport; content is constrained');
-assert.equal((html.match(/class="r4624-plan-card/g)||[]).length,4,'prices are visible on landing');
+assert.equal((html.match(/class="r4624-plan-card/g)||[]).length,3,'three commercial tiers visible on landing');
 for(const [id,plan] of Object.entries(plans)){
  assert.ok(html.includes(`href="/planos?plano=${id}"`),`${id} points to canonical plans route`);
  assert.ok(html.includes(`data-plan-id="${id}"`),`${id} uses canonical catalog identity`);
- assert.ok(html.includes(`R$ ${plan.price.toFixed(2).replace('.',',')}`),`${id} shows live catalog value`);
+ assert.ok(html.includes(plan.consult ? 'Sob consulta' : `R$ ${plan.price.toFixed(2).replace('.',',')}`),`${id} shows live catalog value`);
 }
 assert.doesNotMatch(html,/https:\/\/pay\.cakto\.com\.br/,'landing never launches payment directly');
 assert.doesNotMatch(html,/class="price-card/,'checkout components stay on /planos only');
