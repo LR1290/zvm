@@ -1507,7 +1507,7 @@ function normalizeCaktoPurchase(payload) {
     offerType: safeScalar(data.offer_type, 40).toLowerCase(),
     parentOrder: safeScalar(data.parent_order, 120),
     subscriptionId: safeScalar(data.subscription?.id, 128),
-    checkoutBinding: safeScalar(data.sck || data.tracking?.sck || payload.sck, 640),
+    checkoutBinding: safeScalar(data.sck || data.metadata?.sck || data.tracking?.sck || data.utm?.sck || payload.sck || payload.metadata?.sck, 640),
     checkoutUrl: normalizeCheckoutUrl(data.checkoutUrl),
     amount: numberOrNull(data.amount),
     baseAmount: numberOrNull(data.baseAmount),
