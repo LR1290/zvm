@@ -9755,6 +9755,11 @@ async function handleRequest(req, res) {
         sendJson(res, { error: 'lab_plan_template_mismatch' }, 400); return;
       }
     }
+    // The license lab is now a typed operation: no generic plan fallback
+    // and no accidental mismatch between the simulated plan and e-mail art.
+    if (template.startsWith('delivery_') && !(chosenPlan && chosenKind)) {
+      sendJson(res, { error: 'lab_explicit_plan_required' }, 400); return;
+    }
     const isSend = p === R_ANALYTICS+'/api/lab/email-send';
     // Destinatário é sempre digitado explicitamente pelo admin — nunca
     // puxamos um cliente aleatório da base pra preview/teste de e-mail.
@@ -9766,7 +9771,7 @@ async function handleRequest(req, res) {
     const sampleExpiresAt = new Date(Date.now() + 30 * 86400000).toISOString();
     let built;
     try {
-      if (['delivery_new','delivery_renewal','delivery_start','delivery_pro','delivery_enterprise','delivery_renewal_start','delivery_renewal_pro','delivery_renewal_enterprise'].includes(template)) {
+      if (['delivery_start','delivery_pro','delivery_enterprise','delivery_renewal_start','delivery_renewal_pro','delivery_renewal_enterprise'].includes(template)) {
         const tier = template.endsWith('_start') ? 'start_v2' : template.endsWith('_enterprise') ? 'enterprise_v2' : 'pro_v2';
         const info = { start_v2: ['START',1], pro_v2: ['PRO',3], enterprise_v2: ['ENTERPRISE',10] }[tier];
         built = buildKeyDeliveryEmail({
