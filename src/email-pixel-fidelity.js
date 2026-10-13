@@ -34,22 +34,27 @@ async function decorativeSlices(tone){
 function image(name,a,alt=''){
  return '<img src="__ZVM_SLICE_'+name+'__" width="'+a.w+'" height="'+a.h+'" alt="'+esc(alt)+'" style="display:block;border:0;width:100%;height:auto;max-width:none">';
 }
-function imageCell(name,a){return '<td width="'+a.w+'" style="padding:0;line-height:0;width:'+(a.w/1024*100).toFixed(5)+'%;vertical-align:middle">'+image(name,a)+'</td>';}
+function imageCell(name,a,tone){
+ // Gmail Android shows white fallback strips around ultra-short image cells
+ // unless their own TD supplies explicit bgcolor + inline background-color.
+ const fallback=tone==='pro'?'#e8eeeb':tone==='enterprise'?'#020200':'#000802';
+ return '<td width="'+a.w+'" bgcolor="'+fallback+'" style="padding:0;font-size:0;line-height:0;vertical-align:middle;width:'+(a.w/1024*100).toFixed(5)+'%;background-color:'+fallback+'">'+image(name,a)+'</td>';
+}
 function liveCell(field,content,tone,a){
  const c=GEOMETRY[tone],token='__ZVM_SLICE_'+a.name+'__';
  return '<td width="'+a.w+'" valign="middle" align="center" background="'+token+'" style="padding:0;width:'+(a.w/1024*100).toFixed(5)+'%;background-color:'+c.bg+';background-image:url('+token+');background-position:center;background-repeat:no-repeat;background-size:100% 100%;vertical-align:middle">'
  +'<span class="zvm-'+field+'" data-zvm-live="'+field+'" style="display:block;color:'+c.ink+';font-family:'+(field==='key'?'Consolas,Menlo,monospace':'Arial,Helvetica,sans-serif')+';font-size:'+(field==='key'?'16':'14')+'px;line-height:1;font-weight:800;text-align:center;overflow-wrap:anywhere">'+esc(content)+'</span></td>';
 }
-function strip(content){return '<tr><td style="padding:0;line-height:0"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="table-layout:fixed;border-collapse:collapse;width:100%"><tr>'+content+'</tr></table></td></tr>';}
+function strip(content){return '<tr><td bgcolor="#080e0b" style="padding:0;font-size:0;line-height:0;background-color:#080e0b"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#080e0b" style="table-layout:fixed;border-collapse:collapse;border-spacing:0;width:100%;background-color:#080e0b"><tr>'+content+'</tr></table></td></tr>';}
 function createPixelPerfectEmail({subject,tone,code,plan,validity,portal,renewed}={}){
  if(!GEOMETRY[tone])throw new Error('approved_tone_required');
  const t=Object.fromEntries(regions(tone).map(x=>[x.name,x]));
- const url=safeLink(portal),copy=safeLink(url.split('#')[0]+'#copy-license-key');
+ const url=safeLink(portal),copy=safeLink(url.split('#')[0].split('?')[0]+'?copy=1');
  const header='<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(subject)+'</title><style type="text/css">@media screen and (max-width:520px){.zvm-key{font-size:10px!important}.zvm-plan,.zvm-validity{font-size:9px!important}}</style></head><body style="margin:0;padding:0;background:#080e0b">';
  const table='<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;background:#080e0b"><tr><td align="center"><table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;max-width:640px;table-layout:fixed">';
  const full=name=>'<tr><td style="padding:0;line-height:0">'+image(name,t[name],name==='hero'?'ZVM '+esc(plan)+' — '+(renewed?'Renovação':'Pagamento aprovado'):'')+'</td></tr>';
- const key=strip(imageCell('key-left',t['key-left'])+liveCell('key',code,tone,t['key-bg'])+imageCell('key-right',t['key-right']));
- const details=strip(imageCell('plan-left',t['plan-left'])+liveCell('plan',plan,tone,t['plan-bg'])+imageCell('plan-middle',t['plan-middle'])+liveCell('validity',validity,tone,t['valid-bg'])+imageCell('plan-right',t['plan-right']));
+ const key=strip(imageCell('key-left',t['key-left'],tone)+liveCell('key',code,tone,t['key-bg'])+imageCell('key-right',t['key-right'],tone));
+ const details=strip(imageCell('plan-left',t['plan-left'],tone)+liveCell('plan',plan,tone,t['plan-bg'])+imageCell('plan-middle',t['plan-middle'],tone)+liveCell('validity',validity,tone,t['valid-bg'])+imageCell('plan-right',t['plan-right'],tone));
  const buttons=strip(['copy-button','portal-button'].map((name,i)=>{const a=t[name];return '<td width="'+a.w+'" style="padding:0;line-height:0;width:'+(a.w/1024*100).toFixed(5)+'%"><a href="'+esc(i?url:copy)+'" title="'+(i?'Acessar painel':'Copiar chave no Portal')+'" style="display:block;text-decoration:none">'+image(name,a,i?'ACESSAR PAINEL':'COPIAR CHAVE')+'</a></td>';}).join(''));
  return header+table+full('hero')+key+full('bridge')+details+full('guide-head')+buttons+full('rest')+'</table></td></tr></table></body></html>';
 }
