@@ -55,12 +55,12 @@ try{
 }finally{Module._load=load;}
 const site=api.renderPlanosPage();
 assert(site.includes('START')&&site.includes('PRO')&&site.includes('ENTERPRISE'));
-assert(site.includes('59,90')&&site.includes('149,90')&&site.includes('Sob consulta'));
+assert(site.includes('59<span>,90')&&site.includes('149<span>,90')&&site.includes('Sob consulta'));
 assert(!site.includes('R$39,90')&&!site.includes('R$94,90'));
 assert(!site.includes('data-buy-plan="enterprise_v2"'));
 assert(!site.includes('data-buy-plan="start_v2"'),'unconfigured checkout must be disabled');
 const portal=api.renderPortalPlans({email:'example@example.com'},{planId:'solo',maxUses:1});
-assert(portal.includes('149,90')&&portal.includes('Sob consulta'));
+assert(portal.includes('149<span>,90')&&portal.includes('Sob consulta'));
 assert(!portal.includes('data-buy-plan="start_v2"'),'legacy checkout must not leak to new site');
 const oldSale=api.resolveCaktoPlan({productName:'ZVM Solo'});
 assert.equal(oldSale.id,'solo','legacy Cakto product mapping must remain unchanged');
