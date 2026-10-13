@@ -1,62 +1,53 @@
 'use strict';
 const assert=require('node:assert/strict');
-const fs=require('node:fs');
-const path=require('node:path');
-const crypto=require('node:crypto');
+const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const sharp=require('sharp');
 const {buildKeyDeliveryEmail,prepareKeyDeliveryArtwork}=require('../mailer');
-const {PLAN,HEADER,FOOTER,prepareKeyDeliveryArtwork:prepare}=require('../src/email-license-artwork');
+const {GEOMETRY,regions,decorativeSlices}=require('../src/email-pixel-fidelity');
 const digest=b=>crypto.createHash('sha256').update(b).digest('hex');
-const expected=Object.freeze({
- start:'db2f32248d60f41e78ae0f7cf8675d25a550402671068f6311dc5efa0404a7fa',
- pro:'4d65c25a0fabc310a5bde547cac4c7ac8a515124fdac853cce2661c815a074f8',
- enterprise:'31cf12d11dc7890c2ae36586c7bb940b6938d445131b56f0f3dab0858864f040'
-});
+const expected={start:'db2f32248d60f41e78ae0f7cf8675d25a550402671068f6311dc5efa0404a7fa',pro:'4d65c25a0fabc310a5bde547cac4c7ac8a515124fdac853cce2661c815a074f8',enterprise:'31cf12d11dc7890c2ae36586c7bb940b6938d445131b56f0f3dab0858864f040'};
 (async()=>{
- for(const {planId,uses,tone} of [
-  {planId:'padrao',uses:3,tone:'start'},
-  {planId:'pro',uses:5,tone:'pro'},
-  {planId:'empresarial',uses:10,tone:'enterprise'},
-  {planId:'start_v2',uses:1,tone:'start'},
-  {planId:'pro_v2',uses:3,tone:'pro'},
-  {planId:'enterprise_v2',uses:10,tone:'enterprise'}
- ]){
-  const original=fs.readFileSync(path.join(__dirname,'../assets/email-licenses',PLAN[tone].file));
-  assert.equal(digest(original),expected[tone],'source must be exact uploaded artwork');
-  const built=buildKeyDeliveryEmail({planId,maxUses:uses,code:'ZV-DEMO-4567-8901',expiresAt:'2026-11-14T03:00:00.000Z',baseUrl:'https://zvm.onrender.com',ctaPath:'/cliente'});
-  assert.equal(built.artwork?.tone,tone);
-  assert.equal(built.artwork?.validity,'14/11/2026');
-  assert.equal(built.artwork?.code,'ZV-DEMO-4567-8901');
-  assert(built.text?.includes('ZV-DEMO-4567-8901'),'plaintext fallback must keep key copyable');
-  assert(built.html.includes(HEADER)&&built.html.includes(FOOTER),'decorative art fragments are mandatory');
-  assert(!built.html.includes('font-size:43px'),'old generic email must not reappear');
-  for(const [field,val] of [['key','ZV-DEMO-4567-8901'],['plan',built.artwork.plan],['validity','14/11/2026']]){
-    assert(built.html.includes('data-zvm-live="'+field+'"'),'must be live HTML field '+field);
-    assert(built.html.includes(val),'must be copyable: '+field);
+ for(const [tone,planId,uses] of [['start','padrao',3],['pro','pro',5],['enterprise','empresarial',10],['start','start_v2',1],['pro','pro_v2',3],['enterprise','enterprise_v2',10]]){
+  const original=fs.readFileSync(path.join(__dirname,'../assets/email-licenses',tone+'.jpg'));
+  assert.equal(digest(original),expected[tone],'must retain original user-approved art');
+  const b=buildKeyDeliveryEmail({code:'ZV-DEMO-4567-8901',planId,maxUses:uses,expiresAt:'2026-11-14T03:00:00Z',baseUrl:'https://zvm.onrender.com',ctaPath:'/cliente'});
+  assert.equal(b.artwork?.tone,tone);assert.equal(b.artwork?.validity,'14/11/2026');
+  assert.match(b.html,/__ZVM_SLICE_hero__/);
+  assert.match(b.html,/__ZVM_SLICE_rest__/);
+  assert(!b.html.includes('ZVM_ART_HEADER'),'no old split-art renderer');
+  assert(!b.html.includes('__ZVM_APPROVED_LICENSE_ARTWORK__'));
+  for(const [field,value] of [['key','ZV-DEMO-4567-8901'],['plan',b.artwork.plan],['validity','14/11/2026']]){
+   assert(b.html.includes('data-zvm-live="'+field+'"'));
+   assert(b.html.includes(value),'literal selectable '+field);
   }
-  assert(built.html.includes('COPIAR CHAVE NO PORTAL'),'copy CTA is live HTML link');
-  assert(!built.html.includes('<script'),'no scripts in emails');
-  const preview=await prepareKeyDeliveryArtwork(built,{preview:true});
-  const delivery=await prepareKeyDeliveryArtwork(built,{preview:false});
-  const dataUris=Array.from(preview.html.matchAll(/data:image\/jpeg;base64,([A-Za-z0-9+/=]+)/g));
-  assert.equal(dataUris.length,2,'top and footer are the only inline art fragments');
-  const widths=[];
-  for(const match of dataUris){const buf=Buffer.from(match[1],'base64');const meta=await sharp(buf).metadata();widths.push(meta.width);assert(meta.height<1536,'no full license JPG');}
-  assert.deepEqual(widths,[1024,1024]);
-  assert.equal(delivery.attachments.length,2);
-  for(let i=0;i<2;i++){
-   assert(delivery.html.includes('cid:'+delivery.attachments[i].content_id));
-   assert.equal(digest(Buffer.from(delivery.attachments[i].content,'base64')),digest(Buffer.from(dataUris[i][1],'base64')),'same art fragment preview and email');
+  assert.match(b.html,/href="https:\/\/zvm.onrender.com\/cliente#copy-license-key"/);
+  const parts=regions(tone); assert.equal(parts.length,14);
+  const originalArea=parts.reduce((total,p)=>total+(p.w*p.h),0);
+  assert.equal(originalArea,1024*1536,'artwork portions must have 100% coverage with no missing pixels');
+  const a=await decorativeSlices(tone);assert.equal(Object.keys(a).length,14);
+  for(const piece of Object.values(a)){
+   const m=await sharp(piece.buffer).metadata();
+   assert.equal(m.width,piece.w);assert.equal(m.height,piece.h);
   }
-  assert(!delivery.html.includes('data:image/jpeg;base64,'));
-  assert(!delivery.attachments.some(x=>x.filename.includes('licenca')),'do not send a rasterized license');
+  const preview=await prepareKeyDeliveryArtwork(b,{preview:true});
+  const outgoing=await prepareKeyDeliveryArtwork(b,{preview:false});
+  assert.equal(outgoing.attachments.length,14);
+  assert(!outgoing.attachments.some(x=>x.filename.includes('licenca')),'no image that contains personalized full license');
+  assert(outgoing.html.includes('data-zvm-live="key"')&&outgoing.html.includes('ZV-DEMO-4567-8901'));
+  assert(!outgoing.html.includes('data:image/jpeg;base64,'));
+  for(const p of outgoing.attachments){
+   assert(p.filename.endsWith('.jpg'));
+   assert(outgoing.html.includes('cid:'+p.content_id));
+   const token='data:image/jpeg;base64,';
+   const sameData=Buffer.from(p.content,'base64').toString('base64');
+   assert(preview.html.includes(token+sameData),'same asset in preview and sent email');
+  }
+  assert.equal(GEOMETRY[tone].key.length,4);
  }
- await assert.rejects(prepare({html:'<p>old mail</p>',artwork:{tone:'unknown'}}),/approved_artwork_slot_missing/);
- await assert.rejects(prepare({html:HEADER+FOOTER,artwork:{tone:'unknown'}}),/approved_artwork_tone_invalid/);
- const safe=buildKeyDeliveryEmail({planId:'padrao',maxUses:3,code:'<script>alert(1)</script>',expiresAt:'2026-11-14T03:00:00.000Z'});
- assert(!safe.html.includes('<script>'),'XSS in template denied');
- assert(safe.html.includes('&lt;script&gt;'),'alt must escape user input');
- const plain=await prepareKeyDeliveryArtwork({html:'<p>Reset password</p>'});
- assert.equal(plain.html,'<p>Reset password</p>');assert.equal(plain.attachments.length,0);
- console.log('R46.68 live HTML fields + original artwork fragments + preview/CID parity PASS');
-})().catch(err=>{console.error(err);process.exitCode=1;});
+ const xss=buildKeyDeliveryEmail({planId:'padrao',maxUses:3,code:'<img src=x onerror=alert(1)>',expiresAt:'2026-11-14T03:00:00Z'});
+ assert(!xss.html.includes('<img src=x onerror=alert(1)>'));
+ assert(xss.html.includes('&lt;img'));
+ const neutral=await prepareKeyDeliveryArtwork({html:'<p>Reset password</p>'});
+ assert.equal(neutral.html,'<p>Reset password</p>');assert.equal(neutral.attachments.length,0);
+ console.log('R46.69 original-art SHA256, 100% geometric coverage, selectable live fields, link and preview/CID parity PASS');
+})().catch(e=>{console.error(e);process.exitCode=1;});

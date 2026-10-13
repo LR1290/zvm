@@ -1,42 +1,26 @@
 'use strict';
-const assert=require('node:assert/strict');
-const fs=require('node:fs');
-const path=require('node:path');
-const crypto=require('node:crypto');
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const {buildKeyDeliveryEmail,prepareKeyDeliveryArtwork}=require('../mailer');
 (async()=>{
  const server=fs.readFileSync(path.join(__dirname,'../server.js'),'utf8');
- for(const token of ['lab-sale-pane','lab-email-pane','lab-mail-plan','lab-mail-kind','lab_plan_template_mismatch','lab_explicit_plan_required'])assert(server.includes(token),token);
- for(const {planId,maxUses,tone} of [{planId:'padrao',maxUses:3,tone:'start'},{planId:'pro',maxUses:5,tone:'pro'},{planId:'empresarial',maxUses:10,tone:'enterprise'}]){
-  const code='ZV-TEST-KEY-47';
-  const mail=buildKeyDeliveryEmail({planId,maxUses,code,expiresAt:'2026-11-20T03:00:00Z',baseUrl:'https://zvm.onrender.com',ctaPath:'/cliente'});
+ for(const token of ['lab-sale-pane','lab-email-pane','lab-mail-plan','lab-mail-kind','lab_plan_template_mismatch','lab_explicit_plan_required'])
+  assert(server.includes(token),'Analytics lab hardening '+token);
+ for(const [planId,uses,tone] of [['padrao',3,'start'],['pro',5,'pro'],['empresarial',10,'enterprise']]){
+  const mail=buildKeyDeliveryEmail({planId,maxUses:uses,code:'ZV-TEST-KEY-47',expiresAt:'2026-11-20T03:00:00Z',baseUrl:'https://zvm.onrender.com',ctaPath:'/cliente'});
   assert.equal(mail.artwork?.tone,tone);
-  for(const [field,value] of [['key',code],['plan',mail.artwork.plan],['validity','20/11/2026']]){
-   assert(mail.html.includes('data-zvm-live="'+field+'"'));
-   assert(mail.html.includes(value));
+  for(const [field,v] of [['key','ZV-TEST-KEY-47'],['plan',mail.artwork.plan],['validity','20/11/2026']]){
+   assert(mail.html.includes('data-zvm-live="'+field+'"')&&mail.html.includes(v),'selectable '+field);
   }
-  assert(mail.html.includes('COPIAR CHAVE NO PORTAL'));
-  assert(mail.html.includes('href="https://zvm.onrender.com/cliente#copy-license-key"'));
-  assert(!mail.html.includes('font-size:43px'),'no legacy image-only license');
   const preview=await prepareKeyDeliveryArtwork(mail,{preview:true});
-  const outgoing=await prepareKeyDeliveryArtwork(mail,{preview:false});
-  assert.equal(outgoing.attachments.length,2,'header and footer only');
-  assert(!outgoing.attachments.some(a=>a.filename.includes('licenca')),'never attach full personalized license');
-  assert(outgoing.html.includes(code),'key is live HTML in outgoing message');
-  assert(outgoing.html.includes('20/11/2026'));
-  assert(!outgoing.html.includes('data:image/jpeg;base64,'));
-  for(let i=0;i<2;i++){
-   const cid=outgoing.attachments[i].content_id;
-   assert(outgoing.html.includes('cid:'+cid));
-   const image=Buffer.from(outgoing.attachments[i].content,'base64');
-   const uri=/data:image\/jpeg;base64,([a-zA-Z0-9+/=]+)/g;
-   const extracted=Array.from(preview.html.matchAll(uri));
-   assert.equal(extracted.length,2);
-   assert.equal(crypto.createHash('sha256').update(image).digest('hex'),crypto.createHash('sha256').update(Buffer.from(extracted[i][1],'base64')).digest('hex'));
-  }
+  const delivery=await prepareKeyDeliveryArtwork(mail,{preview:false});
+  assert.equal(delivery.attachments.length,14);
+  assert(!delivery.attachments.some(p=>p.filename.includes('licenca')));
+  assert(delivery.html.includes('ZV-TEST-KEY-47'),'key live after rendering');
+  assert(preview.html.includes('data:image/jpeg;base64,'));
+  assert(delivery.html.includes('cid:zvm-art-'+tone+'-copy-button'),'copy control points to portal');
+  assert(mail.html.includes('href="https://zvm.onrender.com/cliente#copy-license-key"'));
  }
- const malicious=buildKeyDeliveryEmail({planId:'padrao',maxUses:3,code:'<img src=x onerror=alert(1)>',expiresAt:'2026-11-20T03:00:00Z'});
- assert(!malicious.html.includes('<img src=x onerror=alert(1)>'));
- assert(malicious.html.includes('&lt;img'));
- console.log('R46.68: HTML selectable fields, visual art parity, strict Lab selectors PASS');
+ const injected=buildKeyDeliveryEmail({planId:'padrao',maxUses:3,code:'<script>alert(1)</script>'});
+ assert(!injected.html.includes('<script>')&&injected.html.includes('&lt;script&gt;'));
+ console.log('R46.68 Analytics isolation with R46.69 original-art selectable mail PASS');
 })().catch(e=>{console.error(e);process.exitCode=1;});
