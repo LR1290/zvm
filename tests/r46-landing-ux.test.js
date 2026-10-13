@@ -7,8 +7,7 @@ const { createLandingRenderer } = require('../src/web/public/landing/render');
 const storeUrl = 'https://chromewebstore.google.com/detail/zvm-automa%C3%A7%C3%B5es/fixture';
 const chromeStoreBadge = () => `<a class="chrome-store-banner" href="${storeUrl}" target="_blank" rel="noopener noreferrer" aria-label="Instalar a ZVM pela Chrome Web Store" data-shared-badge="yes"><span class="chrome-store-mark"><svg viewBox="0 0 48 48"></svg></span><span class="chrome-store-copy"><small>Disponível na Chrome Web Store</small><strong>ZVM - Automações</strong><span>Extensão oficial</span></span></a>`;
 const render = createLandingRenderer({
-  plans:{solo:{id:'solo',price:39.9,maxUses:1,durationDays:30},padrao:{id:'padrao',price:59.9,maxUses:3,durationDays:30},pro:{id:'pro',price:94.9,maxUses:5,durationDays:30},empresarial:{id:'empresarial',price:169.9,maxUses:10,durationDays:30}},
-  plans:{solo:{id:'solo',shortName:'Solo',price:39.9,maxUses:1,durationDays:30},padrao:{id:'padrao',shortName:'Padrão',price:59.9,maxUses:3,durationDays:30},pro:{id:'pro',shortName:'Pro',price:94.9,maxUses:5,durationDays:30},empresarial:{id:'empresarial',shortName:'Empresarial',price:169.9,maxUses:10,durationDays:30}},
+  plans:{start_v2:{id:'start_v2',shortName:'START',price:59.9,maxUses:1,durationDays:30},pro_v2:{id:'pro_v2',shortName:'PRO',price:149.9,maxUses:3,durationDays:30},enterprise_v2:{id:'enterprise_v2',shortName:'ENTERPRISE',price:null,maxUses:10,durationDays:30,consult:true}},
   escHtml: s => String(s), favicon: 'data:;',
   sharedCssLink:'', landingCssLink:'', chromeStoreUrl: storeUrl,
   chromeStoreBadge, publicNav: () => '<nav class="znav standalone-nav"><a href="/#produto">Ferramenta</a><a href="/#recursos">Recursos</a><a href="/planos">Planos</a><a href="/faq">FAQ</a></nav>',
@@ -19,8 +18,8 @@ assert.match(html, /data-shared-badge="yes"/, 'actual shared Chrome Store badge 
 assert.match(html, /Instalação gratuita/,'free installation distinguished from license purchase');
 assert.match(html, /ativação requer uma licença|ativação exige uma licença/i, 'clarifies license requirement');
 assert.equal((html.match(/data-shared-badge="yes"/g)||[]).length, 1, 'do not duplicate the prominent badge');
-assert.doesNotMatch(html, /class="price-card/, 'landing must not duplicate the four purchase cards');
-assert.equal((html.match(/class="r4624-plan-card/g)||[]).length,4,'public plan teasers present');assert.match(html,/href="\/planos\?plano=padrao"/,'price cards link to canonical plan details');
+assert.doesNotMatch(html, /class="price-card/, 'landing must not duplicate the purchase cards');
+assert.equal((html.match(/class="r4624-plan-card/g)||[]).length,3,'three public plan teasers present');assert.match(html,/href="\/planos\?plano=pro_v2"/,'price cards link to canonical plan details');
 assert.match(html, /data-scroll-target="produto"/, 'hero CTA navigates to product section');
 assert.match(html, /id="produto"/, 'product anchor exists');
 assert.match(html, /id="recursos"/, 'features anchor exists');
