@@ -5174,6 +5174,19 @@ const _PUBLIC_ASSETS = Object.freeze({
     compressible: true,
   }),
 
+  '/assets/zvm-analytics-lab.889fc1e2fb48.js': Object.freeze({
+    type: 'text/javascript; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-analytics-lab.889fc1e2fb48.js'),
+    sha256: '889fc1e2fb4880b6098b0fe64add1ceb916a9187a2bf34bbb6bdb7f5d713a9ef',
+    compressible: true,
+  }),
+  '/assets/zvm-analytics-lab.40519085ae68.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-analytics-lab.40519085ae68.css'),
+    sha256: '40519085ae6895ae5b5bfe7ef13ffb894a9a04123c69cf681b91223e2cb1c190',
+    compressible: true,
+  }),
+
   '/assets/zvm-r46-client-dashboard.64213392bec3.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-r46-client-dashboard.64213392bec3.css'),
@@ -7051,6 +7064,7 @@ async function renderAnalyticsDashboard(fixture = null) {
 <title>ZVM — Analytics</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/assets/zvm-analytics-dashboard.623a7bbac134.css">
+<link rel="stylesheet" href="/assets/zvm-analytics-lab.40519085ae68.css">
 <link rel="stylesheet" href="/assets/zvm-r46-system.8873e4d662f5.css">
 <link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css"></head><body>
 <div class="analytics-shell">
@@ -7112,67 +7126,59 @@ async function renderAnalyticsDashboard(fixture = null) {
 
   </div></details>
 
-  <!-- Laboratório de Testes -->
+  <!-- Laboratório de Testes: one operational domain at a time -->
   <div class="sec" id="lab-sec">
     <div class="sh"><div class="st">🧪 Laboratório de Testes</div></div>
     <div class="lab-body" id="lab-body">
-      <div class="lab-banner">⚠ AMBIENTE DE TESTES — não representa uma venda real da Cakto.</div>
-      <div class="lab-grid">
-        <div>
-          <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:13px;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:.4px">Simular venda</div>
-          <div class="lab-field"><label for="lab-plan">Plano</label>
-            <select id="lab-plan">
-              <option value="solo">Solo (contrato anterior) — R$39,90 · 1 número</option>
-              <option value="padrao">Padrão (contrato anterior) — R$59,90 · 3 números</option>
-              <option value="pro">Pro (contrato anterior) — R$94,90 · 5 números</option>
-              <option value="empresarial">Empresarial (contrato anterior) — R$169,90 · 10 números</option>
-            </select>
-          </div>
-          <div class="lab-field"><label for="lab-type">Tipo</label>
-            <select id="lab-type"><option value="new">Nova licença</option><option value="renewal">Renovação</option></select>
-          </div>
-          <div class="lab-field"><label for="lab-name">Nome</label><input id="lab-name" type="text" value="Cliente Teste" maxlength="80"></div>
-          <div class="lab-field"><label for="lab-email">E-mail de teste</label><input id="lab-email" type="email" placeholder="um-endereco-que-voce-acesse@dominio.com" maxlength="160">
-            <div style="font-size:11px;color:var(--muted);margin-top:4px">Domínios de exemplo (example.com etc.) são recusados pelo provedor de e-mail — use um endereço real que você acesse.</div>
-          </div>
-          <div class="lab-field"><label for="lab-phone">Telefone (opcional)</label><input id="lab-phone" type="text" placeholder="11999990000" maxlength="20"></div>
-          <div class="lab-field"><label for="lab-method">Método simulado</label>
-            <select id="lab-method"><option value="pix">Pix</option><option value="credit_card">Cartão de crédito</option></select>
-          </div>
-          <label class="lab-check"><input type="checkbox" id="lab-send-email"> Enviar e-mail real de teste</label>
-          <div class="lab-actions">
-            <button class="btn blab" id="lab-btn-sim" onclick="labPreview()">Simular</button>
-            <button class="btn bcancel" onclick="labCancel()">Cancelar</button>
-          </div>
-          <div id="lab-result"></div>
-        </div>
-        <div>
-          <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:13px;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:.4px">📧 Testar e-mail</div>
-          <div class="lab-field"><label for="lab-tpl">Template</label>
-            <select id="lab-tpl">
-              <option value="delivery_start">START · Nova licença</option>
-              <option value="delivery_pro">PRO · Nova licença</option>
-              <option value="delivery_enterprise">ENTERPRISE · Nova licença (prévia)</option>
-              <option value="delivery_renewal_start">START · Renovação</option>
-              <option value="delivery_renewal_pro">PRO · Renovação</option>
-              <option value="delivery_renewal_enterprise">ENTERPRISE · Renovação (prévia)</option>
-              <option value="delivery_new">Nova licença (compatibilidade)</option>
-              <option value="delivery_renewal">Renovação (compatibilidade)</option>
-              <option value="expiry_warning">Aviso de expiração</option>
-              <option value="password_reset">Recuperação de senha</option>
-            </select>
-          </div>
-          <div class="lab-field"><label for="lab-tpl-email">Destinatário</label><input id="lab-tpl-email" type="email" placeholder="um-endereco-que-voce-acesse@dominio.com" maxlength="160">
-            <div style="font-size:11px;color:var(--muted);margin-top:4px">Domínios de exemplo (example.com etc.) são recusados pelo provedor de e-mail — use um endereço real que você acesse.</div>
-          </div>
-          <div class="lab-actions">
-            <button class="btn blab" onclick="labEmailPreview(this)">Visualizar</button>
-            <button class="btn blab" onclick="labEmailSend(this)">Enviar teste</button>
-          </div>
-          <div id="lab-email-status" style="margin-top:10px;font-family:'Outfit',sans-serif;font-size:12.5px;color:var(--muted)"></div>
-          <iframe class="lab-iframe" id="lab-iframe" style="display:none" sandbox="" title="Preview do e-mail"></iframe>
-        </div>
+      <div class="lab-banner">⚠ AMBIENTE DE TESTES — nenhuma venda da Cakto será efetuada.</div>
+      <div class="lab-modes" role="tablist" aria-label="Atividades do laboratório">
+        <button type="button" role="tab" data-lab-mode="sale" aria-selected="true" class="is-active">Simular venda</button>
+        <button type="button" role="tab" data-lab-mode="email" aria-selected="false">Testar e-mail</button>
       </div>
+      <section class="lab-mode-pane lab-sale-pane" id="lab-sale-pane" role="tabpanel" aria-label="Simular venda">
+        <div class="lab-pane-card">
+          <h3>Simulação financeira isolada</h3>
+          <p class="lab-hint">Confira o contrato, depois execute uma venda fictícia. Registros são identificados como testMode:true. A simulação não envia e-mails; use a outra aba para isso.</p>
+          <div class="lab-field"><label for="lab-plan">Plano comercial de referência</label>
+            <select id="lab-plan">
+              <option value="solo">SOLO — R$39,90 · 1 número</option>
+              <option value="padrao">START (antigo Padrão) — R$59,90 · 3 números</option>
+              <option value="pro">PRO — R$94,90 · 5 números</option>
+              <option value="empresarial">Empresarial (contrato histórico) — R$169,90 · 10 números</option>
+            </select>
+          </div>
+          <div class="lab-field"><label for="lab-type">Operação</label><select id="lab-type"><option value="new">Nova licença</option><option value="renewal">Renovação</option></select></div>
+          <div class="lab-field"><label for="lab-name">Nome fictício</label><input id="lab-name" type="text" value="Cliente Teste" maxlength="80"></div>
+          <div class="lab-field"><label for="lab-email">E-mail do cenário</label><input id="lab-email" type="email" placeholder="teste@dominio-valido.com" maxlength="160"></div>
+          <div class="lab-field"><label for="lab-phone">Telefone fictício (opcional)</label><input id="lab-phone" type="text" maxlength="20" placeholder="11999990000"></div>
+          <div class="lab-field"><label for="lab-method">Método simulado</label><select id="lab-method"><option value="pix">Pix</option><option value="credit_card">Cartão de crédito</option></select></div>
+          <input type="checkbox" id="lab-send-email" hidden disabled>
+          <div class="lab-actions"><button class="btn blab" id="lab-btn-sim" onclick="labPreview()">Conferir cenário</button><button class="btn bcancel" onclick="labCancel()">Limpar</button></div>
+          <div id="lab-result" aria-live="polite"></div>
+        </div>
+      </section>
+      <section class="lab-mode-pane" id="lab-email-pane" role="tabpanel" aria-label="Testar e-mail" hidden>
+        <div class="lab-mail-grid">
+          <div class="lab-pane-card">
+            <h3>Prévia e teste de entrega</h3>
+            <p class="lab-hint">Selecione o plano e o tipo de mensagem. O template será escolhido automaticamente, sem mistura entre planos ou alterações em licenças reais.</p>
+            <div class="lab-field"><label for="lab-mail-plan">Identidade visual aprovada</label>
+              <select id="lab-mail-plan"><option value="start">START — verde escuro</option><option value="pro">PRO — branco e verde</option><option value="enterprise">ENTERPRISE — preto e dourado (prévia)</option></select>
+            </div>
+            <div class="lab-field"><label for="lab-mail-kind">Tipo de entrega</label><select id="lab-mail-kind"><option value="new">Nova licença</option><option value="renewal">Renovação</option></select></div>
+            <select id="lab-tpl" hidden aria-hidden="true" tabindex="-1"><option value="delivery_start">START</option><option value="delivery_renewal_start">START renovação</option><option value="delivery_pro">PRO</option><option value="delivery_renewal_pro">PRO renovação</option><option value="delivery_enterprise">ENTERPRISE</option><option value="delivery_renewal_enterprise">ENTERPRISE renovação</option></select>
+            <div id="lab-mail-summary" class="lab-mail-summary" aria-live="polite"></div>
+            <div class="lab-field"><label for="lab-tpl-email">Destinatário de teste</label><input id="lab-tpl-email" type="email" placeholder="email-que-voce-acessa@dominio.com" maxlength="160"></div>
+            <p class="lab-email-tip">Visualizar é somente leitura. Enviar teste solicita confirmação e envia uma licença DEMO, sem transação na Cakto. O ENTERPRISE permanece comercialmente sob consulta.</p>
+            <div class="lab-actions"><button type="button" class="btn blab lab-mail-action" id="lab-mail-preview-btn">Visualizar</button><button type="button" class="btn blab lab-mail-action" id="lab-mail-send-btn">Enviar e-mail de teste</button></div>
+            <div id="lab-email-status" aria-live="polite"></div>
+          </div>
+          <div class="lab-pane-card lab-mail-preview">
+            <h3>Pré-visualização</h3><p class="lab-hint">O corpo abaixo é HTML com texto selecionável. As imagens só formam a moldura artística.</p>
+            <iframe class="lab-iframe" id="lab-iframe" style="display:none" sandbox="" title="Prévia do e-mail"></iframe>
+          </div>
+        </div>
+      </section>
     </div>
   </div>
 
@@ -7292,6 +7298,7 @@ async function renderAnalyticsDashboard(fixture = null) {
 
 
 <script src="/assets/zvm-analytics-dashboard.7fb6ada2c27a.js" defer></script>
+<script src="/assets/zvm-analytics-lab.889fc1e2fb48.js" defer></script>
 </body></html>`;
 }
 
@@ -9739,6 +9746,15 @@ async function handleRequest(req, res) {
     if (!checkRateLimit(ip, 'analytics_lab')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
     const body = await parseBody(req);
     const template = String(body.template || '');
+    const chosenPlan = String(body.planId || '').toLowerCase().trim();
+    const chosenKind = String(body.kind || '').toLowerCase().trim();
+    if (chosenPlan || chosenKind) {
+      const approved = ['start','pro','enterprise'].includes(chosenPlan) && ['new','renewal'].includes(chosenKind);
+      const expected = approved ? 'delivery_' + (chosenKind === 'renewal' ? 'renewal_' : '') + chosenPlan : '';
+      if (!approved || template !== expected) {
+        sendJson(res, { error: 'lab_plan_template_mismatch' }, 400); return;
+      }
+    }
     const isSend = p === R_ANALYTICS+'/api/lab/email-send';
     // Destinatário é sempre digitado explicitamente pelo admin — nunca
     // puxamos um cliente aleatório da base pra preview/teste de e-mail.
