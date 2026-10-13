@@ -24,6 +24,16 @@ assert.deepEqual(helper.readCheckoutBinding(claim,process.env.APP_SECRET,fixed+1
 assert.equal(helper.readCheckoutBinding(claim,process.env.APP_SECRET,fixed+46*86400000),null);
 assert.equal(helper.readCheckoutBinding(claim.slice(0,-1)+'A',process.env.APP_SECRET,fixed+10),null);
 assert.equal(helper.checkoutUrlForPortal('https://evil.example',target,owner,process.env.APP_SECRET,fixed),'https://evil.example');
+
+for (const html of [
+ api.renderPlanosPage({email:owner,keyCode:target}),
+ api.renderPortalPlans({email:owner,keyCode:target},{maxUses:3}),
+]) {
+ assert.match(html,/sck=zvm1_[A-Za-z0-9_-]+/,'authenticated plan view must bind checkout to actual portal key');
+ assert(!html.includes(target),'checkout must not expose raw license key in HTML');
+}
+assert(!api.renderPlanosPage().includes('sck=zvm1_'),'anonymous checkout must not contain license binding');
+
 const payload={event:'purchase_approved',data:{
  id:'synthetic-paid-tx-001',status:'paid',customer:{name:'Test',email:payer,phone:''},
  product:{id:api.ZVM_PLANS.padrao.productId||'',name:api.ZVM_PLANS.padrao.name},
