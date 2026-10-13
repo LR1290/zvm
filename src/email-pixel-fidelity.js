@@ -58,13 +58,15 @@ async function prepareKeyDeliveryArtwork(built,{preview=false}={}){
  if(!built.artwork)return {html:built.html,attachments:[]};
  const tone=built.artwork.tone;
  if(!built.html.includes('__ZVM_SLICE_hero__')||!built.html.includes('__ZVM_SLICE_rest__'))throw new Error('approved_artwork_slice_missing');
- const a=await decorativeSlices(tone);let html=built.html;const attachments=[];
- for(const [name,p] of Object.entries(a)){
+ // Analytics gets self-contained preview data. Customer emails use immutable
+ // first-party HTTPS art URLs instead of 14 JPEG attachments. No personalized
+ // license data is placed in an image URL, cache key or image file.
+ const pieces=await decorativeSlices(tone);let html=built.html;
+ for(const [name,p] of Object.entries(pieces)){
   const token='__ZVM_SLICE_'+name+'__';if(!html.includes(token))throw new Error('approved_artwork_slice_missing_'+name);
-  const id='zvm-art-'+tone+'-'+name,encoded=p.buffer.toString('base64');
-  html=html.split(token).join(preview?'data:image/jpeg;base64,'+encoded:'cid:'+id);
-  if(!preview)attachments.push({content:encoded,filename:'zvm-'+tone+'-'+name+'.jpg',content_type:'image/jpeg',content_id:id});
+  const remote='https://zvm.onrender.com/assets/zvm-email-art/r46-69/'+tone+'/'+name+'.jpg';
+  html=html.split(token).join(preview?'data:image/jpeg;base64,'+p.buffer.toString('base64'):remote);
  }
- return {html,attachments};
+ return {html,attachments:[]};
 }
 module.exports={GEOMETRY,createPixelPerfectEmail,prepareKeyDeliveryArtwork,decorativeSlices,regions};

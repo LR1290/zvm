@@ -31,16 +31,13 @@ const expected={start:'db2f32248d60f41e78ae0f7cf8675d25a550402671068f6311dc5efa0
   }
   const preview=await prepareKeyDeliveryArtwork(b,{preview:true});
   const outgoing=await prepareKeyDeliveryArtwork(b,{preview:false});
-  assert.equal(outgoing.attachments.length,14);
-  assert(!outgoing.attachments.some(x=>x.filename.includes('licenca')),'no image that contains personalized full license');
+  assert.equal(outgoing.attachments.length,0,'first-party HTTPS artwork must not create mail attachments');
   assert(outgoing.html.includes('data-zvm-live="key"')&&outgoing.html.includes('ZV-DEMO-4567-8901'));
   assert(!outgoing.html.includes('data:image/jpeg;base64,'));
-  for(const p of outgoing.attachments){
-   assert(p.filename.endsWith('.jpg'));
-   assert(outgoing.html.includes('cid:'+p.content_id));
-   const token='data:image/jpeg;base64,';
-   const sameData=Buffer.from(p.content,'base64').toString('base64');
-   assert(preview.html.includes(token+sameData),'same asset in preview and sent email');
+  for(const p of Object.values(a)){
+   const url='https://zvm.onrender.com/assets/zvm-email-art/r46-69/'+tone+'/'+p.name+'.jpg';
+   assert(outgoing.html.includes(url),'send artwork from first-party immutable URL');
+   assert(preview.html.includes('data:image/jpeg;base64,'+p.buffer.toString('base64')),'preview must use exactly the same original art');
   }
   assert.equal(GEOMETRY[tone].key.length,4);
  }
@@ -49,5 +46,5 @@ const expected={start:'db2f32248d60f41e78ae0f7cf8675d25a550402671068f6311dc5efa0
  assert(xss.html.includes('&lt;img'));
  const neutral=await prepareKeyDeliveryArtwork({html:'<p>Reset password</p>'});
  assert.equal(neutral.html,'<p>Reset password</p>');assert.equal(neutral.attachments.length,0);
- console.log('R46.69 original-art SHA256, 100% geometric coverage, selectable live fields, link and preview/CID parity PASS');
+ console.log('R46.69 original-art SHA256, 100% geometric coverage, selectable live fields, link and HTTPS artwork parity PASS');
 })().catch(e=>{console.error(e);process.exitCode=1;});

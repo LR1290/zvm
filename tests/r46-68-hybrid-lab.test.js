@@ -3,6 +3,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
 const {buildKeyDeliveryEmail,prepareKeyDeliveryArtwork}=require('../mailer');
 (async()=>{
  const server=fs.readFileSync(path.join(__dirname,'../server.js'),'utf8');
+ assert(server.includes('zvmEmailArtSlices')&&server.includes('zvm-email-art/r46-69'),'static art URL is served by the ZVM server');
  for(const token of ['lab-sale-pane','lab-email-pane','lab-mail-plan','lab-mail-kind','lab_plan_template_mismatch','lab_explicit_plan_required'])
   assert(server.includes(token),'Analytics lab hardening '+token);
  for(const [planId,uses,tone] of [['padrao',3,'start'],['pro',5,'pro'],['empresarial',10,'enterprise']]){
@@ -13,11 +14,10 @@ const {buildKeyDeliveryEmail,prepareKeyDeliveryArtwork}=require('../mailer');
   }
   const preview=await prepareKeyDeliveryArtwork(mail,{preview:true});
   const delivery=await prepareKeyDeliveryArtwork(mail,{preview:false});
-  assert.equal(delivery.attachments.length,14);
-  assert(!delivery.attachments.some(p=>p.filename.includes('licenca')));
+  assert.equal(delivery.attachments.length,0,'no decorative JPEG attachments');
   assert(delivery.html.includes('ZV-TEST-KEY-47'),'key live after rendering');
   assert(preview.html.includes('data:image/jpeg;base64,'));
-  assert(delivery.html.includes('cid:zvm-art-'+tone+'-copy-button'),'copy control points to portal');
+  assert(delivery.html.includes('https://zvm.onrender.com/assets/zvm-email-art/r46-69/'+tone+'/copy-button.jpg'));
   assert(mail.html.includes('href="https://zvm.onrender.com/cliente#copy-license-key"'));
  }
  const injected=buildKeyDeliveryEmail({planId:'padrao',maxUses:3,code:'<script>alert(1)</script>'});
