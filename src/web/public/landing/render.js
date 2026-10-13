@@ -43,7 +43,7 @@ function createLandingRenderer({ escHtml, favicon, sharedCssLink, landingCssLink
   // No checkout links, copy of prices, or separate plan selection state.
   function renderLandingPlans() {
     return Object.values(plans).map(plan => {
-      if (!['start_v2','pro_v2','enterprise_v2'].includes(plan.id)) return '';
+      if (!['solo','start_v2','pro_v2','enterprise_v2'].includes(plan.id)) return '';
       const value = plan.consult ? null : Number(plan.price);
       const devices = Number(plan.maxUses);
       if ((!plan.consult && (!Number.isFinite(value) || value <= 0)) || !Number.isSafeInteger(devices) || devices <= 0) return '';
