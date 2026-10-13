@@ -6636,39 +6636,48 @@ const PLAN_ICONS = {
   padrao: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>',
   pro: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5c3 2 5 6 5 9.7 0 1.7-.4 3-1 4l-4 4.3-4-4.3c-.6-1-1-2.3-1-4 0-3.7 2-7.7 5-9.7Z"/><circle cx="12" cy="10.5" r="1.6"/><path d="M8.5 16.5l-2.8 2.8M15.5 16.5l2.8 2.8"/></svg>',
   empresarial: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="10" height="18" rx="1"/><path d="M14 21h6V9l-6-3"/><path d="M7.5 7h1M7.5 11h1M7.5 15h1M11 7h1M11 11h1M11 15h1"/></svg>',
+  start_v2: '<span aria-hidden="true">&#128994;</span>',
+  pro_v2: '<span aria-hidden="true">&#9889;</span>',
+  enterprise_v2: '<span aria-hidden="true">&#128995;</span>',
 };
 const PLAN_IDENTITY = {
   solo: { subtitle: 'Ideal para começar' },
   padrao: { subtitle: 'Melhor custo-benefício' },
   pro: { subtitle: 'Para equipes' },
   empresarial: { subtitle: 'Maior economia por número' },
+  start_v2: { subtitle: 'Quem está começando' },
+  pro_v2: { subtitle: 'Operação completa' },
+  enterprise_v2: { subtitle: 'Implantação sob consulta' },
 };
 const NEED_OPTIONS = [
-  { planId: 'solo', label: '1' },
-  { planId: 'padrao', label: 'Até 3' },
-  { planId: 'pro', label: 'Até 5' },
-  { planId: 'empresarial', label: 'Até 10' },
+  { planId:'start_v2', label:'1' },
+  { planId:'pro_v2', label:'Até 3' },
+  { planId:'enterprise_v2', label:'Até 10' },
 ];
 
 function renderPlanosPage(portalUser = null) {
   const isLoggedIn = !!portalUser;
-  const cards = Object.values(ZVM_PLANS).map(plan => {
+  const cards = Object.values(ZVM_PUBLIC_PLANS).map(plan => {
     const price = formatPlanPrice(plan.price);
-    const perDevice = (plan.price / plan.maxUses).toFixed(2).replace('.', ',');
-    const popular = plan.id === 'padrao';
+    const perDevice = plan.consult ? '' : (plan.price / plan.maxUses).toFixed(2).replace('.', ',');
+    const popular = plan.id === 'pro_v2';
     const identity = PLAN_IDENTITY[plan.id] || { subtitle: '' };
     const icon = PLAN_ICONS[plan.id] || '';
-    const action = isLoggedIn
-      ? `<button type="button" class="plan-btn ${popular?'plan-btn-primary':'plan-btn-outline'}" data-buy-plan="${plan.id}" data-checkout="${escHtml(checkoutUrlForPortal(plan.checkoutUrl,portalUser?.keyCode,portalUser?.email,APP_SECRET))}" data-plan-name="${escHtml(plan.shortName)}" data-devices="${plan.maxUses}" data-duration="${plan.durationDays}" data-price="${price.whole},${price.cents}">🛒 Comprar ${escHtml(plan.shortName)}</button>`
-      : `<button type="button" class="plan-btn plan-btn-locked" data-login-plan="${plan.id}" aria-label="Entre para comprar o plano ${escHtml(plan.shortName)}">🔒 Entre para comprar</button>`;
+    const action = plan.consult
+      ? '<a class="plan-btn plan-btn-outline" href="'+escHtml(ZVM_SUPPORT_URL)+'" target="_blank" rel="noopener noreferrer">Sob consulta</a>'
+      : !plan.enabled
+        ? '<button class="plan-btn plan-btn-outline" type="button" disabled title="Checkout Cakto ainda não vinculado a esta oferta">Compra indisponível no momento</button>'
+        : isLoggedIn
+          ? '<button type="button" class="plan-btn '+(popular?'plan-btn-primary':'plan-btn-outline')+'" data-buy-plan="'+plan.id+'" data-checkout="'+escHtml(checkoutUrlForPortal(plan.checkoutUrl,portalUser?.keyCode,portalUser?.email,APP_SECRET))+'" data-plan-name="'+escHtml(plan.shortName)+'" data-devices="'+plan.maxUses+'" data-duration="'+plan.durationDays+'" data-price="'+price.whole+','+price.cents+'">Comprar '+escHtml(plan.shortName)+'</button>'
+          : '<button type="button" class="plan-btn plan-btn-locked" data-login-plan="'+plan.id+'">Entre para comprar</button>';
     return `<article class="price-card${popular?' featured':''}" aria-labelledby="plan-${plan.id}" data-plan-id="${plan.id}">
-      <div class="client-plan-tags">${popular?'<span class="price-badge">Mais popular</span>':''}<span class="price-suggested-tag" aria-hidden="true">Sugerido pra você</span></div>
+      <div class="client-plan-tags">${popular?'<span class="price-badge">Mais popular</span>':''}${plan.consult?'<span class="price-badge">Sob consulta</span>':''}</div>
       <span class="price-icon" aria-hidden="true">${icon}</span>
       <h2 class="price-tier" id="plan-${plan.id}">${escHtml(plan.shortName)}</h2>
       ${identity.subtitle ? `<p class="price-subtitle">${escHtml(identity.subtitle)}</p>` : ''}
       <p class="price-devices">${plan.maxUses} ${plan.maxUses===1?'número':'números'} de WhatsApp</p>
-      <div class="price-val"><sup>R$</sup>${price.whole}<span>,${price.cents}</span><sub>/30 dias</sub></div>
-      <p class="price-per${plan.maxUses>1?' price-per-strong':''}">R$ ${perDevice} por número</p>
+      <div class="price-val">${plan.consult?'Sob consulta':`<sup>R$</sup>${price.whole}<span>,${price.cents}</span><sub>/mês</sub>`}</div>
+      <p class="price-per${plan.maxUses>1?' price-per-strong':''}">${plan.consult?'Implantação personalizada':'R$ '+perDevice+' por número'}</p>
       <div class="price-divider"></div>
       <ul class="price-feats">
         <li><span class="chk">✓</span>Todos os recursos inclusos</li>
