@@ -1,7 +1,7 @@
 'use strict';
 // Presentation only: never mutate historical Cakto IDs/prices or licensed limits.
 const legacy=Object.freeze({
- solo:{label:'START',uses:1,tone:'start'},padrao:{label:'PRO',uses:3,tone:'pro'},
+ solo:{label:'SOLO',uses:1,tone:'solo'},padrao:{label:'PRO',uses:3,tone:'pro'},
  pro:{label:'PRO - contrato anterior',uses:5,tone:'pro'},
  empresarial:{label:'ENTERPRISE - contrato anterior',uses:10,tone:'enterprise'},
 });
