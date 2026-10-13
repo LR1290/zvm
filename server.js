@@ -8232,7 +8232,8 @@ async function handleRequest(req, res) {
     const matched = new RegExp('^/assets/zvm-email-art/r46-69/(start|pro|enterprise)/([a-z-]+)[.]jpg$').exec(p);
     if (!matched) { res.writeHead(404, { 'Cache-Control':'no-store', ..._SEC_HEADERS }); res.end(); return; }
     try {
-      const slice = (await zvmEmailArtSlices(matched[1]))[matched[2]];
+      const catalog = await zvmEmailArtSlices(matched[1]);
+      const slice = Object.hasOwn(catalog, matched[2]) ? catalog[matched[2]] : null;
       if (!slice) { res.writeHead(404, { 'Cache-Control':'no-store', ..._SEC_HEADERS }); res.end(); return; }
       res.writeHead(200, { 'Content-Type':'image/jpeg', 'Content-Length':slice.buffer.length,
         'Cache-Control':'public, max-age=31536000, immutable', ..._SEC_HEADERS });
