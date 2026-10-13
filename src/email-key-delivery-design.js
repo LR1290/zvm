@@ -9,6 +9,21 @@ function expiryPtBr(value){
  const d=new Date(value);if(!Number.isFinite(d.getTime()))return 'Consulte no Portal do Cliente';
  return new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric'}).format(d);
 }
+// Exactly the approved original image is the visible HTML message. Resend
+// receives a CID attachment; Analytics receives the same JPEG as a data URI.
+function approvedArtworkHtml({subject,tone,code,plan,validity}){
+ const alt='ZVM '+plan+' - Chave: '+code+' - Validade: '+validity;
+ return '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">'
+  +'<meta name="viewport" content="width=device-width,initial-scale=1">'
+  +'<title>'+esc(subject)+'</title></head>'
+  +'<body style="margin:0;padding:0;background:#06110c">'
+  +'<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse">'
+  +'<tr><td align="center" style="padding:0">'
+  +'<img src="__ZVM_APPROVED_LICENSE_ARTWORK__" width="640" height="960"'
+  +' alt="'+esc(alt)+'" style="display:block;border:0;width:100%;height:auto;max-width:640px">'
+  +'</td></tr></table></body></html>';
+}
+
 function buildKeyDeliveryDesign({code,planId,planLabel,maxUses,expiresAt,renewed,baseUrl,ctaPath,extensionUrl}={}){
  const info=displayLicensePlan({planId,planLabel,maxUses});
  const tone=info.tone;
@@ -24,6 +39,14 @@ function buildKeyDeliveryDesign({code,planId,planLabel,maxUses,expiresAt,renewed
  const cta='<a href="'+esc(portal)+'" style="display:inline-block;background:'+accent+';color:#03140c;font-family:Arial,sans-serif;font-weight:800;font-size:14px;padding:16px 26px;text-decoration:none;border-radius:9px;">ACESSAR MEU PAINEL &rarr;</a>';
  const secondary='<a href="'+esc(extension)+'" style="display:inline-block;color:'+accent+';font-family:Arial,sans-serif;font-weight:700;font-size:12px;text-decoration:underline;">Instalar ZVM</a>';
  const subject=renewed?'ZVM — Renovação confirmada':'ZVM — Sua licença está pronta';
+ // Zero legacy HTML fallbacks for START/PRO/ENTERPRISE: the approved raster
+ // is mandatory. SOLO has no artwork supplied and retains its independent
+ // existing transactional email until an approved SOLO artwork is provided.
+ if(!info.ambiguous && ['start','pro','enterprise'].includes(tone)){
+  const art={tone,code:String(code||'').trim().slice(0,80),plan:info.label,validity:expiryPtBr(expiresAt)};
+  const plainText='ZVM — '+(renewed?'Renovação confirmada':'Sua licença está pronta')+'\n\nChave: '+art.code+'\nPlano: '+art.plan+'\nValidade: '+art.validity+'\nPortal: '+portal+'\nInstalar: '+extension;
+  return {subject,html:approvedArtworkHtml({subject,tone,...art}),text:plainText,artwork:art,classification:info};
+ }
  const html='<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
  +'<title>'+esc(subject)+'</title></head><body style="margin:0;padding:0;background:'+base+';font-family:Arial,Helvetica,sans-serif;">'
  +'<div style="display:none;max-height:0;overflow:hidden;opacity:0;">'+esc(prehead)+'</div>'

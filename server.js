@@ -56,7 +56,7 @@ if (!ZVM_RENDER_RUNTIME) {
 }
 const {
   sendPasswordResetEmail, sendKeyDeliveryEmail, sendKeyExpiryWarningEmail, sendEmail,
-  buildPasswordResetEmail, buildKeyDeliveryEmail, buildKeyExpiryWarningEmail,
+  buildPasswordResetEmail, buildKeyDeliveryEmail, buildKeyExpiryWarningEmail, prepareKeyDeliveryArtwork,
 } = require('./mailer');
 const {
   createBuildAuthority,
@@ -9769,9 +9769,14 @@ async function handleRequest(req, res) {
 
     if (!isSend) {
       console.log('[LAB] email-preview', template);
-      sendJson(res, { subject: built.subject, html: built.html }); return;
+      try {
+        const prepared=await prepareKeyDeliveryArtwork(built,{preview:true});
+        sendJson(res,{subject:built.subject,html:prepared.html}); return;
+      } catch (_) {
+        sendJson(res,{error:'approved_artwork_unavailable'},503); return;
+      }
     }
-    const result = await sendEmail({ to, subject: `[TESTE] ${built.subject}`, html: built.html });
+    const result = await sendEmail({ to, subject: `[TESTE] ${built.subject}`, html: built.html, artwork: built.artwork, text: built.text });
     console.log('[LAB] email-send', template, maskEmail(to), result.ok ? 'ok' : `falhou: ${result.reason || ''}`);
     // reason vem só de mailer.js: mensagem de validação do Resend, "RESEND_API_KEY
     // não configurado" ou erro de rede — nunca a API key nem outro segredo.

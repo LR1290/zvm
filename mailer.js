@@ -2,6 +2,7 @@
 const https = require('https');
 const { SUPPORT_URL } = require('./src/support-contact');
 const { buildKeyDeliveryDesign } = require('./src/email-key-delivery-design');
+const { prepareKeyDeliveryArtwork } = require('./src/email-license-artwork');
 
 const BG = '#08110d';
 const CARD = '#0f1712';
@@ -44,7 +45,7 @@ function _brand() {
   </tr></table>`;
 }
 
-function _send(subject, to, html) {
+function _send(subject, to, html, approvedAttachments = [], textBody = '') {
   return new Promise(resolve => {
     const apiKey = String(process.env.RESEND_API_KEY || '').trim();
     const from = String(process.env.EMAIL_FROM || 'ZVM <noreply@zvm.app>').trim();
@@ -75,12 +76,13 @@ function _send(subject, to, html) {
       to: [addr],
       subject: safeSubject,
       html: outboundHtml,
+      ...(textBody ? { text: String(textBody).slice(0, 5000) } : {}),
       tags: [
         { name: 'source', value: 'zvm_transactional' },
         { name: 'type', value: category },
       ],
     };
-    if (hasBrandImage) payload.attachments = [{ content: ZVM_BRAND_ICON_BASE64, filename: 'zvm-logo.png', content_type: 'image/png', content_id: ZVM_BRAND_ICON_CID }];
+    if (hasBrandImage || approvedAttachments.length) payload.attachments = [...(hasBrandImage ? [{ content: ZVM_BRAND_ICON_BASE64, filename: 'zvm-logo.png', content_type: 'image/png', content_id: ZVM_BRAND_ICON_CID }] : []), ...approvedAttachments];
     if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(replyTo) && replyTo.length <= 254) payload.reply_to = replyTo;
     const body = JSON.stringify(payload);
     const req = https.request({
@@ -182,7 +184,16 @@ function buildKeyDeliveryEmail(options = {}) {
   return buildKeyDeliveryDesign(options);
 }
 async function sendKeyDeliveryEmail(to, opts) {
-  const built = buildKeyDeliveryEmail(opts || {}); const res = await _send(built.subject, to, built.html); return res.ok;
+  try {
+    const built=buildKeyDeliveryEmail(opts || {});
+    if(built.classification?.ambiguous) { console.warn('[MAILER] Plano de licença ambíguo; envio bloqueado'); return false; }
+    const prepared=await prepareKeyDeliveryArtwork(built);
+    const res=await _send(built.subject,to,prepared.html,prepared.attachments,built.text);
+    return res.ok;
+  } catch (error) {
+    console.warn('[MAILER] Falha fechada na composição de arte oficial:',String(error?.message||'').slice(0,90));
+    return false;
+  }
 }
 
 function buildKeyExpiryWarningEmail({ code, hoursLeft, planLabel, maxUses, expiresAt, baseUrl, ctaPath }) {
@@ -204,12 +215,15 @@ async function sendKeyExpiryWarningEmail(to, opts) {
   const built = buildKeyExpiryWarningEmail(opts || {}); const res = await _send(built.subject, to, built.html); return res.ok;
 }
 
-async function sendEmail({ to, subject, html }) {
-  const res = await _send(subject, to, html);
+async function sendEmail({ to, subject, html, artwork, text }) {
+  let prepared;
+  try { prepared=await prepareKeyDeliveryArtwork({html,artwork}); }
+  catch (_) { return {ok:false,id:null,reason:'approved_artwork_unavailable'}; }
+  const res = await _send(subject, to, prepared.html, prepared.attachments, text);
   return { ok: res.ok, id: res.id || null, reason: res.ok ? null : (res.reason || 'falha desconhecida no envio') };
 }
 
 module.exports = {
   sendPasswordResetEmail, sendKeyDeliveryEmail, sendKeyExpiryWarningEmail, sendEmail,
-  buildPasswordResetEmail, buildKeyDeliveryEmail, buildKeyExpiryWarningEmail,
+  buildPasswordResetEmail, buildKeyDeliveryEmail, buildKeyExpiryWarningEmail, prepareKeyDeliveryArtwork,
 };
