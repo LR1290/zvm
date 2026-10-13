@@ -28,9 +28,16 @@ assert.equal(active.enterprise_v2.enabled,false);
 for(const row of [{id:'solo',name:'SOLO'},{id:'padrao',name:'START'},{id:'pro',name:'PRO'},{id:'empresarial',name:'ENTERPRISE'}]){
  const letter=buildKeyDeliveryDesign({planId:row.id,maxUses:row.id==='solo'?1:row.id==='padrao'?3:row.id==='pro'?5:10,code:'zv-synthetic-key-1234',expiresAt:'2026-11-14T03:00:00.000Z',baseUrl:'https://zvm.onrender.com',ctaPath:'/cliente'});
  assert.match(letter.html,new RegExp(row.name),'correct theme label');
- assert.match(letter.html,/14\/11\/2026/,'actual expiry in Sao Paulo');
- assert.match(letter.html,/zv-synthetic-key-1234/);
- assert.match(letter.html,/https:\/\/zvm.onrender.com\/cliente/);
+ if(letter.artwork){
+   assert.equal(letter.artwork.validity,'14/11/2026','actual expiry in Sao Paulo');
+   assert.equal(letter.artwork.code,'zv-synthetic-key-1234');
+   assert.match(letter.html,/__ZVM_APPROVED_LICENSE_ARTWORK__/,'approved artwork required');
+   assert(!letter.html.includes('font-size:43px'),'must not silently reuse old generic HTML');
+ }else{
+   assert.match(letter.html,/14\/11\/2026/,'SOLO fallback preserves stored expiry');
+   assert.match(letter.html,/zv-synthetic-key-1234/);
+ }
+ assert.match(letter.artwork ? letter.text : letter.html,/https:\/\/zvm.onrender.com\/cliente/);
  assert(!letter.html.includes('59,90'),'email must not invent historical price');
 }
 const xss=buildKeyDeliveryEmail({code:'<script>alert(1)</script>',planId:'solo',maxUses:1,expiresAt:'nonsense'});
@@ -39,6 +46,7 @@ assert(xss.html.includes('&lt;script&gt;'));
 assert(xss.html.includes('Consulte no Portal do Cliente'));
 const oldOutbox=buildKeyDeliveryEmail({planLabel:'Padrão',maxUses:3,code:'test',renewed:true,expiresAt:'2026-11-14T03:00:00.000Z'});
 assert.match(oldOutbox.html,/START/,'pre-existing encrypted mail queued before migration remains renderable');
+assert.equal(oldOutbox.artwork?.tone,'start','pre-existing outbox uses approved START art');
 assert.equal(oldOutbox.subject,'ZVM — Renovação confirmada');
 assert(!oldOutbox.html.includes('BEM-VINDO(A)'),'renewal copy must differ from new order');
 assert(!buildKeyDeliveryEmail({planId:'solo',maxUses:3,code:'test'}).html.includes('ZVM START'),'inconsistent persisted license must not be misbranded');
