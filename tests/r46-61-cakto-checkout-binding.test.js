@@ -44,6 +44,9 @@ const payload={event:'purchase_approved',data:{
 }};
 const normalized=api.normalizeCaktoPurchases(payload)[0];
 assert.equal(normalized.checkoutBinding,claim,'checkout proof must survive normalization');
+const withMetadata={...payload,data:{...payload.data,sck:'',metadata:{sck:claim}}};
+assert.equal(api.normalizeCaktoPurchases(withMetadata)[0].checkoutBinding,claim,'Cakto metadata.sck survives normalization');
+
 assert.equal(normalized.subscriptionId,'synthetic-subs-001','renewal identity must survive normalization');
 const compact=api.compactCaktoPurchaseForQueue(normalized);
 assert.equal(compact.checkoutBinding,claim,'checkout proof must survive encrypted queue serialization');
