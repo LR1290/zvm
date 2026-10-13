@@ -1331,7 +1331,7 @@ if (!ZVM_LOCAL_SAFE_MODE) {
               // no ar). Falhando, o próximo ciclo horário tenta de novo — sem risco
               // de loop de spam, porque um sucesso interrompe as tentativas.
               const warnSent = await sendKeyExpiryWarningEmail(_pu._id, {
-                code, hoursLeft, planLabel: planLabelForMaxUses(k.maxUses), maxUses: k.maxUses,
+                code, hoursLeft, planLabel: displayLicensePlan({planId:k.planId,planLabel:k.planName,maxUses:k.maxUses}).label, maxUses: k.maxUses,
                 expiresAt: k.expiresAt, baseUrl: BASE_URL, ctaPath: '/cliente',
               });
               if (warnSent) {
@@ -1591,11 +1591,13 @@ function resolveCaktoPlan(purchase, plans = ZVM_PAYMENT_PLANS) {
   // seguinte ainda exige status pago, BRL e preço-base exato do plano.
   const exactNames = [purchase.productName, purchase.offerName].map(normalizePlanName).filter(Boolean);
   if (exactNames.length) {
-    const byExactName = allPlans.find(plan => {
+    const matching = allPlans.filter(plan => {
       const allowed = [plan.name, plan.shortName].map(normalizePlanName).filter(Boolean);
       return exactNames.some(name => allowed.includes(name));
     });
-    if (byExactName) return byExactName;
+    // Names are not a safe selector when historic and v2 contracts collide.
+    // Require a distinct configured offer/product ID or matching checkout.
+    if (matching.length === 1) return matching[0];
   }
   return null;
 }
@@ -6051,7 +6053,7 @@ function renderStandalonePortalPlans(user, keyData){
     const isCurrent=currentPlanId===plan.id;
     const identity=PLAN_IDENTITY[plan.id]||{subtitle:plan.subtitle||''};
     const action = plan.consult
-      ? '<a class="plan-btn plan-btn-outline" href="'+escHtml(ZVM_SUPPORT_URL)+'" target="_blank" rel="noopener noreferrer">Sob consulta</a>'
+      ? ''
       : !plan.enabled
         ? '<button type="button" class="plan-btn plan-btn-outline" disabled title="Aguardando liberação do checkout Cakto">Compra indisponível no momento</button>'
         : '<button type="button" class="plan-btn '+(popular?'plan-btn-primary':'plan-btn-outline')+'" data-buy-plan="'+plan.id+'" data-checkout="'+escHtml(checkoutUrlForPortal(plan.checkoutUrl,user?.keyCode,user?.email,APP_SECRET))+'" data-plan-name="'+escHtml(plan.shortName)+'" data-devices="'+plan.maxUses+'" data-duration="'+plan.durationDays+'" data-price="'+price.whole+','+price.cents+'">'+(isCurrent?'Renovar este plano':'Escolher este plano')+'</button>';
@@ -6664,7 +6666,7 @@ function renderPlanosPage(portalUser = null) {
     const identity = PLAN_IDENTITY[plan.id] || { subtitle: '' };
     const icon = PLAN_ICONS[plan.id] || '';
     const action = plan.consult
-      ? '<a class="plan-btn plan-btn-outline" href="'+escHtml(ZVM_SUPPORT_URL)+'" target="_blank" rel="noopener noreferrer">Sob consulta</a>'
+      ? ''
       : !plan.enabled
         ? '<button class="plan-btn plan-btn-outline" type="button" disabled title="Checkout Cakto ainda não vinculado a esta oferta">Compra indisponível no momento</button>'
         : isLoggedIn
