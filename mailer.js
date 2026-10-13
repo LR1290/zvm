@@ -1,6 +1,7 @@
 'use strict';
 const https = require('https');
 const { SUPPORT_URL } = require('./src/support-contact');
+const { buildKeyDeliveryDesign } = require('./src/email-key-delivery-design');
 
 const BG = '#08110d';
 const CARD = '#0f1712';
@@ -180,26 +181,9 @@ async function sendPasswordResetEmail(to, resetUrl) {
   const built = buildPasswordResetEmail(resetUrl); const res = await _send(built.subject, to, built.html); return res.ok;
 }
 
-function buildKeyDeliveryEmail({ code, planLabel, maxUses, expiresAt, renewed, durationDays, baseUrl, extensionUrl, ctaPath }) {
-  const base = baseOrigin(baseUrl);
-  const portalPath = String(ctaPath || '/verificar').startsWith('/') ? String(ctaPath || '/verificar') : '/verificar';
-  const verifyUrl = base ? base + portalPath : '#';
-  const title = renewed ? 'Sua licença foi renovada' : 'Bem-vindo(a) ao ZVM';
-  const intro = renewed
-    ? `Sua licença ZVM foi renovada com sucesso${durationDays ? ` — mais ${Math.max(1, Number(durationDays)||0)} dias de acesso foram adicionados` : ''}. Sua chave continua a mesma.`
-    : 'Sua compra foi aprovada. Sua chave de ativação já está pronta para uso.';
-  const key = escHtml(String(code || '—').slice(0, 80));
-  const plan = escHtml(String(planLabel || '—').slice(0, 80));
-  const uses = Number.isFinite(Number(maxUses)) ? Math.max(1, Number(maxUses)) : 1;
-  const keyBox = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 22px;"><tr><td style="background:#04150b;border:1.5px dashed rgba(0,230,118,.45);border-radius:12px;padding:18px 20px;text-align:center;"><div style="font-family:Arial,sans-serif;font-size:10.5px;color:${DIM};text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Sua chave de ativação</div><div style="font-family:'Courier New',monospace;font-size:19px;font-weight:700;color:${PRIMARY};letter-spacing:.5px;word-break:break-all;">${key}</div></td></tr></table>`;
-  const stats = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 22px;"><tr><td class="zvm-stack" width="50%" style="background:${CARD2};border:1px solid ${BORDER};border-radius:10px 0 0 10px;border-right:none;padding:14px 16px;"><div style="font-family:Arial,sans-serif;font-size:10.5px;color:${DIM};text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Plano</div><div style="font-family:Arial,sans-serif;font-size:15px;font-weight:800;color:${TEXT};">${plan} <span style="font-weight:400;color:${DIM};font-size:12.5px;">· ${uses} número(s)</span></div></td><td class="zvm-stack" width="50%" style="background:${CARD2};border:1px solid ${BORDER};border-radius:0 10px 10px 0;padding:14px 16px;"><div style="font-family:Arial,sans-serif;font-size:10.5px;color:${DIM};text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;">Válida até</div><div style="font-family:Arial,sans-serif;font-size:15px;font-weight:800;color:${TEXT};">${escHtml(fmtDate(expiresAt))}</div></td></tr></table>`;
-  const tutorialUrl = 'https://www.youtube.com/watch?v=DZ29f5U6OF8';
-  const ext = safeHttpUrl(extensionUrl, '');
-  const ctas = renewed ? [_button(verifyUrl,'Acessar minha conta')] : (ext ? [_button(ext,'Acessar versão oficial'),_buttonOutline(tutorialUrl,'Ver tutorial')] : [_button(tutorialUrl,'Ver tutorial de instalação')]);
-  const steps = renewed ? '' : `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0 0;"><tr><td style="border-top:1px solid ${BORDER};padding-top:22px;"><div style="font-family:Arial,sans-serif;font-size:11px;font-weight:800;color:${DIM};text-transform:uppercase;letter-spacing:.06em;margin-bottom:16px;">Como começar</div></td></tr><tr><td style="font-family:Arial,sans-serif;font-size:13.5px;color:${DIM};line-height:2;"><strong style="color:${TEXT}">1.</strong> Instale a ZVM pelo link oficial disponibilizado acima<br><strong style="color:${TEXT}">2.</strong> Entre com sua conta ZVM usando o mesmo e-mail da compra<br><strong style="color:${TEXT}">3.</strong> Se a licença não aparecer automaticamente, vincule a chave pelo Portal do Cliente</td></tr></table>`;
-  const portal = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0 0;"><tr><td style="border-top:1px solid ${BORDER};padding-top:22px;"><div style="font-family:Arial,sans-serif;font-size:11px;font-weight:800;color:${DIM};text-transform:uppercase;letter-spacing:.06em;margin-bottom:16px;">Gerencie sua licença</div></td></tr><tr><td>${_featureRow('📅','Validade e status','Consulte quando sua chave vence e se ela está ativa.')}${_featureRow('📱','Dispositivos conectados','Veja e gerencie os números vinculados à sua licença.')}${_featureRow('🔁','Renovação','Renove pelo portal quando o período estiver acabando.')}</td></tr><tr><td style="padding-top:6px;">${_buttonOutline(verifyUrl, portalPath === '/cliente' ? 'Acessar Portal do Cliente →' : 'Consultar minha chave →')}</td></tr></table>`;
-  const body = `<p style="margin:0 0 22px;font-size:14.5px;color:${DIM};line-height:1.7;">${escHtml(intro)}</p>${keyBox}${stats}${_buttonRow(ctas)}${steps}${portal}`;
-  return { subject: renewed ? 'ZVM — Renovação confirmada' : 'ZVM — Sua licença está pronta', html: _shell({ eyebrow: renewed ? 'Renovação confirmada' : 'Pagamento aprovado', title, bodyHtml:body, baseUrl, footNote:'Dúvidas sobre a ativação? Responda este e-mail ou chame no suporte via WhatsApp.' }) };
+function buildKeyDeliveryEmail(options = {}) {
+  // Shared transactional template; authority delivers the persisted plan and expiry.
+  return buildKeyDeliveryDesign(options);
 }
 async function sendKeyDeliveryEmail(to, opts) {
   const built = buildKeyDeliveryEmail(opts || {}); const res = await _send(built.subject, to, built.html); return res.ok;
