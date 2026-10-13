@@ -13,6 +13,11 @@ for(const [planId,maxUses,tone,color] of [
   baseUrl:'https://zvm.onrender.com',ctaPath:'/cliente'
  });
  assert.equal(built.artwork?.tone,tone);
+ for(const name of ['plan-middle','plan-right']){
+  const match=built.html.match(new RegExp('<td[^>]*background="__ZVM_SLICE_'+name+'__"[^>]*>([\\s\\S]*?)<\\/td>'));
+  assert(match,'short Gmail slice '+name+' uses optional CSS background');
+  assert(!match[1].includes('<img'),'short Gmail slice '+name+' may not render a broken image widget');
+ }
  for(const type of ['key','plan','validity'])assert(built.html.includes('data-zvm-live="'+type+'"'));
  assert.match(built.html,/bgcolor="#080e0b"/,'black native table fallback for Gmail Android');
  assert(built.html.includes('bgcolor="'+color+'"'),'plan-row cells have tone-aware native background');
