@@ -7,6 +7,9 @@ process.env.ADMIN_USER='synthetic-admin';
 process.env.ADMIN_PASS='synthetic-password';
 process.env.APP_SECRET='offline-cakto-binding-test-secret-never-production-64chars';
 process.env.MONGODB_URI='mongodb://127.0.0.1:27017/offline';
+// Public checkout v2 must be explicitly bound to a synthetic verified offer.
+process.env.ZVM_START_V2_CHECKOUT_URL='https://pay.cakto.com.br/synthetic-start-2026';
+process.env.CAKTO_START_V2_OFFER_ID='synthetic_start_offer_v2';
 const helper=require('../src/cakto-checkout-binding');
 const realLoad=Module._load;let api;
 try{
