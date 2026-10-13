@@ -64,4 +64,11 @@ assert(portal.includes('149<span>,90')&&portal.includes('Sob consulta'));
 assert(!portal.includes('data-buy-plan="start_v2"'),'legacy checkout must not leak to new site');
 const oldSale=api.resolveCaktoPlan({productName:'ZVM Solo'});
 assert.equal(oldSale.id,'solo','legacy Cakto product mapping must remain unchanged');
+assert.equal(api.resolveCaktoPlan({productName:'ZVM PRO'},{
+  legacy:{id:'pro',name:'ZVM PRO',shortName:'Pro',price:94.90},
+  modern:{id:'pro_v2',name:'ZVM PRO',shortName:'PRO',price:149.90}
+}),null,'ambiguous PRO names require a pinned offer/checkout identity');
+assert(!portal.includes('data-buy-plan="enterprise_v2"'),'Enterprise must never have a checkout');
+assert(!/<a class="plan-btn[^"]*"[^>]*>Sob consulta<\/a>/.test(site),'Enterprise is a badge, not a clickable offer');
+
 console.log('R46.62 catalogue, email, admin migration and fail-closed checkout gates PASS');
