@@ -6650,7 +6650,7 @@ function renderPlanosPage(portalUser = null) {
     const identity = PLAN_IDENTITY[plan.id] || { subtitle: '' };
     const icon = PLAN_ICONS[plan.id] || '';
     const action = isLoggedIn
-      ? `<button type="button" class="plan-btn ${popular?'plan-btn-primary':'plan-btn-outline'}" data-buy-plan="${plan.id}" data-checkout="${escHtml(plan.checkoutUrl)}" data-plan-name="${escHtml(plan.shortName)}" data-devices="${plan.maxUses}" data-duration="${plan.durationDays}" data-price="${price.whole},${price.cents}">🛒 Comprar ${escHtml(plan.shortName)}</button>`
+      ? `<button type="button" class="plan-btn ${popular?'plan-btn-primary':'plan-btn-outline'}" data-buy-plan="${plan.id}" data-checkout="${escHtml(checkoutUrlForPortal(plan.checkoutUrl,portalUser?.keyCode,portalUser?.email,APP_SECRET))}" data-plan-name="${escHtml(plan.shortName)}" data-devices="${plan.maxUses}" data-duration="${plan.durationDays}" data-price="${price.whole},${price.cents}">🛒 Comprar ${escHtml(plan.shortName)}</button>`
       : `<button type="button" class="plan-btn plan-btn-locked" data-login-plan="${plan.id}" aria-label="Entre para comprar o plano ${escHtml(plan.shortName)}">🔒 Entre para comprar</button>`;
     return `<article class="price-card${popular?' featured':''}" aria-labelledby="plan-${plan.id}" data-plan-id="${plan.id}">
       <div class="client-plan-tags">${popular?'<span class="price-badge">Mais popular</span>':''}<span class="price-suggested-tag" aria-hidden="true">Sugerido pra você</span></div>
@@ -9839,8 +9839,20 @@ async function handleRequest(req, res) {
   }
 
   if (p === '/planos' && req.method === 'GET') {
-    const _sess = isPortalSession(req) ? getPortalUser(req) : null;
-    sendPublicHtml(res, renderPlanosPage(_sess)); return;
+    const sess = isPortalSession(req) ? getPortalUser(req) : null;
+    let portalUser = null;
+    if (sess) {
+      try {
+        const db = await getMongoDb();
+        const saved = await db.collection('portal_users').findOne({ _id: sess.email }, { projection: { _id: 1, email: 1, keyCode: 1 } });
+        if (saved) portalUser = { ...sess, email: saved.email || sess.email, keyCode: saved.keyCode || null };
+        else clearSessionCookie(res, 'zv_portal');
+      } catch (error) {
+        console.error('[Portal] checkout link target indisponivel:', error.message);
+        sendPublicHtml(res, renderPortalLicenseUnavailable('plans'), 503); return;
+      }
+    }
+    sendPublicHtml(res, renderPlanosPage(portalUser)); return;
   }
 
   if (p === '/privacidade' && req.method === 'GET') {
