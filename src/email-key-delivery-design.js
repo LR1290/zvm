@@ -9,18 +9,42 @@ function expiryPtBr(value){
  const d=new Date(value);if(!Number.isFinite(d.getTime()))return 'Consulte no Portal do Cliente';
  return new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric'}).format(d);
 }
-// Exactly the approved original image is the visible HTML message. Resend
-// receives a CID attachment; Analytics receives the same JPEG as a data URI.
-function approvedArtworkHtml({subject,tone,code,plan,validity}){
- const alt='ZVM '+plan+' - Chave: '+code+' - Validade: '+validity;
- return '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">'
-  +'<meta name="viewport" content="width=device-width,initial-scale=1">'
-  +'<title>'+esc(subject)+'</title></head>'
-  +'<body style="margin:0;padding:0;background:#06110c">'
-  +'<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse">'
-  +'<tr><td align="center" style="padding:0">'
-  +'<img src="__ZVM_APPROVED_LICENSE_ARTWORK__" width="640" height="960"'
-  +' alt="'+esc(alt)+'" style="display:block;border:0;width:100%;height:auto;max-width:640px">'
+// Image fragments preserve the original artwork's visual identity, while all
+// customer-specific data is actual, selectable HTML. No personalized raster.
+function approvedArtworkHtml({subject,tone,code,plan,validity,portal,extension,renewed,maxUses}){
+ const light=tone==='pro',gold=tone==='enterprise',accent=gold?'#ffd06a':'#00e993';
+ const surface=light?'#f1f7f3':'#061810',ink=light?'#0b2a1e':'#f8fff9',muted=light?'#466457':'#b2d3c1';
+ const keyText=esc(code),planText=esc(plan),validityText=esc(validity);
+ const keyPortal=esc(portal.replace(/#.*$/,'')+'#copy-license-key');
+ const count=Number.isSafeInteger(Number(maxUses))&&Number(maxUses)>0?' · '+Number(maxUses)+' acesso(s)':'';
+ const top='<img src="__ZVM_ART_HEADER__" width="640" alt="ZVM '+planText+' — '+(renewed?'Renovação':'Pagamento aprovado')+'" style="display:block;border:0;width:100%;height:auto;max-width:640px">';
+ const bottom='<img src="__ZVM_ART_FOOTER__" width="640" alt="Como começar e gerenciar a sua licença ZVM" style="display:block;border:0;width:100%;height:auto;max-width:640px">';
+ const frame='border:1px solid '+accent+';border-radius:12px;';
+ const btn='display:block;text-align:center;text-decoration:none;font-family:Arial,sans-serif;font-weight:800;font-size:14px;line-height:1.35;padding:15px 8px;border-radius:10px;';
+ const field='background:'+(light?'#fff':'#081b14')+';'+frame+'padding:14px 16px;';
+ const heading='color:'+muted+';font-size:11px;font-weight:800;letter-spacing:1px;font-family:Arial,sans-serif;';
+ return '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(subject)+'</title></head>'
+  +'<body style="margin:0;padding:0;background:#040e0b;color:'+ink+';font-family:Arial,Helvetica,sans-serif">'
+  +'<table width="100%" role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background:#040e0b"><tr><td align="center" style="padding:12px 0 24px">'
+  +'<table width="640" role="presentation" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;border-collapse:collapse;background:'+surface+'"><tr><td>'+top+'</td></tr>'
+  +'<tr><td style="background:'+surface+';padding:12px 20px 22px">'
+  +'<p style="font-size:13px;line-height:1.5;color:'+muted+';text-align:center;margin:0 0 16px">'+(renewed?'Renovação confirmada — confira seus dados de acesso.':'A sua licença está pronta — selecione e copie a chave abaixo.')+'</p>'
+  +'<table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td style="'+field+'">'
+  +'<div style="'+heading+'">CHAVE DE ATIVAÇÃO</div>'
+  +'<div style="color:'+ink+';text-align:center;font:800 20px/1.5 Consolas,Menlo,monospace;overflow-wrap:anywhere;word-break:break-word;padding:8px 0" data-zvm-live="key">'+keyText+'</div>'
+  +'<div style="font-size:12px;color:'+muted+';text-align:center">Chave em texto: selecione e copie com o mouse ou toque prolongado.</div>'
+  +'</td></tr></table>'
+  +'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:12px 0;border-collapse:separate;border-spacing:0"><tr>'
+  +'<td width="50%" style="vertical-align:top;padding:0 6px 0 0"><div style="'+field+'"><div style="'+heading+'">PLANO</div><div data-zvm-live="plan" style="font:800 17px/1.5 Arial,sans-serif;color:'+ink+';overflow-wrap:anywhere">'+planText+esc(count)+'</div></div></td>'
+  +'<td width="50%" style="vertical-align:top;padding:0 0 0 6px"><div style="'+field+'"><div style="'+heading+'">VALIDADE</div><div data-zvm-live="validity" style="font:800 17px/1.5 Arial,sans-serif;color:'+ink+'">'+validityText+'</div></div></td>'
+  +'</tr></table>'
+  +'<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>'
+  +'<td width="50%" style="padding:0 6px 0 0"><a href="'+keyPortal+'" style="'+btn+'background:'+accent+';color:#072315">COPIAR CHAVE NO PORTAL ↗</a></td>'
+  +'<td width="50%" style="padding:0 0 0 6px"><a href="'+esc(portal)+'" style="'+btn+'border:1px solid '+accent+';color:'+ink+'">ACESSAR PAINEL ↗</a></td>'
+  +'</tr></table>'
+  +'<p style="margin:13px 0 3px;text-align:center;font-size:12px;line-height:1.5;color:'+muted+'">O primeiro botão abre seu Portal seguro para copiar a chave. Não é possível executar a cópia automática dentro do e-mail.</p>'
+  +'<p style="text-align:center;font-size:12px;margin:10px 0"><a style="color:'+accent+';text-decoration:underline" href="'+esc(extension)+'">Instalar a ZVM</a></p>'
+  +'</td></tr><tr><td>'+bottom+'</td></tr></table>'
   +'</td></tr></table></body></html>';
 }
 
@@ -45,7 +69,7 @@ function buildKeyDeliveryDesign({code,planId,planLabel,maxUses,expiresAt,renewed
  if(!info.ambiguous && ['start','pro','enterprise'].includes(tone)){
   const art={tone,code:String(code||'').trim().slice(0,80),plan:info.label,validity:expiryPtBr(expiresAt)};
   const plainText='ZVM — '+(renewed?'Renovação confirmada':'Sua licença está pronta')+'\n\nChave: '+art.code+'\nPlano: '+art.plan+'\nValidade: '+art.validity+'\nPortal: '+portal+'\nInstalar: '+extension;
-  return {subject,html:approvedArtworkHtml({subject,tone,...art}),text:plainText,artwork:art,classification:info};
+  return {subject,html:approvedArtworkHtml({subject,tone,...art,portal,extension,renewed,maxUses}),text:plainText,artwork:art,classification:info};
  }
  const html='<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
  +'<title>'+esc(subject)+'</title></head><body style="margin:0;padding:0;background:'+base+';font-family:Arial,Helvetica,sans-serif;">'
