@@ -6043,31 +6043,36 @@ ${noKeySection}
 
 
 function renderStandalonePortalPlans(user, keyData){
-  const currentMax=Number(keyData?.maxUses||0);
-  const cards=Object.values(ZVM_PLANS).map(plan=>{
+  const currentPlanId=String(keyData?.planId||'');
+  const cards=Object.values(ZVM_PUBLIC_PLANS).map(plan=>{
     const price=formatPlanPrice(plan.price);
-    const perDevice=(plan.price/plan.maxUses).toFixed(2).replace('.',',');
-    const popular=plan.id==='padrao';
-    const isCurrent=currentMax===plan.maxUses;
-    const identity=PLAN_IDENTITY[plan.id]||{subtitle:''};
+    const perDevice=plan.consult?'':(plan.price/plan.maxUses).toFixed(2).replace('.',',');
+    const popular=plan.id==='pro_v2';
+    const isCurrent=currentPlanId===plan.id;
+    const identity=PLAN_IDENTITY[plan.id]||{subtitle:plan.subtitle||''};
+    const action = plan.consult
+      ? '<a class="plan-btn plan-btn-outline" href="'+escHtml(ZVM_SUPPORT_URL)+'" target="_blank" rel="noopener noreferrer">Sob consulta</a>'
+      : !plan.enabled
+        ? '<button type="button" class="plan-btn plan-btn-outline" disabled title="Aguardando liberação do checkout Cakto">Compra indisponível no momento</button>'
+        : '<button type="button" class="plan-btn '+(popular?'plan-btn-primary':'plan-btn-outline')+'" data-buy-plan="'+plan.id+'" data-checkout="'+escHtml(checkoutUrlForPortal(plan.checkoutUrl,user?.keyCode,user?.email,APP_SECRET))+'" data-plan-name="'+escHtml(plan.shortName)+'" data-devices="'+plan.maxUses+'" data-duration="'+plan.durationDays+'" data-price="'+price.whole+','+price.cents+'">'+(isCurrent?'Renovar este plano':'Escolher este plano')+'</button>';
     return `<article class="price-card${popular?' featured':''}${isCurrent?' current-plan':''}" aria-labelledby="client-plan-${plan.id}" data-plan-id="${plan.id}">
-      <div class="client-plan-tags">${isCurrent?'<span class="price-suggested-tag current-plan-tag">Plano atual</span>':''}${popular?'<span class="price-badge">Mais popular</span>':''}</div>
+      <div class="client-plan-tags">${isCurrent?'<span class="price-suggested-tag current-plan-tag">Plano atual</span>':''}${popular?'<span class="price-badge">Mais popular</span>':''}${plan.consult?'<span class="price-badge">Sob consulta</span>':''}</div>
       <span class="price-icon" aria-hidden="true">${PLAN_ICONS[plan.id]||''}</span>
       <h2 class="price-tier" id="client-plan-${plan.id}">${escHtml(plan.shortName)}</h2>
       <p class="price-subtitle">${escHtml(identity.subtitle||'')}</p>
       <p class="price-devices">${plan.maxUses===1?'1 número':`Até ${plan.maxUses} números`} de WhatsApp</p>
-      <div class="price-val"><sup>R$</sup>${price.whole}<span>,${price.cents}</span><sub>/30 dias</sub></div>
-      <p class="price-per${plan.maxUses>1?' price-per-strong':''}">R$ ${perDevice} por número</p>
+      <div class="price-val">${plan.consult?'Sob consulta':`<sup>R$</sup>${price.whole}<span>,${price.cents}</span><sub>/mês</sub>`}</div>
+      <p class="price-per${plan.maxUses>1?' price-per-strong':''}">${plan.consult?'Implantação empresarial personalizada':'R$ '+perDevice+' por número'}</p>
       <div class="price-divider"></div>
       <ul class="price-feats"><li><span class="chk">✓</span>Todos os recursos inclusos</li><li><span class="chk">✓</span>${plan.durationDays} dias de acesso</li><li><span class="chk">✓</span>Entrega automática por e-mail</li><li><span class="chk">✓</span>Renovação e troca pelo portal</li></ul>
-      <button type="button" class="plan-btn ${isCurrent||popular?'plan-btn-primary':'plan-btn-outline'}" data-buy-plan="${plan.id}" data-checkout="${escHtml(checkoutUrlForPortal(plan.checkoutUrl,user?.keyCode,user?.email,APP_SECRET))}" data-plan-name="${escHtml(plan.shortName)}" data-devices="${plan.maxUses}" data-duration="${plan.durationDays}" data-price="${price.whole},${price.cents}">${isCurrent?'Renovar este plano':'Escolher este plano'}</button>
+      ${action}
     </article>`;
   }).join('');
   const needPicker=`<div class="need-picker" role="radiogroup" aria-labelledby="client-need-picker-label"><p class="need-picker-label" id="client-need-picker-label">Quantos números você precisa conectar?</p><div class="need-options">${NEED_OPTIONS.map(opt=>`<label class="need-opt"><input type="radio" name="need" value="${opt.planId}"><span>${opt.label}</span></label>`).join('')}</div></div>`;
   const modal=`<dialog class="checkout-dialog" aria-labelledby="checkout-title"><div class="dialog-inner"><div class="modal-icon" aria-hidden="true">↗</div><h2 id="checkout-title">Confirmar plano</h2><div class="modal-plan-summary"><div class="modal-plan-name" id="modal-plan-name">—</div><div class="modal-plan-meta" id="modal-plan-meta">—</div><div class="modal-plan-price" id="modal-plan-price">—</div></div><div class="modal-account"><span class="modal-account-label">Compra vinculada à conta</span><strong class="modal-email">${escHtml(user?.email||'')}</strong></div><p class="modal-hint">Use este mesmo e-mail na página de pagamento para que sua licença seja ativada ou renovada automaticamente.</p><div class="modal-actions"><button type="button" class="modal-cancel">Voltar</button><a class="modal-continue" href="#" target="_blank" rel="noopener noreferrer">Continuar para pagamento →</a></div></div></dialog>`;
   const body=`<div class="client-shell">${renderClientPortalRail('plans')}<main id="main-content" class="client-main client-plans-main" tabindex="-1">
     <div class="dash-topbar"><div class="dash-page-heading"><span>Minha ZVM</span><strong>Renovações e planos</strong></div><div class="dash-topbar-user">${renderClientAccountIdentity(user)}<a href="/cliente/logout" class="dash-logout">Sair da conta</a></div></div>
-    <section class="client-plans-public-style"><header class="client-plans-public-head client-plan-intro"><span>Renove ou altere seu plano</span><h1>Escolha o plano ideal</h1><p>Os recursos são os mesmos. Escolha quantos números deseja conectar.</p></header>${needPicker}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section><p class="plans-footnote">Precisa de mais de 10 números? <a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Falar com suporte</a></p></section>
+    <section class="client-plans-public-style"><header class="client-plans-public-head client-plan-intro"><span>Renove ou altere seu plano</span><h1>Escolha o plano ideal</h1><p>START para começar, PRO para a operação completa e ENTERPRISE sob consulta.</p></header>${needPicker}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section><p class="plans-footnote">Precisa de mais de 10 números? <a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Falar com suporte</a></p></section>
     ${modal}<script src="/assets/zvm-plans.26a755b1251d.js" defer></script>
   </main></div>`;
   return renderPortalPage(body,'ZVM — Renovações e Planos','',_CSS_PLANS);
