@@ -31,7 +31,8 @@ for(const row of [{id:'solo',name:'SOLO'},{id:'padrao',name:'START'},{id:'pro',n
  if(letter.artwork){
    assert.equal(letter.artwork.validity,'14/11/2026','actual expiry in Sao Paulo');
    assert.equal(letter.artwork.code,'zv-synthetic-key-1234');
-   assert.match(letter.html,/__ZVM_APPROVED_LICENSE_ARTWORK__/,'approved artwork required');
+   assert.match(letter.html,/__ZVM_ART_HEADER__/,'approved artwork fragments required');
+   assert.match(letter.html,/data-zvm-live="key"/,'live selectable key field');
    assert(!letter.html.includes('font-size:43px'),'must not silently reuse old generic HTML');
  }else{
    assert.match(letter.html,/14\/11\/2026/,'SOLO fallback preserves stored expiry');

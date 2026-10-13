@@ -1,0 +1,19 @@
+/* R46.68 dedicated lab layout: keeps existing Analytics theme untouched. */
+#lab-sec .lab-modes{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 16px}
+#lab-sec .lab-modes button{background:#091a13;border:1px solid #244337;color:#b1d6c1;border-radius:11px;padding:12px 20px;cursor:pointer;font-size:14px;font-weight:800}
+#lab-sec .lab-modes button.is-active{color:#70ffb6;background:#133a2a;border-color:#12ca7c}
+#lab-sec .lab-modes button:focus-visible{outline:2px solid #13d789;outline-offset:3px}
+#lab-sec .lab-mode-pane[hidden]{display:none!important}
+#lab-sec .lab-mode-pane{max-width:100%}
+#lab-sec .lab-mail-grid{display:grid;grid-template-columns:minmax(280px,0.8fr) minmax(330px,1.2fr);gap:16px;align-items:start}
+#lab-sec .lab-pane-card{min-width:0;border:1px solid #23352e;border-radius:15px;padding:18px;background:#0a1410}
+#lab-sec .lab-pane-card h3{color:#edfff2;font-size:17px;margin:0 0 9px}
+#lab-sec .lab-pane-card p.lab-hint{font-size:13px;color:#9eb9ab;line-height:1.5;margin:0 0 18px}
+#lab-sec .lab-mail-preview{min-height:480px}
+#lab-sec .lab-mail-preview .lab-iframe{height:650px;margin-top:10px}
+#lab-sec .lab-mail-summary{font-size:13px;font-weight:700;padding:12px;border-radius:9px;color:#64e5aa;background:#0f291e;border:1px solid #24533c;margin:10px 0}
+#lab-sec .lab-email-tip{font-size:12px;color:#a4b8ae;line-height:1.5;margin:7px 0 12px}
+#lab-sec .lab-sale-pane{max-width:880px}
+#lab-sec .lab-actions{flex-wrap:wrap}
+@media(max-width:950px){#lab-sec .lab-mail-grid{grid-template-columns:1fr}}
+@media(max-width:540px){#lab-sec .lab-pane-card{padding:12px}#lab-sec .lab-modes button{flex:1;min-width:125px}}

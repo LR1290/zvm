@@ -5,7 +5,7 @@ const path=require('node:path');
 const crypto=require('node:crypto');
 const sharp=require('sharp');
 const {buildKeyDeliveryEmail,prepareKeyDeliveryArtwork}=require('../mailer');
-const {rasterizeLicenseArtwork,PLAN,PLACEHOLDER}=require('../src/email-license-artwork');
+const {PLAN,HEADER,FOOTER,prepareKeyDeliveryArtwork:prepare}=require('../src/email-license-artwork');
 const digest=b=>crypto.createHash('sha256').update(b).digest('hex');
 const expected=Object.freeze({
  start:'db2f32248d60f41e78ae0f7cf8675d25a550402671068f6311dc5efa0404a7fa',
@@ -28,26 +28,35 @@ const expected=Object.freeze({
   assert.equal(built.artwork?.validity,'14/11/2026');
   assert.equal(built.artwork?.code,'ZV-DEMO-4567-8901');
   assert(built.text?.includes('ZV-DEMO-4567-8901'),'plaintext fallback must keep key copyable');
-  assert(built.html.includes(PLACEHOLDER),'approved image is mandatory');
-  assert(!built.html.includes('font-size:43px'),'old HTML template must not be returned');
+  assert(built.html.includes(HEADER)&&built.html.includes(FOOTER),'decorative art fragments are mandatory');
+  assert(!built.html.includes('font-size:43px'),'old generic email must not reappear');
+  for(const [field,val] of [['key','ZV-DEMO-4567-8901'],['plan',built.artwork.plan],['validity','14/11/2026']]){
+    assert(built.html.includes('data-zvm-live="'+field+'"'),'must be live HTML field '+field);
+    assert(built.html.includes(val),'must be copyable: '+field);
+  }
+  assert(built.html.includes('COPIAR CHAVE NO PORTAL'),'copy CTA is live HTML link');
+  assert(!built.html.includes('<script'),'no scripts in emails');
   const preview=await prepareKeyDeliveryArtwork(built,{preview:true});
   const delivery=await prepareKeyDeliveryArtwork(built,{preview:false});
-  const dataUri=/data:image\/jpeg;base64,([A-Za-z0-9+/=]+)/.exec(preview.html);
-  assert(dataUri,'preview contains raster of approved original');
-  const jpeg=Buffer.from(dataUri[1],'base64');
-  const meta=await sharp(jpeg).metadata();
-  assert.equal(meta.width,1024);assert.equal(meta.height,1536);assert.equal(meta.format,'jpeg');
-  assert.equal(delivery.attachments.length,1);
-  assert(delivery.html.includes('cid:'+delivery.attachments[0].content_id));
-  assert.equal(digest(Buffer.from(delivery.attachments[0].content,'base64')),digest(jpeg),'same composed image preview and email');
+  const dataUris=Array.from(preview.html.matchAll(/data:image\/jpeg;base64,([A-Za-z0-9+/=]+)/g));
+  assert.equal(dataUris.length,2,'top and footer are the only inline art fragments');
+  const widths=[];
+  for(const match of dataUris){const buf=Buffer.from(match[1],'base64');const meta=await sharp(buf).metadata();widths.push(meta.width);assert(meta.height<1536,'no full license JPG');}
+  assert.deepEqual(widths,[1024,1024]);
+  assert.equal(delivery.attachments.length,2);
+  for(let i=0;i<2;i++){
+   assert(delivery.html.includes('cid:'+delivery.attachments[i].content_id));
+   assert.equal(digest(Buffer.from(delivery.attachments[i].content,'base64')),digest(Buffer.from(dataUris[i][1],'base64')),'same art fragment preview and email');
+  }
   assert(!delivery.html.includes('data:image/jpeg;base64,'));
+  assert(!delivery.attachments.some(x=>x.filename.includes('licenca')),'do not send a rasterized license');
  }
- await assert.rejects(rasterizeLicenseArtwork({tone:'unknown',code:'x',plan:'x',validity:'x'}),/artwork_tone_invalid/);
- await assert.rejects(prepareKeyDeliveryArtwork({html:'<p>old mail</p>',artwork:{tone:'start'}}),/approved_license_artwork_slot_missing/);
+ await assert.rejects(prepare({html:'<p>old mail</p>',artwork:{tone:'unknown'}}),/approved_artwork_slot_missing/);
+ await assert.rejects(prepare({html:HEADER+FOOTER,artwork:{tone:'unknown'}}),/approved_artwork_tone_invalid/);
  const safe=buildKeyDeliveryEmail({planId:'padrao',maxUses:3,code:'<script>alert(1)</script>',expiresAt:'2026-11-14T03:00:00.000Z'});
  assert(!safe.html.includes('<script>'),'XSS in template denied');
  assert(safe.html.includes('&lt;script&gt;'),'alt must escape user input');
  const plain=await prepareKeyDeliveryArtwork({html:'<p>Reset password</p>'});
  assert.equal(plain.html,'<p>Reset password</p>');assert.equal(plain.attachments.length,0);
- console.log('R46.67 original-art SHA256 + preview/CID parity + no-old-fallback checks PASS');
+ console.log('R46.68 live HTML fields + original artwork fragments + preview/CID parity PASS');
 })().catch(err=>{console.error(err);process.exitCode=1;});
