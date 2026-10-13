@@ -62,6 +62,10 @@ assert(!site.includes('data-buy-plan="start_v2"'),'unconfigured checkout must be
 const portal=api.renderPortalPlans({email:'example@example.com'},{planId:'solo',maxUses:1});
 assert(portal.includes('149<span>,90')&&portal.includes('Sob consulta'));
 assert(!portal.includes('data-buy-plan="start_v2"'),'legacy checkout must not leak to new site');
+assert(portal.includes('Renovar contrato anterior'),'legacy subscribers retain checkout while the new catalog has disabled checkout');
+assert(portal.includes('https://pay.cakto.com.br/7kzktq2_1000035'),'legacy SOLO keeps its own price and checkout');
+assert(!api.renderPortalPlans({email:'example@example.com'},{planId:'start_v2',maxUses:1}).includes('Renovar contrato anterior'),'v2 plans never silently fallback to old checkout');
+
 const oldSale=api.resolveCaktoPlan({productName:'ZVM Solo'});
 assert.equal(oldSale.id,'solo','legacy Cakto product mapping must remain unchanged');
 assert.equal(api.resolveCaktoPlan({productName:'ZVM PRO'},{
