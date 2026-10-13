@@ -68,6 +68,7 @@ const {
 const { validateRuntimeSecurityConfig } = require('./runtime-config');
 const { loadDevBuildSigningConfig, createDevBuildSigningService } = require('./dev-build-signing');
 const { resolveExtensionCorsOrigin } = require('./extension-origin-policy');
+const { checkoutUrlForPortal, readCheckoutBinding, isZvmCheckoutBinding } = require('./src/cakto-checkout-binding');
 const {
   LegacyV3Shield,
   legacyKeyStateSignature,
@@ -384,6 +385,7 @@ async function loadDb(opts = {}) {
       await db.collection('commercial_tx_claims').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0, background: true });
       await db.collection('worker_locks').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0, background: true });
       await db.collection('payments').createIndex({ txNamespace: 1, txId: 1, approved: 1 }, { background: true });
+      await db.collection('payments').createIndex({ subscriptionId: 1, paidAt: -1 }, { background: true });
       await db.collection('payments').createIndex({ commercialTxKey: 1 }, { unique: true, sparse: true, background: true });
       await db.collection('cakto_mail_outbox').createIndex({ status: 1, nextAttemptAt: 1, createdAt: 1 }, { background: true });
       await db.collection('cakto_mail_outbox').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0, background: true });
@@ -1504,6 +1506,8 @@ function normalizeCaktoPurchase(payload) {
     offerName: safeScalar(offer.name, 200),
     offerType: safeScalar(data.offer_type, 40).toLowerCase(),
     parentOrder: safeScalar(data.parent_order, 120),
+    subscriptionId: safeScalar(data.subscription?.id, 128),
+    checkoutBinding: safeScalar(data.sck || data.tracking?.sck || payload.sck, 640),
     checkoutUrl: normalizeCheckoutUrl(data.checkoutUrl),
     amount: numberOrNull(data.amount),
     baseAmount: numberOrNull(data.baseAmount),
@@ -3296,8 +3300,38 @@ async function _processCommercialSaleUnlocked(sale, plan, deps = {}) {
   }
 
   let existingCode = null;
+  let targetSource = 'payer_email';
+  let boundOwnerEmail = '';
+  const claimToken = safeScalar(sale.checkoutBinding, 640);
+  if (isZvmCheckoutBinding(claimToken)) {
+    const binding = readCheckoutBinding(claimToken, APP_SECRET, now.getTime());
+    if (!binding) throw Object.assign(new Error('cakto_checkout_binding_invalid'), { code: 'cakto_checkout_binding_invalid' });
+    const boundUser = await findPortalUser(binding.ownerEmail);
+    if (!boundUser || boundUser.keyCode !== binding.keyCode) {
+      throw Object.assign(new Error('cakto_checkout_binding_ownership_changed'), { code: 'cakto_checkout_binding_ownership_changed' });
+    }
+    if (!keyStore[binding.keyCode] && !deps.keyStore) await ensureKeyLoaded(binding.keyCode);
+    if (!keyStore[binding.keyCode]) throw Object.assign(new Error('cakto_checkout_binding_key_missing'), { code: 'cakto_checkout_binding_key_missing' });
+    existingCode = binding.keyCode;
+    targetSource = 'portal_checkout';
+    boundOwnerEmail = binding.ownerEmail;
+  }
+  if (!existingCode && sale.subscriptionId && !sale.testMode) {
+    const prev = typeof deps.findPaymentBySubscription === 'function'
+      ? await deps.findPaymentBySubscription(sale.subscriptionId)
+      : await db.collection('payments').findOne(
+        { source: 'cakto', subscriptionId: sale.subscriptionId, approved: true, testMode: { $ne: true } },
+        { sort: { paidAt: -1 }, projection: { keyCode: 1 } }
+      );
+    if (prev?.keyCode) {
+      if (!keyStore[prev.keyCode] && !deps.keyStore) await ensureKeyLoaded(prev.keyCode);
+      if (!keyStore[prev.keyCode]) throw Object.assign(new Error('cakto_subscription_target_missing'), { code: 'cakto_subscription_target_missing' });
+      existingCode = prev.keyCode;
+      targetSource = 'subscription_history';
+    }
+  }
   const portalUser = await findPortalUser(clientEmail);
-  if (portalUser?.keyCode) {
+  if (!existingCode && portalUser?.keyCode) {
     if (!keyStore[portalUser.keyCode] && !deps.keyStore) await ensureKeyLoaded(portalUser.keyCode);
     if (keyStore[portalUser.keyCode]) existingCode = portalUser.keyCode;
   }
@@ -3395,11 +3429,14 @@ async function _processCommercialSaleUnlocked(sale, plan, deps = {}) {
   }
   if (typeof deps.reportCommercialPhase === 'function') await deps.reportCommercialPhase('license_persisted', { keyCode });
   await assertCommercialAuthority('link_portal');
-  await linkPortalUser(clientEmail, keyCode);
+  // Um pagamento por terceiro não pode deslocar a licença vinculada à conta do pagador.
+  const canLinkPayer = (!boundOwnerEmail || boundOwnerEmail === clientEmail)
+    && (targetSource !== 'subscription_history' || !portalUser?.keyCode || portalUser.keyCode === keyCode);
+  if (canLinkPayer) await linkPortalUser(clientEmail, keyCode);
   if (typeof deps.reportCommercialPhase === 'function') await deps.reportCommercialPhase('portal_linked', { keyCode });
   await assertCommercialAuthority('save_payment');
   await paymentSaver({
-    source: sale.source || 'cakto', txNamespace: commercialTxNamespace(sale), commercialTxKey: sale.testMode ? undefined : caktoPaymentTxKey(sale.txId), testMode: !!sale.testMode, txId: sale.txId, refId: sale.refId || '',
+    source: sale.source || 'cakto', txNamespace: commercialTxNamespace(sale), commercialTxKey: sale.testMode ? undefined : caktoPaymentTxKey(sale.txId), testMode: !!sale.testMode, txId: sale.txId, refId: sale.refId || '', subscriptionId: sale.subscriptionId || '',
     offerId: sale.offerId || '', productId: sale.productId || '',
     checkoutUrl: sale.checkoutUrl || '', status: 'approved', approved: true,
     clientName: sale.clientName, clientEmail, clientPhone: sale.clientPhone,
@@ -3907,6 +3944,7 @@ function compactCaktoPurchaseForQueue(purchase) {
     clientPhone: purchase.clientPhone || '', productId: purchase.productId || '', productShortId: purchase.productShortId || '',
     productName: purchase.productName || '', offerId: purchase.offerId || '', offerName: purchase.offerName || '',
     offerType: purchase.offerType || '', parentOrder: purchase.parentOrder || '', checkoutUrl: purchase.checkoutUrl || '',
+    subscriptionId: purchase.subscriptionId || '', checkoutBinding: purchase.checkoutBinding || '',
     amount: purchase.amount, baseAmount: purchase.baseAmount, offerPrice: purchase.offerPrice, discount: purchase.discount,
     currency: purchase.currency || '', amountRawType: purchase.amountRawType || '', paymentMethod: purchase.paymentMethod || '',
     paidAt: purchase.paidAt || '', couponCode: purchase.couponCode || '', tracking: purchase.tracking || null,
@@ -6018,7 +6056,7 @@ function renderStandalonePortalPlans(user, keyData){
       <p class="price-per${plan.maxUses>1?' price-per-strong':''}">R$ ${perDevice} por número</p>
       <div class="price-divider"></div>
       <ul class="price-feats"><li><span class="chk">✓</span>Todos os recursos inclusos</li><li><span class="chk">✓</span>${plan.durationDays} dias de acesso</li><li><span class="chk">✓</span>Entrega automática por e-mail</li><li><span class="chk">✓</span>Renovação e troca pelo portal</li></ul>
-      <button type="button" class="plan-btn ${isCurrent||popular?'plan-btn-primary':'plan-btn-outline'}" data-buy-plan="${plan.id}" data-checkout="${escHtml(plan.checkoutUrl)}" data-plan-name="${escHtml(plan.shortName)}" data-devices="${plan.maxUses}" data-duration="${plan.durationDays}" data-price="${price.whole},${price.cents}">${isCurrent?'Renovar este plano':'Escolher este plano'}</button>
+      <button type="button" class="plan-btn ${isCurrent||popular?'plan-btn-primary':'plan-btn-outline'}" data-buy-plan="${plan.id}" data-checkout="${escHtml(checkoutUrlForPortal(plan.checkoutUrl,user?.keyCode,user?.email,APP_SECRET))}" data-plan-name="${escHtml(plan.shortName)}" data-devices="${plan.maxUses}" data-duration="${plan.durationDays}" data-price="${price.whole},${price.cents}">${isCurrent?'Renovar este plano':'Escolher este plano'}</button>
     </article>`;
   }).join('');
   const needPicker=`<div class="need-picker" role="radiogroup" aria-labelledby="client-need-picker-label"><p class="need-picker-label" id="client-need-picker-label">Quantos números você precisa conectar?</p><div class="need-options">${NEED_OPTIONS.map(opt=>`<label class="need-opt"><input type="radio" name="need" value="${opt.planId}"><span>${opt.label}</span></label>`).join('')}</div></div>`;
