@@ -1433,14 +1433,6 @@ function renderTrackingChips(k) {
   return `<div class="trk">${t.src?`<span class="trk-chip trk-src">🎯 ${escHtml(t.src)}</span>`:''}${t.medium?`<span class="trk-chip trk-med">📡 ${escHtml(t.medium)}</span>`:''}${t.campaign?`<span class="trk-chip trk-camp">📣 ${escHtml(t.campaign)}</span>`:''}${(!t.src&&t.ref)?`<span class="trk-chip trk-ref">🔗 ${escHtml(t.ref)}</span>`:''}</div>`;
 }
 
-function planLabelForMaxUses(n) {
-  if (n === 1) return 'Solo';
-  if (n === 3) return 'Padrão';
-  if (n === 5) return 'Pro';
-  if (n === 10) return 'Empresarial';
-  return `${n} número(s)`;
-}
-
 function isPlainRecord(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
@@ -5617,7 +5609,7 @@ const ZVM_FAQ_ITEMS = [
   ['Como recebo minha licença depois da compra?', 'Assim que o pagamento é aprovado, sua chave é gerada e enviada automaticamente por e-mail. Você também acompanha tudo pelo painel Minha Conta.'],
   ['Preciso criar uma conta antes de comprar?', 'Não é obrigatório, mas é recomendado: entrando antes da compra, sua chave é vinculada automaticamente à sua conta. Sem login, você recebe a chave só por e-mail.'],
   ['Como instalar e acessar a ZVM?', 'Use sempre o link oficial disponibilizado pela ZVM, instale a extensão no navegador compatível e entre com sua conta. Se a licença ainda não estiver vinculada, faça a vinculação pelo Portal do Cliente.'],
-  ['Quantos números posso usar?', 'Depende do seu plano: Solo permite 1 número, Padrão 3, Pro 5 e Empresarial até 10.'],
+  ['Quantos números posso usar?', 'Nos novos planos, START oferece 1 acesso e PRO oferece até 3. ENTERPRISE é sob consulta e não está disponível para compra automática. Contratos anteriores preservam seus limites.'],
   ['Como renovo minha licença?', 'No portal, acesse "Renovar / Alterar Plano" e conclua a compra pela Cakto — a renovação é aplicada automaticamente à sua chave.'],
   ['Posso alterar meu plano?', 'Sim. Escolha outro plano em Planos; a chave existente passa a usar o novo limite de dispositivos.'],
   ['Onde vejo a validade da minha licença?', 'No painel Minha Conta, nas seções "Minha licença" e "Resumo da conta".'],
@@ -7107,10 +7099,10 @@ async function renderAnalyticsDashboard(fixture = null) {
           <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:13px;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:.4px">Simular venda</div>
           <div class="lab-field"><label for="lab-plan">Plano</label>
             <select id="lab-plan">
-              <option value="solo">Solo — R$39,90 · 1 número</option>
-              <option value="padrao">Padrão — R$59,90 · 3 números</option>
-              <option value="pro">Pro — R$94,90 · 5 números</option>
-              <option value="empresarial">Empresarial — R$169,90 · 10 números</option>
+              <option value="solo">Solo (contrato anterior) — R$39,90 · 1 número</option>
+              <option value="padrao">Padrão (contrato anterior) — R$59,90 · 3 números</option>
+              <option value="pro">Pro (contrato anterior) — R$94,90 · 5 números</option>
+              <option value="empresarial">Empresarial (contrato anterior) — R$169,90 · 10 números</option>
             </select>
           </div>
           <div class="lab-field"><label for="lab-type">Tipo</label>
