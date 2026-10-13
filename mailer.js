@@ -62,6 +62,7 @@ function _send(subject, to, html) {
     // Gmail e outros webmails não renderizam data: URI em <img> de forma
     // confiável. A prévia HTML continua usando o data URI, mas no envio real
     // o logo é convertido para uma imagem inline CID suportada pelo Resend.
+    const hasBrandImage = safeHtml.includes(ZVM_BRAND_ICON_DATA_URI);
     const outboundHtml = safeHtml.split(ZVM_BRAND_ICON_DATA_URI).join(`cid:${ZVM_BRAND_ICON_CID}`);
     const replyTo = String(process.env.EMAIL_REPLY_TO || '').trim();
     const category = /Redefinição de senha/i.test(safeSubject) ? 'password_reset'
@@ -74,17 +75,12 @@ function _send(subject, to, html) {
       to: [addr],
       subject: safeSubject,
       html: outboundHtml,
-      attachments: [{
-        content: ZVM_BRAND_ICON_BASE64,
-        filename: 'zvm-logo.png',
-        content_type: 'image/png',
-        content_id: ZVM_BRAND_ICON_CID,
-      }],
       tags: [
         { name: 'source', value: 'zvm_transactional' },
         { name: 'type', value: category },
       ],
     };
+    if (hasBrandImage) payload.attachments = [{ content: ZVM_BRAND_ICON_BASE64, filename: 'zvm-logo.png', content_type: 'image/png', content_id: ZVM_BRAND_ICON_CID }];
     if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(replyTo) && replyTo.length <= 254) payload.reply_to = replyTo;
     const body = JSON.stringify(payload);
     const req = https.request({
