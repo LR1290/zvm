@@ -5200,6 +5200,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '490813914538be2d45e08ff7ec5d8ed873fece4249a58aafb7c1d18424a1aadc',
     compressible: true,
   }),
+  '/assets/zvm-client-copy-intent.632eafe6c467.js': Object.freeze({
+    type: 'text/javascript; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-client-copy-intent.632eafe6c467.js'),
+    sha256: '632eafe6c467d991012c11a120b6b5b851ddcf21517f09d31884638d01bf32d4',
+    compressible: true,
+  }),
 
   '/assets/zvm-i18n-public.5c4469481130.css': Object.freeze({
     type: 'text/css; charset=utf-8',
@@ -5482,6 +5488,7 @@ ${extra}${body}
 </div>
 <footer class="portal-footer">© ${new Date().getFullYear()} ZVM · Todos os direitos reservados · <a href="/privacidade">Privacidade</a> · <a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener">Suporte</a></footer>
 <script src="/assets/zvm-client-dashboard.490813914538.js" defer></script>
+<script src="/assets/zvm-client-copy-intent.632eafe6c467.js" defer></script>
 ${_SCRIPT_PWD_TOGGLE}
 </body></html>`;
 }
@@ -10054,7 +10061,7 @@ async function handleRequest(req, res) {
 
   if (p === '/cliente' || p === '/cliente/') {
     const requestedRedirect = safeLocalRedirect(url.searchParams.get('redir') || '');
-    if (!isPortalSession(req)) { sendAuthHtml(res, renderStandalonePortalLogin('', requestedRedirect)); return; }
+    if (!isPortalSession(req)) { sendAuthHtml(res, renderStandalonePortalLogin('', url.searchParams.get('copy') === '1' ? '/cliente?copy=1' : requestedRedirect)); return; }
     if (requestedRedirect && requestedRedirect !== '/cliente') { res.writeHead(302, { Location: requestedRedirect }); res.end(); return; }
     const sess = getPortalUser(req);
     try {
