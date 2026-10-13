@@ -27,7 +27,9 @@ assert(claim&&claim.startsWith('zvm1_'));
 assert(!claim.includes(target)&&!claim.includes(owner));
 assert.deepEqual(helper.readCheckoutBinding(claim,process.env.APP_SECRET,fixed+1000),{keyCode:target,ownerEmail:owner});
 assert.equal(helper.readCheckoutBinding(claim,process.env.APP_SECRET,fixed+46*86400000),null);
-assert.equal(helper.readCheckoutBinding(claim.slice(0,-1)+'A',process.env.APP_SECRET,fixed+10),null);
+const tamperedClaim=claim.slice(0,24)+(claim[24]==='A'?'B':'A')+claim.slice(25);
+assert.notEqual(tamperedClaim,claim);
+assert.equal(helper.readCheckoutBinding(tamperedClaim,process.env.APP_SECRET,fixed+10),null);
 assert.equal(helper.checkoutUrlForPortal('https://evil.example',target,owner,process.env.APP_SECRET,fixed),'https://evil.example');
 
 for (const html of [
