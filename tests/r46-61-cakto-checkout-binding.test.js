@@ -10,6 +10,7 @@ process.env.MONGODB_URI='mongodb://127.0.0.1:27017/offline';
 // Public checkout v2 must be explicitly bound to a synthetic verified offer.
 process.env.ZVM_START_V2_CHECKOUT_URL='https://pay.cakto.com.br/synthetic-start-2026';
 process.env.CAKTO_START_V2_OFFER_ID='synthetic_start_offer_v2';
+for(const envKey of ['CAKTO_SOLO_OFFER_ID','CAKTO_PADRAO_OFFER_ID','CAKTO_PRO_OFFER_ID','CAKTO_EMPRESARIAL_OFFER_ID'])delete process.env[envKey];
 const helper=require('../src/cakto-checkout-binding');
 const realLoad=Module._load;let api;
 try{
@@ -19,6 +20,7 @@ try{
 const fixed=Date.parse('2026-10-13T12:00:00Z');
 const owner='owner@example.com',payer='payer@example.com';
 const target='zv-target-00001',other='zv-payer-00001';
+assert.equal(api.ZVM_PUBLIC_PLANS.start_v2.enabled,true,'synthetic START offer required for checkout regression');
 const url=helper.checkoutUrlForPortal(api.ZVM_PLANS.padrao.checkoutUrl,target,owner,process.env.APP_SECRET,fixed);
 const claim=new URL(url).searchParams.get('sck');
 assert(claim&&claim.startsWith('zvm1_'));
