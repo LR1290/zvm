@@ -38,7 +38,13 @@ function imageCell(name,a,tone){
  // Gmail Android shows white fallback strips around ultra-short image cells
  // unless their own TD supplies explicit bgcolor + inline background-color.
  const fallback=tone==='pro'?'#e8eeeb':tone==='enterprise'?'#020200':'#000802';
- return '<td width="'+a.w+'" bgcolor="'+fallback+'" style="padding:0;font-size:0;line-height:0;vertical-align:middle;width:'+(a.w/1024*100).toFixed(5)+'%;background-color:'+fallback+'">'+image(name,a)+'</td>';
+ // Short 20-32px strips fail as IMG on Gmail Android and become bright
+ // broken-image placeholders. Use the original as optional CSS/HTML
+ // background on a native dark/white cell; when blocked, the cell stays
+ // correctly colored without ever displaying a broken-image widget.
+ const shortGap=(name==='plan-middle'||name==='plan-right');
+ const token='__ZVM_SLICE_'+name+'__';
+ return '<td width="'+a.w+'" bgcolor="'+fallback+'"'+(shortGap?' background="'+token+'"':'')+' style="padding:0;font-size:0;line-height:0;vertical-align:middle;width:'+(a.w/1024*100).toFixed(5)+'%;background-color:'+fallback+(shortGap?';background-image:url('+token+');background-repeat:no-repeat;background-size:100% 100%':'')+'">'+(shortGap?'':image(name,a))+'</td>';
 }
 function liveCell(field,content,tone,a){
  const c=GEOMETRY[tone],token='__ZVM_SLICE_'+a.name+'__';
