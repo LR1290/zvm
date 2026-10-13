@@ -7127,8 +7127,14 @@ async function renderAnalyticsDashboard(fixture = null) {
           <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:13px;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:.4px">📧 Testar e-mail</div>
           <div class="lab-field"><label for="lab-tpl">Template</label>
             <select id="lab-tpl">
-              <option value="delivery_new">Nova licença</option>
-              <option value="delivery_renewal">Renovação</option>
+              <option value="delivery_start">START · Nova licença</option>
+              <option value="delivery_pro">PRO · Nova licença</option>
+              <option value="delivery_enterprise">ENTERPRISE · Nova licença (prévia)</option>
+              <option value="delivery_renewal_start">START · Renovação</option>
+              <option value="delivery_renewal_pro">PRO · Renovação</option>
+              <option value="delivery_renewal_enterprise">ENTERPRISE · Renovação (prévia)</option>
+              <option value="delivery_new">Nova licença (compatibilidade)</option>
+              <option value="delivery_renewal">Renovação (compatibilidade)</option>
               <option value="expiry_warning">Aviso de expiração</option>
               <option value="password_reset">Recuperação de senha</option>
             </select>
@@ -9721,10 +9727,14 @@ async function handleRequest(req, res) {
     const sampleExpiresAt = new Date(Date.now() + 30 * 86400000).toISOString();
     let built;
     try {
-      if (template === 'delivery_new') {
-        built = buildKeyDeliveryEmail({ code: 'ZV-DEMO-0000-0000', planId: 'padrao', planLabel: 'Padrão', maxUses: 3, expiresAt: sampleExpiresAt, renewed: false, baseUrl: BASE_URL, extensionUrl: EXTENSION_URL, ctaPath: '/cliente' });
-      } else if (template === 'delivery_renewal') {
-        built = buildKeyDeliveryEmail({ code: 'ZV-DEMO-0000-0000', planId: 'padrao', planLabel: 'Padrão', maxUses: 3, expiresAt: sampleExpiresAt, renewed: true, durationDays: 30, baseUrl: BASE_URL, extensionUrl: EXTENSION_URL, ctaPath: '/cliente' });
+      if (['delivery_new','delivery_renewal','delivery_start','delivery_pro','delivery_enterprise','delivery_renewal_start','delivery_renewal_pro','delivery_renewal_enterprise'].includes(template)) {
+        const tier = template.endsWith('_start') ? 'start_v2' : template.endsWith('_enterprise') ? 'enterprise_v2' : 'pro_v2';
+        const info = { start_v2: ['START',1], pro_v2: ['PRO',3], enterprise_v2: ['ENTERPRISE',10] }[tier];
+        built = buildKeyDeliveryEmail({
+          code: 'ZV-DEMO-0000-0000', planId: tier, planLabel: info[0], maxUses: info[1],
+          expiresAt: sampleExpiresAt, renewed: template.startsWith('delivery_renewal'), durationDays: 30,
+          baseUrl: BASE_URL, extensionUrl: EXTENSION_URL, ctaPath: '/cliente'
+        });
       } else if (template === 'expiry_warning') {
         built = buildKeyExpiryWarningEmail({ code: 'ZV-DEMO-0000-0000', hoursLeft: 48, planLabel: 'Padrão', maxUses: 3, expiresAt: new Date(Date.now() + 48 * 3600000).toISOString(), baseUrl: BASE_URL, ctaPath: '/cliente' });
       } else if (template === 'password_reset') {
