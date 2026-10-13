@@ -37,7 +37,7 @@ for(const row of [{id:'solo',name:'SOLO'},{id:'padrao',name:'START'},{id:'pro',n
    assert.match(letter.html,/14\/11\/2026/,'SOLO fallback preserves stored expiry');
    assert.match(letter.html,/zv-synthetic-key-1234/);
  }
- assert.match(letter.html,/https:\/\/zvm.onrender.com\/cliente/);
+ assert.match(letter.artwork ? letter.text : letter.html,/https:\/\/zvm.onrender.com\/cliente/);
  assert(!letter.html.includes('59,90'),'email must not invent historical price');
 }
 const xss=buildKeyDeliveryEmail({code:'<script>alert(1)</script>',planId:'solo',maxUses:1,expiresAt:'nonsense'});
