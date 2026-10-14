@@ -71,6 +71,7 @@ const { loadDevBuildSigningConfig, createDevBuildSigningService } = require('./d
 const { resolveExtensionCorsOrigin } = require('./extension-origin-policy');
 const { checkoutUrlForPortal, readCheckoutBinding, isZvmCheckoutBinding } = require('./src/cakto-checkout-binding');
 const { displayLicensePlan } = require('./src/commercial-plan-labels');
+const { estimatePayment, summarizeCaktoFinances, centsToBRL } = require('./src/cakto-fee-analytics');
 const { readNewCatalog } = require('./src/commercial-public-catalog');
 const {
   LegacyV3Shield,
@@ -3454,7 +3455,7 @@ async function _processCommercialSaleUnlocked(sale, plan, deps = {}) {
     checkoutUrl: sale.checkoutUrl || '', status: 'approved', approved: true,
     clientName: sale.clientName, clientEmail, clientPhone: sale.clientPhone,
     productName: sale.productName || sale.offerName || plan.name,
-    amount: sale.amount, paymentMethod: sale.paymentMethod,
+    amount: sale.amount, baseAmount: sale.baseAmount ?? null, paymentMethod: sale.paymentMethod,
     tracking: sale.tracking || null, keyCode, maxUses: plan.maxUses, renewed,
     paidAt: Number.isFinite(new Date(sale.paidAt).getTime()) ? new Date(sale.paidAt).toISOString() : now.toISOString(),
     rawStatus: sale.event,
@@ -3829,8 +3830,21 @@ async function getPaymentStats() {
     }).length;
     const churnRate = expiredKeys.length ? Math.round((churnedKeys / expiredKeys.length) * 100) : 0;
 
+    // Financial scenario uses only confirmed, real, Cakto-origin payments.
+    // Never estimate a payout/reserve from checkout totals or subtract checkout
+    // add-ons (e.g. R$0.99) as if they were Cakto settlement fees.
+    let financial = null;
+    try {
+      const financialRows=db.collection('payments').find(real,{
+        projection:{ _id:0, source:1,txNamespace:1,approved:1,testMode:1,
+          amount:1,baseAmount:1,paymentMethod:1,caktoFeeProfile:1 }
+      }).batchSize(250);
+      financial=await summarizeCaktoFinances(financialRows);
+    } catch (error) {
+      console.warn('[ANALYTICS] Modelo de taxas indisponível:',String(error?.message||'unknown').slice(0,80));
+    }
     return {
-      total, last7, last30, revenueTotal, revenueLast30, revenueLast7,
+      total, last7, last30, revenueTotal, revenueLast30, revenueLast7, financial,
       byProduct, byDay, byHour, byMethod, simCount,
       uniqueClients, returningClients, retentionRate, topClients,
       churnedKeys, churnRate, expiredKeys: expiredKeys.length,
@@ -6990,6 +7004,11 @@ async function renderAnalyticsDashboard(fixture = null) {
   const stats    = fixture?.stats || await getPaymentStats();
   const payments = fixture?.payments || await getPayments({ limit: 200 });
   const fmtBRL   = v => 'R$\u00a0' + (v||0).toFixed(2).replace('.',',');
+  const feeFmt = cents => cents===null || cents===undefined ? '—' : fmtBRL(centsToBRL(cents));
+  const finance = stats?.financial || null;
+  const financeRows = finance ? Object.values(finance.methods||{}).sort((a,b)=>b.count-a.count) : [];
+  const financeDetails = financeRows.map(x=>'<tr><td>'+escHtml(x.method.replace(/_/g,' '))+'</td><td>'+x.count+'</td><td>'+feeFmt(x.grossCents)+'</td><td>'+feeFmt(x.feeCents)+'</td><td>'+feeFmt(x.netCents)+'</td></tr>').join('');
+  const financeModelNote = 'Estimativa baseada nas condições negociadas (PIX R$1,99; PIX Automático 1,99% + R$1,99; cartão 3,99% + R$1,99). Tarifas históricas e efetivamente liquidadas precisam de conciliação com extrato da Cakto.';
   const fmtDate  = iso => iso ? new Date(iso).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
   // Usa o escHtml global: o antigo escH NÃO escapava aspas, e é usado dentro de
   // atributos (data-row="..."). Um clientName vindo do webhook com `" onmouseover=`
@@ -7004,12 +7023,15 @@ async function renderAnalyticsDashboard(fixture = null) {
   const paymentsRows = payments.length ? payments.map(p => {
     const rowSearch = [p.clientName,p.clientEmail,p.productName,p.keyCode,p.paymentMethod,p.tracking?.compact].join('|').toLowerCase();
     const isTest = !!p.testMode;
+    const feeEstimate = estimatePayment(p);
     return `<tr data-row="${escH(rowSearch)}" data-paid="${escH(p.paidAt||'')}" data-test="${isTest?1:0}">
   <td>${fmtDate(p.paidAt)}</td>
   <td>${escH(p.clientName)}</td>
   <td style="color:#6b6b8a;font-size:12px">${escH(p.clientEmail)}</td>
   <td>${escH(p.productName)}</td>
   <td style="color:${p.approved?'#00ff87':'#ff4757'};font-weight:700">${fmtBRL(p.amount)}</td>
+  <td>${feeEstimate?.feeCents===null||!feeEstimate?.eligible?'—':feeFmt(feeEstimate.feeCents)}</td>
+  <td>${feeEstimate?.netCents===null||!feeEstimate?.eligible?'—':feeFmt(feeEstimate.netCents)}</td>
   <td><span class="badge ${p.approved?'bon':'boff'}">${p.approved?'APROVADO':'REJEITADO'}</span>${isTest?' <span class="badge btest">🧪 TESTE</span>':''}</td>
   <td style="color:#4f8ef7;font-size:12px">${escH(p.keyCode||'-')}</td>
   <td>${
@@ -7018,7 +7040,7 @@ async function renderAnalyticsDashboard(fixture = null) {
       : `<span style="color:var(--muted);font-size:13px">—</span>`
   }</td>
 </tr>`;
-  }).join('') : '<tr><td colspan="8" class="empty">Nenhuma venda registrada ainda.<br><span style="opacity:.75">Novas vendas aparecerão aqui automaticamente.</span></td></tr>';
+  }).join('') : '<tr><td colspan="10" class="empty">Nenhuma venda registrada ainda.<br><span style="opacity:.75">Novas vendas aparecerão aqui automaticamente.</span></td></tr>';
 
   const topClientsRows = (stats?.topClients||[]).map(c =>
     `<tr><td>${escH(c._id)}</td><td style="text-align:center;color:#00ff87;font-weight:700">${c.count}</td><td style="text-align:right;color:#00ff87">${fmtBRL(c.total)}</td></tr>`
@@ -7082,6 +7104,7 @@ async function renderAnalyticsDashboard(fixture = null) {
     <a class="active" href="#overview">◫ Visão executiva</a>
     <a href="#performance">↗ Performance</a>
     <a href="#customers">◎ Clientes</a>
+    <a href="#cakto-financial-estimate">◈ Taxas Cakto</a>
     <a href="#payments">▤ Pagamentos</a>
   </nav>
   <div class="analytics-rail-card"><strong>Sessão protegida</strong><span>Dados reais e simulações permanecem identificados separadamente.</span></div>
@@ -7114,6 +7137,25 @@ async function renderAnalyticsDashboard(fixture = null) {
     <div class="sc"><div class="sc-icon">👥</div><div class="n blue">${stats?.uniqueClients||0}</div><div class="l">Clientes Únicos</div><div class="sub-n">${stats?.returningClients||0} recorrentes</div></div>
     <div class="sc"><div class="sc-icon">🔄</div><div class="n ${(stats?.retentionRate||0)>=30?'green':'red'}">${stats?.retentionRate||0}%</div><div class="l">Taxa Retenção</div><div class="sub-n">${stats?.returningClients||0} de ${stats?.uniqueClients||0} clientes</div></div>
   </div>
+
+  <!-- Cenário financeiro da Cakto: projeções separadas do extrato oficial. -->
+  <section class="sec" id="cakto-financial-estimate" aria-label="Estimativa de taxas da Cakto">
+    <div class="sh"><div class="st">💳 Cakto · Bruto, taxas e líquido</div></div>
+    <p style="font-size:12px;color:var(--muted);line-height:1.7;margin:10px 0 14px">${escH(financeModelNote)} Cálculos em centavos; não representam saldo sacável.</p>
+    <div class="stats2">
+      <div class="sc"><div class="sc-icon">💰</div><div class="n">${finance?feeFmt(finance.grossCents):'—'}</div><div class="l">Bruto Cakto registrado</div><div class="sub-n">Apenas pagamentos reais aprovados</div></div>
+      <div class="sc"><div class="sc-icon">🧾</div><div class="n">${finance?feeFmt(finance.estimatedFeeCents):'—'}</div><div class="l">Taxas estimadas</div><div class="sub-n">${finance?.estimatedCount||0} pagamentos modelados</div></div>
+      <div class="sc"><div class="sc-icon">📈</div><div class="n green">${finance?feeFmt(finance.estimatedNetCents):'—'}</div><div class="l">Líquido estimado</div><div class="sub-n">Somente sobre ${finance?feeFmt(finance.modeledGrossCents):'—'} do bruto</div></div>
+      <div class="sc"><div class="sc-icon">🔎</div><div class="n">${finance?feeFmt(finance.unclassifiedGrossCents):'—'}</div><div class="l">Sem taxa classificável</div><div class="sub-n">${finance?.unclassifiedCount||0} vendas; exigem revisão</div></div>
+    </div>
+    <details class="analytics-advanced"><summary>Detalhar métodos, reserva e disponibilidade</summary>
+      <div class="analytics-advanced-content">
+        <p style="font-size:12px;color:var(--muted)">Reserva/valores a liberar: não informados nos registros atuais. Saldo disponível: não informado. Eles NÃO são iguais ao líquido estimado.</p>
+        <div class="ov"><table><thead><tr><th>Método</th><th>Vendas</th><th>Bruto modelado</th><th>Taxas (estim.)</th><th>Líquido (estim.)</th></tr></thead><tbody>${financeDetails||'<tr><td colspan="5">Sem pagamentos classificáveis.</td></tr>'}</tbody></table></div>
+        <p style="font-size:12px;color:var(--muted)">Contratos históricos: não presumir a taxa negociada atual como liquidação retroativa. PIX R$0,99 de serviço no checkout e eventuais juros/antecipação não são deduzidos novamente sem confirmação no extrato.</p>
+      </div>
+    </details>
+  </section>
 
   <!-- Métricas complementares: disponíveis sem sobrecarregar a leitura inicial. -->
   <details class="analytics-advanced"><summary>Ver métricas complementares <span>Produtos, pagamentos, horários e recorrência</span></summary><div class="analytics-advanced-content">
@@ -7293,7 +7335,7 @@ async function renderAnalyticsDashboard(fixture = null) {
     </div>
     <div class="ov">
       <table>
-        <thead><tr><th>Data</th><th>Cliente</th><th>Email</th><th>Produto</th><th>Valor</th><th>Status</th><th>Chave</th><th>Origem</th></tr></thead>
+        <thead><tr><th>Data</th><th>Cliente</th><th>Email</th><th>Produto</th><th>Bruto</th><th>Taxa estimada</th><th>Líquido estimado</th><th>Status</th><th>Chave</th><th>Origem</th></tr></thead>
         <tbody id="payments-body">${paymentsRows}</tbody>
       </table>
     </div>
