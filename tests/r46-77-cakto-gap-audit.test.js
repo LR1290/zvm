@@ -53,6 +53,16 @@ function fixture({pages,payments=[],queued=[]}){
  assert.equal(helper.readCheckoutBinding(token,secret,Date.parse('2026-03-01')),null);
  assert.equal(helper.inspectCheckoutBinding(token,secret,Date.parse('2026-03-01')).status,'expired');
  assert.equal(helper.inspectCheckoutBinding(token.slice(0,-2)+'xx',secret,Date.parse('2026-03-01')).status,'invalid');
+ // A noncanonical Base64URL alias can decode to the same bytes. Reject it,
+ // leaving canonical tokens previously issued by ZVM unaffected.
+ const encoded=token.slice(5);
+ const alternate=encoded.slice(0,-1)+(encoded.at(-1)==='A'?'B':'A');
+ if (Buffer.from(encoded,'base64url').equals(Buffer.from(alternate,'base64url'))) {
+   assert.equal(helper.inspectCheckoutBinding('zvm1_'+alternate,secret,Date.parse('2026-03-01')).status,'invalid');
+ }
+ const serverSource=require('node:fs').readFileSync(require('node:path').join(__dirname,'../server.js'),'utf8');
+ assert(serverSource.includes('await resolveSubscriptionCheckout({'),'renewal fix must be wired into server, not only a dormant helper');
+ assert(serverSource.includes("targetSource = resolved.reason === 'verified_subscription_renewal' ? 'subscription_history'"),'expired renewal cannot relink third-party payer');
  const renewal={event:'subscription_renewed',status:'paid',txId:'order-2',
   subscriptionId:'subscription-01',paidAt:'2026-03-01T11:00:00Z'};
  const prior={txId:'order-1',keyCode:'zv-target-00001',source:'cakto',approved:true,testMode:false,
