@@ -1022,7 +1022,7 @@ async function hashNewPortalPassword(pass) {
 function maybeRehashPortalPassword(db, email, pass, user) {
   if (user.passwordIterations >= PASSWORD_ITERATIONS_CURRENT) return Promise.resolve();
   return hashNewPortalPassword(pass)
-    .then(upgraded => db.collection('portal_users').updateOne({ _id: email }, { $set: upgraded }))
+    .then(upgraded => db.collection('portal_users').updateOne({ _id: email, passwordHash: user.passwordHash }, { $set: upgraded }))
     .catch(e => console.warn('[Portal] rehash pós-login falhou (não bloqueia o login):', e.message));
 }
 
@@ -8208,6 +8208,7 @@ async function handleRequest(req, res) {
         if (!(await isPortalSessionCurrent(db, active.email, rawToken))) {
           delete portalSessions[rawToken];
           clearSessionCookie(res, 'zv_portal');
+          req.zvmPortalSessionRevoked = true;
         }
       } catch (_) {
         sendAuthHtml(res, renderPortalLicenseUnavailable('overview'), 503);
@@ -10103,7 +10104,13 @@ async function handleRequest(req, res) {
 
   if (p === '/cliente' || p === '/cliente/') {
     const requestedRedirect = safeLocalRedirect(url.searchParams.get('redir') || '');
-    if (!isPortalSession(req)) { sendAuthHtml(res, renderStandalonePortalLogin('', url.searchParams.get('copy') === '1' ? '/cliente?copy=1' : requestedRedirect)); return; }
+    if (!isPortalSession(req)) {
+      sendAuthHtml(res, renderStandalonePortalLogin(
+        req.zvmPortalSessionRevoked ? 'Sua sessão anterior foi encerrada por segurança. Entre novamente.' : '',
+        url.searchParams.get('copy') === '1' ? '/cliente?copy=1' : requestedRedirect
+      ));
+      return;
+    }
     if (requestedRedirect && requestedRedirect !== '/cliente') { res.writeHead(302, { Location: requestedRedirect }); res.end(); return; }
     const sess = getPortalUser(req);
     try {
@@ -10136,19 +10143,25 @@ async function handleRequest(req, res) {
       if (!user) { sendAuthHtml(res, renderStandalonePortalLogin('E-mail ou senha inválidos.')); return; }
       const passOk = await verifyPortalPassword(pass, user);
       if (!passOk) { sendAuthHtml(res, renderStandalonePortalLogin('E-mail ou senha inválidos.')); return; }
-      maybeRehashPortalPassword(db, email, pass, user);
+      // Do not let a slow login with a stale password resurrect an account
+      // session after a simultaneous password reset. Rehash is CAS-safe.
+      await maybeRehashPortalPassword(db, email, pass, user);
+      const verifiedUser = await db.collection('portal_users').findOne({ _id: email });
+      if (!verifiedUser || !(await verifyPortalPassword(pass, verifiedUser))) {
+        sendAuthHtml(res, renderStandalonePortalLogin('E-mail ou senha inválidos.')); return;
+      }
       db.collection('portal_users').updateOne({ _id: email }, { $set: { lastLogin: new Date().toISOString() } }).catch(()=>{});
-      if (portalTotpHasSecret(user)) {
-        if (user.totpSecret && !user.totpSecretEnc) await migratePortalTotpLegacy(db, user, email);
+      if (portalTotpHasSecret(verifiedUser)) {
+        if (verifiedUser.totpSecret && !verifiedUser.totpSecretEnc) await migratePortalTotpLegacy(db, verifiedUser, email);
         const pendingToken = generateToken();
-        portalSessions[pendingToken] = { email, name: user.name, pending2fa: true, redir: redir||'', expiresAt: new Date(Date.now()+5*60*1000).toISOString() };
+        portalSessions[pendingToken] = { email, name: verifiedUser.name, pending2fa: true, authPasswordHash: verifiedUser.passwordHash, redir: redir||'', expiresAt: new Date(Date.now()+5*60*1000).toISOString() };
         setSessionCookie(res, 'zv_portal', pendingToken, 300);
         res.writeHead(302, { Location: '/cliente/2fa/verificar' }); res.end();
       } else {
         const token = generateToken();
-        await activatePortalSession(db, email, token);
+        await activatePortalSession(db, email, token, verifiedUser.passwordHash);
         revokePortalSessions(email);
-        portalSessions[token] = { email, name: user.name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
+        portalSessions[token] = { email, name: verifiedUser.name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
         setSessionCookie(res, 'zv_portal', token, 86400);
         const dest = redir || '/cliente';
         res.writeHead(302, { Location: dest }); res.end();
@@ -10443,6 +10456,12 @@ async function handleRequest(req, res) {
       try {
         const db   = await getMongoDb();
         let user = await db.collection('portal_users').findOne({ _id: sess.email });
+        if (!user || !sess.authPasswordHash || user.passwordHash !== sess.authPasswordHash) {
+          const expiredPending = readPortalToken(req);
+          if (expiredPending) delete portalSessions[expiredPending];
+          clearSessionCookie(res, 'zv_portal');
+          sendAuthHtml(res, renderStandalonePortalLogin('Sua autenticação expirou. Entre novamente.')); return;
+        }
         let activeSecret = '';
         try { activeSecret = portalTotpReadSecret(user, sess.email); }
         catch (_) { sendAuthHtml(res, renderStandalone2FAVerify('2FA temporariamente indisponível. Tente novamente.')); return; }
@@ -10451,7 +10470,7 @@ async function handleRequest(req, res) {
         // Complete 2FA with a freshly generated authenticated identifier.
         // The pending token cannot become an authenticated bearer token.
         const newToken = generateToken();
-        await activatePortalSession(db, sess.email, newToken);
+        await activatePortalSession(db, sess.email, newToken, sess.authPasswordHash);
         revokePortalSessions(sess.email);
         portalSessions[newToken] = { email: sess.email, name: sess.name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
         setSessionCookie(res, 'zv_portal', newToken, 86400);
