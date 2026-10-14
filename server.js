@@ -559,11 +559,23 @@ async function commitAdminKeyRecordStrict(code, record, deps = {}) {
   if (!keyCode || !record || typeof record !== 'object') throw new Error('invalid_key_record');
   const next = cloneKeyRecordForCommit(record);
   const db = deps.db || await getMongoDb();
-  await db.collection('store').updateOne(
-    { _id: 'keys' },
-    { $set: { [`data.${keyCode}`]: next, updatedAt: new Date() } },
-    { upsert: true }
-  );
+  const filter = { _id: 'keys' };
+  const update = { $set: { [`data.${keyCode}`]: next, updatedAt: new Date() } };
+  try {
+    await db.collection('store').updateOne(filter, update, { upsert: true, timeoutMS: 7000 });
+  } catch (error) {
+    const lost = zvmInvalidateMongoOnNetworkError(error, db);
+    // Mesmo código e mesmo payload tornam seguro repetir um $set cuja
+    // confirmação se perdeu. Não gera segunda licença por falha de rede.
+    if (!lost || deps.db) throw error;
+    const recovered = await getMongoDb();
+    try {
+      await recovered.collection('store').updateOne(filter, update, { upsert: true, timeoutMS: 7000 });
+    } catch (retryError) {
+      zvmInvalidateMongoOnNetworkError(retryError, recovered);
+      throw retryError;
+    }
+  }
   keys[keyCode] = next;
   invalidateKeysHtmlCache();
   return keys[keyCode];
@@ -574,9 +586,15 @@ async function commitAdminKeyRecordStrict(code, record, deps = {}) {
 // banco não puder confirmar o estado de uma licença administrativa.
 async function readAdminKeysSnapshot(deps = {}) {
   const db = deps.db || await getMongoDb();
-  const doc = await db.collection('store').findOne(
-    { _id: 'keys' }, { projection: { data: 1, _id: 0 } }
-  );
+  let doc;
+  try {
+    doc = await db.collection('store').findOne(
+      { _id: 'keys' }, { projection: { data: 1, _id: 0 }, timeoutMS: 7000 }
+    );
+  } catch (error) {
+    zvmInvalidateMongoOnNetworkError(error, db);
+    throw error;
+  }
   if (doc && doc.data !== undefined && (typeof doc.data !== 'object' || Array.isArray(doc.data) || doc.data === null)) {
     throw new Error('invalid_admin_key_store');
   }
@@ -587,9 +605,15 @@ async function readAdminKeySnapshot(code, deps = {}) {
   const keyCode = String(code || '');
   if (!/^[a-z0-9_-]{1,64}$/i.test(keyCode)) return null;
   const db = deps.db || await getMongoDb();
-  const doc = await db.collection('store').findOne(
-    { _id: 'keys' }, { projection: { [`data.${keyCode}`]: 1, _id: 0 } }
-  );
+  let doc;
+  try {
+    doc = await db.collection('store').findOne(
+      { _id: 'keys' }, { projection: { [`data.${keyCode}`]: 1, _id: 0 }, timeoutMS: 7000 }
+    );
+  } catch (error) {
+    zvmInvalidateMongoOnNetworkError(error, db);
+    throw error;
+  }
   return doc?.data?.[keyCode] && typeof doc.data[keyCode] === 'object'
     ? cloneKeyRecordForCommit(doc.data[keyCode]) : null;
 }
@@ -605,10 +629,19 @@ async function mutateAdminKeyRecordStrict(code, mutator, deps = {}) {
   await mutator(draft);
   // Compare-and-swap por chave: se outra instância alterar o documento
   // entre a leitura e a escrita, abortar em vez de apagar dados novos.
-  const result = await db.collection('store').updateOne(
-    { _id: 'keys', [field]: current },
-    { $set: { [field]: draft, updatedAt: new Date() } }
-  );
+  let result;
+  try {
+    result = await db.collection('store').updateOne(
+      { _id: 'keys', [field]: current },
+      { $set: { [field]: draft, updatedAt: new Date() } },
+      { timeoutMS: 7000 }
+    );
+  } catch (error) {
+    // CAS: não repetir automaticamente, porque o primeiro update pode ter
+    // sido confirmado mesmo quando a resposta se perdeu na rede.
+    zvmInvalidateMongoOnNetworkError(error, db);
+    throw error;
+  }
   if (result.matchedCount !== 1) {
     const error = new Error('key_write_conflict');
     error.code = 'key_write_conflict';
