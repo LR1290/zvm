@@ -70,6 +70,7 @@ const { validateRuntimeSecurityConfig } = require('./runtime-config');
 const { loadDevBuildSigningConfig, createDevBuildSigningService } = require('./dev-build-signing');
 const { resolveExtensionCorsOrigin } = require('./extension-origin-policy');
 const { checkoutUrlForPortal, readCheckoutBinding, isZvmCheckoutBinding } = require('./src/cakto-checkout-binding');
+const { resolveSubscriptionCheckout } = require('./src/cakto-renewal-binding-resolver');
 const { displayLicensePlan } = require('./src/commercial-plan-labels');
 const { readNewCatalog } = require('./src/commercial-public-catalog');
 const {
@@ -3317,8 +3318,21 @@ async function _processCommercialSaleUnlocked(sale, plan, deps = {}) {
   let boundOwnerEmail = '';
   const claimToken = safeScalar(sale.checkoutBinding, 640);
   if (isZvmCheckoutBinding(claimToken)) {
-    const binding = readCheckoutBinding(claimToken, APP_SECRET, now.getTime());
-    if (!binding) throw Object.assign(new Error('cakto_checkout_binding_invalid'), { code: 'cakto_checkout_binding_invalid' });
+    const resolved = await resolveSubscriptionCheckout({
+      claim: claimToken, secret: APP_SECRET, nowMs: now.getTime(), purchase: sale,
+      lookupPreviousPayment: async subscriptionId => {
+        const prev = typeof deps.findPaymentBySubscription === 'function'
+          ? await deps.findPaymentBySubscription(subscriptionId)
+          : await db.collection('payments').findOne(
+            { source: 'cakto', subscriptionId, approved: true, testMode: { $ne: true } },
+            { sort: { paidAt: -1 }, projection: { txId: 1, keyCode: 1, subscriptionId: 1, source: 1, approved: 1, testMode: 1, paidAt: 1 } }
+          );
+        return prev;
+      },
+      lookupOwner: findPortalUser,
+    });
+    if (!resolved.ok) throw Object.assign(new Error('cakto_checkout_binding_invalid'), { code: 'cakto_checkout_binding_invalid', detailCode: resolved.reason });
+    const binding = { keyCode: resolved.keyCode, ownerEmail: resolved.ownerEmail };
     const boundUser = await findPortalUser(binding.ownerEmail);
     if (!boundUser || boundUser.keyCode !== binding.keyCode) {
       throw Object.assign(new Error('cakto_checkout_binding_ownership_changed'), { code: 'cakto_checkout_binding_ownership_changed' });
@@ -3326,7 +3340,7 @@ async function _processCommercialSaleUnlocked(sale, plan, deps = {}) {
     if (!keyStore[binding.keyCode] && !deps.keyStore) await ensureKeyLoaded(binding.keyCode);
     if (!keyStore[binding.keyCode]) throw Object.assign(new Error('cakto_checkout_binding_key_missing'), { code: 'cakto_checkout_binding_key_missing' });
     existingCode = binding.keyCode;
-    targetSource = 'portal_checkout';
+    targetSource = resolved.reason === 'verified_subscription_renewal' ? 'subscription_history' : 'portal_checkout';
     boundOwnerEmail = binding.ownerEmail;
   }
   if (!existingCode && sale.subscriptionId && !sale.testMode) {
