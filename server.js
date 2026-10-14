@@ -8670,7 +8670,13 @@ async function handleRequest(req, res) {
         return;
       }
       if (deferredDevV2 || deferredSignedDevV2) {
-        buildClient = await zvmSecurityCheckClientShared(body.clientSecurity, { licenseKey:authenticated.licenseKeyCode || '' });
+        // R46.79: o preflight de uma DEV assinada ja consumiu requestId no
+        // anti-replay compartilhado. Revalidar a identidade apos senha/2FA
+        // sem consumir novamente evita SECURITY_REPLAY_REJECTED no mesmo POST.
+        // DEV anteriormente recusada no preflight ainda precisa consumir aqui.
+        buildClient = deferredSignedDevV2
+          ? zvmSecurityCheckClient(body.clientSecurity, false, { licenseKey:authenticated.licenseKeyCode || '' })
+          : await zvmSecurityCheckClientShared(body.clientSecurity, { licenseKey:authenticated.licenseKeyCode || '' });
         if (!buildClient.ok) { sendJson(res, { ok:false, errorCode:buildClient.code }, zvmSecurityClientErrorStatus(buildClient.code)); return; }
       } else if (Number(buildClient.securityProtocol || 1) === 1) {
         const accountDevAllowed = zvmSecurityDevBuildAllowed(authenticated.licenseKeyCode, body.deviceId);
