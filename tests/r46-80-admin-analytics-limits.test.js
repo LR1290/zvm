@@ -49,8 +49,11 @@ assert.equal(memo['synthetic-code'].active,true,'CAS failure does not mutate cac
 const zone=region('  // ── Laboratório de Testes (Analytics)','  if (p === \'/cakto/webhook\'');
 assert.match(zone,/checkRateLimit\(ip, 'analytics_purge_preview'\)/);
 assert.match(zone,/checkRateLimit\(ip, 'analytics_purge_execute'\)/);
-assert.match(zone,/checkRateLimit\(ip, isSend \? 'analytics_lab_email_send' : 'analytics_lab_email_preview'\)/);
-assert.ok(zone.indexOf("const isSend = p === R_ANALYTICS+'/api/lab/email-send'") < zone.indexOf("checkRateLimit(ip, isSend"),'isSend defined before rate check');
+assert.match(zone,/const emailRateType = isSend \? 'analytics_lab_email_send' : 'analytics_lab_email_preview'/);
+assert.match(zone,/checkRateLimit\(ip, emailRateType\)/);
+assert.ok(zone.indexOf("const isSend = p === R_ANALYTICS+'/api/lab/email-send'") < zone.indexOf("const emailRateType ="),'isSend defined before rate check');
+assert.match(zone,/sendAnalyticsRateLimited\(res, ip, 'analytics_purge_execute'\)/);
+assert.match(src,/function sendAnalyticsRateLimited\(/);
 console.log('R46.80: Analytics limits separated, admin Mongo recovery and nonrepeatable CAS PASSED');
 
 })().catch(error => { console.error(error); process.exitCode = 1; });
