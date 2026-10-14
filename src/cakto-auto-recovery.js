@@ -77,7 +77,6 @@ async function runMissingRenewalPass({token,db,normalize,resolvePlan,validateInt
   for(const candidate of page.results){
    if(!isVerifiedPaidMain(candidate)||typeof candidate.paidAt!=='string'||!Number.isFinite(Date.parse(candidate.paidAt))||candidate.paidAt.slice(0,10)<start||candidate.paidAt.slice(0,10)>=end)continue;
    if(orderIds.has(candidate.id))continue;orderIds.add(candidate.id);summary.seen++;
-   if(summary.seen>maxCandidates)return {...summary,complete:false,limitReached:true};
    const ids=txMarkers(candidate.id);
    const recorded=await db.collection('payments').findOne({approved:true,$or:[
     {commercialTxKey:ids.paymentKey},{txId:candidate.id,source:'cakto'},{txId:candidate.id,txNamespace:'cakto'}
@@ -85,6 +84,7 @@ async function runMissingRenewalPass({token,db,normalize,resolvePlan,validateInt
    if(recorded){summary.existing++;continue;}
    const queued=await db.collection('webhook_events').findOne({eventKey:ids.eventKey,source:'cakto'},{projection:{_id:1}});
    if(queued){summary.alreadyQueued++;continue;}
+   if(summary.review+summary.enqueued>=maxCandidates)return {...summary,complete:false,limitReached:true};
    let decision;
    try{
     const verified=await getOrderDetail(candidate.id,token,fetcher);
