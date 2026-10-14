@@ -1,6 +1,6 @@
 'use strict';
 const {displayLicensePlan}=require('./commercial-plan-labels');
-const {createPixelPerfectEmail}=require('./email-pixel-fidelity');
+const {nativeLicenseHtml}=require('./email-native-html');
 function esc(value){return String(value==null?'':value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function httpsLink(base,path){
  try{const u=new URL(String(base));if(u.protocol!=='https:')return 'https://zvm.onrender.com/cliente';const p=String(path||'/cliente');return u.origin+(p.startsWith('/')&&!p.startsWith('//')?p:'/cliente');}catch(_){return 'https://zvm.onrender.com/cliente';}
@@ -10,12 +10,11 @@ function expiryPtBr(value){
  const d=new Date(value);if(!Number.isFinite(d.getTime()))return 'Consulte no Portal do Cliente';
  return new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric'}).format(d);
 }
-// Image fragments preserve the original artwork's visual identity, while all
-// customer-specific data is actual, selectable HTML. No personalized raster.
-// The client-approved ORIGINAL art stays pixel-faithful outside the three
-// tiny blank input fields. Those fields are REAL selectable HTML, not raster.
-function approvedArtworkHtml({subject,tone,code,plan,validity,portal,renewed}){
- return createPixelPerfectEmail({subject,tone,code,plan,validity,portal,renewed});
+// Gmail and Outlook must receive no images/attachments: every visible
+// license element is selectable HTML. No JavaScript copy button is possible
+// in an inbox; the key is text and the portal CTA remains a real link.
+function approvedArtworkHtml({subject,tone,code,plan,validity,portal,extension,renewed}){
+ return nativeLicenseHtml({subject,tone,code,plan,validity,portal,extension,renewed});
 }
 
 function buildKeyDeliveryDesign({code,planId,planLabel,maxUses,expiresAt,renewed,baseUrl,ctaPath,extensionUrl}={}){
@@ -33,11 +32,11 @@ function buildKeyDeliveryDesign({code,planId,planLabel,maxUses,expiresAt,renewed
  const cta='<a href="'+esc(portal)+'" style="display:inline-block;background:'+accent+';color:#03140c;font-family:Arial,sans-serif;font-weight:800;font-size:14px;padding:16px 26px;text-decoration:none;border-radius:9px;">ACESSAR MEU PAINEL &rarr;</a>';
  const secondary='<a href="'+esc(extension)+'" style="display:inline-block;color:'+accent+';font-family:Arial,sans-serif;font-weight:700;font-size:12px;text-decoration:underline;">Instalar ZVM</a>';
  const subject=renewed?'ZVM — Renovação confirmada':'ZVM — Sua licença está pronta';
- // Zero legacy HTML fallbacks for START/PRO/ENTERPRISE: the approved raster
- // is mandatory. SOLO has no artwork supplied and retains its independent
- // existing transactional email until an approved SOLO artwork is provided.
+ // START/PRO/ENTERPRISE are fully native HTML without images, CID or SVG.
+ // SOLO retains its separate established email until its own visual
+ // contract has been approved; do not relabel SOLO as START.
  if(!info.ambiguous && ['start','pro','enterprise'].includes(tone)){
-  const art={tone,code:String(code||'').trim().slice(0,80),plan:info.label,validity:expiryPtBr(expiresAt)};
+  const art={tone,native:true,code:String(code||'').trim().slice(0,80),plan:info.label,validity:expiryPtBr(expiresAt)};
   const plainText='ZVM — '+(renewed?'Renovação confirmada':'Sua licença está pronta')+'\n\nChave: '+art.code+'\nPlano: '+art.plan+'\nValidade: '+art.validity+'\nPortal: '+portal+'\nInstalar: '+extension;
   return {subject,html:approvedArtworkHtml({subject,tone,...art,portal,extension,renewed,maxUses}),text:plainText,artwork:art,classification:info};
  }
