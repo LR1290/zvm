@@ -89,8 +89,30 @@ const deps={
  assert.equal(next.keyCode,target,'renewal follows paid subscription id even if payer email changes');
  assert.equal(next.expiresAt,'2026-12-29T12:00:00.000Z');
  assert.equal(keyStore[other].expiresAt,'2026-10-31T12:00:00.000Z');
+ // Uma assinatura recorrente mantém o sck original depois dos 45 dias.
+ // Aceitar somente se já houver outra transação paga na MESMA assinatura
+ // e se o checkout ainda apontar para o mesmo proprietário.
+ const afterExpired={...normalized,txId:'synthetic-paid-tx-004',event:'subscription_renewed',
+   checkoutBinding:claim,paidAt:'2026-12-13T12:00:00.000Z'};
+ const after=await api.processCommercialSale(afterExpired,api.ZVM_PLANS.padrao,{...deps,now:new Date('2026-12-13T12:00:00Z')});
+ assert.equal(after.keyCode,target,'expired sck renewal must follow verified subscription owner');
+ assert.equal(after.renewed,true);
+ assert.equal(after.expiresAt,'2027-01-28T12:00:00.000Z');
+ const repeat=await api.processCommercialSale(afterExpired,api.ZVM_PLANS.padrao,{...deps,now:new Date('2026-12-13T12:00:00Z')});
+ assert.equal(repeat.expiresAt,after.expiresAt,'same Cakto tx must not extend again');
+ const unsupportedSubscription={...afterExpired,txId:'synthetic-paid-tx-005',subscriptionId:'unrelated-sub'};
+ await assert.rejects(api.processCommercialSale(unsupportedSubscription,api.ZVM_PLANS.padrao,{...deps,now:new Date('2026-12-13T12:00:00Z')}),/checkout_binding_invalid/);
+ assert.equal(keyStore[target].expiresAt,after.expiresAt,'unknown subscription cannot renew');
+ const oldOwner=deps.findPortalUser;
+ await assert.rejects(api.processCommercialSale({...afterExpired,txId:'synthetic-paid-tx-006'},api.ZVM_PLANS.padrao,{
+   ...deps,now:new Date('2026-12-13T12:00:00Z'),findPortalUser:async()=>({keyCode:other})
+ }),/checkout_binding_invalid/);
+ assert.equal(keyStore[target].expiresAt,after.expiresAt,'ownership mismatch cannot renew');
+ const historicalBad={...afterExpired,txId:'synthetic-paid-tx-007',checkoutBinding:'zvm1_bad'};
+ await assert.rejects(api.processCommercialSale(historicalBad,api.ZVM_PLANS.padrao,{...deps,now:new Date('2026-12-13T12:00:00Z')}),/checkout_binding_invalid/);
+
  const tampered={...normalized,txId:'synthetic-paid-tx-003',checkoutBinding:'zvm1_bad'};
  await assert.rejects(api.processCommercialSale(tampered,api.ZVM_PLANS.padrao,deps),/checkout_binding_invalid/);
- assert.equal(keyStore[target].expiresAt,'2026-12-29T12:00:00.000Z','rejected token has no side-effects');
+ assert.equal(keyStore[target].expiresAt,after.expiresAt,'rejected token has no side-effects');
  console.log('R46.61 entitlement checkout/renewal identity/idempotency regression PASS');
 })().catch(e=>{console.error(e);process.exitCode=1;});
