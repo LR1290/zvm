@@ -71,6 +71,7 @@ const { loadDevBuildSigningConfig, createDevBuildSigningService } = require('./d
 const { resolveExtensionCorsOrigin } = require('./extension-origin-policy');
 const { checkoutUrlForPortal, readCheckoutBinding, isZvmCheckoutBinding } = require('./src/cakto-checkout-binding');
 const { displayLicensePlan } = require('./src/commercial-plan-labels');
+const { readPortalToken, portalTokenHash, portalSessionLive, activatePortalSession, isPortalSessionCurrent, revokePortalSessionInDb } = require('./src/portal-session-authority');
 const { readNewCatalog } = require('./src/commercial-public-catalog');
 const {
   LegacyV3Shield,
@@ -2916,15 +2917,19 @@ function revokePortalSessions(email, keepToken) {
   return n;
 }
 
-function isPortalSession(req) {
-  const m = (req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/);
-  if (!m) return false;
-  const s = portalSessions[m[1]];
-  return s && !s.pending2fa && new Date() < new Date(s.expiresAt);
-}
 function getPortalUser(req) {
-  const m = (req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/);
-  return m ? portalSessions[m[1]] : null;
+  const token = readPortalToken(req);
+  if (!token) return null;
+  const s = portalSessions[token];
+  if (!portalSessionLive(s)) {
+    if (s) delete portalSessions[token];
+    return null;
+  }
+  return s;
+}
+function isPortalSession(req) {
+  const s = getPortalUser(req);
+  return !!s && !s.pending2fa;
 }
 
 function _sanitizeRequestTraceId(value) {
@@ -8190,6 +8195,27 @@ async function handleRequest(req, res) {
 
   if (sendPublicAsset(req, res, p)) return;
 
+  // One live authenticated session per portal account. The DB is authoritative:
+  // a fresh login on another browser invalidates the old cookie on its next
+  // request. Never trust a client cookie, tab state, IP or user agent as proof.
+  // Do not run DB checks for public assets, webhooks or extension requests.
+  if (p === '/' || p === '/verificar' || p === '/cliente' || p.startsWith('/cliente/')) {
+    const rawToken = readPortalToken(req);
+    const active = getPortalUser(req);
+    if (rawToken && active && !active.pending2fa) {
+      try {
+        const db = await getMongoDb();
+        if (!(await isPortalSessionCurrent(db, active.email, rawToken))) {
+          delete portalSessions[rawToken];
+          clearSessionCookie(res, 'zv_portal');
+        }
+      } catch (_) {
+        sendAuthHtml(res, renderPortalLicenseUnavailable('overview'), 503);
+        return;
+      }
+    }
+  }
+
   // /robots.txt — páginas públicas podem ser indexadas; superfícies de
   // conta, licenciamento, APIs e operação permanecem fora de crawling.
   if (p === '/robots.txt' && req.method === 'GET') {
@@ -10120,6 +10146,8 @@ async function handleRequest(req, res) {
         res.writeHead(302, { Location: '/cliente/2fa/verificar' }); res.end();
       } else {
         const token = generateToken();
+        await activatePortalSession(db, email, token);
+        revokePortalSessions(email);
         portalSessions[token] = { email, name: user.name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
         setSessionCookie(res, 'zv_portal', token, 86400);
         const dest = redir || '/cliente';
@@ -10162,8 +10190,9 @@ async function handleRequest(req, res) {
         if (alreadyLinked) { sendAuthHtml(res, renderStandalonePortalRegister('Esta chave já está vinculada a outra conta. Entre em contato com o suporte se isso for um engano.', vals, redir)); return; }
       }
       const newPass = await hashNewPortalPassword(pass);
-      await db.collection('portal_users').insertOne({ _id: email, name, email, phone: phone||null, ...newPass, keyCode: keycode||null, createdAt: new Date().toISOString() });
       const token = generateToken();
+      await db.collection('portal_users').insertOne({ _id: email, name, email, phone: phone||null, ...newPass, keyCode: keycode||null, createdAt: new Date().toISOString(), portalActiveSessionHash: portalTokenHash(token), portalActiveSince: new Date() });
+      revokePortalSessions(email);
       portalSessions[token] = { email, name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
       setSessionCookie(res, 'zv_portal', token, 86400);
       res.writeHead(302, { Location: redir || '/cliente' }); res.end();
@@ -10172,8 +10201,20 @@ async function handleRequest(req, res) {
   }
 
   if (p === '/cliente/logout') {
-    const m = (req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/);
-    if (m) delete portalSessions[m[1]];
+    const token = readPortalToken(req);
+    const sess = getPortalUser(req);
+    if (token && sess && !sess.pending2fa) {
+      try {
+        const db = await getMongoDb();
+        await revokePortalSessionInDb(db, sess.email, token);
+      } catch (_) {
+        delete portalSessions[token];
+        clearSessionCookie(res, 'zv_portal');
+        sendAuthHtml(res, renderPortalLicenseUnavailable('overview'), 503);
+        return;
+      }
+    }
+    if (token) delete portalSessions[token];
     clearSessionCookie(res, 'zv_portal');
     res.writeHead(302, { Location: '/cliente' }); res.end(); return;
   }
@@ -10265,6 +10306,8 @@ async function handleRequest(req, res) {
         let targetCreated = false;
         try {
           const newUser = preparePortalUserForEmailChange(user, sess.email, newemail);
+          delete newUser.portalActiveSessionHash;
+          delete newUser.portalActiveSince;
           await db.collection('portal_users').insertOne(newUser);
           targetCreated = true;
           const finalized = await finalizePortalEmailChange(db, sess.email, operationId);
@@ -10308,9 +10351,13 @@ async function handleRequest(req, res) {
         const oldOk = await verifyPortalPassword(old, user);
         if (!oldOk) { sendAuthHtml(res, renderStandalonePortalChangePwd('Senha atual incorreta.', '', sess)); return; }
         const newPass = await hashNewPortalPassword(pass);
-        await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: newPass });
-        // Mantem a sessao atual, revoga as demais (dispositivos/invasores antigos).
-        revokePortalSessions(sess.email, ((req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/)||[])[1]);
+        const newToken = generateToken();
+        await db.collection('portal_users').updateOne({ _id: sess.email }, {
+          $set: { ...newPass, portalActiveSessionHash: portalTokenHash(newToken), portalActiveSince: new Date() }
+        });
+        revokePortalSessions(sess.email);
+        portalSessions[newToken] = { email: sess.email, name: sess.name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
+        setSessionCookie(res, 'zv_portal', newToken, 86400);
         res.writeHead(302, { Location: '/cliente/senha?ok=1' }); res.end(); return;
       } catch(e) { sendAuthHtml(res, renderStandalonePortalChangePwd('Erro ao alterar senha.', '', sess)); return; }
     }
@@ -10370,7 +10417,9 @@ async function handleRequest(req, res) {
         const { rec, matchedId } = await claimResetToken(db, tk, new Date());
         if (!rec) { sendAuthHtml(res, renderStandalonePortalResetForm('Link expirado ou inválido. Solicite um novo.', '', '')); return; }
         const newPass = await hashNewPortalPassword(pass);
-        await db.collection('portal_users').updateOne({ _id: rec.email }, { $set: newPass });
+        await db.collection('portal_users').updateOne({ _id: rec.email }, {
+          $set: newPass, $unset: { portalActiveSessionHash: '', portalActiveSince: '' }
+        });
         // Reset de senha expulsa todas as sessoes existentes da conta.
         revokePortalSessions(rec.email);
         // Após o claim atômico, removemos o registro consumido. O consumedAt
@@ -10399,9 +10448,13 @@ async function handleRequest(req, res) {
         catch (_) { sendAuthHtml(res, renderStandalone2FAVerify('2FA temporariamente indisponível. Tente novamente.')); return; }
         if (!user || !activeSecret || !verifyTOTP(activeSecret, code)) { addSecurityAlert('BRUTE_FORCE', '2FA falhou para ' + maskEmail(sess.email), ip); sendAuthHtml(res, renderStandalone2FAVerify('Código inválido. Tente novamente.')); return; }
         if (user.totpSecret && !user.totpSecretEnc) user = await migratePortalTotpLegacy(db, user, sess.email);
-        const m = (req.headers.cookie||'').match(/zv_portal=([a-f0-9]+)/);
-        if (m) portalSessions[m[1]] = { email: sess.email, name: sess.name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
-        setSessionCookie(res, 'zv_portal', m[1], 86400);
+        // Complete 2FA with a freshly generated authenticated identifier.
+        // The pending token cannot become an authenticated bearer token.
+        const newToken = generateToken();
+        await activatePortalSession(db, sess.email, newToken);
+        revokePortalSessions(sess.email);
+        portalSessions[newToken] = { email: sess.email, name: sess.name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
+        setSessionCookie(res, 'zv_portal', newToken, 86400);
         const dest = sess.redir && sess.redir.startsWith('/') ? sess.redir : '/cliente';
         res.writeHead(302, { Location: dest }); res.end();
       } catch(e) { sendAuthHtml(res, renderStandalone2FAVerify('Erro temporário.')); return; }
