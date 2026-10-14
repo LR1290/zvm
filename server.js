@@ -1813,6 +1813,7 @@ const EXTENSION_LICENSED_CAPABILITIES = Object.freeze([
   'laboratory.aiTest',
 ]);
 const _extensionSessionIndexedDbs = new WeakSet();
+const _extensionSessionIndexPending = new WeakMap();
 const ZVM_EXTENSION_AUTH_DB_TIMEOUT_MS = 3200;
 
 function extensionNow(deps = {}) {
@@ -1909,16 +1910,27 @@ function buildExtensionEntitlement({ keyCode = null, keyRecord = null, now = Dat
 
 async function ensureExtensionSessionIndexes(db) {
   if (_extensionSessionIndexedDbs.has(db)) return;
-  const collection = db.collection(EXTENSION_SESSION_COLLECTION);
-  await collection.createIndex(
-    { expiresAt: 1 },
-    { expireAfterSeconds: 0, name: 'extension_sessions_ttl', timeoutMS: ZVM_EXTENSION_AUTH_DB_TIMEOUT_MS }
-  );
-  await collection.createIndex(
-    { 'subject.id': 1, revokedAt: 1 },
-    { name: 'extension_sessions_subject', timeoutMS: ZVM_EXTENSION_AUTH_DB_TIMEOUT_MS }
-  );
-  _extensionSessionIndexedDbs.add(db);
+  const inflight = _extensionSessionIndexPending.get(db);
+  if (inflight) return inflight;
+  const pending = (async () => {
+    const collection = db.collection(EXTENSION_SESSION_COLLECTION);
+    await collection.createIndex(
+      { expiresAt: 1 },
+      { expireAfterSeconds: 0, name: 'extension_sessions_ttl', timeoutMS: ZVM_EXTENSION_AUTH_DB_TIMEOUT_MS }
+    );
+    await collection.createIndex(
+      { 'subject.id': 1, revokedAt: 1 },
+      { name: 'extension_sessions_subject', timeoutMS: ZVM_EXTENSION_AUTH_DB_TIMEOUT_MS }
+    );
+    _extensionSessionIndexedDbs.add(db);
+  })();
+  _extensionSessionIndexPending.set(db, pending);
+  try { await pending; }
+  finally {
+    if (_extensionSessionIndexPending.get(db) === pending) {
+      _extensionSessionIndexPending.delete(db);
+    }
+  }
 }
 
 function publicExtensionSession(doc, rawToken) {
