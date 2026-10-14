@@ -1275,8 +1275,14 @@ const RL_CONFIG = {
   reset:        { max: 3,  windowMs: 300000, blockMs: 30 * 60000 },
   twofa:        { max: 5,  windowMs: 60000,  blockMs: 10 * 60000 },
   cakto:        { max: 30, windowMs: 60000,  blockMs:  5 * 60000 },
-  analytics_lab:{ max: 20, windowMs: 60000,  blockMs:  5 * 60000 },
-  analytics_purge:{ max: 5, windowMs: 60000, blockMs: 10 * 60000 }, // operação destrutiva — bem mais restrito que o resto do Lab
+  // Cada operação tem um orçamento independente. Antes, cinco PRÉVIAS de
+  // limpeza já bloqueavam a EXECUÇÃO por dez minutos.
+  analytics_lab_preview:       { max: 80, windowMs: 60000, blockMs: 15000 },
+  analytics_lab_simulate:      { max: 20, windowMs: 60000, blockMs: 60000 },
+  analytics_lab_email_preview: { max: 80, windowMs: 60000, blockMs: 15000 },
+  analytics_lab_email_send:    { max: 8,  windowMs: 60000, blockMs: 5 * 60000 },
+  analytics_purge_preview:     { max: 80, windowMs: 60000, blockMs: 15000 },
+  analytics_purge_execute:     { max: 5,  windowMs: 60000, blockMs: 10 * 60000 },
   dev_sign:      { max: 20, windowMs: 60000, blockMs: 10 * 60000 },
 };
 
@@ -9860,7 +9866,7 @@ async function handleRequest(req, res) {
   if (p === R_ANALYTICS+'/api/lab/preview' && req.method === 'POST') {
     if (!isAnalyticsSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
-    if (!checkRateLimit(ip, 'analytics_lab')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    if (!checkRateLimit(ip, 'analytics_lab_preview')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
     const body = await parseBody(req);
     try {
       const result = await simulateCommercialSale({
@@ -9877,7 +9883,7 @@ async function handleRequest(req, res) {
   if (p === R_ANALYTICS+'/api/lab/simulate' && req.method === 'POST') {
     if (!isAnalyticsSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
-    if (!checkRateLimit(ip, 'analytics_lab')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    if (!checkRateLimit(ip, 'analytics_lab_simulate')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
     const body = await parseBody(req);
     try {
       const result = await simulateCommercialSale({
@@ -9894,7 +9900,8 @@ async function handleRequest(req, res) {
   if ((p === R_ANALYTICS+'/api/lab/email-preview' || p === R_ANALYTICS+'/api/lab/email-send') && req.method === 'POST') {
     if (!isAnalyticsSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
-    if (!checkRateLimit(ip, 'analytics_lab')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    const isSend = p === R_ANALYTICS+'/api/lab/email-send';
+    if (!checkRateLimit(ip, isSend ? 'analytics_lab_email_send' : 'analytics_lab_email_preview')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
     const body = await parseBody(req);
     const template = String(body.template || '');
     const chosenPlan = String(body.planId || '').toLowerCase().trim();
@@ -9911,7 +9918,7 @@ async function handleRequest(req, res) {
     if (template.startsWith('delivery_') && !(chosenPlan && chosenKind)) {
       sendJson(res, { error: 'lab_explicit_plan_required' }, 400); return;
     }
-    const isSend = p === R_ANALYTICS+'/api/lab/email-send';
+
     // Destinatário é sempre digitado explicitamente pelo admin — nunca
     // puxamos um cliente aleatório da base pra preview/teste de e-mail.
     const to = safeScalar(body.email, 160).toLowerCase();
@@ -9965,7 +9972,7 @@ async function handleRequest(req, res) {
   if (p === R_ANALYTICS+'/api/purge/preview' && req.method === 'POST') {
     if (!isAnalyticsSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
-    if (!checkRateLimit(ip, 'analytics_purge')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    if (!checkRateLimit(ip, 'analytics_purge_preview')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
     const body = await parseBody(req);
     try {
       const preview = await previewAnalyticsPurge(String(body.mode || ''));
@@ -9977,7 +9984,7 @@ async function handleRequest(req, res) {
   if (p === R_ANALYTICS+'/api/purge/execute' && req.method === 'POST') {
     if (!isAnalyticsSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
-    if (!checkRateLimit(ip, 'analytics_purge')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    if (!checkRateLimit(ip, 'analytics_purge_execute')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
     const body = await parseBody(req);
     const mode = String(body.mode || '');
     try {
