@@ -8234,7 +8234,8 @@ async function handleRequest(req, res) {
 
   // Public, immutable decorative slices from the original ZVM license art.
   // No keys, plans tied to customers, emails or other personal data are exposed.
-  // Strictly whitelisted 3 tones x 14 names; no filesystem path supplied by caller.
+  // Strictly whitelisted 3 tones x 15 slices (14 historical plus 1 seamless details);
+  // no filesystem path supplied by caller. Old mail image URLs remain valid.
   if (req.method === 'GET' && p.startsWith('/assets/zvm-email-art/')) {
     const matched = new RegExp('^/assets/zvm-email-art/r46-69/(start|pro|enterprise)/([a-z-]+)[.]jpg$').exec(p);
     if (!matched) { res.writeHead(404, { 'Cache-Control':'no-store', ..._SEC_HEADERS }); res.end(); return; }
