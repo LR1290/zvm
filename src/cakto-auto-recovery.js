@@ -33,6 +33,7 @@ async function assessMissingRenewal(order,{db,normalize,resolvePlan,validateInte
  const plan=resolvePlan(purchase);
  if(!purchase||!plan||!validateIntegrity(purchase,plan)?.ok)
   return {kind:'review',reason:'commercial_validation'};
+ if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(purchase.clientEmail||'')))return {kind:'review',reason:'customer_missing'};
  const sub=String(purchase.subscriptionId||'').trim();
  if(!sub)return {kind:'review',reason:'subscription_id_missing'};
  const paidAt=new Date(purchase.paidAt);
