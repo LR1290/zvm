@@ -10,6 +10,16 @@ function toast(msg,ok=true){
   clearTimeout(t._tid);t._tid=setTimeout(()=>t.style.display='none',3400);
 }
 
+
+function adminErrorMessage(data,status){
+  const code=String(data&&data.error||'');
+  if(status===401)return 'Sua sessão administrativa expirou. Entre novamente.';
+  if(status===403)return 'Operação não autorizada. Atualize a página e entre novamente.';
+  if(status===409||code==='key_write_conflict')return 'Esta chave foi alterada por outra operação. Atualize o painel antes de tentar novamente.';
+  if(status===503||code==='db_unavailable'||code==='admin_data_unavailable')return 'Banco de dados temporariamente indisponível. Atualize a lista para confirmar o resultado antes de repetir a ação.';
+  if(status===429)return 'Muitas operações simultâneas. Aguarde o tempo informado pelo servidor.';
+  return code?'Não foi possível concluir: '+code:'Não foi possível concluir a operação (HTTP '+status+').';
+}
 function filterKeys(){
   const q=(document.getElementById('search-input').value||'').toLowerCase();
   const st=document.getElementById('filter-status').value;
@@ -80,7 +90,7 @@ async function generateKey(){
       if(r.status===401){toast('Sessão expirada',false);setTimeout(()=>location.href=_RA,1500);return;}
       const d=await r.json();
       if(d.ok)generated.push({label:lbl,code:d.key});
-      else{toast('❌ Erro na chave '+(i+1)+': '+(d.error||'?'),false);break;}
+      else{toast('❌ Chave '+(i+1)+': '+adminErrorMessage(d,r.status),false);break;}
     }
     if(!generated.length)return;
     if(qty===1){
@@ -107,9 +117,8 @@ async function doRefresh(manual){
     if(r.status===401){toast('⏱ Sessão expirada — redirecionando...',false);setTimeout(()=>location.href=_RA,1800);return;}
     const d=await r.json();
     if(!r.ok||d.error){
-      const kb=document.getElementById('kb');
-      if(kb)kb.innerHTML='<tr><td colspan="12" class="empty">Não foi possível confirmar os dados no servidor. <button type="button" class="btn bw" onclick="doRefresh(true)">Tentar novamente</button></td></tr>';
-      toast('Banco de dados indisponível. Nenhuma alteração foi aplicada.',false);
+      // Preserva os últimos dados válidos durante uma falha de leitura.
+      if(manual)toast(adminErrorMessage(d,r.status),false);
       return;
     }
     document.getElementById('s-total').textContent=d.totalKeys||0;
@@ -205,18 +214,18 @@ async function addToBlacklist(){
   if(!ip){toast('Informe um IP.',false);return;}
   const r=await fetch(_RA+'/api/ip-blacklist/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ip})});
   const d=await r.json();
-  if(d.ok){inp.value='';toast('IP bloqueado: '+ip);loadBlacklist();}else toast('Erro: '+(d.error||'?'),false);
+  if(d.ok){inp.value='';toast('IP bloqueado: '+ip);loadBlacklist();}else toast(adminErrorMessage(d,r.status),false);
 }
 async function removeFromBlacklist(ip){
   if(!confirm('Remover '+ip+' da blacklist?'))return;
   const r=await fetch(_RA+'/api/ip-blacklist/remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ip})});
   const d=await r.json();
-  if(d.ok){toast('IP removido.');loadBlacklist();}else toast('Erro',false);
+  if(d.ok){toast('IP removido.');loadBlacklist();}else toast(adminErrorMessage(d,r.status),false);
 }
 
 // TOTP Setup
 async function toggleKey(code){
-  try{const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/toggle',{method:'POST'});if(r.status===401){toast('Sessão expirada',false);return;}const d=await r.json();if(d.ok){toast(d.active?'Chave liberada!':'Chave bloqueada!');await doRefresh();}else if(r.status===409){toast('Esta chave foi alterada em outra sessão. Atualizando...',false);await doRefresh();}else{toast('Não foi possível salvar a alteração.',false);}}catch(e){toast('Erro',false);}
+  try{const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/toggle',{method:'POST'});if(r.status===401){toast('Sessão expirada',false);return;}const d=await r.json();if(d.ok){toast(d.active?'Chave liberada!':'Chave bloqueada!');await doRefresh();}else if(r.status===409){toast('Esta chave foi alterada em outra sessão. Atualizando...',false);await doRefresh();}else{toast(adminErrorMessage(d,r.status),false);}}catch(e){toast('Erro',false);}
 }
 async function clearSuspect(code){
   if(!confirm('Limpar alerta de suspeita para a chave '+code+'?\n\nO alerta não voltará por 48h.'))return;
@@ -225,12 +234,12 @@ async function clearSuspect(code){
     if(r.status===401){toast('Sessão expirada',false);return;}
     const d=await r.json();
     if(d.ok){toast('Alerta de suspeita removido por 48h');await doRefresh();}
-    else toast('Erro ao limpar suspeita',false);
+    else toast(adminErrorMessage(d,r.status),false);
   }catch(e){toast('Erro',false);}
 }
 async function deleteKey(code){
   if(!confirm('Excluir chave '+code+'?'))return;
-  try{const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code),{method:'DELETE'});if(r.status===401){toast('Sessão expirada',false);return;}const d=await r.json();if(d.ok){toast('Chave excluída');await doRefresh();}}catch(e){toast('Erro',false);}
+  try{const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code),{method:'DELETE'});if(r.status===401){toast('Sessão expirada',false);return;}const d=await r.json();if(d.ok){toast('Chave excluída');await doRefresh();}else toast(adminErrorMessage(d,r.status),false);}catch(e){toast('Erro',false);}
 }
 function toggleAllCheckboxes(checked){
   document.querySelectorAll('#kb .key-cb').forEach(cb=>{
@@ -266,7 +275,7 @@ async function deleteBatchKeys(){
     if(r.status===401){toast('Sessão expirada',false);return;}
     const d=await r.json();
     if(d.ok){toast('🗑 '+d.deleted+' chave(s) excluída(s)');await doRefresh();}
-    else toast('Erro: '+(d.error||'?'),false);
+    else toast(adminErrorMessage(d,r.status),false);
   }catch(e){toast('Erro de rede',false);}
 }
 
@@ -316,7 +325,7 @@ async function saveRenew(){
   const mins=parseInt(document.getElementById('renewMins').value)||0;
   if(!days&&!hours&&!mins){toast('Informe pelo menos um valor.',false);return;}
   const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/renew',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({days,hours,mins})});
-  const d=await r.json();if(d.ok){toast('✅ Tempo adicionado! Expira: '+new Date(d.expiresAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}));closeRenew();await doRefresh();}else toast('Erro: '+(d.error||'?'),false);
+  const d=await r.json();if(d.ok){toast('✅ Tempo adicionado! Expira: '+new Date(d.expiresAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}));closeRenew();await doRefresh();}else toast(adminErrorMessage(d,r.status),false);
 }
 
 function openEditUses(code,label,current){document.getElementById('editUsesCode').value=code;document.getElementById('editUsesLabel').textContent=label;document.getElementById('editUsesValue').value=current;document.getElementById('editUsesModal').classList.add('open');setTimeout(()=>{document.getElementById('editUsesValue').focus();document.getElementById('editUsesValue').select();},50);}
@@ -328,7 +337,7 @@ async function saveEditUses(){
   const maxUses=val===''?3:parseInt(val);
   if(isNaN(maxUses)||maxUses<-1){toast('❌ Valor inválido.',false);return;}
   const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/max-uses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({maxUses})});
-  const d=await r.json();if(d.ok){toast('✅ Limite: '+(maxUses===-1?'ilimitado':maxUses+' dispositivo(s)'));closeEditUses();await doRefresh();}else toast('Erro: '+(d.error||'?'),false);
+  const d=await r.json();if(d.ok){toast('✅ Limite: '+(maxUses===-1?'ilimitado':maxUses+' dispositivo(s)'));closeEditUses();await doRefresh();}else toast(adminErrorMessage(d,r.status),false);
 }
 
 function openRename(code,label){document.getElementById('renameCode').value=code;document.getElementById('renameValue').value=label;document.getElementById('renameModal').classList.add('open');setTimeout(()=>{const v=document.getElementById('renameValue');v.focus();v.select();},50);}
@@ -340,7 +349,7 @@ async function saveRename(){
   const label=document.getElementById('renameValue').value.trim();
   if(!label){toast('Nome não pode ser vazio.',false);return;}
   const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/label',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label})});
-  const d=await r.json();if(d.ok){toast('Renomeado: '+label);closeRename();await doRefresh();}else toast('Erro: '+(d.error||'?'),false);
+  const d=await r.json();if(d.ok){toast('Renomeado: '+label);closeRename();await doRefresh();}else toast(adminErrorMessage(d,r.status),false);
 }
 
 function openPhones(code,label){
@@ -359,13 +368,13 @@ async function removePhone(btn){
   const modal=document.getElementById('phonesModal'),code=modal.dataset.code,phones=JSON.parse(modal.dataset.phones||'[]'),phone=phones[parseInt(btn.dataset.idx)];
   if(!phone){toast('Erro: número não encontrado.',false);return;}
   const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/phones',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone})});
-  const d=await r.json();if(d.ok){toast('Número removido: '+phone);closePhones();await doRefresh();}else toast('Erro: '+(d.error||'?'),false);
+  const d=await r.json();if(d.ok){toast('Número removido: '+phone);closePhones();await doRefresh();}else toast(adminErrorMessage(d,r.status),false);
 }
 async function removeAllPhones(){
   const code=document.getElementById('phonesModal').dataset.code;
   if(!confirm('Remover TODOS os números desta chave?'))return;
   const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/phones',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({all:true})});
-  const d=await r.json();if(d.ok){toast('Todos removidos.');closePhones();await doRefresh();}else toast('Erro: '+(d.error||'?'),false);
+  const d=await r.json();if(d.ok){toast('Todos removidos.');closePhones();await doRefresh();}else toast(adminErrorMessage(d,r.status),false);
 }
 
 function openNote(code,currentNote){document.getElementById('noteKeyCode').value=code;document.getElementById('noteKeyLabel').textContent=code;document.getElementById('noteText').value=currentNote||'';document.getElementById('noteModal').classList.add('open');setTimeout(()=>document.getElementById('noteText').focus(),100);}

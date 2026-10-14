@@ -42,7 +42,7 @@ function labFormData(){
 function labErrorMessage(status,data){
   if(status===401) return {short:'❌ Sessão expirada — atualize a página e entre de novo.',detail:null};
   if(status===403) return {short:'❌ Requisição bloqueada por segurança (origem inválida) — atualize a página.',detail:null};
-  if(status===429) return {short:'❌ Muitas tentativas em pouco tempo — aguarde um minuto.',detail:null};
+  if(status===429){const sec=Math.max(1,Math.min(3600,Number(data&&data.retryAfterSeconds)||60));const wait=sec<60?sec+' segundos':Math.ceil(sec/60)+' minuto(s)';return {short:'⏳ Limite temporário da operação. Aguarde '+wait+' e tente novamente.',detail:null};}
   const code=(data&&data.error)||'';
   if(code==='invalid_email') return {short:'❌ Endereço de e-mail inválido.',detail:null};
   if(code==='invalid_plan') return {short:'❌ Plano inválido.',detail:null};

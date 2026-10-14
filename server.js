@@ -559,11 +559,23 @@ async function commitAdminKeyRecordStrict(code, record, deps = {}) {
   if (!keyCode || !record || typeof record !== 'object') throw new Error('invalid_key_record');
   const next = cloneKeyRecordForCommit(record);
   const db = deps.db || await getMongoDb();
-  await db.collection('store').updateOne(
-    { _id: 'keys' },
-    { $set: { [`data.${keyCode}`]: next, updatedAt: new Date() } },
-    { upsert: true }
-  );
+  const filter = { _id: 'keys' };
+  const update = { $set: { [`data.${keyCode}`]: next, updatedAt: new Date() } };
+  try {
+    await db.collection('store').updateOne(filter, update, { upsert: true, timeoutMS: 7000 });
+  } catch (error) {
+    const lost = zvmInvalidateMongoOnNetworkError(error, db);
+    // Mesmo código e mesmo payload tornam seguro repetir um $set cuja
+    // confirmação se perdeu. Não gera segunda licença por falha de rede.
+    if (!lost || deps.db) throw error;
+    const recovered = await getMongoDb();
+    try {
+      await recovered.collection('store').updateOne(filter, update, { upsert: true, timeoutMS: 7000 });
+    } catch (retryError) {
+      zvmInvalidateMongoOnNetworkError(retryError, recovered);
+      throw retryError;
+    }
+  }
   keys[keyCode] = next;
   invalidateKeysHtmlCache();
   return keys[keyCode];
@@ -574,9 +586,15 @@ async function commitAdminKeyRecordStrict(code, record, deps = {}) {
 // banco não puder confirmar o estado de uma licença administrativa.
 async function readAdminKeysSnapshot(deps = {}) {
   const db = deps.db || await getMongoDb();
-  const doc = await db.collection('store').findOne(
-    { _id: 'keys' }, { projection: { data: 1, _id: 0 } }
-  );
+  let doc;
+  try {
+    doc = await db.collection('store').findOne(
+      { _id: 'keys' }, { projection: { data: 1, _id: 0 }, timeoutMS: 7000 }
+    );
+  } catch (error) {
+    zvmInvalidateMongoOnNetworkError(error, db);
+    throw error;
+  }
   if (doc && doc.data !== undefined && (typeof doc.data !== 'object' || Array.isArray(doc.data) || doc.data === null)) {
     throw new Error('invalid_admin_key_store');
   }
@@ -587,9 +605,15 @@ async function readAdminKeySnapshot(code, deps = {}) {
   const keyCode = String(code || '');
   if (!/^[a-z0-9_-]{1,64}$/i.test(keyCode)) return null;
   const db = deps.db || await getMongoDb();
-  const doc = await db.collection('store').findOne(
-    { _id: 'keys' }, { projection: { [`data.${keyCode}`]: 1, _id: 0 } }
-  );
+  let doc;
+  try {
+    doc = await db.collection('store').findOne(
+      { _id: 'keys' }, { projection: { [`data.${keyCode}`]: 1, _id: 0 }, timeoutMS: 7000 }
+    );
+  } catch (error) {
+    zvmInvalidateMongoOnNetworkError(error, db);
+    throw error;
+  }
   return doc?.data?.[keyCode] && typeof doc.data[keyCode] === 'object'
     ? cloneKeyRecordForCommit(doc.data[keyCode]) : null;
 }
@@ -605,10 +629,19 @@ async function mutateAdminKeyRecordStrict(code, mutator, deps = {}) {
   await mutator(draft);
   // Compare-and-swap por chave: se outra instância alterar o documento
   // entre a leitura e a escrita, abortar em vez de apagar dados novos.
-  const result = await db.collection('store').updateOne(
-    { _id: 'keys', [field]: current },
-    { $set: { [field]: draft, updatedAt: new Date() } }
-  );
+  let result;
+  try {
+    result = await db.collection('store').updateOne(
+      { _id: 'keys', [field]: current },
+      { $set: { [field]: draft, updatedAt: new Date() } },
+      { timeoutMS: 7000 }
+    );
+  } catch (error) {
+    // CAS: não repetir automaticamente, porque o primeiro update pode ter
+    // sido confirmado mesmo quando a resposta se perdeu na rede.
+    zvmInvalidateMongoOnNetworkError(error, db);
+    throw error;
+  }
   if (result.matchedCount !== 1) {
     const error = new Error('key_write_conflict');
     error.code = 'key_write_conflict';
@@ -1275,8 +1308,14 @@ const RL_CONFIG = {
   reset:        { max: 3,  windowMs: 300000, blockMs: 30 * 60000 },
   twofa:        { max: 5,  windowMs: 60000,  blockMs: 10 * 60000 },
   cakto:        { max: 30, windowMs: 60000,  blockMs:  5 * 60000 },
-  analytics_lab:{ max: 20, windowMs: 60000,  blockMs:  5 * 60000 },
-  analytics_purge:{ max: 5, windowMs: 60000, blockMs: 10 * 60000 }, // operação destrutiva — bem mais restrito que o resto do Lab
+  // Cada operação tem um orçamento independente. Antes, cinco PRÉVIAS de
+  // limpeza já bloqueavam a EXECUÇÃO por dez minutos.
+  analytics_lab_preview:       { max: 80, windowMs: 60000, blockMs: 15000 },
+  analytics_lab_simulate:      { max: 20, windowMs: 60000, blockMs: 60000 },
+  analytics_lab_email_preview: { max: 80, windowMs: 60000, blockMs: 15000 },
+  analytics_lab_email_send:    { max: 8,  windowMs: 60000, blockMs: 5 * 60000 },
+  analytics_purge_preview:     { max: 80, windowMs: 60000, blockMs: 15000 },
+  analytics_purge_execute:     { max: 5,  windowMs: 60000, blockMs: 10 * 60000 },
   dev_sign:      { max: 20, windowMs: 60000, blockMs: 10 * 60000 },
 };
 
@@ -1290,7 +1329,12 @@ function checkRateLimit(ip, type = 'api', maxReq = 0, windowMs = 0) {
     rateLimitMap.set(key, e);
   }
   if (now < e.blockedUntil) return false;
-  if (now > e.resetAt) { e.count = 0; e.resetAt = now + cfg.windowMs; e.blockedUntil = 0; }
+  // Um bloqueio temporário cumprido deve iniciar uma janela limpa;
+  // antes, um bloqueio de 15s era reativado indefinidamente até fechar
+  // a janela antiga de 60s, apesar do Retry-After anunciado.
+  if ((e.blockedUntil > 0 && now >= e.blockedUntil) || now > e.resetAt) {
+    e.count = 0; e.resetAt = now + cfg.windowMs; e.blockedUntil = 0;
+  }
   e.count++;
   if (e.count > cfg.max) {
     e.blockedUntil = now + cfg.blockMs;
@@ -1320,6 +1364,11 @@ function sendExtensionRateLimited(res, ip, type, body) {
   if (retryAfter > 0) res.setHeader('Retry-After', String(retryAfter));
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   sendJson(res, { ...body, retryAfterSeconds: retryAfter || undefined }, 429);
+}
+function sendAnalyticsRateLimited(res, ip, type) {
+  const retryAfter = getRateLimitRetryAfterSeconds(ip, type);
+  if (retryAfter > 0) res.setHeader('Retry-After', String(retryAfter));
+  sendJson(res, { error: 'rate_limited', retryAfterSeconds: retryAfter || 1 }, 429);
 }
 
 if (!ZVM_LOCAL_SAFE_MODE) {
@@ -5255,10 +5304,10 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: 'c06071e4d73ffd64f8010881eb91c9e43a493457105e03c352153a4c7f030c1a',
     compressible: true,
   }),
-  '/assets/zvm-admin-dashboard.c5ee3546389a.js': Object.freeze({
+  '/assets/zvm-admin-dashboard.b892a520f957.js': Object.freeze({
     type: 'text/javascript; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.c5ee3546389a.js'),
-    sha256: 'c5ee3546389ab5fa29302700b12992d39f64d47a1baf95429fc28e2b0fc85289',
+    file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.b892a520f957.js'),
+    sha256: 'b892a520f95748f7f030d6b4fc78e7b12506336e219ac2ecab220478133c9e3d',
     compressible: true,
   }),
   '/assets/zvm-analytics-dashboard.623a7bbac134.css': Object.freeze({
@@ -5267,10 +5316,10 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '623a7bbac134712dcc57feb6098ed81d2bbc0dd01507904244153201524ebcd8',
     compressible: true,
   }),
-  '/assets/zvm-analytics-dashboard.7fb6ada2c27a.js': Object.freeze({
+  '/assets/zvm-analytics-dashboard.5977bc6ce33f.js': Object.freeze({
     type: 'text/javascript; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-analytics-dashboard.7fb6ada2c27a.js'),
-    sha256: '7fb6ada2c27a8fdbde59ddd2bd8f59bf812c6beaf8b06c208cb78c1b31debbe6',
+    file: path.join(__dirname, 'assets', 'zvm-analytics-dashboard.5977bc6ce33f.js'),
+    sha256: '5977bc6ce33f0d85e773c9d09c7778f90b5b7849923d5fad7dc7a76b8e489398',
     compressible: true,
   }),
 
@@ -6582,7 +6631,7 @@ function renderAdminDashboard(opts = {}) {
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <template id="zvm-admin-users-data">${initialPortalUsersJson}</template>
-<script src="/assets/zvm-admin-dashboard.c5ee3546389a.js" defer></script>
+<script src="/assets/zvm-admin-dashboard.b892a520f957.js" defer></script>
 </body></html>`;
 }
 
@@ -7404,7 +7453,7 @@ async function renderAnalyticsDashboard(fixture = null) {
 
 
 
-<script src="/assets/zvm-analytics-dashboard.7fb6ada2c27a.js" defer></script>
+<script src="/assets/zvm-analytics-dashboard.5977bc6ce33f.js" defer></script>
 <script src="/assets/zvm-analytics-lab.889fc1e2fb48.js" defer></script>
 </body></html>`;
 }
@@ -9860,7 +9909,7 @@ async function handleRequest(req, res) {
   if (p === R_ANALYTICS+'/api/lab/preview' && req.method === 'POST') {
     if (!isAnalyticsSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
-    if (!checkRateLimit(ip, 'analytics_lab')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    if (!checkRateLimit(ip, 'analytics_lab_preview')) { sendAnalyticsRateLimited(res, ip, 'analytics_lab_preview'); return; }
     const body = await parseBody(req);
     try {
       const result = await simulateCommercialSale({
@@ -9877,7 +9926,7 @@ async function handleRequest(req, res) {
   if (p === R_ANALYTICS+'/api/lab/simulate' && req.method === 'POST') {
     if (!isAnalyticsSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
-    if (!checkRateLimit(ip, 'analytics_lab')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    if (!checkRateLimit(ip, 'analytics_lab_simulate')) { sendAnalyticsRateLimited(res, ip, 'analytics_lab_simulate'); return; }
     const body = await parseBody(req);
     try {
       const result = await simulateCommercialSale({
@@ -9894,7 +9943,9 @@ async function handleRequest(req, res) {
   if ((p === R_ANALYTICS+'/api/lab/email-preview' || p === R_ANALYTICS+'/api/lab/email-send') && req.method === 'POST') {
     if (!isAnalyticsSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
-    if (!checkRateLimit(ip, 'analytics_lab')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    const isSend = p === R_ANALYTICS+'/api/lab/email-send';
+    const emailRateType = isSend ? 'analytics_lab_email_send' : 'analytics_lab_email_preview';
+    if (!checkRateLimit(ip, emailRateType)) { sendAnalyticsRateLimited(res, ip, emailRateType); return; }
     const body = await parseBody(req);
     const template = String(body.template || '');
     const chosenPlan = String(body.planId || '').toLowerCase().trim();
@@ -9911,7 +9962,7 @@ async function handleRequest(req, res) {
     if (template.startsWith('delivery_') && !(chosenPlan && chosenKind)) {
       sendJson(res, { error: 'lab_explicit_plan_required' }, 400); return;
     }
-    const isSend = p === R_ANALYTICS+'/api/lab/email-send';
+
     // Destinatário é sempre digitado explicitamente pelo admin — nunca
     // puxamos um cliente aleatório da base pra preview/teste de e-mail.
     const to = safeScalar(body.email, 160).toLowerCase();
@@ -9965,7 +10016,7 @@ async function handleRequest(req, res) {
   if (p === R_ANALYTICS+'/api/purge/preview' && req.method === 'POST') {
     if (!isAnalyticsSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
-    if (!checkRateLimit(ip, 'analytics_purge')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    if (!checkRateLimit(ip, 'analytics_purge_preview')) { sendAnalyticsRateLimited(res, ip, 'analytics_purge_preview'); return; }
     const body = await parseBody(req);
     try {
       const preview = await previewAnalyticsPurge(String(body.mode || ''));
@@ -9977,7 +10028,7 @@ async function handleRequest(req, res) {
   if (p === R_ANALYTICS+'/api/purge/execute' && req.method === 'POST') {
     if (!isAnalyticsSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
-    if (!checkRateLimit(ip, 'analytics_purge')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    if (!checkRateLimit(ip, 'analytics_purge_execute')) { sendAnalyticsRateLimited(res, ip, 'analytics_purge_execute'); return; }
     const body = await parseBody(req);
     const mode = String(body.mode || '');
     try {
