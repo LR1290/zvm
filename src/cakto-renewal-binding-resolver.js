@@ -14,13 +14,13 @@ async function resolveSubscriptionCheckout({claim,secret,nowMs,purchase,lookupPr
   if(typeof lookupPreviousPayment!=='function')return {ok:false,reason:'subscription_lookup_required'};
   const prior=await lookupPreviousPayment(purchase.subscriptionId);
   if(!prior || prior.txId===purchase.txId || prior.keyCode!==inspected.keyCode ||
-     prior.approved===false || prior.testMode===true || (prior.source&&prior.source!=='cakto') ||
-     (prior.subscriptionId&&prior.subscriptionId!==purchase.subscriptionId)){
+     prior.approved!==true || prior.testMode===true || prior.source!=='cakto' ||
+     prior.subscriptionId!==purchase.subscriptionId){
    return {ok:false,reason:'no_prior_paid_subscription_proof'};
   }
   const paid=Date.parse(String(prior.paidAt||''));
   const renewal=Date.parse(String(purchase.paidAt||''));
-  if(Number.isFinite(paid)&&Number.isFinite(renewal)&&paid>=renewal)
+  if(!Number.isFinite(paid)||!Number.isFinite(renewal)||paid>=renewal)
    return {ok:false,reason:'subscription_payment_time_conflict'};
  }
  const owner=await lookupOwner(inspected.ownerEmail);
