@@ -78,7 +78,12 @@ function originalBackgroundHtml({subject,tone,code,plan,validity,portal,renewed}
  blankTo(1536);
  // Background is ONE entire original image; not an email image attachment.
  const background='background-color:'+g.bg+';background-image:url('+art+');background-repeat:no-repeat;background-position:center top;background-size:100% 100%;';
- const master=tbl(rs,'width:640px;height:960px;table-layout:fixed;'+background,'class="zvm-whole-original" width="640" height="960" bgcolor="'+g.bg+'" background="'+art+'"');
+ // Gmail web does not consistently honor text-align on an outer TD for
+ // nested tables. The inner TABLE must itself have align=center and auto
+ // margins; the wrapper/TD also specify alignment for mail clients which
+ // strip some CSS. Keep artwork geometry and all dynamic cells unchanged.
+ const master=tbl(rs,'width:640px;height:960px;table-layout:fixed;margin-left:auto;margin-right:auto;'+background,
+  'align="center" class="zvm-whole-original" width="640" height="960" bgcolor="'+g.bg+'" background="'+art+'"');
  return '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(subject||'ZVM — Sua licença está pronta')+'</title>'
   +'<style type="text/css">@media screen and (max-width:600px){.zvm-whole-original{zoom:.90!important}}'
   +'@media screen and (max-width:540px){.zvm-whole-original{zoom:.80!important}}'
@@ -88,11 +93,12 @@ function originalBackgroundHtml({subject,tone,code,plan,validity,portal,renewed}
   +'@media screen and (max-width:375px){.zvm-whole-original{zoom:.55!important}}'
   +'@media screen and (max-width:340px){.zvm-whole-original{zoom:.49!important}}</style>'
   +'</head><body data-zvm-whole-art="1" style="margin:0;padding:0;background:'+g.bg+'">'
-  +tbl(row(cell(master,'padding:0;vertical-align:top;text-align:center;','align="center"')),
-      'width:100%;','width="100%"')
-  +'<p style="font-family:Arial,Helvetica,sans-serif;color:'+g.ink+';font-size:12px;line-height:1.6;text-align:center;margin:14px auto;max-width:640px;padding:0 12px;">'
-  +'A chave exibida acima é texto selecionável. Para copiar no Gmail, selecione a chave e use Copiar. '
-  +'<a href="'+esc(target)+'" style="color:'+g.ink+';text-decoration:underline;font-weight:700;">PORTAL DO CLIENTE</a>'
-  +'</p></body></html>';
+  +tbl(row(cell(
+     master+'<p style="font-family:Arial,Helvetica,sans-serif;color:'+g.ink+';font-size:12px;line-height:1.6;text-align:center;margin:14px auto;max-width:640px;padding:0 12px;">'
+     +'A chave exibida acima é texto selecionável. Para copiar no Gmail, selecione a chave e use Copiar. '
+     +'<a href="'+esc(target)+'" style="color:'+g.ink+';text-decoration:underline;font-weight:700;">PORTAL DO CLIENTE</a></p>',
+     'padding:0;vertical-align:top;text-align:center;width:100%;','align="center" width="100%"')),
+   'width:100%;margin:0 auto;text-align:center;', 'align="center" width="100%"')
+  +'</body></html>';
 }
 module.exports={originalBackgroundHtml,ART};
