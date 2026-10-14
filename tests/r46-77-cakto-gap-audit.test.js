@@ -3,6 +3,7 @@ const assert=require('node:assert/strict');
 const crypto=require('node:crypto');
 const {auditPaidOrders,createWindowUrl,validatePageUrl,isVerifiedPaidMain,getScopedToken,txMarkers}=require('../src/cakto-paid-order-audit');
 const helper=require('../src/cakto-checkout-binding');
+const {resolveSubscriptionCheckout}=require('../src/cakto-renewal-binding-resolver');
 const from='2026-10-10',to='2026-10-15',base='https://api.cakto.com.br/public_api/orders/';
 function order(id,paidAt='2026-10-13T07:40:00Z',opts={}) {
  return {id,paidAt,status:'paid',offer_type:'main',customer:{email:'PRIVATE@EXAMPLE.TEST',docNumber:'PRIVATE'},...opts};
@@ -52,6 +53,20 @@ function fixture({pages,payments=[],queued=[]}){
  assert.equal(helper.readCheckoutBinding(token,secret,Date.parse('2026-03-01')),null);
  assert.equal(helper.inspectCheckoutBinding(token,secret,Date.parse('2026-03-01')).status,'expired');
  assert.equal(helper.inspectCheckoutBinding(token.slice(0,-2)+'xx',secret,Date.parse('2026-03-01')).status,'invalid');
+ const renewal={event:'subscription_renewed',status:'paid',txId:'order-2',
+  subscriptionId:'subscription-01',paidAt:'2026-03-01T11:00:00Z'};
+ const prior={txId:'order-1',keyCode:'zv-target-00001',source:'cakto',approved:true,testMode:false,
+  subscriptionId:'subscription-01',paidAt:'2026-01-01T11:00:00Z'};
+ const resolver={claim:token,secret,nowMs:Date.parse('2026-03-01'),purchase:renewal,
+  lookupPreviousPayment:async()=>prior,lookupOwner:async()=>({keyCode:'zv-target-00001'})};
+ const accepted=await resolveSubscriptionCheckout(resolver);
+ assert.equal(accepted.ok,true);assert.equal(accepted.reason,'verified_subscription_renewal');
+ assert.equal((await resolveSubscriptionCheckout({...resolver,purchase:{...renewal,subscriptionId:''}})).ok,false);
+ assert.equal((await resolveSubscriptionCheckout({...resolver,lookupPreviousPayment:async()=>null})).ok,false);
+ assert.equal((await resolveSubscriptionCheckout({...resolver,lookupPreviousPayment:async()=>({...prior,keyCode:'different'})})).ok,false);
+ assert.equal((await resolveSubscriptionCheckout({...resolver,lookupOwner:async()=>({keyCode:'different'})})).ok,false);
+ assert.equal((await resolveSubscriptionCheckout({...resolver,claim:token.slice(0,-2)+'xx'})).ok,false);
+ assert.equal((await resolveSubscriptionCheckout({...resolver,purchase:{...renewal,status:'unpaid'}})).ok,false);
  const auth=await getScopedToken('client-test','secret-test',{fetcher:async(url,opt)=>{
   assert.equal(url,'https://api.cakto.com.br/public_api/token/');
   assert.equal(opt.method,'POST');return response({access_token:'test_token',scope:'read orders',expires_in:36000});
