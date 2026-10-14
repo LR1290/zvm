@@ -18,12 +18,15 @@ function portalSessionLive(session, now = Date.now()) {
   const expires = Date.parse(String(session.expiresAt || ''));
   return Number.isFinite(expires) && now < expires;
 }
-async function activatePortalSession(db, email, token) {
+async function activatePortalSession(db, email, token, expectedPasswordHash) {
+  // Compare-and-set: do not authorize a login that completed after a password
+  // reset/change. A verified first-factor snapshot is required, also for 2FA.
+  if (!/^[a-f0-9]{128}$/.test(String(expectedPasswordHash || ''))) throw new Error('portal_auth_proof_required');
   const result = await db.collection('portal_users').updateOne(
-    { _id: String(email) },
+    { _id: String(email), passwordHash: expectedPasswordHash },
     { $set: { portalActiveSessionHash: portalTokenHash(token), portalActiveSince: new Date() } }
   );
-  if (result.matchedCount !== 1) throw new Error('portal_user_missing_at_session_activation');
+  if (result.matchedCount !== 1) throw new Error('portal_credential_changed_or_user_missing');
 }
 async function isPortalSessionCurrent(db, email, token) {
   const found = await db.collection('portal_users').findOne(
