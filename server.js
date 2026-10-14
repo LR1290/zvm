@@ -8236,6 +8236,21 @@ async function handleRequest(req, res) {
   // No keys, plans tied to customers, emails or other personal data are exposed.
   // Strictly whitelisted 3 tones x 15 slices (14 historical plus 1 seamless details);
   // no filesystem path supplied by caller. Old mail image URLs remain valid.
+  // Exact original approved design for ZVM license mail, kept as one external
+  // background with zero personalized data in its URL. Historical mail slices
+  // remain served below without changes.
+  if (req.method === 'GET' && /^\/assets\/zvm-email-art\/r46-73\/(start|pro|enterprise)\/original[.]jpg$/.test(p)) {
+    const tone = /^\/assets\/zvm-email-art\/r46-73\/(start|pro|enterprise)\/original[.]jpg$/.exec(p)[1];
+    try {
+      const bytes = await fs.promises.readFile(path.join(__dirname, 'assets', 'email-licenses', tone + '.jpg'));
+      res.writeHead(200, { 'Content-Type':'image/jpeg', 'Content-Length':bytes.length,
+        'Cache-Control':'public, max-age=31536000, immutable', ..._SEC_HEADERS });
+      res.end(bytes); return;
+    } catch (_) {
+      res.writeHead(503, { 'Cache-Control':'no-store', ..._SEC_HEADERS }); res.end(); return;
+    }
+  }
+
   if (req.method === 'GET' && p.startsWith('/assets/zvm-email-art/')) {
     const matched = new RegExp('^/assets/zvm-email-art/r46-69/(start|pro|enterprise)/([a-z-]+)[.]jpg$').exec(p);
     if (!matched) { res.writeHead(404, { 'Cache-Control':'no-store', ..._SEC_HEADERS }); res.end(); return; }
