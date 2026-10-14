@@ -10365,9 +10365,20 @@ async function handleRequest(req, res) {
         if (!oldOk) { sendAuthHtml(res, renderStandalonePortalChangePwd('Senha atual incorreta.', '', sess)); return; }
         const newPass = await hashNewPortalPassword(pass);
         const newToken = generateToken();
-        await db.collection('portal_users').updateOne({ _id: sess.email }, {
+        const currentToken = readPortalToken(req);
+        const updated = await db.collection('portal_users').updateOne({
+          _id: sess.email,
+          passwordHash: user.passwordHash,
+          portalActiveSessionHash: portalTokenHash(currentToken)
+        }, {
           $set: { ...newPass, portalActiveSessionHash: portalTokenHash(newToken), portalActiveSince: new Date() }
         });
+        if (updated.matchedCount !== 1) {
+          if (currentToken) delete portalSessions[currentToken];
+          clearSessionCookie(res, 'zv_portal');
+          sendAuthHtml(res, renderStandalonePortalLogin('Sua sessão mudou durante esta operação. Entre novamente.'));
+          return;
+        }
         revokePortalSessions(sess.email);
         portalSessions[newToken] = { email: sess.email, name: sess.name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
         setSessionCookie(res, 'zv_portal', newToken, 86400);
