@@ -13,7 +13,7 @@ for(const [planId,maxUses,tone,color] of [
   baseUrl:'https://zvm.onrender.com',ctaPath:'/cliente'
  });
  assert.equal(built.artwork?.tone,tone);
- const match=built.html.match(/<td[^>]*background="__ZVM_SLICE_details__"[^>]*>([\\s\\S]*?)<\\/td>/);
+  const match=built.html.match(/<td[^>]*background="__ZVM_SLICE_details__"[^>]*>(.*?)<\/td>/s);
  assert(match,'details uses exactly one full-width cell and approved single-piece background');
  assert(!match[1].includes('<img'),'details contains selectable HTML only, no child image cells');
  assert.equal((built.html.match(/__ZVM_SLICE_details__/g)||[]).length,2,'details token is present as background attribute and CSS only');
