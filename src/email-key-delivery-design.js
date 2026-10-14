@@ -28,16 +28,14 @@ function buildKeyDeliveryDesign({code,planId,planLabel,maxUses,expiresAt,renewed
  const uses=Number(maxUses);
  const count=Number.isInteger(uses)&&uses>=1?' · '+uses+' acesso(s)':'';
  const portal=httpsLink(baseUrl,ctaPath);
- const extension=(()=>{try{const u=new URL(extensionUrl);return u.protocol==='https:'?u.toString():portal;}catch(_){return portal;}})();
  const cta='<a href="'+esc(portal)+'" style="display:inline-block;background:'+accent+';color:#03140c;font-family:Arial,sans-serif;font-weight:800;font-size:14px;padding:16px 26px;text-decoration:none;border-radius:9px;">ACESSAR MEU PAINEL &rarr;</a>';
- const secondary='<a href="'+esc(extension)+'" style="display:inline-block;color:'+accent+';font-family:Arial,sans-serif;font-weight:700;font-size:12px;text-decoration:underline;">Instalar ZVM</a>';
  const subject=renewed?'ZVM — Renovação confirmada':'ZVM — Sua licença está pronta';
  // START/PRO/ENTERPRISE preserve exact artwork via a single remote
  // background without image attachments. SOLO's existing flow is unchanged.
  if(!info.ambiguous && ['start','pro','enterprise'].includes(tone)){
   const art={tone,native:true,backgroundOriginal:true,code:String(code||'').trim().slice(0,80),plan:info.label,validity:expiryPtBr(expiresAt)};
-  const plainText='ZVM — '+(renewed?'Renovação confirmada':'Sua licença está pronta')+'\n\nChave: '+art.code+'\nPlano: '+art.plan+'\nValidade: '+art.validity+'\nPortal: '+portal+'\nInstalar: '+extension;
-  return {subject,html:approvedArtworkHtml({subject,tone,...art,portal,extension,renewed,maxUses}),text:plainText,artwork:art,classification:info};
+  const plainText='ZVM — '+(renewed?'Renovação confirmada':'Sua licença está pronta')+'\n\nChave: '+art.code+'\nPlano: '+art.plan+'\nValidade: '+art.validity+'\nPortal: '+portal;
+  return {subject,html:approvedArtworkHtml({subject,tone,...art,portal,renewed,maxUses}),text:plainText,artwork:art,classification:info};
  }
  const html='<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
  +'<title>'+esc(subject)+'</title></head><body style="margin:0;padding:0;background:'+base+';font-family:Arial,Helvetica,sans-serif;">'
@@ -61,7 +59,7 @@ function buildKeyDeliveryDesign({code,planId,planLabel,maxUses,expiresAt,renewed
  +'<p style="font-size:11px;letter-spacing:1px;color:'+muted+';margin:0 0 6px;">PLANO</p><p style="color:'+text+';font-size:17px;font-weight:900;margin:0;overflow-wrap:anywhere;">'+label+esc(count)+'</p>'
  +'</td><td width="50%" style="background:'+base+';border:1px solid '+accent+';border-radius:10px;padding:15px 12px;text-align:left;vertical-align:top;">'
  +'<p style="font-size:11px;letter-spacing:1px;color:'+muted+';margin:0 0 6px;">VALIDADE</p><p style="color:'+text+';font-size:17px;font-weight:900;margin:0;">'+validity+'</p>'
- +'</td></tr></table>'+cta+'<p style="margin:15px 0 25px;">'+secondary+'</p>'
+ +'</td></tr></table>'+cta
  +'<div style="border-top:1px solid '+accent+';padding-top:20px;text-align:left;">'
  +'<p style="color:'+accent+';font-weight:900;font-size:15px;margin:0 0 12px;">// COMO COMEÇAR</p>'
  +'<p style="color:'+text+';font-size:13px;line-height:1.9;margin:0;">1. Instale a ZVM pelo link oficial.<br>2. Entre no Portal do Cliente com o e-mail da compra.<br>3. Se necessário, vincule a chave no portal.</p>'
