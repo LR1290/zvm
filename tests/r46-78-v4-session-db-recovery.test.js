@@ -86,6 +86,34 @@ async function securityTests() {
   assert.equal(count, 3);
 }
 
+async function indexTests() {
+  const indexCode = region('async function ensureExtensionSessionIndexes(db) {', '\nfunction publicExtensionSession(');
+  let creates=0, fail=false;
+  const db = { collection(name) {
+    assert.equal(name,'extension_sessions');
+    return { async createIndex(spec,opts) {
+      creates++;
+      assert.equal(opts.timeoutMS,3200);
+      await Promise.resolve();
+      if (fail) { fail=false; throw Error('Mongo index unavailable'); }
+    }};
+  }};
+  const runtime=context('const EXTENSION_SESSION_COLLECTION="extension_sessions";\n' +
+    'const ZVM_EXTENSION_AUTH_DB_TIMEOUT_MS=3200;\n' +
+    'const _extensionSessionIndexedDbs=new WeakSet();\n' +
+    'const _extensionSessionIndexPending=new WeakMap();\n' +
+    indexCode + '\nglobalThis.ensure = ensureExtensionSessionIndexes;');
+  await Promise.all(Array.from({length:25},()=>runtime.ensure(db)));
+  assert.equal(creates,2,'25 logins create only 2 indexes, once each');
+  await runtime.ensure(db);
+  assert.equal(creates,2,'indexes memoized after success');
+  const second = { collection:db.collection };
+  fail=true;
+  await assert.rejects(runtime.ensure(second));
+  await runtime.ensure(second);
+  assert.equal(creates,5,'failed setup is retried, not cached as success');
+}
+
 async function loginTests() {
   const loginCode = region('async function authenticateExtensionAccount(', '\nasync function authorizeExtensionKeySession(');
   let capturedTimeout = null, user = { _id: 'test@example.invalid' }, passwordValid = true, totpValid = true;
@@ -131,6 +159,7 @@ async function loginTests() {
 (async function main() {
   await mongoTests();
   await securityTests();
+  await indexTests();
   await loginTests();
   console.log('R46.78: Mongo reconnect, replay, password and 2FA passed');
 })().catch(error => { console.error(error); process.exitCode=1; });
