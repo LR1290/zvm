@@ -34,7 +34,10 @@ function estimatePayment(row,{profile='negotiated'}={}) {
   const method=normalizeMethod(row.paymentMethod);
   // A historical override is only allowed when a transaction explicitly
   // carries a vetted profile marker. Never guess historical fees by plan ID.
-  const rateProfile=row.caktoFeeProfile==='public_standard_2026'?'public_standard_2026':profile;
+  const taggedProfile=String(row.caktoFeeProfile||'').trim();
+  // Unknown explicitly tagged schedules must never silently fall back to
+  // today's negotiated scenario (historical settlement would be misleading).
+  const rateProfile=taggedProfile || profile;
   const rate=RATE_PROFILES[rateProfile]?.[method];
   if(!rate) return {eligible:true,method:method||'unclassified',grossCents, feeCents:null,netCents:null,
     baseCents:brlToCents(row.baseAmount),status:'unclassified',rateProfile:null,
