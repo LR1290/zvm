@@ -65,6 +65,9 @@ function mockDb() {
     'await maybeRehashPortalPassword(db, email, pass, user)',
     '{ _id: email, passwordHash: user.passwordHash }',
     'portalActiveSessionHash: portalTokenHash(newToken)',
+    'portalActiveSessionHash: portalTokenHash(currentToken)',
+    'passwordHash: user.passwordHash,',
+    'updated.matchedCount !== 1',
     'req.zvmPortalSessionRevoked = true'
   ]) {
     assert(server.includes(marker),'missing R46.75 route integration: '+marker);
