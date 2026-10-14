@@ -293,7 +293,7 @@ const DEFAULT_MODULES = Object.fromEntries(AVAILABLE_MODULES.map(m => [m, false]
 
 let _mongoClient = null;
 let _mongoDb     = null;
-let _mongoConnecting = false;
+let _mongoConnectPromise = null;
 let _caktoIndexReady = false;
 let _adminPortalUsersCache = { ts: 0, users: [] };
 
@@ -338,20 +338,17 @@ async function loadAdminPortalUsers({ limit = 1000 } = {}) {
 const CAKTO_PROCESSING_STALE_MS = 5 * 60 * 1000;
 
 async function getMongoDb() {
-  if (_mongoDb) return _mongoDb; // fast path — sem ping por chamada
-  if (_mongoConnecting) {
-    for (let i = 0; i < 100; i++) {
-      await new Promise(r => setTimeout(r, 100));
-      if (_mongoDb) return _mongoDb;
-    }
-    throw new Error('MongoDB: timeout aguardando conexão de outro coroutine');
-  }
-  _mongoConnecting = true;
-  try {
-    if (_mongoClient) { try { await _mongoClient.close(); } catch {} _mongoClient = null; }
-    _mongoClient = new MongoClient(MONGODB_URI, {
-      serverSelectionTimeoutMS: 8000,
-      connectTimeoutMS:         8000,
+  if (_mongoDb) return _mongoDb;
+  // Uma única tentativa é compartilhada por todas as rotas. Antes, cada
+  // concorrente aguardava em polling de até 10s, inclusive após falha.
+  if (_mongoConnectPromise) return _mongoConnectPromise;
+  const pending = (async () => {
+    const stale = _mongoClient;
+    _mongoClient = null;
+    if (stale) Promise.resolve().then(() => stale.close()).catch(() => {});
+    const client = new MongoClient(MONGODB_URI, {
+      serverSelectionTimeoutMS: 6000,
+      connectTimeoutMS:         6000,
       socketTimeoutMS:          30000,
       maxPoolSize:              10,
       minPoolSize:              1,
@@ -362,24 +359,50 @@ async function getMongoDb() {
       tlsAllowInvalidHostnames:    false,
       compressors:              ['zstd', 'zlib'],
     });
-    await _mongoClient.connect();
-    console.log('✅ MongoDB conectado');
-    _mongoDb = _mongoClient.db(MONGODB_DB);
-    return _mongoDb;
-  } catch(e) {
-    _mongoDb = null;
-    _mongoClient = null;
-    throw e;
-  } finally {
-    _mongoConnecting = false;
-  }
+    try {
+      await client.connect();
+      _mongoClient = client;
+      _mongoDb = client.db(MONGODB_DB);
+      console.log('✅ MongoDB conectado');
+      return _mongoDb;
+    } catch (error) {
+      client.close().catch(() => {});
+      throw error;
+    }
+  })();
+  _mongoConnectPromise = pending;
+  try { return await pending; }
+  finally { if (_mongoConnectPromise === pending) _mongoConnectPromise = null; }
+}
+
+function zvmInvalidateMongoOnNetworkError(error, expectedDb) {
+  const code = String(error && error.name || '');
+  const message = String(error && error.message || '');
+  if (!(/MongoNetwork|MongoServerSelection|MongoOperationTimeout|MongoTimeout/i.test(code) ||
+        /timed out|connection.*closed|ECONNRESET|ECONNREFUSED|server selection/i.test(message))) return false;
+  // Uma operação antiga não deve derrubar uma conexão nova já recuperada.
+  if (!_mongoDb || _mongoDb !== expectedDb) return false;
+  const stale = _mongoClient;
+  _mongoDb = null;
+  _mongoClient = null;
+  if (stale) Promise.resolve().then(() => stale.close()).catch(() => {});
+  console.warn('[DB] Conexão invalidada após falha de rede; próxima operação reconecta');
+  return true;
 }
 
 // Health check periódico — detecta queda de conexão sem pingar no hot path
 setInterval(async () => {
   if (!_mongoDb) return;
-  try { await _mongoDb.command({ ping: 1 }); }
-  catch { _mongoDb = null; _mongoClient = null; console.warn('[DB] Conexão perdida — reconectando na próxima operação'); }
+  const checkedDb = _mongoDb;
+  try { await checkedDb.command({ ping: 1 }, { timeoutMS: 4000 }); }
+  catch (error) {
+    if (checkedDb === _mongoDb) {
+      const stale = _mongoClient;
+      _mongoDb = null; _mongoClient = null;
+      if (stale) Promise.resolve().then(() => stale.close()).catch(() => {});
+      console.warn('[DB] Ping falhou; próxima operação reconecta');
+    }
+  }
 }, 5 * 60 * 1000).unref();
 
 async function loadDb(opts = {}) {
@@ -1790,6 +1813,7 @@ const EXTENSION_LICENSED_CAPABILITIES = Object.freeze([
   'laboratory.aiTest',
 ]);
 const _extensionSessionIndexedDbs = new WeakSet();
+const ZVM_EXTENSION_AUTH_DB_TIMEOUT_MS = 3200;
 
 function extensionNow(deps = {}) {
   const value = typeof deps.now === 'function' ? deps.now() : deps.now;
@@ -1888,11 +1912,11 @@ async function ensureExtensionSessionIndexes(db) {
   const collection = db.collection(EXTENSION_SESSION_COLLECTION);
   await collection.createIndex(
     { expiresAt: 1 },
-    { expireAfterSeconds: 0, name: 'extension_sessions_ttl' }
+    { expireAfterSeconds: 0, name: 'extension_sessions_ttl', timeoutMS: ZVM_EXTENSION_AUTH_DB_TIMEOUT_MS }
   );
   await collection.createIndex(
     { 'subject.id': 1, revokedAt: 1 },
-    { name: 'extension_sessions_subject' }
+    { name: 'extension_sessions_subject', timeoutMS: ZVM_EXTENSION_AUTH_DB_TIMEOUT_MS }
   );
   _extensionSessionIndexedDbs.add(db);
 }
@@ -2010,7 +2034,7 @@ async function createExtensionSession(descriptor, deps = {}) {
       revokedAt: null,
     };
     try {
-      await db.collection(EXTENSION_SESSION_COLLECTION).insertOne(doc);
+      await db.collection(EXTENSION_SESSION_COLLECTION).insertOne(doc, { timeoutMS: ZVM_EXTENSION_AUTH_DB_TIMEOUT_MS });
       return { token: rawToken, doc, session: publicExtensionSession(doc, rawToken) };
     } catch (error) {
       if (error?.code !== 11000 || attempt === 2) throw error;
@@ -2073,7 +2097,7 @@ async function authenticateExtensionAccount(input, deps = {}) {
     return extensionAuthFailure('invalid_credentials', 401);
   }
   const db = deps.db || await getMongoDb();
-  const user = await db.collection('portal_users').findOne({ _id: email });
+  const user = await db.collection('portal_users').findOne({ _id: email }, { timeoutMS: ZVM_EXTENSION_AUTH_DB_TIMEOUT_MS });
   const verifyPassword = deps.verifyPassword || verifyPortalPassword;
   if (!user || !await verifyPassword(password, user)) {
     return extensionAuthFailure('invalid_credentials', 401);
@@ -7830,10 +7854,11 @@ async function zvmSecurityConsumeRequestIdSharedImpl(requestId, nowMs = Date.now
   const db = deps.db || await getMongoDb();
   const expiresAt = new Date(Number(nowMs) + ZVM_SECURITY_REQUEST_TTL_MS);
   try {
-    await db.collection('extension_security_replay').insertOne({ _id: requestId, createdAt: new Date(Number(nowMs)), expiresAt });
+    await db.collection('extension_security_replay').insertOne({ _id: requestId, createdAt: new Date(Number(nowMs)), expiresAt }, { timeoutMS: ZVM_EXTENSION_AUTH_DB_TIMEOUT_MS });
     return { ok: true };
   } catch (error) {
     if (error?.code === 11000) return { ok: false, code: 'SECURITY_REPLAY_REJECTED' };
+    zvmInvalidateMongoOnNetworkError(error, db);
     console.error('[SEC] Anti-replay compartilhado indisponível:', safeScalar(error?.message, 120, 'db_error'));
     return { ok: false, code: 'SECURITY_REPLAY_UNAVAILABLE' };
   }
@@ -8660,6 +8685,7 @@ async function handleRequest(req, res) {
       ).catch(() => {});
       sendJson(res, extensionSessionSuccess(issued.token, issued.doc, authenticated.entitlement));
     } catch (error) {
+      zvmInvalidateMongoOnNetworkError(error, _mongoDb);
       console.error('[extension-v4] session/login indisponível:', error.message);
       sendJson(res, { ok: false, errorCode: 'temporarily_unavailable', retryable: true }, 503);
     }
