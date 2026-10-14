@@ -22,7 +22,8 @@ const {RATE_PROFILES,brlToCents,normalizeMethod,estimatePayment,summarizeCaktoFi
  assert.equal(brlToCents(-1),null);assert.equal(normalizeMethod('pix_automatico'),'pix_auto');
  assert.equal(normalizeMethod('CREDIT_CARD'),'credit_card');scenarios++;
  for(const bad of [actual(39.90,'boleto'),actual(39.9,'pix_auto',{caktoFeeProfile:'unknown'})]){
-   const r=estimatePayment(bad);if(r.method==='unclassified')assert.equal(r.feeCents,null);
+   const r=estimatePayment(bad);assert.equal(r.feeCents,null);
+   assert.equal(r.status,'unclassified');
  }scenarios++;
  assert.equal(estimatePayment(actual(39.90,'pix',{testMode:true})).eligible,false);
  assert.equal(estimatePayment(actual(39.90,'pix',{approved:false})).eligible,false);
