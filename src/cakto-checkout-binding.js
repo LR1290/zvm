@@ -26,8 +26,9 @@ function inspectCheckoutBinding(token,secret,nowMs=Date.now()){
  const key=aesKey(secret);
  if(!key||!Number.isSafeInteger(nowMs))return {status:'invalid'};
  try{
-  const bin=Buffer.from(token.slice(PREFIX.length),'base64url');
-  if(bin.length<29||bin.length>480)return {status:'invalid'};
+  const encoded=token.slice(PREFIX.length);
+  const bin=Buffer.from(encoded,'base64url');
+  if(bin.length<29||bin.length>480||bin.toString('base64url')!==encoded)return {status:'invalid'};
   const dec=crypto.createDecipheriv('aes-256-gcm',key,bin.subarray(0,12));
   dec.setAAD(Buffer.from(PREFIX));dec.setAuthTag(bin.subarray(12,28));
   const doc=JSON.parse(Buffer.concat([dec.update(bin.subarray(28)),dec.final()]).toString('utf8'));
