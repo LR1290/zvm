@@ -5299,10 +5299,10 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: 'c06071e4d73ffd64f8010881eb91c9e43a493457105e03c352153a4c7f030c1a',
     compressible: true,
   }),
-  '/assets/zvm-admin-dashboard.c5ee3546389a.js': Object.freeze({
+  '/assets/zvm-admin-dashboard.b892a520f957.js': Object.freeze({
     type: 'text/javascript; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.c5ee3546389a.js'),
-    sha256: 'c5ee3546389ab5fa29302700b12992d39f64d47a1baf95429fc28e2b0fc85289',
+    file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.b892a520f957.js'),
+    sha256: 'b892a520f95748f7f030d6b4fc78e7b12506336e219ac2ecab220478133c9e3d',
     compressible: true,
   }),
   '/assets/zvm-analytics-dashboard.623a7bbac134.css': Object.freeze({
@@ -5311,10 +5311,10 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '623a7bbac134712dcc57feb6098ed81d2bbc0dd01507904244153201524ebcd8',
     compressible: true,
   }),
-  '/assets/zvm-analytics-dashboard.7fb6ada2c27a.js': Object.freeze({
+  '/assets/zvm-analytics-dashboard.5977bc6ce33f.js': Object.freeze({
     type: 'text/javascript; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-analytics-dashboard.7fb6ada2c27a.js'),
-    sha256: '7fb6ada2c27a8fdbde59ddd2bd8f59bf812c6beaf8b06c208cb78c1b31debbe6',
+    file: path.join(__dirname, 'assets', 'zvm-analytics-dashboard.5977bc6ce33f.js'),
+    sha256: '5977bc6ce33f0d85e773c9d09c7778f90b5b7849923d5fad7dc7a76b8e489398',
     compressible: true,
   }),
 
@@ -6626,7 +6626,7 @@ function renderAdminDashboard(opts = {}) {
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <template id="zvm-admin-users-data">${initialPortalUsersJson}</template>
-<script src="/assets/zvm-admin-dashboard.c5ee3546389a.js" defer></script>
+<script src="/assets/zvm-admin-dashboard.b892a520f957.js" defer></script>
 </body></html>`;
 }
 
@@ -7448,7 +7448,7 @@ async function renderAnalyticsDashboard(fixture = null) {
 
 
 
-<script src="/assets/zvm-analytics-dashboard.7fb6ada2c27a.js" defer></script>
+<script src="/assets/zvm-analytics-dashboard.5977bc6ce33f.js" defer></script>
 <script src="/assets/zvm-analytics-lab.889fc1e2fb48.js" defer></script>
 </body></html>`;
 }
