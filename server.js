@@ -8636,6 +8636,7 @@ async function handleRequest(req, res) {
       sendJson(res, { ok: false, errorCode: 'rate_limited', retryable: true }, 429);
       return;
     }
+    let sessionDb = null;
     try {
       const body = await parseBody(req);
       let buildClient = await zvmSecurityCheckClientShared(body.clientSecurity, {});
@@ -8646,6 +8647,7 @@ async function handleRequest(req, res) {
       if (!buildClient.ok && !deferredDevV2) { if (body && typeof body === 'object') delete body.password; sendJson(res, { ok:false, errorCode:buildClient.code }, zvmSecurityClientErrorStatus(buildClient.code)); return; }
       if (!deferredDevV2 && !deferredSignedDevV2 && ZVM_BUILD_ENFORCE && buildClient.recognized!==true && !ZVM_DEV_BUILD_ALLOW) { if (body && typeof body === 'object') delete body.password; sendJson(res, { ok:false, errorCode:'BUILD_NOT_ALLOWED' }, 403); return; }
       const db = await getMongoDb();
+      sessionDb = db;
       const authenticated = await authenticateExtensionAccount(body, { db });
       // Reduz a vida da senha em memória após a verificação. Ela nunca é
       // copiada para sessão, entitlement, Mongo ou logs desta API.
@@ -8685,7 +8687,7 @@ async function handleRequest(req, res) {
       ).catch(() => {});
       sendJson(res, extensionSessionSuccess(issued.token, issued.doc, authenticated.entitlement));
     } catch (error) {
-      zvmInvalidateMongoOnNetworkError(error, _mongoDb);
+      zvmInvalidateMongoOnNetworkError(error, sessionDb);
       console.error('[extension-v4] session/login indisponível:', error.message);
       sendJson(res, { ok: false, errorCode: 'temporarily_unavailable', retryable: true }, 503);
     }
