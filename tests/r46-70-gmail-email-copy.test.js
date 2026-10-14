@@ -13,11 +13,13 @@ for(const [planId,maxUses,tone,color] of [
   baseUrl:'https://zvm.onrender.com',ctaPath:'/cliente'
  });
  assert.equal(built.artwork?.tone,tone);
- for(const name of ['plan-middle','plan-right']){
-  const match=built.html.match(new RegExp('<td[^>]*background="__ZVM_SLICE_'+name+'__"[^>]*>([\\s\\S]*?)<\\/td>'));
-  assert(match,'short Gmail slice '+name+' uses optional CSS background');
-  assert(!match[1].includes('<img'),'short Gmail slice '+name+' may not render a broken image widget');
- }
+  const match=built.html.match(/<td[^>]*background="__ZVM_SLICE_details__"[^>]*>(.*?)<\/td>/s);
+ assert(match,'details uses exactly one full-width cell and approved single-piece background');
+ assert(!match[1].includes('<img'),'details contains selectable HTML only, no child image cells');
+ assert.equal((built.html.match(/__ZVM_SLICE_details__/g)||[]).length,2,'details token is present as background attribute and CSS only');
+ for(const obsolete of ['plan-left','plan-bg','plan-middle','valid-bg','plan-right'])
+  assert(!built.html.includes('__ZVM_SLICE_'+obsolete+'__'),'no obsolete 5-piece strips');
+ assert.equal((match[1].match(/data-zvm-live="(plan|validity)"/g)||[]).length,2,'plan and validity are real text inside one background');
  for(const type of ['key','plan','validity'])assert(built.html.includes('data-zvm-live="'+type+'"'));
  assert.match(built.html,/bgcolor="#080e0b"/,'black native table fallback for Gmail Android');
  assert(built.html.includes('bgcolor="'+color+'"'),'plan-row cells have tone-aware native background');

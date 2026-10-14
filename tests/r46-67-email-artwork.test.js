@@ -24,7 +24,10 @@ const expected={start:'db2f32248d60f41e78ae0f7cf8675d25a550402671068f6311dc5efa0
   const parts=regions(tone); assert.equal(parts.length,14);
   const originalArea=parts.reduce((total,p)=>total+(p.w*p.h),0);
   assert.equal(originalArea,1024*1536,'artwork portions must have 100% coverage with no missing pixels');
-  const a=await decorativeSlices(tone);assert.equal(Object.keys(a).length,14);
+  const a=await decorativeSlices(tone);
+  assert.equal(Object.keys(a).length,15,'14 immutable historical slices plus one seamless details slice');
+  assert.equal(a.details.w,1024,'single full-width details image');
+  assert.equal(a.details.h,GEOMETRY[tone].details[5]-GEOMETRY[tone].details[4]);
   for(const piece of Object.values(a)){
    const m=await sharp(piece.buffer).metadata();
    assert.equal(m.width,piece.w);assert.equal(m.height,piece.h);
@@ -36,9 +39,13 @@ const expected={start:'db2f32248d60f41e78ae0f7cf8675d25a550402671068f6311dc5efa0
   assert(!outgoing.html.includes('data:image/jpeg;base64,'));
   for(const p of Object.values(a)){
    const url='https://zvm.onrender.com/assets/zvm-email-art/r46-69/'+tone+'/'+p.name+'.jpg';
-   assert(outgoing.html.includes(url),'send artwork from first-party immutable URL');
-   assert(preview.html.includes('data:image/jpeg;base64,'+p.buffer.toString('base64')),'preview must use exactly the same original art');
+   const legacy=['plan-left','plan-bg','plan-middle','valid-bg','plan-right'].includes(p.name);
+   assert.equal(outgoing.html.includes(url),!legacy,'historical art URLs remain served but no 5-cell details in outgoing email: '+p.name);
+   assert.equal(preview.html.includes('data:image/jpeg;base64,'+p.buffer.toString('base64')),!legacy,
+      'Analytics preview must use only the new seamless details slice: '+p.name);
   }
+  assert(outgoing.html.includes('/details.jpg'),'one-piece full-width details image in outgoing email');
+  assert(!outgoing.html.includes('/plan-middle.jpg'),'no fragile tiny image in outgoing email');
   assert.equal(GEOMETRY[tone].key.length,4);
  }
  const xss=buildKeyDeliveryEmail({planId:'padrao',maxUses:3,code:'<img src=x onerror=alert(1)>',expiresAt:'2026-11-14T03:00:00Z'});
