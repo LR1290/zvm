@@ -1360,6 +1360,11 @@ function sendExtensionRateLimited(res, ip, type, body) {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   sendJson(res, { ...body, retryAfterSeconds: retryAfter || undefined }, 429);
 }
+function sendAnalyticsRateLimited(res, ip, type) {
+  const retryAfter = getRateLimitRetryAfterSeconds(ip, type);
+  if (retryAfter > 0) res.setHeader('Retry-After', String(retryAfter));
+  sendJson(res, { error: 'rate_limited', retryAfterSeconds: retryAfter || 1 }, 429);
+}
 
 if (!ZVM_LOCAL_SAFE_MODE) {
   setInterval(() => {
@@ -9899,7 +9904,7 @@ async function handleRequest(req, res) {
   if (p === R_ANALYTICS+'/api/lab/preview' && req.method === 'POST') {
     if (!isAnalyticsSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
-    if (!checkRateLimit(ip, 'analytics_lab_preview')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    if (!checkRateLimit(ip, 'analytics_lab_preview')) { sendAnalyticsRateLimited(res, ip, 'analytics_lab_preview'); return; }
     const body = await parseBody(req);
     try {
       const result = await simulateCommercialSale({
@@ -9916,7 +9921,7 @@ async function handleRequest(req, res) {
   if (p === R_ANALYTICS+'/api/lab/simulate' && req.method === 'POST') {
     if (!isAnalyticsSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
-    if (!checkRateLimit(ip, 'analytics_lab_simulate')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    if (!checkRateLimit(ip, 'analytics_lab_simulate')) { sendAnalyticsRateLimited(res, ip, 'analytics_lab_simulate'); return; }
     const body = await parseBody(req);
     try {
       const result = await simulateCommercialSale({
@@ -9934,7 +9939,8 @@ async function handleRequest(req, res) {
     if (!isAnalyticsSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
     const isSend = p === R_ANALYTICS+'/api/lab/email-send';
-    if (!checkRateLimit(ip, isSend ? 'analytics_lab_email_send' : 'analytics_lab_email_preview')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    const emailRateType = isSend ? 'analytics_lab_email_send' : 'analytics_lab_email_preview';
+    if (!checkRateLimit(ip, emailRateType)) { sendAnalyticsRateLimited(res, ip, emailRateType); return; }
     const body = await parseBody(req);
     const template = String(body.template || '');
     const chosenPlan = String(body.planId || '').toLowerCase().trim();
@@ -10005,7 +10011,7 @@ async function handleRequest(req, res) {
   if (p === R_ANALYTICS+'/api/purge/preview' && req.method === 'POST') {
     if (!isAnalyticsSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
-    if (!checkRateLimit(ip, 'analytics_purge_preview')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    if (!checkRateLimit(ip, 'analytics_purge_preview')) { sendAnalyticsRateLimited(res, ip, 'analytics_purge_preview'); return; }
     const body = await parseBody(req);
     try {
       const preview = await previewAnalyticsPurge(String(body.mode || ''));
@@ -10017,7 +10023,7 @@ async function handleRequest(req, res) {
   if (p === R_ANALYTICS+'/api/purge/execute' && req.method === 'POST') {
     if (!isAnalyticsSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
-    if (!checkRateLimit(ip, 'analytics_purge_execute')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    if (!checkRateLimit(ip, 'analytics_purge_execute')) { sendAnalyticsRateLimited(res, ip, 'analytics_purge_execute'); return; }
     const body = await parseBody(req);
     const mode = String(body.mode || '');
     try {
