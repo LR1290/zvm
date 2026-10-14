@@ -1329,7 +1329,12 @@ function checkRateLimit(ip, type = 'api', maxReq = 0, windowMs = 0) {
     rateLimitMap.set(key, e);
   }
   if (now < e.blockedUntil) return false;
-  if (now > e.resetAt) { e.count = 0; e.resetAt = now + cfg.windowMs; e.blockedUntil = 0; }
+  // Um bloqueio temporário cumprido deve iniciar uma janela limpa;
+  // antes, um bloqueio de 15s era reativado indefinidamente até fechar
+  // a janela antiga de 60s, apesar do Retry-After anunciado.
+  if ((e.blockedUntil > 0 && now >= e.blockedUntil) || now > e.resetAt) {
+    e.count = 0; e.resetAt = now + cfg.windowMs; e.blockedUntil = 0;
+  }
   e.count++;
   if (e.count > cfg.max) {
     e.blockedUntil = now + cfg.blockMs;
