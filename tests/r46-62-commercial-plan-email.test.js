@@ -31,9 +31,10 @@ for(const row of [{id:'solo',name:'SOLO'},{id:'padrao',name:'START'},{id:'pro',n
  if(letter.artwork){
    assert.equal(letter.artwork.validity,'14/11/2026','actual expiry in Sao Paulo');
    assert.equal(letter.artwork.code,'zv-synthetic-key-1234');
-   assert.match(letter.html,/__ZVM_SLICE_hero__/,'original art must remain pixel-matched');
-   assert.match(letter.html,/data-zvm-live="key"/,'live selectable key field');
-   assert(!letter.html.includes('font-size:43px'),'must not silently reuse old generic HTML');
+   assert.equal(letter.artwork.native,true,'only approved native HTML delivery');
+   assert.match(letter.html,/data-zvm-native-mail="1"/);
+   for(const field of ['key','plan','validity'])assert(letter.html.includes('data-zvm-live="'+field+'"'),'selectable '+field);
+   assert(!/<img\b|<svg\b|<script\b|cid:|data:image|__ZVM_SLICE_/i.test(letter.html),'commercial mail must not include images/attachments');
  }else{
    assert.match(letter.html,/14\/11\/2026/,'SOLO fallback preserves stored expiry');
    assert.match(letter.html,/zv-synthetic-key-1234/);
