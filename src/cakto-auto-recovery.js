@@ -7,7 +7,7 @@ const ORIGIN='https://api.cakto.com.br';
 const ORDER_PREFIX='/public_api/orders/';
 const idPattern=/^[a-z0-9_.:-]{1,120}$/i;
 function orderDetailURL(id){
- if(!idPattern.test(String(id||'')))throw Error('cakto_recovery_order_invalid');
+ if(!idPattern.test(String(id||'')) || id==='.' || id==='..')throw Error('cakto_recovery_order_invalid');
  return ORIGIN+ORDER_PREFIX+encodeURIComponent(id)+'/';
 }
 async function getOrderDetail(id,token,fetcher=fetch){
@@ -41,16 +41,16 @@ async function assessMissingRenewal(order,{db,normalize,resolvePlan,validateInte
  const payments=db.collection('payments');
  const previous=await payments.findOne({
   source:'cakto',approved:true,testMode:{$ne:true},subscriptionId:sub,
-  paidAt:{$lt:purchase.paidAt}
+  paidAt:{$lt:paidAt.toISOString()}
  },{sort:{paidAt:-1},projection:{_id:0,keyCode:1,paidAt:1,subscriptionId:1,txId:1,source:1,approved:1}});
  const code=String(previous?.keyCode||'');
  if(!/^[a-z0-9-]{8,64}$/.test(code))return {kind:'review',reason:'subscription_not_previously_bound'};
  const newer=await payments.findOne({
-  source:'cakto',approved:true,keyCode:code,paidAt:{$gte:purchase.paidAt}
+  source:'cakto',approved:true,keyCode:code,paidAt:{$gte:paidAt.toISOString()}
  },{projection:{_id:1}});
  if(newer)return {kind:'review',reason:'newer_payment_exists'};
- const owner=await db.collection('portal_users').findOne({keyCode:code},{projection:{_id:1}});
- if(!owner)return {kind:'review',reason:'no_portal_owner'};
+ const owners=await db.collection('portal_users').find({keyCode:code},{projection:{_id:1}}).limit(2).toArray();
+ if(owners.length!==1)return {kind:'review',reason:owners.length?'ambiguous_portal_ownership':'no_portal_owner'};
  const manual=await db.collection('admin_audit_logs').findOne({
   action:'key_renewed',keyCode:code,ts:{$gte:paidAt}
  },{projection:{_id:1}});
@@ -74,7 +74,7 @@ async function runMissingRenewalPass({token,db,normalize,resolvePlan,validateInt
   if(pageSet.has(url))throw Error('cakto_recovery_page_loop');pageSet.add(url);
   const page=await requestJson(url,{token,fetcher});summary.pages++;
   for(const candidate of page.results){
-   if(!isVerifiedPaidMain(candidate)||typeof candidate.paidAt!=='string'||candidate.paidAt.slice(0,10)<start||candidate.paidAt.slice(0,10)>=end)continue;
+   if(!isVerifiedPaidMain(candidate)||typeof candidate.paidAt!=='string'||!Number.isFinite(Date.parse(candidate.paidAt))||candidate.paidAt.slice(0,10)<start||candidate.paidAt.slice(0,10)>=end)continue;
    if(orderIds.has(candidate.id))continue;orderIds.add(candidate.id);summary.seen++;
    if(summary.seen>maxCandidates)return {...summary,complete:false,limitReached:true};
    const ids=txMarkers(candidate.id);
