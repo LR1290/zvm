@@ -17,6 +17,13 @@ for(let i=0;i<5;i++)assert.equal(rate.checkRateLimit(ip,'analytics_purge_execute
 assert.equal(rate.checkRateLimit(ip,'analytics_purge_execute'),false,'purge sixth destructive action blocked');
 assert.ok(rate.getRateLimitRetryAfterSeconds(ip,'analytics_purge_execute')>0,'retry after for blocked execute');
 assert.equal(rate.checkRateLimit(ip,'analytics_purge_preview'),true,'blocked write never poisons preview');
+// Simula o fim de um bloqueio curto ainda dentro da janela antiga.
+for(let i=41;i<80;i++)assert.equal(rate.checkRateLimit(ip,'analytics_purge_preview'),true);
+assert.equal(rate.checkRateLimit(ip,'analytics_purge_preview'),false,'preview beyond its own max is blocked');
+const held = rate.map.get(ip + ':analytics_purge_preview');
+held.blockedUntil = Date.now()-1;
+held.resetAt = Date.now()+30000;
+assert.equal(rate.checkRateLimit(ip,'analytics_purge_preview'),true,'after cooldown, next request succeeds with fresh window');
 for(let i=0;i<25;i++)assert.equal(rate.checkRateLimit(ip,'analytics_lab_preview'),true);
 assert.equal(rate.checkRateLimit(ip,'analytics_lab_simulate'),true,'lab preview never poisons simulate');
 assert.equal(rate.checkRateLimit(ip,'analytics_lab_email_send'),true,'email preview never poisons send');
