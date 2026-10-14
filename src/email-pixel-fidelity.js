@@ -97,6 +97,16 @@ function createPixelPerfectEmail({subject,tone,code,plan,validity,portal,renewed
 async function prepareKeyDeliveryArtwork(built,{preview=false}={}){
  if(!built||typeof built.html!=='string')throw new Error('invalid_license_email');
  if(!built.artwork)return {html:built.html,attachments:[]};
+ if(built.artwork.backgroundOriginal===true){
+  // Original artwork is an external CSS/HTML background, not an attachment
+  // or IMG tag. Do not silently regress to attached slices or generic HTML.
+  const expected='https://zvm.onrender.com/assets/zvm-email-art/r46-73/'+built.artwork.tone+'/original.jpg';
+  if(!built.html.includes('data-zvm-whole-art="1"') ||
+    built.html.split(expected).length<3 ||
+    /<\s*(?:img|svg|script)\b|cid:|data:image\/|__ZVM_SLICE_/i.test(built.html))
+    throw new Error('approved_original_background_invalid');
+  return {html:built.html,attachments:[]};
+ }
  if(built.artwork.native===true){
   // Fail closed: if a future change reintroduces image/cid/svg or scripts,
   // stop both the Analytics test and a live commercial message.
