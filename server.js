@@ -71,6 +71,8 @@ const { loadDevBuildSigningConfig, createDevBuildSigningService } = require('./d
 const { resolveExtensionCorsOrigin } = require('./extension-origin-policy');
 const { checkoutUrlForPortal, readCheckoutBinding, isZvmCheckoutBinding } = require('./src/cakto-checkout-binding');
 const { resolveSubscriptionCheckout } = require('./src/cakto-renewal-binding-resolver');
+const { getScopedToken } = require('./src/cakto-paid-order-audit');
+const { runMissingRenewalPass } = require('./src/cakto-auto-recovery');
 const { displayLicensePlan } = require('./src/commercial-plan-labels');
 const { readNewCatalog } = require('./src/commercial-public-catalog');
 const {
@@ -84,6 +86,8 @@ const ADMIN_USER   = process.env.ADMIN_USER;
 const ADMIN_PASS   = process.env.ADMIN_PASS;
 
 const CAKTO_WEBHOOK_SECRET = process.env.CAKTO_WEBHOOK_SECRET || '';
+const CAKTO_READONLY_CLIENT_ID = process.env.CAKTO_READONLY_CLIENT_ID || '';
+const CAKTO_READONLY_CLIENT_SECRET = process.env.CAKTO_READONLY_CLIENT_SECRET || '';
 const CAKTO_SIGNATURE_TOLERANCE_SECONDS = Math.max(60, Math.min(900, parseInt(process.env.CAKTO_SIGNATURE_TOLERANCE_SECONDS || '300', 10) || 300));
 const CAKTO_WORKER_POLL_MS = Math.max(1000, Math.min(60000, parseInt(process.env.CAKTO_WORKER_POLL_MS || '5000', 10) || 5000));
 const CAKTO_WORKER_LEASE_MS = Math.max(30000, Math.min(10 * 60 * 1000, parseInt(process.env.CAKTO_WORKER_LEASE_MS || '120000', 10) || 120000));
@@ -871,6 +875,9 @@ const keyFailMap      = new Map(); // { keyCode -> { count, ips: Set, firstAt } 
 let _httpServer       = null;
 let _pingInterval     = null;
 let _caktoWorkerTimer  = null;
+let _caktoRecoveryTimer = null;
+let _caktoRecoveryStartupTimer = null;
+let _caktoRecoveryBusy = false;
 let _caktoWorkerBusy   = false;
 let _caktoWorkerPromise = null;
 const _caktoWorkerId   = `${process.pid}-${crypto.randomBytes(8).toString('hex')}`;
@@ -1518,7 +1525,7 @@ function normalizeCaktoPurchase(payload) {
     offerName: safeScalar(offer.name, 200),
     offerType: safeScalar(data.offer_type, 40).toLowerCase(),
     parentOrder: safeScalar(data.parent_order, 120),
-    subscriptionId: safeScalar(data.subscription?.id, 128),
+    subscriptionId: safeScalar(isPlainRecord(data.subscription) ? data.subscription.id : (data.subscriptionId || data.subscription), 128),
     checkoutBinding: safeScalar(data.sck || data.metadata?.sck || data.tracking?.sck || data.utm?.sck || payload.sck || payload.metadata?.sck, 640),
     checkoutUrl: normalizeCheckoutUrl(data.checkoutUrl),
     amount: numberOrNull(data.amount),
@@ -4785,12 +4792,54 @@ function triggerCaktoWorker() {
     .finally(() => { _caktoWorkerBusy = false; _caktoWorkerPromise = null; });
 }
 
+async function runCaktoRecoveryMonitorOnce() {
+  if (_caktoRecoveryBusy || !CAKTO_READONLY_CLIENT_ID || !CAKTO_READONLY_CLIENT_SECRET || ZVM_LOCAL_SAFE_MODE) return;
+  _caktoRecoveryBusy = true;
+  try {
+    const db = await getMongoDb();
+    // Cakto authorizes GET /orders via OAuth scope "read orders".
+    // Do not reuse merchant write credentials or mint a new token per order.
+    const token = await getScopedToken(CAKTO_READONLY_CLIENT_ID, CAKTO_READONLY_CLIENT_SECRET);
+    const result = await runMissingRenewalPass({
+      token, db, now: new Date(), maxPages: 4, maxCandidates: 20,
+      normalize: normalizeCaktoPurchase,
+      resolvePlan: resolveCaktoPlan,
+      validateIntegrity: validateCaktoCommercialIntegrity,
+      enqueue: async (purchase, plan) => {
+        const written = await enqueueCaktoPurchaseEvent(db, purchase, plan);
+        if (written.queued) triggerCaktoWorker();
+      }
+    });
+    console.log('[CAKTO][RECONCILE]', {
+      pages: result.pages, seen: result.seen, recorded: result.existing,
+      queued: result.alreadyQueued, recovered: result.enqueued,
+      manualReview: result.review, reasons: result.blockedReasons,
+      complete: result.complete
+    });
+  } catch (error) {
+    // No provider payload or credentials in logs.
+    const category = /cakto_[a-z0-9_]+/.test(String(error?.message||'')) ? String(error.message).slice(0,70) : 'operational_error';
+    console.warn('[CAKTO][RECONCILE] unavailable:', category);
+  } finally {
+    _caktoRecoveryBusy = false;
+  }
+}
 function startCaktoWorker() {
   if (ZVM_LOCAL_SAFE_MODE) return;
   if (!CAKTO_WEBHOOK_SECRET || _caktoWorkerTimer) return;
   triggerCaktoWorker();
   _caktoWorkerTimer = setInterval(triggerCaktoWorker, CAKTO_WORKER_POLL_MS);
   _caktoWorkerTimer.unref();
+  if (CAKTO_READONLY_CLIENT_ID && CAKTO_READONLY_CLIENT_SECRET) {
+    // Recent subscriptions only. Historical orders manually renewed are never
+    // replayed automatically. Limits keep provider/API and Mongo load bounded.
+    _caktoRecoveryStartupTimer = setTimeout(runCaktoRecoveryMonitorOnce, 180000);
+    _caktoRecoveryStartupTimer.unref();
+    _caktoRecoveryTimer = setInterval(runCaktoRecoveryMonitorOnce, 6 * 60 * 60 * 1000);
+    _caktoRecoveryTimer.unref();
+  } else {
+    console.warn('[CAKTO][RECONCILE] read orders credentials absent; signed webhook path remains active');
+  }
 }
 
 function caktoDryRunAllowed(opts = {}) {
@@ -10500,6 +10549,8 @@ async function gracefulShutdown(signal, exitCode = 0) {
   // 1. Para o timer de keep-alive para não criar conexões novas durante o dreno
   if (_pingInterval) { clearInterval(_pingInterval); _pingInterval = null; }
   if (_caktoWorkerTimer) { clearInterval(_caktoWorkerTimer); _caktoWorkerTimer = null; }
+  if (_caktoRecoveryTimer) { clearInterval(_caktoRecoveryTimer); _caktoRecoveryTimer = null; }
+  if (_caktoRecoveryStartupTimer) { clearTimeout(_caktoRecoveryStartupTimer); _caktoRecoveryStartupTimer = null; }
 
   // 2. Janela de segurança: força saída após 8s caso o dreno trave
   const forceExit = setTimeout(() => {
