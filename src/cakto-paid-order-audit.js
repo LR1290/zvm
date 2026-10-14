@@ -22,7 +22,7 @@ function createWindowUrl(from,to){
  u.searchParams.set('ordering','-paidAt');u.searchParams.set('limit','100');return u.toString();
 }
 function isVerifiedPaidMain(order){
- return !!order && order.status==='paid' && (order.offer_type==='main'||!order.offer_type)
+ return !!order && order.status==='paid' && order.offer_type==='main'
   && !order.refundedAt && !order.chargedbackAt && !order.canceledAt
   && typeof order.id==='string' && /^[A-Za-z0-9_.:-]{1,120}$/.test(order.id);
 }
@@ -49,7 +49,7 @@ async function auditPaidOrders({token,db,from,to,fetcher=fetch,maxPages=12}){
   if(pages.has(url))throw Error('cakto_order_page_cycle');pages.add(url);
   const page=await requestJson(url,{token,fetcher});totals.pages++;
   for(const order of page.results){
-   if(!isVerifiedPaidMain(order)){totals.skipped++;continue;}
+   if(!isVerifiedPaidMain(order)||!Number.isFinite(Date.parse(String(order.paidAt||'')))||order.paidAt.slice(0,10)<from||order.paidAt.slice(0,10)>=to){totals.skipped++;continue;}
    if(orders.has(order.id))continue;
    orders.add(order.id);totals.paidMain++;
    const key=txMarkers(order.id);
