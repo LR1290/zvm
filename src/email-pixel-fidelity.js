@@ -97,6 +97,13 @@ function createPixelPerfectEmail({subject,tone,code,plan,validity,portal,renewed
 async function prepareKeyDeliveryArtwork(built,{preview=false}={}){
  if(!built||typeof built.html!=='string')throw new Error('invalid_license_email');
  if(!built.artwork)return {html:built.html,attachments:[]};
+ if(built.artwork.native===true){
+  // Fail closed: if a future change reintroduces image/cid/svg or scripts,
+  // stop both the Analytics test and a live commercial message.
+  if(!built.html.includes('data-zvm-native-mail="1"')||/<\\s*(?:img|svg|script)\\b|cid:|data:image\\/|__ZVM_SLICE_/i.test(built.html))
+   throw new Error('native_license_html_invalid');
+  return {html:built.html,attachments:[]};
+ }
  const tone=built.artwork.tone;
  if(!built.html.includes('__ZVM_SLICE_hero__')||!built.html.includes('__ZVM_SLICE_rest__')
     ||!built.html.includes('__ZVM_SLICE_details__'))throw new Error('approved_artwork_slice_missing');
