@@ -18,19 +18,26 @@ function createCheckoutBinding({keyCode,ownerEmail,secret,nowMs=Date.now()}){
  const ciphertext=Buffer.concat([enc.update(plain),enc.final()]);
  return PREFIX+Buffer.concat([nonce,enc.getAuthTag(),ciphertext]).toString('base64url');
 }
-function readCheckoutBinding(token,secret,nowMs=Date.now()){
- if(typeof token!=='string'||!token.startsWith(PREFIX)||token.length>640)return null;
+// Introspecção autenticada somente para recuperação de assinaturas existentes.
+ // Um claim expirado não concede acesso: exige prova de uma transação anterior
+ // paga COM a mesma subscriptionId, chave e proprietário antes de ser usado.
+function inspectCheckoutBinding(token,secret,nowMs=Date.now()){
+ if(typeof token!=='string'||!token.startsWith(PREFIX)||token.length>640)return {status:'invalid'};
  const key=aesKey(secret);
- if(!key||!Number.isSafeInteger(nowMs))return null;
+ if(!key||!Number.isSafeInteger(nowMs))return {status:'invalid'};
  try{
-  const bin=Buffer.from(token.slice(PREFIX.length),'base64url');if(bin.length<29||bin.length>480)return null;
+  const bin=Buffer.from(token.slice(PREFIX.length),'base64url');
+  if(bin.length<29||bin.length>480)return {status:'invalid'};
   const dec=crypto.createDecipheriv('aes-256-gcm',key,bin.subarray(0,12));
   dec.setAAD(Buffer.from(PREFIX));dec.setAuthTag(bin.subarray(12,28));
   const doc=JSON.parse(Buffer.concat([dec.update(bin.subarray(28)),dec.final()]).toString('utf8'));
-  if(doc?.v!==1||!KEY_RX.test(doc.c)||!EMAIL_RX.test(doc.e))return null;
-  if(!Number.isSafeInteger(doc.exp)||doc.exp<=nowMs||doc.exp>nowMs+TTL_MS)return null;
-  return {keyCode:doc.c,ownerEmail:doc.e};
- }catch(_){return null;}
+  if(doc?.v!==1||!KEY_RX.test(doc.c)||!EMAIL_RX.test(doc.e)||!Number.isSafeInteger(doc.exp)||doc.exp<=0||doc.exp>nowMs+TTL_MS)return {status:'invalid'};
+  return {status:doc.exp<=nowMs?'expired':'active',keyCode:doc.c,ownerEmail:doc.e,expiresAtMs:doc.exp};
+ }catch(_){return {status:'invalid'};}
+}
+function readCheckoutBinding(token,secret,nowMs=Date.now()){
+ const inspected=inspectCheckoutBinding(token,secret,nowMs);
+ return inspected.status==='active'?{keyCode:inspected.keyCode,ownerEmail:inspected.ownerEmail}:null;
 }
 function checkoutUrlForPortal(url,keyCode,ownerEmail,secret,nowMs=Date.now()){
  if(!keyCode||!ownerEmail)return url;
@@ -40,4 +47,4 @@ function checkoutUrlForPortal(url,keyCode,ownerEmail,secret,nowMs=Date.now()){
  }catch(_){return url;}
 }
 function isZvmCheckoutBinding(value){return typeof value==='string'&&value.startsWith(PREFIX);}
-module.exports=Object.freeze({createCheckoutBinding,readCheckoutBinding,checkoutUrlForPortal,isZvmCheckoutBinding});
+module.exports=Object.freeze({createCheckoutBinding,readCheckoutBinding,inspectCheckoutBinding,checkoutUrlForPortal,isZvmCheckoutBinding});
