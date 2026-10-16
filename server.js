@@ -518,27 +518,50 @@ async function persistRateBlocks() {
 }
 
 const _saveDebounce = new Map();
-async function _writeKeyToDb(code) {
-  if (keys[code] === undefined) return;
+// R46.86: login, uso e cron nunca podem regravar a licença inteira.
+// Um saveKey agendado antes de uma renovação concorrente poderia reverter
+// expiresAt, plano, bloqueio e devices ao sobrescrever data.<key> por completo.
+// Somente metadados operacionais são gravados por esta fila legada.
+async function _writeKeyToDb(code, deps = {}) {
+  const keyCode = String(code || '');
+  const source = keys[keyCode];
+  if (!/^[a-z0-9_-]{1,64}$/i.test(keyCode) || !source || typeof source !== 'object') return;
+  const field = `data.${keyCode}`;
+  const update = { updatedAt: new Date() };
+  const operationalFields = ['lastUsed', 'lastIp', 'wppVersion', 'deviceId',
+    'warnCount', 'warnCountTs', 'usage', 'usageDate'];
+  for (const name of operationalFields) {
+    if (Object.prototype.hasOwnProperty.call(source, name) && source[name] !== undefined) {
+      update[`${field}.${name}`] = cloneKeyRecordForCommit(source[name]);
+    }
+  }
   try {
-    const db = await getMongoDb();
-    await db.collection('store').updateOne(
-      { _id: 'keys' },
-      { $set: { [`data.${code}`]: keys[code], updatedAt: new Date() } },
-      { upsert: true }
-    );
+    const db = deps.db || await getMongoDb();
+    const collection = db.collection('store');
+    if (Object.keys(update).length > 1) {
+      // Sem upsert: um debounce antigo não pode recriar uma licença removida.
+      await collection.updateOne({ _id: 'keys', [field]: { $exists: true } },
+        { $set: update }, { timeoutMS: 7000 });
+    }
+    // Expiração e aviso só podem persistir para A MESMA validade observada.
+    // Caso o administrador renove a licença, ambos deixam a nova data intacta.
+    const expiryMs = Date.parse(String(source.expiresAt || ''));
+    const sameExpiry = Number.isFinite(expiryMs) && source.expiresAt;
+    if (sameExpiry && source.active === false && expiryMs <= Date.now()) {
+      await collection.updateOne({ _id: 'keys', [`${field}.expiresAt`]: source.expiresAt },
+        { $set: { [`${field}.active`]: false, updatedAt: new Date() } }, { timeoutMS: 7000 });
+    }
+    if (sameExpiry && source.warnEmailSent === true) {
+      await collection.updateOne({ _id: 'keys', [`${field}.expiresAt`]: source.expiresAt },
+        { $set: { [`${field}.warnEmailSent`]: true, updatedAt: new Date() } }, { timeoutMS: 7000 });
+    }
   } catch (e) {
-    console.error('[DB] Erro ao salvar chave:', e.message);
+    console.error('[DB] Erro ao salvar metadados operacionais:', e.message);
   }
 }
-// P0 — versão "strict" de _writeKeyToDb: mesma escrita, mas PROPAGA a falha
-// em vez de engoli-la. _writeKeyToDb continua do jeito que sempre foi
-// (silenciosa) porque outros chamadores dependem disso: saveKey() é
-// debounced/fire-and-forget (um setTimeout que não tem quem capturar uma
-// rejeição) e flushPendingSaves() já trata falha via Promise.allSettled.
-// Rotas que precisam diferenciar sucesso de falha (ex.: remoção de
-// dispositivo, onde o cliente só deve ver "removido" se realmente foi
-// persistido) devem usar esta versão dentro do próprio try/catch da rota.
+// Compatibilidade histórica: escritor estrito ainda existente para testes
+// legados. Rotas de dispositivo não devem usá-lo: usam CAS sobre o banco.
+// O debounce e flushPendingSaves usam apenas _writeKeyToDb (metadados).
 async function _writeKeyToDbStrict(code, deps = {}) {
   if (keys[code] === undefined) return;
   const db = deps.db || await getMongoDb();
@@ -10398,14 +10421,24 @@ async function handleRequest(req, res) {
     try {
       const db = await getMongoDb();
       const user = await db.collection('portal_users').findOne({ _id: sess.email });
-      if (!user?.keyCode || !await ensureKeyLoaded(user.keyCode)) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
-      const key = keys[user.keyCode];
-      const phone = Array.isArray(key.phones) ? key.phones[Number(indexRaw)] : null;
+      if (!user?.keyCode) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
+      // Escolher o telefone na fonte canônica; a versão in-memory pode ser
+      // anterior a uma renovação, bloqueio ou remoção feita pelo administrador.
+      const snapshot = await readAdminKeySnapshot(user.keyCode, { db });
+      if (!snapshot) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
+      const phone = Array.isArray(snapshot.phones) ? snapshot.phones[Number(indexRaw)] : null;
       if (!phone) { sendJson(res, { error: 'device_not_found' }, 404); return; }
-      removePhoneFromKey(key, phone);
-      await _writeKeyToDbStrict(user.keyCode);
+      await mutateAdminKeyRecordStrict(user.keyCode, draft => {
+        if (!Array.isArray(draft.phones) || !draft.phones.some(p => normalizePhone(p) === normalizePhone(phone))) {
+          const e = new Error('device_changed'); e.code = 'device_changed'; throw e;
+        }
+        removePhoneFromKey(draft, phone);
+      }, { db });
       res.writeHead(302, { Location: '/cliente?ok=1' }); res.end(); return;
     } catch (e) {
+      if (e?.code === 'device_changed' || e?.code === 'key_write_conflict') {
+        sendJson(res, { error: 'device_changed', retryable: true }, 409); return;
+      }
       console.error('[Portal] remoção de dispositivo:', e.message);
       sendJson(res, { error: 'temporarily_unavailable' }, 503); return;
     }
