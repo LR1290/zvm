@@ -666,16 +666,16 @@ async function renewAdminKeyAtomicStrict(code, totalMinutes, deps = {}) {
   const db = deps.db || await getMongoDb();
   const field = `data.${keyCode}`;
   const expiryValue = { $convert: {
-    input: `${field}.expiresAt`, to: 'date', onError: '$NOW', onNull: '$NOW'
+    input: '$' + field + '.expiresAt', to: 'date', onError: '$' + '$NOW', onNull: '$' + '$NOW'
   } };
   const expiryDate = { $dateAdd: {
-    startDate: { $max: ['$NOW', expiryValue] }, unit: 'millisecond',
+    startDate: { $max: ['$' + '$NOW', expiryValue] }, unit: 'millisecond',
     amount: totalMinutes * 60000
   } };
   const update = { [`${field}.expiresAt`]: {
     $dateToString: { format: '%Y-%m-%dT%H:%M:%S.%LZ', date: expiryDate, timezone: 'UTC' }
   }, [`${field}.active`]: true, [`${field}.expireDuration`]: null,
-  [`${field}.warnEmailSent`]: false, updatedAt: '$NOW' };
+  [`${field}.warnEmailSent`]: false, updatedAt: '$' + '$NOW' };
   if (operationId) update[`${field}.lastAdminRenewalOperationId`] = operationId;
   const filter = { _id: 'keys', [field]: { $type: 'object' } };
   if (operationId) filter[`${field}.lastAdminRenewalOperationId`] = { $ne: operationId };
