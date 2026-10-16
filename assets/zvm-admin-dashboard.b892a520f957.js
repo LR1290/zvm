@@ -298,7 +298,9 @@ async function clearLog(){
   try{const body=date?{date}:{};const r=await fetch(_RA+'/api/logs',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(d.ok){toast(date?'Log do dia limpo!':'Log completo apagado!');clearFilters();}}catch(e){toast('Erro ao limpar',false);}
 }
 
+let _renewInFlight=false, _renewOperationId='', _renewSignature='';
 function openRenew(code,label){
+  _renewOperationId=''; _renewSignature=''; _renewInFlight=false;
   document.getElementById('renewKeyCode').value=code;
   document.getElementById('renewKeyLabel').textContent=label;
   ['renewDays','renewHours','renewMins'].forEach(id=>document.getElementById(id).value='');
@@ -319,13 +321,36 @@ function openRenew(code,label){
 function closeRenew(){document.getElementById('renewModal').classList.remove('open');}
 document.getElementById('renewModal').addEventListener('click',function(e){if(e.target===this)closeRenew();});
 async function saveRenew(){
+  if(_renewInFlight)return;
   const code=document.getElementById('renewKeyCode').value;
-  const days=parseInt(document.getElementById('renewDays').value)||0;
-  const hours=parseInt(document.getElementById('renewHours').value)||0;
-  const mins=parseInt(document.getElementById('renewMins').value)||0;
-  if(!days&&!hours&&!mins){toast('Informe pelo menos um valor.',false);return;}
-  const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/renew',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({days,hours,mins})});
-  const d=await r.json();if(d.ok){toast('✅ Tempo adicionado! Expira: '+new Date(d.expiresAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}));closeRenew();await doRefresh();}else toast(adminErrorMessage(d,r.status),false);
+  const days=Number(document.getElementById('renewDays').value||0);
+  const hours=Number(document.getElementById('renewHours').value||0);
+  const mins=Number(document.getElementById('renewMins').value||0);
+  if(![days,hours,mins].every(n=>Number.isSafeInteger(n)&&n>=0)||(!days&&!hours&&!mins)){
+    toast('Informe um período positivo válido.',false);return;
+  }
+  const signature=[code,days,hours,mins].join('|');
+  if(!_renewOperationId||signature!==_renewSignature){
+    _renewSignature=signature;
+    _renewOperationId=crypto.randomUUID ? crypto.randomUUID() :
+      Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('');
+  }
+  const btn=document.querySelector('#renewModal .modal-actions .bp');
+  _renewInFlight=true;
+  if(btn){btn.disabled=true;btn.textContent='Salvando…';}
+  try{
+    const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/renew',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({days,hours,mins,operationId:_renewOperationId})
+    });
+    const d=await r.json();
+    if(d.ok){
+      toast((d.replayed?'✅ Renovação já confirmada. ':'✅ Tempo adicionado! ')+
+        'Expira: '+new Date(d.expiresAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}));
+      closeRenew();await doRefresh();
+    }else toast(adminErrorMessage(d,r.status),false);
+  }catch(e){toast('Falha de rede. Repetir mantém a mesma operação, sem somar novamente.',false);}
+  finally{_renewInFlight=false;if(btn){btn.disabled=false;btn.textContent='Adicionar Tempo';}}
 }
 
 function openEditUses(code,label,current){document.getElementById('editUsesCode').value=code;document.getElementById('editUsesLabel').textContent=label;document.getElementById('editUsesValue').value=current;document.getElementById('editUsesModal').classList.add('open');setTimeout(()=>{document.getElementById('editUsesValue').focus();document.getElementById('editUsesValue').select();},50);}
