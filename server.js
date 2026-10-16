@@ -711,28 +711,68 @@ async function mutateAdminKeyRecordStrict(code, mutator, deps = {}) {
   if (!/^[a-z0-9_-]{1,64}$/i.test(keyCode)) return null;
   const db = deps.db || await getMongoDb();
   const field = `data.${keyCode}`;
-  // R46.83: alterações de atividade/login podem ocorrer entre leitura e CAS.
-  // Recarregar a chave após CAS SEM MATCH, reaplicar a mutação ao estado atual
-  // e limitar tentativas. Nunca repetir depois de erro de rede/escrita:
-  // nesse caso a primeira operação pode ter sido confirmada pelo Mongo.
+  // R46.88: CAS somente dos campos efetivamente modificados. Comparar todo
+  // o registro reprovava datas BSON e disputava telemetria/login desnecessariamente.
+  function createPatch(current, draft) {
+    const filter = { _id: 'keys', [field]: { $type: 'object' } };
+    const changes = { updatedAt: new Date() };
+    const removals = {};
+    let count = 0;
+    function stage(path, beforeExists, before, afterExists, after) {
+      if (beforeExists === afterExists &&
+          (!beforeExists || JSON.stringify(before) === JSON.stringify(after))) return;
+      if (!path.split('.').slice(2).every(segment => /^[A-Za-z_][A-Za-z0-9_-]*$/.test(segment))) {
+        throw new Error('invalid_admin_key_field');
+      }
+      filter[path] = beforeExists ? before : { $exists: false };
+      if (afterExists) changes[path] = after;
+      else removals[path] = '';
+      count++;
+    }
+    const allFields = new Set([...Object.keys(current), ...Object.keys(draft)]);
+    for (const name of allFields) {
+      const had = Object.prototype.hasOwnProperty.call(current, name);
+      const has = Object.prototype.hasOwnProperty.call(draft, name);
+      const prev = current[name], next = draft[name];
+      const plainPrev = prev && typeof prev === 'object' && !Array.isArray(prev);
+      const plainNext = next && typeof next === 'object' && !Array.isArray(next);
+      if (name === 'modules' && plainPrev && plainNext) {
+        for (const moduleName of new Set([...Object.keys(prev), ...Object.keys(next)])) {
+          stage(field + '.modules.' + moduleName,
+            Object.prototype.hasOwnProperty.call(prev, moduleName), prev[moduleName],
+            Object.prototype.hasOwnProperty.call(next, moduleName), next[moduleName]);
+        }
+      } else {
+        stage(field + '.' + name, had, prev, has, next);
+      }
+    }
+    const update = { $set: changes };
+    if (Object.keys(removals).length) update.$unset = removals;
+    return { filter, update, count };
+  }
+  // Repetir somente após CAS sem correspondência confirmado pelo MongoDB.
+  // Nunca repetir após erro de rede: resultado anterior pode ser incerto.
   for (let attempt = 0; attempt < 5; attempt++) {
     const current = await readAdminKeySnapshot(keyCode, { db });
     if (!current) return null;
     const draft = cloneKeyRecordForCommit(current);
     await mutator(draft);
+    const { filter, update, count } = createPatch(current, draft);
+    if (!count) return current;
     let result;
     try {
-      result = await db.collection('store').updateOne(
-        { _id: 'keys', [field]: current },
-        { $set: { [field]: draft, updatedAt: new Date() } },
-        { timeoutMS: 7000 }
-      );
+      result = await db.collection('store').findOneAndUpdate(filter, update, {
+        projection: { [field]: 1, _id: 0 },
+        returnDocument: 'after', maxTimeMS: 7000
+      });
     } catch (error) {
       zvmInvalidateMongoOnNetworkError(error, db);
       throw error;
     }
-    if (result.matchedCount === 1) {
-      keys[keyCode] = cloneKeyRecordForCommit(draft);
+    const doc = result?.value && result?.data === undefined ? result.value : result;
+    const saved = doc?.data?.[keyCode];
+    if (saved && typeof saved === 'object') {
+      keys[keyCode] = cloneKeyRecordForCommit(saved);
       invalidateKeysHtmlCache();
       return keys[keyCode];
     }
