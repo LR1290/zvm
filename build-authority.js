@@ -221,20 +221,28 @@ function createBuildAuthority(config = {}, deps = {}) {
     return !!(set && set.has(String(fingerprint || '').toLowerCase()));
   }
 
-  // Reversible emergency concession for already-installed public store builds.
-  // License/authentication/device enforcement is still performed by the server.
+  // R46.85: emergência CWS apenas para identidades RELEASE já registradas.
+  // Divergência de fingerprint do pacote da loja pode ser tolerada somente
+  // com ZVM_CWS_COMPAT=1, nunca para builds desconhecidas ou revogadas.
+  // Licença, dispositivo, sessão e revogação seguem obrigatórios.
   function cwsReleaseCompatibility(identity) {
     if (!state.cwsCompatEnabled || state.runtimeEnv !== 'production') return false;
     const officialExtensionId = 'bdhnikgcdccjabkmbfcakgjkkgdlmgja';
     if (identity.extensionId !== officialExtensionId || !state.extensionIds.has(officialExtensionId)) return false;
-    if (identity.channel && !['production', 'beta'].includes(identity.channel)) return false;
+    if (identity.channel && identity.channel !== 'production') return false;
     if (identity.profile && identity.profile !== 'release') return false;
     const version = String(identity.extensionVersion || '');
-    const parts = version.split('.').map(Number);
-    if (parts.length < 3 || parts.length > 4 || parts.some(n => !Number.isSafeInteger(n) || n < 0)) return false;
-    if (parts[0] !== 0 || parts[1] < 8 || (parts[1] === 8 && parts[2] < 750)) return false;
-    if (identity.buildId && !identity.buildId.startsWith(`zvm-${identity.channel}-${version}-s`)) return false;
-    return true;
+    if (!/^\\d+\\.\\d+\\.\\d+(?:\\.\\d+)?$/.test(version)) return false;
+    // Para o protocolo V2 exigir o buildId completo previamente registrado.
+    // O protocolo V1 ainda não possui buildId: reconhecer a versão apenas
+    // quando ela está publicada no Registry V2 para o ID oficial.
+    const entries = identity.buildId
+      ? [state.registryV2.get(String(identity.buildId || '').toLowerCase())]
+      : [...state.registryV2.values()];
+    return entries.some(entry => entry?.status === 'active' &&
+      entry.channel === 'production' && entry.profile === 'release' &&
+      entry.extensionVersion === version &&
+      Array.isArray(entry.extensionIds) && entry.extensionIds.includes(officialExtensionId));
   }
 
   function devBuildAllowed(keyCode, deviceId) {
