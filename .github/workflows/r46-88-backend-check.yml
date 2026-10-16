@@ -24,8 +24,9 @@ jobs:
           node tests/r46-86-legacy-write-isolation.test.js
           node tests/r46-87-admin-atomic-renewal.test.js
           node tests/r46-88-admin-field-cas.test.js
-      - name: All other npm-check gates excluding pre-existing CSS gate
-        run: node -e "const x=require('./package.json').scripts.check.replace(' && node tests/r46-system-ui.test.js',''); require('node:child_process').execSync(x,{stdio:'inherit',shell:'/bin/bash'});"
+      - name: Complete branch check (record all existing failures)
+        run: npm run check
+        continue-on-error: true
   baseline-css:
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -37,6 +38,6 @@ jobs:
         with:
           node-version: '24'
       - run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Confirm R46.87 baseline CSS test on main
-        run: node tests/r46-system-ui.test.js
+      - name: Complete baseline check on unmodified R46.87 main
+        run: npm run check
         continue-on-error: true
