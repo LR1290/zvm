@@ -1304,9 +1304,11 @@ const RL_CONFIG = {
   // same public IP. Keep the same anti-bruteforce strength, but isolate each
   // authentication surface so unrelated traffic cannot poison another path.
   ext_key_legacy: { max: 20, windowMs: 60000, blockMs:  5 * 60000 },
-  ext_key_v4:     { max: 20, windowMs: 60000, blockMs:  5 * 60000 },
-  ext_key_v3:     { max: 20, windowMs: 60000, blockMs:  5 * 60000 },
-  check_status:   { max: 60, windowMs: 60000, blockMs: 60000 },
+  ext_key_v4:     { max: 60, windowMs: 60000, blockMs:       60000 },
+  ext_key_v3:     { max: 60, windowMs: 60000, blockMs:       60000 },
+  check_status:   { max: 180, windowMs: 60000, blockMs: 20000 },
+  // Legacy usage polling is read-heavy and must not exhaust the modern API bucket.
+  legacy_v3_usage:{ max: 180, windowMs: 60000, blockMs: 20000 },
   checkkey:     { max: 10, windowMs: 60000, blockMs:  5 * 60000 },
   reset:        { max: 3,  windowMs: 300000, blockMs: 30 * 60000 },
   twofa:        { max: 5,  windowMs: 60000,  blockMs: 10 * 60000 },
@@ -9053,7 +9055,7 @@ async function handleRequest(req, res) {
 
   if (p === R_EXT+'/v3/check-status' && req.method === 'POST') {
     if (!legacyV3Allowed()) { sendJson(res, { error:'legacy_endpoint_disabled', retryable:false }, 403); return; }
-    if (!checkRateLimit(ip, 'check_status', 60, 60000)) {
+    if (!checkRateLimit(ip, 'check_status')) {
       // Estado incerto não renova acesso. O cliente pode aplicar a grace de
       // rede já existente, mas não recebe um novo veredito active:true.
       sendJson(res, { error: 'rate_limited', retryable: true }, 429); return;
@@ -9167,7 +9169,7 @@ async function handleRequest(req, res) {
   }
 
   if (p === R_EXT+'/v3/usage' && req.method === 'POST') {
-    if (!checkRateLimit(ip, 'api')) {
+    if (!checkRateLimit(ip, 'legacy_v3_usage')) {
       sendJson(res, { ok: false, status: false, data: { errorType: 'RATE_LIMITED', message: 'Muitas requisições' } }, 429);
       return;
     }
@@ -9238,7 +9240,7 @@ async function handleRequest(req, res) {
 
   if (p === R_EXT+'/v3/get-usage' && req.method === 'POST') {
     if (!legacyV3Allowed()) { sendJson(res, { ok:false, status:false, data:{ errorType:'LEGACY_ENDPOINT_DISABLED' } }, 403); return; }
-    if (!checkRateLimit(ip, 'api')) {
+    if (!checkRateLimit(ip, 'legacy_v3_usage')) {
       sendJson(res, { ok: false, status: false, data: { errorType: 'RATE_LIMITED' } }, 429);
       return;
     }
@@ -9260,7 +9262,7 @@ async function handleRequest(req, res) {
 
   if (p === R_EXT+'/v3/sync-usage' && req.method === 'POST') {
     if (!legacyV3Allowed()) { sendJson(res, { ok:false, status:false, data:{ errorType:'LEGACY_ENDPOINT_DISABLED' } }, 403); return; }
-    if (!checkRateLimit(ip, 'api')) {
+    if (!checkRateLimit(ip, 'legacy_v3_usage')) {
       sendJson(res, { ok: false, status: false, data: { errorType: 'RATE_LIMITED' } }, 429);
       return;
     }
