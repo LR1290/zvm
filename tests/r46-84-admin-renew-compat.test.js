@@ -10,7 +10,9 @@ function between(a, b) {
 }
 const clone = value => JSON.parse(JSON.stringify(value));
 const functionText = between('async function mutateAdminKeyRecordStrict(', '\nfunction sendAdminKeyPersistFailure(');
-// R46.87: renovação pertence ao helper atômico específico, testado em r46-87.\n// Aqui mantemos o contrato CAS das DEMAIS alterações administrativas.\nconst make = (store, overrides={}) => {
+// R46.87: renovação pertence ao helper atômico específico, testado em r46-87.
+// Aqui mantemos o contrato CAS das DEMAIS alterações administrativas.
+const make = (store, overrides={}) => {
   const state={writes:0,reads:0,invalidations:0, cache:{},notified:0};
   const db={collection(name) {
     assert.equal(name,'store');
@@ -55,7 +57,8 @@ const functionText = between('async function mutateAdminKeyRecordStrict(', '\nfu
     const {state,mutate}=make(store,{conflictOnce:true,concurrentChange:{expiresAt:expiryAfterOtherRenewal}});
     await mutate('license',draft=>{draft.note='Nova nota administrativa';});
     assert.equal(state.writes,2);
-    assert.equal(store.current.expiresAt,expiryAfterOtherRenewal,'CAS preserves other renewal');\n    assert.equal(store.current.note,'Nova nota administrativa');
+    assert.equal(store.current.expiresAt,expiryAfterOtherRenewal,'CAS preserves other renewal');
+    assert.equal(store.current.note,'Nova nota administrativa');
   }
   {
     const store={current:clone(existing)};
