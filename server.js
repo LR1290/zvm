@@ -9831,7 +9831,7 @@ async function handleRequest(req, res) {
     }); }
     catch (e) {
       if (e.code === 'invalid_phone_delete') { sendJson(res, { error: 'informe phone ou all:true' }, 400); return; }
-      console.error('[ADMIN] phones persist:', e.message); sendJson(res, { ok:false, error:'db_unavailable', retryable:true }, 503); return;
+      sendAdminKeyPersistFailure(res, e, 'phones'); return;
     }
     sendJson(res, { ok: true, phones: savedPhones.phones }); return;
   }
