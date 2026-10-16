@@ -47,7 +47,7 @@ assert.equal(cachedKeys['synthetic-code'].label,'Synthetic');
 
 const mutate=region('async function mutateAdminKeyRecordStrict(','\nfunction sendAdminKeyPersistFailure(');
 let updateCount=0, memo={'synthetic-code':{active:true}};
-const mutateDb={collection:()=>({async updateOne(){updateCount++;throw Error('connection timed out')}})};
+const mutateDb={collection:()=>({async findOneAndUpdate(){updateCount++;throw Error('connection timed out')}})};
 const fn=evalModule(mutate+'\nreturn mutateAdminKeyRecordStrict;', ['getMongoDb','readAdminKeySnapshot','cloneKeyRecordForCommit','zvmInvalidateMongoOnNetworkError','keys','invalidateKeysHtmlCache'],[async()=>mutateDb,async()=>({active:true}),x=>JSON.parse(JSON.stringify(x)),()=>true,memo,()=>{}]);
 await fn('synthetic-code',d=>{d.active=false}).then(()=>{throw Error('CAS should reject')},()=>{});
 assert.equal(updateCount,1,'CAS never repeats potentially committed toggle');

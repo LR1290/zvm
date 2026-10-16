@@ -33,13 +33,22 @@ const db = { collection(name) {
       if (f) return state[f.slice(5)] ? { data: { [f.slice(5)]:structuredClone(state[f.slice(5)]) } } : { data:{} };
       return { data: structuredClone(state) };
     },
-    async updateOne(filter, update) {
+    async findOneAndUpdate(filter, update, options) {
       writes++;
       const field = `data.${keyCode}`;
-      if (!Object.prototype.hasOwnProperty.call(filter,field)) throw new Error('missing compare-and-swap guard');
-      if (forceConflict || JSON.stringify(filter[field]) !== JSON.stringify(state[keyCode])) return { matchedCount: 0, modifiedCount: 0 };
-      state[keyCode] = structuredClone(update.$set[field]);
-      return { matchedCount: 1, modifiedCount: 1 };
+      assert.equal(filter[field].$type, 'object');
+      assert.equal(options.returnDocument, 'after');
+      assert.equal(update.$set[field], undefined, 'no full-record replacement');
+      if (forceConflict) return null;
+      for (const [path, value] of Object.entries(filter)) {
+        if (path === '_id' || path === field) continue;
+        const sub = path.slice(field.length + 1);
+        if (JSON.stringify(state[keyCode][sub]) !== JSON.stringify(value)) return null;
+      }
+      for (const [path, value] of Object.entries(update.$set)) {
+        if (path.startsWith(field + '.')) state[keyCode][path.slice(field.length + 1)] = structuredClone(value);
+      }
+      return { data: { [keyCode]: structuredClone(state[keyCode]) } };
     },
   };
 }};
