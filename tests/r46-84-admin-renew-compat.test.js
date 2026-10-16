@@ -10,11 +10,7 @@ function between(a, b) {
 }
 const clone = value => JSON.parse(JSON.stringify(value));
 const functionText = between('async function mutateAdminKeyRecordStrict(', '\nfunction sendAdminKeyPersistFailure(');
-const renewalRoute = between("  const codeRenew = extractCode(", "  const codeMaxUses = extractCode(");
-const mutateCode = renewalRoute.match(/await mutateAdminKeyRecordStrict\(codeRenew, draft => \{([\s\S]*?)\n    \}\);/);
-assert(mutateCode, 'route mutator must be extractable and recompute from fresh draft');
-const renewalMutator = new Function('draft', 'addMs', mutateCode[1]);
-const make = (store, overrides={}) => {
+// R46.87: renovação pertence ao helper atômico específico, testado em r46-87.\n// Aqui mantemos o contrato CAS das DEMAIS alterações administrativas.\nconst make = (store, overrides={}) => {
   const state={writes:0,reads:0,invalidations:0, cache:{},notified:0};
   const db={collection(name) {
     assert.equal(name,'store');
@@ -57,21 +53,21 @@ const make = (store, overrides={}) => {
     const store={current:clone(existing)};
     const expiryAfterOtherRenewal='2026-11-18T12:00:00.000Z';
     const {state,mutate}=make(store,{conflictOnce:true,concurrentChange:{expiresAt:expiryAfterOtherRenewal}});
-    await mutate('license',draft=>renewalMutator(draft,24*60*60*1000));
+    await mutate('license',draft=>{draft.note='Nova nota administrativa';});
     assert.equal(state.writes,2);
-    assert.equal(store.current.expiresAt,'2026-11-19T12:00:00.000Z','renewal uses latest persisted expiration');
+    assert.equal(store.current.expiresAt,expiryAfterOtherRenewal,'CAS preserves other renewal');\n    assert.equal(store.current.note,'Nova nota administrativa');
   }
   {
     const store={current:clone(existing)};
     const {state,mutate}=make(store,{forceConflict:true});
-    await assert.rejects(mutate('license',draft=>renewalMutator(draft,86400000)),e=>e.code==='key_write_conflict');
+    await assert.rejects(mutate('license',draft=>{draft.note='Nova nota administrativa';}),e=>e.code==='key_write_conflict');
     assert.equal(state.writes,5,'bounded CAS retry');
     assert.equal(state.notified,0,'no cache update after all conflicts');
   }
   {
     const store={current:clone(existing)};
     const {state,mutate}=make(store,{networkOnWrite:true,applyBeforeNetworkError:true});
-    await assert.rejects(mutate('license',draft=>renewalMutator(draft,86400000)),/ambiguous network result/);
+    await assert.rejects(mutate('license',draft=>{draft.note='Nova nota administrativa';}),/ambiguous network result/);
     assert.equal(state.writes,1,'must NOT repeat a possibly committed renewal');
     assert.equal(state.notified,0);
   }
@@ -84,5 +80,5 @@ const make = (store, overrides={}) => {
   assert.doesNotMatch(v3,/checkRateLimit\(ip, 'api'\)/);
   const v4=between("  if (p === R_EXT+'/v4/session/key'", "  if (p === R_EXT+'/v3/key'");
   assert.match(v4,/ext_key_v4/);
-  console.log('R46.84 PASS: CAS retries, fresh renewals, no ambiguous repeat, isolated V3 budgets, V4 preserved');
+  console.log('R46.84 PASS: CAS for nonrenewal changes, no ambiguous repeat, isolated V3 budgets, V4 preserved');
 })().catch(e=>{console.error(e);process.exitCode=1;});
