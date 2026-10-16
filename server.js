@@ -623,33 +623,36 @@ async function mutateAdminKeyRecordStrict(code, mutator, deps = {}) {
   if (!/^[a-z0-9_-]{1,64}$/i.test(keyCode)) return null;
   const db = deps.db || await getMongoDb();
   const field = `data.${keyCode}`;
-  const current = await readAdminKeySnapshot(keyCode, { db });
-  if (!current) return null;
-  const draft = cloneKeyRecordForCommit(current);
-  await mutator(draft);
-  // Compare-and-swap por chave: se outra instância alterar o documento
-  // entre a leitura e a escrita, abortar em vez de apagar dados novos.
-  let result;
-  try {
-    result = await db.collection('store').updateOne(
-      { _id: 'keys', [field]: current },
-      { $set: { [field]: draft, updatedAt: new Date() } },
-      { timeoutMS: 7000 }
-    );
-  } catch (error) {
-    // CAS: não repetir automaticamente, porque o primeiro update pode ter
-    // sido confirmado mesmo quando a resposta se perdeu na rede.
-    zvmInvalidateMongoOnNetworkError(error, db);
-    throw error;
+  // R46.83: alterações de atividade/login podem ocorrer entre leitura e CAS.
+  // Recarregar a chave após CAS SEM MATCH, reaplicar a mutação ao estado atual
+  // e limitar tentativas. Nunca repetir depois de erro de rede/escrita:
+  // nesse caso a primeira operação pode ter sido confirmada pelo Mongo.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const current = await readAdminKeySnapshot(keyCode, { db });
+    if (!current) return null;
+    const draft = cloneKeyRecordForCommit(current);
+    await mutator(draft);
+    let result;
+    try {
+      result = await db.collection('store').updateOne(
+        { _id: 'keys', [field]: current },
+        { $set: { [field]: draft, updatedAt: new Date() } },
+        { timeoutMS: 7000 }
+      );
+    } catch (error) {
+      zvmInvalidateMongoOnNetworkError(error, db);
+      throw error;
+    }
+    if (result.matchedCount === 1) {
+      keys[keyCode] = cloneKeyRecordForCommit(draft);
+      invalidateKeysHtmlCache();
+      return keys[keyCode];
+    }
+    if (attempt < 4) await new Promise(resolve => setTimeout(resolve, 8 * (attempt + 1)));
   }
-  if (result.matchedCount !== 1) {
-    const error = new Error('key_write_conflict');
-    error.code = 'key_write_conflict';
-    throw error;
-  }
-  keys[keyCode] = cloneKeyRecordForCommit(draft);
-  invalidateKeysHtmlCache();
-  return keys[keyCode];
+  const error = new Error('key_write_conflict');
+  error.code = 'key_write_conflict';
+  throw error;
 }
 
 function sendAdminKeyPersistFailure(res, error, action) {
@@ -9616,15 +9619,24 @@ async function handleRequest(req, res) {
     const kRenew = await adminGetKey(codeRenew);
     if (!kRenew) { sendJson(res, { error: 'not found' }, 404); return; }
     const body = await parseBody(req);
-    const days=parseInt(body.days||0), hours=parseInt(body.hours||0), mins=parseInt(body.mins||0);
-    if (!days && !hours && !mins) { sendJson(res, { error: 'nenhum tempo informado' }, 400); return; }
-    const addMs = ((days*1440)+(hours*60)+mins)*60000;
-    const base  = (kRenew.expiresAt && !isKeyExpired(kRenew))
-      ? new Date(kRenew.expiresAt).getTime() : Date.now();
-    const renewedExpiresAt = new Date(base+addMs).toISOString();
+    const days=Number(body.days ?? 0), hours=Number(body.hours ?? 0), mins=Number(body.mins ?? 0);
+    const validParts = [days, hours, mins].every(n => Number.isSafeInteger(n) && n >= 0);
+    const totalMinutes = days * 1440 + hours * 60 + mins;
+    if (!validParts || !Number.isSafeInteger(totalMinutes) || totalMinutes <= 0 || totalMinutes > 5256000) {
+      sendJson(res, { error: 'invalid_renewal_duration' }, 400); return;
+    }
+    const addMs = totalMinutes * 60000;
     let savedRenew;
     try { savedRenew = await mutateAdminKeyRecordStrict(codeRenew, draft => {
-      draft.expiresAt = renewedExpiresAt; draft.expireDuration = null; draft.active = true; draft.warnEmailSent = false;
+      // Calcular em CADA tentativa de CAS sobre a versão recém-lida do Mongo.
+      // Assim não perdemos uma renovação concorrente nem usamos o cache de login.
+      const nowMs = Date.now();
+      const expiryMs = Date.parse(String(draft.expiresAt || ''));
+      const baseMs = Number.isFinite(expiryMs) && expiryMs > nowMs ? expiryMs : nowMs;
+      draft.expiresAt = new Date(baseMs + addMs).toISOString();
+      draft.expireDuration = null;
+      draft.active = true;
+      draft.warnEmailSent = false;
     }); }
     catch (e) { sendAdminKeyPersistFailure(res, e, 'renew key'); return; }
     await addLog({ keyCode: codeRenew, label: savedRenew.label, phone: '-', ip, wppVersion: '-', action: 'renewed' });
