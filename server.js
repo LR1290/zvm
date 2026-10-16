@@ -529,7 +529,7 @@ async function _writeKeyToDb(code, deps = {}) {
   const field = `data.${keyCode}`;
   const update = { updatedAt: new Date() };
   const operationalFields = ['lastUsed', 'lastIp', 'wppVersion', 'deviceId',
-    'warnCount', 'warnCountTs', 'usage', 'usageDate'];
+    'deviceHistory', 'warnCount', 'warnCountTs', 'usage', 'usageDate'];
   for (const name of operationalFields) {
     if (Object.prototype.hasOwnProperty.call(source, name) && source[name] !== undefined) {
       update[`${field}.${name}`] = cloneKeyRecordForCommit(source[name]);
@@ -542,6 +542,15 @@ async function _writeKeyToDb(code, deps = {}) {
       // Sem upsert: um debounce antigo não pode recriar uma licença removida.
       await collection.updateOne({ _id: 'keys', [field]: { $exists: true } },
         { $set: update }, { timeoutMS: 7000 });
+    }
+    // Último telefone só é salvo se ainda pertence aos devices persistidos.
+    // Um logout/remoção concorrente nunca pode ressuscitar essa associação.
+    if (typeof source.lastPhone === 'string' && source.lastPhone) {
+      await collection.updateOne(
+        { _id: 'keys', [`${field}.phones`]: source.lastPhone },
+        { $set: { [`${field}.lastPhone`]: source.lastPhone, updatedAt: new Date() } },
+        { timeoutMS: 7000 }
+      );
     }
     // Expiração e aviso só podem persistir para A MESMA validade observada.
     // Caso o administrador renove a licença, ambos deixam a nova data intacta.
