@@ -15,6 +15,7 @@ function harness(sourceRecord,storedRecord) {
     if(p==='_id')continue;
     if(p==='data.license') { if(!(v&&v.$exists===true)) return false;continue; }
     if(p==='data.license.expiresAt' && persisted.record.expiresAt!==v)return false;
+    if(p==='data.license.phones' && !persisted.record.phones?.includes(v))return false;
    }
    return true;
  }
@@ -38,7 +39,7 @@ function harness(sourceRecord,storedRecord) {
  const expiry='2026-10-18T17:14:03.000Z';
  const old={label:'Atendimento Pós',planId:'pro',maxUses:3,phones:['phone-A'],active:true,expiresAt:expiry,lastUsed:'old',usageDate:'2026-10-16'};
  const current={...old,expiresAt:'2026-11-18T17:14:03.000Z',maxUses:5,phones:['phone-A','phone-B'],label:'Atendimento Pós - atualizado',active:false,warnEmailSent:false};
- const h=harness({...old,lastUsed:'new login',lastIp:'local-only',warnEmailSent:true,usage:{message:{sent:3,max:20}}},current);
+ const h=harness({...old,lastPhone:'phone-A',lastUsed:'new login',lastIp:'local-only',warnEmailSent:true,usage:{message:{sent:3,max:20}}},current);
  await h.write();
  assert.equal(h.persisted.record.expiresAt,current.expiresAt,'stale writer must preserve renewal');
  assert.equal(h.persisted.record.active,false,'stale writer must preserve admin lock');
@@ -47,8 +48,12 @@ function harness(sourceRecord,storedRecord) {
  assert.deepEqual(h.persisted.record.phones,current.phones,'stale writer must preserve device list');
  assert.equal(h.persisted.record.warnEmailSent,false,'old warning must not consume new cycle');
  assert.equal(h.persisted.record.lastUsed,'new login');
+ assert.equal(h.persisted.record.lastPhone,'phone-A','active phone remains usable');
  assert.equal(h.persisted.record.usage.message.sent,3,'legacy usage data is still persisted');
  assert(!h.persisted.operations.some(o=>Object.hasOwn(o.update.$set,'data.license')),'no full replacement');
+ const detached=harness({...old,lastPhone:'phone-A'}, {...current,phones:['phone-B'],lastPhone:'phone-B'});
+ await detached.write();
+ assert.equal(detached.persisted.record.lastPhone,'phone-B','removed phone must not reappear');
  const deleted=harness(old,null);await deleted.write();
  assert.equal(deleted.persisted.record,null,'deleted license must not be recreated');
  const expired=harness({...old,active:false,expiresAt:'2020-10-01T00:00:00.000Z'}, {...old,active:true,expiresAt:'2020-10-01T00:00:00.000Z'});
