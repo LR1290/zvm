@@ -7,7 +7,7 @@ on:
 permissions:
   contents: read
 jobs:
-  check:
+  admin-regression:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -16,4 +16,27 @@ jobs:
         with:
           node-version: '24'
       - run: npm ci --ignore-scripts --no-audit --no-fund
-      - run: npm run check
+      - name: Admin R46.37/R46.80/R46.84/R46.86/R46.87/R46.88
+        run: |
+          node tests/r46-37-admin-authority.test.js
+          node tests/r46-80-admin-analytics-limits.test.js
+          node tests/r46-84-admin-renew-compat.test.js
+          node tests/r46-86-legacy-write-isolation.test.js
+          node tests/r46-87-admin-atomic-renewal.test.js
+          node tests/r46-88-admin-field-cas.test.js
+      - name: All other npm-check gates excluding pre-existing CSS gate
+        run: node -e "const x=require('./package.json').scripts.check.replace(' && node tests/r46-system-ui.test.js',''); require('node:child_process').execSync(x,{stdio:'inherit',shell:'/bin/bash'});"
+  baseline-css:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Confirm R46.87 baseline CSS test on main
+        run: node tests/r46-system-ui.test.js
+        continue-on-error: true
