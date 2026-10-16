@@ -232,7 +232,7 @@ function createBuildAuthority(config = {}, deps = {}) {
     if (identity.channel && identity.channel !== 'production') return false;
     if (identity.profile && identity.profile !== 'release') return false;
     const version = String(identity.extensionVersion || '');
-    if (!/^\\d+\\.\\d+\\.\\d+(?:\\.\\d+)?$/.test(version)) return false;
+    if (!/^\d+\.\d+\.\d+(?:\.\d+)?$/.test(version)) return false;
     // Para o protocolo V2 exigir o buildId completo previamente registrado.
     // O protocolo V1 ainda não possui buildId: reconhecer a versão apenas
     // quando ela está publicada no Registry V2 para o ID oficial.
