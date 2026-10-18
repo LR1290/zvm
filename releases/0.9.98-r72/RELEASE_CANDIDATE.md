@@ -1,3 +1,13 @@
+# Atualização de status: 2026-10-18
+
+- **Chrome Web Store:** pacote 0.9.98 R72 enviado pelo responsável, aprovação/publicação pela loja ainda não verificada.
+- **GitHub main:** build exato autorizado via commit `9f10eb0b78a207a81c160f2311b81991efa75ca0`.
+- **Render produção:** deploy `dep-dbajt4c9v7es738q9qo0` do mesmo commit confirmado LIVE.
+- **Limites da evidência:** sem teste de login/atualização do cliente pós-loja; este repositório não recebeu o ZIP binário.
+- **Sem alteração** em licenças individuais, Atlas, Cakto ou configurações de proteção.
+
+---
+
 # ZVM 0.9.98 R72 — candidata Chrome Web Store (NÃO PUBLICAR AINDA)
 
 **Data de preparação:** 2026-10-18  
