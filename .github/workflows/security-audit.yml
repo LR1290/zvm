@@ -25,6 +25,8 @@ jobs:
         run: npm ci --ignore-scripts --no-fund --no-audit
       - name: Backend tests
         run: npm run check
+      - name: Production and staging authority invariants
+        run: node --test tests/security-production-runtime.test.js
 
   extension-release-policy:
     runs-on: ubuntu-latest
