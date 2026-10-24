@@ -25,8 +25,6 @@ jobs:
         run: npm ci --ignore-scripts --no-fund --no-audit
       - name: Backend tests
         run: npm run check
-      - name: Dependency vulnerabilities
-        run: npm audit --omit=dev --audit-level=high
 
   extension-release-policy:
     runs-on: ubuntu-latest
@@ -40,3 +38,16 @@ jobs:
           node-version: '24'
       - name: Unit tests for RELEASE restrictions
         run: node --test tests/security-extension-release.test.mjs
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Audit runtime dependency lockfile
+        run: npm audit --omit=dev --audit-level=high
