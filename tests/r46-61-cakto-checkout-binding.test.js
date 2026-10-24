@@ -98,8 +98,13 @@ const deps={
  assert.equal(after.keyCode,target,'expired sck renewal must follow verified subscription owner');
  assert.equal(after.renewed,true);
  assert.equal(after.expiresAt,'2027-01-28T12:00:00.000Z');
- const repeat=await api.processCommercialSale(afterExpired,api.ZVM_PLANS.padrao,{...deps,now:new Date('2026-12-13T12:00:00Z')});
- assert.equal(repeat.expiresAt,after.expiresAt,'same Cakto tx must not extend again');
+ // This fixture disables the production transaction-idempotency gate. Once an
+ // expired claim's most recent paid transaction is itself, the strict subscription
+ // resolver MUST reject a duplicate rather than extend the entitlement again.
+ await assert.rejects(api.processCommercialSale(afterExpired,api.ZVM_PLANS.padrao,{
+  ...deps,now:new Date('2026-12-13T12:00:00Z')
+ }),err=>err?.code==='cakto_checkout_binding_invalid'&&err?.detailCode==='no_prior_paid_subscription_proof');
+ assert.equal(keyStore[target].expiresAt,after.expiresAt,'duplicate expired claim cannot double-credit renewal');
  const unsupportedSubscription={...afterExpired,txId:'synthetic-paid-tx-005',subscriptionId:'unrelated-sub'};
  await assert.rejects(api.processCommercialSale(unsupportedSubscription,api.ZVM_PLANS.padrao,{...deps,now:new Date('2026-12-13T12:00:00Z')}),/checkout_binding_invalid/);
  assert.equal(keyStore[target].expiresAt,after.expiresAt,'unknown subscription cannot renew');
