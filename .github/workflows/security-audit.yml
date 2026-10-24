@@ -1,0 +1,58 @@
+name: Security audit (no deployment)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-fund --no-audit
+      - name: Backend tests
+        run: npm run check
+
+  extension-release-policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Unit tests for RELEASE restrictions
+        run: node --test tests/security-extension-release.test.mjs
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install audited runtime dependencies
+        run: npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+      - name: Exercise sharp native image conversion with synthetic one-pixel input
+        run: |
+          node -e "(async()=>{const sharp=require('sharp');const pixels=Buffer.from([13,28,87,255]);const img=await sharp(pixels,{raw:{width:1,height:1,channels:4}}).png().toBuffer();const meta=await sharp(img).metadata();if(meta.width!==1||meta.height!==1||meta.format!=='png')throw Error('sharp_smoke_failed');console.log('SHARP_IMAGE_PASS',sharp.versions.sharp,sharp.versions.vips)})().catch(e=>{console.error(e);process.exitCode=1})"
+      - name: Audit runtime dependency lockfile
+        run: npm audit --omit=dev --audit-level=high
