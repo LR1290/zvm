@@ -25,12 +25,14 @@ const analyticsCssName=fs.readdirSync('assets').find(n=>/^zvm-analytics-dashboar
 const adminCssName=fs.readdirSync('assets').find(n=>/^zvm-admin-dashboard\.[a-f0-9]{12}\.css$/.test(n));
 assert(adminCssName,'admin CSS found');
 assert(analyticsCssName, 'analytics CSS found');
-for(const direct of [adminCssName,analyticsCssName,'zvm-status.be29b1782339.css','zvm-r46-client-dashboard.64213392bec3.css']){
+const analyticsLabCssName=fs.readdirSync('assets').find(n=>/^zvm-analytics-lab\.[a-f0-9]{12}\.css$/.test(n));
+assert(analyticsLabCssName,'analytics lab CSS found');
+for(const direct of [adminCssName,analyticsCssName,analyticsLabCssName,'zvm-status.be29b1782339.css','zvm-r46-client-dashboard.64213392bec3.css']){
   assert(server.includes(`<link rel="stylesheet" href="/assets/${direct}">`),direct+' stylesheet link');
 }
 assert(server.includes(`<link rel="stylesheet" href="/assets/${m[1]}">`),'system stylesheet link');
 assert(server.includes(`${adminCssName}">\n<link rel="stylesheet" href="/assets/${m[1]}`),'admin loads system CSS after local CSS');
-assert(server.includes(`${analyticsCssName}">\n<link rel="stylesheet" href="/assets/${m[1]}`),'analytics loads system CSS after local CSS');
+assert(server.includes(`${analyticsCssName}">\n<link rel="stylesheet" href="/assets/${analyticsLabCssName}">\n<link rel="stylesheet" href="/assets/${m[1]}`),'analytics loads system CSS after local and lab CSS');
 {const a=server.indexOf('zvm-r46-client-dashboard.64213392bec3.css');const b=server.indexOf(m[1],a);assert(a>=0&&b>a,'client dashboard loads system CSS after local CSS');}
 assert(server.includes(`zvm-status.be29b1782339.css"><link rel="stylesheet" href="/assets/${m[1]}`),'status loads system CSS after local CSS');
 for(const composite of ['_CSS_LANDING + _CSS_SYSTEM','_CSS_PLANS}${_CSS_SYSTEM}','_CSS_STANDALONE}${_CSS_PRIVACY}${_CSS_SYSTEM}','_CSS_FAQ}${_CSS_SYSTEM}','_CSS_AUTH}${_CSS_CLIENT_WORKSPACE}']) assert(server.includes(composite),composite);
