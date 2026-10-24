@@ -21,7 +21,7 @@ jobs:
       - name: Confirm clean installation and native module
         run: |
           npm ci --omit=dev --ignore-scripts --no-audit --no-fund
-          node -e "const s=require('sharp'); console.log('SHARP_RUNTIME_OK version='+require('sharp/package.json').version+' libvips='+s.versions.vips)"
+          node -e "const s=require('sharp'); console.log('SHARP_RUNTIME_OK version='+s.versions.sharp+' libvips='+s.versions.vips)"
       - name: SCA validation
         run: npm audit --omit=dev --audit-level=high
       - name: Emit changed lockfile for human-reviewed commit (no write token)
