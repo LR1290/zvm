@@ -49,5 +49,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Install audited runtime dependencies
+        run: npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+      - name: Exercise sharp native image conversion with synthetic one-pixel input
+        run: |
+          node -e "(async()=>{const sharp=require('sharp');const pixels=Buffer.from([13,28,87,255]);const img=await sharp(pixels,{raw:{width:1,height:1,channels:4}}).png().toBuffer();const meta=await sharp(img).metadata();if(meta.width!==1||meta.height!==1||meta.format!=='png')throw Error('sharp_smoke_failed');console.log('SHARP_IMAGE_PASS',sharp.versions.sharp,sharp.versions.vips)})().catch(e=>{console.error(e);process.exitCode=1})"
       - name: Audit runtime dependency lockfile
         run: npm audit --omit=dev --audit-level=high
