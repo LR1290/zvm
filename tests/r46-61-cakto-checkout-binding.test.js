@@ -20,7 +20,7 @@ try{
 const fixed=Date.parse('2026-10-13T12:00:00Z');
 const owner='owner@example.com',payer='payer@example.com';
 const target='zv-target-00001',other='zv-payer-00001';
-assert.equal(api.ZVM_PUBLIC_PLANS.start_v2.enabled,true,'synthetic START offer required for checkout regression');
+assert.equal(api.ZVM_PAYMENT_PLANS.start_v2.enabled,true,'synthetic START offer remains bound for checkout regression even when hidden from public catalog');
 const url=helper.checkoutUrlForPortal(api.ZVM_PLANS.padrao.checkoutUrl,target,owner,process.env.APP_SECRET,fixed);
 const claim=new URL(url).searchParams.get('sck');
 assert(claim&&claim.startsWith('zvm1_'));
