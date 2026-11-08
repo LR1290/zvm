@@ -23,6 +23,7 @@ const crypto = require('crypto');
 const fs     = require('fs');
 const path   = require('path');
 const zlib   = require('zlib');
+const { serveSSX2012 } = require('./src/hobbies/ssx/route');
 const net    = require('net');
 const { MongoClient } = require('mongodb');
 // Fonte de configuração:
@@ -8340,7 +8341,7 @@ const HTTP_TRAFFIC_RETENTION_MS = 24 * 60 * 60 * 1000;
 const HTTP_TRAFFIC_MAX_ENTRIES = 4096;
 const _httpTrafficBuckets = new Map();
 const HTTP_TRAFFIC_PUBLIC_PATHS = new Set([
-  '/', '/health', '/status', '/robots.txt', '/client/status', '/client/remove-phone',
+  '/', '/health', '/status', '/robots.txt', '/hobbies/ssx/ssx2012', '/client/status', '/client/remove-phone',
   '/api/checkkey', '/cakto/webhook', '/meta/webhook', '/faq', '/planos', '/privacidade', '/termos',
   ZVM_BRAND_ICON_ASSET, ZVM_FOUNDER_AVATAR_ASSET,
 ]);
@@ -8477,6 +8478,7 @@ async function handleRequest(req, res) {
   if (handleSearchConsoleVerification(req, res, p)) return;
 
   if (sendPublicAsset(req, res, p)) return;
+  if (serveSSX2012(req, res, p)) return;
 
   // /robots.txt — páginas públicas podem ser indexadas; superfícies de
   // conta, licenciamento, APIs e operação permanecem fora de crawling.
@@ -8493,6 +8495,7 @@ async function handleRequest(req, res) {
       'Disallow: /meta/',
       'Disallow: /analytics',
       'Disallow: /verificar',
+      'Disallow: /hobbies/ssx/',
       'Disallow: /health',
       'Disallow: /ready',
       'Disallow: /status',
