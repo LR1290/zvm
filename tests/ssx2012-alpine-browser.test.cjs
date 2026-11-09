@@ -120,6 +120,11 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(regional.first,'Red Light');
     assert.ok(regional.regions>=2&&regional.rankCount>0&&regional.proof);
     assert.equal(regional.tableHidden,true);
+    const desktopDensity=await evaluate(cdp.send,sid,"(()=>{const item=document.querySelector('.ssx-region-rank');const proof=item.querySelector('.ssx-region-proof');const metrics=item.querySelector('.ssx-region-metrics');return {height:Math.round(item.getBoundingClientRect().height),score:metrics.querySelector('.ssx-region-score')?.textContent,accessible:proof?.getAttribute('aria-label'),proofWidth:proof?.getBoundingClientRect().width,gridColumns:getComputedStyle(item).gridTemplateColumns.split(' ').length}})()");
+    assert.ok(desktopDensity.height<=58,'Desktop ranking rows should be compact');
+    assert.equal(desktopDensity.gridColumns,3);
+    assert.equal(desktopDensity.score,'01:35.99','Preserve full precision of race times');
+    assert.ok(desktopDensity.proofWidth>=36&&desktopDensity.accessible,'Proof icon must be touchable and accessible');
     const corkscrew=await evaluate(cdp.send,sid,"(()=>{const africa=[...document.querySelectorAll('.ssx-region-group')].find(x=>x.dataset.regionName==='Africa');const target=[...africa.querySelectorAll('.ssx-track-choice')].find(x=>x.textContent.includes('Corkscrew'));target.click();return {selected:document.querySelector('.ssx-region-detail h3')?.textContent,runs:document.querySelectorAll('.ssx-region-rank').length}})()");
     assert.equal(corkscrew.selected,'Corkscrew','Track detail must update on selection');
     assert.ok(corkscrew.runs>0);
@@ -209,6 +214,14 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.ok(mobileRegional.runs>0&&mobileRegional.flags>0,'Real flags and record rows must remain accessible');
     assert.match(mobileRegional.art,/\/hobbies\/ssx\/media\/v37\//,'Region needs pinned game artwork');
     assert.equal(mobileRegional.navOverflow,false,'Regional mobile layout must not overflow screen');
+    const mobileDensity=await evaluate(cdp.send,sid,"(()=>{const rows=[...document.querySelectorAll('.ssx-region-detail .ssx-region-rank')];const row=rows[0];const proof=row.querySelector('.ssx-region-proof');const btn=row.querySelector('.ssx-region-rider');const score=row.querySelector('.ssx-region-score');const metrics=row.querySelector('.ssx-region-metrics');const banner=document.querySelector('.ssx-region-detail-header');return {maxHeight:Math.max(...rows.slice(0,8).map(x=>Math.round(x.getBoundingClientRect().height))),count:rows.length,proofHeight:Math.round(proof.getBoundingClientRect().height),proofWidth:Math.round(proof.getBoundingClientRect().width),proofLabel:proof.getAttribute('aria-label'),score:score.textContent,rider:btn.textContent.trim(),hasFlags:!!btn.querySelector('.rider-flag'),metricsInline:metrics.contains(proof)&&metrics.contains(score),headerHeight:Math.round(banner.getBoundingClientRect().height),width:document.documentElement.scrollWidth,viewport:document.documentElement.clientWidth}})()");
+    assert.ok(mobileDensity.maxHeight<=68,'Eight rows should fit in substantially less height');
+    assert.ok(mobileDensity.proofHeight>=36&&mobileDensity.proofWidth>=36&&mobileDensity.proofLabel,'Proof link retains an accessible target');
+    assert.equal(mobileDensity.metricsInline,true,'Time and evidence should share one compact line');
+    assert.equal(mobileDensity.score,'01:11.92','Mobile keeps complete Wingsuit time');
+    assert.ok(mobileDensity.hasFlags,'Rider flag remains visible');
+    assert.ok(mobileDensity.headerHeight<=125,'Regional header leaves space for ranking');
+    assert.ok(mobileDensity.width<=mobileDensity.viewport+1);
     await evaluate(cdp.send,sid,"document.querySelector('#ssxRegionBrowser').scrollIntoView({block:'start'})");
     await sleep(220);
     const regionalShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
@@ -333,6 +346,10 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
       const measured=await evaluate(cdp.send,sid,"(()=>{const grid=document.querySelector('.alpine-mode-grid');const sheet=document.querySelector('.sheet-card');return {columns:getComputedStyle(grid).gridTemplateColumns.split(' ').length,toolbarWidth:document.querySelector('#toolbar').getBoundingClientRect().width,sheetWidth:sheet.getBoundingClientRect().width,viewport:document.documentElement.clientWidth};})()");
       assert.equal(measured.columns,columns,'Modal card columns at '+width+'px');
       assert.ok(measured.sheetWidth<=measured.viewport+1,'Result panel must not overflow viewport at '+width+'px');
+      if(width<=390){
+        const overflow=await evaluate(cdp.send,sid,"document.documentElement.scrollWidth-document.documentElement.clientWidth");
+        assert.ok(overflow<=1,'Compact ranking must not cause horizontal overflow at '+width+'px');
+      }
     }
     await evaluate(cdp.send,sid,"document.querySelector('.sheet-card').scrollIntoView({block:'start'})");
 

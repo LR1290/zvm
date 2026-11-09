@@ -202,6 +202,9 @@ test('public SSX UI has neutral brand/title and no Edition release promotion',()
   assert.match(js,/ssxMobileQuickNav/);
   assert.match(css,/ssx-mobile-quick-link/);
   assert.match(css,/ssx-region-banner/);
+  assert.match(css,/ssx-region-metrics/);
+  assert.match(css,/ssx-region-rank/);
+  assert.match(js,/proof.setAttribute\('aria-label',copy\[4\]\)/);
   assert.match(css,/alpine-card-visual/);
   assert.match(css,/data-ssx-mobile-view="browse"/);
   assert.match(js,/ssxMobileView/);

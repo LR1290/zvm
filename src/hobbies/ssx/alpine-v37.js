@@ -452,16 +452,28 @@
         const identity=text('div','','ssx-region-identity');
         const name=text('button','','ssx-region-rider');
         if(run.flag)name.append(run.flag.cloneNode(true));
-        name.append(text('span',run.rider.textContent.trim()));
-        name.type='button';name.addEventListener('click',()=>run.rider.click());
+        const nameLabel=text('span',run.rider.textContent.trim());
+        name.append(nameLabel);
+        name.type='button';
+        name.title=run.rider.textContent.trim();
+        name.addEventListener('click',()=>run.rider.click());
         identity.append(name);
-        if(run.source)identity.append(text('small',run.source,'ssx-region-source'));
-        item.append(identity,text('strong',run.score,'ssx-region-score'));
-        if(run.video){
-          const proof=text('a','▶ '+copy[4],'ssx-region-proof');
-          proof.href=run.video;proof.target='_blank';proof.rel='noopener noreferrer';proof.referrerPolicy='no-referrer';
-          item.append(proof);
+        if(run.source){
+          const source=text('small',run.source,'ssx-region-source');
+          source.title=run.source;
+          identity.append(source);
         }
+        const metrics=text('div','','ssx-region-metrics');
+        metrics.append(text('strong',run.score,'ssx-region-score'));
+        if(run.video){
+          const proof=text('a','▶','ssx-region-proof');
+          proof.setAttribute('aria-label',copy[4]);
+          proof.title=copy[4];
+          proof.href=run.video;proof.target='_blank';
+          proof.rel='noopener noreferrer';proof.referrerPolicy='no-referrer';
+          metrics.append(proof);
+        }
+        item.append(identity,metrics);
         ranking.append(item);
       }
       detail.append(ranking);
