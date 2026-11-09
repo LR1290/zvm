@@ -64,9 +64,36 @@ node --test tests/ssx2012-reconciliation.test.cjs
 node tools/ssx-reconcile-readonly.cjs   ./snapshots/google-sheets.json   ./snapshots/ozmonet.json > audit.json
 ```
 
-O CLI só lê dois arquivos e imprime JSON no stdout. O redirecionamento para arquivo é opcional, feito pelo operador. Nenhuma requisição de rede, escrita ou atualização de nomes no site.
+O CLI só lê os arquivos de entrada e imprime um JSON integrado com auditoria de identidades **e** cobertura por plataforma, modalidade e variante. O redirecionamento para arquivo é opcional, feito pelo operador. Nenhuma requisição de rede, escrita ou atualização de nomes no site.
 
-Saída: contagens por status, hashes SHA-256 das capturas normalizadas, IDs confirmados, nomes divergentes, colisões de posição em eventos, IDs vinculados a múltiplos apelidos e evidências inválidas. A revisão humana é obrigatória antes de aplicar qualquer modificação.
+### Manifesto opcional das categorias esperadas
+
+Para acusar ausências de Android, níveis baixos, pistas de teste e variantes especiais, forneça um terceiro arquivo JSON: uma lista **explícita e conferida pelo curador** com os pares plataforma/modo/variante esperados (a ferramenta não inventa as abas que faltam no snapshot).
+
+```json
+[
+  {"platform":"xbox360","mode":"board","variant":"standard"},
+  {"platform":"xbox360","mode":"wings","variant":"standard"},
+  {"platform":"android","mode":"android","variant":"standard"},
+  {"platform":"xbox360","mode":"level9","variant":"standard"},
+  {"platform":"xbox360","mode":"dev","variant":"test"},
+  {"platform":"xbox360","mode":"board","variant":"no_gear"}
+]
+```
+
+A lista acima é **exemplo de contrato**, não inventário verificado da planilha. Valores exatos devem ser confrontados com cada aba e seu regulamento.
+
+```bash
+node --test tests/ssx2012-reconciliation.test.cjs tests/ssx2012-coverage-audit.test.cjs
+node tools/ssx-reconcile-readonly.cjs \
+  ./snapshots/google-sheets.json \
+  ./snapshots/ozmonet.json \
+  ./snapshots/expected-categories.json > audit.json
+```
+
+O relatório inclui: quantidade por categoria, eventos únicos, pistas únicas, primeiros lugares distintos, registros com prova, IDs confirmados, IDs divergentes, registros inválidos, colisões e **categorias esperadas ausentes**. Sem um manifesto explícito, a ferramenta não considera a ausência de categorias prova de que elas não existem.
+
+Saída: contagens por status, hashes SHA-256 das capturas normalizadas, IDs confirmados, nomes divergentes, colisões de posição em eventos, IDs vinculados a múltiplos apelidos, evidências inválidas e relatório de cobertura por categoria. A revisão humana é obrigatória antes de aplicar qualquer modificação.
 
 **Critérios de separação:** chave de evento = plataforma + modalidade + variante + evento + pista + posição. Não somar categorias como Android, Level 9, DEV/Test, No Boost, No Gear, No Wings e No Rewinds a uma classificação Board padrão sem conferir regras individuais.
 
