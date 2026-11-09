@@ -584,6 +584,54 @@
     $('region')?.closest('.field')?.classList.add('ssx-legacy-region-select');
   }
 
+
+  // Keep a single canonical mode state. This secondary control is a compact
+  // mobile presentation of the same Board/Wingsuit and Survive submodes.
+  function mountSheetModeFilter(card){
+    const toolbar=$('toolbar');
+    if(!card||!toolbar||$('ssxSheetModeFilter'))return;
+    const rail=text('nav','','ssx-sheet-mode-filter');
+    rail.id='ssxSheetModeFilter';
+    rail.setAttribute('role','group');
+    rail.hidden=true;
+    for(const [mode,symbol] of [['board','🏂'],['wings','🪂'],['survive','❄️'],['special','⚡']]){
+      const button=text('button','','ssx-sheet-mode-option');
+      button.type='button';
+      button.dataset.ssxSheetMode=mode;
+      button.setAttribute('aria-pressed','false');
+      const pict=text('span',symbol,'ssx-sheet-mode-icon');
+      pict.setAttribute('aria-hidden','true');
+      button.append(pict,text('span','','ssx-sheet-mode-name'));
+      rail.append(button);
+    }
+    rail.addEventListener('click',event=>{
+      const button=event.target.closest('[data-ssx-sheet-mode]');
+      if(!button||button.hidden)return;
+      if(button.dataset.ssxSheetMode!==state.mode)selectMode(button.dataset.ssxSheetMode);
+    });
+    toolbar.after(rail);
+  }
+  function syncSheetModeFilter(group,copy){
+    const rail=$('ssxSheetModeFilter');
+    if(!rail)return;
+    const allowed=group==='race'?['board','wings']:
+      group==='survive'?['survive','special']:[];
+    rail.hidden=allowed.length===0||state.fullTable;
+    rail.setAttribute('aria-label',group==='race'?copy.race:
+      group==='survive'?copy.survive:copy.modes);
+    for(const button of rail.querySelectorAll('[data-ssx-sheet-mode]')){
+      const mode=button.dataset.ssxSheetMode;
+      const visible=allowed.includes(mode);
+      button.hidden=!visible;
+      const label=copy[mode==='survive'?'standard':mode]||mode;
+      const name=button.querySelector('.ssx-sheet-mode-name');
+      if(name)name.textContent=label;
+      button.setAttribute('aria-label',label);
+      button.setAttribute('aria-pressed',String(visible&&state.mode===mode));
+      button.setAttribute('tabindex',visible?'0':'-1');
+    }
+  }
+
   function renderRegionBrowser(){
     const browser=$('ssxRegionBrowser');
     if(!browser||!tags[state.mode])return;
@@ -867,6 +915,7 @@
     card?.insertAdjacentElement('afterend',credits);
     buildPublicLayout(hero,toolbar,card,credits);
     mountSheetControls(card,toolbar);
+    mountSheetModeFilter(card);
 
     modes.addEventListener('click',event=>{
       const item=event.target.closest('[data-alpine-group]');
@@ -992,6 +1041,7 @@
         button.setAttribute('aria-pressed',String(state.mode===mode));
       }
     }
+    syncSheetModeFilter(activeGroup,copy);
     const names={board:'Race It! · Board',wings:'Race It! · Wingsuit',trick:'Trick It!',survive:'Survive It! · '+copy.standard,special:'Survive It! · '+copy.special,all:copy.full};
     const label=$('alpineModeLabel');
     if(label)label.textContent=names[state.mode]||copy.results;
