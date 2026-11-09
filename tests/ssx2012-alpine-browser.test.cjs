@@ -92,7 +92,16 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
       await sleep(250);
     }
     assert.ok(ready,'Original rankings + Alpine UI should load');
-    const firstPaint=await evaluate(cdp.send,sid,"(()=>({ready:document.documentElement.dataset.ssxBoot,loader:!!document.querySelector('#ssxBootScreen'),headline:document.querySelector('#heroTitle')?.textContent}))()");
+    let firstPaint;
+    for(let attempt=0;attempt<60;attempt++){
+      firstPaint=await evaluate(cdp.send,sid,"(()=>({ready:document.documentElement.dataset.ssxBoot,loader:!!document.querySelector('#ssxBootScreen'),headline:document.querySelector('#heroTitle')?.textContent}))()");
+      if(firstPaint.ready==='ready'&&!firstPaint.loader)break;
+      await sleep(200);
+    }
+    if(firstPaint.ready!=='ready'){
+      const diagnostics=await evaluate(cdp.send,sid,"(()=>({boot:document.documentElement.dataset.ssxBoot,domReady:document.readyState,modes:document.querySelectorAll('.alpine-mode-card').length,subtitle:document.querySelector('#heroDesc')?.textContent,viewOptions:!!document.querySelector('#ssxViewOptions'),management:!!document.querySelector('#ssxManagement'),loading:document.querySelector('#ssxBootProgress')?.textContent}))()");
+      console.error('SSX_BOOT_DIAGNOSTICS',JSON.stringify(diagnostics));
+    }
     assert.equal(firstPaint.ready,'ready','v38 should reveal after initialization');
     assert.equal(firstPaint.loader,false,'First-paint shell should be removed only when ready');
     assert.equal(firstPaint.headline,'Conquiste a montanha.');
