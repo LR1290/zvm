@@ -67,13 +67,22 @@ function validRecord(r){
   if(!r||typeof r!=='object')return false;
   if(!safeStr(r.recordId)||!safeStr(r.eventId)||!safeStr(r.trackId)||!safeStr(r.mode))return false;
   if(!VALID_MODES.has(r.mode)||!safeStr(r.platform)||!safeStr(r.riderName))return false;
+  // Optional variant may be omitted, but ambiguous whitespace and non-strings
+  // must not be silently certified as the default 'standard' category.
+  if(r.variant!=null&&(typeof r.variant!=='string'||(r.variant!==''&&!safeStr(r.variant))))return false;
   if(!Number.isSafeInteger(r.position)||r.position<1)return false;
   if(typeof r.value!=='string'||!r.value.trim())return false;
   if(r.proofUrl&&!isWebUrl(r.proofUrl))return false;
   return true;
 }
-// A JSON tuple is injective; delimiter escaping collides for literal '%7C' values.
-function recordKey(r){return JSON.stringify([r.platform,r.mode,r.variant||'standard',r.eventId,r.trackId,r.position]);}
+// Canonicalize boundary whitespace exactly as category/track coverage does.
+// Without this, identical positions can evade collision detection and allow
+// identity certification in an internally contradictory snapshot.
+// JSON tuple encoding remains injective for literal separator characters.
+function recordKey(r){return JSON.stringify([
+  safeStr(r.platform),safeStr(r.mode),safeStr(r.variant)||'standard',
+  safeStr(r.eventId),safeStr(r.trackId),r.position
+]);}
 function reconcile(sheets,oz){
   validateSnapshot(sheets,'google_sheets');validateSnapshot(oz,'ozmonet');
   const {index:aliases,rejected:invalidProfiles}=profileIndex(oz.players);
