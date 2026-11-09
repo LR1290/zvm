@@ -1,5 +1,5 @@
 
-/* SSX Alpine v37 — scoped DOM enhancement; never calls ZVM APIs or handles credentials. */
+/* SSX 2012 community records — public layout; rankings and evidence remain untouched. */
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
@@ -35,12 +35,12 @@
   // UI copy is intentionally editorial, not a release/build status banner.
   // The underlying v36 controls remain attached to their original DOM IDs.
   const publicCopy = {
-    pt:{title:'SSX 2012 · Recordes da Comunidade',desc:'Todos os recordes de SSX 2012 em um só lugar.',records:'Recordes',riders:'Riders',about:'Sobre',more:'Mais opções',manage:'Gerenciar site',advanced:'Mais filtros',sources:'Sobre os dados',guide:'Guia',credits:'Créditos e fontes',footer:'Recordes da comunidade SSX 2012 · Projeto independente, não afiliado à EA.',modes:'Escolha uma modalidade',language:'Idioma',eyebrow:'RECORDES DA COMUNIDADE'},
-    en:{title:'SSX 2012 · Community Records',desc:'All SSX 2012 community records in one place.',records:'Records',riders:'Riders',about:'About',more:'More options',manage:'Manage site',advanced:'More filters',sources:'About the data',guide:'Guide',credits:'Credits and sources',footer:'SSX 2012 community records · Independent fan project, not affiliated with EA.',modes:'Choose a mode',language:'Language',eyebrow:'COMMUNITY RECORDS'},
-    de:{title:'SSX 2012 · Community-Rekorde',desc:'Alle SSX 2012-Rekorde an einem Ort.',records:'Rekorde',riders:'Riders',about:'Über uns',more:'Mehr Optionen',manage:'Seite verwalten',advanced:'Weitere Filter',sources:'Über die Daten',guide:'Anleitung',credits:'Bildnachweise und Quellen',footer:'SSX 2012 Community-Rekorde · Unabhängiges Fanprojekt ohne Verbindung zu EA.',modes:'Spielmodus wählen',language:'Sprache',eyebrow:'COMMUNITY-REKORDE'},
-    es:{title:'SSX 2012 · Récords de la comunidad',desc:'Todos los récords de SSX 2012 en un solo lugar.',records:'Récords',riders:'Riders',about:'Acerca de',more:'Más opciones',manage:'Administrar sitio',advanced:'Más filtros',sources:'Sobre los datos',guide:'Guía',credits:'Créditos y fuentes',footer:'Récords de SSX 2012 · Proyecto independiente sin afiliación a EA.',modes:'Elige una modalidad',language:'Idioma',eyebrow:'RÉCORDS DE LA COMUNIDAD'},
-    nl:{title:'SSX 2012 · Communityrecords',desc:'Alle SSX 2012-records op één plek.',records:'Records',riders:'Riders',about:'Over',more:'Meer opties',manage:'Site beheren',advanced:'Meer filters',sources:'Over de gegevens',guide:'Handleiding',credits:'Bronnen en credits',footer:'SSX 2012 Communityrecords · Onafhankelijk fanproject, niet verbonden met EA.',modes:'Kies een speltype',language:'Taal',eyebrow:'COMMUNITYRECORDS'},
-    fr:{title:'SSX 2012 · Records communautaires',desc:'Tous les records de SSX 2012 en un seul endroit.',records:'Records',riders:'Riders',about:'À propos',more:'Plus d’options',manage:'Gérer le site',advanced:'Plus de filtres',sources:'À propos des données',guide:'Guide',credits:'Crédits et sources',footer:'Records SSX 2012 · Projet de fans indépendant, non affilié à EA.',modes:'Choisir un mode',language:'Langue',eyebrow:'RECORDS COMMUNAUTAIRES'}
+    pt:{title:'SSX 2012 · Recordes da Comunidade',desc:'Race It!, Trick It! e Survive It!: tempos, pontuações e provas em vídeo.',records:'Recordes',riders:'Riders',about:'Sobre',more:'Mais opções',manage:'Gerenciar site',advanced:'Mais filtros',sources:'Sobre os dados',guide:'Guia',credits:'Créditos e fontes',footer:'Recordes da comunidade SSX 2012 · Projeto independente, não afiliado à EA.',modes:'Escolha uma modalidade',language:'Idioma',display:'Exibição',eyebrow:'RECORDES DA COMUNIDADE'},
+    en:{title:'SSX 2012 · Community Records',desc:'Race It!, Trick It! and Survive It!: times, scores and video proof.',records:'Records',riders:'Riders',about:'About',more:'More options',manage:'Manage site',advanced:'More filters',sources:'About the data',guide:'Guide',credits:'Credits and sources',footer:'SSX 2012 community records · Independent fan project, not affiliated with EA.',modes:'Choose a mode',language:'Language',display:'View',eyebrow:'COMMUNITY RECORDS'},
+    de:{title:'SSX 2012 · Community-Rekorde',desc:'Race It!, Trick It! und Survive It!: Zeiten, Punkte und Videobelege.',records:'Rekorde',riders:'Riders',about:'Über uns',more:'Mehr Optionen',manage:'Seite verwalten',advanced:'Weitere Filter',sources:'Über die Daten',guide:'Anleitung',credits:'Bildnachweise und Quellen',footer:'SSX 2012 Community-Rekorde · Unabhängiges Fanprojekt ohne Verbindung zu EA.',modes:'Spielmodus wählen',language:'Sprache',display:'Ansicht',eyebrow:'COMMUNITY-REKORDE'},
+    es:{title:'SSX 2012 · Récords de la comunidad',desc:'Race It!, Trick It! y Survive It!: tiempos, puntuaciones y pruebas en vídeo.',records:'Récords',riders:'Riders',about:'Acerca de',more:'Más opciones',manage:'Administrar sitio',advanced:'Más filtros',sources:'Sobre los datos',guide:'Guía',credits:'Créditos y fuentes',footer:'Récords de SSX 2012 · Proyecto independiente sin afiliación a EA.',modes:'Elige una modalidad',language:'Idioma',display:'Vista',eyebrow:'RÉCORDS DE LA COMUNIDAD'},
+    nl:{title:'SSX 2012 · Communityrecords',desc:'Race It!, Trick It! en Survive It!: tijden, scores en videobewijs.',records:'Records',riders:'Riders',about:'Over',more:'Meer opties',manage:'Site beheren',advanced:'Meer filters',sources:'Over de gegevens',guide:'Handleiding',credits:'Bronnen en credits',footer:'SSX 2012 Communityrecords · Onafhankelijk fanproject, niet verbonden met EA.',modes:'Kies een speltype',language:'Taal',display:'Weergave',eyebrow:'COMMUNITYRECORDS'},
+    fr:{title:'SSX 2012 · Records communautaires',desc:'Race It!, Trick It! et Survive It! : temps, scores et preuves vidéo.',records:'Records',riders:'Riders',about:'À propos',more:'Plus d’options',manage:'Gérer le site',advanced:'Plus de filtres',sources:'À propos des données',guide:'Guide',credits:'Crédits et sources',footer:'Records SSX 2012 · Projet de fans indépendant, non affilié à EA.',modes:'Choisir un mode',language:'Langue',display:'Affichage',eyebrow:'RECORDS COMMUNAUTAIRES'}
   };
   function applyPublicCopy() {
     const copy=publicCopy[language()]||publicCopy.en;
@@ -50,6 +50,7 @@
       ['ssxNavRecords',copy.records],
       ['ssxManagementLabel',copy.manage],
       ['ssxCreditsLabel',copy.credits],
+      ['ssxViewLabel',copy.display],
       ['alpineModesTitle',copy.modes]
     ];
     for(const [id,value] of replacements){
@@ -79,6 +80,8 @@
       records.id='ssxNavRecords';
       records.href='#alpine-modes';
       nav.insertBefore(records,riders);
+      const communityGroup=$('communityMenuBtn')?.closest('.nav-group');
+      if(communityGroup?.parentElement===nav)nav.insertBefore(communityGroup,about);
       about.removeAttribute('role');
       about.classList.add('ssx-nav-about');
       nav.insertBefore(about,tools);
@@ -87,9 +90,10 @@
         more.classList.add('ssx-gear-trigger');
         more.setAttribute('title','Mais opções');
         const icon=more.querySelector('.nav-ico');
-        if(icon)icon.textContent='⚙';
-        // Compact Canva-style gear control; aria-label provides the accessible name.
-        more.querySelector('[data-i="navTools"]')?.remove();
+        if(icon)icon.textContent='⋯';
+        // Desktop uses an icon; mobile retains its visible and translated label.
+        const moreLabel=more.querySelector('[data-i="navTools"]');
+        if(moreLabel)moreLabel.textContent='Mais opções';
       }
       const menu=$('toolsMenu'),submissions=$('submissionsBtn'),settings=$('settingsBtn'),data=$('dataBtn'),admin=$('adminBtn');
       if(menu&&submissions&&settings&&data&&admin){
@@ -224,14 +228,21 @@
       if(head){
         const wrap=document.createElement('div');
         wrap.className='alpine-results-title';
-        wrap.append(
-          text('span','', 'alpine-results-mode'),
-          text('button','', 'alpine-small-action')
-        );
-        wrap.firstChild.id='alpineModeLabel';
-        wrap.lastChild.id='alpineToggleTable';
-        wrap.lastChild.type='button';
-        wrap.lastChild.addEventListener('click',()=>{
+        const modeLabel=text('span','', 'alpine-results-mode');
+        modeLabel.id='alpineModeLabel';
+        const viewOptions=document.createElement('details');
+        viewOptions.id='ssxViewOptions';
+        viewOptions.className='ssx-view-options';
+        const viewSummary=text('summary','Exibição');
+        viewSummary.id='ssxViewLabel';
+        const viewActions=text('div','','ssx-view-actions');
+        const tableToggle=text('button','','alpine-small-action');
+        tableToggle.id='alpineToggleTable';
+        tableToggle.type='button';
+        viewActions.append(tableToggle);
+        viewOptions.append(viewSummary,viewActions);
+        wrap.append(modeLabel,viewOptions);
+        tableToggle.addEventListener('click',()=>{
           if(state.fullTable){
             selectMode(state.beforeFullTable);
           } else {
@@ -253,7 +264,7 @@
           sync();
           scheduleCards();
         });
-        wrap.append(positions);
+        viewActions.append(positions);
         head.append(wrap);
       }
       const list=document.createElement('div');

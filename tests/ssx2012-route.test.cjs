@@ -67,6 +67,7 @@ test('v38 first paint hides v36 UI until modern layout is ready',()=>harness(asy
  assert.ok(mountScript>bootScreen,'Shell is visible before legacy data engine and enhancement complete');
  assert.match(html,/html:not\(\[data-ssx-boot="ready"\]\) body>\*:not\(#ssxBootScreen\)/);
  assert.match(html,/document\.documentElement\.dataset\.ssxBoot = 'ready'/);
+ assert.ok(!html.includes('class="ssx-boot-mode"'),'No fake interactive cards in the first paint');
  assert.equal(r.headers.get('x-ssx-variant'),'ssx-ui-v38');
  const archive=await (await fetch(base+'/hobbies/ssx/ssx2012-v36')).text();
  assert.ok(!archive.includes('id="ssxBootScreen"'),'v36 recovery must remain unchanged');

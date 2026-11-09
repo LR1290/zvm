@@ -197,6 +197,8 @@ test('public SSX UI has neutral brand/title and no Edition release promotion',()
   assert.match(js,/ssxNavRecords/);
   assert.match(js,/ssx-advanced-content/);
   assert.match(js,/applyPublicCopy/);
+  assert.match(js,/ssxViewOptions/);
+  assert.match(css,/\.ssx-view-actions/);
   assert.match(css,/SSX 2012 public editorial layout/);
   assert.match(css,/\.ssx-community-stats/);
   assert.match(css,/\.ssx-credits-disclosure|#ssxCredits/);
