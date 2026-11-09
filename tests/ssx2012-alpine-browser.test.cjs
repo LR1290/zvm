@@ -131,6 +131,15 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(regional.first,'Red Light');
     assert.ok(regional.regions>=2&&regional.rankCount>0&&regional.proof);
     assert.equal(regional.tableHidden,true);
+    const initialShare=await evaluate(cdp.send,sid,"(()=>{const button=document.querySelector('.ssx-track-share-button');const url=new URL(button.dataset.shareUrl);return {label:button.textContent,mode:url.searchParams.get('mode'),parts:JSON.parse(url.searchParams.get('ssxTrack')),origin:url.origin,pathname:url.pathname,hash:url.hash,manualInputHidden:document.querySelector('.ssx-track-share-manual').hidden,liveStatus:document.querySelector('.ssx-track-share-status').getAttribute('role')}})()");
+    assert.match(initialShare.label,/Compartilhar pista/);
+    assert.equal(initialShare.mode,'board');
+    assert.deepEqual(initialShare.parts,['Africa','Meru Mountain','Red Light']);
+    assert.equal(initialShare.pathname,'/hobbies/ssx/ssx2012');
+    assert.equal(initialShare.hash,'#ssxRegionBrowser');
+    assert.equal(initialShare.manualInputHidden,true);
+    assert.equal(initialShare.liveStatus,'status');
+
     const sheetUI=await evaluate(cdp.send,sid,"(()=>({indexReady:document.body.dataset.ssxTracksIndexed,tabs:document.querySelectorAll('#ssxSheetRegions [data-ssx-region]').length,allTracks:Number(document.querySelector('#ssxSheetRegions [data-ssx-region=all] .ssx-sheet-region-count')?.textContent||0),toolbarInSheet:document.querySelector('.sheet-card').contains(document.querySelector('#toolbar')),hiddenNative:getComputedStyle(document.querySelector('.ssx-legacy-region-select')).display==='none',active:document.querySelector('#ssxSheetRegions [aria-pressed=true]')?.dataset.ssxRegion,rows:document.querySelectorAll('#tbody tr.rank-row').length}))()");
     assert.equal(sheetUI.indexReady,'ready','All embedded records should be indexed on initial load');
     assert.ok(sheetUI.tabs>=3&&sheetUI.allTracks>=3,'Regional tabs should render without manually choosing a track');
@@ -214,6 +223,11 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.ok(desktopDensity.proofWidth>=36&&desktopDensity.accessible,'Proof icon must be touchable and accessible');
     const corkscrew=await evaluate(cdp.send,sid,"(()=>{const africa=[...document.querySelectorAll('.ssx-region-group')].find(x=>x.dataset.regionName==='Africa');const target=[...africa.querySelectorAll('.ssx-track-choice')].find(x=>x.textContent.includes('Corkscrew'));target.click();return {selected:document.querySelector('.ssx-region-detail h3')?.textContent,runs:document.querySelectorAll('.ssx-region-rank').length}})()");
     assert.equal(corkscrew.selected,'Corkscrew','Track detail must update on selection');
+    const nextShare=await evaluate(cdp.send,sid,"(()=>{const url=new URL(document.querySelector('.ssx-track-share-button').dataset.shareUrl);const address=new URL(location.href);return {parts:JSON.parse(url.searchParams.get('ssxTrack')),selectedInAddress:JSON.parse(address.searchParams.get('ssxTrack')),mode:url.searchParams.get('mode')}})()");
+    assert.deepEqual(nextShare.parts,['Africa','Meru Mountain','Corkscrew']);
+    assert.deepEqual(nextShare.selectedInAddress,nextShare.parts,'Selecting a track should update the shareable browser address');
+    assert.equal(nextShare.mode,'board');
+
     assert.ok(corkscrew.runs>0);
     await evaluate(cdp.send,sid,"document.querySelector('.ssx-track-choice').click()");    const ssxVisualDir=path.join(process.cwd(),'artifacts');
     fs.mkdirSync(ssxVisualDir,{recursive:true});
@@ -494,6 +508,30 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     await sleep(300);
     const rankingsShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
     fs.writeFileSync(path.join(outDir,'ssx-v37-mobile-rankings.png'),Buffer.from(rankingsShot.data,'base64'));
+    // A copied URL must open the same mountain and mode without storing private data.
+    const targetLink=await evaluate(cdp.send,sid,"(()=>{document.querySelector('#ssxSheetRegions [data-ssx-region=Japan]').click();const button=document.querySelector('.ssx-track-share-button');const url=new URL(button.dataset.shareUrl);return {url:url.href,mode:url.searchParams.get('mode'),track:JSON.parse(url.searchParams.get('ssxTrack'))[2],region:JSON.parse(url.searchParams.get('ssxTrack'))[0],allowed:[...url.searchParams.keys()]}})()");
+    assert.equal(targetLink.region,'Japan');
+    assert.ok(targetLink.track,'Selected track needs a shareable name');
+    assert.deepEqual(targetLink.allowed.sort(),['mode','ssxTrack'],'Shared URL should contain only public mode and track selection');
+    await cdp.send('Page.navigate',{url:targetLink.url},sid);
+    let linked;
+    for(let i=0;i<80;i++){
+      try{
+        linked=await evaluate(cdp.send,sid,"(()=>({ready:document.documentElement.dataset.ssxBoot,region:document.querySelector('#ssxSheetRegions [aria-pressed=true]')?.dataset.ssxRegion,track:document.querySelector('.ssx-region-detail h3')?.textContent,mode:document.body.dataset.ssxMode,catalog:document.querySelectorAll('#ssxSheetRegions button').length,progress:document.querySelector('#renderProgress')?.hidden,share:document.querySelector('.ssx-track-share-button')?.dataset.shareUrl}))()");
+        if(linked?.ready==='ready'&&linked?.track===targetLink.track)break;
+      }catch(_){}
+      await sleep(150);
+    }
+    assert.equal(linked.region,'Japan','Deep link must restore the region');
+    assert.equal(linked.track,targetLink.track,'Deep link must open the exact canonical track');
+    assert.equal(linked.mode,targetLink.mode,'Deep link must preserve selected game mode');
+    assert.equal(linked.catalog,13,'Shared links must still load all 12 regions');
+    assert.equal(linked.progress,true);
+    const shareFallback=await evaluate(cdp.send,sid,"(async()=>{const button=document.querySelector('.ssx-track-share-button');Object.defineProperty(navigator,'share',{value:undefined,configurable:true});Object.defineProperty(navigator,'clipboard',{value:undefined,configurable:true});button.click();await Promise.resolve();const manual=document.querySelector('.ssx-track-share-manual');return {visible:!manual.hidden,link:manual.value,role:document.querySelector('.ssx-track-share-status').getAttribute('role')}})()");
+    assert.equal(shareFallback.visible,true,'Clipboard unavailable must reveal an editable-selectable public URL');
+    assert.equal(shareFallback.link,targetLink.url);
+    assert.equal(shareFallback.role,'status');
+
   } finally {
     cdp?.ws.close();
     const exited=chrome.exitCode===null ? new Promise(resolve=>{
