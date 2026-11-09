@@ -199,6 +199,11 @@ test('public SSX UI has neutral brand/title and no Edition release promotion',()
   assert.match(js,/applyPublicCopy/);
   assert.match(js,/ssxViewOptions/);
   assert.match(js,/installMobileNavigation/);
+  assert.match(js,/ssxDirectActions/);
+  assert.match(js,/ssx-region-detail/);
+  assert.match(js,/modeFilter\)detail\.insertBefore/);
+  assert.match(css,/ssx-direct-action/);
+  assert.doesNotMatch(js,/ssxMobileMore.*append\(/);
   assert.match(js,/ssxMobileQuickNav/);
   assert.match(css,/ssx-mobile-quick-link/);
   assert.match(css,/ssx-region-banner/);
