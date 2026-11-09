@@ -678,6 +678,171 @@
     return document.querySelector('#sourceSeg [data-source].active')?.dataset.source==='google'?
       $('category')?.value||'Global Top 16':null;
   }
+
+  // Deterministic read-only identity cross-check. G (Google records), C
+  // (merged scoring indexes) and O (archived Oz player IDs) are already parsed
+  // by the immutable original source. No fetched names, fuzzy joins or uploads.
+  let riderIdentityAudit=null;
+  const googleSheetUrl='https://docs.google.com/spreadsheets/d/1SAk84oy05R0UK3JJ_JWJTskSqxj4GpGJkdRqfSmnx2I/htmlview';
+  const ozmonetUrl='https://ssx.ozmonet.com/';
+  const identityCopy={
+    pt:{heading:'Identidades e fontes auditadas',summary:'nomes vinculados por ID e pontuação',conflicts:'links de perfil com ID divergente',safety:'Nomes da planilha preservados quando o ID contradiz a Ozmonet; o link conflitante não abre outro jogador.',source:'Registros: Google Sheets (22/08/2026). IDs/nome: arquivo Ozmonet (somente leitura; sem validação ao vivo).',google:'Abrir Google Sheets',oz:'Arquivo Ozmonet',inspect:'Conferir IDs divergentes',lookup:'Consultar rider ou ID da Ozmonet',noMatch:'Nenhum ID encontrado na cópia histórica',warning:'⚠ ID não corresponde ao rider',unknown:'Identidade não verificada'},
+    en:{heading:'Audited identities and sources',summary:'names matched by exact ID and score',conflicts:'profile links with mismatched IDs',safety:'Spreadsheet names are preserved when the Oz ID belongs to someone else; the unsafe profile link is disabled.',source:'Records: Google Sheets (2026-08-22). Names/IDs: archived Ozmonet (read-only, not checked live).',google:'Open Google Sheets',oz:'Ozmonet archive',inspect:'Review mismatched IDs',lookup:'Find Ozmonet rider or ID',noMatch:'No ID in the historical archive',warning:'⚠ ID does not match rider',unknown:'Unverified identity'},
+    de:{heading:'Geprüfte Identitäten und Quellen',summary:'Namen über ID und Punktzahl zugeordnet',conflicts:'Profil-Links mit abweichender ID',safety:'Tabellennamen bleiben bei widersprüchlicher Oz-ID bestehen; der falsche Link ist deaktiviert.',source:'Rekorde: Google Sheets (22.08.2026). Namen/IDs: Ozmonet-Archiv (nur lesbar, nicht live geprüft).',google:'Google Sheets öffnen',oz:'Ozmonet-Archiv',inspect:'Abweichende IDs prüfen',lookup:'Ozmonet-Fahrer oder ID suchen',noMatch:'Keine ID gefunden',warning:'⚠ ID passt nicht zum Fahrer',unknown:'Identität ungeprüft'},
+    es:{heading:'Identidades y fuentes auditadas',summary:'nombres cotejados por ID y puntuación',conflicts:'enlaces con ID discrepante',safety:'Se conserva el nombre de la hoja cuando el ID pertenece a otro rider; se desactiva el enlace erróneo.',source:'Récords: Google Sheets (22/08/2026). Nombres/ID: archivo Ozmonet (solo lectura, sin consulta en vivo).',google:'Abrir Google Sheets',oz:'Archivo Ozmonet',inspect:'Revisar IDs diferentes',lookup:'Buscar rider o ID en Ozmonet',noMatch:'Ningún ID en el archivo',warning:'⚠ ID no corresponde al rider',unknown:'Identidad sin verificar'},
+    nl:{heading:'Gecontroleerde namen en bronnen',summary:'namen gekoppeld op ID en score',conflicts:'profiellinks met afwijkende ID',safety:'Sheet-namen blijven staan wanneer een Oz-ID bij een ander hoort; de verkeerde link is uitgeschakeld.',source:'Records: Google Sheets (22-08-2026). Namen/ID: Ozmonet-archief (alleen lezen, niet live gecontroleerd).',google:'Open Google Sheets',oz:'Ozmonet-archief',inspect:'Afwijkende IDs bekijken',lookup:'Zoek Ozmonet rider of ID',noMatch:'Geen ID gevonden',warning:'⚠ ID hoort bij andere rider',unknown:'Identiteit niet geverifieerd'},
+    fr:{heading:'Identités et sources vérifiées',summary:'noms recoupés par ID et score',conflicts:'liens de profil avec mauvais ID',safety:'Le nom du tableau est conservé lorsque l’ID Oz appartient à un autre rider; le lien erroné est neutralisé.',source:'Records : Google Sheets (22/08/2026). Noms/ID : archives Ozmonet (lecture seule, sans vérification en direct).',google:'Ouvrir Google Sheets',oz:'Archive Ozmonet',inspect:'Examiner les IDs divergents',lookup:'Rechercher rider ou ID Ozmonet',noMatch:'Aucun ID dans les archives',warning:'⚠ ID différent du rider',unknown:'Identité non vérifiée'}
+  };
+  const normalName=name=>String(name||'').normalize('NFKC').trim().toLowerCase();
+  function getRiderIdentityAudit(){
+    if(riderIdentityAudit)return riderIdentityAudit;
+    if(typeof G!=='object'||typeof O!=='object'||typeof C!=='object')return null;
+    const namesById=new Map();
+    const conflictingIds=new Set();
+    let ozRows=0;
+    for(const bucket of O){
+      for(const row of bucket[2]||[]){
+        ozRows++;
+        const id=String(row[4]||'');
+        if(!/^[0-9]{3,16}$/.test(id))continue;
+        const name=String(row[1]||'').trim();
+        if(!name)continue;
+        const existing=namesById.get(id);
+        if(existing&&normalName(existing)!==normalName(name))conflictingIds.add(id);
+        else if(!existing)namesById.set(id,name);
+      }
+    }
+    const cByScore=new Map();
+    for(const [trackId,rows] of C){
+      for(const row of rows||[]){
+        const kind=Number(row[3]),score=Number(row[2]),id=String(row[6]||'');
+        if((kind!==2&&kind!==3)||!Number.isFinite(score)||!namesById.has(id))continue;
+        const key=trackId+'|'+kind+'|'+score;
+        if(!cByScore.has(key))cByScore.set(key,new Set());
+        cByScore.get(key).add(id);
+      }
+    }
+    let verified=0,uncertain=0;
+    const conflictingLinks=[];
+    for(const row of G){
+      const kind=Number(row[3]);
+      if((kind===2||kind===3)&&row[6]!=null){
+        const candidates=cByScore.get(row[1]+'|'+kind+'|'+Number(row[6]));
+        if(candidates?.size===1){
+          const id=[...candidates][0];
+          if(!conflictingIds.has(id)&&normalName(namesById.get(id))===normalName(row[4]))verified++;
+          else uncertain++;
+        }else if(candidates?.size>1)uncertain++;
+      }
+      const url=String(row[8]||'');
+      if(!url.startsWith('https://ssx.ozmonet.com/user/'))continue;
+      const id=url.slice(url.lastIndexOf('/')+1);
+      if(!/^[0-9]{3,16}$/.test(id))continue;
+      const ozName=namesById.get(id);
+      if(ozName&&!conflictingIds.has(id)&&normalName(ozName)!==normalName(row[4])){
+        conflictingLinks.push({id,sheetName:String(row[4]),ozName,track:Number(row[1]),kind});
+      }else if(ozName&&!conflictingIds.has(id))verified++;
+    }
+    riderIdentityAudit={namesById,conflictingIds,conflictingLinks,verified,uncertain,
+      googleRows:G.length,ozRows,ozIds:namesById.size,
+      snapshot:typeof META==='object'?String(META.snapshot||'2026-08-22'):'2026-08-22'};
+    return riderIdentityAudit;
+  }
+  function protectOzIdentityLinks(){
+    const audit=getRiderIdentityAudit();
+    if(!audit||!audit.conflictingLinks.length)return;
+    const copy=identityCopy[language()]||identityCopy.en;
+    for(const anchor of document.querySelectorAll('#tbody a.proof[href^="https://ssx.ozmonet.com/user/"]')){
+      const id=anchor.href.slice(anchor.href.lastIndexOf('/')+1);
+      const rider=anchor.closest('.record-cell')?.querySelector('.rider-name')?.textContent?.trim();
+      const issue=audit.conflictingLinks.find(item=>item.id===id&&normalName(item.sheetName)===normalName(rider));
+      if(!issue)continue;
+      anchor.removeAttribute('href');
+      anchor.dataset.ssxIdentityConflict=id;
+      anchor.classList.add('ssx-oz-id-conflict');
+      anchor.textContent=copy.warning;
+      anchor.title=copy.safety+' · '+issue.sheetName+' / ID '+id+' → '+issue.ozName;
+      anchor.setAttribute('aria-label',anchor.title);
+    }
+  }
+  function mountIdentityReview(){
+    const collections=$('ssxSourceCollections');
+    if(!collections||$('ssxIdentityReview'))return;
+    const audit=getRiderIdentityAudit();
+    if(!audit)return;
+    const wrap=text('section','','ssx-identity-review');
+    wrap.id='ssxIdentityReview';
+    wrap.dataset.verifiedIds=String(audit.verified);
+    wrap.dataset.conflictingLinks=String(audit.conflictingLinks.length);
+    wrap.dataset.ozIds=String(audit.ozIds);
+    wrap.dataset.googleRows=String(audit.googleRows);
+    const title=text('h3','','ssx-identity-title');
+    const stats=text('p','','ssx-identity-stats');
+    const note=text('p','','ssx-identity-note');
+    const links=text('div','','ssx-identity-sources');
+    for(const [type,href] of [['google',googleSheetUrl],['oz',ozmonetUrl]]){
+      const link=text('a','','ssx-identity-source');
+      link.href=href;
+      link.target='_blank';
+      link.rel='noopener noreferrer';
+      link.referrerPolicy='no-referrer';
+      link.dataset.ssxSourceLink=type;
+      links.append(link);
+    }
+    const search=text('input','','ssx-identity-search');
+    search.id='ssxIdentitySearch';
+    search.type='search';
+    search.autocomplete='off';
+    const found=text('div','','ssx-identity-results');
+    found.id='ssxIdentityResults';
+    found.setAttribute('aria-live','polite');
+    search.addEventListener('input',()=>{
+      const copy=identityCopy[language()]||identityCopy.en;
+      const q=normalName(search.value);
+      found.replaceChildren();
+      if(q.length<2)return;
+      const matches=[...audit.namesById].filter(([id,name])=>
+        id===q||normalName(name).includes(q)).slice(0,12);
+      if(!matches.length){found.append(text('p',copy.noMatch));return;}
+      for(const [id,name] of matches){
+        const link=text('a',name+' · ID '+id,'ssx-identity-result');
+        link.href='https://ssx.ozmonet.com/user/'+id;
+        link.target='_blank';
+        link.rel='noopener noreferrer';
+        link.referrerPolicy='no-referrer';
+        found.append(link);
+      }
+    });
+    const issues=text('details','','ssx-identity-conflicts');
+    const summary=text('summary','');
+    issues.append(summary);
+    const listing=text('ol','','ssx-identity-issue-list');
+    for(const issue of audit.conflictingLinks){
+      const row=text('li',issue.sheetName+' → ID '+issue.id+' = '+issue.ozName);
+      listing.append(row);
+    }
+    issues.append(listing);
+    wrap.append(title,stats,note,links,search,found,issues);
+    collections.after(wrap);
+    updateIdentityReview();
+    protectOzIdentityLinks();
+  }
+  function updateIdentityReview(){
+    const wrap=$('ssxIdentityReview'),audit=getRiderIdentityAudit();
+    if(!wrap||!audit)return;
+    const l=identityCopy[language()]||identityCopy.en;
+    wrap.querySelector('.ssx-identity-title').textContent=l.heading;
+    wrap.querySelector('.ssx-identity-stats').textContent=audit.verified.toLocaleString(language())+' '+l.summary+
+      ' · '+audit.conflictingLinks.length+' '+l.conflicts;
+    wrap.querySelector('.ssx-identity-note').textContent=l.source+' '+l.safety;
+    wrap.querySelector('.ssx-identity-conflicts summary').textContent=l.inspect+
+      ' ('+audit.conflictingLinks.length+')';
+    wrap.querySelector('#ssxIdentitySearch').placeholder=l.lookup;
+    wrap.querySelector('#ssxIdentitySearch').setAttribute('aria-label',l.lookup);
+    for(const link of wrap.querySelectorAll('[data-ssx-source-link]'))
+      link.textContent=link.dataset.ssxSourceLink==='google'?l.google:l.oz;
+  }
+
   function mountGoogleCollections(card){
     const regions=$('ssxSheetRegions');
     if(!card||!regions||$('ssxSourceCollections'))return;
@@ -920,6 +1085,8 @@
     const entries=selectedRegion==='all'?allEntries:allEntries.filter(item=>item.region===selectedRegion);
     renderRegionTabs(allEntries);
     updateCollectionControls();
+    updateIdentityReview();
+    protectOzIdentityLinks();
     if(!entries.some(item=>item.key===regionalSelection))regionalSelection=entries[0]?.key||'';
     const selected=entries.find(item=>item.key===regionalSelection);
     const regions=new Map();
@@ -1218,6 +1385,7 @@
     buildPublicLayout(hero,toolbar,card,credits);
     mountSheetControls(card,toolbar);
     mountGoogleCollections(card);
+    mountIdentityReview();
     mountSheetModeFilter(card);
     mountResetControl(toolbar);
 
