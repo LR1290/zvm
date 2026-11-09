@@ -410,6 +410,7 @@
       if(!choice)return;
       regionalSelection=choice.dataset.regionTrack;
       openedRegions.add(choice.dataset.regionName);
+      syncTrackAddress();
       renderRegionBrowser();
       if(window.matchMedia('(max-width:900px)').matches){
         const selected=$('ssxRegionBrowser')?.querySelector('.ssx-region-detail');
@@ -613,6 +614,7 @@
       selectedRegion='all';
       regionalSelection='';
       openedRegions=new Set();
+      syncTrackAddress();
       applyPublicCopy();
       sync();
       scheduleCards();
@@ -674,6 +676,7 @@
       // from the old region/source while the next animation frame is pending.
       regionalCache=null;
       renderRegionBrowser();
+      syncTrackAddress();
       nav.querySelectorAll('[data-ssx-region]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.ssxRegion===selectedRegion)));
       const activeTab=nav.querySelector('[aria-pressed="true"]');
       activeTab?.focus({preventScroll:true});
@@ -738,6 +741,86 @@
       button.setAttribute('aria-pressed',String(visible&&state.mode===mode));
       button.setAttribute('tabindex',visible?'0':'-1');
     }
+  }
+
+
+  // A track link contains only canonical public names and a known game mode.
+  // Never serialize private account data, admin state, or the source selector.
+  const shareLabels={
+    pt:{share:'Compartilhar pista',copied:'Link copiado!',manual:'Selecione e copie este endereço:',failed:'Copie o endereço da pista:',title:'Recorde SSX 2012'},
+    en:{share:'Share track',copied:'Link copied!',manual:'Select and copy this link:',failed:'Copy the track link:',title:'SSX 2012 record'},
+    de:{share:'Strecke teilen',copied:'Link kopiert!',manual:'Link auswählen und kopieren:',failed:'Streckenlink kopieren:',title:'SSX 2012 Rekord'},
+    es:{share:'Compartir pista',copied:'¡Enlace copiado!',manual:'Selecciona y copia el enlace:',failed:'Copia el enlace de la pista:',title:'Récord SSX 2012'},
+    nl:{share:'Baan delen',copied:'Link gekopieerd!',manual:'Selecteer en kopieer deze link:',failed:'Kopieer de baanlink:',title:'SSX 2012-record'},
+    fr:{share:'Partager la piste',copied:'Lien copié !',manual:'Sélectionnez et copiez ce lien :',failed:'Copiez le lien de la piste :',title:'Record SSX 2012'}
+  };
+  function trackShareUrl(trackKey){
+    const target=new URL(location.pathname,location.href);
+    target.searchParams.set('mode',state.mode);
+    target.searchParams.set('ssxTrack',trackKey);
+    target.hash='ssxRegionBrowser';
+    return target.href;
+  }
+  function syncTrackAddress(){
+    try{
+      const url=new URL(location.href);
+      if(regionalSelection&&completeTrackCatalog().some(item=>item.key===regionalSelection)){
+        url.searchParams.set('ssxTrack',regionalSelection);
+      }else url.searchParams.delete('ssxTrack');
+      history.replaceState(history.state,'',url.toString());
+    }catch(_){ /* URL cannot be changed inside opaque preview frames. */ }
+  }
+  function restoreSharedTrack(){
+    try{
+      const key=new URL(location.href).searchParams.get('ssxTrack');
+      if(!key)return false;
+      const track=completeTrackCatalog().find(item=>item.key===key);
+      if(!track)return false;
+      selectedRegion=track.region;
+      regionalSelection=track.key;
+      openedRegions.add(track.region);
+      return true;
+    }catch(_){return false;}
+  }
+  function createTrackShareControl(selected){
+    const labels=shareLabels[language()]||shareLabels.en;
+    const controls=text('div','','ssx-track-share-controls');
+    const button=text('button','🔗 '+labels.share,'ssx-track-share-button');
+    button.type='button';
+    button.setAttribute('aria-label',labels.share);
+    const url=trackShareUrl(selected.key);
+    button.dataset.shareUrl=url;
+    const status=text('span','','ssx-track-share-status');
+    status.setAttribute('role','status');
+    const manual=text('input','','ssx-track-share-manual');
+    manual.type='text';
+    manual.readOnly=true;
+    manual.value=url;
+    manual.setAttribute('aria-label',labels.manual);
+    manual.hidden=true;
+    button.addEventListener('click',async()=>{
+      status.textContent='';
+      manual.hidden=true;
+      try{
+        if(typeof navigator.share==='function'){
+          await navigator.share({title:labels.title+' · '+selected.track,url});
+          return;
+        }
+        if(navigator.clipboard&&typeof navigator.clipboard.writeText==='function'){
+          await navigator.clipboard.writeText(url);
+          status.textContent=labels.copied;
+          return;
+        }
+      }catch(error){
+        if(error?.name==='AbortError')return;
+      }
+      status.textContent=labels.failed;
+      manual.hidden=false;
+      manual.focus();
+      manual.select();
+    });
+    controls.append(button,status,manual);
+    return controls;
   }
 
   function renderRegionBrowser(){
@@ -857,7 +940,7 @@
       next.setAttribute('aria-label',toolsCopy.next);
       next.title=toolsCopy.next;
       stepper.append(previous,position,next);
-      detail.append(stepper);
+      detail.append(stepper,createTrackShareControl(selected));
       const ranking=text('div','','ssx-region-ranking');
       for(const run of selected.runs){
         const item=text('div','','ssx-region-rank');
@@ -1072,6 +1155,7 @@
           if(match){
             regionalSelection=match.key;
             openedRegions.add(match.region);
+            syncTrackAddress();
           }
         }
         // The legacy data engine also rewrites the hero caption on filter changes.
@@ -1106,6 +1190,7 @@
     if(['board','wings','trick','survive','special'].includes(startMode))state.mode=startMode;
     if(startMode==='wings')state.lastRace='wings';
     if(startMode==='special')state.lastSurvive='special';
+    restoreSharedTrack();
     updateCopy();
     selectMode(state.mode);
     // Reveal only the complete v38 UI; the server-rendered first paint stays on top meanwhile.
