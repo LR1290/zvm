@@ -21,6 +21,7 @@ jobs:
         run: |
           node --check src/hobbies/ssx/route.js
           node --check src/hobbies/ssx/alpine-v37.js
+          node --check src/hobbies/ssx/special-categories-v1.js
       - name: Run SSX v36 + v37 isolation regression
         run: node --test tests/ssx2012-route.test.cjs tests/ssx2012-alpine-v37.test.cjs
       - name: Read-only source provenance inventory
