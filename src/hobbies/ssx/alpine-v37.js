@@ -1445,6 +1445,14 @@
         const proof=createYouTubeProof(lead.video,copy.proof);
         proof.classList.add('alpine-card-proof');
         card.append(proof);
+      }else{
+        const missing={
+          pt:'Sem vídeo cadastrado',en:'No video on record',
+          de:'Kein Video hinterlegt',es:'Sin vídeo registrado',
+          nl:'Geen video geregistreerd',fr:'Aucune vidéo enregistrée'
+        };
+        const badge=text('small',missing[language()]||missing.en,'ssx-video-unavailable');
+        card.append(badge);
       }
       fragment.append(card);
     }
