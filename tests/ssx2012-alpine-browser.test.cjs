@@ -168,6 +168,32 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(translated.language.trim(),'English');
     await evaluate(cdp.send,sid,"document.querySelector('[data-lang=\"pt-BR\"]').click()");
     await sleep(300);
+
+    const portuguese=await evaluate(cdp.send,sid,"({lang:document.querySelector('#langName').textContent,hero:document.querySelector('#heroTitle').textContent})");
+    assert.equal(portuguese.lang.trim(),'Português');
+    assert.equal(portuguese.hero,'Conquiste a montanha.');
+    const sourceSwitched=await evaluate(cdp.send,sid,"(()=>{document.querySelector('[data-source=\"google\"]').click();return {source:document.querySelector('#sourceSeg [data-source].active')?.dataset.source,bridge:!!document.querySelector('#liveTestBtn')};})()");
+    assert.equal(sourceSwitched.source,'google','Existing Google Sheets source selection must still work');
+    assert.equal(sourceSwitched.bridge,true,'Original Bridge settings must remain in the DOM');
+    await evaluate(cdp.send,sid,"document.querySelector('[data-source=\"combined\"]').click()");
+    await sleep(400);
+    const combined=await evaluate(cdp.send,sid,"document.querySelector('#sourceSeg [data-source].active')?.dataset.source");
+    assert.equal(combined,'combined');
+
+    // Original Settings still controls the light/dark palette on Alpine panels.
+    const light=await evaluate(cdp.send,sid,"(()=>{const theme=document.querySelector('#theme');theme.value='light';theme.dispatchEvent(new Event('change',{bubbles:true}));return {selected:theme.value,applied:document.documentElement.getAttribute('data-theme'),bg:getComputedStyle(document.body).backgroundColor,card:getComputedStyle(document.querySelector('.alpine-card')).backgroundColor};})()");
+    assert.equal(light.selected,'light');
+    assert.equal(light.applied,'light');
+    assert.equal(light.bg,'rgb(237, 245, 250)');
+    const dark=await evaluate(cdp.send,sid,"(()=>{const theme=document.querySelector('#theme');theme.value='dark';theme.dispatchEvent(new Event('change',{bubbles:true}));return document.documentElement.getAttribute('data-theme');})()");
+    assert.equal(dark,'dark');
+    for(const [width,height,columns] of [[320,740,1],[768,900,2],[1440,900,4],[390,844,2]]){
+      await cdp.send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<=390},sid);
+      await sleep(180);
+      const measured=await evaluate(cdp.send,sid,"(()=>{const grid=document.querySelector('.alpine-mode-grid');const sheet=document.querySelector('.sheet-card');return {columns:getComputedStyle(grid).gridTemplateColumns.split(' ').length,toolbarWidth:document.querySelector('#toolbar').getBoundingClientRect().width,sheetWidth:sheet.getBoundingClientRect().width,viewport:document.documentElement.clientWidth};})()");
+      assert.equal(measured.columns,columns,'Modal card columns at '+width+'px');
+      assert.ok(measured.sheetWidth<=measured.viewport+1,'Result panel must not overflow viewport at '+width+'px');
+    }
     await evaluate(cdp.send,sid,"document.querySelector('.sheet-card').scrollIntoView({block:'start'})");
 
     const mobShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
