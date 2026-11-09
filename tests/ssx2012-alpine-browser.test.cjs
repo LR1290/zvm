@@ -122,6 +122,10 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.ok(mobile.viewport<=430);
     const mobShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
     fs.writeFileSync(path.join(outDir,'ssx-v37-mobile.png'),Buffer.from(mobShot.data,'base64'));
+    await evaluate(cdp.send,sid,"document.querySelector('.sheet-card').scrollIntoView({block:'start'})");
+    await sleep(300);
+    const rankingsShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+    fs.writeFileSync(path.join(outDir,'ssx-v37-mobile-rankings.png'),Buffer.from(rankingsShot.data,'base64'));
   } finally {
     cdp?.ws.close();
     chrome.kill('SIGTERM');
