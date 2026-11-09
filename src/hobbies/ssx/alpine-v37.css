@@ -2371,3 +2371,43 @@ html[data-theme="light"] body.ssx-alpine-v37 .ssx-top3-evidence {color:#54788a;}
   body.ssx-alpine-v37 .ssx-youtube-proof {transition:none;}
 }
 
+/* Consistent YouTube cue also in the original full-table cells. */
+body.ssx-alpine-v37 .sheet-scroll .record-cell a.proof[href*="youtube.com"],
+body.ssx-alpine-v37 .sheet-scroll .record-cell a.proof[href*="youtu.be"] {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:65px;
+  min-height:30px;
+  padding:5px 8px;
+  border:1px solid #c34259;
+  border-radius:7px;
+  background:#54192a;
+  color:#fff;
+  font-size:0;
+  vertical-align:middle;
+  text-decoration:none;
+}
+body.ssx-alpine-v37 .sheet-scroll .record-cell a.proof[href*="youtube.com"]::after,
+body.ssx-alpine-v37 .sheet-scroll .record-cell a.proof[href*="youtu.be"]::after {
+  content:'▶ YouTube';
+  font-size:.7rem;
+  font-weight:800;
+  color:#fff;
+}
+body.ssx-alpine-v37 .alpine-card-leader .ssx-video-unavailable {
+  display:inline-flex;
+  align-items:center;
+  min-height:33px;
+  padding:6px 9px;
+  border:1px dashed #506c7b;
+  border-radius:8px;
+  background:rgba(9,26,41,.55);
+  color:#a8becb;
+  font-size:.73rem;
+}
+html[data-theme="light"] body.ssx-alpine-v37 .alpine-card-leader .ssx-video-unavailable {
+  color:#496b80;
+  background:#eff6fa;
+}
+
