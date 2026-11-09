@@ -1741,3 +1741,87 @@ html[data-theme="light"] body.ssx-alpine-v37 .ssx-sheet-mode-option[aria-pressed
   body.ssx-alpine-v37 .ssx-sheet-mode-option{transition:none;transform:none;}
 }
 
+/* R49 usability: reusable sheet reset, accessible keyboard region rail and honest empty states. */
+body.ssx-alpine-v37 .sheet-card > .ssx-sheet-regions {
+  scroll-snap-type:x proximity;
+  scroll-padding-inline:12px;
+}
+body.ssx-alpine-v37 .ssx-sheet-region-tab {scroll-snap-align:start;}
+body.ssx-alpine-v37 .sheet-card > #toolbar.ssx-sheet-toolbar > .ssx-reset-filters {
+  grid-column:1 / -1;
+  justify-self:start;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  min-height:40px;
+  max-width:100%;
+  padding:8px 14px;
+  border:1px solid #3c6177;
+  border-radius:10px;
+  background:#143344;
+  color:#d9f4ff;
+  font:inherit;
+  font-size:.83rem;
+  font-weight:750;
+  cursor:pointer;
+  transition:border-color .18s ease,background-color .18s ease,opacity .18s ease,transform .18s ease;
+}
+body.ssx-alpine-v37 .sheet-card > #toolbar.ssx-sheet-toolbar > .ssx-reset-filters:not(:disabled):hover {
+  background:#1d5066;
+  border-color:#16d3f4;
+  transform:translateY(-1px);
+}
+body.ssx-alpine-v37 .sheet-card > #toolbar.ssx-sheet-toolbar > .ssx-reset-filters:disabled {
+  opacity:.43;
+  cursor:default;
+}
+body.ssx-alpine-v37 .sheet-card > #toolbar.ssx-sheet-toolbar > .ssx-reset-filters:focus-visible {
+  outline:3px solid #16d3f4;
+  outline-offset:2px;
+}
+body.ssx-alpine-v37 .ssx-region-empty-inline {
+  margin:0;
+  padding:32px 18px;
+  min-height:132px;
+  border-top:1px solid rgba(112,160,184,.16);
+  background:linear-gradient(155deg,#0c2436,#102f43);
+  color:#c4deee;
+  font-weight:650;
+  font-size:.89rem;
+  text-align:center;
+}
+body.ssx-alpine-v37 .ssx-region-empty-inline::before {
+  content:'🏂';
+  display:block;
+  font-size:1.65rem;
+  margin-bottom:9px;
+}
+html[data-theme="light"] body.ssx-alpine-v37 .sheet-card > #toolbar.ssx-sheet-toolbar > .ssx-reset-filters {
+  background:#fff;
+  color:#17455b;
+  border-color:#adcddd;
+}
+html[data-theme="light"] body.ssx-alpine-v37 .sheet-card > #toolbar.ssx-sheet-toolbar > .ssx-reset-filters:not(:disabled):hover {
+  background:#d6eff7;
+  border-color:#1b9abc;
+}
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-region-empty-inline {
+  background:#eaf4f9;
+  color:#2b5267;
+  border-color:#c7dce8;
+}
+@media(max-width:440px) {
+  body.ssx-alpine-v37 .sheet-card > #toolbar.ssx-sheet-toolbar > .ssx-reset-filters {
+    justify-self:stretch;
+    width:100%;
+    min-height:44px;
+  }
+}
+@media(prefers-reduced-motion:reduce) {
+  body.ssx-alpine-v37 .sheet-card > #toolbar.ssx-sheet-toolbar > .ssx-reset-filters {
+    transition:none;
+    transform:none;
+  }
+}
+

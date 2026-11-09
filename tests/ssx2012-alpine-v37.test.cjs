@@ -208,6 +208,13 @@ test('public SSX UI has neutral brand/title and no Edition release promotion',()
   assert.match(css,/#ssxSheetModeFilter/);
   assert.doesNotMatch(css,/!important/);
   assert.match(js,/applyRegionSearch/);
+  assert.match(js,/function mountResetControl\(toolbar\)/);
+  assert.match(js,/function revealRegionTab\(nav,button\)/);
+  assert.match(js,/KeyboardEvent|ArrowRight/);
+  assert.match(js,/ssx-region-empty-inline/);
+  assert.match(css,/ssx-reset-filters/);
+  assert.match(css,/scroll-snap-type:x proximity/);
+  assert.match(css,/ssx-region-empty-inline/);
   assert.match(js,/ssxRegionSearch/);
   assert.match(js,/ssxTrackStep/);
   assert.match(css,/ssx-region-stepper/);

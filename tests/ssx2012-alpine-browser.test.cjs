@@ -137,6 +137,22 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(sheetUI.toolbarInSheet,true,'Actual existing filters should be part of the ranking sheet');
     assert.equal(sheetUI.hiddenNative,true,'Duplicate legacy region dropdown must not clutter the tabs');
     assert.equal(sheetUI.active,'all');
+    const keyboardRail=await evaluate(cdp.send,sid,"(()=>{const nav=document.querySelector('#ssxSheetRegions');const reset=document.querySelector('#ssxResetFilters');const initiallyDisabled=reset.disabled;const all=nav.querySelector('[data-ssx-region=all]');all.focus();all.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));const first=nav.querySelector('[aria-pressed=true]')?.dataset.ssxRegion;const keyboardFocus=document.activeElement===nav.querySelector('[data-ssx-region=Africa]');document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true,cancelable:true}));const last=nav.querySelector('[aria-pressed=true]')?.dataset.ssxRegion;const afterEnd=reset.disabled;document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Home',bubbles:true,cancelable:true}));const home=nav.querySelector('[aria-pressed=true]')?.dataset.ssxRegion;nav.querySelector('[data-ssx-region=Japan]').click();const beforeReset=reset.disabled;reset.click();return{initiallyDisabled,first,keyboardFocus,last,afterEnd,home,beforeReset,afterResetDisabled:reset.disabled,afterReset:nav.querySelector('[aria-pressed=true]')?.dataset.ssxRegion,groups:document.querySelectorAll('#ssxRegionBrowser .ssx-region-group').length,catalog:document.querySelectorAll('#ssxSheetRegions button').length,mode:document.body.dataset.ssxMode,source:document.querySelector('#sourceSeg [data-source].active')?.dataset.source,resetLabel:reset.textContent.trim()}})()");
+    assert.equal(keyboardRail.initiallyDisabled,true,'Reset control must not invite redundant clicks initially');
+    assert.equal(keyboardRail.first,'Africa','Right arrow must activate adjacent region');
+    assert.equal(keyboardRail.keyboardFocus,true,'Region keyboard focus should remain visible');
+    assert.equal(keyboardRail.last,'Training','End should activate last canonical region');
+    assert.equal(keyboardRail.afterEnd,false,'Changing region should enable reset');
+    assert.equal(keyboardRail.home,'all','Home should return to all regions');
+    assert.equal(keyboardRail.beforeReset,false);
+    assert.equal(keyboardRail.afterResetDisabled,true,'Reset must restore inactive state');
+    assert.equal(keyboardRail.afterReset,'all');
+    assert.equal(keyboardRail.groups,12);
+    assert.equal(keyboardRail.catalog,13);
+    assert.equal(keyboardRail.mode,'board','Filter reset must preserve selected game mode');
+    assert.equal(keyboardRail.source,'combined','Filter reset must not replace data authority');
+    assert.match(keyboardRail.resetLabel,/Limpar filtros/);
+
     const filterPersistence=await evaluate(cdp.send,sid,"(()=>{const tabs=document.querySelector('#ssxSheetRegions');const allBefore=Number(tabs.querySelector('[data-ssx-region=all] .ssx-sheet-region-count').textContent);tabs.querySelector('[data-ssx-region=Africa]').click();const africa={pressed:tabs.querySelector('[data-ssx-region=Africa]').getAttribute('aria-pressed'),groups:document.querySelectorAll('#ssxRegionBrowser .ssx-region-group').length,redLight:!![...document.querySelectorAll('#ssxRegionBrowser .ssx-track-choice')].find(b=>b.textContent.includes('Red Light'))};const track=document.querySelector('#track');track.value='0';track.dispatchEvent(new Event('change',{bubbles:true}));const afterTrack={groups:document.querySelectorAll('#ssxRegionBrowser .ssx-region-group').length,tracks:document.querySelectorAll('#ssxRegionBrowser .ssx-track-choice').length,detail:document.querySelector('.ssx-region-detail h3')?.textContent,allCount:Number(tabs.querySelector('[data-ssx-region=all] .ssx-sheet-region-count').textContent),allTabs:tabs.querySelectorAll('[data-ssx-region]').length,loadDone:document.querySelector('#renderProgress').hidden};tabs.querySelector('[data-ssx-region=all]').click();return {allBefore,africa,afterTrack,restored:document.querySelectorAll('#ssxRegionBrowser .ssx-region-group').length,active:tabs.querySelector('[aria-pressed=true]')?.dataset.ssxRegion}})()");
     assert.equal(filterPersistence.africa.pressed,'true');
     assert.equal(filterPersistence.africa.groups,1,'Africa should show region-specific tracks');
@@ -163,6 +179,11 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     const ozRace=await evaluate(cdp.send,sid,"(()=>({source:document.querySelector('[data-source=oz]').classList.contains('active'),ranks:document.querySelectorAll('.ssx-region-detail .ssx-region-rank').length,canonical:document.querySelectorAll('#ssxSheetRegions [data-ssx-region]').length,progress:document.querySelector('#renderProgress')?.hidden}))()");
     assert.equal(ozRace.source,true);
     assert.equal(ozRace.ranks,0,'OZ standalone race mode has no ranked scores, so do not show stale combined data');
+    const readableEmpty=await evaluate(cdp.send,sid,"(()=>({text:document.querySelector('.ssx-region-empty-inline')?.textContent,role:document.querySelector('.ssx-region-empty-inline')?.getAttribute('role'),visible:document.querySelector('.ssx-region-empty-inline')?.getBoundingClientRect().height>40}))()");
+    assert.match(readableEmpty.text,/Nenhum recorde/i,'Empty source needs an explicit translated explanation');
+    assert.equal(readableEmpty.role,'status','Empty score states must be accessible');
+    assert.equal(readableEmpty.visible,true);
+
     assert.equal(ozRace.canonical,13);
     assert.equal(ozRace.progress,true);
     await evaluate(cdp.send,sid,"document.querySelector('[data-source=combined]').click()");
@@ -280,6 +301,10 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.ok(mobileRegional.runs>0&&mobileRegional.flags>0,'Real flags and record rows must remain accessible');
     assert.match(mobileRegional.art,/\/hobbies\/ssx\/media\/v37\//,'Region needs pinned game artwork');
     assert.equal(mobileRegional.navOverflow,false,'Regional mobile layout must not overflow screen');
+    const resetMobile=await evaluate(cdp.send,sid,"(()=>({height:Math.round(document.querySelector('#ssxResetFilters').getBoundingClientRect().height),label:document.querySelector('#ssxResetFilters').textContent,contained:document.querySelector('.sheet-card #toolbar').contains(document.querySelector('#ssxResetFilters')),overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth}))()");
+    assert.ok(resetMobile.height>=40&&resetMobile.contained);
+    assert.ok(resetMobile.overflow<=1);
+
     const modeSheet=await evaluate(cdp.send,sid,"(()=>{const card=document.querySelector('.sheet-card');const bar=document.querySelector('#ssxSheetModeFilter');const first=document.querySelector('#ssxRegionBrowser .ssx-region-banner');const buttons=[...bar.querySelectorAll('button:not([hidden])')];return {inCard:bar.parentElement===card,barDisplay:getComputedStyle(bar).display,aboveBanner:bar.getBoundingClientRect().bottom<=first.getBoundingClientRect().top+2,labels:buttons.map(b=>b.querySelector('.ssx-sheet-mode-name')?.textContent),active:bar.querySelector('[aria-pressed=true]')?.dataset.ssxSheetMode,hiddenUpper:getComputedStyle(document.querySelector('#alpineSubmodes')).display==='none',controlsHeight:buttons.map(b=>Math.round(b.getBoundingClientRect().height)),overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth}})()");
     assert.equal(modeSheet.inCard,true,'Mobile mode selector must be inside the records sheet');
     assert.equal(modeSheet.barDisplay,'grid','Board/Wingsuit selector must be visible above regional banners');
