@@ -17,7 +17,7 @@ const PARTS = 10;
 // non-commercial fan-site source manifest. No third-party trackers or scripts.
 const SSX_MEDIA_BASE = '/hobbies/ssx/media/v37/';
 const SSX_MEDIA_CHECKSUMS = Object.freeze({
-  'hero.jpg':'3c2c97128b73c332a46a57692bbd5c8f3f0cbea04b430e91c814a7e4dd867b77',
+  'hero.jpg':'99cf7fcd0ef11f126d0dc99a0348e23102b8cc61b3bd10b41045865709e907e0',
   'riders.jpg':'18bacc3cc35437ad4c2ebbfa8a7a00bcb1549a76dfd0e096f8b243b4f24daa3d',
   'race.jpg':'d5534816c1594e79a4129deb9117bb885978f095a4d6d99fecc81b069abbb9af',
   'trick.jpg':'365cc65d952994c21515676954c466747e3f11fea6cdc3e73e092c79d38137d2',
