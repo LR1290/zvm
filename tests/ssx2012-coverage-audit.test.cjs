@@ -167,3 +167,25 @@ test('duplicate first places also block rider-name certification with valid IDs'
   assert.equal(report.eventPositionCollisions.length,1);
   assert.equal(report.safeguards.canCertifyRiderNames,false);
 });
+
+test('padded category and event fields cannot certify two #1 slots as distinct',()=>{
+  const samePosition=[
+    row({recordId:'untrimmed'}),
+    row({recordId:'padded',platform:' xbox360 ',variant:' standard ',eventId:' race-01 ',trackId:'track-01 '})
+  ];
+  const manifest=[required({recordCount:2,tracks:[
+    {eventId:'race-01',trackId:'track-01',recordCount:2}
+  ]})];
+  const report=groupCoverage(sheets(samePosition),oz([p]),manifest);
+  assert.equal(report.safeguards.coverageManifestMatchesSnapshot,true,
+    'A matching count manifest alone is not evidence of unique positions');
+  assert.equal(report.totals.ambiguousEventPositions,1);
+  assert.equal(report.safeguards.canCertifyLeaders,false);
+  assert.equal(report.safeguards.canCertifyRiderNames,false);
+});
+test('malformed variant metadata blocks both certifications even with a matching category manifest',()=>{
+  const report=groupCoverage(sheets([row({variant:'   '})]),oz([p]),[required()]);
+  assert.equal(report.categories[0].invalidRecords,1);
+  assert.equal(report.safeguards.canCertifyLeaders,false);
+  assert.equal(report.safeguards.canCertifyRiderNames,false);
+});
