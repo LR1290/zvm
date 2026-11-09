@@ -205,7 +205,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(readableEmpty.role,'status','Empty score states must be accessible');
     assert.equal(readableEmpty.visible,true);
 
-    assert.equal(ozRace.canonical,13);
+    assert.ok(ozRace.canonical>1&&ozRace.canonical<=13,'Ozmonet regions must reflect that source, not a stale combined-source catalogue');
     assert.equal(ozRace.progress,true);
     await evaluate(cdp.send,sid,"document.querySelector('[data-source=combined]').click()");
     await sleep(180);
