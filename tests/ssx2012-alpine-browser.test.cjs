@@ -201,9 +201,19 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     fs.writeFileSync(path.join(outDir,'ssx-v37-mobile-hero.png'),Buffer.from(mobileHeroShot.data,'base64'));
     const mobile=await evaluate(cdp.send,sid,"({cards:getComputedStyle(document.querySelector('#alpineMobileCards')).display,table:getComputedStyle(document.querySelector('.sheet-scroll')).display,records:document.querySelectorAll('#alpineMobileCards .alpine-card').length,mode:document.body.dataset.ssxMode,viewport:window.innerWidth})");
     assert.equal(mobile.table,'none');
-    assert.equal(await evaluate(cdp.send,sid,"getComputedStyle(document.querySelector('#ssxRegionBrowser')).display"),'none','Mobile retains native score cards');
-    assert.notEqual(mobile.cards,'none');
-    assert.ok(mobile.records>0);
+    assert.equal(mobile.cards,'none','Mobile now starts with the same regional explorer as desktop');
+    assert.ok(mobile.records>0,'Read-only legacy card data must remain available for filtered views');
+    const mobileRegional=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#ssxRegionBrowser');const africa=[...root.querySelectorAll('.ssx-region-group')].find(x=>x.dataset.regionName==='Africa');const banner=africa.querySelector('.ssx-region-banner');const detail=root.querySelector('.ssx-region-detail');const art=getComputedStyle(banner,'::before').backgroundImage;return {shown:getComputedStyle(root).display,cols:getComputedStyle(root).gridTemplateColumns,africa:!!africa,redLight:detail.querySelector('h3')?.textContent,runs:detail.querySelectorAll('.ssx-region-rank').length,flags:detail.querySelectorAll('.ssx-region-rider .rider-flag').length,art,navOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth+1}})()");
+    assert.equal(mobileRegional.shown,'grid','Mobile must render real region and mountain hierarchy');
+    assert.equal(mobileRegional.redLight,'Red Light');
+    assert.ok(mobileRegional.runs>0&&mobileRegional.flags>0,'Real flags and record rows must remain accessible');
+    assert.match(mobileRegional.art,/\/hobbies\/ssx\/media\/v37\//,'Region needs pinned game artwork');
+    assert.equal(mobileRegional.navOverflow,false,'Regional mobile layout must not overflow screen');
+    await evaluate(cdp.send,sid,"document.querySelector('#ssxRegionBrowser').scrollIntoView({block:'start'})");
+    await sleep(220);
+    const regionalShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+    fs.mkdirSync(path.join(process.cwd(),'artifacts'),{recursive:true});
+    fs.writeFileSync(path.join(process.cwd(),'artifacts','ssx-r42-mobile-regions.png'),Buffer.from(regionalShot.data,'base64'));
     assert.equal(mobile.mode,'wings');
     assert.ok(mobile.viewport<=430);
     const quickNav=await evaluate(cdp.send,sid,"(()=>{const quick=document.querySelector('#ssxMobileQuickNav');const brand=document.querySelector('.brand');const buttons=[...quick.querySelectorAll('button')];const menu=document.querySelector('#mobileMenuBtn');menu.click();const panel=document.querySelector('#ssxMobileMore');return {labels:buttons.map(b=>b.textContent),brandHidden:getComputedStyle(brand).display==='none',legacyNavHidden:getComputedStyle(document.querySelector('#topNav')).display==='none',opened:!panel.hidden,expanded:menu.getAttribute('aria-expanded'),managementClosed:!document.querySelector('#ssxMobileManagement').open,secondary:panel.querySelectorAll('.ssx-mobile-menu-action').length,visiblePanelHeight:Math.round(panel.getBoundingClientRect().height)}})()");
@@ -241,6 +251,11 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     await sleep(300);
     const positions=await evaluate(cdp.send,sid,"({pressed:document.querySelector('#alpinePositionsToggle').getAttribute('aria-pressed'),firstTwo:Array.from(document.querySelectorAll('#alpineMobileCards .alpine-card')).slice(0,2).map(card=>card.querySelector('.alpine-card-top span')?.textContent),number:document.querySelectorAll('#alpineMobileCards .alpine-card').length})");
     assert.equal(positions.pressed,'true');
+    const cardsContext=await evaluate(cdp.send,sid,"(()=>{const card=document.querySelector('#alpineMobileCards .alpine-card-visual');return {cardDisplay:getComputedStyle(document.querySelector('#alpineMobileCards')).display,regionalDisplay:getComputedStyle(document.querySelector('#ssxRegionBrowser')).display,region:card.querySelector('.ssx-card-location')?.textContent,art:getComputedStyle(card,'::before').backgroundImage,scoreColor:getComputedStyle(card.querySelector('.alpine-card-score')).color}})()");
+    assert.equal(cardsContext.cardDisplay,'grid','All positions must show artwork-backed card feed');
+    assert.equal(cardsContext.regionalDisplay,'none','Avoid duplicated desktop/mobile rankings');
+    assert.ok(cardsContext.region.includes('Africa'));
+    assert.match(cardsContext.art,/\/hobbies\/ssx\/media\/v37\//,'Mobile cards need original regional art');
     assert.equal(positions.firstTwo[0],positions.firstTwo[1],'All positions should display two ranks from the same track');
     assert.ok(positions.number>1);
     await evaluate(cdp.send,sid,"document.querySelector('.sheet-card').scrollIntoView({block:'start'})");
@@ -251,6 +266,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     await sleep(250);
     const concise=await evaluate(cdp.send,sid,"({firstTwo:Array.from(document.querySelectorAll('#alpineMobileCards .alpine-card')).slice(0,2).map(card=>card.querySelector('.alpine-card-top span')?.textContent),pressed:document.querySelector('#alpinePositionsToggle').getAttribute('aria-pressed')})");
     assert.equal(concise.pressed,'false');
+    assert.equal(await evaluate(cdp.send,sid,"getComputedStyle(document.querySelector('#ssxRegionBrowser')).display"),'grid','Leaving all positions restores regional browse');
     assert.notEqual(concise.firstTwo[0],concise.firstTwo[1],'Overview should show leaders from distinct tracks');
 
     const detail=await evaluate(cdp.send,sid,"(()=>{const track=document.querySelector('#track');track.value='0';track.dispatchEvent(new Event('change',{bubbles:true}));return {track:track.value};})()");
@@ -260,6 +276,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.ok(trackCards.ranks.length>=2,'Selected track should expose ranked entries, not only its winner');
     assert.equal(trackCards.toggleHidden,true);
     assert.equal(trackCards.mode,'wings');
+    assert.equal(await evaluate(cdp.send,sid,"getComputedStyle(document.querySelector('#alpineMobileCards')).display"),'grid','Track filter must show artwork-backed ranked cards');
 
     await evaluate(cdp.send,sid,"(()=>{const track=document.querySelector('#track');track.value='';track.dispatchEvent(new Event('change',{bubbles:true}));})()");
     await sleep(350);
@@ -302,6 +319,8 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(light.selected,'light');
     assert.equal(light.applied,'light');
     assert.equal(light.bg,'rgb(237, 245, 250)');
+    const lightRegion=await evaluate(cdp.send,sid,"(()=>({display:getComputedStyle(document.querySelector('#ssxRegionBrowser')).display,background:getComputedStyle(document.querySelector('.ssx-region-detail')).backgroundColor}))()");
+    assert.equal(lightRegion.display,'grid');
     await evaluate(cdp.send,sid,"document.querySelector('.sheet-card').scrollIntoView({block:'start'})");
     await sleep(230);
     const lightShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
