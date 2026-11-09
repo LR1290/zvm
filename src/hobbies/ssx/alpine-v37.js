@@ -4,14 +4,14 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const dictionary = {
-    pt:{hero:'Conquiste a montanha.',desc:'Explore os melhores tempos, pontuações e riders da comunidade SSX 2012.',explore:'Explorar recordes',modes:'Escolha sua modalidade',race:'Race It!',raceSub:'Velocidade e precisão',trick:'Trick It!',trickSub:'Pontuação nas manobras',survive:'Survive It!',surviveSub:'Maior distância',riders:'Riders',ridersSub:'Conheça a comunidade',board:'Board',wings:'Wingsuit',standard:'Padrão',special:'Sem equipamentos',advanced:'Filtros avançados',sources:'Fontes dos dados e sincronização',full:'Ver tabela completa',back:'Voltar à modalidade',results:'Resultados',champions:'Melhores resultados por pista',positions:'Classificação da pista',empty:'Não há recordes nesta seleção.',more:'Mostrar mais recordes',proof:'Ver prova',top:'Posição',track:'Pista',choose:'Pesquise por pista, jogador ou região',panel:'Opções avançadas',title:'SSX 2012 · Recordes da comunidade'},
-    en:{hero:'Conquer the mountain.',desc:'Explore the fastest times, highest scores and riders in the SSX 2012 community.',explore:'Explore records',modes:'Choose a mode',race:'Race It!',raceSub:'Race to the finish',trick:'Trick It!',trickSub:'High scores and combos',survive:'Survive It!',surviveSub:'Go the distance',riders:'Riders',ridersSub:'Meet the community',board:'Board',wings:'Wingsuit',standard:'Standard',special:'No equipment',advanced:'Advanced filters',sources:'Data sources and sync',full:'Full table',back:'Back to mode',results:'Results',champions:'Best runs per track',positions:'Track standings',empty:'No records for this selection.',more:'Show more records',proof:'Watch proof',top:'Position',track:'Track',choose:'Find a track, rider or region',panel:'Advanced options',title:'SSX 2012 · Community records'},
-    de:{hero:'Bezwinge den Berg.',desc:'Entdecke Zeiten, Punkte und Fahrer der SSX 2012-Community.',explore:'Rekorde erkunden',modes:'Modus wählen',race:'Race It!',raceSub:'Die schnellste Zeit',trick:'Trick It!',trickSub:'Höchste Punktzahl',survive:'Survive It!',surviveSub:'Größte Distanz',riders:'Fahrer',ridersSub:'Unsere Community',board:'Board',wings:'Wingsuit',standard:'Standard',special:'Ohne Ausrüstung',advanced:'Erweiterte Filter',sources:'Datenquellen und Sync',full:'Ganze Tabelle',back:'Zurück zum Modus',results:'Ergebnisse',champions:'Beste Ergebnisse pro Strecke',positions:'Streckenrangliste',empty:'Keine Ergebnisse.',more:'Mehr Ergebnisse',proof:'Beweis ansehen',top:'Platz',track:'Strecke',choose:'Strecke, Fahrer oder Region suchen',panel:'Erweiterte Optionen',title:'SSX 2012 · Community-Rekorde'},
-    es:{hero:'Conquista la montaña.',desc:'Explora tiempos, puntuaciones y riders de la comunidad SSX 2012.',explore:'Explorar récords',modes:'Elige una modalidad',race:'Race It!',raceSub:'Mejores tiempos',trick:'Trick It!',trickSub:'Mejores puntuaciones',survive:'Survive It!',surviveSub:'Mayor distancia',riders:'Riders',ridersSub:'Conoce la comunidad',board:'Board',wings:'Wingsuit',standard:'Estándar',special:'Sin equipo',advanced:'Filtros avanzados',sources:'Fuentes y sincronización',full:'Tabla completa',back:'Volver a modalidad',results:'Resultados',champions:'Mejores marcas por pista',positions:'Clasificación de pista',empty:'No hay resultados.',more:'Ver más récords',proof:'Ver prueba',top:'Posición',track:'Pista',choose:'Buscar pista, jugador o región',panel:'Opciones avanzadas',title:'SSX 2012 · Récords comunitarios'},
-    nl:{hero:'Verover de berg.',desc:'Ontdek tijden, scores en riders van de SSX 2012-community.',explore:'Records bekijken',modes:'Kies een speltype',race:'Race It!',raceSub:'Snelste tijden',trick:'Trick It!',trickSub:'Hoogste scores',survive:'Survive It!',surviveSub:'Grootste afstand',riders:'Riders',ridersSub:'Ontmoet de community',board:'Board',wings:'Wingsuit',standard:'Standaard',special:'Zonder uitrusting',advanced:'Geavanceerde filters',sources:'Gegevensbronnen en synchronisatie',full:'Volledige tabel',back:'Terug naar speltype',results:'Resultaten',champions:'Beste records per baan',positions:'Baanklassement',empty:'Geen resultaten.',more:'Meer records',proof:'Bewijs bekijken',top:'Positie',track:'Baan',choose:'Zoek baan, rider of regio',panel:'Geavanceerde opties',title:'SSX 2012 · Communityrecords'},
-    fr:{hero:'Dominez la montagne.',desc:'Découvrez les temps, scores et riders de la communauté SSX 2012.',explore:'Explorer les records',modes:'Choisissez un mode',race:'Race It!',raceSub:'Meilleurs temps',trick:'Trick It!',trickSub:'Meilleurs scores',survive:'Survive It!',surviveSub:'Plus longues distances',riders:'Riders',ridersSub:'La communauté',board:'Board',wings:'Wingsuit',standard:'Standard',special:'Sans équipement',advanced:'Filtres avancés',sources:'Sources et synchronisation',full:'Tableau complet',back:'Retour au mode',results:'Résultats',champions:'Meilleurs scores par piste',positions:'Classement de la piste',empty:'Aucun record disponible.',more:'Voir plus de records',proof:'Voir la preuve',top:'Position',track:'Piste',choose:'Rechercher piste, rider ou région',panel:'Options avancées',title:'SSX 2012 · Records communautaires'}
+    pt:{hero:'Conquiste a montanha.',desc:'Explore os melhores tempos, pontuações e riders da comunidade SSX 2012.',explore:'Explorar recordes',modes:'Escolha sua modalidade',race:'Race It!',raceSub:'Velocidade e precisão',trick:'Trick It!',trickSub:'Pontuação nas manobras',survive:'Survive It!',surviveSub:'Maior distância',riders:'Riders',ridersSub:'Conheça a comunidade',board:'Board',wings:'Wingsuit',standard:'Padrão',special:'Sem equipamentos',advanced:'Filtros avançados',sources:'Fontes dos dados e sincronização',full:'Ver tabela completa',back:'Voltar à modalidade',results:'Resultados',champions:'Melhores resultados por pista',positions:'Classificação da pista',empty:'Não há recordes nesta seleção.',more:'Mostrar mais recordes',positionsAll:'Todas as posições',positionsLeaders:'Só líderes por pista',proof:'Ver prova',top:'Posição',track:'Pista',choose:'Pesquise por pista, jogador ou região',panel:'Opções avançadas',title:'SSX 2012 · Recordes da comunidade'},
+    en:{hero:'Conquer the mountain.',desc:'Explore the fastest times, highest scores and riders in the SSX 2012 community.',explore:'Explore records',modes:'Choose a mode',race:'Race It!',raceSub:'Race to the finish',trick:'Trick It!',trickSub:'High scores and combos',survive:'Survive It!',surviveSub:'Go the distance',riders:'Riders',ridersSub:'Meet the community',board:'Board',wings:'Wingsuit',standard:'Standard',special:'No equipment',advanced:'Advanced filters',sources:'Data sources and sync',full:'Full table',back:'Back to mode',results:'Results',champions:'Best runs per track',positions:'Track standings',empty:'No records for this selection.',more:'Show more records',positionsAll:'All positions',positionsLeaders:'Leaders per track',proof:'Watch proof',top:'Position',track:'Track',choose:'Find a track, rider or region',panel:'Advanced options',title:'SSX 2012 · Community records'},
+    de:{hero:'Bezwinge den Berg.',desc:'Entdecke Zeiten, Punkte und Fahrer der SSX 2012-Community.',explore:'Rekorde erkunden',modes:'Modus wählen',race:'Race It!',raceSub:'Die schnellste Zeit',trick:'Trick It!',trickSub:'Höchste Punktzahl',survive:'Survive It!',surviveSub:'Größte Distanz',riders:'Fahrer',ridersSub:'Unsere Community',board:'Board',wings:'Wingsuit',standard:'Standard',special:'Ohne Ausrüstung',advanced:'Erweiterte Filter',sources:'Datenquellen und Sync',full:'Ganze Tabelle',back:'Zurück zum Modus',results:'Ergebnisse',champions:'Beste Ergebnisse pro Strecke',positions:'Streckenrangliste',empty:'Keine Ergebnisse.',more:'Mehr Ergebnisse',positionsAll:'Alle Plätze',positionsLeaders:'Streckensieger',proof:'Beweis ansehen',top:'Platz',track:'Strecke',choose:'Strecke, Fahrer oder Region suchen',panel:'Erweiterte Optionen',title:'SSX 2012 · Community-Rekorde'},
+    es:{hero:'Conquista la montaña.',desc:'Explora tiempos, puntuaciones y riders de la comunidad SSX 2012.',explore:'Explorar récords',modes:'Elige una modalidad',race:'Race It!',raceSub:'Mejores tiempos',trick:'Trick It!',trickSub:'Mejores puntuaciones',survive:'Survive It!',surviveSub:'Mayor distancia',riders:'Riders',ridersSub:'Conoce la comunidad',board:'Board',wings:'Wingsuit',standard:'Estándar',special:'Sin equipo',advanced:'Filtros avanzados',sources:'Fuentes y sincronización',full:'Tabla completa',back:'Volver a modalidad',results:'Resultados',champions:'Mejores marcas por pista',positions:'Clasificación de pista',empty:'No hay resultados.',more:'Ver más récords',positionsAll:'Todas las posiciones',positionsLeaders:'Líderes por pista',proof:'Ver prueba',top:'Posición',track:'Pista',choose:'Buscar pista, jugador o región',panel:'Opciones avanzadas',title:'SSX 2012 · Récords comunitarios'},
+    nl:{hero:'Verover de berg.',desc:'Ontdek tijden, scores en riders van de SSX 2012-community.',explore:'Records bekijken',modes:'Kies een speltype',race:'Race It!',raceSub:'Snelste tijden',trick:'Trick It!',trickSub:'Hoogste scores',survive:'Survive It!',surviveSub:'Grootste afstand',riders:'Riders',ridersSub:'Ontmoet de community',board:'Board',wings:'Wingsuit',standard:'Standaard',special:'Zonder uitrusting',advanced:'Geavanceerde filters',sources:'Gegevensbronnen en synchronisatie',full:'Volledige tabel',back:'Terug naar speltype',results:'Resultaten',champions:'Beste records per baan',positions:'Baanklassement',empty:'Geen resultaten.',more:'Meer records',positionsAll:'Alle posities',positionsLeaders:'Baanleiders',proof:'Bewijs bekijken',top:'Positie',track:'Baan',choose:'Zoek baan, rider of regio',panel:'Geavanceerde opties',title:'SSX 2012 · Communityrecords'},
+    fr:{hero:'Dominez la montagne.',desc:'Découvrez les temps, scores et riders de la communauté SSX 2012.',explore:'Explorer les records',modes:'Choisissez un mode',race:'Race It!',raceSub:'Meilleurs temps',trick:'Trick It!',trickSub:'Meilleurs scores',survive:'Survive It!',surviveSub:'Plus longues distances',riders:'Riders',ridersSub:'La communauté',board:'Board',wings:'Wingsuit',standard:'Standard',special:'Sans équipement',advanced:'Filtres avancés',sources:'Sources et synchronisation',full:'Tableau complet',back:'Retour au mode',results:'Résultats',champions:'Meilleurs scores par piste',positions:'Classement de la piste',empty:'Aucun record disponible.',more:'Voir plus de records',positionsAll:'Toutes les positions',positionsLeaders:'Meilleurs par piste',proof:'Voir la preuve',top:'Position',track:'Piste',choose:'Rechercher piste, rider ou région',panel:'Options avancées',title:'SSX 2012 · Records communautaires'}
   };
-  const state = {mode:'board',lastRace:'board',lastSurvive:'survive',visible:12,fullTable:false};
+  const state = {mode:'board',lastRace:'board',lastSurvive:'survive',beforeFullTable:'board',visible:12,fullTable:false,allPositions:false};
   const tags = {
     board:'.record-cell.mode-board', wings:'.record-cell.mode-wings',
     trick:'.record-cell.mode-trick', survive:'.record-cell.mode-survive:not(.mode-survive-special)',
@@ -103,8 +103,10 @@
         wrap.lastChild.id='alpineToggleTable';
         wrap.lastChild.type='button';
         wrap.lastChild.addEventListener('click',()=>{
-          if(state.fullTable)selectMode(state.lastRace);
-          else {
+          if(state.fullTable){
+            selectMode(state.beforeFullTable);
+          } else {
+            state.beforeFullTable=state.mode;
             state.fullTable=true;
             state.mode='all';
             state.visible=12;
@@ -112,6 +114,17 @@
           }
           card.classList.toggle('alpine-show-table',state.fullTable);
         });
+        const positions=text('button','','alpine-small-action alpine-positions-toggle');
+        positions.id='alpinePositionsToggle';
+        positions.type='button';
+        positions.setAttribute('aria-pressed','false');
+        positions.addEventListener('click',()=>{
+          state.allPositions=!state.allPositions;
+          state.visible=12;
+          sync();
+          scheduleCards();
+        });
+        wrap.append(positions);
         head.append(wrap);
       }
       const list=document.createElement('div');
@@ -182,22 +195,37 @@
     }
     const sub=$('alpineSubmodes');
     if(sub){
-      sub.replaceChildren();
       const choices=activeGroup==='race'?[['board','board'],['wings','wings']]:
         activeGroup==='survive'?[['survive','standard'],['special','special']]:[];
-      choices.forEach(([mode,label])=>{
-        const button=text('button',copy[label],'alpine-submode');
-        button.type='button';
-        button.dataset.alpineMode=mode;
+      // Rebuild only when the group changes; preserve button focus for keyboard users.
+      if(sub.dataset.group!==activeGroup){
+        sub.replaceChildren();
+        choices.forEach(([mode])=>{
+          const button=text('button','','alpine-submode');
+          button.type='button';
+          button.dataset.alpineMode=mode;
+          sub.append(button);
+        });
+        sub.dataset.group=activeGroup;
+      }
+      for(const button of sub.querySelectorAll('[data-alpine-mode]')){
+        const mode=button.dataset.alpineMode;
+        button.textContent=copy[mode==='survive'?'standard':mode];
         button.setAttribute('aria-pressed',String(state.mode===mode));
-        sub.append(button);
-      });
+      }
     }
     const names={board:'Race It! · Board',wings:'Race It! · Wingsuit',trick:'Trick It!',survive:'Survive It! · '+copy.standard,special:'Survive It! · '+copy.special,all:copy.full};
     const label=$('alpineModeLabel');
     if(label)label.textContent=names[state.mode]||copy.results;
     const toggle=$('alpineToggleTable');
     if(toggle)toggle.textContent=state.fullTable?copy.back:copy.full;
+    const positions=$('alpinePositionsToggle');
+    if(positions){
+      const contextual=Boolean($('track')?.value||$('search')?.value?.trim());
+      positions.hidden=contextual||state.fullTable;
+      positions.textContent=state.allPositions?copy.positionsLeaders:copy.positionsAll;
+      positions.setAttribute('aria-pressed',String(state.allPositions));
+    }
     const raceGroup=document.querySelector('#thead .race-group');
     const surviveGroup=document.querySelector('#thead .survive-group');
     if(raceGroup)raceGroup.colSpan=state.mode==='all'?2:1;
@@ -214,25 +242,32 @@
     const root=$('alpineMobileCards'),tbody=$('tbody');
     if(!root||!tbody||!tags[state.mode])return;
     const copy=t(), frag=document.createDocumentFragment();
-    const trackFilter=$('track')?.value||'';
+    const contextual=Boolean($('track')?.value||$('search')?.value?.trim());
+    const showPositions=contextual||state.allPositions;
     let currentTrack='';
     let count=0;
     let hasMore=false;
+    const seenTracks=new Set();
     const rows=tbody.querySelectorAll('tr.rank-row');
     for(const row of rows){
       const mark=row.querySelector('.track-cell');
       if(mark)currentTrack=mark.querySelector('.track-name')?.textContent?.trim()||currentTrack;
-      if(!trackFilter && !mark)continue; // show one leading record per track on overview
+      if(row.hidden||row.style.display==='none')continue;
       const record=row.querySelector(tags[state.mode]);
       if(!record||record.classList.contains('empty'))continue;
       const score=record.querySelector('.score')?.textContent?.trim();
       const rider=record.querySelector('.rider-name');
       if(!score||!rider)continue;
+      const trackName=currentTrack||$('track')?.selectedOptions?.[0]?.textContent||copy.track;
+      // Overview: first *available* score of each track, not necessarily #1.
+      // Track selection and rider search: show every matching ranked position.
+      if(!showPositions&&seenTracks.has(trackName))continue;
       count++;
       if(count>state.visible){hasMore=true;break;}
+      seenTracks.add(trackName);
       const item=text('article','','alpine-card');
       const top=text('div','','alpine-card-top');
-      top.append(text('span',currentTrack||$('track')?.selectedOptions?.[0]?.textContent||copy.track),
+      top.append(text('span',trackName),
         text('span',row.querySelector('.pos-label')?.textContent||'',''));
       item.append(top);
       const name=text('button',rider.textContent.trim(),'alpine-card-rider');
@@ -266,6 +301,11 @@
       frag.append(more);
     }
     root.replaceChildren(frag);
+    const positions=$('alpinePositionsToggle');
+    if(positions){
+      positions.hidden=contextual||state.fullTable;
+      positions.textContent=state.allPositions?copy.positionsLeaders:copy.positionsAll;
+    }
   }
   function init(){
     if(!addUI() && document.readyState==='loading')document.addEventListener('DOMContentLoaded',addUI,{once:true});
