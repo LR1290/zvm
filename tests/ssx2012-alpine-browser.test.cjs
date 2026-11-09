@@ -554,6 +554,10 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     const translated=await evaluate(cdp.send,sid,"({hero:document.querySelector('#heroTitle').textContent,more:document.querySelector('#alpinePositionsToggle').textContent,language:document.querySelector('#langName').textContent})");
     assert.equal(translated.hero,'Conquer the mountain.','New page headline must follow original language selector');
     assert.equal(translated.language.trim(),'English');
+    const translatedArchive=await evaluate(cdp.send,sid,"(()=>({title:document.querySelector('#ssxSpecialTitle')?.textContent,note:document.querySelector('#ssxSpecialNote')?.textContent,group:document.querySelector('#ssxSpecialTabs [aria-pressed=true]')?.dataset.ssxSpecialGroup}))()");
+    assert.match(translatedArchive.title,/Special challenges/i);
+    assert.match(translatedArchive.note,/2026-08-22/);
+    assert.equal(translatedArchive.group,'challenge','Changing language must preserve the selected historic category');
     await evaluate(cdp.send,sid,"document.querySelector('[data-lang=\"pt-BR\"]').click()");
     await sleep(300);
 
@@ -591,6 +595,12 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
       assert.equal(responsiveMode.bar,width<=900?'grid':'none','Mobile sheet controls must respect breakpoint at '+width+'px');
       assert.equal(responsiveMode.top,width<=900?'none':'flex','Original large-screen submodes must remain available at '+width+'px');
       assert.ok(responsiveMode.screenOverflow<=1,'No horizontal overflow at '+width+'px');
+      const specialResponsive=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#ssxSpecialArchive');const rect=root.getBoundingClientRect();const buttons=[...root.querySelectorAll('.ssx-special-tab')];const selects=[...root.querySelectorAll('.ssx-special-select')].filter(x=>getComputedStyle(x.closest('label')).display!=='none');return{width:Math.round(rect.width),viewport:document.documentElement.clientWidth,docOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,internalScroll:root.querySelector('#ssxSpecialTabs').scrollWidth>=root.querySelector('#ssxSpecialTabs').clientWidth,buttonHeights:buttons.map(x=>Math.round(x.getBoundingClientRect().height)),selectHeights:selects.map(x=>Math.round(x.getBoundingClientRect().height)),recordCount:root.querySelectorAll('.ssx-special-record').length}})()");
+      assert.ok(specialResponsive.width<=specialResponsive.viewport+1,'Historical panel must fit at '+width+'px');
+      assert.ok(specialResponsive.docOverflow<=1,'Historical panel must not stretch viewport at '+width+'px');
+      assert.ok(specialResponsive.buttonHeights.every(v=>v>=39),'Historical category tabs must remain usable at '+width+'px');
+      assert.ok(specialResponsive.selectHeights.every(v=>v>=39),'Historical filters must remain usable at '+width+'px');
+
       if(width<=900)assert.ok(responsiveMode.controls.every(v=>v>75),'Both mobile mode options must fit at '+width+'px');
 
       if(width<=390){
@@ -602,6 +612,11 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
 
     const mobShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
     fs.writeFileSync(path.join(outDir,'ssx-v37-mobile.png'),Buffer.from(mobShot.data,'base64'));
+    await evaluate(cdp.send,sid,"document.querySelector('#ssxSpecialArchive').scrollIntoView({block:'start'})");
+    await sleep(200);
+    const specialShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+    fs.writeFileSync(path.join(outDir,'ssx-r57-mobile-historical-special-categories.png'),Buffer.from(specialShot.data,'base64'));
+
     await evaluate(cdp.send,sid,"document.querySelector('.sheet-card').scrollIntoView({block:'start'})");
     await sleep(300);
     const rankingsShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
