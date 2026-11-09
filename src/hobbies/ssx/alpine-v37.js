@@ -410,7 +410,12 @@
   // Region tabs are built from the original embedded track catalogue, not
   // from which scores are available in a particular source or game mode.
   function completeTrackCatalog(){
-    if(fullTrackCatalog)return fullTrackCatalog;
+    // The canonical sheet collection is source/category scoped. A single cache
+    // across Combined, Android, levels and DEV dropped entire groups of tracks.
+    const source=document.querySelector('#sourceSeg [data-source].active')?.dataset.source||'combined';
+    const category=$('category')?.value||'Global Top 16';
+    const key=source+'|'+(source==='google'?category:'historical');
+    if(fullTrackCatalog?.key===key)return fullTrackCatalog.entries;
     const canonical=typeof window.availableTracks==='function'?
       [...window.availableTracks()]:[];
     const records=new Map();
@@ -430,11 +435,12 @@
     }
     // The original spreadsheet's region dropdown carries the preferred ordering.
     const order=new Map([...$('region')?.options||[]].map((option,i)=>[option.textContent.trim(),i]));
-    fullTrackCatalog=[...records.values()].sort((a,b)=>
+    const entries=[...records.values()].sort((a,b)=>
       (order.get(a.region)??99)-(order.get(b.region)??99)||
       a.order-b.order||
       a.track.localeCompare(b.track,undefined,{numeric:true}));
-    return fullTrackCatalog;
+    fullTrackCatalog={key,entries};
+    return entries;
   }
 
   function indexedTracks(mode){
@@ -648,6 +654,107 @@
 
   // Keep a single canonical mode state. This secondary control is a compact
   // mobile presentation of the same Board/Wingsuit and Survive submodes.
+
+  // Original Google sheet categories, including Android, DEV and low-level
+  // events, already exist in G. Expose their native filter instead of inventing
+  // tracks or duplicating source records.
+  const collectionCopy={
+    pt:{title:'Coleções da planilha',description:'Recordes oficiais por categoria · Google Sheets',all:'Geral',level:'Nível',android:'Android',dev:'Testes / DEV',noBoost:'Sem Boost',date:'Snapshot: 22/08/2026',select:'Escolher categoria de recordes'},
+    en:{title:'Spreadsheet collections',description:'Official records by category · Google Sheets',all:'Main',level:'Level',android:'Android',dev:'Tests / DEV',noBoost:'No Boost',date:'Snapshot: 2026-08-22',select:'Select record category'},
+    de:{title:'Tabellen-Kategorien',description:'Offizielle Rekorde pro Kategorie · Google Sheets',all:'Hauptliste',level:'Level',android:'Android',dev:'Tests / DEV',noBoost:'Ohne Boost',date:'Stand: 22.08.2026',select:'Rekordkategorie auswählen'},
+    es:{title:'Categorías de la hoja',description:'Récords oficiales por categoría · Google Sheets',all:'General',level:'Nivel',android:'Android',dev:'Pruebas / DEV',noBoost:'Sin Boost',date:'Corte: 22/08/2026',select:'Seleccionar categoría de récords'},
+    nl:{title:'Sheet-categorieën',description:'Officiële records per categorie · Google Sheets',all:'Algemeen',level:'Level',android:'Android',dev:'Tests / DEV',noBoost:'Geen Boost',date:'Momentopname: 22-08-2026',select:'Selecteer recordcategorie'},
+    fr:{title:'Catégories du tableau',description:'Records officiels par catégorie · Google Sheets',all:'Général',level:'Niveau',android:'Android',dev:'Tests / DEV',noBoost:'Sans Boost',date:'Archive : 22/08/2026',select:'Choisir la catégorie'}
+  };
+  function collectionText(name,lang){
+    if(name==='Global Top 16')return'🏆 '+lang.all;
+    if(name==='Android')return'📱 '+lang.android;
+    if(name==='DEV Tracks')return'🧪 '+lang.dev;
+    if(name==='No Boost')return'🚫 '+lang.noBoost;
+    if(name.startsWith('Level '))return'🏂 '+lang.level+' '+name.slice(6);
+    return name;
+  }
+  function currentCollection(){
+    return document.querySelector('#sourceSeg [data-source].active')?.dataset.source==='google'?
+      $('category')?.value||'Global Top 16':null;
+  }
+  function mountGoogleCollections(card){
+    const regions=$('ssxSheetRegions');
+    if(!card||!regions||$('ssxSourceCollections'))return;
+    const wrap=text('section','','ssx-source-collections');
+    wrap.id='ssxSourceCollections';
+    const title=text('h3','','ssx-collections-heading');
+    const note=text('p','','ssx-collections-note');
+    const rail=text('nav','','ssx-collections-rail');
+    rail.id='ssxCollectionsRail';
+    wrap.append(title,note,rail);
+    const categoryNames=new Set(typeof G==='object'?G.map(row=>String(row[0])):[]);
+    const order=['Global Top 16','Level 1','Level 3','Level 6','Level 7','Level 8','Level 9','No Boost','Android','DEV Tracks'];
+    for(const category of order){
+      if(!categoryNames.has(category))continue;
+      const button=text('button','','ssx-collection-chip');
+      button.type='button';
+      button.dataset.ssxCollection=category;
+      button.setAttribute('aria-pressed','false');
+      const count=new Set(G.filter(row=>row[0]===category).map(row=>row[1])).size;
+      button.dataset.collectionTracks=String(count);
+      rail.append(button);
+    }
+    rail.addEventListener('click',event=>{
+      const button=event.target.closest('button[data-ssx-collection]');
+      if(!button)return;
+      const category=button.dataset.ssxCollection;
+      const google=document.querySelector('#sourceSeg [data-source="google"]');
+      if(!google)return;
+      google.click();
+      const native=$('category');
+      const choice=[...native?.options||[]].find(option=>option.value===category);
+      if(!choice)return;
+      native.value=choice.value;
+      native.dispatchEvent(new Event('change',{bubbles:true}));
+      const region=$('region');
+      const first=region?.querySelector('option[value=""]');
+      if(first&&region.value){
+        region.value='';
+        region.dispatchEvent(new Event('change',{bubbles:true}));
+      }
+      clearTrackContext();
+      selectedRegion='all';
+      openedRegions=new Set();
+      regionQuery='';
+      regionalSelection='';
+      fullTrackCatalog=null;
+      regionalCache=null;
+      state.leaderCards=true;
+      state.allPositions=false;
+      state.visible=12;
+      sync();
+      scheduleCards();
+      updateCollectionControls();
+      button.focus({preventScroll:true});
+    });
+    regions.before(wrap);
+    updateCollectionControls();
+  }
+  function updateCollectionControls(){
+    const container=$('ssxSourceCollections');
+    if(!container)return;
+    const l=collectionCopy[language()]||collectionCopy.en;
+    const title=container.querySelector('.ssx-collections-heading');
+    const note=container.querySelector('.ssx-collections-note');
+    if(title)title.textContent=l.title;
+    if(note)note.textContent=l.description+' · '+l.date;
+    const rail=$('ssxCollectionsRail');
+    rail?.setAttribute('aria-label',l.select);
+    const active=currentCollection();
+    for(const chip of rail?.querySelectorAll('[data-ssx-collection]')||[]){
+      chip.textContent=collectionText(chip.dataset.ssxCollection,l);
+      chip.append(text('small',chip.dataset.collectionTracks,'ssx-collection-count'));
+      chip.setAttribute('aria-pressed',String(chip.dataset.ssxCollection===active));
+    }
+    document.body.dataset.ssxActiveCollection=active||'combined';
+  }
+
   function mountSheetModeFilter(card){
     const toolbar=$('toolbar');
     if(!card||!toolbar||$('ssxSheetModeFilter'))return;
@@ -812,6 +919,7 @@
     if(selectedRegion!=='all'&&!allEntries.some(item=>item.region===selectedRegion))selectedRegion='all';
     const entries=selectedRegion==='all'?allEntries:allEntries.filter(item=>item.region===selectedRegion);
     renderRegionTabs(allEntries);
+    updateCollectionControls();
     if(!entries.some(item=>item.key===regionalSelection))regionalSelection=entries[0]?.key||'';
     const selected=entries.find(item=>item.key===regionalSelection);
     const regions=new Map();
@@ -1109,6 +1217,7 @@
     card?.insertAdjacentElement('afterend',credits);
     buildPublicLayout(hero,toolbar,card,credits);
     mountSheetControls(card,toolbar);
+    mountGoogleCollections(card);
     mountSheetModeFilter(card);
     mountResetControl(toolbar);
 
@@ -1136,6 +1245,14 @@
     for(const name of ['category','region','track','topN']){
       $(name)?.addEventListener('change',()=>{
         state.visible=12;
+        if(name==='category'){
+          regionalCache=null;
+          fullTrackCatalog=null;
+          selectedRegion='all';
+          regionalSelection='';
+          regionQuery='';
+          openedRegions=new Set();
+        }
         if(name==='region'){
           const select=$('region');
           const chosen=select?.selectedOptions?.[0];
