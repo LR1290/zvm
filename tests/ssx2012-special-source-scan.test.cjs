@@ -1,6 +1,6 @@
 'use strict';
-// Read-only investigation of the original, SHA-pinned v36 HTML.
-// No networking, no writes, no use of guessed records.
+// Deterministic, read-only special-category inventory for SHA-pinned v36.
+// No executing source scripts, no remote reads, no automated identity changes.
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {readFileSync}=require('node:fs');
@@ -9,90 +9,71 @@ const {gunzipSync}=require('node:zlib');
 const {createHash}=require('node:crypto');
 const {SHA256}=require('../src/hobbies/ssx/route');
 const root=join(__dirname,'../src/hobbies/ssx/packed');
-const data=gunzipSync(Buffer.concat(Array.from({length:10},(_,i)=>readFileSync(join(root,'ssx2012.html.gz.part'+String(i).padStart(2,'0'))))));
-assert.equal(createHash('sha256').update(data).digest('hex'),SHA256);
-const source=data.toString('utf8');
-function context(pattern,max=5){
-  const matches=[];let m;
-  while((m=pattern.exec(source))&&matches.length<max){
-    const from=Math.max(0,m.index-230),to=Math.min(source.length,m.index+350);
-    const html=source.slice(from,to);
-    matches.push({offset:m.index,context:html.replace(/[\r\n\t]+/g,' ').replace(/ {2,}/g,' ').slice(0,570)});
-  }
-  return matches;
-}
-test('identify exact source structures for historical special-category integration',()=>{
-  const patterns={
-    android:/\bAndroid\b/ig,
-    level9:/\bLevel\s*9\b/ig,
-    lowLevel:/\b(?:low.{0,5}level|lower.{0,5}level)\b/ig,
-    developer:/\b(?:DEV\s*Tracks?|Developer\s*Tracks?|Test(?:ing)?\s*(?:Stages?|Tracks?))\b/ig,
-    noBoost:/\bNo[\s_-]*Boost\b/ig,
-    noGear:/\bNo[\s_-]*Gear\b/ig,
-    noWings:/\bNo[\s_-]*Wings\b/ig,
-    testRail:/\bTEST[\s_-]*RAIL\b/ig,
-    snowjam:/\bSnowjam\b/ig
-  };
-  const inventory={};
-  for(const [key,pattern] of Object.entries(patterns)){
-    inventory[key]=context(pattern,6);
-  }
-  const ids=[...source.matchAll(/<section\b[^>]*\bid=["']([^"']{1,140})["'][^>]*>/gi)].slice(0,55).map(m=>m[1]);
-  const headers=[...source.matchAll(/<h[2-4]\b[^>]*>([\s\S]{0,200}?)<\/h[2-4]>/gi)].slice(0,100).map(m=>m[1].replace(/<[^>]+>/g,' ').trim()).filter(Boolean);
-  const scripts=[...source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)].map(m=>({offset:m.index,length:m[1].length,start:m[1].slice(0,250)}));
-  const mainScript=scripts.length?[...source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)].sort((a,b)=>b[1].length-a[1].length)[0]?.[1]||'':'';
-  const prefix=mainScript.slice(0,2200);
-  const declarations=[...mainScript.matchAll(/(?:^|[;\n])\s*(?:let|const|var)\s+([A-Za-z_$][\w$]*)\s*=/g)].slice(0,95).map(m=>({name:m[1],offset:m.index}));
-  const structural=[...mainScript.matchAll(/(?:^|[;\n])\s*(?:let|const|var)\s+([A-Z][A-Z0-9_]{2,})\s*=/g)].slice(0,55).map(m=>({name:m[1],offset:m.index}));
-  console.log('SSX_SCRIPT_OBJECTS '+JSON.stringify({prefix,declarations,structural}));
-  console.log('SSX_SPECIAL_STRUCTURES '+JSON.stringify({size:source.length,ids,headers,scripts:scripts.slice(-12)}));
-
-  function parseLiteral(name){
-    const regex=new RegExp('(?:let|const|var)\\s+'+name+'\\s*=');
-    const m=regex.exec(mainScript);
-    if(!m)return null;
-    let i=m.index+m[0].length;
-    while(/\s/.test(mainScript[i]))i++;
-    const open=mainScript[i],close=open==='['?']':open==='{'?'}':null;
-    if(!close)throw Error('Not JSON for '+name);
-    let nesting=0,inString=false,escaped=false,end=i;
-    for(;end<mainScript.length;end++){
-      const c=mainScript[end];
-      if(inString){if(escaped)escaped=false;else if(c==='\\')escaped=true;else if(c==='"')inString=false;continue;}
-      if(c==='"'){inString=true;continue;}
-      if(c===open)nesting++;
-      if(c===close&&--nesting===0)break;
+const archive=gunzipSync(Buffer.concat(Array.from({length:10},(_,i)=>
+  readFileSync(join(root,'ssx2012.html.gz.part'+String(i).padStart(2,'0'))))));
+assert.equal(createHash('sha256').update(archive).digest('hex'),SHA256);
+const html=archive.toString('utf8');
+const script=[...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)]
+  .map(match=>match[1]).sort((a,b)=>b.length-a.length)[0]||'';
+function literal(name){
+  const m=new RegExp('(?:let|const|var)\\s+'+name+'\\s*=').exec(script);
+  if(!m)throw new Error('Source literal absent: '+name);
+  let offset=m.index+m[0].length;
+  while(/\s/.test(script[offset]))offset++;
+  const open=script[offset],close=open==='['?']':open==='{'?'}':null;
+  if(!close)throw new Error('Non-JSON source literal: '+name);
+  let depth=0,quoted=false,escaped=false,end=offset;
+  for(;end<script.length;end++){
+    const chr=script[end];
+    if(quoted){
+      if(escaped)escaped=false;
+      else if(chr==='\\')escaped=true;
+      else if(chr==='"')quoted=false;
+      continue;
     }
-    const parsed=JSON.parse(mainScript.slice(i,end+1));
-    return parsed;
+    if(chr==='"'){quoted=true;continue;}
+    if(chr===open)depth++;
+    if(chr===close&&--depth===0)break;
   }
-  const g=parseLiteral('G'),tracks=parseLiteral('TRACKS'),sng=parseLiteral('SNG');
-  const byCategory={};const byMode={};const byPlatform={};
+  return JSON.parse(script.slice(offset,end+1));
+}
+test('archive special-category source data remains signed, complete and separated',()=>{
+  const meta=literal('META'),tracks=literal('TRACKS'),g=literal('G'),sng=literal('SNG');
+  assert.equal(meta.snapshot,'2026-08-22','This is an archive, not the current online sheet');
+  assert.equal(tracks.length,83);
+  assert.equal(meta.tracks,83);
+  assert.equal(g.length,5887);
+  assert.equal(sng.length,137);
+  assert.equal(g.length+sng.length,meta.googleRecords);
+  assert.ok(sng.every(row=>row[3]===5));
+  const expected=new Map([
+    ['Global Top 16',3819],['No Boost',29],
+    ['Level 1',638],['Level 3',132],['Level 6',801],
+    ['Level 7',169],['Level 8',17],['Level 9',224],
+    ['Android',48],['DEV Tracks',10]
+  ]);
+  const counts=new Map();
   for(const row of g){
-    const category=String(row[0]);byCategory[category]=(byCategory[category]||0)+1;
-    const mode=String(row[3]);byMode[mode]=(byMode[mode]||0)+1;
-    const platform=String(row[7]);byPlatform[platform]=(byPlatform[platform]||0)+1;
+    assert.ok(Array.isArray(row)&&row.length>=11);
+    assert.ok(Number.isInteger(row[1])&&row[1]>=0&&row[1]<83);
+    counts.set(row[0],(counts.get(row[0])||0)+1);
   }
-  const exampleCategories=[...new Set(g.map(row=>String(row[0])))].map(c=>{
-    const r=g.find(row=>row[0]===c);
-    return {category:c,example:{id:r[1],position:r[2],mode:r[3],value:r[5],platform:r[7],source:r[9],ref:r[10]}};
-  });
-  console.log('SSX_SPECIAL_ARRAYS '+JSON.stringify({gLength:g.length,tracksLength:tracks.length,sngLength:sng?.length,sngExample:sng?.[0],byCategory,byMode,byPlatform,exampleCategories,trackSamples:tracks.slice(-12)}));
-  const sngModes={},sngCategories={},gByCategoryMode={},sngByPlatform={};
-  for(const row of sng){
-    sngModes[row[3]]=(sngModes[row[3]]||0)+1;
-    sngCategories[row[0]]=(sngCategories[row[0]]||0)+1;
-    sngByPlatform[row[7]]=(sngByPlatform[row[7]]||0)+1;
+  assert.deepEqual([...counts].sort(),[...expected].sort());
+  const examples=[
+    ['Level 9',2,0,'01:26.45'],
+    ['Android',16,2,'4.460432E7'],
+    ['DEV Tracks',79,0,'00:34.79'],
+    ['No Boost',2,0,'1:42.83']
+  ];
+  for(const [category,trackId,mode,score] of examples){
+    assert.ok(g.some(row=>row[0]===category&&row[1]===trackId&&row[3]===mode&&row[5]===score));
   }
-  for(const row of g){const key=String(row[0])+'|'+String(row[3]);gByCategoryMode[key]=(gByCategoryMode[key]||0)+1;}
-  const sngByMode=[...new Set(sng.map(row=>row[3]))].map(mode=>{
-    const rows=sng.filter(row=>row[3]===mode);
-    return {mode,examples:rows.slice(0,3).map(row=>({trackId:row[1],position:row[2],mode:row[3],value:row[5],platform:row[7],source:row[9],sheetCell:row[10]}))};
-  });
-  const references=[...mainScript.matchAll(/.{0,100}(?:SNG|survive.{0,12}(?:gear|wings|rewind)|mode\s*===?\s*[4-9]).{0,100}/gi)].slice(-40).map(x=>x[0]);
-  console.log('SSX_SPECIAL_MODE_MAP '+JSON.stringify({sngModes,sngCategories,sngByPlatform,gByCategoryMode,sngByMode,references:references.slice(0,20)}));
-  console.log('SSX_SPECIAL_MARKERS '+JSON.stringify(inventory));
-  assert.ok(inventory.android.length>0);
-  assert.ok(inventory.level9.length>0);
-  assert.ok(inventory.developer.length>0);
+  assert.ok(sng.some(row=>row[1]===8&&row[3]===5&&row[5]==='10,787,35m'));
+  assert.equal([...counts].filter(([name])=>name!=='Global Top 16').reduce((n,[,c])=>n+c,0)+sng.length,2205);
+  console.log('SSX_VERIFIED_ARCHIVE_CATEGORIES '+JSON.stringify({
+    snapshot:meta.snapshot,trackObjects:tracks.length,
+    archivedSheetsRows:g.length,specialSurviveRows:sng.length,
+    specialCategoryRows:2205,categories:Object.fromEntries(counts),
+    mode5:'Survive No Gear/Wings/Rewinds — combined source grouping only'
+  }));
 });
