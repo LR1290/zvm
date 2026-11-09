@@ -81,6 +81,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     const sid=attached.sessionId;
     await cdp.send('Page.enable',{},sid);
     await cdp.send('Runtime.enable',{},sid);
+    await cdp.send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false},sid);
     await cdp.send('Page.navigate',{url},sid);
     let ready=false;
     for(let i=0;i<75;i++){
@@ -91,7 +92,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
       await sleep(250);
     }
     assert.ok(ready,'Original rankings + Alpine UI should load');
-    const desktop=await evaluate(cdp.send,sid,"(()=>{const sources=document.querySelector('#alpineSources');return {cards:document.querySelectorAll('.alpine-mode-card').length,sourceClosed:!!sources&&!sources.open,advanced:!!document.querySelector('#alpineAdvancedFilters #categoryField'),rows:document.querySelectorAll('#sheet tr.rank-row').length,admin:!!document.querySelector('#dataBtn'),opaque:location.origin==='null'};})()");
+    const desktop=await evaluate(cdp.send,sid,"(()=>{const sources=document.querySelector('#alpineSources');return {cards:document.querySelectorAll('.alpine-mode-card').length,sourceClosed:!!sources&&!sources.open,advanced:!!document.querySelector('#alpineAdvancedFilters #categoryField'),rows:document.querySelectorAll('#sheet tr.rank-row').length,admin:!!document.querySelector('#dataBtn'),opaque:globalThis.origin==='null'};})()");
     assert.equal(desktop.cards,4);
     assert.equal(desktop.sourceClosed,true);
     assert.equal(desktop.advanced,true);
