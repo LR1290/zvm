@@ -27,3 +27,7 @@ A auditoria SHA-pinned contabiliza 2.205 linhas especiais, 21 escopos categoria 
 3. Revisar diferenças, links YouTube e colisões manualmente. Se uma fonte estiver indisponível ou não for verificável, manter o aviso **histórico/provisório**.
 4. Exigir regressões Node e Chromium em desktop/mobile, integridade do v36, isolamento da ZVM e verificação de segurança antes de considerar publicação.
 5. Confirmar deploy Render pela referência exata do commit e executar smoke de leitura nas rotas SSX. Merge no GitHub, isoladamente, não comprova deploy.
+
+## Precisão do contador público (Etapa 5)
+
+O número **6.024** é o total de entradas do Google Sheets incorporadas no snapshot de 2026-08-22, não uma consulta de placar em tempo real. A etiqueta originalmente exibida como **“recordes atuais”** foi substituída por **“recordes na captura de 2026-08-22”**, com traduções nos seis idiomas suportados. Nenhuma contagem, resultado, placar, fonte ou arquivo v36 foi alterado. Testes Chromium conferem rótulos em português e inglês após troca de idioma, e teste de contrato exige as seis traduções.
