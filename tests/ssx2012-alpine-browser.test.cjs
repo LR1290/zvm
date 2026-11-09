@@ -127,7 +127,10 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     const deskShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
     fs.writeFileSync(path.join(outDir,'ssx-v37-desktop.png'),Buffer.from(deskShot.data,'base64'));
     await cdp.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true},sid);
+    await evaluate(cdp.send,sid,"window.scrollTo({top:0,behavior:'instant'})");
     await sleep(400);
+    const mobileHeroShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+    fs.writeFileSync(path.join(outDir,'ssx-v37-mobile-hero.png'),Buffer.from(mobileHeroShot.data,'base64'));
     const mobile=await evaluate(cdp.send,sid,"({cards:getComputedStyle(document.querySelector('#alpineMobileCards')).display,table:getComputedStyle(document.querySelector('.sheet-scroll')).display,records:document.querySelectorAll('#alpineMobileCards .alpine-card').length,mode:document.body.dataset.ssxMode,viewport:window.innerWidth})");
     assert.equal(mobile.table,'none');
     assert.notEqual(mobile.cards,'none');
