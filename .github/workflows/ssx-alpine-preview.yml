@@ -21,6 +21,7 @@ jobs:
         run: |
           node --check src/hobbies/ssx/route.js
           node --check src/hobbies/ssx/alpine-v37.js
+          node --check src/hobbies/ssx/special-categories-v1.js
       - name: Run SSX v36 + v37 isolation regression
         run: node --test tests/ssx2012-route.test.cjs tests/ssx2012-alpine-v37.test.cjs
       - name: Read-only source provenance inventory
@@ -32,6 +33,8 @@ jobs:
           node --test tests/ssx2012-reconciliation.test.cjs
           node --check src/hobbies/ssx/coverage-audit.cjs
           node --test tests/ssx2012-coverage-audit.test.cjs
+      - name: Inspect original archived special-category structures (read-only)
+        run: node --test tests/ssx2012-special-source-scan.test.cjs
       - name: Chromium real desktop/mobile integration
         run: |
           google-chrome --version

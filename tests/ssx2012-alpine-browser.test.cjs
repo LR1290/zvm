@@ -123,6 +123,35 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     for(const region of ['Antarctica','Himalayas','Japan','Mount Eddie','New Zealand','Patagonia','Rockies','Siberia','Training'])assert.ok(completeLoad.regions.includes(region),'Missing registered region: '+region);
     assert.equal(desktop.admin,true);
     assert.equal(desktop.opaque,true);
+    // Stage 3: the historical Sheets appendix is isolated from the 73-track
+    // current main ranking, loaded in the same final page (no second face).
+    const specials=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#ssxSpecialArchive');const tabs=[...root?.querySelectorAll('[data-ssx-special-group]')||[]];return{mounted:!!root,snapshot:root?.dataset.snapshot,authority:root?.dataset.source,records:Number(root?.dataset.records),tabs:tabs.map(b=>({key:b.dataset.ssxSpecialGroup,text:b.textContent.trim()})),link:document.querySelector('#ssxDirectActions a[href=\"#ssxSpecialArchive\"]')?.textContent,initial:root.querySelector('#ssxSpecialResults .ssx-special-record')?.querySelector('.ssx-special-score')?.textContent,mainCount:document.querySelectorAll('#ssxSheetRegions button').length,mainScore:document.querySelector('.ssx-region-detail .ssx-region-score')?.textContent,progress:document.querySelector('#renderProgress')?.hidden}})()");
+    console.log('SSX_SPECIAL_UI_AUDIT',JSON.stringify(specials));
+    assert.equal(specials.mounted,true,'Historical category section must mount in the canonical UI');
+    assert.equal(specials.snapshot,'2026-08-22','Archived source must show its real snapshot date');
+    assert.equal(specials.authority,'google-sheets-archive');
+    assert.equal(specials.records,2205,'Every special Sheets record, including 137 Survive special rows, must be present');
+    assert.deepEqual(specials.tabs.map(t=>t.key),['level','android','dev','boost','challenge']);
+    assert.match(specials.link,/categorias extras/i);
+    assert.equal(specials.mainCount,13,'Main 73-track navigator must remain intact');
+    assert.equal(specials.mainScore,'01:35.99');
+    assert.equal(specials.progress,true);
+    const explore=await evaluate(cdp.send,sid,"(()=>{const tab=name=>document.querySelector('#ssxSpecialTabs [data-ssx-special-group=\"'+name+'\"]');const level=document.querySelector('#ssxSpecialLevel'),mode=document.querySelector('#ssxSpecialMode'),track=document.querySelector('#ssxSpecialTrack'),rows=document.querySelector('#ssxSpecialResults');const pick=(selector,value)=>{selector.value=String(value);selector.dispatchEvent(new Event('change',{bubbles:true}));};const info=()=>({count:Number(rows.dataset.visibleRecords),score:rows.querySelector('.ssx-special-score')?.textContent,mode:Number(rows.querySelector('.ssx-special-record')?.dataset.archivedMode),rank:rows.querySelector('.ssx-special-record')?.dataset.archivedPosition,proof:rows.querySelector('a.ssx-youtube-proof')?.href,hasMark:!!rows.querySelector('.ssx-youtube-icon'),source:rows.querySelector('.ssx-special-ref')?.textContent});pick(level,'Level 9');pick(mode,'0');pick(track,'2');const nine=info();tab('android').click();const androidModes=[...mode.options].map(o=>Number(o.value));pick(mode,'2');pick(track,'16');const android=info();tab('dev').click();pick(track,'79');const dev=info();tab('boost').click();pick(track,'2');const boost=info();tab('challenge').click();const challengeModes=[...mode.options].map(o=>Number(o.value));pick(track,'8');const special=info();return{nine,androidModes,android,dev,boost,challengeModes,special,mainScore:document.querySelector('.ssx-region-detail .ssx-region-score')?.textContent,mainMode:document.body.dataset.ssxMode,archiveNote:document.querySelector('#ssxSpecialNote')?.textContent}})()");
+    console.log('SSX_SPECIAL_CATEGORY_SAMPLES',JSON.stringify(explore));
+    assert.equal(explore.nine.score,'01:26.45','Level 9 Board times must match the source spreadsheet snapshot');
+    assert.deepEqual(explore.androidModes,[0,1,2,3]);
+    assert.equal(explore.android.score,'4.460432E7','Android Trick score should preserve the raw historical value');
+    assert.equal(explore.android.mode,2);
+    assert.equal(explore.dev.score,'00:34.79','Developer/test track must be read from its original ID');
+    assert.equal(explore.boost.score,'1:42.83','No Boost time should be read from the original G record');
+    assert.match(explore.boost.proof,/youtu\.be/,'Real archived YouTube link must survive');
+    assert.equal(explore.boost.hasMark,true);
+    assert.deepEqual(explore.challengeModes,[5],'Archived Survive combined no Gear/Wings/Rewinds rule is a separate mode');
+    assert.equal(explore.special.score,'10,787,35m','Survive special distance must not be normalized into a race time');
+    assert.match(explore.archiveNote,/2026-08-22/);
+    assert.equal(explore.mainMode,'board');
+    assert.equal(explore.mainScore,'01:35.99','Opening archived categories cannot change public current rankings');
+
     const regional=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#ssxRegionBrowser');const africa=[...root.querySelectorAll('.ssx-region-group')].find(x=>x.dataset.regionName==='Africa');const tabs=africa?.querySelectorAll('.ssx-track-choice')||[];const selected=root.querySelector('.ssx-region-detail h3');return {display:getComputedStyle(root).display,africa:!!africa,meru:africa?.textContent.includes('Meru Mountain'),redLight:[...tabs].some(b=>b.textContent.includes('Red Light')),first:selected?.textContent,rankCount:root.querySelectorAll('.ssx-region-rank').length,proof:!!root.querySelector('.ssx-region-proof'),regions:root.querySelectorAll('.ssx-region-group').length,tableHidden:getComputedStyle(document.querySelector('.sheet-scroll')).display==='none'}})()");
     assert.equal(regional.display,'grid','Regional dashboard must replace oversized single-mode table');
     assert.equal(regional.africa,true);
@@ -525,6 +554,10 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     const translated=await evaluate(cdp.send,sid,"({hero:document.querySelector('#heroTitle').textContent,more:document.querySelector('#alpinePositionsToggle').textContent,language:document.querySelector('#langName').textContent})");
     assert.equal(translated.hero,'Conquer the mountain.','New page headline must follow original language selector');
     assert.equal(translated.language.trim(),'English');
+    const translatedArchive=await evaluate(cdp.send,sid,"(()=>({title:document.querySelector('#ssxSpecialTitle')?.textContent,note:document.querySelector('#ssxSpecialNote')?.textContent,group:document.querySelector('#ssxSpecialTabs [aria-pressed=true]')?.dataset.ssxSpecialGroup}))()");
+    assert.match(translatedArchive.title,/Special challenges/i);
+    assert.match(translatedArchive.note,/2026-08-22/);
+    assert.equal(translatedArchive.group,'challenge','Changing language must preserve the selected historic category');
     await evaluate(cdp.send,sid,"document.querySelector('[data-lang=\"pt-BR\"]').click()");
     await sleep(300);
 
@@ -562,6 +595,12 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
       assert.equal(responsiveMode.bar,width<=900?'grid':'none','Mobile sheet controls must respect breakpoint at '+width+'px');
       assert.equal(responsiveMode.top,width<=900?'none':'flex','Original large-screen submodes must remain available at '+width+'px');
       assert.ok(responsiveMode.screenOverflow<=1,'No horizontal overflow at '+width+'px');
+      const specialResponsive=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#ssxSpecialArchive');const rect=root.getBoundingClientRect();const buttons=[...root.querySelectorAll('.ssx-special-tab')];const selects=[...root.querySelectorAll('.ssx-special-select')].filter(x=>getComputedStyle(x.closest('label')).display!=='none');return{width:Math.round(rect.width),viewport:document.documentElement.clientWidth,docOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,internalScroll:root.querySelector('#ssxSpecialTabs').scrollWidth>=root.querySelector('#ssxSpecialTabs').clientWidth,buttonHeights:buttons.map(x=>Math.round(x.getBoundingClientRect().height)),selectHeights:selects.map(x=>Math.round(x.getBoundingClientRect().height)),recordCount:root.querySelectorAll('.ssx-special-record').length}})()");
+      assert.ok(specialResponsive.width<=specialResponsive.viewport+1,'Historical panel must fit at '+width+'px');
+      assert.ok(specialResponsive.docOverflow<=1,'Historical panel must not stretch viewport at '+width+'px');
+      assert.ok(specialResponsive.buttonHeights.every(v=>v>=39),'Historical category tabs must remain usable at '+width+'px');
+      assert.ok(specialResponsive.selectHeights.every(v=>v>=39),'Historical filters must remain usable at '+width+'px');
+
       if(width<=900)assert.ok(responsiveMode.controls.every(v=>v>75),'Both mobile mode options must fit at '+width+'px');
 
       if(width<=390){
@@ -573,6 +612,11 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
 
     const mobShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
     fs.writeFileSync(path.join(outDir,'ssx-v37-mobile.png'),Buffer.from(mobShot.data,'base64'));
+    await evaluate(cdp.send,sid,"document.querySelector('#ssxSpecialArchive').scrollIntoView({block:'start'})");
+    await sleep(200);
+    const specialShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+    fs.writeFileSync(path.join(outDir,'ssx-r57-mobile-historical-special-categories.png'),Buffer.from(specialShot.data,'base64'));
+
     await evaluate(cdp.send,sid,"document.querySelector('.sheet-card').scrollIntoView({block:'start'})");
     await sleep(300);
     const rankingsShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
