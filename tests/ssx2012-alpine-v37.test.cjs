@@ -197,6 +197,12 @@ test('public SSX UI has neutral brand/title and no Edition release promotion',()
   assert.match(js,/ssxNavRecords/);
   assert.match(js,/ssx-advanced-content/);
   assert.match(js,/applyPublicCopy/);
+  assert.match(js,/ssxViewOptions/);
+  assert.match(js,/installMobileNavigation/);
+  assert.match(js,/ssxMobileQuickNav/);
+  assert.match(css,/ssx-mobile-quick-link/);
+  assert.match(css,/grid-template-columns:minmax\(125px,190px\) max-content/);
+  assert.match(css,/\.ssx-view-actions/);
   assert.match(css,/SSX 2012 public editorial layout/);
   assert.match(css,/\.ssx-community-stats/);
   assert.match(css,/\.ssx-credits-disclosure|#ssxCredits/);

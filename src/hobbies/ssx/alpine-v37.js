@@ -1,5 +1,5 @@
 
-/* SSX Alpine v37 — scoped DOM enhancement; never calls ZVM APIs or handles credentials. */
+/* SSX 2012 community records — public layout; rankings and evidence remain untouched. */
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
@@ -35,13 +35,139 @@
   // UI copy is intentionally editorial, not a release/build status banner.
   // The underlying v36 controls remain attached to their original DOM IDs.
   const publicCopy = {
-    pt:{title:'SSX 2012 · Recordes da Comunidade',desc:'Todos os recordes de SSX 2012 em um só lugar.',records:'Recordes',riders:'Riders',about:'Sobre',more:'Mais opções',manage:'Gerenciar site',advanced:'Mais filtros',sources:'Sobre os dados',guide:'Guia',credits:'Créditos e fontes',footer:'Recordes da comunidade SSX 2012 · Projeto independente, não afiliado à EA.',modes:'Escolha uma modalidade',language:'Idioma',eyebrow:'RECORDES DA COMUNIDADE'},
-    en:{title:'SSX 2012 · Community Records',desc:'All SSX 2012 community records in one place.',records:'Records',riders:'Riders',about:'About',more:'More options',manage:'Manage site',advanced:'More filters',sources:'About the data',guide:'Guide',credits:'Credits and sources',footer:'SSX 2012 community records · Independent fan project, not affiliated with EA.',modes:'Choose a mode',language:'Language',eyebrow:'COMMUNITY RECORDS'},
-    de:{title:'SSX 2012 · Community-Rekorde',desc:'Alle SSX 2012-Rekorde an einem Ort.',records:'Rekorde',riders:'Riders',about:'Über uns',more:'Mehr Optionen',manage:'Seite verwalten',advanced:'Weitere Filter',sources:'Über die Daten',guide:'Anleitung',credits:'Bildnachweise und Quellen',footer:'SSX 2012 Community-Rekorde · Unabhängiges Fanprojekt ohne Verbindung zu EA.',modes:'Spielmodus wählen',language:'Sprache',eyebrow:'COMMUNITY-REKORDE'},
-    es:{title:'SSX 2012 · Récords de la comunidad',desc:'Todos los récords de SSX 2012 en un solo lugar.',records:'Récords',riders:'Riders',about:'Acerca de',more:'Más opciones',manage:'Administrar sitio',advanced:'Más filtros',sources:'Sobre los datos',guide:'Guía',credits:'Créditos y fuentes',footer:'Récords de SSX 2012 · Proyecto independiente sin afiliación a EA.',modes:'Elige una modalidad',language:'Idioma',eyebrow:'RÉCORDS DE LA COMUNIDAD'},
-    nl:{title:'SSX 2012 · Communityrecords',desc:'Alle SSX 2012-records op één plek.',records:'Records',riders:'Riders',about:'Over',more:'Meer opties',manage:'Site beheren',advanced:'Meer filters',sources:'Over de gegevens',guide:'Handleiding',credits:'Bronnen en credits',footer:'SSX 2012 Communityrecords · Onafhankelijk fanproject, niet verbonden met EA.',modes:'Kies een speltype',language:'Taal',eyebrow:'COMMUNITYRECORDS'},
-    fr:{title:'SSX 2012 · Records communautaires',desc:'Tous les records de SSX 2012 en un seul endroit.',records:'Records',riders:'Riders',about:'À propos',more:'Plus d’options',manage:'Gérer le site',advanced:'Plus de filtres',sources:'À propos des données',guide:'Guide',credits:'Crédits et sources',footer:'Records SSX 2012 · Projet de fans indépendant, non affilié à EA.',modes:'Choisir un mode',language:'Langue',eyebrow:'RECORDS COMMUNAUTAIRES'}
+    pt:{title:'SSX 2012 · Recordes da Comunidade',desc:'Race It!, Trick It! e Survive It!: tempos, pontuações e provas em vídeo.',records:'Recordes',riders:'Riders',about:'Sobre',more:'Mais opções',manage:'Gerenciar site',advanced:'Mais filtros',sources:'Sobre os dados',guide:'Guia',credits:'Créditos e fontes',footer:'Recordes da comunidade SSX 2012 · Projeto independente, não afiliado à EA.',modes:'Escolha uma modalidade',language:'Idioma',display:'Exibição',eyebrow:'RECORDES DA COMUNIDADE'},
+    en:{title:'SSX 2012 · Community Records',desc:'Race It!, Trick It! and Survive It!: times, scores and video proof.',records:'Records',riders:'Riders',about:'About',more:'More options',manage:'Manage site',advanced:'More filters',sources:'About the data',guide:'Guide',credits:'Credits and sources',footer:'SSX 2012 community records · Independent fan project, not affiliated with EA.',modes:'Choose a mode',language:'Language',display:'View',eyebrow:'COMMUNITY RECORDS'},
+    de:{title:'SSX 2012 · Community-Rekorde',desc:'Race It!, Trick It! und Survive It!: Zeiten, Punkte und Videobelege.',records:'Rekorde',riders:'Riders',about:'Über uns',more:'Mehr Optionen',manage:'Seite verwalten',advanced:'Weitere Filter',sources:'Über die Daten',guide:'Anleitung',credits:'Bildnachweise und Quellen',footer:'SSX 2012 Community-Rekorde · Unabhängiges Fanprojekt ohne Verbindung zu EA.',modes:'Spielmodus wählen',language:'Sprache',display:'Ansicht',eyebrow:'COMMUNITY-REKORDE'},
+    es:{title:'SSX 2012 · Récords de la comunidad',desc:'Race It!, Trick It! y Survive It!: tiempos, puntuaciones y pruebas en vídeo.',records:'Récords',riders:'Riders',about:'Acerca de',more:'Más opciones',manage:'Administrar sitio',advanced:'Más filtros',sources:'Sobre los datos',guide:'Guía',credits:'Créditos y fuentes',footer:'Récords de SSX 2012 · Proyecto independiente sin afiliación a EA.',modes:'Elige una modalidad',language:'Idioma',display:'Vista',eyebrow:'RÉCORDS DE LA COMUNIDAD'},
+    nl:{title:'SSX 2012 · Communityrecords',desc:'Race It!, Trick It! en Survive It!: tijden, scores en videobewijs.',records:'Records',riders:'Riders',about:'Over',more:'Meer opties',manage:'Site beheren',advanced:'Meer filters',sources:'Over de gegevens',guide:'Handleiding',credits:'Bronnen en credits',footer:'SSX 2012 Communityrecords · Onafhankelijk fanproject, niet verbonden met EA.',modes:'Kies een speltype',language:'Taal',display:'Weergave',eyebrow:'COMMUNITYRECORDS'},
+    fr:{title:'SSX 2012 · Records communautaires',desc:'Race It!, Trick It! et Survive It! : temps, scores et preuves vidéo.',records:'Records',riders:'Riders',about:'À propos',more:'Plus d’options',manage:'Gérer le site',advanced:'Plus de filtres',sources:'À propos des données',guide:'Guide',credits:'Crédits et sources',footer:'Records SSX 2012 · Projet de fans indépendant, non affilié à EA.',modes:'Choisir un mode',language:'Langue',display:'Affichage',eyebrow:'RECORDS COMMUNAUTAIRES'}
   };
+  // Editorial navigation text is independent of legacy controls and follows the six supported languages.
+  const mobileCopy={
+    pt:{community:'Comunidade',settings:'Ajustes',submissions:'Submissões',data:'Dados',admin:'Admin',navigation:'Navegação principal'},
+    en:{community:'Community',settings:'Settings',submissions:'Submissions',data:'Data',admin:'Admin',navigation:'Main navigation'},
+    de:{community:'Community',settings:'Einstellungen',submissions:'Einreichungen',data:'Daten',admin:'Admin',navigation:'Hauptnavigation'},
+    es:{community:'Comunidad',settings:'Ajustes',submissions:'Envíos',data:'Datos',admin:'Admin',navigation:'Navegación principal'},
+    nl:{community:'Community',settings:'Instellingen',submissions:'Inzendingen',data:'Gegevens',admin:'Admin',navigation:'Hoofdnavigatie'},
+    fr:{community:'Communauté',settings:'Paramètres',submissions:'Soumissions',data:'Données',admin:'Admin',navigation:'Navigation principale'}
+  };
+  function refreshMobileNavigation(copy){
+    const translations=mobileCopy[language()]||mobileCopy.en;
+    const labels={
+      records:copy.records,riders:copy.riders,community:translations.community,
+      about:copy.about,more:copy.more,settings:translations.settings,
+      guide:copy.guide,advanced:copy.advanced,sources:copy.sources,
+      manage:copy.manage,submissions:translations.submissions,data:translations.data,admin:translations.admin
+    };
+    document.querySelectorAll('[data-ssx-mobile-label]').forEach(node=>{
+      const value=labels[node.dataset.ssxMobileLabel];
+      if(value)node.textContent=value;
+    });
+    const quick=$('ssxMobileQuickNav');
+    if(quick)quick.setAttribute('aria-label',translations.navigation);
+    const hamburger=$('mobileMenuBtn');
+    if(hamburger){
+      hamburger.setAttribute('aria-label',copy.more);
+      hamburger.setAttribute('title',copy.more);
+      const originalLabel=hamburger.querySelector('[data-i="navMenu"]');
+      if(originalLabel)originalLabel.textContent=copy.more;
+    }
+    $('ssxMobileMore')?.setAttribute('aria-label',copy.more);
+  }
+  function installMobileNavigation(){
+    if($('ssxMobileQuickNav'))return;
+    const header=document.querySelector('.topbar'),toggle=$('mobileMenuBtn');
+    if(!header||!toggle)return;
+    const quick=document.createElement('nav');
+    quick.id='ssxMobileQuickNav';
+    quick.className='ssx-mobile-quick-nav';
+    const panel=document.createElement('section');
+    panel.id='ssxMobileMore';
+    panel.className='ssx-mobile-more-panel';
+    panel.hidden=true;
+    const item=(key,action,className)=>{
+      const button=text('button','',className||'ssx-mobile-menu-action');
+      button.type='button';
+      button.dataset.ssxMobileLabel=key;
+      button.dataset.ssxAction=action;
+      return button;
+    };
+    for(const [key,action] of [
+      ['records','ssxNavRecords'],['riders','ridersBtn'],
+      ['community','communityMenuBtn'],['about','aboutBtn']
+    ])quick.append(item(key,action,'ssx-mobile-quick-link'));
+    const heading=text('h2','', 'ssx-mobile-more-heading');
+    heading.dataset.ssxMobileLabel='more';
+    panel.append(heading);
+    const normal=document.createElement('div');
+    normal.className='ssx-mobile-more-actions';
+    for(const [key,action] of [
+      ['settings','settingsBtn'],['guide','introBtn'],
+      ['advanced','advanced'],['sources','sources']
+    ])normal.append(item(key,action));
+    panel.append(normal);
+    const manage=document.createElement('details');
+    manage.id='ssxMobileManagement';
+    manage.className='ssx-mobile-more-management';
+    const summary=text('summary','');
+    summary.dataset.ssxMobileLabel='manage';
+    const managementActions=document.createElement('div');
+    managementActions.className='ssx-mobile-more-actions';
+    for(const [key,action] of [
+      ['submissions','submissionsBtn'],['data','dataBtn'],['admin','adminBtn']
+    ])managementActions.append(item(key,action));
+    manage.append(summary,managementActions);
+    panel.append(manage);
+    header.insertAdjacentElement('afterend',quick);
+    quick.insertAdjacentElement('afterend',panel);
+    toggle.setAttribute('aria-controls',panel.id);
+    toggle.setAttribute('aria-expanded','false');
+    const close=(restoreFocus=false)=>{
+      if(panel.hidden)return;
+      panel.hidden=true;
+      manage.open=false;
+      toggle.setAttribute('aria-expanded','false');
+      if(restoreFocus)toggle.focus();
+    };
+    toggle.addEventListener('click',event=>{
+      if(window.innerWidth>1024)return;
+      // The original mobile handler expands the hidden legacy desktop nav.
+      // Intercept only in mobile to keep that legacy panel completely inactive.
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const opening=panel.hidden;
+      panel.hidden=!opening;
+      toggle.setAttribute('aria-expanded',String(opening));
+      if(opening)panel.scrollIntoView({block:'nearest'});
+    },true);
+    const navigate=event=>{
+      const actionButton=event.target.closest('[data-ssx-action]');
+      if(!actionButton)return;
+      const action=actionButton.dataset.ssxAction;
+      close();
+      if(action==='advanced'||action==='sources'){
+        const details=$(action==='advanced'?'alpineAdvancedFilters':'alpineSources');
+        if(details){
+          if(action==='sources')$('alpineAdvancedFilters').open=true;
+          details.open=true;
+          details.scrollIntoView({block:'start',behavior:'smooth'});
+        }
+        return;
+      }
+      const target=$(action);
+      if(target)target.click();
+    };
+    quick.addEventListener('click',navigate);
+    panel.addEventListener('click',navigate);
+    document.addEventListener('keydown',event=>{
+      if(event.key==='Escape'&&!panel.hidden){event.preventDefault();close(true);}
+    });
+    document.addEventListener('click',event=>{
+      if(!panel.hidden&&!panel.contains(event.target)&&!toggle.contains(event.target))close();
+    });
+    window.addEventListener('resize',()=>{if(window.innerWidth>1024)close();});
+  }
+
   function applyPublicCopy() {
     const copy=publicCopy[language()]||publicCopy.en;
     document.title=copy.title;
@@ -50,6 +176,7 @@
       ['ssxNavRecords',copy.records],
       ['ssxManagementLabel',copy.manage],
       ['ssxCreditsLabel',copy.credits],
+      ['ssxViewLabel',copy.display],
       ['alpineModesTitle',copy.modes]
     ];
     for(const [id,value] of replacements){
@@ -71,6 +198,7 @@
     if(footer)footer.textContent=copy.footer;
     const eyebrow=document.querySelector('.hero-main > .eyebrow');
     if(eyebrow)eyebrow.textContent=copy.eyebrow;
+    refreshMobileNavigation(copy);
   }
   function buildPublicLayout(hero,toolbar,card,credits) {
     const nav=$('topNav'),riders=$('ridersBtn'),tools=$('toolsGroup'),about=$('aboutBtn');
@@ -82,14 +210,19 @@
       about.removeAttribute('role');
       about.classList.add('ssx-nav-about');
       nav.insertBefore(about,tools);
+      // About originally belongs to another navigation group; move it before
+      // reordering Community. insertBefore requires a direct child reference.
+      const communityGroup=$('communityMenuBtn')?.closest('.nav-group');
+      if(communityGroup?.parentElement===nav)nav.insertBefore(communityGroup,about);
       const more=$('toolsMenuBtn');
       if(more){
         more.classList.add('ssx-gear-trigger');
         more.setAttribute('title','Mais opções');
         const icon=more.querySelector('.nav-ico');
-        if(icon)icon.textContent='⚙';
-        // Compact Canva-style gear control; aria-label provides the accessible name.
-        more.querySelector('[data-i="navTools"]')?.remove();
+        if(icon)icon.textContent='⋯';
+        // Desktop uses an icon; mobile retains its visible and translated label.
+        const moreLabel=more.querySelector('[data-i="navTools"]');
+        if(moreLabel)moreLabel.textContent='Mais opções';
       }
       const menu=$('toolsMenu'),submissions=$('submissionsBtn'),settings=$('settingsBtn'),data=$('dataBtn'),admin=$('adminBtn');
       if(menu&&submissions&&settings&&data&&admin){
@@ -154,6 +287,7 @@
     }
     const footer=document.querySelector('.footer');
     footer?.removeAttribute('data-i');
+    installMobileNavigation();
     applyPublicCopy();
   }
 
@@ -224,14 +358,21 @@
       if(head){
         const wrap=document.createElement('div');
         wrap.className='alpine-results-title';
-        wrap.append(
-          text('span','', 'alpine-results-mode'),
-          text('button','', 'alpine-small-action')
-        );
-        wrap.firstChild.id='alpineModeLabel';
-        wrap.lastChild.id='alpineToggleTable';
-        wrap.lastChild.type='button';
-        wrap.lastChild.addEventListener('click',()=>{
+        const modeLabel=text('span','', 'alpine-results-mode');
+        modeLabel.id='alpineModeLabel';
+        const viewOptions=document.createElement('details');
+        viewOptions.id='ssxViewOptions';
+        viewOptions.className='ssx-view-options';
+        const viewSummary=text('summary','Exibição');
+        viewSummary.id='ssxViewLabel';
+        const viewActions=text('div','','ssx-view-actions');
+        const tableToggle=text('button','','alpine-small-action');
+        tableToggle.id='alpineToggleTable';
+        tableToggle.type='button';
+        viewActions.append(tableToggle);
+        viewOptions.append(viewSummary,viewActions);
+        wrap.append(modeLabel,viewOptions);
+        tableToggle.addEventListener('click',()=>{
           if(state.fullTable){
             selectMode(state.beforeFullTable);
           } else {
@@ -253,7 +394,7 @@
           sync();
           scheduleCards();
         });
-        wrap.append(positions);
+        viewActions.append(positions);
         head.append(wrap);
       }
       const list=document.createElement('div');
