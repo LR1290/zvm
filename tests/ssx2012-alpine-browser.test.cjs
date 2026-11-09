@@ -186,6 +186,9 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.ok(mobile.records>0);
     assert.equal(mobile.mode,'wings');
     assert.ok(mobile.viewport<=430);
+    const mobileViewActions=await evaluate(cdp.send,sid,"(()=>{const details=document.querySelector('#ssxViewOptions');details.querySelector('summary').click();const toggle=document.querySelector('#alpinePositionsToggle');const visible=details.open && !toggle.hidden && toggle.getBoundingClientRect().width>=40 && getComputedStyle(toggle).display!=='none';details.querySelector('summary').click();return {visible,closedAgain:!details.open};})()");
+    assert.equal(mobileViewActions.visible,true,'Mobile Exibição disclosure must expose a usable positions action');
+    assert.equal(mobileViewActions.closedAgain,true,'Mobile Exibição disclosure must close after use');
 
     // Check preview-only interactions without writing to Google, Discord or ZVM APIs.
     const overview=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#alpineMobileCards');return {first:root.querySelector('.alpine-card .alpine-card-top span')?.textContent,second:root.querySelectorAll('.alpine-card')[1]?.querySelector('.alpine-card-top span')?.textContent,toggleVisible:!document.querySelector('#alpinePositionsToggle').hidden};})()");
