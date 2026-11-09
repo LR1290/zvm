@@ -439,9 +439,9 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(podium.mode,'wings');
     assert.match(podium.title,/Top 3/);
     assert.match(podium.description,/pistas em 1º lugar/,'Explain why cross-track scores are not compared');
-    assert.equal(podium.number,3);
-    assert.deepEqual(podium.positions,[1,2,3]);
-    assert.equal(new Set(podium.riders).size,3);
+    assert.ok(podium.number>=1&&podium.number<=3,'Up to three verified #1 holders should appear; never invent a podium position');
+    assert.deepEqual(podium.positions,Array.from({length:podium.number},(_,i)=>i+1));
+    assert.equal(new Set(podium.riders).size,podium.number);
     assert.ok(podium.wins.every((win,i)=>win>0&&(i===0||win<=podium.wins[i-1])),'Podium must use distinct first-place finish counts');
     assert.deepEqual(podium.modes,['board','wings','trick','survive','special'],'All five real categories must be reachable directly');
     assert.equal(podium.covered,true,'Cards without registered video must explain why YouTube is absent');
