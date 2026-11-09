@@ -1,0 +1,25 @@
+name: SSX Alpine preview regression
+on:
+  pull_request:
+    paths:
+      - 'src/hobbies/ssx/**'
+      - 'tests/ssx2012-*.test.cjs'
+      - '.github/workflows/ssx-alpine-preview.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ssx-standalone:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Parse JS modules
+        run: |
+          node --check src/hobbies/ssx/route.js
+          node --check src/hobbies/ssx/alpine-v37.js
+      - name: Run SSX v36 + v37 isolation regression
+        run: node --test tests/ssx2012-route.test.cjs tests/ssx2012-alpine-v37.test.cjs
