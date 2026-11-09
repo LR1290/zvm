@@ -46,6 +46,38 @@ test('identify exact source structures for historical special-category integrati
   const structural=[...mainScript.matchAll(/(?:^|[;\n])\s*(?:let|const|var)\s+([A-Z][A-Z0-9_]{2,})\s*=/g)].slice(0,55).map(m=>({name:m[1],offset:m.index}));
   console.log('SSX_SCRIPT_OBJECTS '+JSON.stringify({prefix,declarations,structural}));
   console.log('SSX_SPECIAL_STRUCTURES '+JSON.stringify({size:source.length,ids,headers,scripts:scripts.slice(-12)}));
+
+  function parseLiteral(name){
+    const regex=new RegExp('(?:let|const|var)\\s+'+name+'\\s*=');
+    const m=regex.exec(mainScript);
+    if(!m)return null;
+    let i=m.index+m[0].length;
+    while(/\s/.test(mainScript[i]))i++;
+    const open=mainScript[i],close=open==='['?']':open==='{'?'}':null;
+    if(!close)throw Error('Not JSON for '+name);
+    let nesting=0,inString=false,escaped=false,end=i;
+    for(;end<mainScript.length;end++){
+      const c=mainScript[end];
+      if(inString){if(escaped)escaped=false;else if(c==='\\')escaped=true;else if(c==='"')inString=false;continue;}
+      if(c==='"'){inString=true;continue;}
+      if(c===open)nesting++;
+      if(c===close&&--nesting===0)break;
+    }
+    const parsed=JSON.parse(mainScript.slice(i,end+1));
+    return parsed;
+  }
+  const g=parseLiteral('G'),tracks=parseLiteral('TRACKS'),sng=parseLiteral('SNG');
+  const byCategory={};const byMode={};const byPlatform={};
+  for(const row of g){
+    const category=String(row[0]);byCategory[category]=(byCategory[category]||0)+1;
+    const mode=String(row[3]);byMode[mode]=(byMode[mode]||0)+1;
+    const platform=String(row[7]);byPlatform[platform]=(byPlatform[platform]||0)+1;
+  }
+  const exampleCategories=[...new Set(g.map(row=>String(row[0])))].map(c=>{
+    const r=g.find(row=>row[0]===c);
+    return {category:c,example:{id:r[1],position:r[2],mode:r[3],value:r[5],platform:r[7],source:r[9],ref:r[10]}};
+  });
+  console.log('SSX_SPECIAL_ARRAYS '+JSON.stringify({gLength:g.length,tracksLength:tracks.length,sngLength:sng?.length,sngExample:sng?.[0],byCategory,byMode,byPlatform,exampleCategories,trackSamples:tracks.slice(-12)}));
   console.log('SSX_SPECIAL_MARKERS '+JSON.stringify(inventory));
   assert.ok(inventory.android.length>0);
   assert.ok(inventory.level9.length>0);
