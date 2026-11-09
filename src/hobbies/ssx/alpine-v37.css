@@ -1087,6 +1087,8 @@ body.ssx-alpine-v37 #langMenu button {min-height:42px;}
 }
 @media (min-width:901px) {
   body.ssx-alpine-v37:is([data-ssx-mode="board"],[data-ssx-mode="wings"]) #sheet {
+    width:min(100%,950px);
+    min-width:0;
     max-width:950px;
     margin-inline:auto;
   }
