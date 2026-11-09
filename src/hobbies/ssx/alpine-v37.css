@@ -167,5 +167,7 @@ body.ssx-alpine-v37 {
 @media (max-width:350px) { .ssx-alpine-v37 .alpine-mode-grid {grid-template-columns:1fr;} }
 @media (prefers-reduced-motion:reduce) {
  .ssx-alpine-v37 .alpine-mode-card,
- .ssx-alpine-v37 .alpine-hero-cta {transition:none;transform:none!important;}
+ .ssx-alpine-v37 .alpine-mode-card:hover,
+ .ssx-alpine-v37 .alpine-hero-cta,
+ .ssx-alpine-v37 .alpine-hero-cta:hover {transition:none;transform:none;}
 }
