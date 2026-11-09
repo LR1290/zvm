@@ -307,7 +307,12 @@
       const key=node.getAttribute('data-alpine-i18n');
       if(copy[key])node.textContent=copy[key];
     });
-    const search=$('search'); if(search)search.placeholder=copy.choose;
+    const search=$('search');
+    if(search)search.placeholder=({
+      pt:'Buscar rider ou recorde',en:'Find rider or record',
+      de:'Rider oder Rekord suchen',es:'Buscar rider o récord',
+      nl:'Zoek rider of record',fr:'Chercher rider ou record'
+    })[language()]||copy.choose;
     sync();
     applyPublicCopy();
     scheduleCards(); // refresh card labels and evidence actions after language switches
@@ -465,7 +470,7 @@
     nav.setAttribute('aria-label',labels[0]);
     const counts=new Map();
     for(const item of entries)counts.set(item.region,(counts.get(item.region)||0)+1);
-    const signature=[language(),...counts.keys()].join('|');
+    const signature=[language(),...[...counts].map(([name,count])=>name+':'+count)].join('|');
     if(nav.dataset.signature!==signature){
       const fragment=document.createDocumentFragment();
       for(const [region,label] of [['all',labels[1]],...[...counts.keys()].map(region=>[region,(regionIcons[region]||'🏂')+' '+region])]){
@@ -497,8 +502,9 @@
       openedRegions=new Set(selectedRegion==='all'?[]:[selectedRegion]);
       const native=$('region');
       if(native){
-        const option=[...native.options].find(o=>
-          selectedRegion==='all'?o.value==='':normalizedRegionText(o.textContent)===normalizedRegionText(selectedRegion));
+        const option=selectedRegion==='all'
+          ?([...native.options].find(o=>o.value==='')||native.options[0])
+          :[...native.options].find(o=>normalizedRegionText(o.textContent)===normalizedRegionText(selectedRegion));
         if(option){
           native.value=option.value;
           native.dispatchEvent(new Event('change',{bubbles:true}));
