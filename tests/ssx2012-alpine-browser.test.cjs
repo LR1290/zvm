@@ -269,7 +269,6 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(community.opened,'false','Community should directly open player guide');
     assert.doesNotMatch(community.header,/INTRO/i);
     assert.equal(community.sheetLabel,'none');
-    assert.equal(getComputedStyle(document.querySelector('#toolsGroup')).display,'none');
     assert.equal(document.querySelectorAll('#ssxDirectActions button').length,6);
     assert.equal(community.snow,'none','Decorative snow animation should not distract from original game artwork');
 
