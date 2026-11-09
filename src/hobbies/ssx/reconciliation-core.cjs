@@ -72,15 +72,21 @@ function validRecord(r){
   if(r.proofUrl&&!isWebUrl(r.proofUrl))return false;
   return true;
 }
-function recordKey(r){return [r.platform,r.mode,r.variant||'standard',r.eventId,r.trackId,r.position].map(v=>String(v).replaceAll('|','%7C')).join('|');}
+// A JSON tuple is injective; delimiter escaping collides for literal '%7C' values.
+function recordKey(r){return JSON.stringify([r.platform,r.mode,r.variant||'standard',r.eventId,r.trackId,r.position]);}
 function reconcile(sheets,oz){
   validateSnapshot(sheets,'google_sheets');validateSnapshot(oz,'ozmonet');
   const {index:aliases,rejected:invalidProfiles}=profileIndex(oz.players);
-  const ids=new Map(),results=[],summary={};
+  const ids=new Map(),recordIds=new Map(),results=[],summary={};
   for(const status of Object.values(statuses))summary[status]=0;
   const collisions=new Map();
   for(const [i,r] of sheets.records.entries()){
     const item={recordId:safeStr(r?.recordId)||String(i),sourceIndex:i,source:'google_sheets',status:'',originalRiderName:safeStr(r?.riderName),ozmonetName:null,playerId:numericId(r?.playerId)||null,profileUrl:null,eventKey:null,note:null};
+    const stableRecordId=safeStr(r?.recordId);
+    if(stableRecordId){
+      if(!recordIds.has(stableRecordId))recordIds.set(stableRecordId,[]);
+      recordIds.get(stableRecordId).push(i);
+    }
     if(!validRecord(r)){
       item.status=statuses.invalid;item.note='Record lacks required category/event/score/position metadata';
     }else{
@@ -107,6 +113,8 @@ function reconcile(sheets,oz){
   }
   const eventPositionCollisions=[...collisions].filter(([,arr])=>arr.length>1).map(([key,recordIds])=>({key,recordIds}));
   const sameIdMultipleSheetNames=[...ids].filter(([,names])=>names.size>1).map(([playerId,names])=>({playerId,names:[...names].sort()}));
+  const duplicateRecordIds=[...recordIds].filter(([,indices])=>indices.length>1)
+    .map(([recordId,indices])=>({recordId,indices}));
   return {
     schemaVersion:1,kind:'ssx-reconciliation-audit',
     authority:{records:'google_sheets',identities:'ozmonet_exact_in_game_id'},
@@ -114,7 +122,7 @@ function reconcile(sheets,oz){
     totalSheetsRecords:sheets.records.length,
     validOzmonetProfiles:[...aliases.values()].reduce((n,m)=>n+m.size,0),
     summary,manualReviewCandidates:summary[statuses.review],
-    invalidOzmonetProfiles:invalidProfiles,eventPositionCollisions,sameIdMultipleSheetNames,
+    invalidOzmonetProfiles:invalidProfiles,eventPositionCollisions,sameIdMultipleSheetNames,duplicateRecordIds,
     rows:results,
     safeguards:{changesApplied:0,automaticRenames:false,fuzzyMatches:false,preserveSheetScores:true,needsHumanApproval:true}
   };
