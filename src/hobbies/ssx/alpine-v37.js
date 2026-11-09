@@ -462,7 +462,8 @@
         const entry={
           region:String(item.region),
           mountain:String(item.mountain||''),
-          track:String(item.track)
+          track:String(item.track),
+          order:Number(id)
         };
         entry.key=JSON.stringify([entry.region,entry.mountain,entry.track]);
         if(!records.has(entry.key))records.set(entry.key,{...entry,runs:[]});
@@ -472,7 +473,7 @@
     const order=new Map([...$('region')?.options||[]].map((option,i)=>[option.textContent.trim(),i]));
     fullTrackCatalog=[...records.values()].sort((a,b)=>
       (order.get(a.region)??99)-(order.get(b.region)??99)||
-      a.mountain.localeCompare(b.mountain,undefined,{numeric:true})||
+      a.order-b.order||
       a.track.localeCompare(b.track,undefined,{numeric:true}));
     return fullTrackCatalog;
   }
