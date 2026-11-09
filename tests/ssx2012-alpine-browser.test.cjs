@@ -188,6 +188,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
 
 
     const regional=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#ssxRegionBrowser');const africa=[...root.querySelectorAll('.ssx-region-group')].find(x=>x.dataset.regionName==='Africa');const tabs=africa?.querySelectorAll('.ssx-track-choice')||[];const selected=root.querySelector('.ssx-region-detail h3');return {display:getComputedStyle(root).display,africa:!!africa,meru:africa?.textContent.includes('Meru Mountain'),redLight:[...tabs].some(b=>b.textContent.includes('Red Light')),first:selected?.textContent,rankCount:root.querySelectorAll('.ssx-region-rank').length,proof:!!root.querySelector('.ssx-region-proof'),regions:root.querySelectorAll('.ssx-region-group').length,tableHidden:getComputedStyle(document.querySelector('.sheet-scroll')).display==='none'}})()");
+    console.log('SSX_MAIN_REGIONAL_AFTER_ARCHIVE',JSON.stringify(regional));
     assert.equal(regional.display,'grid','Regional dashboard must replace oversized single-mode table');
     assert.equal(regional.africa,true);
     assert.equal(regional.meru,true);
