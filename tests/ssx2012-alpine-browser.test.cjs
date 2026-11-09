@@ -125,7 +125,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(desktop.opaque,true);
     // Stage 3: the historical Sheets appendix is isolated from the 73-track
     // current main ranking, loaded in the same final page (no second face).
-    const specials=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#ssxSpecialArchive');const tabs=[...root?.querySelectorAll('[data-ssx-special-group]')||[]];return{mounted:!!root,snapshot:root?.dataset.snapshot,authority:root?.dataset.source,records:Number(root?.dataset.records),tabs:tabs.map(b=>({key:b.dataset.ssxSpecialGroup,text:b.textContent.trim()})),link:document.querySelector('#ssxDirectActions a[href=\"#ssxSpecialArchive\"]')?.textContent,initial:root.querySelector('#ssxSpecialResults .ssx-special-record')?.querySelector('.ssx-special-score')?.textContent,mainCount:document.querySelectorAll('#ssxSheetRegions button').length,mainScore:document.querySelector('.ssx-region-detail .ssx-region-score')?.textContent,progress:document.querySelector('#renderProgress')?.hidden}})()");
+    const specials=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#ssxSpecialArchive');const tabs=[...root?.querySelectorAll('[data-ssx-special-group]')||[]];return{mounted:!!root,snapshot:root?.dataset.snapshot,authority:root?.dataset.ssxArchiveSource,records:Number(root?.dataset.records),tabs:tabs.map(b=>({key:b.dataset.ssxSpecialGroup,text:b.textContent.trim()})),link:document.querySelector('#ssxDirectActions a[href=\"#ssxSpecialArchive\"]')?.textContent,initial:root.querySelector('#ssxSpecialResults .ssx-special-record')?.querySelector('.ssx-special-score')?.textContent,mainCount:document.querySelectorAll('#ssxSheetRegions button').length,mainScore:document.querySelector('.ssx-region-detail .ssx-region-score')?.textContent,progress:document.querySelector('#renderProgress')?.hidden}})()");
     console.log('SSX_SPECIAL_UI_AUDIT',JSON.stringify(specials));
     assert.equal(specials.mounted,true,'Historical category section must mount in the canonical UI');
     assert.equal(specials.snapshot,'2026-08-22','Archived source must show its real snapshot date');
@@ -152,7 +152,55 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(explore.mainMode,'board');
     assert.equal(explore.mainScore,'01:35.99','Opening archived categories cannot change public current rankings');
 
-    const regional=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#ssxRegionBrowser');const africa=[...root.querySelectorAll('.ssx-region-group')].find(x=>x.dataset.regionName==='Africa');const tabs=africa?.querySelectorAll('.ssx-track-choice')||[];const selected=root.querySelector('.ssx-region-detail h3');return {display:getComputedStyle(root).display,africa:!!africa,meru:africa?.textContent.includes('Meru Mountain'),redLight:[...tabs].some(b=>b.textContent.includes('Red Light')),first:selected?.textContent,rankCount:root.querySelectorAll('.ssx-region-rank').length,proof:!!root.querySelector('.ssx-region-proof'),regions:root.querySelectorAll('.ssx-region-group').length,tableHidden:getComputedStyle(document.querySelector('.sheet-scroll')).display==='none'}})()");
+    // Stage 4: count distinct archived #1 tracks, not first N rows, and never
+    // merge nickname spellings across platforms/categories without in-game IDs.
+    const historicalLeaders=await evaluate(cdp.send,sid,"(()=>{const tab=g=>document.querySelector('#ssxSpecialTabs [data-ssx-special-group='+g+']').click();const pick=(id,v)=>{const select=document.querySelector(id);select.value=String(v);select.dispatchEvent(new Event('change',{bubbles:true}));};const view=()=>document.querySelector('#ssxSpecialViews [data-ssx-special-view=leaders]').click();const state=()=>{const panel=document.querySelector('#ssxSpecialPodium'),cards=[...document.querySelectorAll('#ssxSpecialResults [data-ssx-leader-track]')],medals=[...panel.querySelectorAll('.ssx-special-medal-card')],aud=document.querySelector('#ssxSpecialRankingAudit');return{category:panel.dataset.ssxCategory,mode:Number(panel.dataset.ssxMode),platform:panel.dataset.ssxPlatform,podium:medals.map(x=>({name:x.dataset.ssxName,wins:Number(x.dataset.ssxWins),proofs:Number(x.dataset.ssxProofs)})),leaders:cards.length,uniqueTracks:new Set(cards.map(x=>x.dataset.ssxLeaderTrack)).size,allFirst:cards.every(x=>x.dataset.ssxLeaderPosition==='1'),names:cards.slice(0,5).map(x=>x.dataset.ssxLeaderRider),conflicts:Number(document.querySelector('#ssxSpecialResults').dataset.ssxArchiveConflicts),view:document.querySelector('#ssxSpecialViews [data-ssx-special-view=leaders]').getAttribute('aria-pressed'),note:panel.textContent.includes('não conciliada por ID Ozmonet'),snapshot:document.querySelector('#ssxSpecialNote').textContent.includes('2026-08-22'),platformOptions:[...document.querySelector('#ssxSpecialPlatform').options].map(x=>x.value),trackHidden:document.querySelector('#ssxSpecialTrack').closest('label').hidden,sourceMain:document.querySelector('.ssx-region-detail .ssx-region-score')?.textContent}};view();const challenge=state();tab('level');pick('#ssxSpecialLevel','Level 9');const lowBoard=state();pick('#ssxSpecialMode',1);const lowWings=state();tab('android');pick('#ssxSpecialMode',2);const android=state();tab('dev');const dev=state();tab('boost');const boost=state();const podiumButton=document.querySelector('#ssxSpecialPodium [data-ssx-podium-rider]');let selected={};if(podiumButton){const rider=podiumButton.dataset.ssxPodiumRider;podiumButton.click();const filtered=[...document.querySelectorAll('#ssxSpecialResults [data-ssx-leader-track]')];selected={rider,count:filtered.length,matches:filtered.every(x=>x.dataset.ssxLeaderRider===rider),clear:!!document.querySelector('[data-ssx-clear-podium-rider]')};document.querySelector('[data-ssx-clear-podium-rider]').click();selected.restored=document.querySelectorAll('#ssxSpecialResults [data-ssx-leader-track]').length===boost.leaders;}tab('challenge');const challengeAgain=state();document.querySelector('#ssxSpecialViews [data-ssx-special-view=records]').click();return{challenge,lowBoard,lowWings,android,dev,boost,selected,challengeAgain,recordsAgain:document.querySelector('#ssxSpecialViews [data-ssx-special-view=records]').getAttribute('aria-pressed'),mainScore:document.querySelector('.ssx-region-detail .ssx-region-score')?.textContent,mainMode:document.body.dataset.ssxMode}})()");
+    console.log('SSX_HISTORICAL_LEADERS',JSON.stringify(historicalLeaders));
+    for(const [category,item] of Object.entries(historicalLeaders).filter(([key])=>['challenge','lowBoard','lowWings','android','dev','boost','challengeAgain'].includes(key))){
+      assert.equal(item.view,'true',category+' must offer visible historical leader mode');
+      assert.equal(item.leaders,item.uniqueTracks,'Each archived track must have at most one unambiguous #1 ('+category+')');
+      assert.equal(item.allFirst,true,'Only source position #1 may enter historical leader view');
+      assert.ok(item.podium.length<=3,'Never invent a fourth podium holder');
+      assert.ok(item.podium.every((p,i)=>p.wins>=1&&(i===0||p.wins<=item.podium[i-1].wins)));
+      assert.equal(item.note,true,'Identity provenance needs explicit non-certified status');
+      assert.equal(item.snapshot,true);
+      assert.equal(item.trackHidden,true,'Track picker is not relevant for all-track leaders');
+      assert.equal(item.sourceMain,'01:35.99','Archived leader tabs must not affect the main leaderboard');
+    }
+    assert.equal(historicalLeaders.challenge.mode,5);
+    assert.deepEqual(historicalLeaders.challenge.platformOptions,['__unspecified__'],'Survive without recorded platform must not be mislabeled PS3');
+    assert.equal(historicalLeaders.lowBoard.category,'Level 9');
+    assert.equal(historicalLeaders.lowBoard.mode,0);
+    assert.equal(historicalLeaders.lowWings.mode,1);
+    assert.ok(historicalLeaders.lowBoard.leaders>=1);
+    assert.ok(historicalLeaders.lowWings.leaders>=1);
+    assert.equal(historicalLeaders.android.category,'Android');
+    assert.equal(historicalLeaders.android.mode,2);
+    assert.deepEqual(historicalLeaders.android.platformOptions,['Android']);
+    assert.equal(historicalLeaders.dev.category,'DEV Tracks');
+    assert.equal(historicalLeaders.boost.category,'No Boost');
+    assert.equal(historicalLeaders.selected.matches,true);
+    assert.equal(historicalLeaders.selected.clear,true);
+    assert.equal(historicalLeaders.selected.restored,true);
+    assert.equal(historicalLeaders.recordsAgain,'true');
+    assert.equal(historicalLeaders.mainScore,'01:35.99');
+    assert.equal(historicalLeaders.mainMode,'board');
+    const independentSource=await evaluate(cdp.send,sid,"(()=>({source:typeof state==='object'?state.source:null,archiveAttr:document.querySelector('#ssxSpecialArchive')?.hasAttribute('data-source'),archiveSource:document.querySelector('#ssxSpecialArchive')?.dataset.ssxArchiveSource}))()");
+    assert.equal(independentSource.source,'combined','Historical buttons must NEVER change the original main data-source filter');
+    assert.equal(independentSource.archiveAttr,false,'No generic data-source on historical container');
+    assert.equal(independentSource.archiveSource,'google-sheets-archive');
+
+
+    // The legacy data engine may be committing a deferred original tbody
+    // refresh. Require the final canonical scoreboard to recover rather than
+    // sampling its transient half-rendered state in the same event turn.
+    for(let attempt=0;attempt<12;attempt++){
+      const ready=await evaluate(cdp.send,sid,"(()=>({groups:document.querySelectorAll('#tbody .track-cell').length,rows:document.querySelectorAll('#ssxRegionBrowser .ssx-region-rank').length}))()");
+      if(ready.groups===73&&ready.rows>0)break;
+      await sleep(150);
+    }
+    const regional=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#ssxRegionBrowser');const africa=[...root.querySelectorAll('.ssx-region-group')].find(x=>x.dataset.regionName==='Africa');const tabs=africa?.querySelectorAll('.ssx-track-choice')||[];const selected=root.querySelector('.ssx-region-detail h3');return {display:getComputedStyle(root).display,africa:!!africa,meru:africa?.textContent.includes('Meru Mountain'),redLight:[...tabs].some(b=>b.textContent.includes('Red Light')),first:selected?.textContent,rankCount:root.querySelectorAll('.ssx-region-rank').length,proof:!!root.querySelector('.ssx-region-proof'),regions:root.querySelectorAll('.ssx-region-group').length,nativeState:{category:document.querySelector('#category')?.value,region:document.querySelector('#region')?.value,track:document.querySelector('#track')?.value,search:document.querySelector('#search')?.value,source:document.querySelector('#sourceSeg [data-source].active')?.dataset.source},tbody:{groups:document.querySelectorAll('#tbody .track-cell').length,ranks:document.querySelectorAll('#tbody tr.rank-row').length,first:document.querySelector('#tbody tr.rank-row')?.outerHTML.slice(0,1400),sampleTracks:[...document.querySelectorAll('#tbody .track-name')].slice(0,5).map(x=>x.textContent),redHeader:[...document.querySelectorAll('#tbody .track-name')].find(x=>x.textContent.includes('Red Light'))?.textContent},originalState:typeof state==='object'?{source:state.source,category:state.category,mode:state.mode,track:state.track}:null,sourceControls:document.querySelector('#sourceSeg')?.outerHTML.slice(0,1400),indexReady:document.body.dataset.ssxTracksIndexed,firstTrackInfo:root.querySelector('.ssx-track-choice small')?.textContent,mainDetailParent:document.querySelector('.ssx-region-detail')?.parentElement?.id,allRanks:document.querySelectorAll('.ssx-region-rank').length,detailChildren:[...document.querySelector('.ssx-region-detail')?.children||[]].map(x=>x.className),rootChildren:[...root.children].map(x=>x.className),scoreParent:document.querySelector('.ssx-region-detail .ssx-region-score')?.closest('.ssx-region-rank')?.className,tableHidden:getComputedStyle(document.querySelector('.sheet-scroll')).display==='none'}})()");
+    console.log('SSX_MAIN_REGIONAL_AFTER_ARCHIVE',JSON.stringify(regional));
     assert.equal(regional.display,'grid','Regional dashboard must replace oversized single-mode table');
     assert.equal(regional.africa,true);
     assert.equal(regional.meru,true);
@@ -600,6 +648,25 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
       assert.ok(specialResponsive.docOverflow<=1,'Historical panel must not stretch viewport at '+width+'px');
       assert.ok(specialResponsive.buttonHeights.every(v=>v>=39),'Historical category tabs must remain usable at '+width+'px');
       assert.ok(specialResponsive.selectHeights.every(v=>v>=39),'Historical filters must remain usable at '+width+'px');
+      if(width<=390){
+        const historicLeaderMobile=await evaluate(cdp.send,sid,"(()=>{document.querySelector('#ssxSpecialTabs [data-ssx-special-group=android]').click();const mode=document.querySelector('#ssxSpecialMode');mode.value='2';mode.dispatchEvent(new Event('change',{bubbles:true}));document.querySelector('#ssxSpecialViews [data-ssx-special-view=leaders]').click();const root=document.querySelector('#ssxSpecialArchive');const podium=document.querySelector('#ssxSpecialPodium');const cards=[...root.querySelectorAll('#ssxSpecialResults .ssx-special-leader')];const podiumCards=[...root.querySelectorAll('.ssx-special-medal-card')];const bounds=[...cards,...podiumCards].map(el=>el.getBoundingClientRect());return{mode:podium.dataset.ssxMode,category:podium.dataset.ssxCategory,platform:podium.dataset.ssxPlatform,podiumCount:podiumCards.length,leaders:cards.length,width:root.getBoundingClientRect().width,viewport:document.documentElement.clientWidth,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,cardOverflow:bounds.some(rect=>rect.width>document.documentElement.clientWidth+1||rect.right>document.documentElement.clientWidth+1),namesVerified:!podium.querySelector('.ssx-special-identity-warning')?.textContent?.includes('Ozmonet'),view:root.querySelector('[data-ssx-special-view=leaders]')?.getAttribute('aria-pressed')}})()");
+        assert.equal(historicLeaderMobile.category,'Android');
+        assert.equal(historicLeaderMobile.mode,'2');
+        assert.equal(historicLeaderMobile.platform,'Android');
+        assert.equal(historicLeaderMobile.podiumCount,3);
+        assert.equal(historicLeaderMobile.leaders,12);
+        assert.equal(historicLeaderMobile.view,'true');
+        assert.equal(historicLeaderMobile.cardOverflow,false,'Historical leader/podium cards must fit '+width+'px');
+        assert.ok(historicLeaderMobile.overflow<=1,'Historical leaders must not stretch '+width+'px screen');
+        if(width===390){
+          await evaluate(cdp.send,sid,"document.querySelector('#ssxSpecialPodium').scrollIntoView({block:'start'})");
+          await sleep(150);
+          const shot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+          fs.writeFileSync(path.join(outDir,'ssx-r58-mobile-historical-leaders-podium.png'),Buffer.from(shot.data,'base64'));
+        }
+        await evaluate(cdp.send,sid,"(()=>{document.querySelector('#ssxSpecialViews [data-ssx-special-view=records]').click();document.querySelector('#ssxSpecialTabs [data-ssx-special-group=challenge]').click()})()");
+      }
+
 
       if(width<=900)assert.ok(responsiveMode.controls.every(v=>v>75),'Both mobile mode options must fit at '+width+'px');
 
