@@ -11,7 +11,7 @@
     nl:{hero:'Verover de berg.',desc:'Ontdek tijden, scores en riders van de SSX 2012-community.',explore:'Records bekijken',modes:'Kies een speltype',race:'Race It!',raceSub:'Snelste tijden',trick:'Trick It!',trickSub:'Hoogste scores',survive:'Survive It!',surviveSub:'Grootste afstand',riders:'Riders',ridersSub:'Ontmoet de community',board:'Board',wings:'Wingsuit',standard:'Standaard',special:'Zonder uitrusting',advanced:'Geavanceerde filters',sources:'Gegevensbronnen en synchronisatie',full:'Volledige tabel',back:'Terug naar speltype',results:'Resultaten',champions:'Beste records per baan',positions:'Baanklassement',empty:'Geen resultaten.',more:'Meer records',positionsAll:'Alle posities',positionsLeaders:'Baanleiders',proof:'Bewijs bekijken',top:'Positie',track:'Baan',choose:'Zoek baan, rider of regio',panel:'Geavanceerde opties',title:'SSX 2012 · Communityrecords',artTitle:'Originele SSX 2012-beelden',artDisclaimer:'Deze fansite wordt niet onderschreven door EA of haar licentiegevers en is niet aan hen verbonden.',artSource:'Promotiebeelden: Electronic Arts. Screenshots: SSX 2012, bewaard in een referentiegalerij. Rankings zijn onafhankelijk.'},
     fr:{hero:'Dominez la montagne.',desc:'Découvrez les temps, scores et riders de la communauté SSX 2012.',explore:'Explorer les records',modes:'Choisissez un mode',race:'Race It!',raceSub:'Meilleurs temps',trick:'Trick It!',trickSub:'Meilleurs scores',survive:'Survive It!',surviveSub:'Plus longues distances',riders:'Riders',ridersSub:'La communauté',board:'Board',wings:'Wingsuit',standard:'Standard',special:'Sans équipement',advanced:'Filtres avancés',sources:'Sources et synchronisation',full:'Tableau complet',back:'Retour au mode',results:'Résultats',champions:'Meilleurs scores par piste',positions:'Classement de la piste',empty:'Aucun record disponible.',more:'Voir plus de records',positionsAll:'Toutes les positions',positionsLeaders:'Meilleurs par piste',proof:'Voir la preuve',top:'Position',track:'Piste',choose:'Rechercher piste, rider ou région',panel:'Options avancées',title:'SSX 2012 · Records communautaires',artTitle:'Illustrations originales de SSX 2012',artDisclaimer:'Ce site de fans nest ni approuvé par EA ou ses concédants de licence, ni affilié à eux.',artSource:'Illustrations promotionnelles : Electronic Arts. Captures : SSX 2012, archivées dans une galerie. Les classements restent indépendants.'}
   };
-  const state = {mode:'board',lastRace:'board',lastSurvive:'survive',beforeFullTable:'board',visible:12,fullTable:false,allPositions:false};
+  const state = {mode:'board',lastRace:'board',lastSurvive:'survive',beforeFullTable:'board',visible:12,fullTable:false,allPositions:false,leaderCards:false};
   const tags = {
     board:'.record-cell.mode-board', wings:'.record-cell.mode-wings',
     trick:'.record-cell.mode-trick', survive:'.record-cell.mode-survive:not(.mode-survive-special)',
@@ -1030,12 +1030,22 @@
         positions.type='button';
         positions.setAttribute('aria-pressed','false');
         positions.addEventListener('click',()=>{
-          state.allPositions=!state.allPositions;
+          if(state.allPositions)return showTrackLeaders();
+          state.allPositions=true;
+          state.leaderCards=false;
           state.visible=12;
           sync();
           scheduleCards();
         });
-        viewActions.append(positions);
+        const regions=text('button','','alpine-small-action ssx-view-tab');
+        regions.id='ssxRegionsToggle';
+        regions.type='button';
+        regions.addEventListener('click',showRegionalBrowse);
+        const leaders=text('button','','alpine-small-action ssx-view-tab');
+        leaders.id='ssxLeadersToggle';
+        leaders.type='button';
+        leaders.addEventListener('click',showTrackLeaders);
+        viewActions.append(regions,leaders,positions);
         head.append(wrap);
       }
       const list=document.createElement('div');
@@ -1161,6 +1171,77 @@
     document.documentElement.dataset.ssxBoot = 'ready';
     return true;
   }
+
+  const browseCopy={
+    pt:{regions:'Regiões',leaders:'Líderes por pista'},
+    en:{regions:'Regions',leaders:'Track leaders'},
+    de:{regions:'Regionen',leaders:'Streckensieger'},
+    es:{regions:'Regiones',leaders:'Líderes por pista'},
+    nl:{regions:'Regio’s',leaders:'Baanleiders'},
+    fr:{regions:'Régions',leaders:'Leaders par piste'}
+  };
+  function clearTrackContext(){
+    for(const id of ['track','search']){
+      const control=$(id);
+      if(!control||!control.value)continue;
+      control.value='';
+      control.dispatchEvent(new Event(id==='search'?'input':'change',{bubbles:true}));
+    }
+  }
+  function showRegionalBrowse(){
+    state.leaderCards=false;
+    state.allPositions=false;
+    clearTrackContext();
+    state.visible=12;
+    sync();
+    scheduleCards();
+  }
+  function showTrackLeaders(){
+    // Changing from a specific track to a leader overview must not silently
+    // retain its old native selection (the reported Red Light top-16 bug).
+    clearTrackContext();
+    const region=$('region');
+    if(region&&region.value){
+      const first=[...region.options].find(o=>o.value==='')||region.options[0];
+      if(first){
+        region.value=first.value;
+        region.dispatchEvent(new Event('change',{bubbles:true}));
+      }
+    }
+    selectedRegion='all';
+    regionQuery='';
+    regionalSelection='';
+    openedRegions=new Set();
+    state.leaderCards=true;
+    state.allPositions=false;
+    state.visible=12;
+    sync();
+    scheduleCards();
+  }
+  function updateViewActions(copy){
+    const contextual=Boolean($('track')?.value||$('search')?.value?.trim());
+    const positions=$('alpinePositionsToggle');
+    if(positions){
+      positions.hidden=state.fullTable;
+      positions.textContent=state.allPositions?copy.positionsLeaders:copy.positionsAll;
+      positions.setAttribute('aria-pressed',String(state.allPositions));
+      positions.title=positions.textContent;
+    }
+    const labels=browseCopy[language()]||browseCopy.en;
+    const leaders=$('ssxLeadersToggle');
+    if(leaders){
+      leaders.textContent=labels.leaders;
+      leaders.hidden=state.fullTable;
+      leaders.setAttribute('aria-pressed',String(state.leaderCards&&!contextual));
+    }
+    const regions=$('ssxRegionsToggle');
+    if(regions){
+      regions.textContent=labels.regions;
+      regions.hidden=state.fullTable;
+      regions.setAttribute('aria-pressed',String(!state.allPositions&&!state.leaderCards&&!contextual));
+    }
+  }
+
   function selectMode(mode){
     if(!tags[mode])return;
     state.mode=mode;
@@ -1215,13 +1296,7 @@
     if(toggle)toggle.textContent=state.fullTable?copy.back:copy.full;
     if($('ssxRegionBrowser'))scheduleCards();
     resetControlState();
-    const positions=$('alpinePositionsToggle');
-    if(positions){
-      const contextual=Boolean($('track')?.value||$('search')?.value?.trim());
-      positions.hidden=contextual||state.fullTable;
-      positions.textContent=state.allPositions?copy.positionsLeaders:copy.positionsAll;
-      positions.setAttribute('aria-pressed',String(state.allPositions));
-    }
+    updateViewActions(copy);
     const raceGroup=document.querySelector('#thead .race-group');
     const surviveGroup=document.querySelector('#thead .survive-group');
     if(raceGroup)raceGroup.colSpan=state.mode==='all'?2:1;
@@ -1239,7 +1314,7 @@
     const root=$('alpineMobileCards'),tbody=$('tbody');
     const contextual=Boolean($('track')?.value||$('search')?.value?.trim());
     document.body.dataset.ssxMobileView=state.fullTable?'table':
-      contextual||state.allPositions?'cards':'browse';
+      contextual||state.allPositions||state.leaderCards?'cards':'browse';
     if(!root||!tbody||!tags[state.mode])return;
     const copy=t(), frag=document.createDocumentFragment();
     const showPositions=contextual||state.allPositions;
@@ -1314,11 +1389,7 @@
       frag.append(more);
     }
     root.replaceChildren(frag);
-    const positions=$('alpinePositionsToggle');
-    if(positions){
-      positions.hidden=contextual||state.fullTable;
-      positions.textContent=state.allPositions?copy.positionsLeaders:copy.positionsAll;
-    }
+    updateViewActions(copy);
   }
   function init(){
     if(!addUI() && document.readyState==='loading')document.addEventListener('DOMContentLoaded',addUI,{once:true});
