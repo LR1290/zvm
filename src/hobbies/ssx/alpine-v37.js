@@ -933,6 +933,11 @@
         detail.append(noRecords);
       }
     }else detail.append(text('p',copy[5],'ssx-region-empty'));
+    // One persistent, fully wired mode selector: always directly below the
+    // selected track banner and immediately above its ranking/navigation.
+    // Move it before replacing the old detail to preserve listeners and focus.
+    const modeFilter=$('ssxSheetModeFilter');
+    if(modeFilter)detail.insertBefore(modeFilter,detail.children[1]||null);
     browser.replaceChildren(index,detail);
     applyRegionSearch();
   }
