@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 const zlib = require('node:zlib');
 
 const SSX_ROUTE = '/hobbies/ssx/ssx2012';
+const SSX_V36_ARCHIVE_ROUTE = '/hobbies/ssx/ssx2012-v36';
 const SSX_V37_PREVIEW_ROUTE = '/hobbies/ssx/ssx2012-alpine-v37-preview';
 const SSX_BUNDLE_SHA256 = 'f80d0760eeb18042a081279f27da96e05dc5f7ed4362bc72e6a4739043897a5a';
 const SHA256 = 'd99aa1caaf9e9833ff85f899119043cbddaca66ce9bc9aa5f256990d331e42f0';
@@ -104,8 +105,8 @@ function loadBundle() {
   }
 }
 
-// The preview reuses the exact validated v36 payload and record dataset.
-// Nothing is persisted or injected into the production /ssx2012 response.
+// Alpine v37.2 is a progressive enhancement of the exact, hash-verified v36
+// payload and record dataset. The /ssx2012-v36 archive remains byte-identical.
 function loadV37Preview() {
   if (v37Preview) return v37Preview;
   const css = fs.readFileSync(path.join(__dirname, 'alpine-v37.css'), 'utf8');
@@ -120,7 +121,7 @@ function loadV37Preview() {
   const updated = original
     .replace(/<\/head\s*>/i, '<style id="ssx-alpine-v37-style">\n' + css + '\n</style></head>')
     .replace(/<\/body\s*>/i, '<script id="ssx-alpine-v37-script">\n' + js + '\n</script></body>')
-    .replace(/<title>[^<]*<\/title>/i, '<title>SSX 2012 · Alpine v37.2 Preview</title>');
+    .replace(/<title>[^<]*<\/title>/i, '<title>SSX 2012 · Alpine Edition v37.2</title>');
   const data = Buffer.from(updated, 'utf8');
   const hash = crypto.createHash('sha256').update(data).digest('hex');
   v37Preview = { content: data, hash, gzip: null, br: null };
@@ -170,14 +171,16 @@ function bodyFor(encoding) {
 function serveSSX2012(req, res, pathname) {
   if(serveSSXMedia(req,res,pathname))return true;
   const isPreview = pathname === SSX_V37_PREVIEW_ROUTE || pathname === SSX_V37_PREVIEW_ROUTE + '/';
-  if (pathname !== SSX_ROUTE && pathname !== SSX_ROUTE + '/' && !isPreview) return false;
+  const isArchive = pathname === SSX_V36_ARCHIVE_ROUTE || pathname === SSX_V36_ARCHIVE_ROUTE + '/';
+  const isPublic = pathname === SSX_ROUTE || pathname === SSX_ROUTE + '/';
+  if (!isPublic && !isPreview && !isArchive) return false;
   const method = String(req.method || '').toUpperCase();
   if (method !== 'GET' && method !== 'HEAD') {
     res.writeHead(405, { Allow: 'GET, HEAD', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' });
     res.end(); return true;
   }
-  if (pathname === SSX_ROUTE + '/' || pathname === SSX_V37_PREVIEW_ROUTE + '/') {
-    res.writeHead(308, { Location: isPreview ? SSX_V37_PREVIEW_ROUTE : SSX_ROUTE, 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' });
+  if (pathname === SSX_ROUTE + '/' || pathname === SSX_V37_PREVIEW_ROUTE + '/' || pathname === SSX_V36_ARCHIVE_ROUTE + '/') {
+    res.writeHead(308, { Location: isPreview ? SSX_V37_PREVIEW_ROUTE : isArchive ? SSX_V36_ARCHIVE_ROUTE : SSX_ROUTE, 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' });
     res.end(); return true;
   }
   loadBundle();
@@ -193,21 +196,28 @@ function serveSSX2012(req, res, pathname) {
     "frame-ancestors 'none'", "object-src 'none'", "base-uri 'none'", "form-action 'none'"
   ].join('; ');
   const encoding = pickEncoding(req.headers['accept-encoding']);
-  let body, etag;
+  let body, etag, fallback = false;
   try {
-    body = isPreview ? v37BodyFor(encoding) : bodyFor(encoding);
-    etag = isPreview
-      ? '"ssx37preview-' + v37Preview.hash.slice(0, 24) + '-' + encoding + '"'
-      : '"ssx36-' + SHA256.slice(0, 24) + '-' + encoding + '"';
+    body = isArchive ? bodyFor(encoding) : v37BodyFor(encoding);
+    etag = isArchive
+      ? '"ssx36-' + SHA256.slice(0, 24) + '-' + encoding + '"'
+      : (isPreview ? '"ssx37preview-' : '"ssx37-') + v37Preview.hash.slice(0, 24) + '-' + encoding + '"';
   } catch (cause) {
-    console.error('[SSX-HOBBY] Preview failed without affecting v36:', cause.message);
-    res.writeHead(503, { 'Content-Type':'text/plain; charset=utf-8', 'Cache-Control':'no-store', 'X-Robots-Tag':'noindex' });
-    res.end(method === 'HEAD' ? undefined : 'SSX preview temporarily unavailable');
-    return true;
+    console.error('[SSX-HOBBY] Alpine v37 unavailable:', cause.code || cause.message);
+    if (isPublic) {
+      // Keep the original public address usable if Alpine assets fail to load.
+      fallback = true;
+      body = bodyFor(encoding);
+      etag = '"ssx36fallback-' + SHA256.slice(0, 24) + '-' + encoding + '"';
+    } else {
+      res.writeHead(503, { 'Content-Type':'text/plain; charset=utf-8', 'Cache-Control':'no-store', 'X-Robots-Tag':'noindex' });
+      res.end(method === 'HEAD' ? undefined : 'SSX preview temporarily unavailable');
+      return true;
+    }
   }
   const headers = {
     'Content-Type': 'text/html; charset=utf-8',
-    'Cache-Control': isPreview ? 'no-store' : 'public, max-age=300',
+    'Cache-Control': isPreview || fallback ? 'no-store' : 'public, max-age=300',
     ETag: etag,
     Vary: 'Accept-Encoding',
     'Content-Length': body.length,
@@ -220,7 +230,8 @@ function serveSSX2012(req, res, pathname) {
     'Referrer-Policy': 'no-referrer',
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   };
-  if (isPreview) headers['X-SSX-Variant'] = 'alpine-v37-preview';
+  headers['X-SSX-Variant'] = isPreview ? 'alpine-v37-preview'
+    : isArchive ? 'v36-archive' : fallback ? 'v36-fallback' : 'alpine-v37.2';
   if (encoding !== 'identity') headers['Content-Encoding'] = encoding;
   if (String(req.headers['if-none-match'] || '').trim() === etag) {
     delete headers['Content-Length'];
@@ -231,4 +242,4 @@ function serveSSX2012(req, res, pathname) {
   return true;
 }
 
-module.exports = { serveSSX2012, serveSSXMedia, SSX_ROUTE, SSX_MEDIA_BASE, SSX_V37_PREVIEW_ROUTE, SHA256 };
+module.exports = { serveSSX2012, serveSSXMedia, SSX_ROUTE, SSX_V36_ARCHIVE_ROUTE, SSX_MEDIA_BASE, SSX_V37_PREVIEW_ROUTE, SHA256 };
