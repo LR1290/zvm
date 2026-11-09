@@ -25,6 +25,13 @@ jobs:
         run: node --test tests/ssx2012-route.test.cjs tests/ssx2012-alpine-v37.test.cjs
       - name: Read-only source provenance inventory
         run: node --test tests/ssx2012-source-inventory.test.cjs
+      - name: Reconciliation proof and ID matching safeguards
+        run: |
+          node --check src/hobbies/ssx/reconciliation-core.cjs
+          node --check tools/ssx-reconcile-readonly.cjs
+          node --test tests/ssx2012-reconciliation.test.cjs
+          node --check src/hobbies/ssx/coverage-audit.cjs
+          node --test tests/ssx2012-coverage-audit.test.cjs
       - name: Chromium real desktop/mobile integration
         run: |
           google-chrome --version
