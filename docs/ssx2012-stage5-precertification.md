@@ -20,6 +20,31 @@ A auditoria SHA-pinned contabiliza 2.205 linhas especiais, 21 escopos categoria 
 - Ozmonet `https://ssx.ozmonet.com/` publica estado **READ-ONLY**; seu próprio histórico indica que não atualiza estatísticas desde 2019. Pode servir como evidência histórica de ID, nunca como prova de recordes atuais.
 - Nenhuma comparação linha a linha entre a planilha online integral e o arquivo v36 foi certificada nesta fase; não efetuar atualização de scores, identificação ou rankings com base em suposições.
 
+
+## Gate de cobertura independente — R65
+
+O motor de reconciliação agora **não certifica líderes ou identidades sem manifesto explícito** de cobertura. Uma amostra parcial, mesmo composta exclusivamente por resultados #1 válidos, não pode se autodeclarar completa.
+
+`expected-categories.json` deve ser um array não vazio e fornecido **a partir de inventário independente de todas as abas da fonte**, com exatamente um objeto por categoria × modalidade × plataforma × variante. Cada objeto exige `recordCount` e `tracks` listando `eventId`, `trackId` e `recordCount` de cada pista. Exemplo **sintético, não um recorde real**:
+
+```json
+[
+  {
+    "platform": "xbox360",
+    "mode": "board",
+    "variant": "standard",
+    "recordCount": 1,
+    "tracks": [
+      { "eventId": "test-event", "trackId": "test-track", "recordCount": 1 }
+    ]
+  }
+]
+```
+
+A auditoria rejeita manifesto ausente, categoria duplicada, escopo não listado, pista ausente ou extra, contagem divergente ou pistas repetidas. `coverageManifestMatchesSnapshot` significa apenas **coerência entre dois arquivos fornecidos**, não prova de que a planilha online foi completamente capturada ou de que as informações são atuais. A certificação externa exige aquisição íntegra verificável e revisão independente. Sem isso, o painel continua **histórico/provisório**.
+
+Executar o CLI com apenas dois snapshots continua permitido para **diagnóstico somente leitura**, mas o código de saída de certificação será não-zero enquanto não houver manifesto válido. As mudanças não modificam v36, v37, recordes, ZVM, licenças ou autenticação.
+
 ## Checklist de fechamento e publicação
 
 1. Capturar todas as abas atuais, com timestamp UTC, URL/origem, hashes da exportação, IDs verificáveis e evidências; comparar chaves de categoria/pista/modo/plataforma/posição. Não interpretar `htmlview` introdutório como cobertura completa.
