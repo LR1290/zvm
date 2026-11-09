@@ -112,13 +112,9 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.ok(desktop.rows>10);
     assert.equal(desktop.admin,true);
     assert.equal(desktop.opaque,true);
-    const ssxDesktopDiagnostics=await evaluate(cdp.send,sid,`(()=>{const table=document.querySelector('#sheet'),heads=[...document.querySelectorAll('#sheet thead tr')].map(tr=>({html:tr.outerHTML.slice(0,1600),cellCount:tr.cells.length})),cells=[...document.querySelectorAll('#sheet tbody tr.rank-row')].slice(0,2).map(tr=>[...tr.cells].map(td=>({classes:td.className,display:getComputedStyle(td).display,width:Math.round(td.getBoundingClientRect().width)})));return {tableLayout:getComputedStyle(table).tableLayout,heads,cells}})()`);
-    console.log('SSX_DESKTOP_LAYOUT_DIAGNOSTICS',JSON.stringify(ssxDesktopDiagnostics));
-    const ssxRaceCell=await evaluate(cdp.send,sid,`(()=>{const td=document.querySelector('#sheet tbody tr.rank-row .record-cell.mode-board');const table=document.querySelector('#sheet');return {html:td?.outerHTML.slice(0,5000),children:[...td?.querySelectorAll('*')||[]].slice(0,24).map(e=>({tag:e.tagName,class:e.className,rect:[Math.round(e.getBoundingClientRect().x),Math.round(e.getBoundingClientRect().width)],css:{display:getComputedStyle(e).display,justify:getComputedStyle(e).justifyContent,position:getComputedStyle(e).position,float:getComputedStyle(e).float,margin:getComputedStyle(e).margin}})),tableRect:[table.getBoundingClientRect().x,table.getBoundingClientRect().width]}})()`);
-    console.log('SSX_RACE_CELL_DIAGNOSTICS',JSON.stringify(ssxRaceCell));
-
-
-
+    const raceCompact=await evaluate(cdp.send,sid,"(()=>{const rider=document.querySelector('#sheet tbody tr.rank-row .record-cell.mode-board .rider-name');const score=document.querySelector('#sheet tbody tr.rank-row .record-cell.mode-board .score');return {tableWidth:Math.round(document.querySelector('#sheet').getBoundingClientRect().width),gap:Math.round(score.getBoundingClientRect().left-rider.getBoundingClientRect().right)}})()");
+    assert.ok(raceCompact.tableWidth<=950,'Single-mode Race It table must not span the full wide desktop');
+    assert.ok(raceCompact.gap>=0&&raceCompact.gap<=48,'Rider and time must remain visually close in Race It');
     const publicUI=await evaluate(cdp.send,sid,"(()=>{const hero=document.querySelector('#top');const stats=document.querySelector('.ssx-community-stats');const advanced=document.querySelector('#alpineAdvancedFilters');const about=document.querySelector('#aboutBtn');const sources=document.querySelector('#alpineSources');const visibleNames=Array.from(document.querySelectorAll('#topNav > .nav-btn, #topNav > .nav-group > .nav-btn')).filter(el=>getComputedStyle(el).display!=='none').map(el=>el.id);return {title:document.title,heroDesc:document.querySelector('#heroDesc').textContent,headline:document.querySelector('#heroTitle').textContent,statsBelowHero:stats===hero.nextElementSibling,recordsNav:!!document.querySelector('#topNav > #ssxNavRecords'),aboutInMainNav:about.parentElement.id==='topNav',nav:visibleNames,advancedClosed:!advanced.open,sourceInsideAdvanced:advanced.contains(sources),topNInsideAdvanced:advanced.contains(document.querySelector('#topN')),actionsInsideAdvanced:advanced.contains(document.querySelector('.toolbar-actions')),managementClosed:!document.querySelector('#ssxManagement').open,bridgeHidden:getComputedStyle(document.querySelector('#liveSyncChip')).display==='none',snapshotHidden:getComputedStyle(document.querySelector('.hero-kickers')).display==='none',summaryHidden:getComputedStyle(document.querySelector('#summary')).display==='none',creditsClosed:!document.querySelector('#ssxCredits').open,alpineText:document.body.innerText.includes('ALPINE EDITION')};})()");
     assert.equal(publicUI.title,'SSX 2012 · Recordes da Comunidade');
     assert.equal(publicUI.heroDesc,'Race It!, Trick It! e Survive It!: tempos, pontuações e provas em vídeo.');
@@ -185,9 +181,6 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     await evaluate(cdp.send,sid,"window.scrollTo({top:0,behavior:'instant'})");
     await sleep(400);
 
-    const ssxMobileDiagnostics=await evaluate(cdp.send,sid,`(()=>{const top=document.querySelector('.topbar'),nav=document.querySelector('#topNav'),buttons=[...document.querySelectorAll('button')].filter(b=>/menu|nav|hamburger|mobile/i.test(b.id+' '+b.className+' '+b.getAttribute('aria-label'))).slice(0,20).map(b=>b.outerHTML.slice(0,700));return {topbar:top?.outerHTML.slice(0,12500),nav:nav?.outerHTML.slice(0,12500),buttons,navStyle:nav?{display:getComputedStyle(nav).display,height:nav.getBoundingClientRect().height}:null}})()`);
-    console.log('SSX_MOBILE_NAV_DIAGNOSTICS',JSON.stringify(ssxMobileDiagnostics));
-
     const mobileHeroShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
     fs.writeFileSync(path.join(outDir,'ssx-v37-mobile-hero.png'),Buffer.from(mobileHeroShot.data,'base64'));
     const mobile=await evaluate(cdp.send,sid,"({cards:getComputedStyle(document.querySelector('#alpineMobileCards')).display,table:getComputedStyle(document.querySelector('.sheet-scroll')).display,records:document.querySelectorAll('#alpineMobileCards .alpine-card').length,mode:document.body.dataset.ssxMode,viewport:window.innerWidth})");
@@ -196,6 +189,23 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.ok(mobile.records>0);
     assert.equal(mobile.mode,'wings');
     assert.ok(mobile.viewport<=430);
+    const quickNav=await evaluate(cdp.send,sid,"(()=>{const quick=document.querySelector('#ssxMobileQuickNav');const brand=document.querySelector('.brand');const buttons=[...quick.querySelectorAll('button')];const menu=document.querySelector('#mobileMenuBtn');menu.click();const panel=document.querySelector('#ssxMobileMore');return {labels:buttons.map(b=>b.textContent),brandHidden:getComputedStyle(brand).display==='none',legacyNavHidden:getComputedStyle(document.querySelector('#topNav')).display==='none',opened:!panel.hidden,expanded:menu.getAttribute('aria-expanded'),managementClosed:!document.querySelector('#ssxMobileManagement').open,secondary:panel.querySelectorAll('.ssx-mobile-menu-action').length,visiblePanelHeight:Math.round(panel.getBoundingClientRect().height)}})()");
+    assert.deepEqual(quickNav.labels,['Recordes','Riders','Comunidade','Sobre']);
+    assert.equal(quickNav.brandHidden,true,'Mobile should not repeat the website name in the header');
+    assert.equal(quickNav.legacyNavHidden,true,'Legacy navigation must not draw an oversized overlay');
+    assert.equal(quickNav.opened,true,'Hamburger must reveal a real secondary menu');
+    assert.equal(quickNav.expanded,'true');
+    assert.equal(quickNav.managementClosed,true);
+    assert.equal(quickNav.secondary,7,'Settings, guide, filters, data sources and three management actions must remain available');
+    assert.ok(quickNav.visiblePanelHeight>50&&quickNav.visiblePanelHeight<600,'Secondary menu must be compact, not an empty oversized pane');
+    const menuChecks=await evaluate(cdp.send,sid,"(()=>{const panel=document.querySelector('#ssxMobileMore');const management=document.querySelector('#ssxMobileManagement');management.querySelector('summary').click();const managementOpen=management.open;const first=management.querySelector('button');const actionable=first.getBoundingClientRect().height>=40;document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));return {managementOpen,actionable,closed:panel.hidden,expanded:document.querySelector('#mobileMenuBtn').getAttribute('aria-expanded')}})()");
+    assert.equal(menuChecks.managementOpen,true,'Management submenu must open');
+    assert.equal(menuChecks.actionable,true,'Management actions must be visible, not hidden');
+    assert.equal(menuChecks.closed,true,'Escape must dismiss the mobile menu');
+    assert.equal(menuChecks.expanded,'false');
+    const publicButtons=await evaluate(cdp.send,sid,"(()=>{document.querySelector('#ssxMobileQuickNav [data-ssx-action=aboutBtn]').click();const about=document.querySelector('#aboutModal').getAttribute('aria-hidden');document.querySelector('[data-close=aboutModal]').click();document.querySelector('#ssxMobileQuickNav [data-ssx-action=ridersBtn]').click();const riderModal=document.querySelector('#ridersModal');return {about,riderModal:riderModal?.getAttribute('aria-hidden')||'not-found'}})()");
+    assert.equal(publicButtons.about,'false','About must open from the visible mobile shortcut');
+    assert.notEqual(publicButtons.riderModal,'not-found','Riders must retain the original content');
     const mobileViewActions=await evaluate(cdp.send,sid,"(()=>{const details=document.querySelector('#ssxViewOptions');details.querySelector('summary').click();const toggle=document.querySelector('#alpinePositionsToggle');const visible=details.open && !toggle.hidden && toggle.getBoundingClientRect().width>=40 && getComputedStyle(toggle).display!=='none';details.querySelector('summary').click();return {visible,closedAgain:!details.open};})()");
     assert.equal(mobileViewActions.visible,true,'Mobile Exibição disclosure must expose a usable positions action');
     assert.equal(mobileViewActions.closedAgain,true,'Mobile Exibição disclosure must close after use');

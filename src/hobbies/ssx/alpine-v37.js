@@ -42,6 +42,132 @@
     nl:{title:'SSX 2012 · Communityrecords',desc:'Race It!, Trick It! en Survive It!: tijden, scores en videobewijs.',records:'Records',riders:'Riders',about:'Over',more:'Meer opties',manage:'Site beheren',advanced:'Meer filters',sources:'Over de gegevens',guide:'Handleiding',credits:'Bronnen en credits',footer:'SSX 2012 Communityrecords · Onafhankelijk fanproject, niet verbonden met EA.',modes:'Kies een speltype',language:'Taal',display:'Weergave',eyebrow:'COMMUNITYRECORDS'},
     fr:{title:'SSX 2012 · Records communautaires',desc:'Race It!, Trick It! et Survive It! : temps, scores et preuves vidéo.',records:'Records',riders:'Riders',about:'À propos',more:'Plus d’options',manage:'Gérer le site',advanced:'Plus de filtres',sources:'À propos des données',guide:'Guide',credits:'Crédits et sources',footer:'Records SSX 2012 · Projet de fans indépendant, non affilié à EA.',modes:'Choisir un mode',language:'Langue',display:'Affichage',eyebrow:'RECORDS COMMUNAUTAIRES'}
   };
+  // Editorial navigation text is independent of legacy controls and follows the six supported languages.
+  const mobileCopy={
+    pt:{community:'Comunidade',settings:'Ajustes',submissions:'Submissões',data:'Dados',admin:'Admin',navigation:'Navegação principal'},
+    en:{community:'Community',settings:'Settings',submissions:'Submissions',data:'Data',admin:'Admin',navigation:'Main navigation'},
+    de:{community:'Community',settings:'Einstellungen',submissions:'Einreichungen',data:'Daten',admin:'Admin',navigation:'Hauptnavigation'},
+    es:{community:'Comunidad',settings:'Ajustes',submissions:'Envíos',data:'Datos',admin:'Admin',navigation:'Navegación principal'},
+    nl:{community:'Community',settings:'Instellingen',submissions:'Inzendingen',data:'Gegevens',admin:'Admin',navigation:'Hoofdnavigatie'},
+    fr:{community:'Communauté',settings:'Paramètres',submissions:'Soumissions',data:'Données',admin:'Admin',navigation:'Navigation principale'}
+  };
+  function refreshMobileNavigation(copy){
+    const translations=mobileCopy[language()]||mobileCopy.en;
+    const labels={
+      records:copy.records,riders:copy.riders,community:translations.community,
+      about:copy.about,more:copy.more,settings:translations.settings,
+      guide:copy.guide,advanced:copy.advanced,sources:copy.sources,
+      manage:copy.manage,submissions:translations.submissions,data:translations.data,admin:translations.admin
+    };
+    document.querySelectorAll('[data-ssx-mobile-label]').forEach(node=>{
+      const value=labels[node.dataset.ssxMobileLabel];
+      if(value)node.textContent=value;
+    });
+    const quick=$('ssxMobileQuickNav');
+    if(quick)quick.setAttribute('aria-label',translations.navigation);
+    const hamburger=$('mobileMenuBtn');
+    if(hamburger){
+      hamburger.setAttribute('aria-label',copy.more);
+      hamburger.setAttribute('title',copy.more);
+      const originalLabel=hamburger.querySelector('[data-i="navMenu"]');
+      if(originalLabel)originalLabel.textContent=copy.more;
+    }
+    $('ssxMobileMore')?.setAttribute('aria-label',copy.more);
+  }
+  function installMobileNavigation(){
+    if($('ssxMobileQuickNav'))return;
+    const header=document.querySelector('.topbar'),toggle=$('mobileMenuBtn');
+    if(!header||!toggle)return;
+    const quick=document.createElement('nav');
+    quick.id='ssxMobileQuickNav';
+    quick.className='ssx-mobile-quick-nav';
+    const panel=document.createElement('section');
+    panel.id='ssxMobileMore';
+    panel.className='ssx-mobile-more-panel';
+    panel.hidden=true;
+    const item=(key,action,className)=>{
+      const button=text('button','',className||'ssx-mobile-menu-action');
+      button.type='button';
+      button.dataset.ssxMobileLabel=key;
+      button.dataset.ssxAction=action;
+      return button;
+    };
+    for(const [key,action] of [
+      ['records','ssxNavRecords'],['riders','ridersBtn'],
+      ['community','communityMenuBtn'],['about','aboutBtn']
+    ])quick.append(item(key,action,'ssx-mobile-quick-link'));
+    const heading=text('h2','', 'ssx-mobile-more-heading');
+    heading.dataset.ssxMobileLabel='more';
+    panel.append(heading);
+    const normal=document.createElement('div');
+    normal.className='ssx-mobile-more-actions';
+    for(const [key,action] of [
+      ['settings','settingsBtn'],['guide','introBtn'],
+      ['advanced','advanced'],['sources','sources']
+    ])normal.append(item(key,action));
+    panel.append(normal);
+    const manage=document.createElement('details');
+    manage.id='ssxMobileManagement';
+    manage.className='ssx-mobile-more-management';
+    const summary=text('summary','');
+    summary.dataset.ssxMobileLabel='manage';
+    const managementActions=document.createElement('div');
+    managementActions.className='ssx-mobile-more-actions';
+    for(const [key,action] of [
+      ['submissions','submissionsBtn'],['data','dataBtn'],['admin','adminBtn']
+    ])managementActions.append(item(key,action));
+    manage.append(summary,managementActions);
+    panel.append(manage);
+    header.insertAdjacentElement('afterend',quick);
+    quick.insertAdjacentElement('afterend',panel);
+    toggle.setAttribute('aria-controls',panel.id);
+    toggle.setAttribute('aria-expanded','false');
+    const close=(restoreFocus=false)=>{
+      if(panel.hidden)return;
+      panel.hidden=true;
+      manage.open=false;
+      toggle.setAttribute('aria-expanded','false');
+      if(restoreFocus)toggle.focus();
+    };
+    toggle.addEventListener('click',event=>{
+      if(window.innerWidth>1024)return;
+      // The original mobile handler expands the hidden legacy desktop nav.
+      // Intercept only in mobile to keep that legacy panel completely inactive.
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const opening=panel.hidden;
+      panel.hidden=!opening;
+      toggle.setAttribute('aria-expanded',String(opening));
+      if(opening)panel.scrollIntoView({block:'nearest'});
+    },true);
+    const navigate=event=>{
+      const actionButton=event.target.closest('[data-ssx-action]');
+      if(!actionButton)return;
+      const action=actionButton.dataset.ssxAction;
+      close();
+      if(action==='advanced'||action==='sources'){
+        const details=$(action==='advanced'?'alpineAdvancedFilters':'alpineSources');
+        if(details){
+          if(action==='sources')$('alpineAdvancedFilters').open=true;
+          details.open=true;
+          details.scrollIntoView({block:'start',behavior:'smooth'});
+        }
+        return;
+      }
+      const target=$(action);
+      if(target)target.click();
+    };
+    quick.addEventListener('click',navigate);
+    panel.addEventListener('click',navigate);
+    document.addEventListener('keydown',event=>{
+      if(event.key==='Escape'&&!panel.hidden){event.preventDefault();close(true);}
+    });
+    document.addEventListener('click',event=>{
+      if(!panel.hidden&&!panel.contains(event.target)&&!toggle.contains(event.target))close();
+    });
+    window.addEventListener('resize',()=>{if(window.innerWidth>1024)close();});
+  }
+
   function applyPublicCopy() {
     const copy=publicCopy[language()]||publicCopy.en;
     document.title=copy.title;
@@ -72,6 +198,7 @@
     if(footer)footer.textContent=copy.footer;
     const eyebrow=document.querySelector('.hero-main > .eyebrow');
     if(eyebrow)eyebrow.textContent=copy.eyebrow;
+    refreshMobileNavigation(copy);
   }
   function buildPublicLayout(hero,toolbar,card,credits) {
     const nav=$('topNav'),riders=$('ridersBtn'),tools=$('toolsGroup'),about=$('aboutBtn');
@@ -160,6 +287,7 @@
     }
     const footer=document.querySelector('.footer');
     footer?.removeAttribute('data-i');
+    installMobileNavigation();
     applyPublicCopy();
   }
 
