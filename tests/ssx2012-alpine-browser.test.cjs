@@ -112,6 +112,9 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.ok(desktop.rows>10);
     assert.equal(desktop.admin,true);
     assert.equal(desktop.opaque,true);
+    const ssxDesktopDiagnostics=await evaluate(cdp.send,sid,`(()=>{const table=document.querySelector('#sheet'),heads=[...document.querySelectorAll('#sheet thead tr')].map(tr=>({html:tr.outerHTML.slice(0,1600),cellCount:tr.cells.length})),cells=[...document.querySelectorAll('#sheet tbody tr.rank-row')].slice(0,2).map(tr=>[...tr.cells].map(td=>({classes:td.className,display:getComputedStyle(td).display,width:Math.round(td.getBoundingClientRect().width)})));return {tableLayout:getComputedStyle(table).tableLayout,heads,cells}})()`);
+    console.log('SSX_DESKTOP_LAYOUT_DIAGNOSTICS',JSON.stringify(ssxDesktopDiagnostics));
+
 
     const publicUI=await evaluate(cdp.send,sid,"(()=>{const hero=document.querySelector('#top');const stats=document.querySelector('.ssx-community-stats');const advanced=document.querySelector('#alpineAdvancedFilters');const about=document.querySelector('#aboutBtn');const sources=document.querySelector('#alpineSources');const visibleNames=Array.from(document.querySelectorAll('#topNav > .nav-btn, #topNav > .nav-group > .nav-btn')).filter(el=>getComputedStyle(el).display!=='none').map(el=>el.id);return {title:document.title,heroDesc:document.querySelector('#heroDesc').textContent,headline:document.querySelector('#heroTitle').textContent,statsBelowHero:stats===hero.nextElementSibling,recordsNav:!!document.querySelector('#topNav > #ssxNavRecords'),aboutInMainNav:about.parentElement.id==='topNav',nav:visibleNames,advancedClosed:!advanced.open,sourceInsideAdvanced:advanced.contains(sources),topNInsideAdvanced:advanced.contains(document.querySelector('#topN')),actionsInsideAdvanced:advanced.contains(document.querySelector('.toolbar-actions')),managementClosed:!document.querySelector('#ssxManagement').open,bridgeHidden:getComputedStyle(document.querySelector('#liveSyncChip')).display==='none',snapshotHidden:getComputedStyle(document.querySelector('.hero-kickers')).display==='none',summaryHidden:getComputedStyle(document.querySelector('#summary')).display==='none',creditsClosed:!document.querySelector('#ssxCredits').open,alpineText:document.body.innerText.includes('ALPINE EDITION')};})()");
     assert.equal(publicUI.title,'SSX 2012 · Recordes da Comunidade');
@@ -178,6 +181,10 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     await cdp.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true},sid);
     await evaluate(cdp.send,sid,"window.scrollTo({top:0,behavior:'instant'})");
     await sleep(400);
+
+    const ssxMobileDiagnostics=await evaluate(cdp.send,sid,`(()=>{const top=document.querySelector('.topbar'),nav=document.querySelector('#topNav'),buttons=[...document.querySelectorAll('button')].filter(b=>/menu|nav|hamburger|mobile/i.test(b.id+' '+b.className+' '+b.getAttribute('aria-label'))).slice(0,20).map(b=>b.outerHTML.slice(0,700));return {topbar:top?.outerHTML.slice(0,12500),nav:nav?.outerHTML.slice(0,12500),buttons,navStyle:nav?{display:getComputedStyle(nav).display,height:nav.getBoundingClientRect().height}:null}})()`);
+    console.log('SSX_MOBILE_NAV_DIAGNOSTICS',JSON.stringify(ssxMobileDiagnostics));
+
     const mobileHeroShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
     fs.writeFileSync(path.join(outDir,'ssx-v37-mobile-hero.png'),Buffer.from(mobileHeroShot.data,'base64'));
     const mobile=await evaluate(cdp.send,sid,"({cards:getComputedStyle(document.querySelector('#alpineMobileCards')).display,table:getComputedStyle(document.querySelector('.sheet-scroll')).display,records:document.querySelectorAll('#alpineMobileCards .alpine-card').length,mode:document.body.dataset.ssxMode,viewport:window.innerWidth})");
