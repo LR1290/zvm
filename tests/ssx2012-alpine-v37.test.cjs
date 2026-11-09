@@ -207,6 +207,12 @@ test('public SSX UI has neutral brand/title and no Edition release promotion',()
   assert.match(js,/ssxTrackStep/);
   assert.match(css,/ssx-region-stepper/);
   assert.match(css,/ssx-region-search-box/);
+  assert.match(js,/function indexedTracks\(mode\)/);
+  assert.match(js,/function renderRegionTabs\(entries\)/);
+  assert.match(js,/mountSheetControls\(card,toolbar\)/);
+  assert.match(css,/ssx-sheet-region-tab/);
+  const indexBody=js.split('function indexedTracks(mode)')[1].split('function renderRegionTabs(entries)')[0];
+  assert.doesNotMatch(indexBody,/row\.hidden|row\.style\.display/, 'Index must not depend on legacy UI row visibility');
   assert.match(css,/ssx-region-metrics/);
   assert.match(css,/ssx-region-rank/);
   assert.match(js,/proof.setAttribute\('aria-label',copy\[4\]\)/);
