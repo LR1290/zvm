@@ -15,12 +15,13 @@
       &&Number.isInteger(row.mode)&&Number.isInteger(row.position)&&row.position>0
       &&safe(row.category)&&safe(row.rider)&&safe(row.score);
   }
+  function platformKey(value){return safe(value)||'__unspecified__';}
   function scope(rows,category,mode,platform){
     if(!Array.isArray(rows))throw new TypeError('Expected array of immutable source rows');
     if(!safe(category)||!Number.isInteger(mode)||!safe(platform))
       throw new TypeError('Category, numeric mode and platform are mandatory');
     return rows.filter(row=>valid(row)&&row.category===category
-      &&row.mode===mode&&safe(row.platform)===platform);
+      &&row.mode===mode&&platformKey(row.platform)===platform);
   }
   function calculate(rows,category,mode,platform){
     const selected=scope(rows,category,mode,platform);
@@ -82,5 +83,5 @@
       certifiedCurrent:false
     };
   }
-  return Object.freeze({scope,calculate});
+  return Object.freeze({scope,calculate,platformKey});
 });
