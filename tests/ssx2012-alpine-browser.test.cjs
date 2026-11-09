@@ -122,6 +122,13 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(interactions.managementOpened,true);
     assert.equal(interactions.adminExists,true);
     assert.equal(interactions.filterOpen,true);
+    const community=await evaluate(cdp.send,sid,"(()=>{const button=document.querySelector('#communityMenuBtn');button.click();const opened=document.querySelector('#introModal').getAttribute('aria-hidden');const header=document.querySelector('#introModal .modal-head h2').textContent;const sheetLabel=getComputedStyle(document.querySelector('#introModal [data-i=\"introFromSheet\"]')).display;document.querySelector('[data-close=\"introModal\"]').click();return {opened,header,sheetLabel,gearLabel:!!document.querySelector('#toolsMenuBtn [data-i=\"navTools\"]'),gearAria:document.querySelector('#toolsMenuBtn').getAttribute('aria-label'),snow:getComputedStyle(document.querySelector('#snowLayer')).display};})()");
+    assert.equal(community.opened,'false','Community should directly open player guide');
+    assert.doesNotMatch(community.header,/INTRO/i);
+    assert.equal(community.sheetLabel,'none');
+    assert.equal(community.gearLabel,false,'Settings should use icon with accessible label, not a long toolbar item');
+    assert.equal(community.gearAria,'Mais opções');
+    assert.equal(community.snow,'none','Decorative snow animation should not distract from original game artwork');
 
     const art=await evaluate(cdp.send,sid,"(()=>{const hero=getComputedStyle(document.querySelector('.hero'),'::before').backgroundImage;const cards=Array.from(document.querySelectorAll('[data-alpine-group]')).map(el=>({mode:el.dataset.alpineGroup,source:getComputedStyle(el).getPropertyValue('--alpine-art')}));const footer=document.querySelector('#alpineArtCredits');return{hero,cards,notice:footer?.textContent||'',links:footer?.querySelectorAll('a').length||0};})()");
     assert.match(art.hero,/\/hobbies\/ssx\/media\/v37\/hero\.jpg/);
