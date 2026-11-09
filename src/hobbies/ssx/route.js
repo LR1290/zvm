@@ -11,6 +11,71 @@ const SSX_V37_PREVIEW_ROUTE = '/hobbies/ssx/ssx2012-alpine-v37-preview';
 const SSX_BUNDLE_SHA256 = 'f80d0760eeb18042a081279f27da96e05dc5f7ed4362bc72e6a4739043897a5a';
 const SHA256 = 'd99aa1caaf9e9833ff85f899119043cbddaca66ce9bc9aa5f256990d331e42f0';
 const PARTS = 10;
+
+// Read-only locally hosted SSX art: no browser hotlinking or arbitrary proxy URLs.
+// All assets are checksummed original publisher/gameplay JPEGs from the documented
+// non-commercial fan-site source manifest. No third-party trackers or scripts.
+const SSX_MEDIA_BASE = '/hobbies/ssx/media/v37/';
+const SSX_MEDIA_CHECKSUMS = Object.freeze({
+  'hero.jpg':'3c2c97128b73c332a46a57692bbd5c8f3f0cbea04b430e91c814a7e4dd867b77',
+  'riders.jpg':'18bacc3cc35437ad4c2ebbfa8a7a00bcb1549a76dfd0e096f8b243b4f24daa3d',
+  'race.jpg':'d5534816c1594e79a4129deb9117bb885978f095a4d6d99fecc81b069abbb9af',
+  'trick.jpg':'365cc65d952994c21515676954c466747e3f11fea6cdc3e73e092c79d38137d2',
+  'survive.jpg':'50f71d71764261dde17ef03ff38f3a700c214e7a3cfa59d65c063f4b67c1bd6e'
+});
+const mediaCache = new Map();
+
+function serveSSXMedia(req,res,pathname) {
+  if (!pathname.startsWith(SSX_MEDIA_BASE)) return false;
+  const filename = pathname.slice(SSX_MEDIA_BASE.length);
+  const expected = Object.prototype.hasOwnProperty.call(SSX_MEDIA_CHECKSUMS, filename)
+    ? SSX_MEDIA_CHECKSUMS[filename] : null;
+  if (!expected) return false;
+  const method=String(req.method||'').toUpperCase();
+  if(method!=='GET'&&method!=='HEAD'){
+    res.writeHead(405,{Allow:'GET, HEAD','Cache-Control':'no-store','X-Robots-Tag':'noindex'});
+    res.end();
+    return true;
+  }
+  let data=mediaCache.get(filename);
+  if(!data){
+    try {
+      const candidate=fs.readFileSync(path.join(__dirname,'media','v37',filename));
+      if(candidate.length<1024 || candidate.length>500000 || candidate.subarray(0,3).toString('hex')!=='ffd8ff'
+        || crypto.createHash('sha256').update(candidate).digest('hex')!==expected) {
+        throw new Error('SSX_MEDIA_HASH_OR_FORMAT_MISMATCH');
+      }
+      data=candidate;mediaCache.set(filename,data);
+    } catch(cause){
+      console.error('[SSX-HOBBY] Artwork unavailable; rankings unaffected:',cause.code||cause.message);
+      res.writeHead(503,{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store','X-Robots-Tag':'noindex'});
+      res.end(method==='HEAD'?undefined:'Media unavailable');
+      return true;
+    }
+  }
+  // An opaque sandboxed HTML document is cross-origin even on the same domain.
+  // CORP cross-origin is safe here because these five images are non-authenticated.
+  const etag='"ssx37-media-'+expected.slice(0,24)+'"';
+  const headers={
+    'Content-Type':'image/jpeg',
+    'Content-Length':data.length,
+    'Cache-Control':'public, max-age=86400',
+    'ETag':etag,
+    'X-Content-Type-Options':'nosniff',
+    'X-Robots-Tag':'noindex, nofollow, noarchive',
+    'Cross-Origin-Resource-Policy':'cross-origin',
+    'Access-Control-Allow-Origin':'*',
+    'Referrer-Policy':'no-referrer',
+    'Content-Security-Policy':"default-src 'none'; object-src 'none'; frame-ancestors 'none'"
+  };
+  if(String(req.headers['if-none-match']||'').trim()===etag){
+    delete headers['Content-Length'];
+    res.writeHead(304,headers);res.end();return true;
+  }
+  res.writeHead(200,headers);
+  res.end(method==='HEAD'?undefined:data);
+  return true;
+}
 let content = null;
 let packed = null;
 let error = false;
@@ -103,6 +168,7 @@ function bodyFor(encoding) {
 }
 
 function serveSSX2012(req, res, pathname) {
+  if(serveSSXMedia(req,res,pathname))return true;
   const isPreview = pathname === SSX_V37_PREVIEW_ROUTE || pathname === SSX_V37_PREVIEW_ROUTE + '/';
   if (pathname !== SSX_ROUTE && pathname !== SSX_ROUTE + '/' && !isPreview) return false;
   const method = String(req.method || '').toUpperCase();
@@ -165,4 +231,4 @@ function serveSSX2012(req, res, pathname) {
   return true;
 }
 
-module.exports = { serveSSX2012, SSX_ROUTE, SSX_V37_PREVIEW_ROUTE, SHA256 };
+module.exports = { serveSSX2012, serveSSXMedia, SSX_ROUTE, SSX_MEDIA_BASE, SSX_V37_PREVIEW_ROUTE, SHA256 };
