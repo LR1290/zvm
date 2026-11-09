@@ -152,6 +152,44 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(explore.mainMode,'board');
     assert.equal(explore.mainScore,'01:35.99','Opening archived categories cannot change public current rankings');
 
+    // R66: every historical category reuses only the flag asset already
+    // attributed to that exact rider in the frozen original v36 catalogue.
+    const archiveFlags=await evaluate(cdp.send,sid,String.raw`(()=>{
+      const samples=[];
+      for(const group of ['level','android','dev','boost','challenge']){
+        document.querySelector('#ssxSpecialTabs [data-ssx-special-group="'+group+'"]').click();
+        const card=document.querySelector('#ssxSpecialResults .ssx-special-record');
+        const rider=card?.querySelector('.ssx-special-rider-name')?.textContent.trim()||'';
+        const expectedAsset=RIDER_FLAGS[riderKey(rider)];
+        const expected=expectedAsset?FLAG_CODES[expectedAsset]||null:null;
+        const image=card?.querySelector('img.ssx-special-rider-flag');
+        samples.push({group,rider,expected,actual:image?.alt||null,source:image?.getAttribute('src')||null});
+      }
+      document.querySelector('#ssxSpecialViews [data-ssx-special-view="leaders"]').click();
+      const leader=[...document.querySelectorAll('#ssxSpecialResults .ssx-special-leader')]
+        .map(card=>{const name=card.querySelector('.ssx-special-leader-rider .ssx-special-rider-name')?.textContent.trim()||'';
+          const asset=RIDER_FLAGS[riderKey(name)],image=card.querySelector('.ssx-special-leader-rider img.ssx-special-rider-flag');
+          return{name,expected:asset?FLAG_CODES[asset]||null:null,actual:image?.alt||null,source:image?.getAttribute('src')||null};});
+      const podium=[...document.querySelectorAll('#ssxSpecialPodium .ssx-special-medal-card')]
+        .map(card=>{const name=card.dataset.ssxName,asset=RIDER_FLAGS[riderKey(name)];
+          const image=card.querySelector('.ssx-special-medal-rider img.ssx-special-rider-flag');
+          return{name,expected:asset?FLAG_CODES[asset]||null:null,actual:image?.alt||null,source:image?.getAttribute('src')||null};});
+      document.querySelector('#ssxSpecialViews [data-ssx-special-view="records"]').click();
+      return{samples,leader,podium,mainScore:document.querySelector('.ssx-region-detail .ssx-region-score')?.textContent};
+    })()`);
+    console.log('SSX_ARCHIVE_FLAG_PROVENANCE',JSON.stringify(archiveFlags));
+    assert.deepEqual(archiveFlags.samples.map(x=>x.group),['level','android','dev','boost','challenge']);
+    const flagItems=[...archiveFlags.samples,...archiveFlags.leader,...archiveFlags.podium];
+    assert.ok(archiveFlags.samples.filter(x=>x.expected).length>=3,'Flags should be present in several archived category modes');
+    assert.ok(archiveFlags.leader.length>0&&archiveFlags.podium.length>0,'Archive leader and podium flags need live UI coverage');
+    for(const item of flagItems){
+      assert.equal(item.actual,item.expected,'Archived flag must match original v36 source: '+item.name+' / '+item.group);
+      if(item.expected)assert.match(item.source,/^blob:/,'Flags must reuse the original locally cached image, not remote calls');
+      else assert.equal(item.source,null,'Unknown country must not acquire an invented flag');
+    }
+    assert.equal(archiveFlags.mainScore,'01:35.99','Restoring flags must not mutate main rankings');
+
+
     // Stage 4: count distinct archived #1 tracks, not first N rows, and never
     // merge nickname spellings across platforms/categories without in-game IDs.
     const historicalLeaders=await evaluate(cdp.send,sid,"(()=>{const tab=g=>document.querySelector('#ssxSpecialTabs [data-ssx-special-group='+g+']').click();const pick=(id,v)=>{const select=document.querySelector(id);select.value=String(v);select.dispatchEvent(new Event('change',{bubbles:true}));};const view=()=>document.querySelector('#ssxSpecialViews [data-ssx-special-view=leaders]').click();const state=()=>{const panel=document.querySelector('#ssxSpecialPodium'),cards=[...document.querySelectorAll('#ssxSpecialResults [data-ssx-leader-track]')],medals=[...panel.querySelectorAll('.ssx-special-medal-card')],aud=document.querySelector('#ssxSpecialRankingAudit');return{category:panel.dataset.ssxCategory,mode:Number(panel.dataset.ssxMode),platform:panel.dataset.ssxPlatform,podium:medals.map(x=>({name:x.dataset.ssxName,wins:Number(x.dataset.ssxWins),proofs:Number(x.dataset.ssxProofs)})),leaders:cards.length,uniqueTracks:new Set(cards.map(x=>x.dataset.ssxLeaderTrack)).size,allFirst:cards.every(x=>x.dataset.ssxLeaderPosition==='1'),names:cards.slice(0,5).map(x=>x.dataset.ssxLeaderRider),conflicts:Number(document.querySelector('#ssxSpecialResults').dataset.ssxArchiveConflicts),view:document.querySelector('#ssxSpecialViews [data-ssx-special-view=leaders]').getAttribute('aria-pressed'),note:panel.textContent.includes('não conciliada por ID Ozmonet'),snapshot:document.querySelector('#ssxSpecialNote').textContent.includes('2026-08-22'),platformOptions:[...document.querySelector('#ssxSpecialPlatform').options].map(x=>x.value),trackHidden:document.querySelector('#ssxSpecialTrack').closest('label').hidden,sourceMain:document.querySelector('.ssx-region-detail .ssx-region-score')?.textContent}};view();const challenge=state();tab('level');pick('#ssxSpecialLevel','Level 9');const lowBoard=state();pick('#ssxSpecialMode',1);const lowWings=state();tab('android');pick('#ssxSpecialMode',2);const android=state();tab('dev');const dev=state();tab('boost');const boost=state();const podiumButton=document.querySelector('#ssxSpecialPodium [data-ssx-podium-rider]');let selected={};if(podiumButton){const rider=podiumButton.dataset.ssxPodiumRider;podiumButton.click();const filtered=[...document.querySelectorAll('#ssxSpecialResults [data-ssx-leader-track]')];selected={rider,count:filtered.length,matches:filtered.every(x=>x.dataset.ssxLeaderRider===rider),clear:!!document.querySelector('[data-ssx-clear-podium-rider]')};document.querySelector('[data-ssx-clear-podium-rider]').click();selected.restored=document.querySelectorAll('#ssxSpecialResults [data-ssx-leader-track]').length===boost.leaders;}tab('challenge');const challengeAgain=state();document.querySelector('#ssxSpecialViews [data-ssx-special-view=records]').click();return{challenge,lowBoard,lowWings,android,dev,boost,selected,challengeAgain,recordsAgain:document.querySelector('#ssxSpecialViews [data-ssx-special-view=records]').getAttribute('aria-pressed'),mainScore:document.querySelector('.ssx-region-detail .ssx-region-score')?.textContent,mainMode:document.body.dataset.ssxMode}})()");

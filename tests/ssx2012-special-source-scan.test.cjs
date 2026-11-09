@@ -128,3 +128,24 @@ test('archived #1 and historical Top 3 coverage is reconstructed without cross-c
     groups:summary
   }));
 });
+
+
+test('original archive country flags have verifiable direct rider mappings without invented nationalities',()=>{
+  const g=literal('G'),sng=literal('SNG');
+  const mapped=literal('RIDER_FLAGS'),codes=literal('FLAG_CODES');
+  assert.equal(Object.keys(mapped).length,349,'The frozen v36 rider flag catalogue must not drift');
+  assert.equal(Object.keys(codes).length,25);
+  let available=0,unavailable=0;
+  for(const source of [...g.filter(row=>row[0]!=='Global Top 16'),...sng]){
+    const name=String(source[4]||'').trim().toLocaleLowerCase('en');
+    const asset=mapped[name];
+    if(asset){
+      assert.match(asset,/^image[0-9]+\.png$/);
+      assert.match(String(codes[asset]||''),/^[A-Z]{2}(?:-[A-Z]{2,3})?$/,'Country code absent for source asset '+asset);
+      available++;
+    }else unavailable++;
+  }
+  assert.equal(available,2150,'Only original mappings may yield a special-category flag');
+  assert.equal(unavailable,55,'Unmapped riders must remain without an invented flag');
+  assert.equal(available+unavailable,2205);
+});

@@ -96,6 +96,34 @@
     node.textContent=content;
     return node;
   };
+  // Original v36's verified rider->flag assets and cached Blob URLs are the
+  // only allowed source. Never infer nationality from gamertags or platforms.
+  function archiveFlagForRider(name){
+    if(typeof prefs==='undefined'||!prefs.showFlags
+      ||typeof RIDER_FLAGS==='undefined'||typeof FLAG_ASSETS==='undefined'
+      ||typeof FLAG_CODES==='undefined'||typeof riderKey!=='function'
+      ||typeof flagUrl!=='function')return null;
+    const asset=RIDER_FLAGS[riderKey(name)];
+    if(!asset||!Object.prototype.hasOwnProperty.call(FLAG_ASSETS,asset))return null;
+    const code=String(FLAG_CODES[asset]||'').toUpperCase();
+    if(!/^[A-Z]{2}(?:-[A-Z]{2,3})?$/.test(code))return null;
+    const url=flagUrl(asset);
+    if(!url)return null;
+    const image=el('img','','rider-flag ssx-special-rider-flag');
+    image.src=url;
+    image.alt=code;
+    image.title=code;
+    image.decoding='async';
+    image.loading='lazy';
+    return image;
+  }
+  function archiveRiderLabel(name,tag='span'){
+    const label=el(tag,'','ssx-special-rider-label');
+    const flag=archiveFlagForRider(name);
+    if(flag)label.append(flag);
+    label.append(el('span',name,'ssx-special-rider-name'));
+    return label;
+  }
   const panel=el('section','','ssx-special-archive');
   panel.id='ssxSpecialArchive';
   panel.dataset.snapshot=captured;
@@ -239,7 +267,8 @@
       card.dataset.ssxProofs=String(holder.proofs);
       const medal=el('span',['🥇','🥈','🥉'][i],'ssx-special-medal');
       medal.setAttribute('aria-hidden','true');
-      const riderButton=el('button',holder.name,'ssx-special-medal-rider');
+      const riderButton=el('button','','ssx-special-medal-rider');
+      riderButton.append(archiveRiderLabel(holder.name));
       riderButton.type='button';
       riderButton.dataset.ssxPodiumRider=holder.name;
       riderButton.setAttribute('aria-pressed',String(selectedRider===holder.name));
@@ -285,7 +314,7 @@
       identity.append(el('strong',row.track),el('small',(row.region||'')+' · '+(row.mountain||'')));
       const score=el('strong',row.score,'ssx-special-score');
       const rider=el('div','','ssx-special-leader-rider');
-      rider.append(el('strong',row.rider),el('small',row.platform||c.platform));
+      rider.append(archiveRiderLabel(row.rider,'strong'),el('small',row.platform||c.platform));
       const reference=el('small',c.source+': '+[row.sheet,row.cell].filter(Boolean).join(' · '),'ssx-special-ref');
       card.append(rank,identity,score,rider,sourceLink(row,c),reference);
       list.append(card);
@@ -325,7 +354,7 @@
       card.dataset.archivedTrack=String(row.trackId);
       const rank=el('span','#'+row.position,'ssx-special-rank');
       const identity=el('div','','ssx-special-identity');
-      identity.append(el('strong',row.rider),el('small',row.platform||c.platform));
+      identity.append(archiveRiderLabel(row.rider,'strong'),el('small',row.platform||c.platform));
       const result=el('strong',row.score,'ssx-special-score');
       const reference=el('small',c.source+': '+[row.sheet,row.cell].filter(Boolean).join(' · '),'ssx-special-ref');
       const evidence=el('div','','ssx-special-evidence');

@@ -2943,3 +2943,38 @@ html[data-theme="light"] body.ssx-alpine-v37 .ssx-special-view-btn[aria-pressed=
   body.ssx-alpine-v37 .ssx-special-view-btn{transition:none;}
 }
 
+/* R66: original v36 rider flags in archived Level/Android/DEV/Survive cards.
+   This augments display only; the source data and nationalities are untouched. */
+body.ssx-alpine-v37 .ssx-special-rider-label{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  max-width:100%;
+  min-width:0;
+  vertical-align:middle;
+}
+body.ssx-alpine-v37 .ssx-special-rider-name{
+  min-width:0;
+  overflow-wrap:anywhere;
+}
+body.ssx-alpine-v37 img.ssx-special-rider-flag{
+  display:block;
+  width:23px;
+  height:16px;
+  min-width:23px;
+  flex:none;
+  object-fit:cover;
+  border:1px solid rgba(195,217,231,.45);
+  border-radius:2px;
+}
+body.ssx-alpine-v37 .ssx-special-medal-rider .ssx-special-rider-label{
+  max-width:100%;
+}
+@media(max-width:390px){
+  body.ssx-alpine-v37 .ssx-special-rider-label{gap:5px;}
+  body.ssx-alpine-v37 img.ssx-special-rider-flag{
+    width:20px;
+    height:14px;
+    min-width:20px;
+  }
+}
