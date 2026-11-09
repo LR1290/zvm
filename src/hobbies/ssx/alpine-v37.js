@@ -755,7 +755,11 @@
     fr:{share:'Partager la piste',copied:'Lien copié !',manual:'Sélectionnez et copiez ce lien :',failed:'Copiez le lien de la piste :',title:'Record SSX 2012'}
   };
   function trackShareUrl(trackKey){
-    const target=new URL(location.pathname,location.href);
+    const target=new URL(location.href);
+    // Previews must always share the canonical public SSX route, never a
+    // development/preview route or a URL with unrelated session parameters.
+    target.pathname=target.pathname.replace(/\/ssx2012-alpine-v37-preview$/,'/ssx2012');
+    target.search='';
     target.searchParams.set('mode',state.mode);
     target.searchParams.set('ssxTrack',trackKey);
     target.hash='ssxRegionBrowser';
