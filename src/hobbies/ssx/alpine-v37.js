@@ -834,6 +834,9 @@
             openedRegions.add(match.region);
           }
         }
+        // The legacy data engine also rewrites the hero caption on filter changes.
+        // Keep editorial copy stable while reusing its real filtering controls.
+        applyPublicCopy();
         scheduleCards();
       });
     }
