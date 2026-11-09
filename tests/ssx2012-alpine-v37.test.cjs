@@ -89,3 +89,31 @@ test('v37 preview supports HEAD, gzip, brotli and encoded ETags independently',(
   assert.deepEqual(zlib.gunzipSync(gzip.body),identity.body);
   assert.deepEqual(zlib.brotliDecompressSync(br.body),identity.body);
 }));
+
+
+test('v37.2 uses original game artwork from allowlisted verified sources with a documented fan-site policy',()=>{
+  const dir=path.join(__dirname,'../src/hobbies/ssx');
+  const css=fs.readFileSync(path.join(dir,'alpine-v37.css'),'utf8');
+  const js=fs.readFileSync(path.join(dir,'alpine-v37.js'),'utf8');
+  const manifest=JSON.parse(fs.readFileSync(path.join(dir,'artwork-sources-v37.json'),'utf8'));
+  assert.equal(manifest.noncommercial,true);
+  assert.equal(manifest.assets.length,5);
+  assert.equal(new Set(manifest.assets.map(item=>item.id)).size,5);
+  assert.deepEqual(manifest.assets.map(x=>x.id).sort(),['hero','race','riders','survive','trick']);
+  assert.match(manifest.eaContentPolicy,/^https:\/\/help\.ea\.com\//);
+  assert.match(css,/prefers-reduced-data:reduce/);
+  assert.match(css,/alpine-data-saver/);
+  assert.match(js,/navigator\.connection\?\.saveData/);
+  assert.match(js,/alpineArtCredits/);
+  assert.equal((js.match(/artDisclaimer:/g)||[]).length,6,'six language variants must include the EA non-affiliation notice');
+  for(const asset of manifest.assets){
+    const url=new URL(asset.fileUrl);
+    assert.equal(url.protocol,'https:');
+    assert.ok(['media.contentapi.ea.com','jogorama.com.br'].includes(url.hostname));
+    assert.equal(asset.verifiedHttpStatus,200);
+    assert.equal(css.includes(asset.fileUrl),true,'Artwork missing CSS: '+asset.id);
+    assert.match(asset.sourcePage,/^https:\/\//);
+  }
+  assert.doesNotMatch(css,/!important/);
+  assert.doesNotMatch(js,/fetch\s*\(|XMLHttpRequest|document\.cookie|WebSocket/);
+});
