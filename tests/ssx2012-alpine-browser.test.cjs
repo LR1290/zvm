@@ -627,7 +627,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     console.log('SSX_ID_CURATION_SUMMARY',JSON.stringify(sourceCurated));
     const curatedCategories=[['Level 1',59],['Level 3',20],['Level 6',67],['Level 7',23],['Level 8',8],['Level 9',30],['No Boost',25],['Android',29],['DEV Tracks',8],['Global Top 16',73]];
     for(const [category,expected] of curatedCategories){
-      await evaluate(cdp.send,sid,"(()=>{document.querySelector('#ssxCollectionsRail [data-ssx-collection=\"'+CATEGORY+'\"]').click()})()".replace('CATEGORY',category));
+      await evaluate(cdp.send,sid,"[...document.querySelectorAll('#ssxCollectionsRail [data-ssx-collection]')].find(x=>x.dataset.ssxCollection==="+JSON.stringify(category)+").click()");
       await sleep(180);
       const selection=await evaluate(cdp.send,sid,"(()=>({category:document.querySelector('#category').value,source:document.querySelector('#sourceSeg [data-source].active')?.dataset.source,active:document.querySelector('#ssxCollectionsRail [aria-pressed=true]')?.dataset.ssxCollection,count:Number(document.querySelector('#ssxSheetRegions [data-ssx-region=all] .ssx-sheet-region-count')?.textContent||0),tracks:document.querySelectorAll('#ssxRegionBrowser .ssx-track-choice').length,leader:document.querySelector('#ssxLeadersToggle')?.getAttribute('aria-pressed'),progress:document.querySelector('#renderProgress')?.hidden}))()");
       assert.equal(selection.source,'google',category+' must use Google Sheet scores');
