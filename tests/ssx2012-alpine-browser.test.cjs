@@ -100,15 +100,18 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(desktop.admin,true);
     assert.equal(desktop.opaque,true);
     const art=await evaluate(cdp.send,sid,"(()=>{const hero=getComputedStyle(document.querySelector('.hero'),'::before').backgroundImage;const cards=Array.from(document.querySelectorAll('[data-alpine-group]')).map(el=>({mode:el.dataset.alpineGroup,source:getComputedStyle(el).getPropertyValue('--alpine-art')}));const footer=document.querySelector('#alpineArtCredits');return{hero,cards,notice:footer?.textContent||'',links:footer?.querySelectorAll('a').length||0};})()");
-    assert.match(art.hero,/ssx-featured-image\.jpg/);
+    assert.match(art.hero,/\/hobbies\/ssx\/media\/v37\/hero\.jpg/);
     assert.equal(art.cards.length,4);
     for(const card of art.cards)assert.match(card.source,/\.jpg/,'Original SSX image missing for '+card.mode);
     assert.match(art.notice,/não é endossado pela EA/i);
     assert.equal(art.links,3);
     // External media are decoration; URL health is independently verified by
     // content-source audit, while intermittent CDN failure must never block rankings.
-    const imgHealth=await evaluate(cdp.send,sid,"(async()=>{const urls=['https://media.contentapi.ea.com/content/dam/eacom/en-us/migrated-images/2016/10/ssx-featured-image.jpg.adapt.crop16x9.1023w.jpg','https://media.contentapi.ea.com/content/dam/gin/images/2017/01/ssx-2012-keyart-min.jpg','https://jogorama.com.br/arquivos/telas/SSX-2012/15.jpg','https://jogorama.com.br/arquivos/telas/SSX-2012/20.jpg','https://jogorama.com.br/arquivos/telas/SSX-2012/42.jpg'];return await Promise.all(urls.map(url=>new Promise(resolve=>{const image=new Image();let done=false;const finish=state=>{if(done)return;done=true;resolve({source:new URL(url).hostname,status:state})};image.onload=()=>finish('loaded');image.onerror=()=>finish('blocked');setTimeout(()=>finish('timeout'),5000);image.referrerPolicy='no-referrer';image.src=url;})));})()");
-    console.log('SSX_V37_IMAGE_HEALTH',JSON.stringify(imgHealth));
+    const imgHealth=await evaluate(cdp.send,sid,"(async()=>{const ids=['hero','riders','race','trick','survive'];return await Promise.all(ids.map(id=>new Promise(resolve=>{const image=new Image();let done=false;const finish=state=>{if(done)return;done=true;resolve({id,status:state,width:image.naturalWidth,height:image.naturalHeight})};image.onload=()=>finish('loaded');image.onerror=()=>finish('blocked');setTimeout(()=>finish('timeout'),2500);image.referrerPolicy='no-referrer';image.src='/hobbies/ssx/media/v37/'+id+'.jpg';})));})()");
+    assert.equal(imgHealth.length,5);
+    assert.ok(imgHealth.every(item=>item.status==='loaded'&&item.width>0&&item.height>0),
+      'All original SSX assets must load locally from opaque-origin preview: '+JSON.stringify(imgHealth));
+    console.log('SSX_V37_LOCAL_IMAGE_HEALTH',JSON.stringify(imgHealth));
     await sleep(750);
     const trick=await evaluate(cdp.send,sid,"(()=>{document.querySelector('[data-alpine-group=\"trick\"]').click();return{mode:document.body.dataset.ssxMode,board:getComputedStyle(document.querySelector('#sheet td.mode-board')).display,trick:getComputedStyle(document.querySelector('#sheet td.mode-trick')).display};})()");
     assert.equal(trick.mode,'trick');
