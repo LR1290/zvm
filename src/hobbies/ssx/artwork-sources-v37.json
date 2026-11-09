@@ -1,0 +1,88 @@
+{
+  "project": "SSX 2012 Community Records — Alpine Edition v37.2 (fan project)",
+  "purpose": "decorative art only; all ranking data and evidence remain from existing v36 dataset",
+  "noncommercial": true,
+  "ownerNotice": "SSX, original SSX artwork, screenshots and characters © Electronic Arts and their respective licensors. This project is not endorsed by or affiliated with EA or its licensors.",
+  "eaContentPolicy": "https://help.ea.com/pt-br/articles/security-and-rules/ea-content-policy/",
+  "notes": [
+    "The original EA media images are linked from EA's image CDN; the game screenshots are the original game's gameplay images but mirrored by Jogorama, not served from EA's servers.",
+    "This is a private, non-commercial preview. Do not use these images in a commercial ZVM page, ZVM sales presentation or combined brand artwork.",
+    "No game binaries, extracted assets, ripped music or copyrighted texts are redistributed.",
+    "The five original JPEGs are hosted locally on the preview-only SSX route and are decorative; gradients and the full readable UI remain available if media fails or users enable reduced data.",
+    "The EA media policy does not grant permission to use third-party licensed talent/music/content. Curated photos are screenshots only, no music.",
+    "Source URL health was confirmed HTTP 200 on 2026-11-08; all five verified JPEG bytes were copied into the private SSX preview branch and hash-pinned. Public release remains subject to the non-commercial fan project scope and EA policy.",
+    "The official EA site-wide featured graphic was rejected during visual QA because it showed EA branding rather than the SSX game; the hero now uses the SSX 2012-specific EA landscape artwork."
+  ],
+  "assets": [
+    {
+      "id": "hero",
+      "type": "original SSX 2012 landscape key art (official EA)",
+      "copyrightOwner": "Electronic Arts",
+      "fileUrl": "https://media.contentapi.ea.com/content/dam/gin/images/2017/01/ssx-2012-keyart-min.jpg.adapt.crop16x9.1023w.jpg",
+      "sourcePage": "https://www.ea.com/games/ssx",
+      "hosting": "official EA CDN",
+      "usage": "Hero background",
+      "verifiedHttpStatus": 200,
+      "localPath": "/hobbies/ssx/media/v37/hero.jpg",
+      "localSha256": "99cf7fcd0ef11f126d0dc99a0348e23102b8cc61b3bd10b41045865709e907e0",
+      "localSizeBytes": 157023,
+      "delivery": "hash-verified local JPEG via same SSX project, no hotlink"
+    },
+    {
+      "id": "riders",
+      "type": "original SSX 2012 key art",
+      "copyrightOwner": "Electronic Arts",
+      "fileUrl": "https://media.contentapi.ea.com/content/dam/gin/images/2017/01/ssx-2012-keyart-min.jpg.adapt.crop1x1.512w.jpg",
+      "sourcePage": "https://www.ea.com/games/ssx",
+      "hosting": "official EA CDN",
+      "usage": "Riders card background",
+      "verifiedHttpStatus": 200,
+      "localPath": "/hobbies/ssx/media/v37/riders.jpg",
+      "localSha256": "18bacc3cc35437ad4c2ebbfa8a7a00bcb1549a76dfd0e096f8b243b4f24daa3d",
+      "localSizeBytes": 71452,
+      "delivery": "hash-verified local JPEG via same SSX project, no hotlink"
+    },
+    {
+      "id": "race",
+      "type": "actual SSX 2012 gameplay screenshot",
+      "copyrightOwner": "Electronic Arts / applicable licensors",
+      "fileUrl": "https://jogorama.com.br/arquivos/telas/SSX-2012/15.jpg",
+      "sourcePage": "https://jogorama.com.br/jogos/xbox-360/5424/ssx-2012/",
+      "hosting": "Jogorama archive, not EA",
+      "usage": "Race It! background",
+      "verifiedHttpStatus": 200,
+      "localPath": "/hobbies/ssx/media/v37/race.jpg",
+      "localSha256": "d5534816c1594e79a4129deb9117bb885978f095a4d6d99fecc81b069abbb9af",
+      "localSizeBytes": 193771,
+      "delivery": "hash-verified local JPEG via same SSX project, no hotlink"
+    },
+    {
+      "id": "trick",
+      "type": "actual SSX 2012 gameplay screenshot",
+      "copyrightOwner": "Electronic Arts / applicable licensors",
+      "fileUrl": "https://jogorama.com.br/arquivos/telas/SSX-2012/20.jpg",
+      "sourcePage": "https://jogorama.com.br/jogos/xbox-360/5424/ssx-2012/",
+      "hosting": "Jogorama archive, not EA",
+      "usage": "Trick It! background",
+      "verifiedHttpStatus": 200,
+      "localPath": "/hobbies/ssx/media/v37/trick.jpg",
+      "localSha256": "365cc65d952994c21515676954c466747e3f11fea6cdc3e73e092c79d38137d2",
+      "localSizeBytes": 92780,
+      "delivery": "hash-verified local JPEG via same SSX project, no hotlink"
+    },
+    {
+      "id": "survive",
+      "type": "actual SSX 2012 gameplay screenshot",
+      "copyrightOwner": "Electronic Arts / applicable licensors",
+      "fileUrl": "https://jogorama.com.br/arquivos/telas/SSX-2012/42.jpg",
+      "sourcePage": "https://jogorama.com.br/jogos/xbox-360/5424/ssx-2012/",
+      "hosting": "Jogorama archive, not EA",
+      "usage": "Survive It! background",
+      "verifiedHttpStatus": 200,
+      "localPath": "/hobbies/ssx/media/v37/survive.jpg",
+      "localSha256": "50f71d71764261dde17ef03ff38f3a700c214e7a3cfa59d65c063f4b67c1bd6e",
+      "localSizeBytes": 115956,
+      "delivery": "hash-verified local JPEG via same SSX project, no hotlink"
+    }
+  ]
+}
