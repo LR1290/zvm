@@ -31,6 +31,113 @@
     if(className)node.className=className;
     return node;
   }
+
+  // UI copy is intentionally editorial, not a release/build status banner.
+  // The underlying v36 controls remain attached to their original DOM IDs.
+  const publicCopy = {
+    pt:{title:'SSX 2012 · Recordes da Comunidade',desc:'Todos os recordes de SSX 2012 em um só lugar.',records:'Recordes',riders:'Riders',about:'Sobre',more:'Mais opções',manage:'Gerenciar site',advanced:'Mais filtros',sources:'Sobre os dados',guide:'Guia',credits:'Créditos e fontes',footer:'Recordes da comunidade SSX 2012 · Projeto independente, não afiliado à EA.',language:'Idioma',eyebrow:'RECORDES DA COMUNIDADE'},
+    en:{title:'SSX 2012 · Community Records',desc:'All SSX 2012 community records in one place.',records:'Records',riders:'Riders',about:'About',more:'More options',manage:'Manage site',advanced:'More filters',sources:'About the data',guide:'Guide',credits:'Credits and sources',footer:'SSX 2012 community records · Independent fan project, not affiliated with EA.',language:'Language',eyebrow:'COMMUNITY RECORDS'},
+    de:{title:'SSX 2012 · Community-Rekorde',desc:'Alle SSX 2012-Rekorde an einem Ort.',records:'Rekorde',riders:'Riders',about:'Über uns',more:'Mehr Optionen',manage:'Seite verwalten',advanced:'Weitere Filter',sources:'Über die Daten',guide:'Anleitung',credits:'Bildnachweise und Quellen',footer:'SSX 2012 Community-Rekorde · Unabhängiges Fanprojekt ohne Verbindung zu EA.',language:'Sprache',eyebrow:'COMMUNITY-REKORDE'},
+    es:{title:'SSX 2012 · Récords de la comunidad',desc:'Todos los récords de SSX 2012 en un solo lugar.',records:'Récords',riders:'Riders',about:'Acerca de',more:'Más opciones',manage:'Administrar sitio',advanced:'Más filtros',sources:'Sobre los datos',guide:'Guía',credits:'Créditos y fuentes',footer:'Récords de SSX 2012 · Proyecto independiente sin afiliación a EA.',language:'Idioma',eyebrow:'RÉCORDS DE LA COMUNIDAD'},
+    nl:{title:'SSX 2012 · Communityrecords',desc:'Alle SSX 2012-records op één plek.',records:'Records',riders:'Riders',about:'Over',more:'Meer opties',manage:'Site beheren',advanced:'Meer filters',sources:'Over de gegevens',guide:'Handleiding',credits:'Bronnen en credits',footer:'SSX 2012 Communityrecords · Onafhankelijk fanproject, niet verbonden met EA.',language:'Taal',eyebrow:'COMMUNITYRECORDS'},
+    fr:{title:'SSX 2012 · Records communautaires',desc:'Tous les records de SSX 2012 en un seul endroit.',records:'Records',riders:'Riders',about:'À propos',more:'Plus d’options',manage:'Gérer le site',advanced:'Plus de filtres',sources:'À propos des données',guide:'Guide',credits:'Crédits et sources',footer:'Records SSX 2012 · Projet de fans indépendant, non affilié à EA.',language:'Langue',eyebrow:'RECORDS COMMUNAUTAIRES'}
+  };
+  function applyPublicCopy() {
+    const copy=publicCopy[language()]||publicCopy.en;
+    document.title=copy.title;
+    const replacements=[
+      ['heroDesc',copy.desc],
+      ['ssxNavRecords',copy.records],
+      ['ssxManagementLabel',copy.manage],
+      ['ssxCreditsLabel',copy.credits],
+      ['alpineModesTitle',copy.records]
+    ];
+    for(const [id,value] of replacements){
+      const node=$(id);if(node)node.textContent=value;
+    }
+    const about=$('aboutBtn')?.querySelector('[data-i="aboutNav"]');
+    if(about)about.textContent=copy.about;
+    const riders=$('ridersBtn')?.querySelector('[data-i="riders"]');
+    if(riders)riders.textContent=copy.riders;
+    const intro=$('introBtn')?.querySelector('span:not(.nav-ico)');
+    if(intro)intro.textContent=copy.guide;
+    const more=$('toolsMenuBtn');if(more)more.setAttribute('aria-label',copy.more);
+    const lang=$('langBtn');if(lang)lang.setAttribute('aria-label',copy.language);
+    const advanced=$('alpineAdvancedFilters')?.querySelector(':scope > summary');
+    if(advanced)advanced.textContent=copy.advanced;
+    const sources=$('alpineSources')?.querySelector(':scope > summary');
+    if(sources)sources.textContent=copy.sources;
+    const footer=document.querySelector('.footer');
+    if(footer)footer.textContent=copy.footer;
+    const eyebrow=document.querySelector('.hero-main > .eyebrow');
+    if(eyebrow)eyebrow.textContent=copy.eyebrow;
+  }
+  function buildPublicLayout(hero,toolbar,card,credits) {
+    const nav=$('topNav'),riders=$('ridersBtn'),tools=$('toolsGroup'),about=$('aboutBtn');
+    if(nav&&riders&&tools&&about&&!$('ssxNavRecords')){
+      const records=text('a','Recordes','btn nav-btn ssx-nav-records');
+      records.id='ssxNavRecords';
+      records.href='#alpine-modes';
+      nav.insertBefore(records,riders);
+      about.removeAttribute('role');
+      about.classList.add('ssx-nav-about');
+      nav.insertBefore(about,tools);
+      const more=$('toolsMenuBtn');
+      if(more){
+        more.classList.add('ssx-gear-trigger');
+        more.setAttribute('title','Mais opções');
+      }
+      const menu=$('toolsMenu'),submissions=$('submissionsBtn'),settings=$('settingsBtn'),data=$('dataBtn'),admin=$('adminBtn');
+      if(menu&&submissions&&settings&&data&&admin){
+        menu.prepend(settings);
+        menu.prepend(submissions);
+        const management=document.createElement('details');
+        management.className='ssx-management';
+        management.id='ssxManagement';
+        const disclosure=text('summary','Gerenciar site');
+        disclosure.id='ssxManagementLabel';
+        management.append(disclosure,data,admin);
+        menu.append(management);
+      }
+    }
+    const stats=hero.querySelector('.hero-stats');
+    if(stats){
+      stats.classList.add('ssx-community-stats');
+      hero.insertAdjacentElement('afterend',stats);
+    }
+    const eyebrow=document.querySelector('.hero-main > .eyebrow');
+    eyebrow?.removeAttribute('data-i');
+    const advanced=$('alpineAdvancedFilters'),sources=$('alpineSources');
+    const topN=$('topN')?.closest('.field');
+    const actions=toolbar.querySelector('.toolbar-actions');
+    if(advanced){
+      advanced.classList.add('ssx-filter-disclosure');
+      const inner=document.createElement('div');
+      inner.className='ssx-advanced-content';
+      const category=$('categoryField');
+      if(category)inner.append(category);
+      if(topN)inner.append(topN);
+      if(actions)inner.append(actions);
+      if(sources){
+        sources.classList.add('ssx-source-disclosure');
+        inner.append(sources);
+      }
+      advanced.append(inner);
+    }
+    if(credits){
+      const box=document.createElement('details');
+      box.id='ssxCredits';
+      box.className='ssx-credits-disclosure';
+      const summary=text('summary','Créditos e fontes');
+      summary.id='ssxCreditsLabel';
+      credits.replaceWith(box);
+      box.append(summary,credits);
+    }
+    const footer=document.querySelector('.footer');
+    footer?.removeAttribute('data-i');
+    applyPublicCopy();
+  }
+
   function updateCopy() {
     const copy=t();
     const title=$('heroTitle'), desc=$('heroDesc');
@@ -43,6 +150,7 @@
     });
     const search=$('search'); if(search)search.placeholder=copy.choose;
     sync();
+    applyPublicCopy();
     scheduleCards(); // refresh card labels and evidence actions after language switches
   }
   function addUI() {
@@ -60,7 +168,7 @@
     modes.id='alpine-modes';
     modes.setAttribute('aria-label','Modalidades de SSX 2012');
     modes.innerHTML=
-      '<div class="alpine-heading"><div><div class="alpine-eyebrow">SSX 2012 · ALPINE EDITION</div><h2 id="alpineModesTitle"></h2></div></div>'+
+      '<div class="alpine-heading"><div><div class="alpine-eyebrow">SSX 2012</div><h2 id="alpineModesTitle"></h2></div></div>'+
       '<div class="alpine-mode-grid" role="group" aria-label="Modalidades">'+
       '<button class="alpine-mode-card" type="button" data-alpine-group="race" aria-pressed="true"><span class="alpine-icon" aria-hidden="true">🏁</span><strong data-alpine-i18n="race"></strong><span data-alpine-i18n="raceSub"></span></button>'+
       '<button class="alpine-mode-card" type="button" data-alpine-group="trick" aria-pressed="false"><span class="alpine-icon" aria-hidden="true">🏆</span><strong data-alpine-i18n="trick"></strong><span data-alpine-i18n="trickSub"></span></button>'+
@@ -163,6 +271,7 @@
     }
     credits.append(creditsTitle,disclaimer,sourceText,references);
     card?.insertAdjacentElement('afterend',credits);
+    buildPublicLayout(hero,toolbar,card,credits);
 
     modes.addEventListener('click',event=>{
       const item=event.target.closest('[data-alpine-group]');
