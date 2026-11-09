@@ -1462,3 +1462,65 @@ body.ssx-alpine-v37 .ssx-region-detail-header h3 {
   body.ssx-alpine-v37 .ssx-region-metrics .ssx-region-proof {transition:none;}
 }
 
+/* R44: regional track discovery and compact previous/next navigation. */
+body.ssx-alpine-v37 .ssx-region-search-box {
+  display:flex;align-items:center;gap:6px;
+  border:1px solid #3a6176;border-radius:10px;
+  background:#122a3c;padding:4px 6px 4px 12px;
+  margin-top:12px;
+}
+body.ssx-alpine-v37 .ssx-region-search-box:focus-within {border-color:#16d3f4;box-shadow:0 0 0 2px rgba(22,211,244,.14);}
+body.ssx-alpine-v37 #ssxRegionSearch {
+  flex:1;min-width:0;width:100%;min-height:37px;
+  border:0;outline:none;background:transparent;color:#f2faff;
+  font:inherit;font-size:.86rem;
+}
+body.ssx-alpine-v37 #ssxRegionSearch::placeholder {color:#9bb9c9;opacity:1;}
+body.ssx-alpine-v37 .ssx-region-search-clear {
+  display:inline-flex;align-items:center;justify-content:center;
+  width:36px;height:36px;flex:none;
+  border:1px solid #3a6176;background:#1a3d50;
+  border-radius:8px;color:#e8f8ff;font-size:1.4rem;
+  cursor:pointer;
+}
+body.ssx-alpine-v37 .ssx-region-search-clear[hidden],
+body.ssx-alpine-v37 .ssx-region-group[hidden],
+body.ssx-alpine-v37 .ssx-mountain-section[hidden],
+body.ssx-alpine-v37 .ssx-track-choice[hidden],
+body.ssx-alpine-v37 .ssx-region-no-matches[hidden] {display:none;}
+body.ssx-alpine-v37 .ssx-region-search-count {
+  display:block;margin:7px 1px 0;color:#a6c9d9;
+  font-size:.72rem;font-variant-numeric:tabular-nums;
+}
+body.ssx-alpine-v37 .ssx-region-no-matches {margin:12px 0;padding:15px;border-radius:10px;border:1px dashed #315a6e;color:#d8e9f4;font-size:.84rem;}
+body.ssx-alpine-v37 .ssx-region-stepper {
+  display:flex;align-items:center;justify-content:space-between;
+  gap:12px;min-height:43px;padding:4px 12px;
+  background:#102c3c;border-top:1px solid #33546a;
+}
+body.ssx-alpine-v37 .ssx-region-step {
+  min-width:43px;min-height:35px;display:inline-flex;
+  align-items:center;justify-content:center;
+  border:1px solid #37647b;border-radius:8px;
+  background:#143b4c;color:#d8f5ff;
+  font:inherit;font-size:1.35rem;cursor:pointer;
+  transition:background-color .16s,border-color .16s;
+}
+body.ssx-alpine-v37 .ssx-region-step:hover:not(:disabled) {background:#17617b;border-color:#16d3f4;}
+body.ssx-alpine-v37 .ssx-region-step:disabled {cursor:default;opacity:.36;}
+body.ssx-alpine-v37 .ssx-region-step-count {
+  color:#b5d9e9;font-size:.8rem;font-weight:750;font-variant-numeric:tabular-nums;
+}
+body.ssx-alpine-v37 :is(.ssx-region-step,.ssx-region-search-clear):focus-visible {outline:3px solid #16d3f4;outline-offset:2px;}
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-region-search-box {background:#fff;border-color:#abcddd;}
+html[data-theme="light"] body.ssx-alpine-v37 #ssxRegionSearch {color:#17384a;}
+html[data-theme="light"] body.ssx-alpine-v37 #ssxRegionSearch::placeholder {color:#527486;}
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-region-search-count {color:#4f6b7e;}
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-region-stepper {background:#e8f2f7;border-color:#c7dfe9;}
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-region-step {background:#fff;color:#164a60;border-color:#b1d2e0;}
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-region-step-count {color:#28546a;}
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-region-no-matches {color:#28546a;}
+@media (prefers-reduced-motion:reduce) {
+  body.ssx-alpine-v37 .ssx-region-step {transition:none;}
+}
+

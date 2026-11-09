@@ -202,6 +202,11 @@ test('public SSX UI has neutral brand/title and no Edition release promotion',()
   assert.match(js,/ssxMobileQuickNav/);
   assert.match(css,/ssx-mobile-quick-link/);
   assert.match(css,/ssx-region-banner/);
+  assert.match(js,/applyRegionSearch/);
+  assert.match(js,/ssxRegionSearch/);
+  assert.match(js,/ssxTrackStep/);
+  assert.match(css,/ssx-region-stepper/);
+  assert.match(css,/ssx-region-search-box/);
   assert.match(css,/ssx-region-metrics/);
   assert.match(css,/ssx-region-rank/);
   assert.match(js,/proof.setAttribute\('aria-label',copy\[4\]\)/);
