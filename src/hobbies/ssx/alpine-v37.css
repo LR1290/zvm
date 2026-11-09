@@ -172,3 +172,45 @@ body.ssx-alpine-v37 {
  .ssx-alpine-v37 .alpine-hero-cta,
  .ssx-alpine-v37 .alpine-hero-cta:hover {transition:none;transform:none;}
 }
+
+/* Alpine v37.1: progressive ranking discovery and keyboard-friendly navigation. */
+.ssx-alpine-v37 #toolbar,
+.ssx-alpine-v37 #alpine-modes,
+.ssx-alpine-v37 .sheet-card { scroll-margin-top: 80px; }
+.ssx-alpine-v37 .alpine-positions-toggle { display:none; }
+.ssx-alpine-v37 .alpine-positions-toggle[aria-pressed="true"] {
+  border-color:rgba(22,211,244,.65);
+  background:rgba(22,211,244,.11);
+  color:#dcf8ff;
+}
+.ssx-alpine-v37 .alpine-positions-toggle[hidden] {display:none;}
+.ssx-alpine-v37 .alpine-card-top:first-child span:first-child {
+  font-weight:650;
+  color:#bee4f3;
+}
+.ssx-alpine-v37 .alpine-card-rider {
+  width:fit-content;
+  max-width:100%;
+  text-decoration:underline;
+  text-decoration-color:transparent;
+  text-underline-offset:3px;
+  overflow-wrap:anywhere;
+}
+.ssx-alpine-v37 .alpine-card-rider:hover,
+.ssx-alpine-v37 .alpine-card-rider:focus-visible {
+  text-decoration-color:currentColor;
+}
+.ssx-alpine-v37 .alpine-card-empty {padding:16px; line-height:1.5;}
+.ssx-alpine-v37 .sheet-head .alpine-results-title { min-width:0; }
+@media (max-width:620px) {
+  .ssx-alpine-v37 .alpine-results-title {justify-content:flex-start;}
+  .ssx-alpine-v37 .alpine-positions-toggle:not([hidden]) {
+    display:inline-flex;
+    align-items:center;
+    min-height:40px;
+  }
+  .ssx-alpine-v37 .sheet-card .sheet-head { align-items:flex-start; }
+  .ssx-alpine-v37 #toolbar,
+  .ssx-alpine-v37 #alpine-modes,
+  .ssx-alpine-v37 .sheet-card {scroll-margin-top:64px;}
+}
