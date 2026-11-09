@@ -18,7 +18,7 @@
 - O código atual da interface usa cinco categorias no explorador de recordes: `board`, `wings`, `trick`, `survive`, `special`. A interface moderna usa catálogo com 73 pistas; o arquivo original também contém provas e desafios extras fora do catálogo.
 - O arquivo v36 menciona **Level 9**, **Android**, **No Boost**, **DEV Tracks** e registros de **Developer / Test Tracks**. Exemplos literais encontrados: Happiness, Snowjam, Snowjam NO OOB, StyleMile, TEST ONLINE, TEST RAIL, TEST_1_1, Test Surface, Test Slope.
 - A existência de menções no HTML original não comprova que todos os scores dessas categorias estejam completos ou corretos. Necessário comparar linha a linha com a versão atual da planilha.
-- Foram identificados **13 links Ozmonet** (domínio principal e 12 perfis únicos, conforme a amostra de URLs extraída do HTML) e **2 links explícitos da planilha Google** no material incorporado, além de links de prova YouTube. Essas contagens referem-se a ocorrências/URLs rastreadas no arquivo, **não** à quantidade de riders ou recordes válidos.
+- O inventário de caminhos rastreados encontrou **11 URLs de perfis Ozmonet com ID numérico**, além da página principal e de um endereço-modelo de JavaScript (que não é perfil real), e **2 caminhos explícitos da planilha Google** no material incorporado, além de links de prova YouTube. Essas contagens referem-se a ocorrências/URLs rastreadas no arquivo, **não** à quantidade de riders ou recordes válidos.
 
 ## Etapas independentes e critérios de aprovação
 
