@@ -655,7 +655,7 @@
     rail.id='ssxSheetModeFilter';
     rail.setAttribute('role','group');
     rail.hidden=true;
-    for(const [mode,symbol] of [['board','🏂'],['wings','🪂'],['survive','❄️'],['special','⚡']]){
+    for(const [mode,symbol] of [['board','🏂'],['wings','🪂'],['trick','🎯'],['survive','❄️'],['special','⚡']]){
       const button=text('button','','ssx-sheet-mode-option');
       button.type='button';
       button.dataset.ssxSheetMode=mode;
@@ -679,10 +679,13 @@
   function syncSheetModeFilter(group,copy){
     const rail=$('ssxSheetModeFilter');
     if(!rail)return;
-    const allowed=group==='race'?['board','wings']:
+    const allowed=state.leaderCards?
+      ['board','wings','trick','survive','special']:
+      group==='race'?['board','wings']:
       group==='survive'?['survive','special']:[];
     rail.hidden=allowed.length===0||state.fullTable;
-    rail.setAttribute('aria-label',group==='race'?copy.race:
+    rail.setAttribute('aria-label',state.leaderCards?copy.modes:
+      group==='race'?copy.race:
       group==='survive'?copy.survive:copy.modes);
     for(const button of rail.querySelectorAll('[data-ssx-sheet-mode]')){
       const mode=button.dataset.ssxSheetMode;
@@ -779,6 +782,24 @@
     });
     controls.append(button,status,manual);
     return controls;
+  }
+
+
+  // The red YouTube mark is generated locally (CSS), without remote scripts,
+  // logos, tracking pixels or fabricated evidence. Only verified URLs are used.
+  function createYouTubeProof(href,description,compact=false){
+    const proof=text('a','','ssx-youtube-proof'+(compact?' ssx-youtube-compact':''));
+    const icon=text('span','','ssx-youtube-icon');
+    icon.setAttribute('aria-hidden','true');
+    const label=text('span','YouTube','ssx-youtube-label');
+    proof.append(icon,label);
+    proof.href=href;
+    proof.target='_blank';
+    proof.rel='noopener noreferrer';
+    proof.referrerPolicy='no-referrer';
+    proof.setAttribute('aria-label','YouTube · '+description);
+    proof.title='YouTube · '+description;
+    return proof;
   }
 
   function renderRegionBrowser(){
@@ -920,11 +941,8 @@
         const metrics=text('div','','ssx-region-metrics');
         metrics.append(text('strong',run.score,'ssx-region-score'));
         if(run.video){
-          const proof=text('a','▶','ssx-region-proof');
-          proof.setAttribute('aria-label',copy[4]);
-          proof.title=copy[4];
-          proof.href=run.video;proof.target='_blank';
-          proof.rel='noopener noreferrer';proof.referrerPolicy='no-referrer';
+          const proof=createYouTubeProof(run.video,copy[4],true);
+          proof.classList.add('ssx-region-proof');
           metrics.append(proof);
         }
         item.append(identity,metrics);
@@ -1316,12 +1334,85 @@
     });
   }
 
+
+  // Cross-track times and distances are not directly comparable. This podium
+  // ranks riders by their COUNT of official #1 finishes on distinct tracks,
+  // separately for each supported game mode, from the currently selected source.
+  const podiumLabels={
+    pt:{title:'🏆 Top 3 dos líderes',description:'Mais pistas em 1º lugar nesta modalidade · empates em ordem alfabética',trophies:'pistas lideradas',evidence:'provas em vídeo',empty:'Ainda não há líderes nesta modalidade'},
+    en:{title:'🏆 Top 3 track leaders',description:'Most first-place finishes on different tracks in this mode · ties alphabetical',trophies:'tracks led',evidence:'video proofs',empty:'No leaders in this mode yet'},
+    de:{title:'🏆 Top 3 Streckensieger',description:'Meiste erste Plätze auf verschiedenen Strecken · Gleichstand alphabetisch',trophies:'Streckenführungen',evidence:'Videobelege',empty:'Noch keine Streckensieger'},
+    es:{title:'🏆 Top 3 líderes',description:'Más primeros puestos en pistas distintas · empates alfabéticos',trophies:'pistas lideradas',evidence:'pruebas en vídeo',empty:'Aún no hay líderes'},
+    nl:{title:'🏆 Top 3 baanleiders',description:'Meeste eerste plaatsen op verschillende banen · gelijke stand alfabetisch',trophies:'banen geleid',evidence:'videobewijzen',empty:'Nog geen leiders'},
+    fr:{title:'🏆 Top 3 leaders',description:'Le plus de premières places sur des pistes différentes · égalités alphabétiques',trophies:'pistes en tête',evidence:'preuves vidéo',empty:'Aucun leader dans ce mode'}
+  };
+  function podiumStandings(index){
+    const riders=new Map();
+    for(const track of completeTrackCatalog()){
+      const entry=index.get(track.key);
+      const winner=entry?.runs.find(run=>String(run.position).trim()==='#1');
+      if(!winner)continue;
+      const name=winner.rider.textContent.trim();
+      if(!name)continue;
+      const id=name.normalize('NFKC').toLocaleLowerCase();
+      if(!riders.has(id))riders.set(id,{name,rider:winner.rider,tracks:new Set(),proofs:0,video:'',samples:[]});
+      const row=riders.get(id);
+      if(row.tracks.has(track.key))continue;
+      row.tracks.add(track.key);
+      if(winner.video){row.proofs++;if(!row.video)row.video=winner.video;}
+      row.samples.push(track.track);
+    }
+    return [...riders.values()].sort((a,b)=>
+      b.tracks.size-a.tracks.size||
+      a.name.localeCompare(b.name,language(),{sensitivity:'base'})
+    );
+  }
+  function createTop3Podium(index,copy){
+    const l=podiumLabels[language()]||podiumLabels.en;
+    const panel=text('section','','ssx-top3-podium');
+    panel.id='ssxTop3Podium';
+    panel.dataset.podiumMode=state.mode;
+    panel.setAttribute('aria-label',l.title);
+    const heading=text('header','','ssx-top3-heading');
+    const modeName=state.mode==='board'?copy.board:
+      state.mode==='wings'?copy.wings:
+      state.mode==='trick'?copy.trick:
+      state.mode==='survive'?copy.survive+' · '+copy.standard:
+      copy.survive+' · '+copy.special;
+    heading.append(text('h3',l.title+' · '+modeName),text('p',l.description));
+    panel.append(heading);
+    const ranking=podiumStandings(index).slice(0,3);
+    const grid=text('div','','ssx-top3-grid');
+    for(let i=0;i<ranking.length;i++){
+      const leader=ranking[i];
+      const card=text('article','','ssx-top3-entry');
+      card.dataset.ssxPodiumRank=String(i+1);
+      card.dataset.ssxPodiumRider=leader.name;
+      card.dataset.ssxPodiumWins=String(leader.tracks.size);
+      card.dataset.ssxPodiumProofs=String(leader.proofs);
+      const medal=text('span',['🥇','🥈','🥉'][i],'ssx-top3-medal');
+      medal.setAttribute('aria-hidden','true');
+      const rider=text('button',leader.name,'ssx-top3-rider');
+      rider.type='button';
+      rider.addEventListener('click',()=>leader.rider.click());
+      card.append(medal,rider,text('strong',leader.tracks.size+' '+l.trophies,'ssx-top3-trophies'));
+      card.append(text('small',leader.proofs+' '+l.evidence,'ssx-top3-evidence'));
+      if(leader.video)card.append(createYouTubeProof(leader.video,copy.proof));
+      grid.append(card);
+    }
+    if(!ranking.length)grid.append(text('p',l.empty,'ssx-top3-empty'));
+    panel.append(grid);
+    panel.dataset.podiumCount=String(ranking.length);
+    return panel;
+  }
+
   // Build one winner per canonical track from the independent source-index.
   // Never infer leaders from the first N visible table rows: Red Light may
   // legitimately contain many positions and consume that entire first batch.
   function renderTrackLeaderCards(root,copy){
     const fragment=document.createDocumentFragment();
     const index=new Map(indexedTracks(state.mode).map(item=>[item.key,item]));
+    fragment.append(createTop3Podium(index,copy));
     const available=completeTrackCatalog().filter(item=>
       (selectedRegion==='all'||item.region===selectedRegion)&&
       (index.get(item.key)?.runs?.length||0)>0);
@@ -1350,11 +1441,8 @@
       card.append(rider,text('div',lead.score,'alpine-card-score'));
       if(lead.source)card.append(text('span',lead.source,'alpine-card-top ssx-card-source'));
       if(lead.video){
-        const proof=text('a',copy.proof,'alpine-card-proof');
-        proof.href=lead.video;
-        proof.target='_blank';
-        proof.rel='noopener noreferrer';
-        proof.referrerPolicy='no-referrer';
+        const proof=createYouTubeProof(lead.video,copy.proof);
+        proof.classList.add('alpine-card-proof');
         card.append(proof);
       }
       fragment.append(card);
@@ -1431,11 +1519,8 @@
         try{
           const url=new URL(proof.href);
           if(url.protocol==='https:'&&['youtu.be','youtube.com','www.youtube.com','m.youtube.com'].includes(url.hostname)){
-            const a=text('a',copy.proof,'alpine-card-proof');
-            a.href=url.href;
-            a.target='_blank';
-            a.rel='noopener noreferrer';
-            a.referrerPolicy='no-referrer';
+            const a=createYouTubeProof(url.href,copy.proof);
+            a.classList.add('alpine-card-proof');
             item.append(a);
           }
         }catch(_){}
