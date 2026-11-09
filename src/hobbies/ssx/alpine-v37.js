@@ -76,13 +76,8 @@
     if(!header)return;
     // The original header toggler can carry inline display rules; retire it
     // explicitly now that its actions are permanently present in the page.
-    const legacyToggle=$('mobileMenuBtn');
-    if(legacyToggle){
-      legacyToggle.style.display='none';
-      legacyToggle.hidden=true;
-      legacyToggle.setAttribute('aria-hidden','true');
-      legacyToggle.tabIndex=-1;
-    }
+    // Remove the retired trigger so the legacy layout cannot re-display it.
+    $('mobileMenuBtn')?.remove();
     const quick=document.createElement('nav');
     quick.id='ssxMobileQuickNav';
     quick.className='ssx-mobile-quick-nav';
