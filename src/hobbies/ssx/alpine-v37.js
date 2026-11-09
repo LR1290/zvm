@@ -410,7 +410,12 @@
   // Region tabs are built from the original embedded track catalogue, not
   // from which scores are available in a particular source or game mode.
   function completeTrackCatalog(){
-    if(fullTrackCatalog)return fullTrackCatalog;
+    // The canonical sheet collection is source/category scoped. A single cache
+    // across Combined, Android, levels and DEV dropped entire groups of tracks.
+    const source=document.querySelector('#sourceSeg [data-source].active')?.dataset.source||'combined';
+    const category=$('category')?.value||'Global Top 16';
+    const key=source+'|'+(source==='google'?category:'historical');
+    if(fullTrackCatalog?.key===key)return fullTrackCatalog.entries;
     const canonical=typeof window.availableTracks==='function'?
       [...window.availableTracks()]:[];
     const records=new Map();
@@ -430,11 +435,12 @@
     }
     // The original spreadsheet's region dropdown carries the preferred ordering.
     const order=new Map([...$('region')?.options||[]].map((option,i)=>[option.textContent.trim(),i]));
-    fullTrackCatalog=[...records.values()].sort((a,b)=>
+    const entries=[...records.values()].sort((a,b)=>
       (order.get(a.region)??99)-(order.get(b.region)??99)||
       a.order-b.order||
       a.track.localeCompare(b.track,undefined,{numeric:true}));
-    return fullTrackCatalog;
+    fullTrackCatalog={key,entries};
+    return entries;
   }
 
   function indexedTracks(mode){
@@ -648,6 +654,272 @@
 
   // Keep a single canonical mode state. This secondary control is a compact
   // mobile presentation of the same Board/Wingsuit and Survive submodes.
+
+  // Original Google sheet categories, including Android, DEV and low-level
+  // events, already exist in G. Expose their native filter instead of inventing
+  // tracks or duplicating source records.
+  const collectionCopy={
+    pt:{title:'Coleções da planilha',description:'Recordes oficiais por categoria · Google Sheets',all:'Geral',level:'Nível',android:'Android',dev:'Testes / DEV',noBoost:'Sem Boost',date:'Snapshot: 22/08/2026',select:'Escolher categoria de recordes'},
+    en:{title:'Spreadsheet collections',description:'Official records by category · Google Sheets',all:'Main',level:'Level',android:'Android',dev:'Tests / DEV',noBoost:'No Boost',date:'Snapshot: 2026-08-22',select:'Select record category'},
+    de:{title:'Tabellen-Kategorien',description:'Offizielle Rekorde pro Kategorie · Google Sheets',all:'Hauptliste',level:'Level',android:'Android',dev:'Tests / DEV',noBoost:'Ohne Boost',date:'Stand: 22.08.2026',select:'Rekordkategorie auswählen'},
+    es:{title:'Categorías de la hoja',description:'Récords oficiales por categoría · Google Sheets',all:'General',level:'Nivel',android:'Android',dev:'Pruebas / DEV',noBoost:'Sin Boost',date:'Corte: 22/08/2026',select:'Seleccionar categoría de récords'},
+    nl:{title:'Sheet-categorieën',description:'Officiële records per categorie · Google Sheets',all:'Algemeen',level:'Level',android:'Android',dev:'Tests / DEV',noBoost:'Geen Boost',date:'Momentopname: 22-08-2026',select:'Selecteer recordcategorie'},
+    fr:{title:'Catégories du tableau',description:'Records officiels par catégorie · Google Sheets',all:'Général',level:'Niveau',android:'Android',dev:'Tests / DEV',noBoost:'Sans Boost',date:'Archive : 22/08/2026',select:'Choisir la catégorie'}
+  };
+  function collectionText(name,lang){
+    if(name==='Global Top 16')return'🏆 '+lang.all;
+    if(name==='Android')return'📱 '+lang.android;
+    if(name==='DEV Tracks')return'🧪 '+lang.dev;
+    if(name==='No Boost')return'🚫 '+lang.noBoost;
+    if(name.startsWith('Level '))return'🏂 '+lang.level+' '+name.slice(6);
+    return name;
+  }
+  function currentCollection(){
+    return document.querySelector('#sourceSeg [data-source].active')?.dataset.source==='google'?
+      $('category')?.value||'Global Top 16':null;
+  }
+
+  // Deterministic read-only identity cross-check. G (Google records), C
+  // (merged scoring indexes) and O (archived Oz player IDs) are already parsed
+  // by the immutable original source. No fetched names, fuzzy joins or uploads.
+  let riderIdentityAudit=null;
+  const googleSheetUrl='https://docs.google.com/spreadsheets/d/1SAk84oy05R0UK3JJ_JWJTskSqxj4GpGJkdRqfSmnx2I/htmlview';
+  const ozmonetUrl='https://ssx.ozmonet.com/';
+  const identityCopy={
+    pt:{heading:'Identidades e fontes auditadas',summary:'nomes vinculados por ID e pontuação',conflicts:'links de perfil com ID divergente',safety:'Nomes da planilha preservados quando o ID contradiz a Ozmonet; o link conflitante não abre outro jogador.',source:'Registros: Google Sheets (22/08/2026). IDs/nome: arquivo Ozmonet (somente leitura; sem validação ao vivo).',google:'Abrir Google Sheets',oz:'Arquivo Ozmonet',inspect:'Conferir IDs divergentes',lookup:'Consultar rider ou ID da Ozmonet',noMatch:'Nenhum ID encontrado na cópia histórica',warning:'⚠ ID não corresponde ao rider',unknown:'Identidade não verificada'},
+    en:{heading:'Audited identities and sources',summary:'names matched by exact ID and score',conflicts:'profile links with mismatched IDs',safety:'Spreadsheet names are preserved when the Oz ID belongs to someone else; the unsafe profile link is disabled.',source:'Records: Google Sheets (2026-08-22). Names/IDs: archived Ozmonet (read-only, not checked live).',google:'Open Google Sheets',oz:'Ozmonet archive',inspect:'Review mismatched IDs',lookup:'Find Ozmonet rider or ID',noMatch:'No ID in the historical archive',warning:'⚠ ID does not match rider',unknown:'Unverified identity'},
+    de:{heading:'Geprüfte Identitäten und Quellen',summary:'Namen über ID und Punktzahl zugeordnet',conflicts:'Profil-Links mit abweichender ID',safety:'Tabellennamen bleiben bei widersprüchlicher Oz-ID bestehen; der falsche Link ist deaktiviert.',source:'Rekorde: Google Sheets (22.08.2026). Namen/IDs: Ozmonet-Archiv (nur lesbar, nicht live geprüft).',google:'Google Sheets öffnen',oz:'Ozmonet-Archiv',inspect:'Abweichende IDs prüfen',lookup:'Ozmonet-Fahrer oder ID suchen',noMatch:'Keine ID gefunden',warning:'⚠ ID passt nicht zum Fahrer',unknown:'Identität ungeprüft'},
+    es:{heading:'Identidades y fuentes auditadas',summary:'nombres cotejados por ID y puntuación',conflicts:'enlaces con ID discrepante',safety:'Se conserva el nombre de la hoja cuando el ID pertenece a otro rider; se desactiva el enlace erróneo.',source:'Récords: Google Sheets (22/08/2026). Nombres/ID: archivo Ozmonet (solo lectura, sin consulta en vivo).',google:'Abrir Google Sheets',oz:'Archivo Ozmonet',inspect:'Revisar IDs diferentes',lookup:'Buscar rider o ID en Ozmonet',noMatch:'Ningún ID en el archivo',warning:'⚠ ID no corresponde al rider',unknown:'Identidad sin verificar'},
+    nl:{heading:'Gecontroleerde namen en bronnen',summary:'namen gekoppeld op ID en score',conflicts:'profiellinks met afwijkende ID',safety:'Sheet-namen blijven staan wanneer een Oz-ID bij een ander hoort; de verkeerde link is uitgeschakeld.',source:'Records: Google Sheets (22-08-2026). Namen/ID: Ozmonet-archief (alleen lezen, niet live gecontroleerd).',google:'Open Google Sheets',oz:'Ozmonet-archief',inspect:'Afwijkende IDs bekijken',lookup:'Zoek Ozmonet rider of ID',noMatch:'Geen ID gevonden',warning:'⚠ ID hoort bij andere rider',unknown:'Identiteit niet geverifieerd'},
+    fr:{heading:'Identités et sources vérifiées',summary:'noms recoupés par ID et score',conflicts:'liens de profil avec mauvais ID',safety:'Le nom du tableau est conservé lorsque l’ID Oz appartient à un autre rider; le lien erroné est neutralisé.',source:'Records : Google Sheets (22/08/2026). Noms/ID : archives Ozmonet (lecture seule, sans vérification en direct).',google:'Ouvrir Google Sheets',oz:'Archive Ozmonet',inspect:'Examiner les IDs divergents',lookup:'Rechercher rider ou ID Ozmonet',noMatch:'Aucun ID dans les archives',warning:'⚠ ID différent du rider',unknown:'Identité non vérifiée'}
+  };
+  const normalName=name=>String(name||'').normalize('NFKC').trim().toLowerCase();
+  function getRiderIdentityAudit(){
+    if(riderIdentityAudit)return riderIdentityAudit;
+    if(typeof G!=='object'||typeof O!=='object'||typeof C!=='object')return null;
+    const namesById=new Map();
+    const conflictingIds=new Set();
+    let ozRows=0;
+    for(const bucket of O){
+      for(const row of bucket[2]||[]){
+        ozRows++;
+        const id=String(row[4]||'');
+        if(!/^[0-9]{3,16}$/.test(id))continue;
+        const name=String(row[1]||'').trim();
+        if(!name)continue;
+        const existing=namesById.get(id);
+        if(existing&&normalName(existing)!==normalName(name))conflictingIds.add(id);
+        else if(!existing)namesById.set(id,name);
+      }
+    }
+    const cByScore=new Map();
+    for(const [trackId,rows] of C){
+      for(const row of rows||[]){
+        const kind=Number(row[3]),score=Number(row[2]),id=String(row[6]||'');
+        if((kind!==2&&kind!==3)||!Number.isFinite(score)||!namesById.has(id))continue;
+        const key=trackId+'|'+kind+'|'+score;
+        if(!cByScore.has(key))cByScore.set(key,new Set());
+        cByScore.get(key).add(id);
+      }
+    }
+    let verified=0,uncertain=0;
+    const conflictingLinks=[];
+    for(const row of G){
+      const kind=Number(row[3]);
+      if((kind===2||kind===3)&&row[6]!=null){
+        const candidates=cByScore.get(row[1]+'|'+kind+'|'+Number(row[6]));
+        if(candidates?.size===1){
+          const id=[...candidates][0];
+          if(!conflictingIds.has(id)&&normalName(namesById.get(id))===normalName(row[4]))verified++;
+          else uncertain++;
+        }else if(candidates?.size>1)uncertain++;
+      }
+      const url=String(row[8]||'');
+      if(!url.startsWith('https://ssx.ozmonet.com/user/'))continue;
+      const id=url.slice(url.lastIndexOf('/')+1);
+      if(!/^[0-9]{3,16}$/.test(id))continue;
+      const ozName=namesById.get(id);
+      if(ozName&&!conflictingIds.has(id)&&normalName(ozName)!==normalName(row[4])){
+        conflictingLinks.push({id,sheetName:String(row[4]),ozName,track:Number(row[1]),kind});
+      }else if(ozName&&!conflictingIds.has(id))verified++;
+    }
+    riderIdentityAudit={namesById,conflictingIds,conflictingLinks,verified,uncertain,
+      googleRows:G.length,ozRows,ozIds:namesById.size,
+      snapshot:typeof META==='object'?String(META.snapshot||'2026-08-22'):'2026-08-22'};
+    return riderIdentityAudit;
+  }
+  function protectOzIdentityLinks(){
+    const audit=getRiderIdentityAudit();
+    if(!audit||!audit.conflictingLinks.length)return;
+    const copy=identityCopy[language()]||identityCopy.en;
+    for(const anchor of document.querySelectorAll('#tbody a.proof[href^="https://ssx.ozmonet.com/user/"]')){
+      const id=anchor.href.slice(anchor.href.lastIndexOf('/')+1);
+      const rider=anchor.closest('.record-cell')?.querySelector('.rider-name')?.textContent?.trim();
+      const issue=audit.conflictingLinks.find(item=>item.id===id&&normalName(item.sheetName)===normalName(rider));
+      if(!issue)continue;
+      anchor.removeAttribute('href');
+      anchor.dataset.ssxIdentityConflict=id;
+      anchor.classList.add('ssx-oz-id-conflict');
+      anchor.textContent=copy.warning;
+      anchor.title=copy.safety+' · '+issue.sheetName+' / ID '+id+' → '+issue.ozName;
+      anchor.setAttribute('aria-label',anchor.title);
+    }
+  }
+  function mountIdentityReview(){
+    const collections=$('ssxSourceCollections');
+    if(!collections||$('ssxIdentityReview'))return;
+    const audit=getRiderIdentityAudit();
+    if(!audit)return;
+    const wrap=text('section','','ssx-identity-review');
+    wrap.id='ssxIdentityReview';
+    wrap.dataset.verifiedIds=String(audit.verified);
+    wrap.dataset.conflictingLinks=String(audit.conflictingLinks.length);
+    wrap.dataset.ozIds=String(audit.ozIds);
+    wrap.dataset.googleRows=String(audit.googleRows);
+    const title=text('h3','','ssx-identity-title');
+    const stats=text('p','','ssx-identity-stats');
+    const note=text('p','','ssx-identity-note');
+    const links=text('div','','ssx-identity-sources');
+    for(const [type,href] of [['google',googleSheetUrl],['oz',ozmonetUrl]]){
+      const link=text('a','','ssx-identity-source');
+      link.href=href;
+      link.target='_blank';
+      link.rel='noopener noreferrer';
+      link.referrerPolicy='no-referrer';
+      link.dataset.ssxSourceLink=type;
+      links.append(link);
+    }
+    const search=text('input','','ssx-identity-search');
+    search.id='ssxIdentitySearch';
+    search.type='search';
+    search.autocomplete='off';
+    const found=text('div','','ssx-identity-results');
+    found.id='ssxIdentityResults';
+    found.setAttribute('aria-live','polite');
+    search.addEventListener('input',()=>{
+      const copy=identityCopy[language()]||identityCopy.en;
+      const q=normalName(search.value);
+      found.replaceChildren();
+      if(q.length<2)return;
+      const matches=[...audit.namesById].filter(([id,name])=>
+        id===q||normalName(name).includes(q)).slice(0,12);
+      if(!matches.length){found.append(text('p',copy.noMatch));return;}
+      for(const [id,name] of matches){
+        const link=text('a',name+' · ID '+id,'ssx-identity-result');
+        link.href='https://ssx.ozmonet.com/user/'+id;
+        link.target='_blank';
+        link.rel='noopener noreferrer';
+        link.referrerPolicy='no-referrer';
+        found.append(link);
+      }
+    });
+    const issues=text('details','','ssx-identity-conflicts');
+    const summary=text('summary','');
+    issues.append(summary);
+    const listing=text('ol','','ssx-identity-issue-list');
+    for(const issue of audit.conflictingLinks){
+      const row=text('li',issue.sheetName+' → ID '+issue.id+' = '+issue.ozName);
+      listing.append(row);
+    }
+    issues.append(listing);
+    wrap.append(title,stats,note,links,search,found,issues);
+    collections.after(wrap);
+    updateIdentityReview();
+    protectOzIdentityLinks();
+  }
+  function updateIdentityReview(){
+    const wrap=$('ssxIdentityReview'),audit=getRiderIdentityAudit();
+    if(!wrap||!audit)return;
+    const l=identityCopy[language()]||identityCopy.en;
+    wrap.querySelector('.ssx-identity-title').textContent=l.heading;
+    wrap.querySelector('.ssx-identity-stats').textContent=audit.verified.toLocaleString(language())+' '+l.summary+
+      ' · '+audit.conflictingLinks.length+' '+l.conflicts;
+    wrap.querySelector('.ssx-identity-note').textContent=l.source+' '+l.safety;
+    wrap.querySelector('.ssx-identity-conflicts summary').textContent=l.inspect+
+      ' ('+audit.conflictingLinks.length+')';
+    wrap.querySelector('#ssxIdentitySearch').placeholder=l.lookup;
+    wrap.querySelector('#ssxIdentitySearch').setAttribute('aria-label',l.lookup);
+    for(const link of wrap.querySelectorAll('[data-ssx-source-link]'))
+      link.textContent=link.dataset.ssxSourceLink==='google'?l.google:l.oz;
+  }
+
+  function mountGoogleCollections(card){
+    const regions=$('ssxSheetRegions');
+    if(!card||!regions||$('ssxSourceCollections'))return;
+    const wrap=text('section','','ssx-source-collections');
+    wrap.id='ssxSourceCollections';
+    const title=text('h3','','ssx-collections-heading');
+    const note=text('p','','ssx-collections-note');
+    const rail=text('nav','','ssx-collections-rail');
+    rail.id='ssxCollectionsRail';
+    wrap.append(title,note,rail);
+    const categoryNames=new Set(typeof G==='object'?G.map(row=>String(row[0])):[]);
+    const order=['Global Top 16','Level 1','Level 3','Level 6','Level 7','Level 8','Level 9','No Boost','Android','DEV Tracks'];
+    for(const category of order){
+      if(!categoryNames.has(category))continue;
+      const button=text('button','','ssx-collection-chip');
+      button.type='button';
+      button.dataset.ssxCollection=category;
+      button.setAttribute('aria-pressed','false');
+      const count=new Set(G.filter(row=>row[0]===category).map(row=>row[1])).size;
+      button.dataset.collectionTracks=String(count);
+      rail.append(button);
+    }
+    rail.addEventListener('click',event=>{
+      const button=event.target.closest('button[data-ssx-collection]');
+      if(!button)return;
+      const category=button.dataset.ssxCollection;
+      const google=document.querySelector('#sourceSeg [data-source="google"]');
+      if(!google)return;
+      google.click();
+      const native=$('category');
+      const choice=[...native?.options||[]].find(option=>option.value===category);
+      if(!choice)return;
+      native.value=choice.value;
+      native.dispatchEvent(new Event('change',{bubbles:true}));
+      const region=$('region');
+      const first=region?.querySelector('option[value=""]');
+      if(first&&region.value){
+        region.value='';
+        region.dispatchEvent(new Event('change',{bubbles:true}));
+      }
+      clearTrackContext();
+      selectedRegion='all';
+      openedRegions=new Set();
+      regionQuery='';
+      regionalSelection='';
+      fullTrackCatalog=null;
+      regionalCache=null;
+      state.leaderCards=true;
+      state.allPositions=false;
+      state.visible=12;
+      sync();
+      scheduleCards();
+      updateCollectionControls();
+      button.focus({preventScroll:true});
+    });
+    regions.before(wrap);
+    updateCollectionControls();
+  }
+  function updateCollectionControls(){
+    const container=$('ssxSourceCollections');
+    if(!container)return;
+    const l=collectionCopy[language()]||collectionCopy.en;
+    const title=container.querySelector('.ssx-collections-heading');
+    const note=container.querySelector('.ssx-collections-note');
+    if(title)title.textContent=l.title;
+    if(note)note.textContent=l.description+' · '+l.date;
+    const rail=$('ssxCollectionsRail');
+    rail?.setAttribute('aria-label',l.select);
+    const active=currentCollection();
+    for(const chip of rail?.querySelectorAll('[data-ssx-collection]')||[]){
+      chip.textContent=collectionText(chip.dataset.ssxCollection,l);
+      chip.append(text('small',chip.dataset.collectionTracks,'ssx-collection-count'));
+      chip.setAttribute('aria-pressed',String(chip.dataset.ssxCollection===active));
+    }
+    document.body.dataset.ssxActiveCollection=active||'combined';
+  }
+
   function mountSheetModeFilter(card){
     const toolbar=$('toolbar');
     if(!card||!toolbar||$('ssxSheetModeFilter'))return;
@@ -812,6 +1084,9 @@
     if(selectedRegion!=='all'&&!allEntries.some(item=>item.region===selectedRegion))selectedRegion='all';
     const entries=selectedRegion==='all'?allEntries:allEntries.filter(item=>item.region===selectedRegion);
     renderRegionTabs(allEntries);
+    updateCollectionControls();
+    updateIdentityReview();
+    protectOzIdentityLinks();
     if(!entries.some(item=>item.key===regionalSelection))regionalSelection=entries[0]?.key||'';
     const selected=entries.find(item=>item.key===regionalSelection);
     const regions=new Map();
@@ -1109,6 +1384,8 @@
     card?.insertAdjacentElement('afterend',credits);
     buildPublicLayout(hero,toolbar,card,credits);
     mountSheetControls(card,toolbar);
+    mountGoogleCollections(card);
+    mountIdentityReview();
     mountSheetModeFilter(card);
     mountResetControl(toolbar);
 
@@ -1136,6 +1413,14 @@
     for(const name of ['category','region','track','topN']){
       $(name)?.addEventListener('change',()=>{
         state.visible=12;
+        if(name==='category'){
+          regionalCache=null;
+          fullTrackCatalog=null;
+          selectedRegion='all';
+          regionalSelection='';
+          regionQuery='';
+          openedRegions=new Set();
+        }
         if(name==='region'){
           const select=$('region');
           const chosen=select?.selectedOptions?.[0];

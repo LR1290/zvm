@@ -55,7 +55,7 @@ async function connect(url){
 }
 async function evaluate(send,session,expression){
   const output=await send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true},session);
-  if(output.exceptionDetails)throw new Error('Browser evaluation: '+output.exceptionDetails.text);
+  if(output.exceptionDetails)throw new Error('Browser evaluation: '+output.exceptionDetails.text+' '+(output.exceptionDetails.exception?.description||output.exceptionDetails.exception?.value||''));
   return output.result?.value;
 }
 test('Alpine v37 renders and responds to interactions in desktop and mobile Chromium',{timeout:120000},async()=>{
@@ -105,6 +105,18 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(firstPaint.ready,'ready','v38 should reveal after initialization');
     assert.equal(firstPaint.loader,false,'First-paint shell should be removed only when ready');
     assert.equal(firstPaint.headline,'Conquiste a montanha.');
+
+    const provenanceScan=await evaluate(cdp.send,sid,"(()=>{try{const all=[...document.querySelectorAll('a[href]')];const sourceLinks=all.filter(a=>new RegExp('ozmonet|google[.]com/spreadsheets|merq|record','i').test(a.href)).map(a=>({text:a.textContent.trim().slice(0,60),url:a.href})).filter((a,i,arr)=>arr.findIndex(b=>b.url===a.url)===i).slice(0,30);const originalScript=[...document.scripts].filter(s=>s.id!=='ssx-alpine-v37-script').sort((a,b)=>b.textContent.length-a.textContent.length)[0]?.textContent||'';const keywords=['android','low level','low-level','test track','test stage','testing','beta','ozmonet','google.com/spreadsheets','playerId','riderId','player_id'];const mentions=keywords.map(k=>{const a=[];let from=0;for(let i=0;i<4;i++){const at=originalScript.toLowerCase().indexOf(k.toLowerCase(),from);if(at<0)break;a.push(originalScript.slice(Math.max(0,at-90),at+190));from=at+k.length;}return {k,found:a.length,contexts:a}});const official=[...window.availableTracks()].map(id=>({id,...window.trackObj(id)}));const rows=[...document.querySelectorAll('#tbody tr.rank-row')];const sampleRows=rows.slice(0,3).map(row=>({rider:row.querySelector('.rider-name')?.outerHTML?.slice(0,420),source:row.querySelector('.source-badge')?.outerHTML?.slice(0,230)}));return{sourceLinks,mentions,officialCount:official.length,officialFirst:official.slice(0,8),officialLast:official.slice(-6),registeredOptions:document.querySelector('#track')?.options.length,originalScriptLength:originalScript.length,globals:Object.keys(window).filter(x=>/ssx|track|record|oz|player|data|rider|sheet|level|stage|race/i.test(x)).slice(0,100),sampleRows,recordCells:rows.length,trackCellCount:document.querySelectorAll('.track-cell').length}}catch(err){return{auditError:String(err),stack:String(err.stack).slice(0,1000)}}})()");
+    console.log('SSX_SOURCE_PROVENANCE_AUDIT',JSON.stringify(provenanceScan));
+    const extraAudit=await evaluate(cdp.send,sid,"(()=>{const source=[...document.scripts].filter(x=>x.id!=='ssx-alpine-v37-script').sort((a,b)=>b.textContent.length-a.textContent.length)[0]?.textContent||'';const tracks=[];for(let id=0;id<125;id++){try{const x=window.trackObj(id);if(x?.track)tracks.push({id,region:x.region,group:x.group,level:x.level,track:x.track,mountain:x.mountain,note:x.note})}catch(e){}}const mention=(tag)=>{const i=source.indexOf(tag);return i<0?'':source.slice(Math.max(0,i-260),i+580)};const playerLinks=[...document.querySelectorAll('a[href*=\"ssx.ozmonet.com/user/\"]')];return {tracks,sourceCount:playerLinks.length,samples:playerLinks.slice(0,18).map(link=>({id:link.href.split('/').pop(),rider:link.closest('td')?.querySelector('.rider-name')?.textContent?.trim(),row:link.closest('tr')?.textContent?.trim()?.slice(0,90),html:link.closest('td')?.outerHTML?.slice(0,350)})),functions:{availableTracks:window.availableTracks.toString().slice(0,1800),trackObj:window.trackObj.toString().slice(0,1800),positionsForTrack:window.positionsForTrack.toString().slice(0,1800)},contexts:{level8:mention('\"Level 8 Runs\"'),android:mention('[\"Android\"'),dev:mention('\"DEV Tracks\"'),source:mention('1SAk84oy05R0UK3JJ'),oz:mention('ozmonet.com')}}})()");
+    console.log('SSX_EXTRA_CATALOG_AUDIT',JSON.stringify(extraAudit));
+    const schemaAudit=await evaluate(cdp.send,sid,"(()=>{const script=[...document.scripts].filter(x=>x.id!=='ssx-alpine-v37-script').sort((a,b)=>b.textContent.length-a.textContent.length)[0]?.textContent||'';const keys=['let TRACKS=','const TRACKS=','let O=','const O=','let G=','const G=','let C=','const C=','let S=','const S=','function entryRider','function riderKey','const gTrackCats','let gTrackCats','const oTsTracks','const gIndex','function getCells'];const found=keys.map(k=>({key:k,index:script.indexOf(k),context:script.indexOf(k)<0?'':script.slice(script.indexOf(k),script.indexOf(k)+660)}));const allSources=[...document.querySelectorAll('#sourceSeg [data-source]')].map(x=>({key:x.dataset.source,label:x.textContent.trim()}));const original=script.slice(0,550);return{found,allSources,original}})()");
+    console.log('SSX_ORIGINAL_SCHEMA_AUDIT',JSON.stringify(schemaAudit));
+    const identityAudit=await evaluate(cdp.send,sid,"(()=>{try{const summary={G:typeof G,O:typeof O,C:typeof C,TRACKS:typeof TRACKS,META:typeof META,googleRows:typeof G==='object'?G.length:null,ozTrackBuckets:typeof O==='object'?O.length:null,combinedBuckets:typeof C==='object'?C.length:null,meta:typeof META==='object'?META:null};if(typeof O==='object'){const ids=new Map();let count=0;for(const bucket of O){for(const row of bucket[2]||[]){count++;const id=String(row[4]||'');if(!id||id==='null')continue;if(!ids.has(id))ids.set(id,new Map());const seen=ids.get(id);const name=String(row[1]||'').trim();seen.set(name,(seen.get(name)||0)+1);}}summary.ozRows=count;summary.ozIds=ids.size;summary.nameCollisions=[...ids].filter(([id,names])=>names.size>1).slice(0,12).map(([id,names])=>({id,names:[...names]}));}if(typeof G==='object'){const linked=G.filter(x=>String(x[8]||'').includes('ssx.ozmonet.com/user/'));summary.gLinked=linked.length;summary.gLinkedSamples=linked.slice(0,11).map(x=>({category:x[0],track:x[1],kind:x[3],rider:x[4],id:String(x[8]).split('/').pop()}));}return summary;}catch(err){return{error:String(err)}}})()");
+    console.log('SSX_IDENTITY_COVERAGE_AUDIT',JSON.stringify(identityAudit));
+    const mismatchAudit=await evaluate(cdp.send,sid,"(()=>{const lookup=new Map();for(const [ti,kind,rows] of O)for(const row of rows){const id=String(row[4]||'');if(!id)continue;const old=lookup.get(id);if(!old||Number(row[5])>old.timestamp)lookup.set(id,{name:String(row[1]).trim(),timestamp:Number(row[5])||0})}const direct=G.filter(r=>String(r[8]||'').includes('ssx.ozmonet.com/user/')).map(r=>{const id=String(r[8]).split('/').pop();const oz=lookup.get(id);return {track:r[1],kind:r[3],position:r[2],googleName:r[4],id,ozName:oz?.name,matching:oz?.name?.toLocaleLowerCase()===String(r[4]).toLocaleLowerCase()}});let exact=0,conflict=0,idsLinked=0;const cIndex=new Map();for(const bucket of C){const ti=bucket[0];for(const row of bucket[1]||[]){const kind=row[3];const score=Number(row[2]);if(!Number.isFinite(score)||!row[6])continue;const key=ti+'|'+kind+'|'+score;const ids=cIndex.get(key)||new Set();ids.add(String(row[6]));cIndex.set(key,ids)}}const linkedSamples=[];for(const r of G){if((r[3]!==2&&r[3]!==3)||r[6]==null)continue;const key=r[1]+'|'+r[3]+'|'+Number(r[6]);const ids=cIndex.get(key);if(!ids)continue;exact++;if(ids.size===1){const id=[...ids][0],oz=lookup.get(id);if(oz){idsLinked++;if(oz.name.toLowerCase()!==String(r[4]).toLowerCase()){conflict++;if(linkedSamples.length<15)linkedSamples.push({category:r[0],tid:r[1],kind:r[3],score:r[6],sheet:r[4],oz:oz.name,id})}}}else conflict++}return{direct,googleNumericCMatches:exact,googleIdResolved:idsLinked,conflicts:conflict,conflictSamples:linkedSamples,ozNamedPlayers:lookup.size}})()");
+    console.log('SSX_SHEET_OZ_NAME_CROSSCHECK',JSON.stringify(mismatchAudit));
+
     const desktop=await evaluate(cdp.send,sid,"(()=>{const sources=document.querySelector('#alpineSources');return {cards:document.querySelectorAll('.alpine-mode-card').length,sourceClosed:!!sources&&!sources.open,advanced:!!document.querySelector('#alpineAdvancedFilters #categoryField'),rows:document.querySelectorAll('#sheet tr.rank-row').length,admin:!!document.querySelector('#dataBtn'),opaque:globalThis.origin==='null'};})()");
     assert.equal(desktop.cards,4);
     assert.equal(desktop.sourceClosed,true);
@@ -193,7 +205,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(readableEmpty.role,'status','Empty score states must be accessible');
     assert.equal(readableEmpty.visible,true);
 
-    assert.equal(ozRace.canonical,13);
+    assert.ok(ozRace.canonical>1&&ozRace.canonical<=13,'Ozmonet regions must reflect that source, not a stale combined-source catalogue');
     assert.equal(ozRace.progress,true);
     await evaluate(cdp.send,sid,"document.querySelector('[data-source=combined]').click()");
     await sleep(180);
@@ -534,6 +546,8 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     const sourceSwitched=await evaluate(cdp.send,sid,"(()=>{document.querySelector('[data-source=\"google\"]').click();return {source:document.querySelector('#sourceSeg [data-source].active')?.dataset.source,bridge:!!document.querySelector('#liveTestBtn')};})()");
     assert.equal(sourceSwitched.source,'google','Existing Google Sheets source selection must still work');
     assert.equal(sourceSwitched.bridge,true,'Original Bridge settings must remain in the DOM');
+    const sheetGroups=await evaluate(cdp.send,sid,"(()=>{const select=document.querySelector('#category');const opts=[...select.options];const initial=select.value;const entries=opts.map(o=>{select.value=o.value;select.dispatchEvent(new Event('change',{bubbles:true}));const ids=[...window.availableTracks()];const groups={};for(const id of ids){const t=window.trackObj(id);groups[t.group]=(groups[t.group]||0)+1;}return{label:o.textContent.trim(),value:o.value,count:ids.length,groups,sample:ids.slice(0,5).map(id=>({id,track:window.trackObj(id).track,group:window.trackObj(id).group}))}});select.value=initial;select.dispatchEvent(new Event('change',{bubbles:true}));const script=[...document.scripts].sort((a,b)=>b.textContent.length-a.textContent.length)[0]?.textContent||'';const tokens=['const TRACKS','const gRows','const oRows','const g','const o','OZMONET','const G'];return{entries,sourceMode:document.querySelector('[data-source=google]').className,scriptStart:script.slice(0,1500),tokens:tokens.map(token=>({token,index:script.indexOf(token),snippet:script.indexOf(token)<0?'':script.slice(script.indexOf(token),script.indexOf(token)+330)}))}})()");
+    console.log('SSX_SHEET_CATEGORY_AUDIT',JSON.stringify(sheetGroups));
     await evaluate(cdp.send,sid,"document.querySelector('[data-source=\"combined\"]').click()");
     await sleep(400);
     const combined=await evaluate(cdp.send,sid,"document.querySelector('#sourceSeg [data-source].active')?.dataset.source");
@@ -600,6 +614,32 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(shareFallback.visible,true,'Clipboard unavailable must reveal an editable-selectable public URL');
     assert.equal(shareFallback.link,targetLink.url);
     assert.equal(shareFallback.role,'status');
+
+    const sourceCurated=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#ssxIdentityReview');const audit={verified:Number(root.dataset.verifiedIds),conflicts:Number(root.dataset.conflictingLinks),ozIds:Number(root.dataset.ozIds),googleRows:Number(root.dataset.googleRows),collections:[...document.querySelectorAll('#ssxCollectionsRail [data-ssx-collection]')].map(x=>({name:x.dataset.ssxCollection,count:Number(x.dataset.collectionTracks)})),linkConflicts:document.querySelectorAll('#tbody [data-ssx-identity-conflict]').length,sourceLinks:[...root.querySelectorAll('[data-ssx-source-link]')].map(a=>a.href)};const q=document.querySelector('#ssxIdentitySearch');q.value='186243498';q.dispatchEvent(new Event('input',{bubbles:true}));audit.lookup=document.querySelector('#ssxIdentityResults')?.textContent.trim();return audit})()");
+    assert.equal(sourceCurated.verified,1015,'Only exact source/track/kind/score joins with matching archived in-game IDs count as verified');
+    assert.equal(sourceCurated.conflicts,11,'The 11 Ozmonet profile URLs tied to other riders must be quarantined');
+    assert.equal(sourceCurated.ozIds,2786,'Ozmonet ID registry must originate from the original read-only archive');
+    assert.equal(sourceCurated.googleRows,5887);
+    assert.equal(sourceCurated.collections.length,10);
+    assert.match(sourceCurated.lookup,/Hero Complexity.*186243498/,'The in-game ID must resolve to the Oz archive name, not to a mismatched Google row');
+    assert.ok(sourceCurated.sourceLinks.some(x=>x.includes('docs.google.com/spreadsheets')));
+    assert.ok(sourceCurated.sourceLinks.some(x=>x.includes('ssx.ozmonet.com')));
+    console.log('SSX_ID_CURATION_SUMMARY',JSON.stringify(sourceCurated));
+    const curatedCategories=[['Level 1',59],['Level 3',20],['Level 6',67],['Level 7',23],['Level 8',8],['Level 9',30],['No Boost',25],['Android',29],['DEV Tracks',8],['Global Top 16',73]];
+    for(const [category,expected] of curatedCategories){
+      await evaluate(cdp.send,sid,"[...document.querySelectorAll('#ssxCollectionsRail [data-ssx-collection]')].find(x=>x.dataset.ssxCollection==="+JSON.stringify(category)+").click()");
+      await sleep(180);
+      const selection=await evaluate(cdp.send,sid,"(()=>({category:document.querySelector('#category').value,source:document.querySelector('#sourceSeg [data-source].active')?.dataset.source,active:document.querySelector('#ssxCollectionsRail [aria-pressed=true]')?.dataset.ssxCollection,count:Number(document.querySelector('#ssxSheetRegions [data-ssx-region=all] .ssx-sheet-region-count')?.textContent||0),tracks:document.querySelectorAll('#ssxRegionBrowser .ssx-track-choice').length,leader:document.querySelector('#ssxLeadersToggle')?.getAttribute('aria-pressed'),progress:document.querySelector('#renderProgress')?.hidden}))()");
+      assert.equal(selection.source,'google',category+' must use Google Sheet scores');
+      assert.equal(selection.category,category);
+      assert.equal(selection.active,category);
+      assert.equal(selection.count,expected,'Unexpected official category piste count for '+category);
+      assert.equal(selection.tracks,expected,'All source-category tracks must appear without lazy loading in '+category);
+      assert.equal(selection.leader,'true');
+      assert.equal(selection.progress,true);
+    }
+    assert.equal(await evaluate(cdp.send,sid,"document.querySelector('#ssxSheetRegions [data-ssx-region=DEV]')===null"),true,'DEV category must not leak into Global Top 16 when returning to main sheet');
+
 
   } finally {
     cdp?.ws.close();
