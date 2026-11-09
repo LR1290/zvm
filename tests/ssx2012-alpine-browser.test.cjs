@@ -110,6 +110,17 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(desktop.sourceClosed,true);
     assert.equal(desktop.advanced,true);
     assert.ok(desktop.rows>10);
+    const completeLoad=await evaluate(cdp.send,sid,"(()=>({registered:[...window.availableTracks()].length,rendered:document.querySelectorAll('#tbody .track-cell').length,regions:[...document.querySelectorAll('#ssxSheetRegions [data-ssx-region]')].map(b=>b.dataset.ssxRegion),regionGroups:document.querySelectorAll('#ssxRegionBrowser .ssx-region-group').length,allCount:Number(document.querySelector('#ssxSheetRegions [data-ssx-region=all] .ssx-sheet-region-count')?.textContent),progressHidden:document.querySelector('#renderProgress')?.hidden,progressDisplay:getComputedStyle(document.querySelector('#renderProgress')).display,completeLoader:window.__ssxCompleteTracksInstalled,indexReady:document.body.dataset.ssxTracksIndexed}))()");
+    assert.equal(completeLoad.registered,73,'The canonical SSX archive defines 73 playable tracks');
+    assert.equal(completeLoad.rendered,73,'Every SSX track must render at first paint without scrolling');
+    assert.equal(completeLoad.regions.length,13,'All 12 regional tabs plus All regions must be available');
+    assert.equal(completeLoad.regionGroups,12,'All regions must appear in the photographic browser');
+    assert.equal(completeLoad.allCount,73,'All regions button should use full catalogue size');
+    assert.equal(completeLoad.completeLoader,true);
+    assert.equal(completeLoad.indexReady,'ready');
+    assert.equal(completeLoad.progressHidden,true,'Legacy progressive loader must finish automatically');
+    assert.equal(completeLoad.progressDisplay,'none','Progressive loading banner must not be visible');
+    for(const region of ['Antarctica','Himalayas','Japan','Mount Eddie','New Zealand','Patagonia','Rockies','Siberia','Training'])assert.ok(completeLoad.regions.includes(region),'Missing registered region: '+region);
     assert.equal(desktop.admin,true);
     assert.equal(desktop.opaque,true);
     const regional=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#ssxRegionBrowser');const africa=[...root.querySelectorAll('.ssx-region-group')].find(x=>x.dataset.regionName==='Africa');const tabs=africa?.querySelectorAll('.ssx-track-choice')||[];const selected=root.querySelector('.ssx-region-detail h3');return {display:getComputedStyle(root).display,africa:!!africa,meru:africa?.textContent.includes('Meru Mountain'),redLight:[...tabs].some(b=>b.textContent.includes('Red Light')),first:selected?.textContent,rankCount:root.querySelectorAll('.ssx-region-rank').length,proof:!!root.querySelector('.ssx-region-proof'),regions:root.querySelectorAll('.ssx-region-group').length,tableHidden:getComputedStyle(document.querySelector('.sheet-scroll')).display==='none'}})()");
@@ -126,15 +137,17 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(sheetUI.toolbarInSheet,true,'Actual existing filters should be part of the ranking sheet');
     assert.equal(sheetUI.hiddenNative,true,'Duplicate legacy region dropdown must not clutter the tabs');
     assert.equal(sheetUI.active,'all');
-    const filterPersistence=await evaluate(cdp.send,sid,"(()=>{const tabs=document.querySelector('#ssxSheetRegions');const allBefore=Number(tabs.querySelector('[data-ssx-region=all] .ssx-sheet-region-count').textContent);tabs.querySelector('[data-ssx-region=Africa]').click();const africa={pressed:tabs.querySelector('[data-ssx-region=Africa]').getAttribute('aria-pressed'),groups:document.querySelectorAll('#ssxRegionBrowser .ssx-region-group').length,redLight:!![...document.querySelectorAll('#ssxRegionBrowser .ssx-track-choice')].find(b=>b.textContent.includes('Red Light'))};const track=document.querySelector('#track');track.value='0';track.dispatchEvent(new Event('change',{bubbles:true}));const afterTrack={groups:document.querySelectorAll('#ssxRegionBrowser .ssx-region-group').length,tracks:document.querySelectorAll('#ssxRegionBrowser .ssx-track-choice').length,detail:document.querySelector('.ssx-region-detail h3')?.textContent,allCount:Number(tabs.querySelector('[data-ssx-region=all] .ssx-sheet-region-count').textContent)};tabs.querySelector('[data-ssx-region=all]').click();return {allBefore,africa,afterTrack,restored:document.querySelectorAll('#ssxRegionBrowser .ssx-region-group').length,active:tabs.querySelector('[aria-pressed=true]')?.dataset.ssxRegion}})()");
+    const filterPersistence=await evaluate(cdp.send,sid,"(()=>{const tabs=document.querySelector('#ssxSheetRegions');const allBefore=Number(tabs.querySelector('[data-ssx-region=all] .ssx-sheet-region-count').textContent);tabs.querySelector('[data-ssx-region=Africa]').click();const africa={pressed:tabs.querySelector('[data-ssx-region=Africa]').getAttribute('aria-pressed'),groups:document.querySelectorAll('#ssxRegionBrowser .ssx-region-group').length,redLight:!![...document.querySelectorAll('#ssxRegionBrowser .ssx-track-choice')].find(b=>b.textContent.includes('Red Light'))};const track=document.querySelector('#track');track.value='0';track.dispatchEvent(new Event('change',{bubbles:true}));const afterTrack={groups:document.querySelectorAll('#ssxRegionBrowser .ssx-region-group').length,tracks:document.querySelectorAll('#ssxRegionBrowser .ssx-track-choice').length,detail:document.querySelector('.ssx-region-detail h3')?.textContent,allCount:Number(tabs.querySelector('[data-ssx-region=all] .ssx-sheet-region-count').textContent),allTabs:tabs.querySelectorAll('[data-ssx-region]').length,loadDone:document.querySelector('#renderProgress').hidden};tabs.querySelector('[data-ssx-region=all]').click();return {allBefore,africa,afterTrack,restored:document.querySelectorAll('#ssxRegionBrowser .ssx-region-group').length,active:tabs.querySelector('[aria-pressed=true]')?.dataset.ssxRegion}})()");
     assert.equal(filterPersistence.africa.pressed,'true');
     assert.equal(filterPersistence.africa.groups,1,'Africa should show region-specific tracks');
     assert.equal(filterPersistence.africa.redLight,true);
     assert.ok(filterPersistence.afterTrack.tracks>=2,'Changing old track filter must not unload embedded tracks');
     assert.equal(filterPersistence.afterTrack.groups,1);
     assert.equal(filterPersistence.afterTrack.allCount,filterPersistence.allBefore,'Legacy filters cannot erase the regional index');
+    assert.equal(filterPersistence.afterTrack.allTabs,13,'Changing piste filters cannot remove registered region tabs');
+    assert.equal(filterPersistence.afterTrack.loadDone,true,'Filtering cannot restart the visible track loader');
     assert.equal(filterPersistence.active,'all');
-    assert.ok(filterPersistence.restored>=2,'All-region tab restores the complete available tracks');
+    assert.equal(filterPersistence.restored,12,'All-region tab restores every canonical region');
     // Reset the old track field so the rest of the integration suite starts from an unfiltered sheet.
     await evaluate(cdp.send,sid,"(()=>{const track=document.querySelector('#track');track.value='';track.dispatchEvent(new Event('change',{bubbles:true}));})()");
 

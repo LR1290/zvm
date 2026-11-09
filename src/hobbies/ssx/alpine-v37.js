@@ -323,6 +323,7 @@
   let openedRegions=new Set();
   let selectedRegion='all';
   let regionalCache=null;
+  let fullTrackCatalog=null;
   const regionTabsI18n={
     pt:['Regiões','Todas as regiões'],en:['Regions','All regions'],
     de:['Regionen','Alle Regionen'],es:['Regiones','Todas las regiones'],
@@ -419,6 +420,64 @@
 
   // Index the embedded, canonical ranking rows in one pass. Row visibility belongs
   // only to the old table filter, never to whether a track has loaded.
+
+  // The v36 page originally renders only eight track groups and waits for
+  // IntersectionObserver to request the rest. Keep its canonical dataset and
+  // ranking functions, but drain batches synchronously on each original render.
+  function installCompleteTrackRendering(){
+    const legacy=window.appendRenderBatch;
+    if(typeof legacy!=='function'||window.__ssxCompleteTracksInstalled)return false;
+    const progress=$('renderProgress');
+    let inside=false;
+    const complete=(...args)=>{
+      if(inside)return legacy(...args);
+      inside=true;
+      try{
+        for(let batch=0;batch<256;batch++){
+          const before=$('tbody')?.querySelectorAll('.track-cell').length||0;
+          legacy(...args);
+          const after=$('tbody')?.querySelectorAll('.track-cell').length||0;
+          if(progress?.hidden||after<=before)break;
+        }
+      }finally{
+        inside=false;
+      }
+    };
+    window.appendRenderBatch=complete;
+    window.__ssxCompleteTracksInstalled=true;
+    complete();
+    return true;
+  }
+  // Region tabs are built from the original embedded track catalogue, not
+  // from which scores are available in a particular source or game mode.
+  function completeTrackCatalog(){
+    if(fullTrackCatalog)return fullTrackCatalog;
+    const canonical=typeof window.availableTracks==='function'?
+      [...window.availableTracks()]:[];
+    const records=new Map();
+    if(typeof window.trackObj==='function'){
+      for(const id of canonical){
+        const item=window.trackObj(id);
+        if(!item?.track||!item?.region)continue;
+        const entry={
+          region:String(item.region),
+          mountain:String(item.mountain||''),
+          track:String(item.track),
+          order:Number(id)
+        };
+        entry.key=JSON.stringify([entry.region,entry.mountain,entry.track]);
+        if(!records.has(entry.key))records.set(entry.key,{...entry,runs:[]});
+      }
+    }
+    // The original spreadsheet's region dropdown carries the preferred ordering.
+    const order=new Map([...$('region')?.options||[]].map((option,i)=>[option.textContent.trim(),i]));
+    fullTrackCatalog=[...records.values()].sort((a,b)=>
+      (order.get(a.region)??99)-(order.get(b.region)??99)||
+      a.order-b.order||
+      a.track.localeCompare(b.track,undefined,{numeric:true}));
+    return fullTrackCatalog;
+  }
+
   function indexedTracks(mode){
     if(!regionalCache){
       const indexes=new Map(Object.keys(tags).map(name=>[name,new Map()]));
@@ -526,7 +585,8 @@
     const browser=$('ssxRegionBrowser');
     if(!browser||!tags[state.mode])return;
     const copy=regionI18n[language()]||regionI18n.en;
-    const allEntries=indexedTracks(state.mode);
+    const indexed=new Map(indexedTracks(state.mode).map(item=>[item.key,item]));
+    const allEntries=completeTrackCatalog().map(item=>indexed.get(item.key)||item);
     if(selectedRegion!=='all'&&!allEntries.some(item=>item.region===selectedRegion))selectedRegion='all';
     const entries=selectedRegion==='all'?allEntries:allEntries.filter(item=>item.region===selectedRegion);
     renderRegionTabs(allEntries);
@@ -850,14 +910,14 @@
       if(event.target.closest('[data-lang]'))setTimeout(updateCopy,0);
     });
     if(!observed && typeof MutationObserver!=='undefined'){
-      new MutationObserver(()=>{
-        regionalCache=null;
-        document.body.dataset.ssxTracksIndexed='pending';
-        scheduleCards();
-      }).observe(tbody,{childList:true,subtree:true,characterData:true});
+      // Legacy filtering mutates the rendered tbody, not the underlying dataset:
+      // never discard the complete first-load catalogue on those mutations.
+      new MutationObserver(scheduleCards).observe(tbody,{childList:true});
       observed=true;
     }
-    // Preload the complete track index for every mode from the embedded sheet.
+    installCompleteTrackRendering();
+    // Build one immutable catalogue and all five score indexes at first paint.
+    completeTrackCatalog();
     indexedTracks('board');
     const params=new URL(location.href).searchParams;
     const startMode=params.get('mode');
