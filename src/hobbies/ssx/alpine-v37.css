@@ -324,3 +324,160 @@ html[data-theme="light"] .ssx-alpine-v37 .alpine-positions-toggle[aria-pressed="
   color:#09566b;
   background:#d9f3fa;
 }
+
+
+/*
+ * SSX Alpine v37.2 — authentic game visuals (independent fan-project preview)
+ * Hero: EA's own official SSX featured artwork.
+ * Riders: EA's own SSX 2012 key art.
+ * Race/Trick/Survive: screenshots from the released SSX 2012 game,
+ * preserved by Jogorama; see artwork-sources-v37.json for provenance.
+ * Decorative only: source/score/ranking text remains real DOM text.
+ * Built-in gradients remain when remote imagery is unavailable.
+ */
+body.ssx-alpine-v37 .hero {
+  position:relative;
+  isolation:isolate;
+}
+body.ssx-alpine-v37 .hero::before {
+  content:"";
+  position:absolute;
+  inset:0;
+  z-index:0;
+  pointer-events:none;
+  background:
+    linear-gradient(90deg,rgba(5,17,29,.98) 0%,rgba(5,17,29,.91) 29%,rgba(5,17,29,.62) 59%,rgba(5,17,29,.35) 100%),
+    url("https://media.contentapi.ea.com/content/dam/eacom/en-us/migrated-images/2016/10/ssx-featured-image.jpg.adapt.crop16x9.1023w.jpg") center 44% / cover no-repeat;
+}
+body.ssx-alpine-v37 .hero > * {
+  position:relative;
+  z-index:1;
+}
+body.ssx-alpine-v37 .hero .hero-visual {
+  opacity:.16;
+  pointer-events:none;
+}
+body.ssx-alpine-v37 .alpine-mode-card {
+  position:relative;
+  isolation:isolate;
+  overflow:hidden;
+  color:#f2f8fc;
+  background:#0b1d2b;
+  box-shadow:0 8px 22px rgba(2,11,20,.12);
+}
+body.ssx-alpine-v37 .alpine-mode-card::before {
+  content:"";
+  position:absolute;
+  inset:0;
+  z-index:0;
+  pointer-events:none;
+  background:
+    linear-gradient(100deg,rgba(5,20,32,.91) 1%,rgba(5,20,32,.72) 53%,rgba(5,20,32,.43) 100%),
+    var(--alpine-art,linear-gradient(135deg,#11394a,#081c2b)) center / cover no-repeat;
+  transition:transform .25s ease,filter .25s ease;
+  filter:saturate(.83);
+}
+body.ssx-alpine-v37 .alpine-mode-card[data-alpine-group="race"] {
+  --alpine-art:url("https://jogorama.com.br/arquivos/telas/SSX-2012/15.jpg");
+}
+body.ssx-alpine-v37 .alpine-mode-card[data-alpine-group="trick"] {
+  --alpine-art:url("https://jogorama.com.br/arquivos/telas/SSX-2012/20.jpg");
+}
+body.ssx-alpine-v37 .alpine-mode-card[data-alpine-group="survive"] {
+  --alpine-art:url("https://jogorama.com.br/arquivos/telas/SSX-2012/42.jpg");
+}
+body.ssx-alpine-v37 .alpine-mode-card[data-alpine-group="riders"] {
+  --alpine-art:url("https://media.contentapi.ea.com/content/dam/gin/images/2017/01/ssx-2012-keyart-min.jpg");
+}
+body.ssx-alpine-v37 .alpine-mode-card > * {
+  position:relative;
+  z-index:1;
+}
+body.ssx-alpine-v37 .alpine-mode-card:hover::before {
+  transform:scale(1.045);
+  filter:saturate(1);
+}
+body.ssx-alpine-v37 .alpine-mode-card[aria-pressed="true"] {
+  color:#fff;
+  background:#0d3043;
+}
+body.ssx-alpine-v37 .alpine-mode-card span:last-child {
+  color:#d9eaf4;
+}
+body.ssx-alpine-v37 .alpine-mode-card[data-alpine-group="riders"]::before {
+  background-position:70% 36%;
+}
+body.ssx-alpine-v37 .alpine-art-credits {
+  border-top:1px solid var(--alpine-border);
+  margin:30px 0 8px;
+  padding:18px 4px 8px;
+  color:var(--alpine-muted);
+  font-size:.79rem;
+  line-height:1.65;
+}
+body.ssx-alpine-v37 .alpine-art-credits strong {
+  display:block;
+  color:var(--alpine-text);
+  margin-bottom:3px;
+  font-size:.84rem;
+}
+body.ssx-alpine-v37 .alpine-art-credits p {
+  margin:.25rem 0;
+}
+body.ssx-alpine-v37 .alpine-art-credits a {
+  color:var(--alpine-cyan);
+  text-underline-offset:3px;
+  margin-inline:.25rem;
+}
+body.ssx-alpine-v37 .alpine-art-credits a:focus-visible {
+  outline:3px solid var(--alpine-cyan);
+  outline-offset:3px;
+}
+@media (max-width:620px) {
+  body.ssx-alpine-v37 .hero::before {
+    background:
+      linear-gradient(180deg,rgba(5,17,29,.92) 0%,rgba(5,17,29,.83) 65%,rgba(5,17,29,.92) 100%),
+      url("https://media.contentapi.ea.com/content/dam/eacom/en-us/migrated-images/2016/10/ssx-featured-image.jpg.adapt.crop16x9.1023w.jpg") 66% 32% / cover no-repeat;
+  }
+  body.ssx-alpine-v37 .hero .hero-visual {opacity:.07;}
+  body.ssx-alpine-v37 .alpine-mode-card::before {
+    background:
+      linear-gradient(180deg,rgba(5,20,32,.70),rgba(5,20,32,.93)),
+      var(--alpine-art,linear-gradient(135deg,#11394a,#081c2b)) center / cover no-repeat;
+  }
+  body.ssx-alpine-v37 .alpine-art-credits {font-size:.75rem; padding-inline:6px;}
+}
+/* Strong readable headline even if the visitor prefers a light interface. */
+html[data-theme="light"] body.ssx-alpine-v37 .hero h1,
+html[data-theme="light"] body.ssx-alpine-v37 .hero p {
+  color:#f2f9fd;
+}
+html[data-theme="light"] body.ssx-alpine-v37 .alpine-mode-card,
+html[data-theme="light"] body.ssx-alpine-v37 .alpine-mode-card[aria-pressed="true"] {
+  color:#fff;
+  background:#081f30;
+}
+html[data-theme="light"] body.ssx-alpine-v37 .alpine-mode-card span:last-child {
+  color:#e1eff7;
+}
+/* Reduced-data visitors still get full functionality, with no decorative remote images. */
+@media (prefers-reduced-data:reduce) {
+  body.ssx-alpine-v37 .hero::before {
+    background:linear-gradient(110deg,rgba(5,17,29,.96),rgba(16,59,80,.85));
+  }
+  body.ssx-alpine-v37 .alpine-mode-card::before {
+    background:linear-gradient(110deg,rgba(9,29,43,.9),rgba(23,72,92,.8));
+  }
+}
+body.ssx-alpine-v37.alpine-data-saver .hero::before {
+  background:linear-gradient(110deg,rgba(5,17,29,.96),rgba(16,59,80,.85));
+}
+body.ssx-alpine-v37.alpine-data-saver .alpine-mode-card::before {
+  background:linear-gradient(110deg,rgba(9,29,43,.9),rgba(23,72,92,.8));
+}
+@media (prefers-reduced-motion:reduce) {
+  body.ssx-alpine-v37 .alpine-mode-card::before {
+    transition:none;
+    transform:none;
+  }
+}
