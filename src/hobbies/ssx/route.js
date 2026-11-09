@@ -118,7 +118,7 @@ function loadV37Preview() {
 
   // Render a v38-compatible first paint before the v36 data engine finishes parsing.
   // This prevents the legacy markup from being visible during progressive enhancement.
-  const bootStyle = String.raw\`
+  const bootStyle = String.raw`
 #ssxBootScreen{position:fixed;inset:0;z-index:2147483646;overflow-y:auto;box-sizing:border-box;background:#07131d;color:#edf6ff;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 #ssxBootScreen *{box-sizing:border-box}
 html:not([data-ssx-boot="ready"]) body>*:not(#ssxBootScreen){visibility:hidden}
@@ -136,7 +136,7 @@ html:not([data-ssx-boot="ready"]) body>*:not(#ssxBootScreen){visibility:hidden}
 @keyframes ssxBootSpin{to{transform:rotate(360deg)}}
 @media(max-width:640px){#ssxBootScreen .ssx-boot-inner{padding:12px}#ssxBootScreen .ssx-boot-nav{min-height:70px;font-size:18px}#ssxBootScreen .ssx-boot-hero{min-height:510px;padding:30px;align-items:flex-start;padding-top:52px;background-position:center center}#ssxBootScreen h1{font-size:clamp(44px,10vw,62px)}#ssxBootScreen .ssx-boot-modes{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}#ssxBootScreen .ssx-boot-mode{height:115px;padding:14px;font-size:16px}}
 @media(prefers-reduced-motion:reduce){#ssxBootScreen .ssx-boot-spinner{animation:none}}
-\`;
+`;
   const bootMarkup = '<div id="ssxBootScreen" role="status" aria-live="polite">'
     + '<div class="ssx-boot-inner"><header class="ssx-boot-nav"><span>SSX 2012</span><span class="ssx-boot-menu" aria-hidden="true">☰</span></header>'
     + '<main><section class="ssx-boot-hero"><div><div class="ssx-boot-eyebrow">RECORDES DA COMUNIDADE</div>'
