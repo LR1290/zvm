@@ -23,3 +23,14 @@ jobs:
           node --check src/hobbies/ssx/alpine-v37.js
       - name: Run SSX v36 + v37 isolation regression
         run: node --test tests/ssx2012-route.test.cjs tests/ssx2012-alpine-v37.test.cjs
+      - name: Chromium real desktop/mobile integration
+        run: |
+          google-chrome --version
+          node --test tests/ssx2012-alpine-browser.test.cjs
+      - name: Store visual screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ssx-v37-alpine-screenshots
+          path: artifacts/*.png
+          if-no-files-found: ignore
