@@ -120,7 +120,7 @@ function loadV37Preview() {
   const updated = original
     .replace(/<\/head\s*>/i, '<style id="ssx-alpine-v37-style">\n' + css + '\n</style></head>')
     .replace(/<\/body\s*>/i, '<script id="ssx-alpine-v37-script">\n' + js + '\n</script></body>')
-    .replace(/<title>[^<]*<\/title>/i, '<title>SSX 2012 · Alpine v37 Preview</title>');
+    .replace(/<title>[^<]*<\/title>/i, '<title>SSX 2012 · Alpine v37.2 Preview</title>');
   const data = Buffer.from(updated, 'utf8');
   const hash = crypto.createHash('sha256').update(data).digest('hex');
   v37Preview = { content: data, hash, gzip: null, br: null };
