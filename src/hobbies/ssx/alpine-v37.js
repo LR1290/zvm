@@ -35,12 +35,12 @@
   // UI copy is intentionally editorial, not a release/build status banner.
   // The underlying v36 controls remain attached to their original DOM IDs.
   const publicCopy = {
-    pt:{title:'SSX 2012 · Recordes da Comunidade',desc:'Todos os recordes de SSX 2012 em um só lugar.',records:'Recordes',riders:'Riders',about:'Sobre',more:'Mais opções',manage:'Gerenciar site',advanced:'Mais filtros',sources:'Sobre os dados',guide:'Guia',credits:'Créditos e fontes',footer:'Recordes da comunidade SSX 2012 · Projeto independente, não afiliado à EA.',language:'Idioma',eyebrow:'RECORDES DA COMUNIDADE'},
-    en:{title:'SSX 2012 · Community Records',desc:'All SSX 2012 community records in one place.',records:'Records',riders:'Riders',about:'About',more:'More options',manage:'Manage site',advanced:'More filters',sources:'About the data',guide:'Guide',credits:'Credits and sources',footer:'SSX 2012 community records · Independent fan project, not affiliated with EA.',language:'Language',eyebrow:'COMMUNITY RECORDS'},
-    de:{title:'SSX 2012 · Community-Rekorde',desc:'Alle SSX 2012-Rekorde an einem Ort.',records:'Rekorde',riders:'Riders',about:'Über uns',more:'Mehr Optionen',manage:'Seite verwalten',advanced:'Weitere Filter',sources:'Über die Daten',guide:'Anleitung',credits:'Bildnachweise und Quellen',footer:'SSX 2012 Community-Rekorde · Unabhängiges Fanprojekt ohne Verbindung zu EA.',language:'Sprache',eyebrow:'COMMUNITY-REKORDE'},
-    es:{title:'SSX 2012 · Récords de la comunidad',desc:'Todos los récords de SSX 2012 en un solo lugar.',records:'Récords',riders:'Riders',about:'Acerca de',more:'Más opciones',manage:'Administrar sitio',advanced:'Más filtros',sources:'Sobre los datos',guide:'Guía',credits:'Créditos y fuentes',footer:'Récords de SSX 2012 · Proyecto independiente sin afiliación a EA.',language:'Idioma',eyebrow:'RÉCORDS DE LA COMUNIDAD'},
-    nl:{title:'SSX 2012 · Communityrecords',desc:'Alle SSX 2012-records op één plek.',records:'Records',riders:'Riders',about:'Over',more:'Meer opties',manage:'Site beheren',advanced:'Meer filters',sources:'Over de gegevens',guide:'Handleiding',credits:'Bronnen en credits',footer:'SSX 2012 Communityrecords · Onafhankelijk fanproject, niet verbonden met EA.',language:'Taal',eyebrow:'COMMUNITYRECORDS'},
-    fr:{title:'SSX 2012 · Records communautaires',desc:'Tous les records de SSX 2012 en un seul endroit.',records:'Records',riders:'Riders',about:'À propos',more:'Plus d’options',manage:'Gérer le site',advanced:'Plus de filtres',sources:'À propos des données',guide:'Guide',credits:'Crédits et sources',footer:'Records SSX 2012 · Projet de fans indépendant, non affilié à EA.',language:'Langue',eyebrow:'RECORDS COMMUNAUTAIRES'}
+    pt:{title:'SSX 2012 · Recordes da Comunidade',desc:'Todos os recordes de SSX 2012 em um só lugar.',records:'Recordes',riders:'Riders',about:'Sobre',more:'Mais opções',manage:'Gerenciar site',advanced:'Mais filtros',sources:'Sobre os dados',guide:'Guia',credits:'Créditos e fontes',footer:'Recordes da comunidade SSX 2012 · Projeto independente, não afiliado à EA.',modes:'Escolha uma modalidade',language:'Idioma',eyebrow:'RECORDES DA COMUNIDADE'},
+    en:{title:'SSX 2012 · Community Records',desc:'All SSX 2012 community records in one place.',records:'Records',riders:'Riders',about:'About',more:'More options',manage:'Manage site',advanced:'More filters',sources:'About the data',guide:'Guide',credits:'Credits and sources',footer:'SSX 2012 community records · Independent fan project, not affiliated with EA.',modes:'Choose a mode',language:'Language',eyebrow:'COMMUNITY RECORDS'},
+    de:{title:'SSX 2012 · Community-Rekorde',desc:'Alle SSX 2012-Rekorde an einem Ort.',records:'Rekorde',riders:'Riders',about:'Über uns',more:'Mehr Optionen',manage:'Seite verwalten',advanced:'Weitere Filter',sources:'Über die Daten',guide:'Anleitung',credits:'Bildnachweise und Quellen',footer:'SSX 2012 Community-Rekorde · Unabhängiges Fanprojekt ohne Verbindung zu EA.',modes:'Spielmodus wählen',language:'Sprache',eyebrow:'COMMUNITY-REKORDE'},
+    es:{title:'SSX 2012 · Récords de la comunidad',desc:'Todos los récords de SSX 2012 en un solo lugar.',records:'Récords',riders:'Riders',about:'Acerca de',more:'Más opciones',manage:'Administrar sitio',advanced:'Más filtros',sources:'Sobre los datos',guide:'Guía',credits:'Créditos y fuentes',footer:'Récords de SSX 2012 · Proyecto independiente sin afiliación a EA.',modes:'Elige una modalidad',language:'Idioma',eyebrow:'RÉCORDS DE LA COMUNIDAD'},
+    nl:{title:'SSX 2012 · Communityrecords',desc:'Alle SSX 2012-records op één plek.',records:'Records',riders:'Riders',about:'Over',more:'Meer opties',manage:'Site beheren',advanced:'Meer filters',sources:'Over de gegevens',guide:'Handleiding',credits:'Bronnen en credits',footer:'SSX 2012 Communityrecords · Onafhankelijk fanproject, niet verbonden met EA.',modes:'Kies een speltype',language:'Taal',eyebrow:'COMMUNITYRECORDS'},
+    fr:{title:'SSX 2012 · Records communautaires',desc:'Tous les records de SSX 2012 en un seul endroit.',records:'Records',riders:'Riders',about:'À propos',more:'Plus d’options',manage:'Gérer le site',advanced:'Plus de filtres',sources:'À propos des données',guide:'Guide',credits:'Crédits et sources',footer:'Records SSX 2012 · Projet de fans indépendant, non affilié à EA.',modes:'Choisir un mode',language:'Langue',eyebrow:'RECORDS COMMUNAUTAIRES'}
   };
   function applyPublicCopy() {
     const copy=publicCopy[language()]||publicCopy.en;
@@ -50,7 +50,7 @@
       ['ssxNavRecords',copy.records],
       ['ssxManagementLabel',copy.manage],
       ['ssxCreditsLabel',copy.credits],
-      ['alpineModesTitle',copy.records]
+      ['alpineModesTitle',copy.modes]
     ];
     for(const [id,value] of replacements){
       const node=$(id);if(node)node.textContent=value;
@@ -61,7 +61,7 @@
     if(riders)riders.textContent=copy.riders;
     const intro=$('introBtn')?.querySelector('span:not(.nav-ico)');
     if(intro)intro.textContent=copy.guide;
-    const more=$('toolsMenuBtn');if(more)more.setAttribute('aria-label',copy.more);
+    const more=$('toolsMenuBtn');if(more){more.setAttribute('aria-label',copy.more);const label=more.querySelector('[data-i="navTools"]');if(label)label.textContent=copy.more;}
     const lang=$('langBtn');if(lang)lang.setAttribute('aria-label',copy.language);
     const advanced=$('alpineAdvancedFilters')?.querySelector(':scope > summary');
     if(advanced)advanced.textContent=copy.advanced;
@@ -86,6 +86,8 @@
       if(more){
         more.classList.add('ssx-gear-trigger');
         more.setAttribute('title','Mais opções');
+        const icon=more.querySelector('.nav-ico');
+        if(icon)icon.textContent='⚙';
       }
       const menu=$('toolsMenu'),submissions=$('submissionsBtn'),settings=$('settingsBtn'),data=$('dataBtn'),admin=$('adminBtn');
       if(menu&&submissions&&settings&&data&&admin){
@@ -168,7 +170,7 @@
     modes.id='alpine-modes';
     modes.setAttribute('aria-label','Modalidades de SSX 2012');
     modes.innerHTML=
-      '<div class="alpine-heading"><div><div class="alpine-eyebrow">SSX 2012</div><h2 id="alpineModesTitle"></h2></div></div>'+
+      '<div class="alpine-heading"><div><h2 id="alpineModesTitle"></h2></div></div>'+
       '<div class="alpine-mode-grid" role="group" aria-label="Modalidades">'+
       '<button class="alpine-mode-card" type="button" data-alpine-group="race" aria-pressed="true"><span class="alpine-icon" aria-hidden="true">🏁</span><strong data-alpine-i18n="race"></strong><span data-alpine-i18n="raceSub"></span></button>'+
       '<button class="alpine-mode-card" type="button" data-alpine-group="trick" aria-pressed="false"><span class="alpine-icon" aria-hidden="true">🏆</span><strong data-alpine-i18n="trick"></strong><span data-alpine-i18n="trickSub"></span></button>'+
