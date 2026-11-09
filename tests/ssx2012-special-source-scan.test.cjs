@@ -78,6 +78,19 @@ test('identify exact source structures for historical special-category integrati
     return {category:c,example:{id:r[1],position:r[2],mode:r[3],value:r[5],platform:r[7],source:r[9],ref:r[10]}};
   });
   console.log('SSX_SPECIAL_ARRAYS '+JSON.stringify({gLength:g.length,tracksLength:tracks.length,sngLength:sng?.length,sngExample:sng?.[0],byCategory,byMode,byPlatform,exampleCategories,trackSamples:tracks.slice(-12)}));
+  const sngModes={},sngCategories={},gByCategoryMode={},sngByPlatform={};
+  for(const row of sng){
+    sngModes[row[3]]=(sngModes[row[3]]||0)+1;
+    sngCategories[row[0]]=(sngCategories[row[0]]||0)+1;
+    sngByPlatform[row[7]]=(sngByPlatform[row[7]]||0)+1;
+  }
+  for(const row of g){const key=String(row[0])+'|'+String(row[3]);gByCategoryMode[key]=(gByCategoryMode[key]||0)+1;}
+  const sngByMode=[...new Set(sng.map(row=>row[3]))].map(mode=>{
+    const rows=sng.filter(row=>row[3]===mode);
+    return {mode,examples:rows.slice(0,3).map(row=>({trackId:row[1],position:row[2],mode:row[3],value:row[5],platform:row[7],source:row[9],sheetCell:row[10]}))};
+  });
+  const references=[...mainScript.matchAll(/.{0,100}(?:SNG|survive.{0,12}(?:gear|wings|rewind)|mode\s*===?\s*[4-9]).{0,100}/gi)].slice(-40).map(x=>x[0]);
+  console.log('SSX_SPECIAL_MODE_MAP '+JSON.stringify({sngModes,sngCategories,sngByPlatform,gByCategoryMode,sngByMode,references:references.slice(0,20)}));
   console.log('SSX_SPECIAL_MARKERS '+JSON.stringify(inventory));
   assert.ok(inventory.android.length>0);
   assert.ok(inventory.level9.length>0);
