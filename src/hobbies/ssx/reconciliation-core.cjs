@@ -18,12 +18,37 @@ const statuses=Object.freeze({
 });
 function safeStr(v){return typeof v==='string'?v.trim():'';}
 function numericId(v){
+  // An in-game ID is a canonical positive decimal, never a fuzzy nickname.
+  // Reject arrays, booleans, scientific notation and leading-zero aliases.
+  if(typeof v!=='string'&&typeof v!=='number')return '';
   if(typeof v==='number'&&!Number.isSafeInteger(v))return '';
-  const value=String(v??'').trim();
-  return /^\d{1,20}$/.test(value)&&value!=='0'?value:'';
+  const value=String(v).trim();
+  return /^[1-9]\d{0,19}$/.test(value)?value:'';
 }
-function validDate(v){return typeof v==='string'&&!Number.isNaN(Date.parse(v))&&/\d{4}-\d\d-\d\dT/.test(v);}
-function isWebUrl(v){try{const u=new URL(v);return u.protocol==='https:';}catch(_){return false;}}
+function validDate(v){
+  // Strict timezone-qualified timestamps: Date.parse alone silently rolls
+  // impossible calendar days forward, which falsifies evidence provenance.
+  if(typeof v!=='string')return false;
+  const m=/^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:\.\d{1,9})?(Z|([+-])(\d\d):(\d\d))$/.exec(v);
+  if(!m)return false;
+  const [year,month,day,hour,minute,second]=m.slice(1,7).map(Number);
+  const leap=year%4===0&&(year%100!==0||year%400===0);
+  const days=[0,31,leap?29:28,31,30,31,30,31,31,30,31,30,31];
+  if(year<1||month<1||month>12||day<1||day>days[month]||
+    hour>23||minute>59||second>59)return false;
+  if(m[8]){
+    const tzHour=Number(m[9]),tzMinute=Number(m[10]);
+    if(tzHour>14||tzMinute>59||(tzHour===14&&tzMinute!==0))return false;
+  }
+  return Number.isFinite(Date.parse(v));
+}
+function isWebUrl(v){
+  if(typeof v!=='string')return false;
+  try{
+    const u=new URL(v);
+    return u.protocol==='https:'&&!u.username&&!u.password&&!u.port;
+  }catch(_){return false;}
+}
 function normalizeName(s){return safeStr(s).normalize('NFKC').toLocaleLowerCase('en').replace(/\s+/g,' ');}
 function sha(value){return crypto.createHash('sha256').update(value).digest('hex');}
 function canonical(value){
@@ -37,6 +62,9 @@ function validateSnapshot(snapshot,kind){
   if(!validDate(snapshot.capturedAt))throw new Error(kind+': capturedAt must be ISO date/time');
   if(!isWebUrl(snapshot.sourceUrl))throw new Error(kind+': sourceUrl must use HTTPS');
   const u=new URL(snapshot.sourceUrl);
+  // Even a correct hostname is not clean provenance when userinfo, a
+  // nonstandard port or a fragment is embedded in the claimed source URL.
+  if(u.hash)throw new Error(kind+': sourceUrl must not contain a fragment');
   if(kind==='google_sheets'){
     if(u.hostname!=='docs.google.com'||!u.pathname.includes('/spreadsheets/d/'+SHEET_ID+'/'))throw new Error('Google Sheets: wrong spreadsheet ID or host');
     if(!Array.isArray(snapshot.records))throw new Error('Google Sheets: records must be array');
@@ -50,7 +78,8 @@ function validOzProfile(p){
   const id=numericId(p.playerId),name=safeStr(p.gamertag);
   if(!id||!name||!isWebUrl(p.profileUrl))return false;
   const u=new URL(p.profileUrl);
-  return u.hostname==='ssx.ozmonet.com'&&u.pathname.replace(/\/$/,'')==='/user/'+id;
+  return u.hostname==='ssx.ozmonet.com'&&!u.search&&!u.hash&&
+    u.pathname.replace(/\/$/,'')==='/user/'+id;
 }
 function profileIndex(players){
   const index=new Map(),rejected=[];
