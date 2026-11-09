@@ -122,3 +122,47 @@ test('malformed optional variants cannot be laundered into standard records',()=
   assert.equal(report.rows[2].status,statuses.confirmed);
   assert.equal(report.rows[3].status,statuses.confirmed);
 });
+
+test('noncanonical numeric IDs and non-string inputs never produce aliases',()=>{
+  const {numericId}=require('../src/hobbies/ssx/reconciliation-core.cjs');
+  assert.equal(numericId('12345678901234567890'),'12345678901234567890','20 digits remain lossless as text');
+  for(const invalid of ['0','000','000123','01','1e3','1.0',123.5,Number.MAX_SAFE_INTEGER+1,[123],true,{id:123},null]){
+    assert.equal(numericId(invalid),'','refuse ambiguous ID: '+String(invalid));
+  }
+  assert.equal(numericId(' 186243498 '),'186243498');
+  const report=reconcile(sheet([row({playerId:'000186243498'})]),oz([profile()]));
+  assert.equal(report.rows[0].status,statuses.invalid);
+  assert.equal(report.safeguards.automaticRenames,false);
+});
+test('Ozmonet identity requires exact unadorned official profile paths',()=>{
+  for(const suffix of ['?cache=1','#info']){
+    assert.equal(validOzProfile(profile({profileUrl:'https://ssx.ozmonet.com/user/186243498'+suffix})),false);
+  }
+  for(const url of [
+    'https://attacker@ssx.ozmonet.com/user/186243498',
+    'https://ssx.ozmonet.com:444/user/186243498',
+    'https://ssx.ozmonet.com/user/000186243498',
+    'http://ssx.ozmonet.com/user/186243498'
+  ])assert.equal(validOzProfile(profile({profileUrl:url})),false,url);
+  assert.equal(validOzProfile(profile({profileUrl:'https://ssx.ozmonet.com/user/186243498/'})),true);
+});
+test('claimed capture date must be real, complete and timezone-qualified',()=>{
+  for(const invalid of [
+    '2026-02-30T18:00:00.000Z',
+    '2025-02-29T18:00:00.000Z',
+    '2026-11-09T25:00:00.000Z',
+    '2026-11-09T18:00:00',
+    '2026-11-09',
+    'prefix-2026-11-09T18:00:00Z',
+    '2026-11-09T18:00:00+14:30'
+  ])assert.throws(()=>reconcile({...sheet([]),capturedAt:invalid},oz([])),/capturedAt/,invalid);
+  assert.equal(reconcile({...sheet([]),capturedAt:'2024-02-29T18:00:00+03:00'},oz([])).totalSheetsRecords,0);
+});
+test('claimed source URLs reject credentials, fragments and nonstandard ports',()=>{
+  const base=url;
+  for(const invalid of [
+    base+'#sheet',
+    'https://someone@docs.google.com/spreadsheets/d/1SAk84oy05R0UK3JJ_JWJTskSqxj4GpGJkdRqfSmnx2I/edit',
+    'https://docs.google.com:444/spreadsheets/d/1SAk84oy05R0UK3JJ_JWJTskSqxj4GpGJkdRqfSmnx2I/edit'
+  ])assert.throws(()=>reconcile({...sheet([]),sourceUrl:invalid},oz([])));
+});
