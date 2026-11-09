@@ -54,3 +54,20 @@ test('no prefix traversal / directory listing / POST',()=>harness(async base=>{
  assert.equal((await fetch(base+SSX_ROUTE+'/',{redirect:'manual'})).status,308);
 }));
 test('source integrity format',()=>assert.match(SHA256,/^[a-f0-9]{64}$/));
+
+test('v38 first paint hides v36 UI until modern layout is ready',()=>harness(async base=>{
+ const r=await fetch(base+SSX_ROUTE);
+ assert.equal(r.status,200);
+ const html=await r.text();
+ const bootStyle=html.indexOf('id="ssx-first-paint-style"');
+ const bootScreen=html.indexOf('<div id="ssxBootScreen"');
+ const mountScript=html.indexOf('id="ssx-alpine-v37-script"');
+ assert.ok(bootStyle>0,'First-paint CSS must be in the initial document');
+ assert.ok(bootScreen>bootStyle,'Modern v38 shell must be in the initial HTML');
+ assert.ok(mountScript>bootScreen,'Shell is visible before legacy data engine and enhancement complete');
+ assert.match(html,/html:not\(\[data-ssx-boot="ready"\]\) body>\*:not\(#ssxBootScreen\)/);
+ assert.match(html,/document\.documentElement\.dataset\.ssxBoot = 'ready'/);
+ assert.equal(r.headers.get('x-ssx-variant'),'ssx-ui-v38');
+ const archive=await (await fetch(base+'/hobbies/ssx/ssx2012-v36')).text();
+ assert.ok(!archive.includes('id="ssxBootScreen"'),'v36 recovery must remain unchanged');
+}));
