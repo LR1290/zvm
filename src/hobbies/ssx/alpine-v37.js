@@ -316,6 +316,42 @@
   // The existing ranking DOM is authoritative. This is a read-only regional view.
   let regionalSelection='';
   let openedRegions=new Set();
+  let regionQuery='';
+  const regionToolsCopy={
+    pt:{search:'Buscar região, montanha ou pista',clear:'Limpar busca',previous:'Pista anterior',next:'Próxima pista',empty:'Nenhuma pista encontrada. Limpe a busca.',navigation:'Navegar entre pistas'},
+    en:{search:'Find region, mountain or track',clear:'Clear search',previous:'Previous track',next:'Next track',empty:'No tracks found. Clear your search.',navigation:'Browse tracks'},
+    de:{search:'Region, Berg oder Strecke suchen',clear:'Suche löschen',previous:'Vorherige Strecke',next:'Nächste Strecke',empty:'Keine Strecken gefunden. Suche löschen.',navigation:'Strecken wechseln'},
+    es:{search:'Buscar región, montaña o pista',clear:'Borrar búsqueda',previous:'Pista anterior',next:'Pista siguiente',empty:'No se encontraron pistas. Borra la búsqueda.',navigation:'Navegar entre pistas'},
+    nl:{search:'Zoek regio, berg of baan',clear:'Zoekopdracht wissen',previous:'Vorige baan',next:'Volgende baan',empty:'Geen banen gevonden. Wis de zoekopdracht.',navigation:'Banen doorzoeken'},
+    fr:{search:'Rechercher région, montagne ou piste',clear:'Effacer',previous:'Piste précédente',next:'Piste suivante',empty:'Aucune piste trouvée. Effacez la recherche.',navigation:'Parcourir les pistes'}
+  };
+  const normalizedRegionText=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+  function applyRegionSearch(){
+    const browser=$('ssxRegionBrowser');
+    if(!browser)return;
+    const query=normalizedRegionText(regionQuery);
+    let shown=0;
+    for(const region of browser.querySelectorAll('.ssx-region-group')){
+      let matches=0;
+      for(const mountain of region.querySelectorAll('.ssx-mountain-section')){
+        let mountainCount=0;
+        for(const track of mountain.querySelectorAll('.ssx-track-choice')){
+          const match=!query||normalizedRegionText(track.dataset.regionTrack).includes(query);
+          track.hidden=!match;
+          if(match){mountainCount++;matches++;shown++;}
+        }
+        mountain.hidden=mountainCount===0;
+      }
+      region.hidden=matches===0;
+      region.open=query?matches>0:openedRegions.has(region.dataset.regionName);
+    }
+    const stats=$('ssxRegionMatches');
+    if(stats)stats.textContent=shown+' '+(regionI18n[language()]||regionI18n.en)[2];
+    const empty=$('ssxRegionNoMatches');
+    if(empty)empty.hidden=shown>0;
+    const clear=$('ssxRegionSearchClear');
+    if(clear)clear.hidden=!regionQuery;
+  }
   const regionImages=['race.jpg','hero.jpg','survive.jpg','trick.jpg','riders.jpg'];
   const regionIcons={Africa:'🌍',Alaska:'❄️',Alps:'🏔️',Antarctica:'🧊',Himalayas:'🏔️',Japan:'🌸','Mount Eddie':'🏂','New Zealand':'🌊',Patagonia:'🧗',Rockies:'🏔️',Siberia:'❄️',Training:'🎿'};
   const regionI18n={
@@ -337,24 +373,35 @@
     browser.id='ssxRegionBrowser';
     browser.setAttribute('aria-label','Regiões, montanhas e pistas');
     browser.addEventListener('click',event=>{
-      const button=event.target.closest('[data-region-track]');
-      if(!button)return;
-      regionalSelection=button.dataset.regionTrack;
-      openedRegions.add(button.dataset.regionName);
+      const summary=event.target.closest('summary.ssx-region-banner');
+      if(summary&&!regionQuery){
+        const details=summary.closest('details[data-region-name]');
+        if(details){
+          if(details.open)openedRegions.delete(details.dataset.regionName);
+          else openedRegions.add(details.dataset.regionName);
+        }
+        return;
+      }
+      let choice=event.target.closest('[data-region-track]');
+      const step=event.target.closest('[data-ssx-track-step]');
+      if(step){
+        const ordered=[...browser.querySelectorAll('.ssx-track-choice')];
+        const index=ordered.findIndex(node=>node.dataset.regionTrack===regionalSelection);
+        choice=ordered[index+Number(step.dataset.ssxTrackStep)]||null;
+        if(choice)regionQuery='';
+      }
+      if(!choice)return;
+      regionalSelection=choice.dataset.regionTrack;
+      openedRegions.add(choice.dataset.regionName);
       renderRegionBrowser();
-      // On narrow screens bring the selected mountain's actual records into view.
       if(window.matchMedia('(max-width:900px)').matches){
         const selected=$('ssxRegionBrowser')?.querySelector('.ssx-region-detail');
         if(selected)selected.scrollIntoView({block:'start',
           behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
+      }else if(step){
+        $('ssxRegionBrowser')?.querySelector('[data-ssx-track-step="'+step.dataset.ssxTrackStep+'"]')?.focus({preventScroll:true});
       }
     });
-    browser.addEventListener('toggle',event=>{
-      const details=event.target;
-      if(!details.matches?.('details[data-region-name]'))return;
-      if(details.open)openedRegions.add(details.dataset.regionName);
-      else openedRegions.delete(details.dataset.regionName);
-    },true);
     card.querySelector('.sheet-scroll')?.before(browser);
   }
   function renderRegionBrowser(){
@@ -408,6 +455,43 @@
     const index=text('div','','ssx-region-index');
     const intro=text('header','','ssx-region-intro');
     intro.append(text('h3',copy[0]),text('p',copy[1]));
+    const toolsCopy=regionToolsCopy[language()]||regionToolsCopy.en;
+    const searchBox=text('div','','ssx-region-search-box');
+    const regionSearch=document.createElement('input');
+    regionSearch.id='ssxRegionSearch';
+    regionSearch.type='search';
+    regionSearch.autocomplete='off';
+    regionSearch.setAttribute('aria-label',toolsCopy.search);
+    regionSearch.placeholder=toolsCopy.search;
+    regionSearch.value=regionQuery;
+    regionSearch.addEventListener('input',()=>{
+      regionQuery=regionSearch.value;
+      applyRegionSearch();
+    });
+    regionSearch.addEventListener('keydown',event=>{
+      if(event.key==='Escape'&&regionQuery){
+        event.preventDefault();
+        regionQuery='';
+        regionSearch.value='';
+        applyRegionSearch();
+      }
+    });
+    const clearSearch=text('button','×','ssx-region-search-clear');
+    clearSearch.id='ssxRegionSearchClear';
+    clearSearch.type='button';
+    clearSearch.title=toolsCopy.clear;
+    clearSearch.setAttribute('aria-label',toolsCopy.clear);
+    clearSearch.addEventListener('click',()=>{
+      regionQuery='';
+      regionSearch.value='';
+      applyRegionSearch();
+      regionSearch.focus();
+    });
+    searchBox.append(regionSearch,clearSearch);
+    const count=text('small','','ssx-region-search-count');
+    count.id='ssxRegionMatches';
+    count.setAttribute('aria-live','polite');
+    intro.append(searchBox,count);
     index.append(intro);
     for(const [region,mountains] of regions){
       const section=document.createElement('details');
@@ -438,6 +522,10 @@
       }
       section.append(mountainList);index.append(section);
     }
+    const noMatches=text('p',toolsCopy.empty,'ssx-region-no-matches');
+    noMatches.id='ssxRegionNoMatches';
+    noMatches.hidden=true;
+    index.append(noMatches);
     const detail=text('div','','ssx-region-detail');
     if(selected){
       const header=text('header','','ssx-region-detail-header');
@@ -445,6 +533,24 @@
       header.append(text('span',(regionIcons[selected.region]||'🏂')+' '+selected.region+' / '+selected.mountain),
         text('h3',selected.track),text('small','🏆 '+selected.runs.length+' '+copy[3]));
       detail.append(header);
+      const trackIndex=entries.findIndex(item=>item.key===selected.key);
+      const stepper=text('nav','','ssx-region-stepper');
+      stepper.setAttribute('aria-label',toolsCopy.navigation);
+      const previous=text('button','‹','ssx-region-step');
+      previous.type='button';
+      previous.dataset.ssxTrackStep='-1';
+      previous.disabled=trackIndex<=0;
+      previous.setAttribute('aria-label',toolsCopy.previous);
+      previous.title=toolsCopy.previous;
+      const position=text('span',(trackIndex+1)+' / '+entries.length,'ssx-region-step-count');
+      const next=text('button','›','ssx-region-step');
+      next.type='button';
+      next.dataset.ssxTrackStep='1';
+      next.disabled=trackIndex>=entries.length-1;
+      next.setAttribute('aria-label',toolsCopy.next);
+      next.title=toolsCopy.next;
+      stepper.append(previous,position,next);
+      detail.append(stepper);
       const ranking=text('div','','ssx-region-ranking');
       for(const run of selected.runs){
         const item=text('div','','ssx-region-rank');
@@ -479,6 +585,7 @@
       detail.append(ranking);
     }else detail.append(text('p',copy[5],'ssx-region-empty'));
     browser.replaceChildren(index,detail);
+    applyRegionSearch();
   }
 
   function addUI() {
