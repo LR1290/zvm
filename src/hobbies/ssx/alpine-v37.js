@@ -88,19 +88,36 @@
         more.setAttribute('title','Mais opções');
         const icon=more.querySelector('.nav-ico');
         if(icon)icon.textContent='⚙';
+        // Compact Canva-style gear control; aria-label provides the accessible name.
+        more.querySelector('[data-i="navTools"]')?.remove();
       }
       const menu=$('toolsMenu'),submissions=$('submissionsBtn'),settings=$('settingsBtn'),data=$('dataBtn'),admin=$('adminBtn');
       if(menu&&submissions&&settings&&data&&admin){
         menu.prepend(settings);
-        menu.prepend(submissions);
         const management=document.createElement('details');
         management.className='ssx-management';
         management.id='ssxManagement';
         const disclosure=text('summary','Gerenciar site');
         disclosure.id='ssxManagementLabel';
-        management.append(disclosure,data,admin);
+        management.append(disclosure,submissions,data,admin);
         menu.append(management);
       }
+    }
+    // Community is a destination, not a dropdown containing only one Guide item.
+    const communityButton=$('communityMenuBtn');
+    if(communityButton){
+      communityButton.removeAttribute('aria-haspopup');
+      communityButton.removeAttribute('aria-expanded');
+      communityButton.removeAttribute('aria-controls');
+      communityButton.addEventListener('click',event=>{
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        $('introBtn')?.click();
+      },true);
+    }
+    const introHeading=$('introModal')?.querySelector('.modal-head h2');
+    if(introHeading)for(const node of introHeading.childNodes){
+      if(node.nodeType===3 && /INTRO/i.test(node.nodeValue||''))node.nodeValue=' ';
     }
     const stats=hero.querySelector('.hero-stats');
     if(stats){
@@ -172,10 +189,10 @@
     modes.innerHTML=
       '<div class="alpine-heading"><div><h2 id="alpineModesTitle"></h2></div></div>'+
       '<div class="alpine-mode-grid" role="group" aria-label="Modalidades">'+
-      '<button class="alpine-mode-card" type="button" data-alpine-group="race" aria-pressed="true"><span class="alpine-icon" aria-hidden="true">🏁</span><strong data-alpine-i18n="race"></strong><span data-alpine-i18n="raceSub"></span></button>'+
-      '<button class="alpine-mode-card" type="button" data-alpine-group="trick" aria-pressed="false"><span class="alpine-icon" aria-hidden="true">🏆</span><strong data-alpine-i18n="trick"></strong><span data-alpine-i18n="trickSub"></span></button>'+
-      '<button class="alpine-mode-card" type="button" data-alpine-group="survive" aria-pressed="false"><span class="alpine-icon" aria-hidden="true">🏔️</span><strong data-alpine-i18n="survive"></strong><span data-alpine-i18n="surviveSub"></span></button>'+
-      '<button class="alpine-mode-card" type="button" data-alpine-group="riders" aria-pressed="false"><span class="alpine-icon" aria-hidden="true">👥</span><strong data-alpine-i18n="riders"></strong><span data-alpine-i18n="ridersSub"></span></button>'+
+      '<button class="alpine-mode-card" type="button" data-alpine-group="race" aria-pressed="true"><strong data-alpine-i18n="race"></strong><span data-alpine-i18n="raceSub"></span></button>'+
+      '<button class="alpine-mode-card" type="button" data-alpine-group="trick" aria-pressed="false"><strong data-alpine-i18n="trick"></strong><span data-alpine-i18n="trickSub"></span></button>'+
+      '<button class="alpine-mode-card" type="button" data-alpine-group="survive" aria-pressed="false"><strong data-alpine-i18n="survive"></strong><span data-alpine-i18n="surviveSub"></span></button>'+
+      '<button class="alpine-mode-card" type="button" data-alpine-group="riders" aria-pressed="false"><strong data-alpine-i18n="riders"></strong><span data-alpine-i18n="ridersSub"></span></button>'+
       '</div><div class="alpine-submodes" id="alpineSubmodes" role="group" aria-label="Submodalidades"></div>';
     hero.insertAdjacentElement('afterend',modes);
 
