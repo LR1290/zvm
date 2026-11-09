@@ -448,7 +448,9 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.ok(trackCards.ranks.length>=2,'Selected track should expose ranked entries, not only its winner');
     assert.equal(trackCards.toggleHidden,false,'Leaders must be directly accessible even when Red Light is filtered');
     assert.equal(trackCards.mode,'wings');
-    const freedLeaders=await evaluate(cdp.send,sid,"(()=>{document.querySelector('#ssxLeadersToggle').click();const cards=[...document.querySelectorAll('#alpineMobileCards [data-leader-track]')];return{trackFilter:document.querySelector('#track').value,regions:new Set(cards.map(x=>x.dataset.leaderRegion)).size,tracks:cards.length,unique:new Set(cards.map(x=>x.dataset.leaderTrack)).size,redCount:cards.filter(x=>x.querySelector('.alpine-card-top span')?.textContent==='Red Light').length,mode:document.body.dataset.ssxMode}})()");
+    await evaluate(cdp.send,sid,"document.querySelector('#ssxLeadersToggle').click()");
+    await sleep(250);
+    const freedLeaders=await evaluate(cdp.send,sid,"(()=>{const cards=[...document.querySelectorAll('#alpineMobileCards [data-leader-track]')];return{trackFilter:document.querySelector('#track').value,regions:new Set(cards.map(x=>x.dataset.leaderRegion)).size,tracks:cards.length,unique:new Set(cards.map(x=>x.dataset.leaderTrack)).size,redCount:cards.filter(x=>x.querySelector('.alpine-card-top span')?.textContent==='Red Light').length,mode:document.body.dataset.ssxMode}})()");
     assert.equal(freedLeaders.trackFilter,'','Leaders must clear a stale single-track filter');
     assert.ok(freedLeaders.regions>=4&&freedLeaders.tracks>=15);
     assert.equal(freedLeaders.tracks,freedLeaders.unique);
