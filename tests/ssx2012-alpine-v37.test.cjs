@@ -201,6 +201,11 @@ test('public SSX UI has neutral brand/title and no Edition release promotion',()
   assert.match(js,/installMobileNavigation/);
   assert.match(js,/ssxMobileQuickNav/);
   assert.match(css,/ssx-mobile-quick-link/);
+  assert.match(css,/ssx-region-banner/);
+  assert.match(css,/alpine-card-visual/);
+  assert.match(css,/data-ssx-mobile-view="browse"/);
+  assert.match(js,/ssxMobileView/);
+  assert.match(js,/artForRegion\(item,currentRegion/);
   assert.match(css,/grid-template-columns:minmax\(125px,190px\) max-content/);
   assert.match(css,/\.ssx-view-actions/);
   assert.match(css,/SSX 2012 public editorial layout/);

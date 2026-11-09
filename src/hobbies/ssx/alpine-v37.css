@@ -1226,3 +1226,97 @@ html[data-theme="light"] body.ssx-alpine-v37 .ssx-region-score {color:#15384a;}
  body.ssx-alpine-v37 #topNav > .nav-group > .nav-btn {transition:none;transform:none;}
 }
 
+/* R42 — one photographic regional interface across desktop, tablet and mobile. */
+@media(max-width:900px){
+  body.ssx-alpine-v37 .sheet-card .sheet-scroll {display:none;}
+  body.ssx-alpine-v37 .sheet-card.alpine-show-table .sheet-scroll {display:block;}
+  body.ssx-alpine-v37 .ssx-region-browser {display:none;}
+  body.ssx-alpine-v37[data-ssx-mobile-view="browse"]:not([data-ssx-mode="all"]) .ssx-region-browser {
+    display:grid;
+    grid-template-columns:minmax(0,1fr);
+    gap:14px;
+    padding:clamp(10px,2.8vw,16px);
+    background:var(--alpine-bg);
+  }
+  body.ssx-alpine-v37[data-ssx-mobile-view="browse"] .alpine-mobile-cards {display:none;}
+  body.ssx-alpine-v37[data-ssx-mobile-view="cards"] .alpine-mobile-cards {
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));
+    gap:12px;padding:12px;
+  }
+  body.ssx-alpine-v37[data-ssx-mobile-view="table"] .alpine-mobile-cards,
+  body.ssx-alpine-v37[data-ssx-mobile-view="table"] .ssx-region-browser {display:none;}
+  body.ssx-alpine-v37 .ssx-region-group {margin-bottom:9px;}
+  body.ssx-alpine-v37 .ssx-region-banner {min-height:106px;padding:18px;}
+  body.ssx-alpine-v37 .ssx-region-banner strong {font-size:clamp(1.15rem,5vw,1.55rem);}
+  body.ssx-alpine-v37 .ssx-mountain-list {padding:12px;gap:12px;}
+  body.ssx-alpine-v37 .ssx-region-detail {position:static;top:auto;scroll-margin-top:18px;}
+  body.ssx-alpine-v37 .ssx-region-detail-header {min-height:160px;padding:20px;}
+  body.ssx-alpine-v37 .ssx-region-ranking {max-height:none;overflow:visible;}
+  body.ssx-alpine-v37 .ssx-region-rank {
+    grid-template-columns:48px minmax(0,1fr) max-content;
+    gap:8px;min-height:66px;padding:10px 12px;
+  }
+  body.ssx-alpine-v37 .ssx-region-rank .ssx-region-proof {
+    grid-column:2/-1;justify-self:start;
+    min-height:32px;padding:7px 10px;
+    border-radius:8px;border:1px solid rgba(22,211,244,.35);
+    background:rgba(22,211,244,.10);
+  }
+  body.ssx-alpine-v37 .ssx-track-choice {min-height:66px;}
+}
+@media(max-width:460px){
+  body.ssx-alpine-v37 .ssx-track-grid {grid-template-columns:minmax(0,1fr);}
+  body.ssx-alpine-v37 .ssx-region-detail-header {min-height:145px;}
+}
+body.ssx-alpine-v37 .ssx-region-identity {display:flex;flex-direction:column;gap:3px;min-width:0;}
+body.ssx-alpine-v37 .ssx-region-rider {display:flex;align-items:center;gap:8px;min-width:0;}
+body.ssx-alpine-v37 .ssx-region-rider img.rider-flag {width:24px;height:17px;flex:none;object-fit:cover;}
+body.ssx-alpine-v37 .ssx-region-rider span {min-width:0;overflow-wrap:anywhere;}
+body.ssx-alpine-v37 .ssx-region-source {color:#9cbacd;font-size:.7rem;}
+body.ssx-alpine-v37 .alpine-card-visual {
+  position:relative;
+  isolation:isolate;
+  overflow:hidden;
+  color:#fff;
+  background:#102536;
+  border:1px solid #3c6378;
+  box-shadow:0 8px 26px rgba(3,15,26,.22);
+  min-height:170px;
+  align-content:end;
+  transition:transform .22s ease,box-shadow .22s ease,border-color .22s ease;
+}
+body.ssx-alpine-v37 .alpine-card-visual::before {
+  content:'';z-index:-1;position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(0deg,rgba(4,18,29,.97),rgba(4,18,29,.70) 48%,rgba(4,18,29,.25)),
+    var(--ssx-region-art) center/cover no-repeat;
+  transition:transform .32s ease,filter .32s ease;
+}
+body.ssx-alpine-v37 .alpine-card-visual:hover {transform:translateY(-2px);border-color:#16d3f4;box-shadow:0 13px 28px rgba(3,15,26,.28);}
+body.ssx-alpine-v37 .alpine-card-visual:hover::before {transform:scale(1.035);filter:brightness(1.12);}
+body.ssx-alpine-v37 .alpine-card-visual .alpine-card-top,
+body.ssx-alpine-v37 .alpine-card-visual .alpine-card-top span:first-child,
+body.ssx-alpine-v37 .alpine-card-visual .alpine-card-rider {color:#eef9ff;}
+body.ssx-alpine-v37 .alpine-card-visual .alpine-card-score {color:#92ebff;font-variant-numeric:tabular-nums;}
+body.ssx-alpine-v37 .alpine-card-visual .alpine-card-proof {
+  display:inline-flex;align-items:center;justify-content:center;justify-self:start;
+  min-height:40px;padding:8px 12px;border-radius:9px;
+  border:1px solid rgba(22,211,244,.42);
+  background:rgba(8,49,67,.80);color:#b0f1ff;font-weight:720;
+  text-decoration:none;
+}
+body.ssx-alpine-v37 .ssx-card-location {
+  font-size:.72rem;font-weight:700;letter-spacing:.015em;color:#c1e2f1;
+}
+html[data-theme="light"] body.ssx-alpine-v37 .alpine-card-visual {
+  color:#fff;background:#102536;border-color:#416a7c;
+}
+html[data-theme="light"] body.ssx-alpine-v37 .alpine-card-visual :is(.alpine-card-rider,.alpine-card-top,.alpine-card-score) {color:#fff;}
+html[data-theme="light"] body.ssx-alpine-v37 .alpine-card-visual .alpine-card-score {color:#a0edff;}
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-region-source {color:#4f6f7d;}
+@media(prefers-reduced-motion:reduce){
+ body.ssx-alpine-v37 .alpine-card-visual,
+ body.ssx-alpine-v37 .alpine-card-visual::before,
+ body.ssx-alpine-v37 .alpine-card-visual:hover,
+ body.ssx-alpine-v37 .alpine-card-visual:hover::before {transition:none;transform:none;}
+}
+
