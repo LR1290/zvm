@@ -99,6 +99,30 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.ok(desktop.rows>10);
     assert.equal(desktop.admin,true);
     assert.equal(desktop.opaque,true);
+
+    const publicUI=await evaluate(cdp.send,sid,"(()=>{const hero=document.querySelector('#top');const stats=document.querySelector('.ssx-community-stats');const advanced=document.querySelector('#alpineAdvancedFilters');const about=document.querySelector('#aboutBtn');const sources=document.querySelector('#alpineSources');const visibleNames=Array.from(document.querySelectorAll('#topNav > .nav-btn, #topNav > .nav-group > .nav-btn')).filter(el=>getComputedStyle(el).display!=='none').map(el=>el.id);return {title:document.title,heroDesc:document.querySelector('#heroDesc').textContent,headline:document.querySelector('#heroTitle').textContent,statsBelowHero:stats===hero.nextElementSibling,recordsNav:!!document.querySelector('#topNav > #ssxNavRecords'),aboutInMainNav:about.parentElement.id==='topNav',nav:visibleNames,advancedClosed:!advanced.open,sourceInsideAdvanced:advanced.contains(sources),topNInsideAdvanced:advanced.contains(document.querySelector('#topN')),actionsInsideAdvanced:advanced.contains(document.querySelector('.toolbar-actions')),managementClosed:!document.querySelector('#ssxManagement').open,bridgeHidden:getComputedStyle(document.querySelector('#liveSyncChip')).display==='none',snapshotHidden:getComputedStyle(document.querySelector('.hero-kickers')).display==='none',summaryHidden:getComputedStyle(document.querySelector('#summary')).display==='none',creditsClosed:!document.querySelector('#ssxCredits').open,alpineText:document.body.innerText.includes('ALPINE EDITION')};})()");
+    assert.equal(publicUI.title,'SSX 2012 · Recordes da Comunidade');
+    assert.equal(publicUI.heroDesc,'Todos os recordes de SSX 2012 em um só lugar.');
+    assert.equal(publicUI.statsBelowHero,true,'Community counts should appear below hero like the Canva reference');
+    assert.equal(publicUI.recordsNav,true);
+    assert.equal(publicUI.aboutInMainNav,true);
+    assert.equal(publicUI.advancedClosed,true);
+    assert.equal(publicUI.sourceInsideAdvanced,true);
+    assert.equal(publicUI.topNInsideAdvanced,true);
+    assert.equal(publicUI.actionsInsideAdvanced,true);
+    assert.equal(publicUI.managementClosed,true);
+    assert.equal(publicUI.bridgeHidden,true);
+    assert.equal(publicUI.snapshotHidden,true);
+    assert.equal(publicUI.summaryHidden,true);
+    assert.equal(publicUI.creditsClosed,true);
+    assert.equal(publicUI.alpineText,false);
+    const interactions=await evaluate(cdp.send,sid,"(()=>{const about=document.querySelector('#aboutBtn');about.click();const opened=document.querySelector('#aboutModal').getAttribute('aria-hidden');document.querySelector('[data-close=\"aboutModal\"]').click();document.querySelector('#toolsMenuBtn').click();const gearOpened=document.querySelector('#toolsGroup').classList.contains('open');document.querySelector('#ssxManagement summary').click();const managementOpened=document.querySelector('#ssxManagement').open;const adminExists=!!document.querySelector('#ssxManagement #adminBtn');document.querySelector('#toolsMenuBtn').click();const advanced=document.querySelector('#alpineAdvancedFilters');advanced.querySelector('summary').click();const filterOpen=advanced.open;advanced.querySelector('summary').click();return {opened,gearOpened,managementOpened,adminExists,filterOpen};})()");
+    assert.equal(interactions.opened,'false','About modal must remain functional after moving its button');
+    assert.equal(interactions.gearOpened,true);
+    assert.equal(interactions.managementOpened,true);
+    assert.equal(interactions.adminExists,true);
+    assert.equal(interactions.filterOpen,true);
+
     const art=await evaluate(cdp.send,sid,"(()=>{const hero=getComputedStyle(document.querySelector('.hero'),'::before').backgroundImage;const cards=Array.from(document.querySelectorAll('[data-alpine-group]')).map(el=>({mode:el.dataset.alpineGroup,source:getComputedStyle(el).getPropertyValue('--alpine-art')}));const footer=document.querySelector('#alpineArtCredits');return{hero,cards,notice:footer?.textContent||'',links:footer?.querySelectorAll('a').length||0};})()");
     assert.match(art.hero,/\/hobbies\/ssx\/media\/v37\/hero\.jpg/);
     assert.equal(art.cards.length,4);
