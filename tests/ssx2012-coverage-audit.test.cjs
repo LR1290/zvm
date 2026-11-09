@@ -78,3 +78,36 @@ test('all category keys are stable and explicit',()=>{
   assert.equal(a.safeguards.canCertifyLeaders,true);
   assert.equal(a.safeguards.canCertifyRiderNames,true);
 });
+
+test('empty Sheets capture never certifies leaders or identities',()=>{
+  const report=groupCoverage(sheets([]),oz([p]));
+  assert.equal(report.totals.sheetRecords,0);
+  assert.equal(report.safeguards.canCertifyLeaders,false);
+  assert.equal(report.safeguards.canCertifyRiderNames,false);
+});
+test('missing explicit #1 in even one present track blocks certification',()=>{
+  const report=groupCoverage(sheets([
+    row(),row({recordId:'r2',eventId:'race-02',trackId:'track-02',position:2})
+  ]),oz([p]));
+  assert.equal(report.totals.tracksWithoutFirstPlace,1);
+  assert.equal(report.safeguards.canCertifyLeaders,false);
+});
+test('invalid expected-category schema blocks certification rather than being silently skipped',()=>{
+  const report=groupCoverage(sheets([row()]),oz([p]),[{platform:'xbox360',mode:'not-a-mode'}]);
+  assert.deepEqual(report.invalidExpectations,[0]);
+  assert.equal(report.safeguards.canCertifyLeaders,false);
+});
+test('duplicated stable record IDs block leader and identity certification',()=>{
+  const report=groupCoverage(sheets([
+    row({recordId:'same'}),
+    row({recordId:'same',eventId:'race-02',trackId:'track-02'})
+  ]),oz([p]));
+  assert.equal(report.totals.duplicateRecordIds,1);
+  assert.equal(report.safeguards.canCertifyLeaders,false);
+  assert.equal(report.safeguards.canCertifyRiderNames,false);
+});
+test('a malformed Ozmonet profile cannot lead to whole-capture identity certification',()=>{
+  const report=groupCoverage(sheets([row()]),oz([p,{...p,playerId:'malformed'}]));
+  assert.equal(report.safeguards.canCertifyLeaders,true);
+  assert.equal(report.safeguards.canCertifyRiderNames,false);
+});

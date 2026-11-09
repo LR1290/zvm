@@ -118,6 +118,10 @@ test('archived #1 and historical Top 3 coverage is reconstructed without cross-c
   assert.ok(summary.some(row=>row.category==='Android'&&row.platform==='Android'));
   assert.ok(summary.some(row=>row.category==='Survive Special'&&row.mode===5&&row.platform==='__unspecified__'));
   assert.ok(summary.some(row=>row.category==='Level 9'&&row.mode===1));
+  assert.equal(groups.size,21,'Fixed SHA-pinned archive must retain its 21 category/mode/platform scopes');
+  assert.equal(certifiedWinners,386,'Archive leaders must not silently disappear or multiply');
+  assert.equal(conflicts,1,'Disputed #1 is kept out of the historical podium');
+  assert.equal(missingFirst,0,'Missing explicit #1 must be investigated before any certification');
   console.log('SSX_ARCHIVED_LEADER_ACCOUNTING '+JSON.stringify({
     archivedRows:accounted,uniqueFirstPlaces:certifiedWinners,
     conflictingFirstPlaces:conflicts,tracksWithoutFirst:missingFirst,

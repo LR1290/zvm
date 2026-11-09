@@ -74,6 +74,11 @@ function groupCoverage(sheets,oz,expectedCategories=[]){
     }
   }
   const colliding=new Set(evidence.eventPositionCollisions.map(row=>row.key));
+  const tracksWithoutFirstPlace=rows.reduce((n,row)=>n+row.uniqueTracks-row.firstPlaceTracks,0);
+  // Fail closed: empty or incomplete captures never certify historical leaders.
+  const completeFirstPlaces=rows.length>0&&rows.every(row=>row.uniqueTracks>0
+    &&row.firstPlaces===row.uniqueTracks&&row.firstPlaceTracks===row.uniqueTracks
+    &&row.invalidRecords===0);
   return {
     schemaVersion:1,
     kind:'ssx-category-coverage-audit',
@@ -85,6 +90,8 @@ function groupCoverage(sheets,oz,expectedCategories=[]){
       missingExpectedCategories:missingExpected.length,
       invalidCategoryRows:badCategoryKeys.length,
       ambiguousEventPositions:colliding.size,
+      tracksWithoutFirstPlace,
+      duplicateRecordIds:evidence.duplicateRecordIds.length,
       identitiesConfirmed:evidence.summary[statuses.confirmed],
       identitiesNameDifferences:evidence.summary[statuses.review],
       identitiesUnresolved:evidence.totalSheetsRecords-evidence.summary[statuses.confirmed]-evidence.summary[statuses.review]
@@ -94,14 +101,19 @@ function groupCoverage(sheets,oz,expectedCategories=[]){
     invalidExpectations,
     invalidCategoryRows:badCategoryKeys,
     eventPositionCollisions:evidence.eventPositionCollisions,
+    duplicateRecordIds:evidence.duplicateRecordIds,
     safeguards:{
-      canCertifyLeaders:evidence.summary[statuses.invalid]===0&&
-        evidence.eventPositionCollisions.length===0&&missingExpected.length===0,
-      canCertifyRiderNames:evidence.summary[statuses.conflicting]===0&&
+      canCertifyLeaders:completeFirstPlaces&&
         evidence.summary[statuses.invalid]===0&&
-        evidence.summary[statuses.noId]===0&&
-        evidence.summary[statuses.notFound]===0&&
-        evidence.summary[statuses.review]===0,
+        evidence.eventPositionCollisions.length===0&&
+        evidence.duplicateRecordIds.length===0&&
+        invalidExpectations.length===0&&badCategoryKeys.length===0&&
+        missingExpected.length===0,
+      canCertifyRiderNames:evidence.totalSheetsRecords>0&&
+        evidence.summary[statuses.confirmed]===evidence.totalSheetsRecords&&
+        evidence.duplicateRecordIds.length===0&&
+        evidence.sameIdMultipleSheetNames.length===0&&
+        evidence.invalidOzmonetProfiles.length===0,
       changesApplied:0,
       crossTrackTimeRanking:false,
       manualReviewRequired:true
