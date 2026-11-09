@@ -121,7 +121,7 @@ function loadV37Preview() {
   const updated = original
     .replace(/<\/head\s*>/i, '<style id="ssx-alpine-v37-style">\n' + css + '\n</style></head>')
     .replace(/<\/body\s*>/i, '<script id="ssx-alpine-v37-script">\n' + js + '\n</script></body>')
-    .replace(/<title>[^<]*<\/title>/i, '<title>SSX 2012 · Alpine Edition v37.2</title>');
+    .replace(/<title>[^<]*<\/title>/i, '<title>SSX 2012 · Recordes da Comunidade</title>');
   const data = Buffer.from(updated, 'utf8');
   const hash = crypto.createHash('sha256').update(data).digest('hex');
   v37Preview = { content: data, hash, gzip: null, br: null };
@@ -201,7 +201,7 @@ function serveSSX2012(req, res, pathname) {
     body = isArchive ? bodyFor(encoding) : v37BodyFor(encoding);
     etag = isArchive
       ? '"ssx36-' + SHA256.slice(0, 24) + '-' + encoding + '"'
-      : (isPreview ? '"ssx37preview-' : '"ssx37-') + v37Preview.hash.slice(0, 24) + '-' + encoding + '"';
+      : (isPreview ? '"ssx38preview-' : '"ssx38-') + v37Preview.hash.slice(0, 24) + '-' + encoding + '"';
   } catch (cause) {
     console.error('[SSX-HOBBY] Alpine v37 unavailable:', cause.code || cause.message);
     if (isPublic) {
@@ -230,8 +230,8 @@ function serveSSX2012(req, res, pathname) {
     'Referrer-Policy': 'no-referrer',
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   };
-  headers['X-SSX-Variant'] = isPreview ? 'alpine-v37-preview'
-    : isArchive ? 'v36-archive' : fallback ? 'v36-fallback' : 'alpine-v37.2';
+  headers['X-SSX-Variant'] = isPreview ? 'ssx-ui-v38-preview'
+    : isArchive ? 'v36-archive' : fallback ? 'v36-fallback' : 'ssx-ui-v38';
   if (encoding !== 'identity') headers['Content-Encoding'] = encoding;
   if (String(req.headers['if-none-match'] || '').trim() === etag) {
     delete headers['Content-Length'];
