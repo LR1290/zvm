@@ -64,3 +64,13 @@ Uma linha com espaços nas extremidades de `platform`, `variant`, `eventId` ou `
 A R67 aplica a **mesma aparagem nas chaves de posição e na agregação de cobertura**, preservando integralmente o texto original, e rejeita `variant` não textual ou preenchido apenas com espaços. Testes sintéticos provam que duas posições #1 equivalentes bloqueiam a certificação de líderes **e de nomes**, mesmo quando a contagem do manifesto corresponde.
 
 Esta correção **não** certifica a atualidade da planilha nem a identidade dos riders. Nenhuma associação de apelidos por semelhança, alteração de score, exportação, atualização de rankings publicados ou mudança em arquivos v36/v37 é autorizada por esse resultado.
+
+## R68 — provas em bytes, IDs canônicos e limites de certificação
+
+A reconciliação local agora preserva **SHA-256 dos bytes exatos de cada arquivo recebido** (Sheets, Ozmonet e manifesto de cobertura), além dos hashes normalizados que já existiam. O relatório JSON contém `inputEvidence` com tamanho em bytes e checksum de cada entrada; o campo de manifesto é `null` quando não foi fornecido. Assim, arquivos com o mesmo conteúdo lógico mas bytes diferentes não são confundidos na cadeia de custódia.
+
+IDs in-game são aceitos como inteiros decimais positivos canônicos sem zeros à esquerda. Formatos ambíguos, arrays, booleanos, notação científica e números JS sem precisão são recusados; não ocorre aproximação para tentar conciliar um rider. URLs de perfil Ozmonet com credenciais, portas não padrão, fragmentos ou query strings não sustentam identificação. Datas de captura requerem instante ISO com timezone e data civil verdadeira (inclusive a regra de ano bissexto).
+
+**Limite obrigatório:** `verificationBoundary` é explícito e indica que **SHA-256 local e correspondência entre arquivos não verificam a autenticidade da captura online, a independência do manifesto ou a atualidade do Sheets**. Mesmo que o processo retorne código 0 para a coerência **interna** dos dados sintéticos fornecidos, essa saída não autoriza publicar recordes como atuais ou trocar identidades. A etapa de captura integral e de reconciliação por ID real continua pendente.
+
+A correção altera apenas a auditoria offline, os testes e sua documentação; mantém v36/v37 e todos os recordes publicados intactos.
