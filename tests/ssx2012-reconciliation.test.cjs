@@ -96,3 +96,29 @@ test('duplicate stable source record IDs are exposed even across different event
   assert.equal(report.eventPositionCollisions.length,0);
   assert.equal(report.safeguards.changesApplied,0);
 });
+
+test('boundary whitespace does not conceal a duplicate event position',()=>{
+  const report=reconcile(sheet([
+    row({recordId:'clean'}),
+    row({recordId:'padded',platform:' xbox360 ',variant:' standard ',eventId:' red-light ',trackId:'red-light '})
+  ]),oz([profile()]));
+  assert.deepEqual(report.eventPositionCollisions,[{
+    key:'["xbox360","board","standard","red-light","red-light",1]',
+    recordIds:['clean','padded']
+  }]);
+  assert.equal(report.duplicateRecordIds.length,0);
+  assert.equal(report.safeguards.changesApplied,0);
+});
+test('malformed optional variants cannot be laundered into standard records',()=>{
+  const report=reconcile(sheet([
+    row({recordId:'numeric',variant:42}),
+    row({recordId:'whitespace',variant:'   ',eventId:'another',trackId:'another'}),
+    row({recordId:'omitted',variant:undefined,eventId:'third',trackId:'third'}),
+    row({recordId:'empty',variant:'',eventId:'fourth',trackId:'fourth'})
+  ]),oz([profile()]));
+  assert.equal(report.summary.INVALID_EVIDENCE,2);
+  assert.equal(report.rows[0].status,statuses.invalid);
+  assert.equal(report.rows[1].status,statuses.invalid);
+  assert.equal(report.rows[2].status,statuses.confirmed);
+  assert.equal(report.rows[3].status,statuses.confirmed);
+});
