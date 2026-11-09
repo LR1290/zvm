@@ -5,6 +5,7 @@
  */
 (()=>{
   'use strict';
+  function mount(){
   const $=id=>document.getElementById(id);
   const body=document.body;
   if(!body?.classList.contains('ssx-alpine-v37')||$('ssxSpecialArchive'))return;
@@ -244,4 +245,7 @@
     });
   });
   render();
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});
+  else mount();
 })();
