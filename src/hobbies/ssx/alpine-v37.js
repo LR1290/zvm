@@ -325,9 +325,12 @@
   let regionalCache=null;
   let fullTrackCatalog=null;
   const regionTabsI18n={
-    pt:['Regiões','Todas as regiões'],en:['Regions','All regions'],
-    de:['Regionen','Alle Regionen'],es:['Regiones','Todas las regiones'],
-    nl:['Regio’s','Alle regio’s'],fr:['Régions','Toutes les régions']
+    pt:['Regiões','Todas as regiões','Use as setas para mudar de região'],
+    en:['Regions','All regions','Use arrow keys to change region'],
+    de:['Regionen','Alle Regionen','Region mit Pfeiltasten wechseln'],
+    es:['Regiones','Todas las regiones','Usa las flechas para cambiar de región'],
+    nl:['Regio’s','Alle regio’s','Wissel van regio met de pijltjestoetsen'],
+    fr:['Régions','Toutes les régions','Utilisez les flèches pour changer de région']
   };
   let regionQuery='';
   const regionToolsCopy={
@@ -364,6 +367,7 @@
     if(empty)empty.hidden=shown>0;
     const clear=$('ssxRegionSearchClear');
     if(clear)clear.hidden=!regionQuery;
+    resetControlState();
   }
   const regionImages=['race.jpg','hero.jpg','survive.jpg','trick.jpg','riders.jpg'];
   const regionIcons={Africa:'🌍',Alaska:'❄️',Alps:'🏔️',Antarctica:'🧊',Himalayas:'🏔️',Japan:'🌸','Mount Eddie':'🏂','New Zealand':'🌊',Patagonia:'🧗',Rockies:'🏔️',Siberia:'❄️',Training:'🎿'};
@@ -527,6 +531,7 @@
     if(!nav)return;
     const labels=regionTabsI18n[language()]||regionTabsI18n.en;
     nav.setAttribute('aria-label',labels[0]);
+    nav.title=labels[2];
     const counts=new Map();
     for(const item of entries)counts.set(item.region,(counts.get(item.region)||0)+1);
     const signature=[language(),...[...counts].map(([name,count])=>name+':'+count)].join('|');
@@ -548,10 +553,106 @@
       button.setAttribute('aria-pressed',String(button.dataset.ssxRegion===selectedRegion));
     }
   }
+
+  // A single deliberate reset for the real sheet fields. Keep source and
+  // game mode unchanged; clear only user-selected filters and browse state.
+  const resetLabels={
+    pt:['Limpar filtros','Restaura a busca, região, pista e filtros; mantém modalidade e fonte'],
+    en:['Clear filters','Reset search, region, track and filters; keep mode and source'],
+    de:['Filter zurücksetzen','Suche, Region, Strecke und Filter zurücksetzen; Modus und Quelle behalten'],
+    es:['Limpiar filtros','Restablece búsqueda, región, pista y filtros; conserva modo y fuente'],
+    nl:['Filters wissen','Wis zoekopdracht, regio, baan en filters; behoud modus en bron'],
+    fr:['Effacer les filtres','Réinitialiser recherche, région, piste et filtres; conserver mode et source']
+  };
+  const nativeFilterDefaults=new Map();
+  function resetControlState(){
+    const button=$('ssxResetFilters');
+    if(!button)return;
+    const labels=resetLabels[language()]||resetLabels.en;
+    button.textContent='↺ '+labels[0];
+    button.title=labels[1];
+    button.setAttribute('aria-label',labels[1]);
+    const altered=[...nativeFilterDefaults].some(([id,value])=>$(id)?.value!==value);
+    const original=completeTrackCatalog()[0]?.key||'';
+    const active=altered||!!$('search')?.value?.trim()||!!regionQuery||
+      selectedRegion!=='all'||state.allPositions||
+      !!regionalSelection&&regionalSelection!==original;
+    button.disabled=!active;
+    button.setAttribute('aria-disabled',String(!active));
+  }
+  function mountResetControl(toolbar){
+    if(!toolbar||$('ssxResetFilters'))return;
+    for(const id of ['category','region','track','topN']){
+      if($(id))nativeFilterDefaults.set(id,$(id).value);
+    }
+    const button=text('button','','ssx-reset-filters');
+    button.id='ssxResetFilters';
+    button.type='button';
+    button.addEventListener('click',()=>{
+      if(button.disabled)return;
+      regionQuery='';
+      selectedRegion='all';
+      regionalSelection='';
+      openedRegions=new Set();
+      state.allPositions=false;
+      state.visible=12;
+      const globalSearch=$('search');
+      if(globalSearch&&globalSearch.value){
+        globalSearch.value='';
+        globalSearch.dispatchEvent(new Event('input',{bubbles:true}));
+      }
+      for(const id of ['region','category','topN','track']){
+        const control=$(id);
+        if(!control)continue;
+        const initial=nativeFilterDefaults.get(id);
+        if([...control.options].some(option=>option.value===initial))control.value=initial;
+        else control.selectedIndex=0;
+        control.dispatchEvent(new Event('change',{bubbles:true}));
+      }
+      regionQuery='';
+      selectedRegion='all';
+      regionalSelection='';
+      openedRegions=new Set();
+      applyPublicCopy();
+      sync();
+      scheduleCards();
+      renderRegionBrowser();
+      resetControlState();
+    });
+    toolbar.append(button);
+    resetControlState();
+  }
+  function revealRegionTab(nav,button){
+    if(!nav||!button)return;
+    const area=nav.getBoundingClientRect(),item=button.getBoundingClientRect();
+    const inset=10;
+    const delta=item.left<area.left+inset?
+      item.left-area.left-inset:
+      item.right>area.right-inset?item.right-area.right+inset:0;
+    if(delta)nav.scrollBy({
+      left:delta,
+      behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'
+    });
+  }
+
   function mountSheetControls(card,toolbar){
     if(!card||!toolbar||$('ssxSheetRegions'))return;
     const nav=text('nav','','ssx-sheet-regions');
     nav.id='ssxSheetRegions';
+    nav.addEventListener('keydown',event=>{
+      const focused=event.target.closest('button[data-ssx-region]');
+      if(!focused||!['ArrowRight','ArrowLeft','Home','End'].includes(event.key))return;
+      const items=[...nav.querySelectorAll('button[data-ssx-region]')];
+      const index=items.indexOf(focused);
+      if(index<0)return;
+      event.preventDefault();
+      const next=event.key==='Home'?0:event.key==='End'?items.length-1:
+        Math.max(0,Math.min(items.length-1,index+(event.key==='ArrowRight'?1:-1)));
+      const target=items[next];
+      target.click();
+      target.focus({preventScroll:true});
+      revealRegionTab(nav,target);
+    });
     nav.addEventListener('click',event=>{
       const button=event.target.closest('[data-ssx-region]');
       if(!button||button.dataset.ssxRegion===selectedRegion)return;
@@ -574,7 +675,10 @@
       regionalCache=null;
       renderRegionBrowser();
       nav.querySelectorAll('[data-ssx-region]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.ssxRegion===selectedRegion)));
-      nav.querySelector('[aria-pressed="true"]')?.focus({preventScroll:true});
+      const activeTab=nav.querySelector('[aria-pressed="true"]');
+      activeTab?.focus({preventScroll:true});
+      revealRegionTab(nav,activeTab);
+      resetControlState();
     });
     const head=card.querySelector('.sheet-head');
     if(!head)return;
@@ -785,7 +889,12 @@
         item.append(identity,metrics);
         ranking.append(item);
       }
-      detail.append(ranking);
+      if(selected.runs.length)detail.append(ranking);
+      else {
+        const noRecords=text('p',copy[5],'ssx-region-empty ssx-region-empty-inline');
+        noRecords.setAttribute('role','status');
+        detail.append(noRecords);
+      }
     }else detail.append(text('p',copy[5],'ssx-region-empty'));
     browser.replaceChildren(index,detail);
     applyRegionSearch();
@@ -920,6 +1029,7 @@
     buildPublicLayout(hero,toolbar,card,credits);
     mountSheetControls(card,toolbar);
     mountSheetModeFilter(card);
+    mountResetControl(toolbar);
 
     modes.addEventListener('click',event=>{
       const item=event.target.closest('[data-alpine-group]');
@@ -933,7 +1043,10 @@
       if(sub)selectMode(sub.dataset.alpineMode);
     });
     const search=$('search');
-    if(search){search.addEventListener('input',scheduleCards);}
+    if(search){search.addEventListener('input',()=>{
+      scheduleCards();
+      resetControlState();
+    });}
     // The original source switcher rewrites the public hero copy during
     // rendering. Restore the approved presentation after its event handlers.
     document.querySelectorAll('[data-source]').forEach(button=>{
@@ -965,6 +1078,7 @@
         // Keep editorial copy stable while reusing its real filtering controls.
         applyPublicCopy();
         scheduleCards();
+        resetControlState();
       });
     }
     $('langMenu')?.addEventListener('click',event=>{
@@ -1052,6 +1166,7 @@
     const toggle=$('alpineToggleTable');
     if(toggle)toggle.textContent=state.fullTable?copy.back:copy.full;
     if($('ssxRegionBrowser'))scheduleCards();
+    resetControlState();
     const positions=$('alpinePositionsToggle');
     if(positions){
       const contextual=Boolean($('track')?.value||$('search')?.value?.trim());
