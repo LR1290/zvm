@@ -56,3 +56,11 @@ Executar o CLI com apenas dois snapshots continua permitido para **diagnóstico 
 ## Precisão do contador público (Etapa 5)
 
 O número **6.024** é o total de entradas do Google Sheets incorporadas no snapshot de 2026-08-22, não uma consulta de placar em tempo real. A etiqueta originalmente exibida como **“recordes atuais”** foi substituída por **“recordes na captura de 2026-08-22”**, com traduções nos seis idiomas suportados. Nenhuma contagem, resultado, placar, fonte ou arquivo v36 foi alterado. Testes Chromium conferem rótulos em português e inglês após troca de idioma, e teste de contrato exige as seis traduções.
+
+## R67 — chaves canônicas na auditoria de posições (somente leitura)
+
+Uma linha com espaços nas extremidades de `platform`, `variant`, `eventId` ou `trackId` era agrupada pela cobertura usando os campos aparados, mas a chave de posição do verificador de identidade usava os campos brutos. Duas linhas do mesmo evento, pista e posição poderiam não aparecer como colisão, especialmente no gate independente de nomes.
+
+A R67 aplica a **mesma aparagem nas chaves de posição e na agregação de cobertura**, preservando integralmente o texto original, e rejeita `variant` não textual ou preenchido apenas com espaços. Testes sintéticos provam que duas posições #1 equivalentes bloqueiam a certificação de líderes **e de nomes**, mesmo quando a contagem do manifesto corresponde.
+
+Esta correção **não** certifica a atualidade da planilha nem a identidade dos riders. Nenhuma associação de apelidos por semelhança, alteração de score, exportação, atualização de rankings publicados ou mudança em arquivos v36/v37 é autorizada por esse resultado.
