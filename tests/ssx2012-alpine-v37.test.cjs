@@ -8,7 +8,7 @@ const vm=require('node:vm');
 const path=require('node:path');
 const {test}=require('node:test');
 const {once}=require('node:events');
-const {serveSSX2012,SSX_ROUTE,SSX_V37_PREVIEW_ROUTE}=require('../src/hobbies/ssx/route');
+const {serveSSX2012,SSX_ROUTE,SSX_V36_ARCHIVE_ROUTE,SSX_V37_PREVIEW_ROUTE}=require('../src/hobbies/ssx/route');
 
 async function harness(action){
   const server=http.createServer((req,res)=>{
@@ -44,9 +44,16 @@ test('Alpine assets parse and have no remote scripts or credential material',()=
     assert.match(css,new RegExp('data-ssx-mode="'+mode+'"'));
   }
 });
-test('v37 preview is isolated: removing the two enhancement tags restores byte-identical v36 HTML',()=>harness(async base=>{
-  const original=await rawFetch(base+SSX_ROUTE);
+test('published v37 and preview are byte-identical; archival v36 remains byte-exact',()=>harness(async base=>{
+  const original=await rawFetch(base+SSX_V36_ARCHIVE_ROUTE);
   const enhanced=await rawFetch(base+SSX_V37_PREVIEW_ROUTE);
+  const published=await rawFetch(base+SSX_ROUTE);
+  assert.equal(published.status,200);
+  assert.equal(published.headers['x-ssx-variant'],'alpine-v37.2');
+  assert.equal(published.headers['cache-control'],'public, max-age=300');
+  assert.deepEqual(published.body,enhanced.body, 'Published and tested preview versions must be identical');
+  assert.notEqual(published.headers.etag,enhanced.headers.etag);
+  assert.equal(original.headers['x-ssx-variant'],'v36-archive');
   assert.equal(original.status,200);assert.equal(enhanced.status,200);
   assert.equal(enhanced.headers['x-ssx-variant'],'alpine-v37-preview');
   assert.equal(enhanced.headers['cache-control'],'no-store');
@@ -75,6 +82,13 @@ test('preview routes reject writes and directory probes; canonical trailing slas
   const redirect=await rawFetch(base+SSX_V37_PREVIEW_ROUTE+'/');
   assert.equal(redirect.status,308);
   assert.equal(redirect.headers.location,SSX_V37_PREVIEW_ROUTE);
+  const archiveRedirect=await rawFetch(base+SSX_V36_ARCHIVE_ROUTE+'/');
+  assert.equal(archiveRedirect.status,308);
+  assert.equal(archiveRedirect.headers.location,SSX_V36_ARCHIVE_ROUTE);
+  const publicRedirect=await rawFetch(base+SSX_ROUTE+'/');
+  assert.equal(publicRedirect.status,308);
+  assert.equal(publicRedirect.headers.location,SSX_ROUTE);
+  assert.equal((await rawFetch(base+SSX_V36_ARCHIVE_ROUTE,'identity','POST')).status,405);
 }));
 test('v37 preview supports HEAD, gzip, brotli and encoded ETags independently',()=>harness(async base=>{
   const uri=base+SSX_V37_PREVIEW_ROUTE;
@@ -154,4 +168,18 @@ test('versioned SSX artwork routes return the exact pinned JPEG, with opaque-ori
   assert.equal((await rawFetch(base+'/hobbies/ssx/media/v37/unknown.jpg')).status,404);
   assert.equal((await rawFetch(base+'/hobbies/ssx/media/v37/hero.jpg.zip')).status,404);
   assert.equal((await rawFetch(base+'/hobbies/ssx/media/v37/')).status,404);
+}));
+
+test('canonical public route has correct v37 title/HTML security and exact original data',()=>harness(async base=>{
+  const response=await rawFetch(base+SSX_ROUTE);
+  assert.equal(response.status,200);
+  const html=response.body.toString('utf8');
+  assert.match(html,/<title>SSX 2012 · Alpine Edition v37\.2<\/title>/);
+  assert.match(html,/ssx-alpine-v37-style/);
+  assert.match(html,/ssx-alpine-v37-script/);
+  assert.match(html,/id="sheet"/);
+  assert.match(html,/id="sourceSeg"/);
+  assert.doesNotMatch(response.headers['content-security-policy'],/allow-same-origin/);
+  assert.match(response.headers['content-security-policy'],/sandbox allow-scripts/);
+  assert.match(response.headers['x-robots-tag'],/noindex/);
 }));
