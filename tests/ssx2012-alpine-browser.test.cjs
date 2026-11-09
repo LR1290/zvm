@@ -269,7 +269,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(community.opened,'false','Community should directly open player guide');
     assert.doesNotMatch(community.header,/INTRO/i);
     assert.equal(community.sheetLabel,'none');
-    assert.equal(document.querySelectorAll('#ssxDirectActions button').length,6);
+    assert.equal(interactions.labels.length,6);
     assert.equal(community.snow,'none','Decorative snow animation should not distract from original game artwork');
 
     const art=await evaluate(cdp.send,sid,"(()=>{const hero=getComputedStyle(document.querySelector('.hero'),'::before').backgroundImage;const cards=Array.from(document.querySelectorAll('[data-alpine-group]')).map(el=>({mode:el.dataset.alpineGroup,source:getComputedStyle(el).getPropertyValue('--alpine-art')}));const footer=document.querySelector('#alpineArtCredits');return{hero,cards,notice:footer?.textContent||'',links:footer?.querySelectorAll('a').length||0};})()");
