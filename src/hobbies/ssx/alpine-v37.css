@@ -1671,4 +1671,10 @@ html[data-theme="light"] body.ssx-alpine-v37 .sheet-card > #toolbar.ssx-sheet-to
 @media(prefers-reduced-motion:reduce){
   body.ssx-alpine-v37 .ssx-sheet-region-tab {transition:none;}
 }
+/* The original progressive sentinel is obsolete: all canonical tracks are
+   rendered in the first pass. Keep its DOM node for the legacy observer only. */
+body.ssx-alpine-v37 #renderProgress,
+body.ssx-alpine-v37 #renderProgress:not([hidden]) {
+  display:none;
+}
 
