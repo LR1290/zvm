@@ -182,6 +182,12 @@
     for(const [id,value] of replacements){
       const node=$(id);if(node)node.textContent=value;
     }
+    for(const [id,symbol] of Object.entries({ssxNavRecords:'🏆',ridersBtn:'🏂',communityMenuBtn:'❄️',aboutBtn:'🏔️'})){
+      const node=$(id);
+      if(!node)continue;
+      let icon=node.querySelector('.ssx-nav-symbol');
+      if(!icon){icon=text('span',symbol,'ssx-nav-symbol');icon.setAttribute('aria-hidden','true');node.prepend(icon);}
+    }
     const about=$('aboutBtn')?.querySelector('[data-i="aboutNav"]');
     if(about)about.textContent=copy.about;
     const riders=$('ridersBtn')?.querySelector('[data-i="riders"]');
@@ -306,6 +312,147 @@
     applyPublicCopy();
     scheduleCards(); // refresh card labels and evidence actions after language switches
   }
+
+  // The existing ranking DOM is authoritative. This is a read-only regional view.
+  let regionalSelection='';
+  let openedRegions=new Set();
+  const regionImages=['race.jpg','hero.jpg','survive.jpg','trick.jpg','riders.jpg'];
+  const regionIcons={Africa:'🌍',Alaska:'❄️',Alps:'🏔️',Antarctica:'🧊',Himalayas:'🏔️',Japan:'🌸','Mount Eddie':'🏂','New Zealand':'🌊',Patagonia:'🧗',Rockies:'🏔️',Siberia:'❄️',Training:'🎿'};
+  const regionI18n={
+    pt:['Regiões e pistas','Escolha uma pista','pistas','resultados','Ver prova','Nenhum recorde nesta seleção'],
+    en:['Regions and tracks','Choose a track','tracks','results','Watch proof','No records in this selection'],
+    de:['Regionen und Strecken','Strecke wählen','Strecken','Ergebnisse','Beweis ansehen','Keine Rekorde'],
+    es:['Regiones y pistas','Elige una pista','pistas','resultados','Ver prueba','Sin récords'],
+    nl:['Regio’s en banen','Kies een baan','banen','resultaten','Bekijk bewijs','Geen records'],
+    fr:['Régions et pistes','Choisissez une piste','pistes','résultats','Voir la preuve','Aucun record']
+  };
+  function artForRegion(el,region){
+    let hash=0;
+    for(const char of region)hash=(hash*31+char.charCodeAt(0))>>>0;
+    el.style.setProperty('--ssx-region-art','url("/hobbies/ssx/media/v37/'+regionImages[hash%regionImages.length]+'")');
+  }
+  function addRegionBrowser(card){
+    if(!card||$('ssxRegionBrowser'))return;
+    const browser=text('section','','ssx-region-browser');
+    browser.id='ssxRegionBrowser';
+    browser.setAttribute('aria-label','Regiões, montanhas e pistas');
+    browser.addEventListener('click',event=>{
+      const button=event.target.closest('[data-region-track]');
+      if(!button)return;
+      regionalSelection=button.dataset.regionTrack;
+      openedRegions.add(button.dataset.regionName);
+      renderRegionBrowser();
+    });
+    browser.addEventListener('toggle',event=>{
+      const details=event.target;
+      if(!details.matches?.('details[data-region-name]'))return;
+      if(details.open)openedRegions.add(details.dataset.regionName);
+      else openedRegions.delete(details.dataset.regionName);
+    },true);
+    card.querySelector('.sheet-scroll')?.before(browser);
+  }
+  function renderRegionBrowser(){
+    const browser=$('ssxRegionBrowser');
+    if(!browser||!tags[state.mode])return;
+    const copy=regionI18n[language()]||regionI18n.en;
+    const tracks=new Map();
+    let current=null;
+    for(const row of $('tbody').querySelectorAll('tr.rank-row')){
+      const cell=row.querySelector('.track-cell');
+      if(cell){
+        const name=cell.querySelector('.track-name')?.textContent?.trim();
+        const heading=cell.querySelector('.track-meta')?.childNodes?.[0]?.textContent?.trim()||'';
+        const parts=heading.split(' · ');
+        current=name?{track:name,region:parts[0]||'Other',mountain:parts.slice(1).join(' · ')}:null;
+      }
+      if(!current||row.hidden||row.style.display==='none')continue;
+      const record=row.querySelector(tags[state.mode]);
+      if(!record||record.classList.contains('empty'))continue;
+      const rider=record.querySelector('.rider-name');
+      const score=record.querySelector('.score')?.textContent?.trim();
+      if(!rider||!score)continue;
+      const key=JSON.stringify([current.region,current.mountain,current.track]);
+      if(!tracks.has(key))tracks.set(key,{...current,key,runs:[]});
+      const proof=record.querySelector('a.proof[href]');
+      let video='';
+      if(proof){
+        try{
+          const url=new URL(proof.href);
+          if(url.protocol==='https:'&&['youtu.be','youtube.com','www.youtube.com','m.youtube.com'].includes(url.hostname))video=url.href;
+        }catch(_){}
+      }
+      tracks.get(key).runs.push({position:row.querySelector('.pos-label')?.textContent?.trim()||'',rider,score,video});
+    }
+    const entries=[...tracks.values()];
+    if(!entries.some(item=>item.key===regionalSelection))regionalSelection=entries[0]?.key||'';
+    const selected=entries.find(item=>item.key===regionalSelection);
+    const regions=new Map();
+    for(const item of entries){
+      if(!regions.has(item.region))regions.set(item.region,new Map());
+      const mountains=regions.get(item.region);
+      if(!mountains.has(item.mountain))mountains.set(item.mountain,[]);
+      mountains.get(item.mountain).push(item);
+    }
+    if(!openedRegions.size&&selected)openedRegions.add(selected.region);
+    const index=text('div','','ssx-region-index');
+    const intro=text('header','','ssx-region-intro');
+    intro.append(text('h3',copy[0]),text('p',copy[1]));
+    index.append(intro);
+    for(const [region,mountains] of regions){
+      const section=document.createElement('details');
+      section.className='ssx-region-group';
+      section.dataset.regionName=region;
+      section.open=openedRegions.has(region);
+      const banner=text('summary','','ssx-region-banner');
+      artForRegion(banner,region);
+      banner.append(text('strong',(regionIcons[region]||'🏂')+' '+region),text('span','⌄','ssx-region-chevron'));
+      const total=[...mountains.values()].reduce((n,items)=>n+items.length,0);
+      banner.append(text('small',total+' '+copy[2]));
+      section.append(banner);
+      const mountainList=text('div','','ssx-mountain-list');
+      for(const [mountain,pistes] of mountains){
+        const box=text('section','','ssx-mountain-section');
+        box.append(text('h4','🏔️ '+mountain));
+        const grid=text('div','','ssx-track-grid');
+        for(const item of pistes){
+          const button=text('button','','ssx-track-choice');
+          button.type='button';
+          button.dataset.regionTrack=item.key;
+          button.dataset.regionName=region;
+          button.setAttribute('aria-pressed',String(item.key===regionalSelection));
+          button.append(text('strong','🏂 '+item.track),text('small',item.runs.length+' '+copy[3]));
+          grid.append(button);
+        }
+        box.append(grid);mountainList.append(box);
+      }
+      section.append(mountainList);index.append(section);
+    }
+    const detail=text('div','','ssx-region-detail');
+    if(selected){
+      const header=text('header','','ssx-region-detail-header');
+      artForRegion(header,selected.region);
+      header.append(text('span',(regionIcons[selected.region]||'🏂')+' '+selected.region+' / '+selected.mountain),
+        text('h3',selected.track),text('small','🏆 '+selected.runs.length+' '+copy[3]));
+      detail.append(header);
+      const ranking=text('div','','ssx-region-ranking');
+      for(const run of selected.runs){
+        const item=text('div','','ssx-region-rank');
+        item.append(text('span',run.position+(run.position==='#1'?' 🏆':run.position==='#2'?' 🥈':run.position==='#3'?' 🥉':''),'ssx-region-position'));
+        const name=text('button',run.rider.textContent.trim(),'ssx-region-rider');
+        name.type='button';name.addEventListener('click',()=>run.rider.click());
+        item.append(name,text('strong',run.score,'ssx-region-score'));
+        if(run.video){
+          const proof=text('a','▶ '+copy[4],'ssx-region-proof');
+          proof.href=run.video;proof.target='_blank';proof.rel='noopener noreferrer';proof.referrerPolicy='no-referrer';
+          item.append(proof);
+        }
+        ranking.append(item);
+      }
+      detail.append(ranking);
+    }else detail.append(text('p',copy[5],'ssx-region-empty'));
+    browser.replaceChildren(index,detail);
+  }
+
   function addUI() {
     const hero=$('top'),toolbar=$('toolbar'),sheet=$('sheet'),tbody=$('tbody');
     if(!hero||!toolbar||!sheet||!tbody||$('alpine-modes'))return false;
@@ -402,6 +549,7 @@
       list.className='alpine-mobile-cards';
       list.setAttribute('aria-live','polite');
       card.querySelector('.sheet-scroll')?.before(list);
+      addRegionBrowser(card);
     }
 
     // Media provenance belongs with the page, separate from the project brand.
@@ -522,6 +670,7 @@
     if(label)label.textContent=names[state.mode]||copy.results;
     const toggle=$('alpineToggleTable');
     if(toggle)toggle.textContent=state.fullTable?copy.back:copy.full;
+    if($('ssxRegionBrowser'))scheduleCards();
     const positions=$('alpinePositionsToggle');
     if(positions){
       const contextual=Boolean($('track')?.value||$('search')?.value?.trim());
@@ -539,6 +688,7 @@
     deferred=requestAnimationFrame(()=>{
       deferred=0;
       renderCards();
+      renderRegionBrowser();
     });
   }
   function renderCards(){

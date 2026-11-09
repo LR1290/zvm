@@ -1126,3 +1126,103 @@ html[data-theme="light"] body.ssx-alpine-v37 .ssx-mobile-more-heading {color:#12
   body.ssx-alpine-v37 .ssx-mobile-quick-link {transition:none;}
 }
 
+/* SSX 2012: photographic region > mountain > track navigator. Original table remains available. */
+body.ssx-alpine-v37 .ssx-region-browser {display:none;}
+@media(min-width:901px){
+ body.ssx-alpine-v37:not([data-ssx-mode="all"]) .sheet-card .sheet-scroll {display:none;}
+ body.ssx-alpine-v37:not([data-ssx-mode="all"]) .ssx-region-browser {
+   display:grid;grid-template-columns:minmax(320px,.96fr) minmax(390px,1.04fr);
+   gap:16px;padding:16px;align-items:start;background:#081b29;
+ }
+}
+body.ssx-alpine-v37 .ssx-region-index,body.ssx-alpine-v37 .ssx-region-detail {min-width:0;}
+body.ssx-alpine-v37 .ssx-region-intro {padding:4px 4px 15px;}
+body.ssx-alpine-v37 .ssx-region-intro h3 {margin:0 0 3px;font-size:1.15rem;color:#edf8ff;}
+body.ssx-alpine-v37 .ssx-region-intro p {margin:0;font-size:.85rem;color:#aac5d4;}
+body.ssx-alpine-v37 .ssx-region-group {margin-bottom:10px;border:1px solid #33576c;border-radius:13px;overflow:hidden;background:#0c2232;}
+body.ssx-alpine-v37 .ssx-region-banner {
+  isolation:isolate;position:relative;display:flex;align-items:center;flex-wrap:wrap;gap:8px;
+  min-height:100px;padding:19px;list-style:none;cursor:pointer;color:#fff;
+}
+body.ssx-alpine-v37 .ssx-region-banner::before {
+  content:'';z-index:-1;position:absolute;inset:0;
+  background:linear-gradient(90deg,rgba(4,18,29,.93),rgba(4,18,29,.23)),var(--ssx-region-art) center/cover no-repeat;
+  transition:transform .3s ease,filter .3s ease;
+}
+body.ssx-alpine-v37 .ssx-region-banner:hover::before {filter:brightness(1.17);transform:scale(1.035);}
+body.ssx-alpine-v37 .ssx-region-banner::-webkit-details-marker {display:none;}
+body.ssx-alpine-v37 .ssx-region-banner strong {font-size:1.3rem;text-shadow:0 2px 8px #071623;flex:1 1 65%;}
+body.ssx-alpine-v37 .ssx-region-banner small {font-size:.72rem;color:#cfe5ef;flex-basis:100%;}
+body.ssx-alpine-v37 .ssx-region-chevron {transition:transform .2s;font-size:1.25rem;}
+body.ssx-alpine-v37 .ssx-region-group[open] .ssx-region-chevron {transform:rotate(180deg);}
+body.ssx-alpine-v37 .ssx-mountain-list {padding:14px;display:grid;gap:15px;}
+body.ssx-alpine-v37 .ssx-mountain-section h4 {margin:0 0 8px;font-size:.82rem;color:#b5d9e7;}
+body.ssx-alpine-v37 .ssx-track-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+body.ssx-alpine-v37 .ssx-track-choice {
+  display:flex;flex-direction:column;gap:5px;min-width:0;min-height:67px;
+  padding:12px;border:1px solid #34586b;border-radius:9px;background:#133246;color:#e9f7ff;
+  text-align:left;font:inherit;cursor:pointer;transition:transform .2s,border-color .2s,background-color .2s;
+}
+body.ssx-alpine-v37 .ssx-track-choice strong {font-size:.84rem;overflow-wrap:anywhere;}
+body.ssx-alpine-v37 .ssx-track-choice small {color:#afc7d7;font-size:.7rem;}
+body.ssx-alpine-v37 .ssx-track-choice:hover {border-color:#16d3f4;transform:translateY(-2px);background:#174157;}
+body.ssx-alpine-v37 .ssx-track-choice[aria-pressed="true"] {background:#12506a;border-color:#16d3f4;box-shadow:inset 3px 0 0 #16d3f4;}
+body.ssx-alpine-v37 .ssx-region-detail {position:sticky;top:78px;border:1px solid #315267;border-radius:13px;overflow:hidden;background:#0b1f2d;}
+body.ssx-alpine-v37 .ssx-region-detail-header {
+  isolation:isolate;position:relative;display:flex;flex-direction:column;gap:6px;
+  justify-content:flex-end;min-height:160px;padding:25px;color:#fff;
+}
+body.ssx-alpine-v37 .ssx-region-detail-header::before {
+  content:'';position:absolute;z-index:-1;inset:0;
+  background:linear-gradient(0deg,rgba(5,19,31,.97),rgba(5,19,31,.21)),var(--ssx-region-art) center/cover no-repeat;
+}
+body.ssx-alpine-v37 .ssx-region-detail-header h3 {margin:0;font-size:clamp(1.35rem,2vw,2rem);}
+body.ssx-alpine-v37 .ssx-region-detail-header span,body.ssx-alpine-v37 .ssx-region-detail-header small {color:#cce7f3;font-size:.78rem;}
+body.ssx-alpine-v37 .ssx-region-ranking {max-height:620px;overflow-y:auto;overscroll-behavior:contain;}
+body.ssx-alpine-v37 .ssx-region-rank {
+  display:grid;grid-template-columns:72px minmax(100px,1fr) minmax(90px,max-content) auto;
+  align-items:center;gap:12px;min-height:62px;padding:13px 16px;
+  border-top:1px solid rgba(104,155,178,.19);
+}
+body.ssx-alpine-v37 .ssx-region-rank:nth-child(even) {background:#102c3d;}
+body.ssx-alpine-v37 .ssx-region-position {font-weight:730;color:#ffd66e;font-size:.83rem;}
+body.ssx-alpine-v37 .ssx-region-rider {font:inherit;color:#e8f5ff;font-weight:750;background:none;border:0;text-align:left;cursor:pointer;overflow-wrap:anywhere;}
+body.ssx-alpine-v37 .ssx-region-rider:hover {text-decoration:underline;color:#16d3f4;}
+body.ssx-alpine-v37 .ssx-region-score {color:#fff;font-variant-numeric:tabular-nums;font-size:.87rem;white-space:nowrap;}
+body.ssx-alpine-v37 .ssx-region-proof {color:#16d3f4;text-decoration:none;font-size:.72rem;white-space:nowrap;}
+body.ssx-alpine-v37 .ssx-region-proof:hover {text-decoration:underline;}
+body.ssx-alpine-v37 .ssx-region-empty {padding:20px;color:#bacdda;}
+@media(min-width:901px) and (max-width:1150px){
+  body.ssx-alpine-v37:not([data-ssx-mode="all"]) .ssx-region-browser {grid-template-columns:minmax(270px,1fr) minmax(310px,1fr);}
+  body.ssx-alpine-v37 .ssx-region-rank {grid-template-columns:50px minmax(100px,1fr) max-content;gap:7px;}
+  body.ssx-alpine-v37 .ssx-region-proof {grid-column:2/-1;}
+}
+@media(min-width:901px){
+  body.ssx-alpine-v37 #topNav .ssx-nav-symbol {display:inline-flex;align-items:center;font-size:1.02rem;transition:transform .2s;}
+  body.ssx-alpine-v37 #topNav > .nav-btn,body.ssx-alpine-v37 #topNav > .nav-group > .nav-btn {
+    gap:8px;transition:background-color .2s,color .2s,transform .2s,box-shadow .2s;
+  }
+  body.ssx-alpine-v37 #topNav > .nav-btn:hover,body.ssx-alpine-v37 #topNav > .nav-group > .nav-btn:hover {
+    transform:translateY(-2px);box-shadow:0 6px 19px rgba(0,193,238,.13);
+  }
+  body.ssx-alpine-v37 #topNav a:hover .ssx-nav-symbol,body.ssx-alpine-v37 #topNav button:hover .ssx-nav-symbol {transform:rotate(-9deg) scale(1.15);}
+}
+body.ssx-alpine-v37 .alpine-hero-cta::after {content:' ↗';display:inline-block;transition:transform .2s;}
+body.ssx-alpine-v37 .alpine-hero-cta:hover::after {transform:translate(2px,-2px);}
+body.ssx-alpine-v37 :is(.ssx-region-banner,.ssx-track-choice,.ssx-region-rider,.ssx-region-proof):focus-visible {outline:3px solid #16d3f4;outline-offset:2px;}
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-region-browser {background:#e8f3f8;}
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-region-intro h3 {color:#173b52;}
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-region-intro p {color:#536d7b;}
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-region-group,
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-region-detail {background:#f3f9fc;border-color:#bcd4e0;}
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-mountain-section h4 {color:#255a70;}
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-region-rank {border-color:#cadae5;}
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-region-rank:nth-child(even) {background:#e8f3f9;}
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-region-rider,
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-region-score {color:#15384a;}
+@media(prefers-reduced-motion:reduce){
+ body.ssx-alpine-v37 .ssx-region-banner::before,body.ssx-alpine-v37 .ssx-track-choice,
+ body.ssx-alpine-v37 .ssx-nav-symbol,body.ssx-alpine-v37 #topNav > .nav-btn,
+ body.ssx-alpine-v37 #topNav > .nav-group > .nav-btn {transition:none;transform:none;}
+}
+
