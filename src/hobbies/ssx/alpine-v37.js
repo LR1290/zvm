@@ -325,6 +325,9 @@
     if(startMode==='special')state.lastSurvive='special';
     updateCopy();
     selectMode(state.mode);
+    // Reveal only the complete v38 UI; the server-rendered first paint stays on top meanwhile.
+    document.documentElement.dataset.ssxBoot = 'ready';
+    $('ssxBootScreen')?.remove();
     return true;
   }
   function selectMode(mode){

@@ -115,11 +115,48 @@ function loadV37Preview() {
     throw new Error('SSX_V37_UNSAFE_INLINE_ASSET');
   }
   const original = content.toString('utf8');
+
+  // Render a v38-compatible first paint before the v36 data engine finishes parsing.
+  // This prevents the legacy markup from being visible during progressive enhancement.
+  const bootStyle = String.raw`
+#ssxBootScreen{position:fixed;inset:0;z-index:2147483646;overflow-y:auto;box-sizing:border-box;background:#07131d;color:#edf6ff;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+#ssxBootScreen *{box-sizing:border-box}
+html:not([data-ssx-boot="ready"]) body>*:not(#ssxBootScreen){visibility:hidden}
+#ssxBootScreen .ssx-boot-inner{width:min(1440px,100%);margin:0 auto;padding:16px}
+#ssxBootScreen .ssx-boot-nav{min-height:70px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #234051;font-weight:800;font-size:21px;letter-spacing:-.02em}
+#ssxBootScreen .ssx-boot-menu{width:46px;height:46px;display:grid;place-items:center;border:1px solid #274056;border-radius:13px;color:#16d3f4}
+#ssxBootScreen .ssx-boot-hero{min-height:440px;margin-top:18px;border-radius:16px;overflow:hidden;display:flex;align-items:center;padding:clamp(26px,5vw,64px);background:linear-gradient(90deg,rgba(5,18,28,.92),rgba(5,18,28,.42)),url("/hobbies/ssx/media/v37/hero.jpg") center/cover,#122b3b}
+#ssxBootScreen .ssx-boot-eyebrow{color:#20cae5;letter-spacing:.16em;font-size:12px;font-weight:800}
+#ssxBootScreen h1{margin:22px 0 18px;max-width:690px;font-size:clamp(40px,7vw,76px);line-height:1.06;letter-spacing:-.05em}
+#ssxBootScreen p{max-width:630px;font-size:clamp(16px,2vw,21px);line-height:1.5;color:#c0d1dc}
+#ssxBootScreen .ssx-boot-progress{display:inline-flex;align-items:center;gap:9px;margin-top:20px;color:#b7d6e4;font-size:14px}
+#ssxBootScreen .ssx-boot-spinner{width:15px;height:15px;border:2px solid #3a6978;border-top-color:#20cae5;border-radius:50%;animation:ssxBootSpin 1.1s linear infinite}
+#ssxBootScreen .ssx-boot-modes{margin-top:30px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+#ssxBootScreen .ssx-boot-mode{height:122px;padding:20px;border:1px solid #264457;border-radius:15px;background:linear-gradient(150deg,#133349,#0a1e2d);font-size:19px;font-weight:800;display:flex;align-items:flex-end}
+@keyframes ssxBootSpin{to{transform:rotate(360deg)}}
+@media(max-width:640px){#ssxBootScreen .ssx-boot-inner{padding:12px}#ssxBootScreen .ssx-boot-nav{min-height:70px;font-size:18px}#ssxBootScreen .ssx-boot-hero{min-height:510px;padding:30px;align-items:flex-start;padding-top:52px;background-position:center center}#ssxBootScreen h1{font-size:clamp(44px,10vw,62px)}#ssxBootScreen .ssx-boot-modes{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}#ssxBootScreen .ssx-boot-mode{height:115px;padding:14px;font-size:16px}}
+@media(prefers-reduced-motion:reduce){#ssxBootScreen .ssx-boot-spinner{animation:none}}
+`;
+  const bootMarkup = '<div id="ssxBootScreen" role="status" aria-live="polite">'
+    + '<div class="ssx-boot-inner"><header class="ssx-boot-nav"><span>SSX 2012</span><span class="ssx-boot-menu" aria-hidden="true">☰</span></header>'
+    + '<main><section class="ssx-boot-hero"><div><div class="ssx-boot-eyebrow">RECORDES DA COMUNIDADE</div>'
+    + '<h1>Conquiste a montanha.</h1><p>Todos os recordes de SSX 2012 em um só lugar.</p>'
+    + '<span class="ssx-boot-progress"><span class="ssx-boot-spinner" aria-hidden="true"></span><span id="ssxBootProgress">Carregando recordes…</span></span>'
+    + '</div></section><div class="ssx-boot-modes" aria-hidden="true">'
+    + '<div class="ssx-boot-mode">Race It!</div><div class="ssx-boot-mode">Trick It!</div>'
+    + '<div class="ssx-boot-mode">Survive It!</div><div class="ssx-boot-mode">Riders</div></div></main></div></div>';
+  const bootGuard = '<script id="ssx-boot-guard">setTimeout(function(){'
+    + 'if(document.documentElement.dataset.ssxBoot==="ready")return;'
+    + 'var node=document.getElementById("ssxBootProgress");'
+    + 'if(node)node.textContent="Não foi possível concluir o carregamento. Atualize a página para tentar novamente."'
+    + '},20000);</script>';
+
   if (!/<\/head\s*>/i.test(original) || !/<\/body\s*>/i.test(original)) {
     throw new Error('SSX_V37_DOCUMENT_ANCHOR_MISSING');
   }
   const updated = original
-    .replace(/<\/head\s*>/i, '<style id="ssx-alpine-v37-style">\n' + css + '\n</style></head>')
+    .replace(/<\/head\s*>/i, '<style id="ssx-first-paint-style">\n' + bootStyle + '\n</style>' + bootGuard + '<style id="ssx-alpine-v37-style">\n' + css + '\n</style></head>')
+    .replace(/<body\b[^>]*>/i, tag => tag + bootMarkup)
     .replace(/<\/body\s*>/i, '<script id="ssx-alpine-v37-script">\n' + js + '\n</script></body>')
     .replace(/<title>[^<]*<\/title>/i, '<title>SSX 2012 · Recordes da Comunidade</title>');
   const data = Buffer.from(updated, 'utf8');
