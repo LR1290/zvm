@@ -166,7 +166,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     const translated=await evaluate(cdp.send,sid,"({hero:document.querySelector('#heroTitle').textContent,more:document.querySelector('#alpinePositionsToggle').textContent,language:document.querySelector('#langName').textContent})");
     assert.equal(translated.hero,'Conquer the mountain.','New page headline must follow original language selector');
     assert.equal(translated.language.trim(),'English');
-    await evaluate(cdp.send,sid,"document.querySelector('[data-lang=\"pt\"]').click()");
+    await evaluate(cdp.send,sid,"document.querySelector('[data-lang=\"pt-BR\"]').click()");
     await sleep(300);
     await evaluate(cdp.send,sid,"document.querySelector('.sheet-card').scrollIntoView({block:'start'})");
 
