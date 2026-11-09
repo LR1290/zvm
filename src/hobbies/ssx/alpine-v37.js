@@ -881,6 +881,11 @@
     });
     const search=$('search');
     if(search){search.addEventListener('input',scheduleCards);}
+    // The original source switcher rewrites the public hero copy during
+    // rendering. Restore the approved presentation after its event handlers.
+    document.querySelectorAll('[data-source]').forEach(button=>{
+      button.addEventListener('click',()=>queueMicrotask(applyPublicCopy));
+    });
     for(const name of ['category','region','track','topN']){
       $(name)?.addEventListener('change',()=>{
         state.visible=12;
