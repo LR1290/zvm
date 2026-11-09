@@ -32,6 +32,8 @@ jobs:
           node --test tests/ssx2012-reconciliation.test.cjs
           node --check src/hobbies/ssx/coverage-audit.cjs
           node --test tests/ssx2012-coverage-audit.test.cjs
+      - name: Inspect original archived special-category structures (read-only)
+        run: node --test tests/ssx2012-special-source-scan.test.cjs
       - name: Chromium real desktop/mobile integration
         run: |
           google-chrome --version
