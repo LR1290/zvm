@@ -648,6 +648,25 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
       assert.ok(specialResponsive.docOverflow<=1,'Historical panel must not stretch viewport at '+width+'px');
       assert.ok(specialResponsive.buttonHeights.every(v=>v>=39),'Historical category tabs must remain usable at '+width+'px');
       assert.ok(specialResponsive.selectHeights.every(v=>v>=39),'Historical filters must remain usable at '+width+'px');
+      if(width<=390){
+        const historicLeaderMobile=await evaluate(cdp.send,sid,"(()=>{document.querySelector('#ssxSpecialTabs [data-ssx-special-group=android]').click();const mode=document.querySelector('#ssxSpecialMode');mode.value='2';mode.dispatchEvent(new Event('change',{bubbles:true}));document.querySelector('#ssxSpecialViews [data-ssx-special-view=leaders]').click();const root=document.querySelector('#ssxSpecialArchive');const podium=document.querySelector('#ssxSpecialPodium');const cards=[...root.querySelectorAll('#ssxSpecialResults .ssx-special-leader')];const podiumCards=[...root.querySelectorAll('.ssx-special-medal-card')];const bounds=[...cards,...podiumCards].map(el=>el.getBoundingClientRect());return{mode:podium.dataset.ssxMode,category:podium.dataset.ssxCategory,platform:podium.dataset.ssxPlatform,podiumCount:podiumCards.length,leaders:cards.length,width:root.getBoundingClientRect().width,viewport:document.documentElement.clientWidth,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,cardOverflow:bounds.some(rect=>rect.width>document.documentElement.clientWidth+1||rect.right>document.documentElement.clientWidth+1),namesVerified:!podium.querySelector('.ssx-special-identity-warning')?.textContent?.includes('Ozmonet'),view:root.querySelector('[data-ssx-special-view=leaders]')?.getAttribute('aria-pressed')}})()");
+        assert.equal(historicLeaderMobile.category,'Android');
+        assert.equal(historicLeaderMobile.mode,'2');
+        assert.equal(historicLeaderMobile.platform,'Android');
+        assert.equal(historicLeaderMobile.podiumCount,3);
+        assert.equal(historicLeaderMobile.leaders,12);
+        assert.equal(historicLeaderMobile.view,'true');
+        assert.equal(historicLeaderMobile.cardOverflow,false,'Historical leader/podium cards must fit '+width+'px');
+        assert.ok(historicLeaderMobile.overflow<=1,'Historical leaders must not stretch '+width+'px screen');
+        if(width===390){
+          await evaluate(cdp.send,sid,"document.querySelector('#ssxSpecialPodium').scrollIntoView({block:'start'})");
+          await sleep(150);
+          const shot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+          fs.writeFileSync(path.join(outDir,'ssx-r58-mobile-historical-leaders-podium.png'),Buffer.from(shot.data,'base64'));
+        }
+        await evaluate(cdp.send,sid,"(()=>{document.querySelector('#ssxSpecialViews [data-ssx-special-view=records]').click();document.querySelector('#ssxSpecialTabs [data-ssx-special-group=challenge]').click()})()");
+      }
+
 
       if(width<=900)assert.ok(responsiveMode.controls.every(v=>v>75),'Both mobile mode options must fit at '+width+'px');
 
