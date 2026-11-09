@@ -49,13 +49,13 @@ test('published v37 and preview are byte-identical; archival v36 remains byte-ex
   const enhanced=await rawFetch(base+SSX_V37_PREVIEW_ROUTE);
   const published=await rawFetch(base+SSX_ROUTE);
   assert.equal(published.status,200);
-  assert.equal(published.headers['x-ssx-variant'],'alpine-v37.2');
+  assert.equal(published.headers['x-ssx-variant'],'ssx-ui-v38');
   assert.equal(published.headers['cache-control'],'public, max-age=300');
   assert.deepEqual(published.body,enhanced.body, 'Published and tested preview versions must be identical');
   assert.notEqual(published.headers.etag,enhanced.headers.etag);
   assert.equal(original.headers['x-ssx-variant'],'v36-archive');
   assert.equal(original.status,200);assert.equal(enhanced.status,200);
-  assert.equal(enhanced.headers['x-ssx-variant'],'alpine-v37-preview');
+  assert.equal(enhanced.headers['x-ssx-variant'],'ssx-ui-v38-preview');
   assert.equal(enhanced.headers['cache-control'],'no-store');
   assert.equal(original.headers['cache-control'],'public, max-age=300');
   assert.notEqual(original.headers.etag,enhanced.headers.etag);
@@ -174,7 +174,7 @@ test('canonical public route has correct v37 title/HTML security and exact origi
   const response=await rawFetch(base+SSX_ROUTE);
   assert.equal(response.status,200);
   const html=response.body.toString('utf8');
-  assert.match(html,/<title>SSX 2012 · Alpine Edition v37\.2<\/title>/);
+  assert.match(html,/<title>SSX 2012 · Recordes da Comunidade<\/title>/);
   assert.match(html,/ssx-alpine-v37-style/);
   assert.match(html,/ssx-alpine-v37-script/);
   assert.match(html,/id="sheet"/);
@@ -183,3 +183,18 @@ test('canonical public route has correct v37 title/HTML security and exact origi
   assert.match(response.headers['content-security-policy'],/sandbox allow-scripts/);
   assert.match(response.headers['x-robots-tag'],/noindex/);
 }));
+
+test('public SSX UI has neutral brand/title and no Edition release promotion',()=>{
+  const dir=path.join(__dirname,'../src/hobbies/ssx');
+  const js=fs.readFileSync(path.join(dir,'alpine-v37.js'),'utf8');
+  const css=fs.readFileSync(path.join(dir,'alpine-v37.css'),'utf8');
+  assert.doesNotMatch(js,/ALPINE EDITION/);
+  assert.match(js,/ssxManagementLabel/);
+  assert.match(js,/ssxNavRecords/);
+  assert.match(js,/ssx-advanced-content/);
+  assert.match(js,/applyPublicCopy/);
+  assert.match(css,/SSX 2012 public editorial layout/);
+  assert.match(css,/\.ssx-community-stats/);
+  assert.match(css,/\.ssx-credits-disclosure|#ssxCredits/);
+  assert.doesNotMatch(css,/!important/);
+});
