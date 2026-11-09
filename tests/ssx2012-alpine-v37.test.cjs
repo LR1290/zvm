@@ -200,7 +200,14 @@ test('public SSX UI has neutral brand/title and no Edition release promotion',()
   assert.match(js,/installMobileNavigation/);
   assert.match(js,/ssxDirectActions/);
   assert.match(js,/ssx-region-detail/);
-  assert.match(js,/modeFilter\)detail\.insertBefore/);
+  assert.match(js,/detail\.insertBefore\(modeFilter/);
+  assert.match(js,/cards\.before\(modeFilter\)/);
+  assert.match(js,/function renderTrackLeaderCards\(root,copy\)/);
+  assert.match(js,/function showTrackLeaders\(\)/);
+  assert.match(js,/ssxLeadersToggle/);
+  assert.match(js,/ssxRegionsToggle/);
+  assert.match(css,/ssx-leaders-region-title/);
+  assert.match(css,/alpine-card-leader/);
   assert.match(css,/ssx-direct-action/);
   assert.doesNotMatch(js,/ssxMobileMore.*append\(/);
   assert.match(js,/ssxMobileQuickNav/);
