@@ -151,6 +151,28 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     // Reset the old track field so the rest of the integration suite starts from an unfiltered sheet.
     await evaluate(cdp.send,sid,"(()=>{const track=document.querySelector('#track');track.value='';track.dispatchEvent(new Event('change',{bubbles:true}));})()");
 
+    const regionRoundTrip=await evaluate(cdp.send,sid,"(()=>{const rail=document.querySelector('#ssxSheetRegions');const results=[];for(const name of ['Alaska','Japan','Training','Africa','all']){rail.querySelector('[data-ssx-region=\"'+name+'\"]').click();const root=document.querySelector('#ssxRegionBrowser');results.push({requested:name,active:rail.querySelector('[aria-pressed=true]')?.dataset.ssxRegion,regions:root.querySelectorAll('.ssx-region-group').length,group:root.querySelector('.ssx-region-group')?.dataset.regionName,tracks:root.querySelectorAll('.ssx-track-choice').length,canonical:Number(rail.querySelector('[data-ssx-region=all] .ssx-sheet-region-count')?.textContent),progress:document.querySelector('#renderProgress')?.hidden});}return results;})()");
+    assert.deepEqual(regionRoundTrip.map(row=>row.active),['Alaska','Japan','Training','Africa','all'],'Every region tab must stay selected after native sheet redraw');
+    assert.deepEqual(regionRoundTrip.map(row=>row.regions),[1,1,1,1,12],'Each region must retain its complete track directory');
+    assert.deepEqual(regionRoundTrip.map(row=>row.tracks),[7,3,1,5,73],'All official SSX track counts must survive repeated region switching');
+    assert.ok(regionRoundTrip.every(row=>row.canonical===73&&row.progress),'Region changes must not restart the loading sentinel');
+    const sourceTabs=await evaluate(cdp.send,sid,"[...document.querySelectorAll('[data-source]')].map(x=>x.dataset.source)");
+    assert.ok(sourceTabs.includes('combined')&&sourceTabs.includes('oz'),'Original source filters must remain wired');
+    await evaluate(cdp.send,sid,"document.querySelector('[data-source=oz]').click()");
+    await sleep(180);
+    const ozRace=await evaluate(cdp.send,sid,"(()=>({source:document.querySelector('[data-source=oz]').classList.contains('active'),ranks:document.querySelectorAll('.ssx-region-detail .ssx-region-rank').length,canonical:document.querySelectorAll('#ssxSheetRegions [data-ssx-region]').length,progress:document.querySelector('#renderProgress')?.hidden}))()");
+    assert.equal(ozRace.source,true);
+    assert.equal(ozRace.ranks,0,'OZ standalone race mode has no ranked scores, so do not show stale combined data');
+    assert.equal(ozRace.canonical,13);
+    assert.equal(ozRace.progress,true);
+    await evaluate(cdp.send,sid,"document.querySelector('[data-source=combined]').click()");
+    await sleep(180);
+    const combinedRace=await evaluate(cdp.send,sid,"(()=>({ranks:document.querySelectorAll('.ssx-region-detail .ssx-region-rank').length,score:document.querySelector('.ssx-region-detail .ssx-region-score')?.textContent,source:document.querySelector('[data-source=combined]').classList.contains('active'),regions:document.querySelectorAll('.ssx-region-group').length}))()");
+    assert.equal(combinedRace.source,true);
+    assert.equal(combinedRace.score,'01:35.99','Restoring combined data must restore the real Red Light record');
+    assert.ok(combinedRace.ranks>0&&combinedRace.regions===12);
+
+
     const discovery=await evaluate(cdp.send,sid,"(()=>{const search=document.querySelector('#ssxRegionSearch');const global=document.querySelector('#search');search.value='corkscrew';search.dispatchEvent(new Event('input',{bubbles:true}));const visible=[...document.querySelectorAll('.ssx-track-choice')].filter(b=>!b.hidden);const afterFilter={visible:visible.length,match:visible[0]?.textContent,hasClear:!document.querySelector('#ssxRegionSearchClear').hidden,inputFocus:false,globalQuery:global.value};search.focus();afterFilter.inputFocus=document.activeElement===search;search.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));return {...afterFilter,clearAfterEscape:search.value,shownAfterEscape:[...document.querySelectorAll('.ssx-track-choice')].filter(b=>!b.hidden).length,emptyHidden:document.querySelector('#ssxRegionNoMatches').hidden}})()");
     assert.equal(discovery.visible,1,'Regional search should find Corkscrew');
     assert.match(discovery.match,/Corkscrew/);
