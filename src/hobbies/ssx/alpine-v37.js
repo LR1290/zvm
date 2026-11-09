@@ -43,6 +43,7 @@
     });
     const search=$('search'); if(search)search.placeholder=copy.choose;
     sync();
+    scheduleCards(); // refresh card labels and evidence actions after language switches
   }
   function addUI() {
     const hero=$('top'),toolbar=$('toolbar'),sheet=$('sheet'),tbody=$('tbody');
