@@ -684,6 +684,7 @@
       group==='race'?['board','wings']:
       group==='survive'?['survive','special']:[];
     rail.hidden=allowed.length===0||state.fullTable;
+    rail.dataset.ssxLeadersModeSwitch=String(state.leaderCards);
     rail.setAttribute('aria-label',state.leaderCards?copy.modes:
       group==='race'?copy.race:
       group==='survive'?copy.survive:copy.modes);
