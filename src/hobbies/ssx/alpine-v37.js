@@ -569,6 +569,9 @@
           native.dispatchEvent(new Event('change',{bubbles:true}));
         }
       }
+      // The native filter rebuilt the table synchronously. Never show ranks
+      // from the old region/source while the next animation frame is pending.
+      regionalCache=null;
       renderRegionBrowser();
       nav.querySelectorAll('[data-ssx-region]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.ssxRegion===selectedRegion)));
       nav.querySelector('[aria-pressed="true"]')?.focus({preventScroll:true});
@@ -878,13 +881,18 @@
     });
     const search=$('search');
     if(search){search.addEventListener('input',scheduleCards);}
+    // The original source switcher rewrites the public hero copy during
+    // rendering. Restore the approved presentation after its event handlers.
+    document.querySelectorAll('[data-source]').forEach(button=>{
+      button.addEventListener('click',()=>queueMicrotask(applyPublicCopy));
+    });
     for(const name of ['category','region','track','topN']){
       $(name)?.addEventListener('change',()=>{
         state.visible=12;
         if(name==='region'){
           const select=$('region');
           const chosen=select?.selectedOptions?.[0];
-          const matching=indexedTracks(state.mode).find(item=>
+          const matching=completeTrackCatalog().find(item=>
             chosen?.value&&normalizedRegionText(item.region)===normalizedRegionText(chosen.textContent));
           selectedRegion=matching?.region||'all';
           regionalSelection='';
@@ -892,7 +900,7 @@
         }
         if(name==='track'){
           const selected=$('track')?.selectedOptions?.[0];
-          const match=selected?.value?indexedTracks(state.mode).find(item=>
+          const match=selected?.value?completeTrackCatalog().find(item=>
             normalizedRegionText(item.track)===normalizedRegionText(selected.textContent)&&
             (selectedRegion==='all'||item.region===selectedRegion)):null;
           if(match){
@@ -910,9 +918,16 @@
       if(event.target.closest('[data-lang]'))setTimeout(updateCopy,0);
     });
     if(!observed && typeof MutationObserver!=='undefined'){
-      // Legacy filtering mutates the rendered tbody, not the underlying dataset:
-      // never discard the complete first-load catalogue on those mutations.
-      new MutationObserver(scheduleCards).observe(tbody,{childList:true});
+      // The fixed catalogue is source-independent, but the indexed rankings
+      // and their rider/button nodes are source-dependent. Refresh them after
+      // every original table redraw. Observe only direct row insert/removal,
+      // never the new browse UI, to avoid a self-triggered render loop.
+      new MutationObserver(records=>{
+        if(!records.some(record=>record.type==='childList'))return;
+        regionalCache=null;
+        document.body.dataset.ssxTracksIndexed='pending';
+        scheduleCards();
+      }).observe(tbody,{childList:true});
       observed=true;
     }
     installCompleteTrackRendering();
