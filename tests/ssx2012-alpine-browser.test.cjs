@@ -120,6 +120,56 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.ok(mobile.records>0);
     assert.equal(mobile.mode,'wings');
     assert.ok(mobile.viewport<=430);
+
+    // Check preview-only interactions without writing to Google, Discord or ZVM APIs.
+    const overview=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#alpineMobileCards');return {first:root.querySelector('.alpine-card .alpine-card-top span')?.textContent,second:root.querySelectorAll('.alpine-card')[1]?.querySelector('.alpine-card-top span')?.textContent,toggleVisible:!document.querySelector('#alpinePositionsToggle').hidden};})()");
+    assert.ok(overview.toggleVisible,'Summary controls should be visible in mobile overview');
+    const allRanks=await evaluate(cdp.send,sid,"(()=>{document.querySelector('#alpinePositionsToggle').click();return {pressed:document.querySelector('#alpinePositionsToggle').getAttribute('aria-pressed'),firstTwo:Array.from(document.querySelectorAll('#alpineMobileCards .alpine-card')).slice(0,2).map(card=>card.querySelector('.alpine-card-top span')?.textContent)};})()");
+    await sleep(300);
+    const positions=await evaluate(cdp.send,sid,"({pressed:document.querySelector('#alpinePositionsToggle').getAttribute('aria-pressed'),firstTwo:Array.from(document.querySelectorAll('#alpineMobileCards .alpine-card')).slice(0,2).map(card=>card.querySelector('.alpine-card-top span')?.textContent),number:document.querySelectorAll('#alpineMobileCards .alpine-card').length})");
+    assert.equal(positions.pressed,'true');
+    assert.equal(positions.firstTwo[0],positions.firstTwo[1],'All positions should display two ranks from the same track');
+    assert.ok(positions.number>1);
+    await evaluate(cdp.send,sid,"document.querySelector('#alpinePositionsToggle').click()");
+    await sleep(250);
+    const concise=await evaluate(cdp.send,sid,"({firstTwo:Array.from(document.querySelectorAll('#alpineMobileCards .alpine-card')).slice(0,2).map(card=>card.querySelector('.alpine-card-top span')?.textContent),pressed:document.querySelector('#alpinePositionsToggle').getAttribute('aria-pressed')})");
+    assert.equal(concise.pressed,'false');
+    assert.notEqual(concise.firstTwo[0],concise.firstTwo[1],'Overview should show leaders from distinct tracks');
+
+    const detail=await evaluate(cdp.send,sid,"(()=>{const track=document.querySelector('#track');track.value='0';track.dispatchEvent(new Event('change',{bubbles:true}));return {track:track.value};})()");
+    assert.equal(detail.track,'0','Red Light should exist as original track selector');
+    await sleep(450);
+    const trackCards=await evaluate(cdp.send,sid,"({ranks:Array.from(document.querySelectorAll('#alpineMobileCards .alpine-card')).slice(0,3).map(card=>card.querySelector('.alpine-card-top span:last-child')?.textContent),toggleHidden:document.querySelector('#alpinePositionsToggle').hidden,mode:document.body.dataset.ssxMode})");
+    assert.ok(trackCards.ranks.length>=2,'Selected track should expose ranked entries, not only its winner');
+    assert.equal(trackCards.toggleHidden,true);
+    assert.equal(trackCards.mode,'wings');
+
+    await evaluate(cdp.send,sid,"(()=>{const track=document.querySelector('#track');track.value='';track.dispatchEvent(new Event('change',{bubbles:true}));})()");
+    await sleep(350);
+    await evaluate(cdp.send,sid,"(()=>{const search=document.querySelector('#search');search.value='LR1290';search.dispatchEvent(new Event('input',{bubbles:true}));})()");
+    await sleep(650);
+    const searched=await evaluate(cdp.send,sid,"({query:document.querySelector('#search').value,labels:Array.from(document.querySelectorAll('#alpineMobileCards .alpine-card-rider')).map(button=>button.textContent),toggleHidden:document.querySelector('#alpinePositionsToggle').hidden,number:document.querySelectorAll('#alpineMobileCards .alpine-card').length})");
+    assert.equal(searched.query,'LR1290');
+    assert.equal(searched.toggleHidden,true,'Rider search should switch into all-rank details');
+    assert.ok(searched.labels.some(name=>name.includes('LR1290')),'Filtered mobile cards must include matching rider');
+    await evaluate(cdp.send,sid,"(()=>{const search=document.querySelector('#search');search.value='';search.dispatchEvent(new Event('input',{bubbles:true}));})()");
+    await sleep(350);
+    const restored=await evaluate(cdp.send,sid,"(()=>{document.querySelector('[data-alpine-group=\"trick\"]').click();const before=document.body.dataset.ssxMode;document.querySelector('#alpineToggleTable').click();const all=document.body.dataset.ssxMode;document.querySelector('#alpineToggleTable').click();return {before,all,back:document.body.dataset.ssxMode};})()");
+    assert.deepEqual(restored,{before:'trick',all:'all',back:'trick'},'Full table must return to actual prior mode');
+
+    const focus=await evaluate(cdp.send,sid,"(()=>{document.querySelector('[data-alpine-group=\"race\"]').click();const wings=document.querySelector('[data-alpine-mode=\"wings\"]');wings.focus();wings.click();return {mode:document.body.dataset.ssxMode,retained:document.activeElement===wings};})()");
+    assert.equal(focus.mode,'wings');
+    assert.equal(focus.retained,true,'Switching submodes must not destroy the focused button');
+
+    await evaluate(cdp.send,sid,"document.querySelector('[data-lang=\"en\"]').click()");
+    await sleep(300);
+    const translated=await evaluate(cdp.send,sid,"({hero:document.querySelector('#heroTitle').textContent,more:document.querySelector('#alpinePositionsToggle').textContent,language:document.querySelector('#langName').textContent})");
+    assert.equal(translated.hero,'Conquer the mountain.','New page headline must follow original language selector');
+    assert.equal(translated.language.trim(),'English');
+    await evaluate(cdp.send,sid,"document.querySelector('[data-lang=\"pt\"]').click()");
+    await sleep(300);
+    await evaluate(cdp.send,sid,"document.querySelector('.sheet-card').scrollIntoView({block:'start'})");
+
     const mobShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
     fs.writeFileSync(path.join(outDir,'ssx-v37-mobile.png'),Buffer.from(mobShot.data,'base64'));
     await evaluate(cdp.send,sid,"document.querySelector('.sheet-card').scrollIntoView({block:'start'})");
