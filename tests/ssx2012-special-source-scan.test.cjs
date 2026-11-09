@@ -140,7 +140,7 @@ test('original archive country flags have verifiable direct rider mappings witho
     const name=String(source[4]||'').trim().toLocaleLowerCase('en');
     const asset=mapped[name];
     if(asset){
-      assert.match(asset,/^image[0-9]+\\.png$/);
+      assert.match(asset,/^image[0-9]+\.png$/);
       assert.match(String(codes[asset]||''),/^[A-Z]{2}$/,'Country code absent for source asset '+asset);
       available++;
     }else unavailable++;
