@@ -260,7 +260,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(grouped.fakeBootButtons,false,'Do not render non-interactive placeholders');
     const interactions=await evaluate(cdp.send,sid,"(()=>{const about=document.querySelector('#aboutBtn');about.click();const opened=document.querySelector('#aboutModal').getAttribute('aria-hidden');document.querySelector('[data-close=\"aboutModal\"]').click();const direct=document.querySelector('#ssxDirectActions');const buttons=[...direct.querySelectorAll('button')];const toolsHidden=getComputedStyle(document.querySelector('#toolsGroup')).display==='none';const advanced=document.querySelector('#alpineAdvancedFilters');advanced.querySelector('summary').click();const filterOpen=advanced.open;advanced.querySelector('summary').click();return{opened,labels:buttons.map(b=>b.textContent.trim()),visible:buttons.every(b=>getComputedStyle(b).display!=='none'&&b.getBoundingClientRect().height>=36),toolsHidden,filterOpen,hasManagement:buttons.some(b=>b.dataset.ssxAction==='adminBtn')}})()");
     assert.equal(interactions.opened,'false','About modal must still open');
-    assert.deepEqual(interactions.labels,['Configurações','Guia','Fontes','Envios','Dados','Admin']);
+    assert.deepEqual(interactions.labels,['Ajustes','Guia','Sobre os dados','Submissões','Dados','Admin']);
     assert.equal(interactions.visible,true,'All public/management actions must be accessible without More');
     assert.equal(interactions.toolsHidden,true,'The redundant overflow trigger must not appear');
     assert.equal(interactions.hasManagement,true,'Admin and management shortcuts must be direct actions');
@@ -376,7 +376,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.ok(mobile.viewport<=430);
     const directNav=await evaluate(cdp.send,sid,"(()=>{const quick=document.querySelector('#ssxMobileQuickNav');const direct=document.querySelector('#ssxDirectActions');const brand=document.querySelector('.brand');const menu=document.querySelector('#mobileMenuBtn');const buttons=[...direct.querySelectorAll('button')];return{quickLabels:[...quick.querySelectorAll('button')].map(b=>b.textContent),directLabels:buttons.map(b=>b.textContent),brandHidden:getComputedStyle(brand).display==='none',legacyHidden:getComputedStyle(document.querySelector('#topNav')).display==='none',hamburgerHidden:getComputedStyle(menu).display==='none',panelRemoved:!document.querySelector('#ssxMobileMore'),actionable:buttons.every(b=>b.getBoundingClientRect().height>=40),screenOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth}})()");
     assert.deepEqual(directNav.quickLabels,['Recordes','Riders','Comunidade','Sobre']);
-    assert.deepEqual(directNav.directLabels,['Configurações','Guia','Fontes','Envios','Dados','Admin']);
+    assert.deepEqual(directNav.directLabels,['Ajustes','Guia','Sobre os dados','Submissões','Dados','Admin']);
     assert.equal(directNav.brandHidden,true);
     assert.equal(directNav.legacyHidden,true);
     assert.equal(directNav.hamburgerHidden,true);
