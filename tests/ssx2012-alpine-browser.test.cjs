@@ -55,7 +55,7 @@ async function connect(url){
 }
 async function evaluate(send,session,expression){
   const output=await send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true},session);
-  if(output.exceptionDetails)throw new Error('Browser evaluation: '+output.exceptionDetails.text);
+  if(output.exceptionDetails)throw new Error('Browser evaluation: '+output.exceptionDetails.text+' '+(output.exceptionDetails.exception?.description||output.exceptionDetails.exception?.value||''));
   return output.result?.value;
 }
 test('Alpine v37 renders and responds to interactions in desktop and mobile Chromium',{timeout:120000},async()=>{
