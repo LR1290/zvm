@@ -92,6 +92,10 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
       await sleep(250);
     }
     assert.ok(ready,'Original rankings + Alpine UI should load');
+    const firstPaint=await evaluate(cdp.send,sid,"(()=>({ready:document.documentElement.dataset.ssxBoot,loader:!!document.querySelector('#ssxBootScreen'),headline:document.querySelector('#heroTitle')?.textContent}))()");
+    assert.equal(firstPaint.ready,'ready','v38 should reveal after initialization');
+    assert.equal(firstPaint.loader,false,'First-paint shell should be removed only when ready');
+    assert.equal(firstPaint.headline,'Conquiste a montanha.');
     const desktop=await evaluate(cdp.send,sid,"(()=>{const sources=document.querySelector('#alpineSources');return {cards:document.querySelectorAll('.alpine-mode-card').length,sourceClosed:!!sources&&!sources.open,advanced:!!document.querySelector('#alpineAdvancedFilters #categoryField'),rows:document.querySelectorAll('#sheet tr.rank-row').length,admin:!!document.querySelector('#dataBtn'),opaque:globalThis.origin==='null'};})()");
     assert.equal(desktop.cards,4);
     assert.equal(desktop.sourceClosed,true);
