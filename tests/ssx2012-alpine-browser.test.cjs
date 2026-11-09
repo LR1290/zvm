@@ -114,6 +114,9 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     console.log('SSX_ROOT_CAUSE',JSON.stringify(ssxRootCause));
     const ssxPager=await evaluate(cdp.send,sid,"(()=>({functions:['appendRenderBatch','ensureRenderObserver','render','populateTrackSelect','positionsForTrack'].map(name=>({name,source:typeof window[name]==='function'?window[name].toString().slice(0,8000):null})),progress:document.querySelector('#renderProgress')?.outerHTML,visibleGroups:document.querySelectorAll('#tbody .track-cell').length,availableTracksType:typeof window.availableTracks,availableCount:Array.isArray(window.availableTracks)?window.availableTracks.length:0,trackObjType:typeof window.trackObj,trackObjSize:window.trackObj?Object.keys(window.trackObj).length:0}))()");
     console.log('SSX_PAGER_FUNCTIONS',JSON.stringify(ssxPager));
+    const ssxCatalog=await evaluate(cdp.send,sid,"(()=>{const ids=[...window.availableTracks()];const byRegion={};for(const id of ids){const t=window.trackObj(id);const region=t?.region||'Unknown';byRegion[region]=(byRegion[region]||0)+1;}return {ids:ids.length,byRegion,samples:ids.slice(0,5).map(id=>({id,...window.trackObj(id)})),currentProgressHidden:document.querySelector('#renderProgress')?.hidden,scriptTagCount:document.scripts.length}})()");
+    console.log('SSX_CANONICAL_CATALOG',JSON.stringify(ssxCatalog));
+
 
 
     assert.equal(desktop.admin,true);
