@@ -187,6 +187,14 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(historicalLeaders.mainMode,'board');
 
 
+    // The legacy data engine may be committing a deferred original tbody
+    // refresh. Require the final canonical scoreboard to recover rather than
+    // sampling its transient half-rendered state in the same event turn.
+    for(let attempt=0;attempt<12;attempt++){
+      const ready=await evaluate(cdp.send,sid,"(()=>({groups:document.querySelectorAll('#tbody .track-cell').length,rows:document.querySelectorAll('#ssxRegionBrowser .ssx-region-rank').length}))()");
+      if(ready.groups===73&&ready.rows>0)break;
+      await sleep(150);
+    }
     const regional=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#ssxRegionBrowser');const africa=[...root.querySelectorAll('.ssx-region-group')].find(x=>x.dataset.regionName==='Africa');const tabs=africa?.querySelectorAll('.ssx-track-choice')||[];const selected=root.querySelector('.ssx-region-detail h3');return {display:getComputedStyle(root).display,africa:!!africa,meru:africa?.textContent.includes('Meru Mountain'),redLight:[...tabs].some(b=>b.textContent.includes('Red Light')),first:selected?.textContent,rankCount:root.querySelectorAll('.ssx-region-rank').length,proof:!!root.querySelector('.ssx-region-proof'),regions:root.querySelectorAll('.ssx-region-group').length,nativeState:{category:document.querySelector('#category')?.value,region:document.querySelector('#region')?.value,track:document.querySelector('#track')?.value,search:document.querySelector('#search')?.value,source:document.querySelector('#sourceSeg [data-source].active')?.dataset.source},tbody:{groups:document.querySelectorAll('#tbody .track-cell').length,ranks:document.querySelectorAll('#tbody tr.rank-row').length},indexReady:document.body.dataset.ssxTracksIndexed,firstTrackInfo:root.querySelector('.ssx-track-choice small')?.textContent,mainDetailParent:document.querySelector('.ssx-region-detail')?.parentElement?.id,allRanks:document.querySelectorAll('.ssx-region-rank').length,detailChildren:[...document.querySelector('.ssx-region-detail')?.children||[]].map(x=>x.className),rootChildren:[...root.children].map(x=>x.className),scoreParent:document.querySelector('.ssx-region-detail .ssx-region-score')?.closest('.ssx-region-rank')?.className,tableHidden:getComputedStyle(document.querySelector('.sheet-scroll')).display==='none'}})()");
     console.log('SSX_MAIN_REGIONAL_AFTER_ARCHIVE',JSON.stringify(regional));
     assert.equal(regional.display,'grid','Regional dashboard must replace oversized single-mode table');
