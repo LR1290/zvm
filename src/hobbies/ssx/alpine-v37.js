@@ -65,28 +65,27 @@
     });
     const quick=$('ssxMobileQuickNav');
     if(quick)quick.setAttribute('aria-label',translations.navigation);
-    const hamburger=$('mobileMenuBtn');
-    if(hamburger){
-      hamburger.setAttribute('aria-label',copy.more);
-      hamburger.setAttribute('title',copy.more);
-      const originalLabel=hamburger.querySelector('[data-i="navMenu"]');
-      if(originalLabel)originalLabel.textContent=copy.more;
-    }
-    $('ssxMobileMore')?.setAttribute('aria-label',copy.more);
+    const direct=$('ssxDirectActions');
+    if(direct)direct.setAttribute('aria-label',(translations.navigation||copy.more)+' · '+copy.manage);
   }
+  // Public destinations and tools remain one-tap actions, not another menu.
+  // The original v36 buttons stay in the DOM to retain their event handlers.
   function installMobileNavigation(){
     if($('ssxMobileQuickNav'))return;
-    const header=document.querySelector('.topbar'),toggle=$('mobileMenuBtn');
-    if(!header||!toggle)return;
+    const header=document.querySelector('.topbar');
+    if(!header)return;
+    // The original header toggler can carry inline display rules; retire it
+    // explicitly now that its actions are permanently present in the page.
+    // Remove the retired trigger so the legacy layout cannot re-display it.
+    $('mobileMenuBtn')?.remove();
     const quick=document.createElement('nav');
     quick.id='ssxMobileQuickNav';
     quick.className='ssx-mobile-quick-nav';
-    const panel=document.createElement('section');
-    panel.id='ssxMobileMore';
-    panel.className='ssx-mobile-more-panel';
-    panel.hidden=true;
+    const direct=document.createElement('nav');
+    direct.id='ssxDirectActions';
+    direct.className='ssx-direct-actions';
     const item=(key,action,className)=>{
-      const button=text('button','',className||'ssx-mobile-menu-action');
+      const button=text('button','',className);
       button.type='button';
       button.dataset.ssxMobileLabel=key;
       button.dataset.ssxAction=action;
@@ -96,61 +95,23 @@
       ['records','ssxNavRecords'],['riders','ridersBtn'],
       ['community','communityMenuBtn'],['about','aboutBtn']
     ])quick.append(item(key,action,'ssx-mobile-quick-link'));
-    const heading=text('h2','', 'ssx-mobile-more-heading');
-    heading.dataset.ssxMobileLabel='more';
-    panel.append(heading);
-    const normal=document.createElement('div');
-    normal.className='ssx-mobile-more-actions';
     for(const [key,action] of [
-      ['settings','settingsBtn'],['guide','introBtn'],
-      ['advanced','advanced'],['sources','sources']
-    ])normal.append(item(key,action));
-    panel.append(normal);
-    const manage=document.createElement('details');
-    manage.id='ssxMobileManagement';
-    manage.className='ssx-mobile-more-management';
-    const summary=text('summary','');
-    summary.dataset.ssxMobileLabel='manage';
-    const managementActions=document.createElement('div');
-    managementActions.className='ssx-mobile-more-actions';
-    for(const [key,action] of [
+      ['settings','settingsBtn'],['guide','introBtn'],['sources','sources'],
       ['submissions','submissionsBtn'],['data','dataBtn'],['admin','adminBtn']
-    ])managementActions.append(item(key,action));
-    manage.append(summary,managementActions);
-    panel.append(manage);
+    ])direct.append(item(key,action,'ssx-direct-action'));
     header.insertAdjacentElement('afterend',quick);
-    quick.insertAdjacentElement('afterend',panel);
-    toggle.setAttribute('aria-controls',panel.id);
-    toggle.setAttribute('aria-expanded','false');
-    const close=(restoreFocus=false)=>{
-      if(panel.hidden)return;
-      panel.hidden=true;
-      manage.open=false;
-      toggle.setAttribute('aria-expanded','false');
-      if(restoreFocus)toggle.focus();
-    };
-    toggle.addEventListener('click',event=>{
-      if(window.innerWidth>1024)return;
-      // The original mobile handler expands the hidden legacy desktop nav.
-      // Intercept only in mobile to keep that legacy panel completely inactive.
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      const opening=panel.hidden;
-      panel.hidden=!opening;
-      toggle.setAttribute('aria-expanded',String(opening));
-      if(opening)panel.scrollIntoView({block:'nearest'});
-    },true);
+    quick.insertAdjacentElement('afterend',direct);
     const navigate=event=>{
       const actionButton=event.target.closest('[data-ssx-action]');
       if(!actionButton)return;
       const action=actionButton.dataset.ssxAction;
-      close();
-      if(action==='advanced'||action==='sources'){
-        const details=$(action==='advanced'?'alpineAdvancedFilters':'alpineSources');
-        if(details){
-          if(action==='sources')$('alpineAdvancedFilters').open=true;
-          details.open=true;
-          details.scrollIntoView({block:'start',behavior:'smooth'});
+      if(action==='sources'){
+        const advanced=$('alpineAdvancedFilters');
+        const sources=$('alpineSources');
+        if(advanced)advanced.open=true;
+        if(sources){
+          sources.open=true;
+          sources.scrollIntoView({block:'start',behavior:'instant'});
         }
         return;
       }
@@ -158,14 +119,7 @@
       if(target)target.click();
     };
     quick.addEventListener('click',navigate);
-    panel.addEventListener('click',navigate);
-    document.addEventListener('keydown',event=>{
-      if(event.key==='Escape'&&!panel.hidden){event.preventDefault();close(true);}
-    });
-    document.addEventListener('click',event=>{
-      if(!panel.hidden&&!panel.contains(event.target)&&!toggle.contains(event.target))close();
-    });
-    window.addEventListener('resize',()=>{if(window.innerWidth>1024)close();});
+    direct.addEventListener('click',navigate);
   }
 
   function applyPublicCopy() {
@@ -983,6 +937,11 @@
         detail.append(noRecords);
       }
     }else detail.append(text('p',copy[5],'ssx-region-empty'));
+    // One persistent, fully wired mode selector: always directly below the
+    // selected track banner and immediately above its ranking/navigation.
+    // Move it before replacing the old detail to preserve listeners and focus.
+    const modeFilter=$('ssxSheetModeFilter');
+    if(modeFilter)detail.insertBefore(modeFilter,detail.children[1]||null);
     browser.replaceChildren(index,detail);
     applyRegionSearch();
   }
@@ -1043,7 +1002,8 @@
         modeLabel.id='alpineModeLabel';
         const viewOptions=document.createElement('details');
         viewOptions.id='ssxViewOptions';
-        viewOptions.className='ssx-view-options';
+        viewOptions.className='ssx-view-options ssx-view-options-direct';
+        viewOptions.open=true;
         const viewSummary=text('summary','Exibição');
         viewSummary.id='ssxViewLabel';
         const viewActions=text('div','','ssx-view-actions');
@@ -1197,9 +1157,8 @@
     restoreSharedTrack();
     updateCopy();
     selectMode(state.mode);
-    // Reveal only the complete v38 UI; the server-rendered first paint stays on top meanwhile.
+    // The single real interface becomes visible once its canonical controls exist.
     document.documentElement.dataset.ssxBoot = 'ready';
-    $('ssxBootScreen')?.remove();
     return true;
   }
   function selectMode(mode){

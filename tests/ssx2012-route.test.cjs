@@ -55,20 +55,19 @@ test('no prefix traversal / directory listing / POST',()=>harness(async base=>{
 }));
 test('source integrity format',()=>assert.match(SHA256,/^[a-f0-9]{64}$/));
 
-test('v38 first paint hides v36 UI until modern layout is ready',()=>harness(async base=>{
+test('single-face startup: no loading splash, real UI gated until ready',()=>harness(async base=>{
  const r=await fetch(base+SSX_ROUTE);
  assert.equal(r.status,200);
  const html=await r.text();
- const bootStyle=html.indexOf('id="ssx-first-paint-style"');
- const bootScreen=html.indexOf('<div id="ssxBootScreen"');
- const mountScript=html.indexOf('id="ssx-alpine-v37-script"');
- assert.ok(bootStyle>0,'First-paint CSS must be in the initial document');
- assert.ok(bootScreen>bootStyle,'Modern v38 shell must be in the initial HTML');
- assert.ok(mountScript>bootScreen,'Shell is visible before legacy data engine and enhancement complete');
- assert.match(html,/html:not\(\[data-ssx-boot="ready"\]\) body>\*:not\(#ssxBootScreen\)/);
+ const styleIndex=html.indexOf('id="ssx-first-paint-style"');
+ const scriptIndex=html.indexOf('id="ssx-alpine-v37-script"');
+ assert.ok(styleIndex>0&&scriptIndex>styleIndex,'Final UI styles must load before the canonical data renderer');
+ assert.doesNotMatch(html,/id="ssxBootScreen"|ssx-boot-hero|id="ssxBootProgress"/,
+   'A second, temporary page with loading text must not exist');
+ assert.match(html,/html:not\(\[data-ssx-boot="ready"\]\):not\(\[data-ssx-boot="fallback"\]\) body\{visibility:hidden\}/);
+ assert.match(html,/id="ssx-boot-fallback"/);
  assert.match(html,/document\.documentElement\.dataset\.ssxBoot = 'ready'/);
- assert.ok(!html.includes('class="ssx-boot-mode"'),'No fake interactive cards in the first paint');
  assert.equal(r.headers.get('x-ssx-variant'),'ssx-ui-v38');
  const archive=await (await fetch(base+'/hobbies/ssx/ssx2012-v36')).text();
- assert.ok(!archive.includes('id="ssxBootScreen"'),'v36 recovery must remain unchanged');
+ assert.ok(!archive.includes('id="ssx-boot-fallback"'),'Archived v36 source must stay unchanged');
 }));

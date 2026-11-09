@@ -1679,14 +1679,14 @@ body.ssx-alpine-v37 #renderProgress:not([hidden]) {
 }
 
 /* R48: context-aware race/survival controls above every region banner on mobile. */
-body.ssx-alpine-v37 .sheet-card > #ssxSheetModeFilter {display:none;}
+body.ssx-alpine-v37 .ssx-region-detail > #ssxSheetModeFilter {display:none;}
 body.ssx-alpine-v37 #ssxSheetModeFilter[hidden],
 body.ssx-alpine-v37 #ssxSheetModeFilter .ssx-sheet-mode-option[hidden] {display:none;}
 @media(max-width:900px){
   /* The upper hero controls are redundant when the same live control
      is placed directly above the regional directory. */
   body.ssx-alpine-v37 #alpine-modes #alpineSubmodes {display:none;}
-  body.ssx-alpine-v37 .sheet-card > #ssxSheetModeFilter:not([hidden]){
+  body.ssx-alpine-v37 .ssx-region-detail > #ssxSheetModeFilter:not([hidden]){
     display:grid;
     grid-template-columns:repeat(2,minmax(0,1fr));
     gap:8px;
@@ -1727,7 +1727,7 @@ body.ssx-alpine-v37 #ssxSheetModeFilter .ssx-sheet-mode-option[hidden] {display:
     -webkit-overflow-scrolling:touch;
   }
 }
-html[data-theme="light"] body.ssx-alpine-v37 .sheet-card > #ssxSheetModeFilter:not([hidden]){
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-region-detail > #ssxSheetModeFilter:not([hidden]){
   background:#e8f3f9;border-bottom-color:#c5dfea;
 }
 html[data-theme="light"] body.ssx-alpine-v37 .ssx-sheet-mode-option:not([hidden]){
@@ -1903,5 +1903,83 @@ html[data-theme="light"] body.ssx-alpine-v37 .ssx-track-share-manual:not([hidden
 }
 @media(prefers-reduced-motion:reduce){
   body.ssx-alpine-v37 .ssx-track-share-button {transition:none;}
+}
+
+/* R51 — one real interface and direct public navigation, no overflow menus. */
+body.ssx-alpine-v37 #ssxMobileQuickNav{display:none;}
+body.ssx-alpine-v37 #ssxDirectActions{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-wrap:wrap;
+  gap:7px;
+  margin:0 auto;
+  width:min(100%,1360px);
+  padding:9px clamp(12px,3vw,22px) 12px;
+  background:#061521;
+  border-bottom:1px solid rgba(78,125,151,.26);
+}
+body.ssx-alpine-v37 .ssx-direct-action{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-height:40px;
+  min-width:0;
+  padding:8px 14px;
+  border:1px solid rgba(72,125,153,.39);
+  background:#112e40;
+  color:#def0fa;
+  border-radius:9px;
+  font:inherit;
+  font-size:.82rem;
+  font-weight:690;
+  line-height:1.25;
+  cursor:pointer;
+  transition:background-color .16s ease,border-color .16s ease;
+}
+body.ssx-alpine-v37 .ssx-direct-action:hover{border-color:#16d3f4;background:#17465b;}
+body.ssx-alpine-v37 .ssx-direct-action:focus-visible{
+  outline:3px solid #16d3f4;outline-offset:2px;
+}
+/* Original action nodes remain mounted to preserve the v36 event handlers,
+   but no redundant menu or hamburger is shown. */
+body.ssx-alpine-v37 #topNav > #toolsGroup{display:none;}
+body.ssx-alpine-v37 #ssxViewOptions.ssx-view-options-direct > summary{display:none;}
+body.ssx-alpine-v37 #ssxViewOptions.ssx-view-options-direct .ssx-view-actions{
+  display:flex;align-items:center;flex-wrap:wrap;gap:6px;
+  position:static;visibility:visible;opacity:1;
+  padding:0;background:transparent;border:0;box-shadow:none;
+}
+body.ssx-alpine-v37 #ssxViewOptions.ssx-view-options-direct{
+  display:flex;align-items:center;flex-wrap:wrap;min-width:0;
+}
+@media(max-width:1024px){
+  body.ssx-alpine-v37 #mobileMenuBtn{display:none;}
+  body.ssx-alpine-v37 #ssxMobileQuickNav{
+    display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+  }
+  body.ssx-alpine-v37 #ssxDirectActions{
+    display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:6px;padding:6px clamp(10px,3vw,16px) 10px;
+  }
+  body.ssx-alpine-v37 .ssx-direct-action{
+    min-height:42px;padding:7px 8px;
+    font-size:clamp(.71rem,2.6vw,.83rem);
+    overflow-wrap:anywhere;text-align:center;
+  }
+  body.ssx-alpine-v37 .ssx-region-detail > #ssxSheetModeFilter:not([hidden]){
+    position:relative;margin:0;padding:8px 10px;min-width:0;max-width:100%;
+  }
+}
+@media(max-width:360px){
+  body.ssx-alpine-v37 #ssxDirectActions{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+html[data-theme="light"] body.ssx-alpine-v37 #ssxDirectActions{
+  background:#e7f2f8;border-color:#c0d9e6;
+}
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-direct-action{
+  background:#fff;color:#1d4c60;border-color:#b6d6e4;
+}
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-direct-action:hover{background:#d6eff9;}
+@media(prefers-reduced-motion:reduce){
+  body.ssx-alpine-v37 .ssx-direct-action{transition:none;}
 }
 

@@ -72,8 +72,7 @@ test('published v37 and preview are byte-identical; archival v36 remains byte-ex
   assert.ok(originalTitle);
   const stripped=view
     .replace(/<style id="ssx-first-paint-style">[\s\S]*?<\/style>/,'')
-    .replace(/<script id="ssx-boot-guard">[\s\S]*?<\/script>/,'')
-    .replace(/<div id="ssxBootScreen"[\s\S]*?<\/main><\/div><\/div>/,'')
+    .replace(/<script id="ssx-boot-fallback">[\s\S]*?<\/script>/,'')
     .replace(/<style id="ssx-alpine-v37-style">[\s\S]*?<\/style>/,'')
     .replace(/<script id="ssx-alpine-v37-script">[\s\S]*?<\/script>/,'')
     .replace(/<title>[^<]*<\/title>/i,originalTitle[0]);
@@ -199,6 +198,11 @@ test('public SSX UI has neutral brand/title and no Edition release promotion',()
   assert.match(js,/applyPublicCopy/);
   assert.match(js,/ssxViewOptions/);
   assert.match(js,/installMobileNavigation/);
+  assert.match(js,/ssxDirectActions/);
+  assert.match(js,/ssx-region-detail/);
+  assert.match(js,/modeFilter\)detail\.insertBefore/);
+  assert.match(css,/ssx-direct-action/);
+  assert.doesNotMatch(js,/ssxMobileMore.*append\(/);
   assert.match(js,/ssxMobileQuickNav/);
   assert.match(css,/ssx-mobile-quick-link/);
   assert.match(css,/ssx-region-banner/);
