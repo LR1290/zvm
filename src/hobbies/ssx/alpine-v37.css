@@ -1087,25 +1087,29 @@ body.ssx-alpine-v37 #langMenu button {min-height:42px;}
 }
 @media (min-width:901px) {
   body.ssx-alpine-v37:is([data-ssx-mode="board"],[data-ssx-mode="wings"]) #sheet :is(.track-h,.track-cell) {
-    width:clamp(200px,22vw,260px);
-    max-width:260px;
+    width:clamp(195px,19vw,240px);
+    max-width:240px;
   }
   body.ssx-alpine-v37:is([data-ssx-mode="board"],[data-ssx-mode="wings"]) #sheet :is(.pos-h,.pos) {
-    width:58px;
-    max-width:58px;
+    width:56px;
+    max-width:56px;
   }
   body.ssx-alpine-v37:is([data-ssx-mode="board"],[data-ssx-mode="wings"]) #sheet .record-cell .entry {
-    grid-template-columns:minmax(125px,245px) max-content;
+    grid-template-columns:minmax(125px,190px) max-content;
     justify-content:start;
-    column-gap:16px;
+    column-gap:14px;
   }
   body.ssx-alpine-v37:is([data-ssx-mode="board"],[data-ssx-mode="wings"]) #sheet .record-cell .entry .rider-name {
     min-width:0;
     width:auto;
-    max-width:245px;
+    max-width:190px;
   }
   body.ssx-alpine-v37:is([data-ssx-mode="board"],[data-ssx-mode="wings"]) #sheet .record-cell .entry .score {
     justify-self:start;
+  }
+  body.ssx-alpine-v37:is([data-ssx-mode="board"],[data-ssx-mode="wings"]) #sheet .race-group {
+    text-align:left;
+    padding-left:15px;
   }
 }
 html[data-theme="light"] body.ssx-alpine-v37 #ssxMobileQuickNav,
