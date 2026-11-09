@@ -130,6 +130,10 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(positions.pressed,'true');
     assert.equal(positions.firstTwo[0],positions.firstTwo[1],'All positions should display two ranks from the same track');
     assert.ok(positions.number>1);
+    await evaluate(cdp.send,sid,"document.querySelector('.sheet-card').scrollIntoView({block:'start'})");
+    await sleep(200);
+    const positionsShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+    fs.writeFileSync(path.join(outDir,'ssx-v37-mobile-all-positions.png'),Buffer.from(positionsShot.data,'base64'));
     await evaluate(cdp.send,sid,"document.querySelector('#alpinePositionsToggle').click()");
     await sleep(250);
     const concise=await evaluate(cdp.send,sid,"({firstTwo:Array.from(document.querySelectorAll('#alpineMobileCards .alpine-card')).slice(0,2).map(card=>card.querySelector('.alpine-card-top span')?.textContent),pressed:document.querySelector('#alpinePositionsToggle').getAttribute('aria-pressed')})");
@@ -185,6 +189,10 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(light.selected,'light');
     assert.equal(light.applied,'light');
     assert.equal(light.bg,'rgb(237, 245, 250)');
+    await evaluate(cdp.send,sid,"document.querySelector('.sheet-card').scrollIntoView({block:'start'})");
+    await sleep(230);
+    const lightShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+    fs.writeFileSync(path.join(outDir,'ssx-v37-mobile-light.png'),Buffer.from(lightShot.data,'base64'));
     const dark=await evaluate(cdp.send,sid,"(()=>{const theme=document.querySelector('#theme');theme.value='dark';theme.dispatchEvent(new Event('change',{bubbles:true}));return document.documentElement.getAttribute('data-theme');})()");
     assert.equal(dark,'dark');
     for(const [width,height,columns] of [[320,740,1],[768,900,2],[1440,900,4],[390,844,2]]){
