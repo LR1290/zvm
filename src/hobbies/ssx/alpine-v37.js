@@ -607,7 +607,11 @@
     rail.addEventListener('click',event=>{
       const button=event.target.closest('[data-ssx-sheet-mode]');
       if(!button||button.hidden)return;
+      // The original sheet listens to bubbled clicks. Keep this internal mode
+      // control independent so its source/title handlers cannot hijack it.
+      event.stopPropagation();
       if(button.dataset.ssxSheetMode!==state.mode)selectMode(button.dataset.ssxSheetMode);
+      updateCopy();
     });
     toolbar.after(rail);
   }
