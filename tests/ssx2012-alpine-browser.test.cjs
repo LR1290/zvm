@@ -125,7 +125,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(desktop.opaque,true);
     // Stage 3: the historical Sheets appendix is isolated from the 73-track
     // current main ranking, loaded in the same final page (no second face).
-    const specials=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#ssxSpecialArchive');const tabs=[...root?.querySelectorAll('[data-ssx-special-group]')||[]];return{mounted:!!root,snapshot:root?.dataset.snapshot,authority:root?.dataset.source,records:Number(root?.dataset.records),tabs:tabs.map(b=>({key:b.dataset.ssxSpecialGroup,text:b.textContent.trim()})),link:document.querySelector('#ssxDirectActions a[href=\"#ssxSpecialArchive\"]')?.textContent,initial:root.querySelector('#ssxSpecialResults .ssx-special-record')?.querySelector('.ssx-special-score')?.textContent,mainCount:document.querySelectorAll('#ssxSheetRegions button').length,mainScore:document.querySelector('.ssx-region-detail .ssx-region-score')?.textContent,progress:document.querySelector('#renderProgress')?.hidden}})()");
+    const specials=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#ssxSpecialArchive');const tabs=[...root?.querySelectorAll('[data-ssx-special-group]')||[]];return{mounted:!!root,snapshot:root?.dataset.snapshot,authority:root?.dataset.ssxArchiveSource,records:Number(root?.dataset.records),tabs:tabs.map(b=>({key:b.dataset.ssxSpecialGroup,text:b.textContent.trim()})),link:document.querySelector('#ssxDirectActions a[href=\"#ssxSpecialArchive\"]')?.textContent,initial:root.querySelector('#ssxSpecialResults .ssx-special-record')?.querySelector('.ssx-special-score')?.textContent,mainCount:document.querySelectorAll('#ssxSheetRegions button').length,mainScore:document.querySelector('.ssx-region-detail .ssx-region-score')?.textContent,progress:document.querySelector('#renderProgress')?.hidden}})()");
     console.log('SSX_SPECIAL_UI_AUDIT',JSON.stringify(specials));
     assert.equal(specials.mounted,true,'Historical category section must mount in the canonical UI');
     assert.equal(specials.snapshot,'2026-08-22','Archived source must show its real snapshot date');
@@ -185,6 +185,10 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(historicalLeaders.recordsAgain,'true');
     assert.equal(historicalLeaders.mainScore,'01:35.99');
     assert.equal(historicalLeaders.mainMode,'board');
+    const independentSource=await evaluate(cdp.send,sid,"(()=>({source:typeof state==='object'?state.source:null,archiveAttr:document.querySelector('#ssxSpecialArchive')?.hasAttribute('data-source'),archiveSource:document.querySelector('#ssxSpecialArchive')?.dataset.ssxArchiveSource}))()");
+    assert.equal(independentSource.source,'combined','Historical buttons must NEVER change the original main data-source filter');
+    assert.equal(independentSource.archiveAttr,false,'No generic data-source on historical container');
+    assert.equal(independentSource.archiveSource,'google-sheets-archive');
 
 
     // The legacy data engine may be committing a deferred original tbody
