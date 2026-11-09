@@ -99,7 +99,9 @@
   const panel=el('section','','ssx-special-archive');
   panel.id='ssxSpecialArchive';
   panel.dataset.snapshot=captured;
-  panel.dataset.source='google-sheets-archive';
+  // Never use data-source here: the original v36 global source handler
+  // catches clicks from descendants and switches the main records engine.
+  panel.dataset.ssxArchiveSource='google-sheets-archive';
   panel.dataset.records=String(entries.length);
   const title=el('h2');
   title.id='ssxSpecialTitle';
