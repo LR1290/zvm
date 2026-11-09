@@ -8,6 +8,7 @@ const {join}=require('node:path');
 const {gunzipSync}=require('node:zlib');
 const {createHash}=require('node:crypto');
 const {SHA256}=require('../src/hobbies/ssx/route');
+const {calculate,platformKey}=require('../src/hobbies/ssx/special-leaders-core.js');
 const root=join(__dirname,'../src/hobbies/ssx/packed');
 const archive=gunzipSync(Buffer.concat(Array.from({length:10},(_,i)=>
   readFileSync(join(root,'ssx2012.html.gz.part'+String(i).padStart(2,'0'))))));
@@ -75,5 +76,51 @@ test('archive special-category source data remains signed, complete and separate
     archivedSheetsRows:g.length,specialSurviveRows:sng.length,
     specialCategoryRows:2205,categories:Object.fromEntries(counts),
     mode5:'Survive No Gear/Wings/Rewinds — combined source grouping only'
+  }));
+});
+
+test('archived #1 and historical Top 3 coverage is reconstructed without cross-category mixing',()=>{
+  const g=literal('G'),sng=literal('SNG'),tracks=literal('TRACKS');
+  const rows=[...g.filter(row=>row[0]!=='Global Top 16'),...sng].map(row=>({
+    category:row[3]===5?'Survive Special':row[0],
+    trackId:row[1],track:tracks[row[1]][2],mode:row[3],
+    position:row[2],rider:row[4],score:String(row[5]),
+    platform:String(row[7]||''),proof:typeof row[8]==='string'?row[8]:''
+  }));
+  assert.equal(rows.length,2205);
+  const groups=new Map();
+  for(const row of rows){
+    const platform=platformKey(row.platform),key=JSON.stringify([row.category,row.mode,platform]);
+    if(!groups.has(key))groups.set(key,{category:row.category,mode:row.mode,platform});
+  }
+  let accounted=0,certifiedWinners=0,conflicts=0,missingFirst=0;
+  const summary=[];
+  for(const group of groups.values()){
+    const report=calculate(rows,group.category,group.mode,group.platform);
+    accounted+=report.sourceRows;
+    certifiedWinners+=report.leaders.length;
+    conflicts+=report.collisions.length;
+    missingFirst+=report.withoutFirst.length;
+    assert.equal(report.leaders.length,new Set(report.leaders.map(row=>row.trackId)).size);
+    assert.ok(report.leaders.every(row=>row.position===1));
+    assert.equal(report.podium.length<=3,true);
+    assert.ok(report.podium.every(row=>row.wins>=1&&row.tracks.length===row.wins));
+    assert.ok(report.podium.every((row,i)=>i===0||row.wins<=report.podium[i-1].wins));
+    assert.equal(report.certifiedCurrent,false);
+    assert.equal(report.identityStatus,'unverified-until-exact-ozmonet-player-id');
+    summary.push({category:group.category,mode:group.mode,platform:group.platform,
+      rows:report.sourceRows,leaders:report.leaderCount,
+      conflictingFirsts:report.collisions.length,missingFirst:report.withoutFirst.length,
+      podium:report.podium.map(p=>({wins:p.wins,proofs:p.proofs}))});
+  }
+  assert.equal(accounted,2205,'All special categories must remain independently accounted for');
+  assert.ok(certifiedWinners>5,'Real archived #1 records must exist');
+  assert.ok(summary.some(row=>row.category==='Android'&&row.platform==='Android'));
+  assert.ok(summary.some(row=>row.category==='Survive Special'&&row.mode===5&&row.platform==='__unspecified__'));
+  assert.ok(summary.some(row=>row.category==='Level 9'&&row.mode===1));
+  console.log('SSX_ARCHIVED_LEADER_ACCOUNTING '+JSON.stringify({
+    archivedRows:accounted,uniqueFirstPlaces:certifiedWinners,
+    conflictingFirstPlaces:conflicts,tracksWithoutFirst:missingFirst,
+    groups:summary
   }));
 });
