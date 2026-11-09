@@ -448,6 +448,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.ok(trackCards.ranks.length>=2,'Selected track should expose ranked entries, not only its winner');
     assert.equal(trackCards.toggleHidden,false,'Leaders must be directly accessible even when Red Light is filtered');
     assert.equal(trackCards.mode,'wings');
+    assert.equal(await evaluate(cdp.send,sid,"getComputedStyle(document.querySelector('#alpineMobileCards')).display"),'grid','Single-track filter must show real ranked cards');
     await evaluate(cdp.send,sid,"document.querySelector('#ssxLeadersToggle').click()");
     await sleep(250);
     const freedLeaders=await evaluate(cdp.send,sid,"(()=>{const cards=[...document.querySelectorAll('#alpineMobileCards [data-leader-track]')];return{trackFilter:document.querySelector('#track').value,regions:new Set(cards.map(x=>x.dataset.leaderRegion)).size,tracks:cards.length,unique:new Set(cards.map(x=>x.dataset.leaderTrack)).size,redCount:cards.filter(x=>x.querySelector('.alpine-card-top span')?.textContent==='Red Light').length,mode:document.body.dataset.ssxMode}})()");
@@ -457,7 +458,8 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(freedLeaders.redCount,1);
     assert.equal(freedLeaders.mode,'wings');
     await evaluate(cdp.send,sid,"document.querySelector('#ssxRegionsToggle').click()");
-    assert.equal(await evaluate(cdp.send,sid,"getComputedStyle(document.querySelector('#alpineMobileCards')).display"),'grid','Track filter must show artwork-backed ranked cards');
+    await sleep(160);
+    assert.equal(await evaluate(cdp.send,sid,"getComputedStyle(document.querySelector('#ssxRegionBrowser')).display"),'grid','Return to regions must restore the photographic mountain navigator');
 
     await evaluate(cdp.send,sid,"(()=>{const track=document.querySelector('#track');track.value='';track.dispatchEvent(new Event('change',{bubbles:true}));})()");
     await sleep(350);
