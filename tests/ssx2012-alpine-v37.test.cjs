@@ -269,3 +269,11 @@ test('public SSX UI has neutral brand/title and no Edition release promotion',()
   assert.match(css,/\.ssx-credits-disclosure|#ssxCredits/);
   assert.doesNotMatch(css,/!important/);
 });
+
+test('six locale labels identify 6,024 Google records as a dated snapshot',()=>{
+  const js=fs.readFileSync(path.join(__dirname,'../src/hobbies/ssx/alpine-v37.js'),'utf8');
+  const labels=["recordes na captura de 2026-08-22","records in the 2026-08-22 snapshot","Rekorde in der Aufnahme vom 22.08.2026","récords en la captura del 22-08-2026","records in momentopname van 22-08-2026","records dans la capture du 22/08/2026"];
+  assert.equal(labels.length,6);
+  for(const label of labels)assert.ok(js.includes("snapshotRecords:'"+label+"'"),'Missing dated locale label: '+label);
+  assert.match(js,/capturedRecordsLabel\.removeAttribute\('data-i'\)/);
+});
