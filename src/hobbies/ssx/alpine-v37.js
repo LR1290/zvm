@@ -80,11 +80,13 @@
       records.id='ssxNavRecords';
       records.href='#alpine-modes';
       nav.insertBefore(records,riders);
-      const communityGroup=$('communityMenuBtn')?.closest('.nav-group');
-      if(communityGroup?.parentElement===nav)nav.insertBefore(communityGroup,about);
       about.removeAttribute('role');
       about.classList.add('ssx-nav-about');
       nav.insertBefore(about,tools);
+      // About originally belongs to another navigation group; move it before
+      // reordering Community. insertBefore requires a direct child reference.
+      const communityGroup=$('communityMenuBtn')?.closest('.nav-group');
+      if(communityGroup?.parentElement===nav)nav.insertBefore(communityGroup,about);
       const more=$('toolsMenuBtn');
       if(more){
         more.classList.add('ssx-gear-trigger');
