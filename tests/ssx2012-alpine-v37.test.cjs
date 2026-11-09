@@ -111,9 +111,47 @@ test('v37.2 uses original game artwork from allowlisted verified sources with a 
     assert.equal(url.protocol,'https:');
     assert.ok(['media.contentapi.ea.com','jogorama.com.br'].includes(url.hostname));
     assert.equal(asset.verifiedHttpStatus,200);
-    assert.equal(css.includes(asset.fileUrl),true,'Artwork missing CSS: '+asset.id);
+    assert.equal(css.includes(asset.localPath),true,'Local artwork missing CSS: '+asset.id);
+    assert.doesNotMatch(css,/url\("https:\/\/(?:jogorama|media\.contentapi)/,'Remote image hotlinks are forbidden in v37.2');
+    const localFile=path.join(dir,'media','v37',asset.id+'.jpg');
+    const actual=fs.readFileSync(localFile);
+    assert.equal(actual.length,asset.localSizeBytes);
+    assert.equal(require('node:crypto').createHash('sha256').update(actual).digest('hex'),asset.localSha256);
+    assert.equal(actual.subarray(0,3).toString('hex'),'ffd8ff');
     assert.match(asset.sourcePage,/^https:\/\//);
   }
   assert.doesNotMatch(css,/!important/);
   assert.doesNotMatch(js,/fetch\s*\(|XMLHttpRequest|document\.cookie|WebSocket/);
 });
+
+
+test('versioned SSX artwork routes return the exact pinned JPEG, with opaque-origin access and no writes',()=>harness(async base=>{
+  const dir=path.join(__dirname,'../src/hobbies/ssx');
+  const manifest=JSON.parse(fs.readFileSync(path.join(dir,'artwork-sources-v37.json'),'utf8'));
+  for(const asset of manifest.assets){
+    const uri=base+asset.localPath;
+    const full=await rawFetch(uri);
+    assert.equal(full.status,200,'Missing '+asset.id);
+    assert.equal(full.headers['content-type'],'image/jpeg');
+    assert.equal(full.headers['x-content-type-options'],'nosniff');
+    assert.equal(full.headers['cross-origin-resource-policy'],'cross-origin');
+    assert.equal(full.headers['access-control-allow-origin'],'*');
+    assert.match(full.headers['x-robots-tag'],/noindex/);
+    assert.equal(full.body.length,asset.localSizeBytes);
+    assert.equal(require('node:crypto').createHash('sha256').update(full.body).digest('hex'),asset.localSha256);
+    const head=await rawFetch(uri,'identity','HEAD');
+    assert.equal(head.status,200);
+    assert.equal(head.body.length,0);
+    assert.equal(Number(head.headers['content-length']),asset.localSizeBytes);
+    const after304=await new Promise((resolve,reject)=>{
+      const req=http.get(uri,{headers:{'If-None-Match':full.headers.etag}},res=>{
+        res.resume();res.on('end',()=>resolve(res.statusCode));res.on('error',reject);
+      });req.on('error',reject);
+    });
+    assert.equal(after304,304);
+    assert.equal((await rawFetch(uri,'identity','POST')).status,405);
+  }
+  assert.equal((await rawFetch(base+'/hobbies/ssx/media/v37/unknown.jpg')).status,404);
+  assert.equal((await rawFetch(base+'/hobbies/ssx/media/v37/hero.jpg.zip')).status,404);
+  assert.equal((await rawFetch(base+'/hobbies/ssx/media/v37/')).status,404);
+}));
