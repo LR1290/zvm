@@ -280,6 +280,35 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.ok(mobileRegional.runs>0&&mobileRegional.flags>0,'Real flags and record rows must remain accessible');
     assert.match(mobileRegional.art,/\/hobbies\/ssx\/media\/v37\//,'Region needs pinned game artwork');
     assert.equal(mobileRegional.navOverflow,false,'Regional mobile layout must not overflow screen');
+    const modeSheet=await evaluate(cdp.send,sid,"(()=>{const card=document.querySelector('.sheet-card');const bar=document.querySelector('#ssxSheetModeFilter');const first=document.querySelector('#ssxRegionBrowser .ssx-region-banner');const buttons=[...bar.querySelectorAll('button:not([hidden])')];return {inCard:bar.parentElement===card,barDisplay:getComputedStyle(bar).display,aboveBanner:bar.getBoundingClientRect().bottom<=first.getBoundingClientRect().top+2,labels:buttons.map(b=>b.querySelector('.ssx-sheet-mode-name')?.textContent),active:bar.querySelector('[aria-pressed=true]')?.dataset.ssxSheetMode,hiddenUpper:getComputedStyle(document.querySelector('#alpineSubmodes')).display==='none',controlsHeight:buttons.map(b=>Math.round(b.getBoundingClientRect().height)),overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth}})()");
+    assert.equal(modeSheet.inCard,true,'Mobile mode selector must be inside the records sheet');
+    assert.equal(modeSheet.barDisplay,'grid','Board/Wingsuit selector must be visible above regional banners');
+    assert.equal(modeSheet.aboveBanner,true,'Mode selector must precede the first region banner visually');
+    assert.deepEqual(modeSheet.labels,['Board','Wingsuit']);
+    assert.equal(modeSheet.active,'wings','Active mobile submode must match full scoreboard state');
+    assert.equal(modeSheet.hiddenUpper,true,'Do not duplicate the same submode controls at the top');
+    assert.ok(modeSheet.controlsHeight.every(h=>h>=44)&&modeSheet.overflow<=1,'Mobile controls must be touch-sized without overflowing');
+    const switchBoard=await evaluate(cdp.send,sid,"(()=>{document.querySelector('#ssxSheetModeFilter [data-ssx-sheet-mode=board]').click();return{mode:document.body.dataset.ssxMode,active:document.querySelector('#ssxSheetModeFilter [aria-pressed=true]')?.dataset.ssxSheetMode,hero:document.querySelector('#heroTitle')?.textContent,catalog:document.querySelectorAll('#ssxSheetRegions button').length}})()");
+    assert.equal(switchBoard.mode,'board');
+    assert.equal(switchBoard.active,'board');
+    assert.equal(switchBoard.hero,'Conquiste a montanha.');
+    assert.equal(switchBoard.catalog,13,'Submode switch must preserve all region tabs');
+    await sleep(150);
+    const boardScore=await evaluate(cdp.send,sid,"document.querySelector('.ssx-region-detail .ssx-region-score')?.textContent");
+    assert.equal(boardScore,'01:35.99','Mobile Board must show original Board times, not just change its label');
+    await evaluate(cdp.send,sid,"document.querySelector('#ssxSheetModeFilter [data-ssx-sheet-mode=wings]').click()");
+    await sleep(150);
+    const wingsScore=await evaluate(cdp.send,sid,"(()=>({mode:document.body.dataset.ssxMode,active:document.querySelector('#ssxSheetModeFilter [aria-pressed=true]')?.dataset.ssxSheetMode,score:document.querySelector('.ssx-region-detail .ssx-region-score')?.textContent}))()");
+    assert.equal(wingsScore.mode,'wings');
+    assert.equal(wingsScore.active,'wings');
+    assert.equal(wingsScore.score,'01:11.92');
+    const otherModes=await evaluate(cdp.send,sid,"(()=>{document.querySelector('[data-alpine-group=survive]').click();const surviving=[...document.querySelectorAll('#ssxSheetModeFilter button:not([hidden])')].map(b=>b.dataset.ssxSheetMode);document.querySelector('#ssxSheetModeFilter [data-ssx-sheet-mode=special]').click();const special=document.body.dataset.ssxMode;document.querySelector('[data-alpine-group=trick]').click();const trickHidden=document.querySelector('#ssxSheetModeFilter').hidden;document.querySelector('[data-alpine-group=race]').click();return {surviving,special,trickHidden,restored:document.body.dataset.ssxMode,active:document.querySelector('#ssxSheetModeFilter [aria-pressed=true]')?.dataset.ssxSheetMode}})()");
+    assert.deepEqual(otherModes.surviving,['survive','special']);
+    assert.equal(otherModes.special,'special');
+    assert.equal(otherModes.trickHidden,true,'Do not show irrelevant Board/Wings controls in Trick It!');
+    assert.equal(otherModes.restored,'wings');
+    assert.equal(otherModes.active,'wings');
+
     const sheetTabsMobile=await evaluate(cdp.send,sid,"(()=>{const nav=document.querySelector('#ssxSheetRegions');const search=document.querySelector('#ssxRegionSearch');return {display:getComputedStyle(nav).display,count:nav.querySelectorAll('button').length,contained:document.querySelector('.sheet-card').contains(nav),scrollOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,searchReady:!!search&&search.type==='search'}})()");
     assert.equal(sheetTabsMobile.display,'flex');
     assert.ok(sheetTabsMobile.count>=3&&sheetTabsMobile.contained);
@@ -379,9 +408,9 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     const restored=await evaluate(cdp.send,sid,"(()=>{document.querySelector('[data-alpine-group=\"trick\"]').click();const before=document.body.dataset.ssxMode;document.querySelector('#alpineToggleTable').click();const all=document.body.dataset.ssxMode;document.querySelector('#alpineToggleTable').click();return {before,all,back:document.body.dataset.ssxMode};})()");
     assert.deepEqual(restored,{before:'trick',all:'all',back:'trick'},'Full table must return to actual prior mode');
 
-    const focus=await evaluate(cdp.send,sid,"(()=>{document.querySelector('[data-alpine-group=\"race\"]').click();const wings=document.querySelector('[data-alpine-mode=\"wings\"]');wings.focus();wings.click();return {mode:document.body.dataset.ssxMode,retained:document.activeElement===wings};})()");
+    const focus=await evaluate(cdp.send,sid,"(()=>{document.querySelector('[data-alpine-group=\"race\"]').click();const wings=document.querySelector('#ssxSheetModeFilter [data-ssx-sheet-mode=\"wings\"]');wings.focus();wings.click();return {mode:document.body.dataset.ssxMode,retained:document.activeElement===wings};})()");
     assert.equal(focus.mode,'wings');
-    assert.equal(focus.retained,true,'Switching submodes must not destroy the focused button');
+    assert.equal(focus.retained,true,'Mobile submode selection must retain focus on the visible control');
 
     await evaluate(cdp.send,sid,"document.querySelector('[data-lang=\"en\"]').click()");
     await sleep(300);
@@ -421,6 +450,12 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
       const measured=await evaluate(cdp.send,sid,"(()=>{const grid=document.querySelector('.alpine-mode-grid');const sheet=document.querySelector('.sheet-card');return {columns:getComputedStyle(grid).gridTemplateColumns.split(' ').length,toolbarWidth:document.querySelector('#toolbar').getBoundingClientRect().width,sheetWidth:sheet.getBoundingClientRect().width,viewport:document.documentElement.clientWidth};})()");
       assert.equal(measured.columns,columns,'Modal card columns at '+width+'px');
       assert.ok(measured.sheetWidth<=measured.viewport+1,'Result panel must not overflow viewport at '+width+'px');
+      const responsiveMode=await evaluate(cdp.send,sid,"(()=>({bar:getComputedStyle(document.querySelector('#ssxSheetModeFilter')).display,top:getComputedStyle(document.querySelector('#alpineSubmodes')).display,screenOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,controls:[...document.querySelectorAll('#ssxSheetModeFilter button:not([hidden])')].map(el=>Math.round(el.getBoundingClientRect().width))}))()");
+      assert.equal(responsiveMode.bar,width<=900?'grid':'none','Mobile sheet controls must respect breakpoint at '+width+'px');
+      assert.equal(responsiveMode.top,width<=900?'none':'flex','Original large-screen submodes must remain available at '+width+'px');
+      assert.ok(responsiveMode.screenOverflow<=1,'No horizontal overflow at '+width+'px');
+      if(width<=900)assert.ok(responsiveMode.controls.every(v=>v>75),'Both mobile mode options must fit at '+width+'px');
+
       if(width<=390){
         const overflow=await evaluate(cdp.send,sid,"document.documentElement.scrollWidth-document.documentElement.clientWidth");
         assert.ok(overflow<=1,'Compact ranking must not cause horizontal overflow at '+width+'px');
