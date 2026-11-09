@@ -79,3 +79,20 @@ test('missing track or unsupported category is invalid and never becomes a leade
   const report=reconcile(sheet([row({mode:'unknown-mode'}),row({recordId:'sheet-2',eventId:''})]),oz([profile()]));
   assert.equal(report.summary.INVALID_EVIDENCE,2);
 });
+test('event keys do not conflate literal separator text with percent-escaped text',()=>{
+  const report=reconcile(sheet([
+    row({recordId:'pipe',eventId:'race|one'}),
+    row({recordId:'encoded',eventId:'race%7Cone'})
+  ]),oz([profile()]));
+  assert.equal(report.eventPositionCollisions.length,0);
+  assert.notEqual(report.rows[0].eventKey,report.rows[1].eventKey);
+});
+test('duplicate stable source record IDs are exposed even across different events',()=>{
+  const report=reconcile(sheet([
+    row({recordId:'repeated'}),
+    row({recordId:'repeated',eventId:'another-event',trackId:'another-track'})
+  ]),oz([profile()]));
+  assert.deepEqual(report.duplicateRecordIds,[{recordId:'repeated',indices:[0,1]}]);
+  assert.equal(report.eventPositionCollisions.length,0);
+  assert.equal(report.safeguards.changesApplied,0);
+});
