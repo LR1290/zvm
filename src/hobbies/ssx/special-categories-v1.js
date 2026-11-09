@@ -106,7 +106,7 @@
     const asset=RIDER_FLAGS[riderKey(name)];
     if(!asset||!Object.prototype.hasOwnProperty.call(FLAG_ASSETS,asset))return null;
     const code=String(FLAG_CODES[asset]||'').toUpperCase();
-    if(!/^[A-Z]{2}$/.test(code))return null;
+    if(!/^[A-Z]{2}(?:-[A-Z]{2,3})?$/.test(code))return null;
     const url=flagUrl(asset);
     if(!url)return null;
     const image=el('img','','rider-flag ssx-special-rider-flag');
