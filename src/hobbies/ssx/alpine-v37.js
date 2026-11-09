@@ -941,7 +941,12 @@
     // selected track banner and immediately above its ranking/navigation.
     // Move it before replacing the old detail to preserve listeners and focus.
     const modeFilter=$('ssxSheetModeFilter');
-    if(modeFilter)detail.insertBefore(modeFilter,detail.children[1]||null);
+    if(modeFilter){
+      if(document.body.dataset.ssxMobileView==='cards'){
+        const cards=$('alpineMobileCards');
+        if(cards)cards.before(modeFilter);
+      }else detail.insertBefore(modeFilter,detail.children[1]||null);
+    }
     browser.replaceChildren(index,detail);
     applyRegionSearch();
   }
@@ -1310,6 +1315,56 @@
       renderRegionBrowser();
     });
   }
+
+  // Build one winner per canonical track from the independent source-index.
+  // Never infer leaders from the first N visible table rows: Red Light may
+  // legitimately contain many positions and consume that entire first batch.
+  function renderTrackLeaderCards(root,copy){
+    const fragment=document.createDocumentFragment();
+    const index=new Map(indexedTracks(state.mode).map(item=>[item.key,item]));
+    const available=completeTrackCatalog().filter(item=>
+      (selectedRegion==='all'||item.region===selectedRegion)&&
+      (index.get(item.key)?.runs?.length||0)>0);
+    let currentRegion='';
+    for(const track of available){
+      if(track.region!==currentRegion){
+        currentRegion=track.region;
+        const heading=text('h3',(regionIcons[currentRegion]||'🏂')+' '+currentRegion,'ssx-leaders-region-title');
+        fragment.append(heading);
+      }
+      const entry=index.get(track.key);
+      const lead=entry.runs.find(run=>String(run.position).trim()==='#1')||entry.runs[0];
+      if(!lead)continue;
+      const card=text('article','','alpine-card alpine-card-visual alpine-card-leader');
+      card.dataset.leaderTrack=track.key;
+      card.dataset.leaderRegion=track.region;
+      card.dataset.leaderPosition=String(lead.position);
+      artForRegion(card,track.region);
+      const title=text('div','','alpine-card-top');
+      title.append(text('span',track.track),text('span',lead.position||'#1'));
+      card.append(title,text('div',(regionIcons[track.region]||'🏂')+' '+track.region+
+        (track.mountain?' · '+track.mountain:''),'ssx-card-location'));
+      const rider=text('button',lead.rider.textContent.trim(),'alpine-card-rider');
+      rider.type='button';
+      rider.addEventListener('click',()=>lead.rider.click());
+      card.append(rider,text('div',lead.score,'alpine-card-score'));
+      if(lead.source)card.append(text('span',lead.source,'alpine-card-top ssx-card-source'));
+      if(lead.video){
+        const proof=text('a',copy.proof,'alpine-card-proof');
+        proof.href=lead.video;
+        proof.target='_blank';
+        proof.rel='noopener noreferrer';
+        proof.referrerPolicy='no-referrer';
+        card.append(proof);
+      }
+      fragment.append(card);
+    }
+    if(!available.length)fragment.append(text('p',copy.empty,'alpine-card-empty'));
+    root.dataset.ssxLeadersCount=String(available.length);
+    root.dataset.ssxLeadersRegions=String(new Set(available.map(x=>x.region)).size);
+    root.replaceChildren(fragment);
+  }
+
   function renderCards(){
     const root=$('alpineMobileCards'),tbody=$('tbody');
     const contextual=Boolean($('track')?.value||$('search')?.value?.trim());
@@ -1317,6 +1372,13 @@
       contextual||state.allPositions||state.leaderCards?'cards':'browse';
     if(!root||!tbody||!tags[state.mode])return;
     const copy=t(), frag=document.createDocumentFragment();
+    if(state.leaderCards&&!contextual){
+      renderTrackLeaderCards(root,copy);
+      updateViewActions(copy);
+      return;
+    }
+    root.dataset.ssxLeadersCount='';
+    root.dataset.ssxLeadersRegions='';
     const showPositions=contextual||state.allPositions;
     let currentTrack='';
     let currentRegion='';
