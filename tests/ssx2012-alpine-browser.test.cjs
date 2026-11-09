@@ -178,8 +178,15 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     fs.writeFileSync(path.join(outDir,'ssx-v37-mobile-rankings.png'),Buffer.from(rankingsShot.data,'base64'));
   } finally {
     cdp?.ws.close();
+    const exited=chrome.exitCode===null ? new Promise(resolve=>{
+      const fallback=setTimeout(resolve,1600);
+      chrome.once('exit',()=>{clearTimeout(fallback);resolve();});
+    }) : Promise.resolve();
     chrome.kill('SIGTERM');
+    await exited;
+    if(chrome.exitCode===null)chrome.kill('SIGKILL');
     await new Promise(resolve=>server.close(resolve));
-    fs.rmSync(dir,{recursive:true,force:true});
+    try { fs.rmSync(dir,{recursive:true,force:true,maxRetries:12,retryDelay:100}); }
+    catch(error) { console.warn('Temp Chromium profile cleanup deferred:',error.code); }
   }
 });
