@@ -244,7 +244,16 @@ test('public SSX UI has neutral brand/title and no Edition release promotion',()
   assert.doesNotMatch(indexBody,/row\.hidden|row\.style\.display/, 'Index must not depend on legacy UI row visibility');
   assert.match(css,/ssx-region-metrics/);
   assert.match(css,/ssx-region-rank/);
-  assert.match(js,/proof.setAttribute\('aria-label',copy\[4\]\)/);
+  assert.match(js,/function createYouTubeProof\(href,description,compact=false\)/);
+  assert.match(js,/createYouTubeProof\(run\.video,copy\[4\],true\)/);
+  assert.match(js,/createYouTubeProof\(lead\.video,copy\.proof\)/);
+  assert.match(js,/function createTop3Podium\(index,copy\)/);
+  assert.match(js,/function podiumStandings\(index\)/);
+  assert.match(js,/winner\.position|run=>String\(run\.position\)/);
+  assert.match(css,/ssx-youtube-icon/);
+  assert.match(css,/ssx-top3-podium/);
+  assert.match(css,/ssx-top3-medal/);
+  assert.match(css,/ssx-video-unavailable/);
   assert.match(css,/alpine-card-visual/);
   assert.match(css,/data-ssx-mobile-view="browse"/);
   assert.match(js,/ssxMobileView/);

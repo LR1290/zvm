@@ -221,6 +221,15 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(desktopDensity.gridColumns,3);
     assert.equal(desktopDensity.score,'01:35.99','Preserve full precision of race times');
     assert.ok(desktopDensity.proofWidth>=36&&desktopDensity.accessible,'Proof icon must be touchable and accessible');
+    const officialProof=await evaluate(cdp.send,sid,"(()=>{const link=document.querySelector('.ssx-region-proof');const mark=link?.querySelector('.ssx-youtube-icon');return {label:link?.textContent.trim(),aria:link?.getAttribute('aria-label'),host:link?new URL(link.href).hostname:null,red:mark?getComputedStyle(mark).backgroundColor:null,blank:link?.target,rel:link?.rel,sourceLinks:document.querySelectorAll('#tbody a.proof[href]').length}})()");
+    assert.equal(officialProof.label,'YouTube','Regional records must show a recognizable YouTube action');
+    assert.match(officialProof.aria,/YouTube/);
+    assert.match(officialProof.host,/^(?:youtu\.be|(?:www\.|m\.)?youtube\.com)$/);
+    assert.equal(officialProof.red,'rgb(255, 0, 51)');
+    assert.equal(officialProof.blank,'_blank');
+    assert.match(officialProof.rel,/noopener/);
+    assert.ok(officialProof.sourceLinks>0,'Real YouTube evidence must originate in canonical records');
+
     const corkscrew=await evaluate(cdp.send,sid,"(()=>{const africa=[...document.querySelectorAll('.ssx-region-group')].find(x=>x.dataset.regionName==='Africa');const target=[...africa.querySelectorAll('.ssx-track-choice')].find(x=>x.textContent.includes('Corkscrew'));target.click();return {selected:document.querySelector('.ssx-region-detail h3')?.textContent,runs:document.querySelectorAll('.ssx-region-rank').length}})()");
     assert.equal(corkscrew.selected,'Corkscrew','Track detail must update on selection');
     const nextShare=await evaluate(cdp.send,sid,"(()=>{const url=new URL(document.querySelector('.ssx-track-share-button').dataset.shareUrl);const address=new URL(location.href);return {parts:JSON.parse(url.searchParams.get('ssxTrack')),selectedInAddress:JSON.parse(address.searchParams.get('ssxTrack')),mode:url.searchParams.get('mode')}})()");
@@ -414,7 +423,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     fs.writeFileSync(path.join(outDir,'ssx-v37-mobile-all-positions.png'),Buffer.from(positionsShot.data,'base64'));
     await evaluate(cdp.send,sid,"document.querySelector('#alpinePositionsToggle').click()");
     await sleep(250);
-    const leaders=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#alpineMobileCards');const cards=[...root.querySelectorAll('[data-leader-track]')];const tracks=cards.map(card=>card.querySelector('.alpine-card-top span')?.textContent);const redLight=cards.filter(card=>card.querySelector('.alpine-card-top span')?.textContent==='Red Light');const nav=document.querySelector('#ssxSheetModeFilter');return {pressed:document.querySelector('#alpinePositionsToggle').getAttribute('aria-pressed'),leadersPressed:document.querySelector('#ssxLeadersToggle').getAttribute('aria-pressed'),tracks:tracks.slice(0,5),count:cards.length,unique:new Set(cards.map(card=>card.dataset.leaderTrack)).size,regions:new Set(cards.map(card=>card.dataset.leaderRegion)).size,regionNames:[...new Set(cards.map(card=>card.dataset.leaderRegion))],redLightCount:redLight.length,redLightRank:redLight[0]?.dataset.leaderPosition,redLightScore:redLight[0]?.querySelector('.alpine-card-score')?.textContent,modeVisible:getComputedStyle(nav).display==='grid',modeParent:nav.parentElement?.classList.contains('sheet-card'),visibleCards:getComputedStyle(root).display==='grid',bannerHidden:getComputedStyle(document.querySelector('#ssxRegionBrowser')).display==='none',progress:document.querySelector('#renderProgress')?.hidden}})()");
+    const leaders=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#alpineMobileCards');const cards=[...root.querySelectorAll('[data-leader-track]')];const tracks=cards.map(card=>card.querySelector('.alpine-card-top span')?.textContent);const redLight=cards.filter(card=>card.querySelector('.alpine-card-top span')?.textContent==='Red Light');const nav=document.querySelector('#ssxSheetModeFilter');return {pressed:document.querySelector('#alpinePositionsToggle').getAttribute('aria-pressed'),leadersPressed:document.querySelector('#ssxLeadersToggle').getAttribute('aria-pressed'),tracks:tracks.slice(0,5),count:cards.length,unique:new Set(cards.map(card=>card.dataset.leaderTrack)).size,regions:new Set(cards.map(card=>card.dataset.leaderRegion)).size,regionNames:[...new Set(cards.map(card=>card.dataset.leaderRegion))],redLightCount:redLight.length,redLightRank:redLight[0]?.dataset.leaderPosition,redLightScore:redLight[0]?.querySelector('.alpine-card-score')?.textContent,modeVisible:getComputedStyle(nav).display!=='none',modeParent:nav.parentElement?.classList.contains('sheet-card'),visibleCards:getComputedStyle(root).display==='grid',bannerHidden:getComputedStyle(document.querySelector('#ssxRegionBrowser')).display==='none',progress:document.querySelector('#renderProgress')?.hidden}})()");
     assert.equal(leaders.pressed,'false');
     assert.equal(leaders.leadersPressed,'true');
     assert.ok(leaders.count>=15,'Each scored track must produce one leader, not 16 Red Light positions');
@@ -425,6 +434,39 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(leaders.redLightScore,'01:11.92','Wingsuit leader must show the real Wingsuit time');
     assert.ok(leaders.modeVisible&&leaders.modeParent&&leaders.visibleCards&&leaders.bannerHidden);
     assert.equal(leaders.progress,true,'No return to progressive track loading');
+    const podium=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#alpineMobileCards');const panel=root.querySelector('#ssxTop3Podium');const tiles=[...panel.querySelectorAll('.ssx-top3-entry')];const modes=[...document.querySelectorAll('#ssxSheetModeFilter button:not([hidden])')].map(b=>b.dataset.ssxSheetMode);const videos=[...root.querySelectorAll('a.ssx-youtube-proof')];const cards=[...root.querySelectorAll('.alpine-card-leader')];const rawProofs=document.querySelectorAll('#tbody a.proof[href]').length;return {panel:!!panel,title:panel.querySelector('h3')?.textContent,description:panel.querySelector('p')?.textContent,mode:panel.dataset.podiumMode,number:tiles.length,positions:tiles.map(x=>Number(x.dataset.ssxPodiumRank)),riders:tiles.map(x=>x.dataset.ssxPodiumRider),wins:tiles.map(x=>Number(x.dataset.ssxPodiumWins)),modes,rawProofs,videoLinks:videos.length,missing:cards.filter(x=>x.querySelector('.ssx-video-unavailable')).length,covered:cards.every(x=>!!x.querySelector('a.ssx-youtube-proof, .ssx-video-unavailable')),safeVideos:videos.every(a=>a.target==='_blank'&&a.rel.includes('noopener')&&!!a.querySelector('.ssx-youtube-icon')&&a.textContent.trim()==='YouTube'&&['youtu.be','youtube.com','www.youtube.com','m.youtube.com'].includes(new URL(a.href).hostname)),firstColor:videos.length?getComputedStyle(videos[0].querySelector('.ssx-youtube-icon')).backgroundColor:null,width:document.documentElement.scrollWidth-document.documentElement.clientWidth}})()");
+    assert.equal(podium.panel,true,'Leaders overview should show a Top 3 podium');
+    assert.equal(podium.mode,'wings');
+    assert.match(podium.title,/Top 3/);
+    assert.match(podium.description,/pistas em 1º lugar/,'Explain why cross-track scores are not compared');
+    assert.ok(podium.number>=1&&podium.number<=3,'Up to three verified #1 holders should appear; never invent a podium position');
+    assert.deepEqual(podium.positions,Array.from({length:podium.number},(_,i)=>i+1));
+    assert.equal(new Set(podium.riders).size,podium.number);
+    assert.ok(podium.wins.every((win,i)=>win>0&&(i===0||win<=podium.wins[i-1])),'Podium must use distinct first-place finish counts');
+    assert.deepEqual(podium.modes,['board','wings','trick','survive','special'],'All five real categories must be reachable directly');
+    assert.equal(podium.covered,true,'Cards without registered video must explain why YouTube is absent');
+    assert.equal(podium.safeVideos,true,'YouTube actions must open trusted video proof with security attributes');
+    assert.ok(podium.videoLinks>=1,'The leader gallery must display actual YouTube evidence when available');
+    assert.equal(podium.firstColor,'rgb(255, 0, 51)');
+    assert.ok(podium.width<=1,'Podium and mode tabs must not overflow the mobile viewport');
+    console.log('SSX_YOUTUBE_AUDIT',JSON.stringify({sourceLinks:podium.rawProofs,leaderVideoLinks:podium.videoLinks,missingVideos:podium.missing,podiumWins:podium.wins}));
+    const medalPreview=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+    fs.writeFileSync(path.join(outDir,'ssx-r53-mobile-youtube-podium.png'),Buffer.from(medalPreview.data,'base64'));
+    for(const mode of ['board','wings','trick','survive','special']){
+      await evaluate(cdp.send,sid,"document.querySelector('#ssxSheetModeFilter [data-ssx-sheet-mode="+mode+"]').click()");
+      await sleep(180);
+      const active=await evaluate(cdp.send,sid,"(()=>{const panel=document.querySelector('#ssxTop3Podium');const items=[...panel.querySelectorAll('.ssx-top3-entry')];const cards=[...document.querySelectorAll('#alpineMobileCards .alpine-card-leader')];return{mode:panel.dataset.podiumMode,selected:document.querySelector('#ssxSheetModeFilter [aria-pressed=true]')?.dataset.ssxSheetMode,number:items.length,wins:items.map(x=>Number(x.dataset.ssxPodiumWins)),unique:new Set(items.map(x=>x.dataset.ssxPodiumRider)).size,cards:cards.length,modeTabs:document.querySelectorAll('#ssxSheetModeFilter button:not([hidden])').length,legacyProgress:document.querySelector('#renderProgress')?.hidden}})()");
+      assert.equal(active.mode,mode,'Podium must follow the selected SSX mode');
+      assert.equal(active.selected,mode);
+      assert.equal(active.modeTabs,5,'Every mode remains one tap away');
+      assert.ok(active.number<=3&&active.number>=0);
+      assert.equal(active.unique,active.number);
+      assert.ok(active.wins.every((win,i)=>win>=1&&(i===0||win<=active.wins[i-1])));
+      assert.equal(active.legacyProgress,true);
+    }
+    await evaluate(cdp.send,sid,"document.querySelector('#ssxSheetModeFilter [data-ssx-sheet-mode=wings]').click()");
+    await sleep(180);
+
     await evaluate(cdp.send,sid,"document.querySelector('#ssxSheetModeFilter [data-ssx-sheet-mode=board]').click()");
     await sleep(220);
     const boardLeaders=await evaluate(cdp.send,sid,"(()=>{const cards=[...document.querySelectorAll('#alpineMobileCards [data-leader-track]')];const red=cards.find(card=>card.querySelector('.alpine-card-top span')?.textContent==='Red Light');return {mode:document.body.dataset.ssxMode,selected:document.querySelector('#ssxSheetModeFilter [aria-pressed=true]')?.dataset.ssxSheetMode,count:cards.length,unique:new Set(cards.map(card=>card.dataset.leaderTrack)).size,redTime:red?.querySelector('.alpine-card-score')?.textContent,redRank:red?.dataset.leaderPosition}})()");
