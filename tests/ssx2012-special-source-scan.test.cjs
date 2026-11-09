@@ -40,6 +40,11 @@ test('identify exact source structures for historical special-category integrati
   const ids=[...source.matchAll(/<section\b[^>]*\bid=["']([^"']{1,140})["'][^>]*>/gi)].slice(0,55).map(m=>m[1]);
   const headers=[...source.matchAll(/<h[2-4]\b[^>]*>([\s\S]{0,200}?)<\/h[2-4]>/gi)].slice(0,100).map(m=>m[1].replace(/<[^>]+>/g,' ').trim()).filter(Boolean);
   const scripts=[...source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)].map(m=>({offset:m.index,length:m[1].length,start:m[1].slice(0,250)}));
+  const mainScript=scripts.length?[...source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)].sort((a,b)=>b[1].length-a[1].length)[0]?.[1]||'':'';
+  const prefix=mainScript.slice(0,2200);
+  const declarations=[...mainScript.matchAll(/(?:^|[;\n])\s*(?:let|const|var)\s+([A-Za-z_$][\w$]*)\s*=/g)].slice(0,95).map(m=>({name:m[1],offset:m.index}));
+  const structural=[...mainScript.matchAll(/(?:^|[;\n])\s*(?:let|const|var)\s+([A-Z][A-Z0-9_]{2,})\s*=/g)].slice(0,55).map(m=>({name:m[1],offset:m.index}));
+  console.log('SSX_SCRIPT_OBJECTS '+JSON.stringify({prefix,declarations,structural}));
   console.log('SSX_SPECIAL_STRUCTURES '+JSON.stringify({size:source.length,ids,headers,scripts:scripts.slice(-12)}));
   console.log('SSX_SPECIAL_MARKERS '+JSON.stringify(inventory));
   assert.ok(inventory.android.length>0);
