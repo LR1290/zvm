@@ -1524,3 +1524,151 @@ html[data-theme="light"] body.ssx-alpine-v37 .ssx-region-no-matches {color:#2854
   body.ssx-alpine-v37 .ssx-region-step {transition:none;}
 }
 
+/* SSX regional sheet: browser-like region tabs over the real filter controls. */
+body.ssx-alpine-v37 .sheet-card > .ssx-sheet-regions {
+  display:flex;
+  align-items:stretch;
+  flex-wrap:nowrap;
+  gap:4px;
+  overflow-x:auto;
+  max-width:100%;
+  padding:10px 12px 0;
+  background:#0b2130;
+  border-top:1px solid #294658;
+  border-bottom:1px solid #294658;
+  scrollbar-width:thin;
+  scrollbar-color:#35647b transparent;
+  overscroll-behavior-x:contain;
+}
+body.ssx-alpine-v37 .ssx-sheet-region-tab {
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  justify-content:center;
+  flex:none;
+  min-height:42px;
+  padding:8px 13px;
+  background:#102c3e;
+  border:1px solid #34586b;
+  border-bottom:3px solid transparent;
+  border-radius:9px 9px 0 0;
+  color:#c2d8e6;
+  font:inherit;
+  font-size:.83rem;
+  font-weight:720;
+  white-space:nowrap;
+  cursor:pointer;
+  transition:background-color .18s ease,border-color .18s ease,color .18s ease;
+}
+body.ssx-alpine-v37 .ssx-sheet-region-tab[aria-pressed="true"] {
+  color:#f4fbff;
+  background:#174b61;
+  border-color:#22cce8;
+  border-bottom-color:#22d5f4;
+}
+body.ssx-alpine-v37 .ssx-sheet-region-tab:hover:not([aria-pressed="true"]) {
+  background:#1a3c50;
+  color:#fff;
+}
+body.ssx-alpine-v37 .ssx-sheet-region-count {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:22px;
+  padding:2px 6px;
+  background:#25475b;
+  border-radius:999px;
+  color:#b5d9e9;
+  font-variant-numeric:tabular-nums;
+  font-size:.66rem;
+  font-weight:780;
+}
+body.ssx-alpine-v37 .ssx-sheet-region-tab[aria-pressed="true"] .ssx-sheet-region-count {
+  color:#bff5ff;
+  background:#195e75;
+}
+body.ssx-alpine-v37 .sheet-card > #toolbar.ssx-sheet-toolbar {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) auto;
+  align-items:end;
+  gap:12px;
+  width:100%;
+  min-width:0;
+  margin:0;
+  padding:12px 16px;
+  border:0;
+  border-radius:0;
+  border-bottom:1px solid #294658;
+  background:#102538;
+}
+body.ssx-alpine-v37 .sheet-card > #toolbar.ssx-sheet-toolbar > .field {
+  min-width:0;
+  width:100%;
+  flex:none;
+}
+body.ssx-alpine-v37 .sheet-card > #toolbar.ssx-sheet-toolbar > .search-field {
+  min-width:0;
+  width:100%;
+  flex:none;
+}
+body.ssx-alpine-v37 .sheet-card > #toolbar.ssx-sheet-toolbar > .ssx-legacy-region-select {
+  display:none;
+}
+body.ssx-alpine-v37 .sheet-card > #toolbar.ssx-sheet-toolbar > #alpineAdvancedFilters {
+  justify-self:end;
+  min-width:0;
+}
+body.ssx-alpine-v37 .ssx-sheet-region-tab:focus-visible {
+  outline:3px solid #16d3f4;
+  outline-offset:2px;
+  z-index:1;
+}
+html[data-theme="light"] body.ssx-alpine-v37 .sheet-card > .ssx-sheet-regions {
+  background:#e3eff6;
+  border-color:#b8d4e2;
+}
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-sheet-region-tab {
+  background:#f8fcff;
+  color:#31536a;
+  border-color:#b4d2e1;
+}
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-sheet-region-tab[aria-pressed="true"] {
+  color:#0e4054;
+  background:#c9ecf7;
+  border-color:#2196b6;
+}
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-sheet-region-count {
+  background:#dceef6;
+  color:#325a6e;
+}
+html[data-theme="light"] body.ssx-alpine-v37 .sheet-card > #toolbar.ssx-sheet-toolbar {
+  background:#f1f8fc;
+  border-color:#c7dce7;
+}
+@media(max-width:900px){
+  body.ssx-alpine-v37 .sheet-card > #toolbar.ssx-sheet-toolbar {
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:10px;
+    padding:12px;
+  }
+  body.ssx-alpine-v37 .sheet-card > #toolbar.ssx-sheet-toolbar > .search-field {
+    grid-column:1/-1;
+  }
+  body.ssx-alpine-v37 .sheet-card > #toolbar.ssx-sheet-toolbar > #alpineAdvancedFilters {
+    justify-self:stretch;
+  }
+  body.ssx-alpine-v37 .sheet-card > .ssx-sheet-regions {padding:8px 10px 0;gap:4px;}
+  body.ssx-alpine-v37 .ssx-sheet-region-tab {min-height:42px;font-size:.78rem;padding:8px 11px;}
+}
+@media(max-width:440px){
+  body.ssx-alpine-v37 .sheet-card > #toolbar.ssx-sheet-toolbar {
+    grid-template-columns:minmax(0,1fr);
+  }
+  body.ssx-alpine-v37 .sheet-card > #toolbar.ssx-sheet-toolbar > .search-field {grid-column:1;}
+  body.ssx-alpine-v37 .sheet-card > #toolbar.ssx-sheet-toolbar > #alpineAdvancedFilters {justify-self:stretch;}
+}
+@media(prefers-reduced-motion:reduce){
+  body.ssx-alpine-v37 .ssx-sheet-region-tab {transition:none;}
+}
+
