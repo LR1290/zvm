@@ -152,6 +152,41 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(explore.mainMode,'board');
     assert.equal(explore.mainScore,'01:35.99','Opening archived categories cannot change public current rankings');
 
+    // Stage 4: count distinct archived #1 tracks, not first N rows, and never
+    // merge nickname spellings across platforms/categories without in-game IDs.
+    const historicalLeaders=await evaluate(cdp.send,sid,"(()=>{const tab=g=>document.querySelector('#ssxSpecialTabs [data-ssx-special-group='+g+']').click();const pick=(id,v)=>{const select=document.querySelector(id);select.value=String(v);select.dispatchEvent(new Event('change',{bubbles:true}));};const view=()=>document.querySelector('#ssxSpecialViews [data-ssx-special-view=leaders]').click();const state=()=>{const panel=document.querySelector('#ssxSpecialPodium'),cards=[...document.querySelectorAll('#ssxSpecialResults [data-ssx-leader-track]')],medals=[...panel.querySelectorAll('.ssx-special-medal-card')],aud=document.querySelector('#ssxSpecialRankingAudit');return{category:panel.dataset.ssxCategory,mode:Number(panel.dataset.ssxMode),platform:panel.dataset.ssxPlatform,podium:medals.map(x=>({name:x.dataset.ssxName,wins:Number(x.dataset.ssxWins),proofs:Number(x.dataset.ssxProofs)})),leaders:cards.length,uniqueTracks:new Set(cards.map(x=>x.dataset.ssxLeaderTrack)).size,allFirst:cards.every(x=>x.dataset.ssxLeaderPosition==='1'),names:cards.slice(0,5).map(x=>x.dataset.ssxLeaderRider),conflicts:Number(document.querySelector('#ssxSpecialResults').dataset.ssxArchiveConflicts),view:document.querySelector('#ssxSpecialViews [data-ssx-special-view=leaders]').getAttribute('aria-pressed'),note:panel.textContent.includes('não conciliada por ID Ozmonet'),snapshot:document.querySelector('#ssxSpecialNote').textContent.includes('2026-08-22'),platformOptions:[...document.querySelector('#ssxSpecialPlatform').options].map(x=>x.value),trackHidden:document.querySelector('#ssxSpecialTrack').closest('label').hidden,sourceMain:document.querySelector('.ssx-region-detail .ssx-region-score')?.textContent}};view();const challenge=state();tab('level');pick('#ssxSpecialLevel','Level 9');const lowBoard=state();pick('#ssxSpecialMode',1);const lowWings=state();tab('android');pick('#ssxSpecialMode',2);const android=state();tab('dev');const dev=state();tab('boost');const boost=state();const podiumButton=document.querySelector('#ssxSpecialPodium [data-ssx-podium-rider]');let selected={};if(podiumButton){const rider=podiumButton.dataset.ssxPodiumRider;podiumButton.click();const filtered=[...document.querySelectorAll('#ssxSpecialResults [data-ssx-leader-track]')];selected={rider,count:filtered.length,matches:filtered.every(x=>x.dataset.ssxLeaderRider===rider),clear:!!document.querySelector('[data-ssx-clear-podium-rider]')};document.querySelector('[data-ssx-clear-podium-rider]').click();selected.restored=document.querySelectorAll('#ssxSpecialResults [data-ssx-leader-track]').length===boost.leaders;}tab('challenge');const challengeAgain=state();document.querySelector('#ssxSpecialViews [data-ssx-special-view=records]').click();return{challenge,lowBoard,lowWings,android,dev,boost,selected,challengeAgain,recordsAgain:document.querySelector('#ssxSpecialViews [data-ssx-special-view=records]').getAttribute('aria-pressed'),mainScore:document.querySelector('.ssx-region-detail .ssx-region-score')?.textContent,mainMode:document.body.dataset.ssxMode}})()");
+    console.log('SSX_HISTORICAL_LEADERS',JSON.stringify(historicalLeaders));
+    for(const [category,item] of Object.entries(historicalLeaders).filter(([key])=>['challenge','lowBoard','lowWings','android','dev','boost','challengeAgain'].includes(key))){
+      assert.equal(item.view,'true',category+' must offer visible historical leader mode');
+      assert.equal(item.leaders,item.uniqueTracks,'Each archived track must have at most one unambiguous #1 ('+category+')');
+      assert.equal(item.allFirst,true,'Only source position #1 may enter historical leader view');
+      assert.ok(item.podium.length<=3,'Never invent a fourth podium holder');
+      assert.ok(item.podium.every((p,i)=>p.wins>=1&&(i===0||p.wins<=item.podium[i-1].wins)));
+      assert.equal(item.note,true,'Identity provenance needs explicit non-certified status');
+      assert.equal(item.snapshot,true);
+      assert.equal(item.trackHidden,true,'Track picker is not relevant for all-track leaders');
+      assert.equal(item.sourceMain,'01:35.99','Archived leader tabs must not affect the main leaderboard');
+    }
+    assert.equal(historicalLeaders.challenge.mode,5);
+    assert.deepEqual(historicalLeaders.challenge.platformOptions,['__unspecified__'],'Survive without recorded platform must not be mislabeled PS3');
+    assert.equal(historicalLeaders.lowBoard.category,'Level 9');
+    assert.equal(historicalLeaders.lowBoard.mode,0);
+    assert.equal(historicalLeaders.lowWings.mode,1);
+    assert.ok(historicalLeaders.lowBoard.leaders>=1);
+    assert.ok(historicalLeaders.lowWings.leaders>=1);
+    assert.equal(historicalLeaders.android.category,'Android');
+    assert.equal(historicalLeaders.android.mode,2);
+    assert.deepEqual(historicalLeaders.android.platformOptions,['Android']);
+    assert.equal(historicalLeaders.dev.category,'DEV Tracks');
+    assert.equal(historicalLeaders.boost.category,'No Boost');
+    assert.equal(historicalLeaders.selected.matches,true);
+    assert.equal(historicalLeaders.selected.clear,true);
+    assert.equal(historicalLeaders.selected.restored,true);
+    assert.equal(historicalLeaders.recordsAgain,'true');
+    assert.equal(historicalLeaders.mainScore,'01:35.99');
+    assert.equal(historicalLeaders.mainMode,'board');
+
+
     const regional=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#ssxRegionBrowser');const africa=[...root.querySelectorAll('.ssx-region-group')].find(x=>x.dataset.regionName==='Africa');const tabs=africa?.querySelectorAll('.ssx-track-choice')||[];const selected=root.querySelector('.ssx-region-detail h3');return {display:getComputedStyle(root).display,africa:!!africa,meru:africa?.textContent.includes('Meru Mountain'),redLight:[...tabs].some(b=>b.textContent.includes('Red Light')),first:selected?.textContent,rankCount:root.querySelectorAll('.ssx-region-rank').length,proof:!!root.querySelector('.ssx-region-proof'),regions:root.querySelectorAll('.ssx-region-group').length,tableHidden:getComputedStyle(document.querySelector('.sheet-scroll')).display==='none'}})()");
     assert.equal(regional.display,'grid','Regional dashboard must replace oversized single-mode table');
     assert.equal(regional.africa,true);
