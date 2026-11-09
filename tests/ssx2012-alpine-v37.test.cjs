@@ -67,6 +67,7 @@ test('published v37 and preview are byte-identical; archival v36 remains byte-ex
   assert.match(view,/id="ssx-alpine-v37-style"/);
   assert.match(view,/id="ssx-alpine-v37-script"/);
   assert.match(view,/id="ssx-special-categories-v1-script"/);
+  assert.match(view,/id="ssx-special-leaders-core-script"/);
   assert.match(view,/id="sheet"/);
   assert.match(view,/id="sourceSeg"/);
   const originalTitle=baseline.match(/<title>[^<]*<\/title>/i);
@@ -77,6 +78,7 @@ test('published v37 and preview are byte-identical; archival v36 remains byte-ex
     .replace(/<style id="ssx-alpine-v37-style">[\s\S]*?<\/style>/,'')
     .replace(/<script id="ssx-alpine-v37-script">[\s\S]*?<\/script>/,'')
     .replace(/<script id="ssx-special-categories-v1-script">[\s\S]*?<\/script>/,'')
+    .replace(/<script id="ssx-special-leaders-core-script">[\s\S]*?<\/script>/,'')
     .replace(/<title>[^<]*<\/title>/i,originalTitle[0]);
   assert.equal(stripped,baseline,'Record dataset, app code and legacy HTML must remain unchanged');
 }));
