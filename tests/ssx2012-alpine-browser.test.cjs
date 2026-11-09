@@ -615,6 +615,32 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(shareFallback.link,targetLink.url);
     assert.equal(shareFallback.role,'status');
 
+    const sourceCurated=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#ssxIdentityReview');const audit={verified:Number(root.dataset.verifiedIds),conflicts:Number(root.dataset.conflictingLinks),ozIds:Number(root.dataset.ozIds),googleRows:Number(root.dataset.googleRows),collections:[...document.querySelectorAll('#ssxCollectionsRail [data-ssx-collection]')].map(x=>({name:x.dataset.ssxCollection,count:Number(x.dataset.collectionTracks)})),linkConflicts:document.querySelectorAll('#tbody [data-ssx-identity-conflict]').length,sourceLinks:[...root.querySelectorAll('[data-ssx-source-link]')].map(a=>a.href)};const q=document.querySelector('#ssxIdentitySearch');q.value='186243498';q.dispatchEvent(new Event('input',{bubbles:true}));audit.lookup=document.querySelector('#ssxIdentityResults')?.textContent.trim();return audit})()");
+    assert.equal(sourceCurated.verified,1015,'Only exact source/track/kind/score joins with matching archived in-game IDs count as verified');
+    assert.equal(sourceCurated.conflicts,11,'The 11 Ozmonet profile URLs tied to other riders must be quarantined');
+    assert.equal(sourceCurated.ozIds,2786,'Ozmonet ID registry must originate from the original read-only archive');
+    assert.equal(sourceCurated.googleRows,5887);
+    assert.equal(sourceCurated.collections.length,10);
+    assert.match(sourceCurated.lookup,/Hero Complexity.*186243498/,'The in-game ID must resolve to the Oz archive name, not to a mismatched Google row');
+    assert.ok(sourceCurated.sourceLinks.some(x=>x.includes('docs.google.com/spreadsheets')));
+    assert.ok(sourceCurated.sourceLinks.some(x=>x.includes('ssx.ozmonet.com')));
+    console.log('SSX_ID_CURATION_SUMMARY',JSON.stringify(sourceCurated));
+    const curatedCategories=[['Level 1',59],['Level 3',20],['Level 6',67],['Level 7',23],['Level 8',8],['Level 9',30],['No Boost',25],['Android',29],['DEV Tracks',8],['Global Top 16',73]];
+    for(const [category,expected] of curatedCategories){
+      await evaluate(cdp.send,sid,"(()=>{document.querySelector('#ssxCollectionsRail [data-ssx-collection=\"'+CATEGORY+'\"]').click()})()".replace('CATEGORY',category));
+      await sleep(180);
+      const selection=await evaluate(cdp.send,sid,"(()=>({category:document.querySelector('#category').value,source:document.querySelector('#sourceSeg [data-source].active')?.dataset.source,active:document.querySelector('#ssxCollectionsRail [aria-pressed=true]')?.dataset.ssxCollection,count:Number(document.querySelector('#ssxSheetRegions [data-ssx-region=all] .ssx-sheet-region-count')?.textContent||0),tracks:document.querySelectorAll('#ssxRegionBrowser .ssx-track-choice').length,leader:document.querySelector('#ssxLeadersToggle')?.getAttribute('aria-pressed'),progress:document.querySelector('#renderProgress')?.hidden}))()");
+      assert.equal(selection.source,'google',category+' must use Google Sheet scores');
+      assert.equal(selection.category,category);
+      assert.equal(selection.active,category);
+      assert.equal(selection.count,expected,'Unexpected official category piste count for '+category);
+      assert.equal(selection.tracks,expected,'All source-category tracks must appear without lazy loading in '+category);
+      assert.equal(selection.leader,'true');
+      assert.equal(selection.progress,true);
+    }
+    assert.equal(await evaluate(cdp.send,sid,"document.querySelector('#ssxSheetRegions [data-ssx-region=DEV]')===null"),true,'DEV category must not leak into Global Top 16 when returning to main sheet');
+
+
   } finally {
     cdp?.ws.close();
     const exited=chrome.exitCode===null ? new Promise(resolve=>{
