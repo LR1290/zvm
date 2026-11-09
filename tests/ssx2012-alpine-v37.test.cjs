@@ -216,6 +216,12 @@ test('public SSX UI has neutral brand/title and no Edition release promotion',()
   assert.match(css,/scroll-snap-type:x proximity/);
   assert.match(css,/ssx-region-empty-inline/);
   assert.match(js,/ssxRegionSearch/);
+  assert.match(js,/function trackShareUrl\(trackKey\)/);
+  assert.match(js,/function restoreSharedTrack\(\)/);
+  assert.match(js,/function createTrackShareControl\(selected\)/);
+  assert.match(js,/ssxTrack/);
+  assert.match(css,/ssx-track-share-button/);
+  assert.match(css,/ssx-track-share-manual/);
   assert.match(js,/ssxTrackStep/);
   assert.match(css,/ssx-region-stepper/);
   assert.match(css,/ssx-region-search-box/);

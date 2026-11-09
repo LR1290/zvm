@@ -1825,3 +1825,83 @@ html[data-theme="light"] body.ssx-alpine-v37 .ssx-region-empty-inline {
   }
 }
 
+/* SSX deep links — compact sharing controls below track navigation. */
+body.ssx-alpine-v37 .ssx-track-share-controls {
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:7px 12px;
+  padding:9px 12px;
+  border-top:1px solid rgba(93,145,175,.18);
+  background:#0d2a3b;
+  min-width:0;
+}
+body.ssx-alpine-v37 .ssx-track-share-button {
+  display:inline-flex;
+  justify-content:center;
+  align-items:center;
+  gap:7px;
+  min-height:38px;
+  border:1px solid #337187;
+  border-radius:9px;
+  background:#154456;
+  color:#dcf9ff;
+  padding:7px 13px;
+  font:inherit;
+  font-size:.8rem;
+  font-weight:760;
+  cursor:pointer;
+  transition:background-color .18s ease,border-color .18s ease;
+}
+body.ssx-alpine-v37 .ssx-track-share-button:hover {
+  border-color:#16d3f4;
+  background:#1c5a70;
+}
+body.ssx-alpine-v37 .ssx-track-share-button:focus-visible,
+body.ssx-alpine-v37 .ssx-track-share-manual:focus-visible {
+  outline:3px solid #16d3f4;
+  outline-offset:2px;
+}
+body.ssx-alpine-v37 .ssx-track-share-status {
+  color:#abdcf0;
+  font-size:.76rem;
+  font-weight:600;
+}
+body.ssx-alpine-v37 .ssx-track-share-manual:not([hidden]) {
+  display:block;
+  width:100%;
+  min-height:38px;
+  border-radius:8px;
+  border:1px solid #467083;
+  padding:7px 11px;
+  background:#091d2b;
+  color:#e8f8ff;
+  font:inherit;
+  font-size:.75rem;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+body.ssx-alpine-v37 .ssx-track-share-manual[hidden] {display:none;}
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-track-share-controls {
+  background:#e7f2f8;
+  border-color:#c6e0eb;
+}
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-track-share-button {
+  background:#d1ebf4;
+  color:#16465b;
+  border-color:#90bece;
+}
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-track-share-status {color:#326379;}
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-track-share-manual:not([hidden]) {
+  background:#fff;
+  color:#153c50;
+  border-color:#abcbd9;
+}
+@media(max-width:900px){
+  body.ssx-alpine-v37 .ssx-track-share-controls {padding:8px 10px;}
+  body.ssx-alpine-v37 .ssx-track-share-button {min-height:44px;}
+}
+@media(prefers-reduced-motion:reduce){
+  body.ssx-alpine-v37 .ssx-track-share-button {transition:none;}
+}
+
