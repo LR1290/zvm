@@ -112,6 +112,8 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.ok(desktop.rows>10);
     assert.equal(desktop.admin,true);
     assert.equal(desktop.opaque,true);
+    const regionalSource=await evaluate(cdp.send,sid,"(()=>({tracks:[...document.querySelectorAll('#tbody .track-cell')].slice(0,12).map(x=>x.outerHTML.slice(0,1200)),regions:[...document.querySelectorAll('#region option')].map(o=>({text:o.textContent,value:o.value})).slice(0,18),firstRows:[...document.querySelectorAll('#tbody tr.rank-row')].slice(0,3).map(r=>({html:r.outerHTML.slice(0,3500),hidden:r.hidden,display:r.style.display}))}))()");
+    console.log('SSX_REGION_DATA_SAMPLE',JSON.stringify(regionalSource));
     const raceCompact=await evaluate(cdp.send,sid,"(()=>{const rider=document.querySelector('#sheet tbody tr.rank-row .record-cell.mode-board .rider-name');const score=document.querySelector('#sheet tbody tr.rank-row .record-cell.mode-board .score');return {tableWidth:Math.round(document.querySelector('#sheet').getBoundingClientRect().width),gap:Math.round(score.getBoundingClientRect().left-rider.getBoundingClientRect().right)}})()");
     assert.ok(raceCompact.gap>=0&&raceCompact.gap<=48,'Rider and time must remain visually close in Race It');
     const ssxVisualDir=path.join(process.cwd(),'artifacts');
