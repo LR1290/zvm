@@ -2978,3 +2978,141 @@ body.ssx-alpine-v37 .ssx-special-medal-rider .ssx-special-rider-label{
     min-width:20px;
   }
 }
+
+
+/* R69 — visual regression repair: preserve separate desktop/mobile navigation,
+   make primary and secondary actions consistent, without relocating v36 handlers. */
+@media(min-width:1025px){
+  body.ssx-alpine-v37 #ssxDirectActions{
+    display:grid;
+    grid-template-columns:repeat(7,minmax(0,1fr));
+    gap:7px;
+    padding:8px clamp(10px,2vw,18px);
+    align-items:stretch;
+  }
+  body.ssx-alpine-v37 #ssxDirectActions > :is(button,a){
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:100%;
+    min-width:0;
+    min-height:40px;
+    padding:8px 9px;
+    margin:0;
+    white-space:normal;
+    text-align:center;
+    overflow-wrap:anywhere;
+    line-height:1.2;
+    font-size:clamp(.72rem,.85vw,.82rem);
+  }
+  body.ssx-alpine-v37 #ssxViewOptions.ssx-view-options-direct{
+    width:100%;
+    max-width:700px;
+    flex:1 1 540px;
+  }
+  body.ssx-alpine-v37 #ssxViewOptions.ssx-view-options-direct .ssx-view-actions{
+    display:grid;
+    width:100%;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+  }
+  body.ssx-alpine-v37 #ssxViewOptions.ssx-view-options-direct .ssx-view-actions > button:not([hidden]){
+    display:inline-flex;
+    width:100%;
+    min-width:0;
+    min-height:42px;
+    margin:0;
+    padding:8px 10px;
+    line-height:1.2;
+    white-space:normal;
+    overflow-wrap:anywhere;
+    text-align:center;
+  }
+  body.ssx-alpine-v37 .sheet-head .alpine-results-title{
+    flex:1 1 540px;
+    min-width:0;
+  }
+}
+@media(max-width:1024px){
+  body.ssx-alpine-v37 #ssxDirectActions > :is(button,a){
+    min-width:0;
+    max-width:100%;
+    min-height:43px;
+    margin:0;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    overflow-wrap:anywhere;
+  }
+}
+/* Rider flags in active rankings must remain visible on compact screens. */
+body.ssx-alpine-v37 .ssx-region-rider img.rider-flag{
+  display:inline-block;
+  flex:0 0 auto;
+  align-self:center;
+  vertical-align:middle;
+  max-width:none;
+  visibility:visible;
+  opacity:1;
+}
+body.ssx-alpine-v37 .ssx-special-rider-label{
+  display:inline-flex;
+  align-items:center;
+  flex-wrap:nowrap;
+  width:fit-content;
+  max-width:100%;
+  min-width:0;
+}
+body.ssx-alpine-v37 .ssx-special-rider-label img.ssx-special-rider-flag{
+  display:block;
+  position:relative;
+  flex:0 0 23px;
+  width:23px;
+  min-width:23px;
+  height:16px;
+  margin:0;
+  padding:0;
+  visibility:visible;
+  opacity:1;
+  vertical-align:middle;
+}
+@media(max-width:650px){
+  body.ssx-alpine-v37 .ssx-special-rider-label img.ssx-special-rider-flag{
+    flex-basis:22px;
+    min-width:22px;
+    width:22px;
+    height:15px;
+  }
+  body.ssx-alpine-v37 .ssx-special-rider-name{
+    flex:1 1 auto;
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+}
+@media(prefers-reduced-motion:reduce){
+  body.ssx-alpine-v37 #ssxDirectActions > :is(button,a){transition:none;}
+}
+
+/* R69 visual proof: two-column leader cards leave the full rider/track name
+   readable at 390px; the former 3rd score column squeezed names mid-word. */
+@media(max-width:650px){
+  body.ssx-alpine-v37 .ssx-special-record.ssx-special-leader{
+    grid-template-columns:30px minmax(0,1fr);
+    gap:6px 9px;
+  }
+  body.ssx-alpine-v37 .ssx-special-leader .ssx-special-rank{grid-column:1;grid-row:1;}
+  body.ssx-alpine-v37 .ssx-special-leader .ssx-special-identity{grid-column:2;grid-row:1;}
+  body.ssx-alpine-v37 .ssx-special-leader .ssx-special-score{
+    grid-column:2;grid-row:2;justify-self:start;
+  }
+  body.ssx-alpine-v37 .ssx-special-leader .ssx-special-leader-rider{
+    grid-column:2;grid-row:3;min-width:0;
+  }
+  body.ssx-alpine-v37 .ssx-special-leader .ssx-special-evidence{
+    grid-column:2;grid-row:4;justify-self:start;
+  }
+  body.ssx-alpine-v37 .ssx-special-leader .ssx-special-ref{
+    grid-column:2;grid-row:5;
+  }
+}

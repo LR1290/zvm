@@ -109,12 +109,17 @@
     if(!/^[A-Z]{2}(?:-[A-Z]{2,3})?$/.test(code))return null;
     const url=flagUrl(asset);
     if(!url)return null;
-    const image=el('img','','rider-flag ssx-special-rider-flag');
+    // Keep the archive's flag independent from legacy v36 mobile .rider-flag
+    // visibility rules; the source asset and attribution remain unchanged.
+    const image=el('img','','ssx-special-rider-flag');
     image.src=url;
     image.alt=code;
     image.title=code;
     image.decoding='async';
-    image.loading='lazy';
+    // Archived cards are rerendered on every filter change. Lazy loading
+    // postponed Blob image decoding in mobile/scrollable results, leaving flags
+    // apparently absent even though the src/alt attributes existed.
+    image.loading='eager';
     return image;
   }
   function archiveRiderLabel(name,tag='span'){
@@ -177,8 +182,12 @@
   rows.id='ssxSpecialResults';
   rows.setAttribute('aria-live','polite');
   panel.append(title,info,tabs,filters,views,podium,audit,totals,rows,scope);
-  const anchor=$('alpineArtCredits');
-  if(anchor)anchor.before(panel);
+  // Credits are inside a collapsed <details>. Inserting the archive before
+  // alpineArtCredits accidentally nested 2,205 records inside that hidden
+  // disclosure, outside the document's scrollable height on mobile/desktop.
+  // Mount as a sibling after the credits disclosure instead.
+  const credits=$('ssxCredits');
+  if(credits)credits.after(panel);
   else sourcePanel.after(panel);
   const direct=$('ssxDirectActions');
   const navLink=el('a','','ssx-direct-action ssx-special-nav-link');
