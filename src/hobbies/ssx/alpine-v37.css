@@ -3243,6 +3243,24 @@ html[data-theme="light"] body.ssx-alpine-v37 .topbar #ssxDirectActions > :is(but
     overflow-wrap:anywhere;
   }
 }
+/* R71 — sticky-header offset. Scroll-to-records must never hide section
+   titles or contextual buttons beneath the header. On small screens the
+   expanded navigation scrolls naturally instead of obscuring half a phone. */
+@media(min-width:1025px){
+  body.ssx-alpine-v37 .sheet-card,
+  body.ssx-alpine-v37 #alpine-modes,
+  body.ssx-alpine-v37 #ssxSpecialArchive{
+    scroll-margin-top:136px;
+  }
+}
+@media(max-width:1024px){
+  body.ssx-alpine-v37 .topbar{position:relative;top:auto;}
+  body.ssx-alpine-v37 .sheet-card,
+  body.ssx-alpine-v37 #alpine-modes,
+  body.ssx-alpine-v37 #ssxSpecialArchive{
+    scroll-margin-top:16px;
+  }
+}
 /* Rider flags in active rankings must remain visible on compact screens. */
 body.ssx-alpine-v37 .ssx-region-rider img.rider-flag{
   display:inline-block;
