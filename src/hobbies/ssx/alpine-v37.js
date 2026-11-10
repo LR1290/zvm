@@ -734,7 +734,13 @@
     const toolbar=$('toolbar');
     if(!rail||!toolbar)return;
     if(rail.parentElement?.classList.contains('sheet-card'))return;
+    const focusedMode=rail.contains(document.activeElement)
+      ? document.activeElement.closest('[data-ssx-sheet-mode]')?.dataset.ssxSheetMode:null;
+    const previousScroll=rail.scrollLeft;
     toolbar.after(rail);
+    rail.scrollLeft=previousScroll;
+    if(focusedMode)rail.querySelector('[data-ssx-sheet-mode="'+focusedMode+'"]')
+      ?.focus({preventScroll:true});
   }
   function placeSheetModeFilter(){
     const rail=$('ssxSheetModeFilter');
@@ -748,7 +754,15 @@
       parkSheetModeFilter();
       return;
     }
-    if(rail.parentElement!==controls)controls.append(rail);
+    if(rail.parentElement!==controls){
+      const focusedMode=rail.contains(document.activeElement)
+        ? document.activeElement.closest('[data-ssx-sheet-mode]')?.dataset.ssxSheetMode:null;
+      const previousScroll=rail.scrollLeft;
+      controls.append(rail);
+      rail.scrollLeft=previousScroll;
+      if(focusedMode)rail.querySelector('[data-ssx-sheet-mode="'+focusedMode+'"]')
+        ?.focus({preventScroll:true});
+    }
   }
   function syncSheetModeFilter(group,copy){
     const rail=$('ssxSheetModeFilter');
