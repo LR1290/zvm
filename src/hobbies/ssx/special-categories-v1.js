@@ -182,8 +182,12 @@
   rows.id='ssxSpecialResults';
   rows.setAttribute('aria-live','polite');
   panel.append(title,info,tabs,filters,views,podium,audit,totals,rows,scope);
-  const anchor=$('alpineArtCredits');
-  if(anchor)anchor.before(panel);
+  // Credits are inside a collapsed <details>. Inserting the archive before
+  // alpineArtCredits accidentally nested 2,205 records inside that hidden
+  // disclosure, outside the document's scrollable height on mobile/desktop.
+  // Mount as a sibling after the credits disclosure instead.
+  const credits=$('ssxCredits');
+  if(credits)credits.after(panel);
   else sourcePanel.after(panel);
   const direct=$('ssxDirectActions');
   const navLink=el('a','','ssx-direct-action ssx-special-nav-link');
