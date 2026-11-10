@@ -307,6 +307,19 @@
     fr:['Régions','Toutes les régions','Utilisez les flèches pour changer de région']
   };
   let regionQuery='';
+  let regionSearchFrame=0;
+  // At most one directory filter pass per visual frame during rapid typing.
+  function scheduleRegionSearch(){
+    if(regionSearchFrame)return;
+    regionSearchFrame=requestAnimationFrame(()=>{
+      regionSearchFrame=0;
+      applyRegionSearch();
+    });
+  }
+  function flushRegionSearch(){
+    if(regionSearchFrame){cancelAnimationFrame(regionSearchFrame);regionSearchFrame=0;}
+    applyRegionSearch();
+  }
   const regionToolsCopy={
     pt:{search:'Buscar região, montanha ou pista',clear:'Limpar busca',previous:'Pista anterior',next:'Próxima pista',empty:'Nenhuma pista encontrada. Limpe a busca.',navigation:'Navegar entre pistas'},
     en:{search:'Find region, mountain or track',clear:'Clear search',previous:'Previous track',next:'Next track',empty:'No tracks found. Clear your search.',navigation:'Browse tracks'},
@@ -319,44 +332,54 @@
   function applyRegionSearch(){
     const browser=$('ssxRegionBrowser');
     if(!browser)return;
+    const start=performance.now();
     const query=normalizedRegionText(regionQuery);
     let shown=0,officialShown=0,devShown=0;
     for(const region of browser.querySelectorAll('.ssx-region-group,.ssx-dev-group')){
       let matches=0;
       if(region.classList.contains('ssx-dev-group')){
         for(const track of region.querySelectorAll('.ssx-dev-track-choice')){
-          const match=!query||normalizedRegionText(track.textContent).includes(query);
-          track.hidden=!match;
+          const haystack=track.dataset.ssxSearchKey||
+            (track.dataset.ssxSearchKey=normalizedRegionText(track.textContent));
+          const match=!query||haystack.includes(query);
+          if(track.hidden===match)track.hidden=!match;
           if(match){matches++;shown++;devShown++;}
         }
-        region.hidden=matches===0;
-        region.open=query?matches>0:openedRegions.has('DEV');
+        const hidden=matches===0,expanded=query?matches>0:openedRegions.has('DEV');
+        if(region.hidden!==hidden)region.hidden=hidden;
+        if(region.open!==expanded)region.open=expanded;
         continue;
       }
       for(const mountain of region.querySelectorAll('.ssx-mountain-section')){
         let mountainCount=0;
         for(const track of mountain.querySelectorAll('.ssx-track-choice')){
-          const match=!query||normalizedRegionText(track.dataset.regionTrack).includes(query);
-          track.hidden=!match;
+          const haystack=track.dataset.ssxSearchKey||
+            (track.dataset.ssxSearchKey=normalizedRegionText(track.dataset.regionTrack));
+          const match=!query||haystack.includes(query);
+          if(track.hidden===match)track.hidden=!match;
           if(match){mountainCount++;matches++;shown++;officialShown++;}
         }
-        mountain.hidden=mountainCount===0;
+        const hidden=mountainCount===0;
+        if(mountain.hidden!==hidden)mountain.hidden=hidden;
       }
-      region.hidden=matches===0;
-      region.open=query?matches>0:openedRegions.has(region.dataset.regionName);
+      const hidden=matches===0,expanded=query?matches>0:openedRegions.has(region.dataset.regionName);
+      if(region.hidden!==hidden)region.hidden=hidden;
+      if(region.open!==expanded)region.open=expanded;
     }
     const stats=$('ssxRegionMatches');
     if(stats){
       const caption=(regionI18n[language()]||regionI18n.en)[2];
       const archiveLabel=({pt:'DEV arquivadas',en:'archived DEV',de:'DEV im Archiv',
         es:'DEV archivadas',nl:'DEV in archief',fr:'DEV archivées'})[language()]||'archived DEV';
-      stats.textContent=officialShown+' '+caption+
-        (devShown?' · '+devShown+' '+archiveLabel:'');
+      const next=officialShown+' '+caption+(devShown?' · '+devShown+' '+archiveLabel:'');
+      if(stats.textContent!==next)stats.textContent=next;
     }
     const empty=$('ssxRegionNoMatches');
-    if(empty)empty.hidden=shown>0;
+    if(empty&&empty.hidden!==(shown>0))empty.hidden=shown>0;
     const clear=$('ssxRegionSearchClear');
-    if(clear)clear.hidden=!regionQuery;
+    if(clear&&clear.hidden!==!regionQuery)clear.hidden=!regionQuery;
+    browser.dataset.ssxSearchPasses=String(1+Number(browser.dataset.ssxSearchPasses||0));
+    browser.dataset.ssxSearchMs=String(Math.round((performance.now()-start)*100)/100);
     resetControlState();
   }
   const regionImages=['race.jpg','hero.jpg','survive.jpg','trick.jpg','riders.jpg'];
@@ -1138,14 +1161,14 @@
     regionSearch.value=regionQuery;
     regionSearch.addEventListener('input',()=>{
       regionQuery=regionSearch.value;
-      applyRegionSearch();
+      scheduleRegionSearch();
     });
     regionSearch.addEventListener('keydown',event=>{
       if(event.key==='Escape'&&regionQuery){
         event.preventDefault();
         regionQuery='';
         regionSearch.value='';
-        applyRegionSearch();
+        flushRegionSearch();
       }
     });
     const clearSearch=text('button','×','ssx-region-search-clear');
@@ -1156,7 +1179,7 @@
     clearSearch.addEventListener('click',()=>{
       regionQuery='';
       regionSearch.value='';
-      applyRegionSearch();
+      flushRegionSearch();
       regionSearch.focus();
     });
     searchBox.append(regionSearch,clearSearch);
@@ -1211,11 +1234,15 @@
     // DEV belongs to the all-regions directory, never a filtered official
     // region or the source's 73-track counter.
     if(devPanel&&selectedRegion==='all')index.insertBefore(devPanel,noMatches);
-    // The old selected result can be removed only after preserving the rail.
+    // Pending search frames reference the previous gallery; refresh once.
+    if(regionSearchFrame){cancelAnimationFrame(regionSearchFrame);regionSearchFrame=0;}
+    const buildStart=performance.now();
     parkSheetModeFilter();
     browser.replaceChildren(index);
     placeSheetModeFilter();
     applyRegionSearch();
+    browser.dataset.ssxGalleryBuilds=String(1+Number(browser.dataset.ssxGalleryBuilds||0));
+    browser.dataset.ssxGalleryRenderMs=String(Math.round((performance.now()-buildStart)*100)/100);
   }
 
   function addUI() {
