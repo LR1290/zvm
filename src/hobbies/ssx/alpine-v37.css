@@ -11,7 +11,14 @@ body.ssx-alpine-v37 {
   --alpine-orange: #e86e30;
   background: var(--alpine-bg);
 }
-.ssx-alpine-v37 .app { max-width: 1440px; margin-inline: auto; }
+/* The original archive was intentionally centered; the public desktop now
+   follows the actual viewport while retaining restrained, fluid gutters. */
+.ssx-alpine-v37 .app {
+  width:auto;
+  max-width:none;
+  margin-inline:0;
+  padding-inline:clamp(12px,1.6vw,40px);
+}
 .ssx-alpine-v37 .topbar {
   border-bottom: 1px solid rgba(108,179,206,.19);
   backdrop-filter: blur(18px);
@@ -466,7 +473,7 @@ body.ssx-alpine-v37.alpine-data-saver .alpine-mode-card::before {
 body.ssx-alpine-v37 {
   --alpine-orange:#16d3f4;
 }
-body.ssx-alpine-v37 .app {max-width:1360px;}
+/* The page shell must never inherit a second fixed desktop width cap. */
 body.ssx-alpine-v37 .topbar {
   background:rgba(6,18,29,.97);
   border-bottom:1px solid rgba(91,157,183,.16);
@@ -985,7 +992,8 @@ body.ssx-alpine-v37 #langMenu button {min-height:42px;}
     align-items:stretch;
     gap:6px;
     margin:0 auto;
-    width:min(100%,1360px);
+    width:100%;
+    max-width:100%;
     padding:10px clamp(12px,3vw,22px);
     background:#061521;
     border-bottom:1px solid rgba(78,125,151,.22);
@@ -1914,7 +1922,8 @@ body.ssx-alpine-v37 #ssxDirectActions{
   flex-wrap:wrap;
   gap:7px;
   margin:0 auto;
-  width:min(100%,1360px);
+  width:100%;
+  max-width:100%;
   padding:9px clamp(12px,3vw,22px) 12px;
   background:#061521;
   border-bottom:1px solid rgba(78,125,151,.26);
@@ -2414,7 +2423,7 @@ html[data-theme="light"] body.ssx-alpine-v37 .alpine-card-leader .ssx-video-unav
 /* SSX historical appendix — from the verified 2026-08-22 embedded Sheets
    snapshot; never merged with present-day leaderboards or Ozmonet identities. */
 body.ssx-alpine-v37 .ssx-special-archive {
-  width:min(100%,1360px);
+  width:100%;
   max-width:100%;
   min-width:0;
   margin:18px auto 24px;

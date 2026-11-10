@@ -132,6 +132,55 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(desktopGeometry.optionRows,2,'Four classification actions must fit in a tidy two-row grid');
     assert.ok(desktopGeometry.optionHeights.every(h=>h>=40));
     assert.ok(desktopGeometry.overflow<=1,'Desktop layout must not overflow horizontally');
+    // R70: A full-HD/ultrawide monitor must not retain the previous 1360px
+    // centered island. Measure real visible Chromium geometry.
+    const wideDir=path.join(process.cwd(),'artifacts');
+    fs.mkdirSync(wideDir,{recursive:true});
+    for(const width of [1920,2560,3440]){
+      await cdp.send('Emulation.setDeviceMetricsOverride',
+        {width,height:900,deviceScaleFactor:1,mobile:false},sid);
+      await sleep(180);
+      const geometry=await evaluate(cdp.send,sid,`(()=>{
+        const get=selector=>{const node=document.querySelector(selector);
+          const b=node.getBoundingClientRect();
+          return{left:b.left,right:b.right,width:b.width,height:b.height,
+            scrollWidth:node.scrollWidth,clientWidth:node.clientWidth};};
+        const site=get('.app'),hero=get('.hero'),sheet=get('.sheet-card'),
+          direct=get('#ssxDirectActions'),archive=get('#ssxSpecialArchive');
+        const actions=[...document.querySelectorAll('#ssxDirectActions > :is(button,a)')]
+          .filter(n=>getComputedStyle(n).display!=='none')
+          .map(n=>n.getBoundingClientRect());
+        const buttonCollision=actions.some((a,i)=>actions.slice(i+1).some(b=>
+          a.left<b.right-1&&a.right>b.left+1&&a.top<b.bottom-1&&a.bottom>b.top+1));
+        const archiveInsideCredits=document.querySelector('#ssxCredits').contains(
+          document.querySelector('#ssxSpecialArchive'));
+        return{viewport:document.documentElement.clientWidth,site,hero,sheet,direct,
+          archive,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,
+          buttons:actions.length,buttonCollision,archiveInsideCredits};
+      })()`);
+      console.log('SSX_R70_FULL_WIDTH_'+width,JSON.stringify(geometry));
+      assert.ok(geometry.site.width>=width*.98,'App must fill the desktop viewport at '+width+'px');
+      for(const part of ['hero','sheet','direct','archive']){
+        assert.ok(geometry[part].width>=width*.90,
+          part+' must not remain a centered fixed-width column at '+width+'px');
+        assert.ok(geometry[part].left>=-1&&geometry[part].right<=width+1,
+          part+' must fit within '+width+'px viewport');
+      }
+      assert.ok(geometry.overflow<=1,'No horizontal overflow at '+width+'px');
+      assert.equal(geometry.buttons,7,'Public action buttons must remain available');
+      assert.equal(geometry.buttonCollision,false,'Wide action buttons must not overlap');
+      assert.equal(geometry.archiveInsideCredits,false);
+      if(width!==3440){
+        await evaluate(cdp.send,sid,"window.scrollTo({top:0,behavior:'instant'})");
+        await sleep(110);
+        const shot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+        fs.writeFileSync(path.join(wideDir,'ssx-r70-full-width-'+width+'.png'),Buffer.from(shot.data,'base64'));
+      }
+    }
+    await cdp.send('Emulation.setDeviceMetricsOverride',
+      {width:1440,height:900,deviceScaleFactor:1,mobile:false},sid);
+    await sleep(200);
+
     assert.equal(desktop.cards,4);
     assert.equal(desktop.sourceClosed,true);
     assert.equal(desktop.advanced,true);
