@@ -293,6 +293,7 @@
 
   // The existing ranking DOM is authoritative. This is a read-only regional view.
   let regionalSelection='';
+  let selectedDevId=null; // Separate from the 73 main-game tracks.
   let openedRegions=new Set();
   let selectedRegion='all';
   let regionalCache=null;
@@ -320,7 +321,7 @@
     if(!browser)return;
     const query=normalizedRegionText(regionQuery);
     let shown=0;
-    for(const region of browser.querySelectorAll('.ssx-region-group')){
+    for(const region of browser.querySelectorAll('.ssx-region-group,.ssx-dev-group')){
       let matches=0;
       for(const mountain of region.querySelectorAll('.ssx-mountain-section')){
         let mountainCount=0;
@@ -343,7 +344,7 @@
     resetControlState();
   }
   const regionImages=['race.jpg','hero.jpg','survive.jpg','trick.jpg','riders.jpg'];
-  const regionIcons={Africa:'🌍',Alaska:'❄️',Alps:'🏔️',Antarctica:'🧊',Himalayas:'🏔️',Japan:'🌸','Mount Eddie':'🏂','New Zealand':'🌊',Patagonia:'🧗',Rockies:'🏔️',Siberia:'❄️',Training:'🎿'};
+  const regionIcons={Africa:'🌍',Alaska:'❄️',Alps:'🏔️',Antarctica:'🧊',Himalayas:'🏔️',Japan:'🌸','Mount Eddie':'🏂','New Zealand':'🌊',Patagonia:'🧗',Rockies:'🏔️',Siberia:'❄️',Training:'🎿',DEV:'🧪'};
   const regionI18n={
     pt:['Regiões e pistas','Escolha uma pista','pistas','resultados','Ver prova','Nenhum recorde nesta seleção'],
     en:['Regions and tracks','Choose a track','tracks','results','Watch proof','No records in this selection'],
@@ -375,18 +376,28 @@
       let choice=event.target.closest('[data-region-track]');
       const step=event.target.closest('[data-ssx-track-step]');
       if(step){
-        const ordered=[...browser.querySelectorAll('.ssx-track-choice')];
+        const ordered=[...browser.querySelectorAll('.ssx-region-group .ssx-track-choice')];
         const index=ordered.findIndex(node=>node.dataset.regionTrack===regionalSelection);
         choice=ordered[index+Number(step.dataset.ssxTrackStep)]||null;
         if(choice)regionQuery='';
       }
       if(!choice)return;
+      if(choice.hasAttribute('data-ssx-dev-track')){
+        const id=Number(choice.dataset.ssxDevTrack);
+        if(!Number.isSafeInteger(id))return;
+        selectedDevId=id;
+        openedRegions.add('DEV');
+        renderRegionBrowser();
+        const selectedDev=$('ssxRegionBrowser')?.querySelector('.ssx-dev-group .ssx-region-detail');
+        selectedDev?.scrollIntoView({block:'nearest',behavior:'instant'});
+        return;
+      }
       regionalSelection=choice.dataset.regionTrack;
       openedRegions.add(choice.dataset.regionName);
       syncTrackAddress();
       renderRegionBrowser();
       if(window.matchMedia('(max-width:900px)').matches){
-        const selected=$('ssxRegionBrowser')?.querySelector('.ssx-region-detail');
+        const selected=$('ssxRegionBrowser')?.querySelector('.ssx-region-group .ssx-region-detail');
         if(selected)selected.scrollIntoView({block:'start',
           behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
       }else if(step){
@@ -822,6 +833,110 @@
     return proof;
   }
 
+
+  // The master Google Sheet's *hash-pinned 2026-08-22 snapshot* contains
+  // DEV Tracks rows in G. These are not among the 73 main-game track IDs.
+  // Fail closed if the original archive shape ever differs from this curation;
+  // never manufacture missing #1-#16 positions or substitute Ozmonet names.
+  function curatedDevTracks(){
+    const raw=typeof G!=='undefined'&&Array.isArray(G)?G:null;
+    const tracks=typeof TRACKS!=='undefined'&&Array.isArray(TRACKS)?TRACKS:null;
+    const meta=typeof META!=='undefined'?META:null;
+    if(!raw||!tracks||!meta||meta.snapshot!=='2026-08-22'||
+      Number(meta.googleRecords)!==6024||raw.length!==5887||tracks.length!==83)return [];
+    const rows=raw.filter(row=>Array.isArray(row)&&row[0]==='DEV Tracks');
+    if(rows.length!==10)return [];
+    const indexed=new Map();
+    for(const row of rows){
+      const id=row[1],position=row[2],mode=row[3],track=tracks[id];
+      if(!Number.isInteger(id)||id<73||id>=83||
+        !Number.isInteger(position)||position<1||position>16||
+        mode!==0||!Array.isArray(track)||track[0]!=='DEV'||track[1]!=='DEV Tracks'||
+        typeof track[2]!=='string')return [];
+      const rider=String(row[4]??'').trim(),score=String(row[5]??'').trim();
+      if(!rider||!score||!/^D\d+$/.test(String(row[10]||'')))return [];
+      let proof='';
+      if(typeof row[8]==='string'&&row[8]){
+        try{
+          const link=new URL(row[8]);
+          if(link.protocol==='https:'&&['youtu.be','youtube.com','www.youtube.com','m.youtube.com'].includes(link.hostname))
+            proof=link.href;
+        }catch(_){}
+      }
+      if(!indexed.has(id))indexed.set(id,{
+        region:'DEV',mountain:'DEV Tracks',track:String(track[2]),id,archivedDev:true,
+        key:'dev:'+id,runs:[]
+      });
+      indexed.get(id).runs.push({
+        position:'#'+position,riderName:rider,score,video:proof,
+        source:'Google Sheets · 22/08/2026 · '+String(row[7]||'PS3')+' · '+String(row[10]),
+        flag:null,archivedDev:true
+      });
+    }
+    if(indexed.size!==8)return [];
+    for(const track of indexed.values())track.runs.sort((a,b)=>Number(a.position.slice(1))-Number(b.position.slice(1)));
+    return [...indexed.values()].sort((a,b)=>a.id-b.id);
+  }
+
+  function devArchivePanel(entries,copy){
+    if(!entries.length)return null;
+    const group=document.createElement('details');
+    group.className='ssx-dev-group';
+    group.dataset.regionName='DEV';
+    group.dataset.ssxProvenance='google-sheets-2026-08-22';
+    group.open=openedRegions.has('DEV');
+    const banner=text('summary','','ssx-region-banner ssx-dev-banner');
+    artForRegion(banner,'DEV');
+    banner.append(text('strong','🧪 DEV / Testes'),text('span','⌄','ssx-region-chevron'));
+    const total=entries.reduce((n,e)=>n+e.runs.length,0);
+    banner.append(text('small',entries.length+' pistas · '+total+' registros históricos · Board / PS3'));
+    group.append(banner);
+    const body=text('div','','ssx-dev-content');
+    const note=text('p','Arquivo Google Sheets de 22/08/2026. Somente posições presentes na fonte; não integram o ranking principal.','ssx-dev-provenance');
+    body.append(note);
+    const grid=text('div','','ssx-track-grid ssx-dev-track-grid');
+    for(const track of entries){
+      const button=text('button','','ssx-track-choice ssx-dev-track-choice');
+      button.type='button';
+      button.dataset.ssxDevTrack=String(track.id);
+      button.dataset.regionTrack=track.key;
+      button.dataset.regionName='DEV';
+      button.setAttribute('aria-pressed',String(selectedDevId===track.id));
+      button.append(text('strong',track.track),
+        text('small',track.runs.length+' registro(s) · até 16 posições por pista'));
+      grid.append(button);
+    }
+    body.append(grid);
+    const selected=entries.find(item=>item.id===selectedDevId);
+    if(selected){
+      const detail=text('section','','ssx-region-detail ssx-dev-detail');
+      detail.dataset.ssxDevTrack=String(selected.id);
+      const head=text('header','','ssx-region-detail-header');
+      artForRegion(head,'DEV');
+      head.append(text('span','DEV / Testes · Board · PS3 · arquivo de 2026-08-22'),
+        text('h3',selected.track),
+        text('small',selected.runs.length+' / 16 posições documentadas na captura'));
+      detail.append(head);
+      const ranking=text('div','','ssx-region-ranking');
+      for(const run of selected.runs){
+        const record=text('div','','ssx-region-rank ssx-dev-rank');
+        record.append(text('span',run.position,'ssx-region-position'));
+        const identity=text('div','','ssx-region-identity');
+        identity.append(text('span',run.riderName,'ssx-region-rider ssx-dev-rider'),
+          text('small',run.source,'ssx-region-source'));
+        const metrics=text('div','','ssx-region-metrics');
+        metrics.append(text('strong',run.score,'ssx-region-score'));
+        if(run.video)metrics.append(createYouTubeProof(run.video,copy[4],true));
+        record.append(identity,metrics);
+        ranking.append(record);
+      }
+      detail.append(ranking);
+      body.append(detail);
+    }
+    group.append(body);
+    return group;
+  }
+
   function renderRegionBrowser(){
     const browser=$('ssxRegionBrowser');
     if(!browser||!tags[state.mode])return;
@@ -840,7 +955,8 @@
       if(!mountains.has(item.mountain))mountains.set(item.mountain,[]);
       mountains.get(item.mountain).push(item);
     }
-    if(!openedRegions.size&&selected)openedRegions.add(selected.region);
+    // Default shows all photographic banners; expand only the region selected
+    // by the user or a verified canonical shared link.
     const index=text('div','','ssx-region-index');
     const intro=text('header','','ssx-region-intro');
     intro.append(text('h3',copy[0]),text('p',copy[1]));
@@ -881,6 +997,7 @@
     count.id='ssxRegionMatches';
     count.setAttribute('aria-live','polite');
     intro.append(searchBox,count);
+    intro.append(text('small','73 pistas do jogo principal · DEV/Testes em arquivo separado (22/08/2026)','ssx-region-curation-note'));
     index.append(intro);
     for(const [region,mountains] of regions){
       const section=document.createElement('details');
@@ -985,7 +1102,14 @@
         if(cards)cards.before(modeFilter);
       }else detail.insertBefore(modeFilter,detail.children[1]||null);
     }
-    browser.replaceChildren(index,detail);
+    // Place the scorecards immediately under their own region/track choices.
+    // There is no separate, sticky right-hand Top 16 pane.
+    const chosenRegion=[...index.querySelectorAll('.ssx-region-group')]
+      .find(group=>group.dataset.regionName===selected?.region);
+    if(chosenRegion)chosenRegion.append(detail);
+    const devPanel=devArchivePanel(curatedDevTracks(),copy);
+    if(devPanel)index.insertBefore(devPanel,noMatches);
+    browser.replaceChildren(index);
     applyRegionSearch();
   }
 
