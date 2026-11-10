@@ -323,6 +323,16 @@
     let shown=0;
     for(const region of browser.querySelectorAll('.ssx-region-group,.ssx-dev-group')){
       let matches=0;
+      if(region.classList.contains('ssx-dev-group')){
+        for(const track of region.querySelectorAll('.ssx-dev-track-choice')){
+          const match=!query||normalizedRegionText(track.textContent).includes(query);
+          track.hidden=!match;
+          if(match){matches++;shown++;}
+        }
+        region.hidden=matches===0;
+        region.open=query?matches>0:openedRegions.has('DEV');
+        continue;
+      }
       for(const mountain of region.querySelectorAll('.ssx-mountain-section')){
         let mountainCount=0;
         for(const track of mountain.querySelectorAll('.ssx-track-choice')){
