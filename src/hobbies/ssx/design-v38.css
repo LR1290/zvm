@@ -380,6 +380,7 @@ body.ssx-alpine-v38 #ssxSpecialTabs .ssx-special-tab[aria-pressed="true"]{
 }
 @media(max-width:355px){
   body.ssx-alpine-v38 .ssx-region-browser > .ssx-region-index{grid-template-columns:minmax(0,1fr)}
+  body.ssx-alpine-v38 .alpine-mode-grid{grid-template-columns:minmax(0,1fr)}
 }
 @media(prefers-reduced-motion:reduce){
   body.ssx-alpine-v38 :is(.alpine-mode-card,.alpine-hero-cta,.ssx-track-choice,.ssx-region-rank){transition:none}
