@@ -3765,6 +3765,13 @@ html[data-theme="light"] body.ssx-alpine-v37 .ssx-dev-rank .ssx-dev-rider{color:
     grid-template-columns:repeat(2,minmax(0,1fr));
   }
 }
+@media(min-width:380px) and (max-width:600px){
+  /* Two photo banners per row on modern phone widths. Expanded details remain
+     full-width; ranking rows retain their single-column, readable layout. */
+  body.ssx-alpine-v37 .ssx-region-browser > .ssx-region-index{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
 @media(prefers-reduced-motion:reduce){
   body.ssx-alpine-v37 #ssxSpecialTabs .ssx-special-tab{
     transition:none;
