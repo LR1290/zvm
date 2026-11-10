@@ -1219,7 +1219,17 @@
     count.id='ssxRegionMatches';
     count.setAttribute('aria-live','polite');
     intro.append(searchBox,count);
-    intro.append(text('small','73 pistas do jogo principal · DEV/Testes em arquivo separado (22/08/2026)','ssx-region-curation-note'));
+    // The catalogue's provenance is editorial content, not a live counter.
+    // Localize it without changing the immutable 73 official / 8 DEV entries.
+    const curatorialNotes={
+      pt:'73 pistas do jogo principal · DEV/Testes em arquivo separado (22/08/2026)',
+      en:'73 official tracks · DEV/Tests in a separate archive (2026-08-22)',
+      de:'73 offizielle Strecken · DEV/Tests in einem separaten Archiv (22.08.2026)',
+      es:'73 pistas oficiales · DEV/Pruebas en un archivo separado (22/08/2026)',
+      nl:'73 officiële banen · DEV/Tests in een afzonderlijk archief (22-08-2026)',
+      fr:'73 pistes officielles · DEV/Tests dans des archives séparées (22/08/2026)'
+    };
+    intro.append(text('small',curatorialNotes[language()]||curatorialNotes.en,'ssx-region-curation-note'));
     index.append(intro);
     for(const [region,mountains] of regions){
       const section=document.createElement('details');
