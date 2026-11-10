@@ -430,15 +430,28 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(switchedInPlace.title,'Corkscrew');
     assert.equal(switchedInPlace.restored,'Red Light');
     assert.equal(switchedInPlace.rankCount,16);
+    const trackModeRow=await evaluate(cdp.send,sid,`(()=>{
+      const rail=document.querySelector('#ssxSheetModeFilter');
+      const detail=document.querySelector('.ssx-region-group[data-region-name="Africa"] .ssx-region-detail');
+      const share=detail.querySelector('.ssx-track-share-button');
+      return {sameRow:rail.parentElement===share.parentElement,
+        controls:document.querySelectorAll('#ssxSheetModeFilter').length,
+        title:detail.querySelector('h3')?.textContent};
+    })()`);
+    assert.equal(trackModeRow.sameRow,true,'Incremental track swaps must keep modes beside Share');
+    assert.equal(trackModeRow.controls,1,'Never duplicate the canonical five-mode rail');
+    assert.equal(trackModeRow.title,'Red Light');
+
     assert.ok(Number.isFinite(switchedInPlace.updateMs)&&switchedInPlace.updateMs<350,
       'Track-only interaction must stay responsive without a full directory rebuild');
     const disciplineBar=await evaluate(cdp.send,sid,`(()=>{
       const bar=document.querySelector('#ssxSheetModeFilter'),buttons=[...bar.querySelectorAll('button:not([hidden])')];
       const r=bar.getBoundingClientRect();
       return {present:!bar.hidden,visible:getComputedStyle(bar).display!=='none',
-        inSheet:bar.parentElement?.classList.contains('sheet-card'),
+        inShare:bar.parentElement?.classList.contains('ssx-track-share-controls'),
+        shareTop:document.querySelector('.ssx-region-detail .ssx-track-share-button')?.getBoundingClientRect().top,
         modes:buttons.map(b=>b.dataset.ssxSheetMode),
-        top:r.top,bottom:r.bottom,bannerTop:document.querySelector('#ssxRegionBrowser').getBoundingClientRect().top,
+        top:r.top,bottom:r.bottom,rankTop:document.querySelector('.ssx-region-detail .ssx-region-ranking').getBoundingClientRect().top,
         widths:buttons.map(b=>Math.round(b.getBoundingClientRect().width)),
         animated:getComputedStyle(document.querySelector('.ssx-region-group .ssx-track-choice')).transitionDuration,
         design:document.body.classList.contains('ssx-alpine-v38'),
@@ -447,14 +460,15 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     console.log('SSX_R73_DESIGN_SYSTEM',JSON.stringify(disciplineBar));
     assert.equal(disciplineBar.design,true);
     assert.equal(disciplineBar.designStyle,true);
-    assert.equal(disciplineBar.inSheet,true);
+    assert.equal(disciplineBar.inShare,true,'Modes must share the exact action row as Compartilhar pista');
+    assert.ok(Math.abs(disciplineBar.top-disciplineBar.shareTop)<=2,'Share and filters must align on the same desktop row');
     assert.equal(disciplineBar.visible,true);
     assert.equal(disciplineBar.present,true);
-    assert.ok(disciplineBar.bottom<=disciplineBar.bannerTop,'Five-mode bar must precede banners');
+    assert.ok(disciplineBar.bottom<=disciplineBar.rankTop,'Modes must appear beside Share before the Top 16');
     assert.deepEqual(disciplineBar.modes,['board','wings','trick','survive','special']);
     assert.ok(disciplineBar.widths.every(w=>w>=80),'All five controls must be usable on desktop');
     assert.notEqual(disciplineBar.animated,'0s','Track interactions need restrained transitions');
-    await evaluate(cdp.send,sid,"document.querySelector('#ssxSheetModeFilter').scrollIntoView({block:'start',behavior:'instant'})");
+    await evaluate(cdp.send,sid,"document.querySelector('.ssx-region-detail .ssx-track-share-controls').scrollIntoView({block:'center',behavior:'instant'})");
     await sleep(120);
     const modeShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
     const v38Dir=path.join(process.cwd(),'artifacts');
@@ -805,14 +819,15 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.ok(resetMobile.height>=40&&resetMobile.contained);
     assert.ok(resetMobile.overflow<=1);
 
-    const modeSheet=await evaluate(cdp.send,sid,"(()=>{const detail=document.querySelector('.ssx-region-detail');const bar=document.querySelector('#ssxSheetModeFilter');const header=detail.querySelector('.ssx-region-detail-header');const rank=detail.querySelector('.ssx-region-ranking');const buttons=[...bar.querySelectorAll('button:not([hidden])')];return {inIntro:bar.parentElement?.classList.contains('ssx-region-intro'),barDisplay:getComputedStyle(bar).display,beforeScores:bar.getBoundingClientRect().top<rank.getBoundingClientRect().top,independentOfClosedDetail:!detail.contains(bar),labels:buttons.map(b=>b.querySelector('.ssx-sheet-mode-name')?.textContent),active:bar.querySelector('[aria-pressed=true]')?.dataset.ssxSheetMode,hiddenUpper:getComputedStyle(document.querySelector('#alpineSubmodes')).display==='none',controlsHeight:buttons.map(b=>Math.round(b.getBoundingClientRect().height)),overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth}})()");
-    assert.equal(modeSheet.inIntro,false,'Five disciplines belong to the persistent results bar');
+    const modeSheet=await evaluate(cdp.send,sid,"(()=>{const detail=document.querySelector('.ssx-region-detail');const bar=document.querySelector('#ssxSheetModeFilter');const rank=detail.querySelector('.ssx-region-ranking');const share=detail.querySelector('.ssx-track-share-button');const buttons=[...bar.querySelectorAll('button:not([hidden])')];return {inShare:bar.parentElement===share.parentElement,barDisplay:getComputedStyle(bar).display,beforeScores:bar.getBoundingClientRect().top<rank.getBoundingClientRect().top,withinDetail:detail.contains(bar),sameRow:Math.abs(bar.getBoundingClientRect().top-share.getBoundingClientRect().top)<3,labels:buttons.map(b=>b.querySelector('.ssx-sheet-mode-name')?.textContent),active:bar.querySelector('[aria-pressed=true]')?.dataset.ssxSheetMode,hiddenUpper:getComputedStyle(document.querySelector('#alpineSubmodes')).display==='none',controlsHeight:buttons.map(b=>Math.round(b.getBoundingClientRect().height)),overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth}})()");
+    assert.equal(modeSheet.inShare,true,'Modes must sit beside Share in the selected mobile track');
     assert.equal(modeSheet.barDisplay,'flex','The accessible five-mode rail must show above regional results');
-    assert.equal(modeSheet.independentOfClosedDetail,true,'Mode selector stays accessible with all banners closed');
+    assert.equal(modeSheet.withinDetail,true,'Mode selector belongs to the selected track detail');
+    assert.equal(modeSheet.sameRow,true,'Share and modes must have matching top position on mobile');
     assert.equal(modeSheet.beforeScores,true,'Mode selector must precede all selected-track scorecards');
     assert.deepEqual(modeSheet.labels,['Board','Wingsuit','Trick It!','Survive It!','Survive It! · Sem equipamentos']);
     assert.equal(await evaluate(cdp.send,sid,
-      "document.querySelector('#ssxSheetModeFilter').parentElement.classList.contains('sheet-card')"),true);
+      "document.querySelector('#ssxSheetModeFilter').parentElement.classList.contains('ssx-track-share-controls')"),true);
     assert.equal(modeSheet.active,'wings');
     assert.equal(modeSheet.hiddenUpper,true,'No duplicated submode selectors in the hero');
     assert.ok(modeSheet.controlsHeight.every(h=>h>=44)&&modeSheet.overflow<=1);
@@ -829,11 +844,12 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     })()`);
     console.log('SSX_R73_MOBILE_MODE_ROW',JSON.stringify(fullModeRow));
     assert.equal(fullModeRow.labels.length,5);
-    assert.ok(fullModeRow.visibleOnArrival>=2,'At least two disciplines must be simultaneously visible on a 390px mobile screen');
+    assert.ok(fullModeRow.visibleOnArrival>=1,'At least one discipline should be fully visible beside Share on mobile');
+    assert.ok(fullModeRow.scrollWidth>fullModeRow.clientWidth,'The other modes must remain accessible via horizontal scrolling');
     assert.ok(fullModeRow.itemWidths.every(w=>w<=175),'Compact mode buttons must not expand to the full phone width');
     assert.ok(fullModeRow.heights.every(h=>h>=44));
     assert.ok(fullModeRow.viewportOverflow<=1);
-    await evaluate(cdp.send,sid,"document.querySelector('#ssxSheetModeFilter').scrollIntoView({block:'start',behavior:'instant'})");
+    await evaluate(cdp.send,sid,"document.querySelector('.ssx-region-detail .ssx-track-share-controls').scrollIntoView({block:'center',behavior:'instant'})");
     await sleep(90);
     const mobileModeShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
     const mobileModeDir=path.join(process.cwd(),'artifacts');
@@ -1022,7 +1038,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     await evaluate(cdp.send,sid,"document.querySelector('#ssxRegionsToggle').click()");
     await sleep(180);
     assert.equal(await evaluate(cdp.send,sid,"getComputedStyle(document.querySelector('#ssxRegionBrowser')).display"),'grid','Regions returns to the approved mountain browsing panel');
-    assert.equal(await evaluate(cdp.send,sid,"document.querySelector('#ssxSheetModeFilter').parentElement.classList.contains('sheet-card')"),true);
+    assert.equal(await evaluate(cdp.send,sid,"document.querySelector('#ssxSheetModeFilter').parentElement.classList.contains('ssx-track-share-controls')"),true);
 
     const detail=await evaluate(cdp.send,sid,"(()=>{const track=document.querySelector('#track');track.value='0';track.dispatchEvent(new Event('change',{bubbles:true}));return {track:track.value};})()");
     assert.equal(detail.track,'0','Red Light should exist as original track selector');
