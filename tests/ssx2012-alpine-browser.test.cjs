@@ -500,7 +500,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
       const group=document.querySelector('#ssxRegionBrowser .ssx-dev-group');
       const tracks=[...group?.querySelectorAll('.ssx-dev-track-choice')||[]];
       return{present:!!group,count:tracks.length,labels:tracks.map(b=>b.querySelector('strong')?.textContent),
-        counts:tracks.map(b=>Number(b.querySelector('small')?.textContent.match(/^\d+/)?.[0]||0)),
+        counts:tracks.map(b=>Number(b.dataset.ssxDevCount||0)),
         archive:group?.dataset.ssxProvenance,mainCount:document.querySelector('#ssxSheetRegions [data-ssx-region=all] .ssx-sheet-region-count')?.textContent};
     })()`);
     console.log('SSX_R72_DEV_DATA_CURATION',JSON.stringify(r72DevInventory));
