@@ -4,6 +4,7 @@
 // bytes through the isolated, cacheable SSX path. No arbitrary URL proxying.
 const https = require('node:https');
 const crypto = require('node:crypto');
+const sharp = require('sharp');
 
 const SSX_FAVICON_ROUTE = '/hobbies/ssx/ssx2012/favicon.png';
 const OFFICIAL_LOGO_URL = 'https://media.contentapi.ea.com/content/dam/gin/common/logos/ssx-2012-mono-logo.png';
@@ -18,6 +19,28 @@ function isOfficialPng(bytes) {
     && bytes.readUInt32BE(16) === 1795
     && bytes.readUInt32BE(20) === 1139
     && bytes.toString('ascii', bytes.length - 8, bytes.length - 4) === 'IEND';
+}
+
+// High-contrast white edition: exact EA artwork, original shape and alpha.
+// No redrawing, filters on the page, generated icons or source substitutions.
+async function originalLogoInWhite(bytes) {
+  const { data, info } = await sharp(bytes, { limitInputPixels: 2100000 })
+    .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  if (info.width !== 1795 || info.height !== 1139 || info.channels !== 4) {
+    throw new Error('SSX_WHITE_FAVICON_UNEXPECTED_IMAGE');
+  }
+  let transparent = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 255) transparent++;
+    data[i] = 255;
+    data[i + 1] = 255;
+    data[i + 2] = 255;
+  }
+  if (transparent < (info.width * info.height * 0.01)) {
+    throw new Error('SSX_WHITE_FAVICON_EXPECTED_ALPHA');
+  }
+  return sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } })
+    .png({ compressionLevel: 9 }).toBuffer();
 }
 
 function createFaviconHandler(request = https.get) {
@@ -63,8 +86,10 @@ function createFaviconHandler(request = https.get) {
             if (!isOfficialPng(bytes)) {
               finish(new Error('SSX_OFFICIAL_FAVICON_VALIDATION_FAILED'));
             } else {
-              const hash = crypto.createHash('sha256').update(bytes).digest('hex');
-              finish(null, { bytes, etag: '"ssx-ea-original-' + hash.slice(0, 32) + '"' });
+              originalLogoInWhite(bytes).then(white => {
+                const hash = crypto.createHash('sha256').update(white).digest('hex');
+                finish(null, { bytes: white, etag: '"ssx-ea-original-white-' + hash.slice(0, 32) + '"' });
+              }).catch(finish);
             }
           });
           incoming.on('error', finish);
