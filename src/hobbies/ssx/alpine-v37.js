@@ -307,6 +307,19 @@
     fr:['Régions','Toutes les régions','Utilisez les flèches pour changer de région']
   };
   let regionQuery='';
+  let regionSearchFrame=0;
+  // At most one directory filter pass per visual frame during rapid typing.
+  function scheduleRegionSearch(){
+    if(regionSearchFrame)return;
+    regionSearchFrame=requestAnimationFrame(()=>{
+      regionSearchFrame=0;
+      applyRegionSearch();
+    });
+  }
+  function flushRegionSearch(){
+    if(regionSearchFrame){cancelAnimationFrame(regionSearchFrame);regionSearchFrame=0;}
+    applyRegionSearch();
+  }
   const regionToolsCopy={
     pt:{search:'Buscar região, montanha ou pista',clear:'Limpar busca',previous:'Pista anterior',next:'Próxima pista',empty:'Nenhuma pista encontrada. Limpe a busca.',navigation:'Navegar entre pistas'},
     en:{search:'Find region, mountain or track',clear:'Clear search',previous:'Previous track',next:'Next track',empty:'No tracks found. Clear your search.',navigation:'Browse tracks'},
@@ -319,44 +332,54 @@
   function applyRegionSearch(){
     const browser=$('ssxRegionBrowser');
     if(!browser)return;
+    const start=performance.now();
     const query=normalizedRegionText(regionQuery);
     let shown=0,officialShown=0,devShown=0;
     for(const region of browser.querySelectorAll('.ssx-region-group,.ssx-dev-group')){
       let matches=0;
       if(region.classList.contains('ssx-dev-group')){
         for(const track of region.querySelectorAll('.ssx-dev-track-choice')){
-          const match=!query||normalizedRegionText(track.textContent).includes(query);
-          track.hidden=!match;
+          const haystack=track.dataset.ssxSearchKey||
+            (track.dataset.ssxSearchKey=normalizedRegionText(track.textContent));
+          const match=!query||haystack.includes(query);
+          if(track.hidden===match)track.hidden=!match;
           if(match){matches++;shown++;devShown++;}
         }
-        region.hidden=matches===0;
-        region.open=query?matches>0:openedRegions.has('DEV');
+        const hidden=matches===0,expanded=query?matches>0:openedRegions.has('DEV');
+        if(region.hidden!==hidden)region.hidden=hidden;
+        if(region.open!==expanded)region.open=expanded;
         continue;
       }
       for(const mountain of region.querySelectorAll('.ssx-mountain-section')){
         let mountainCount=0;
         for(const track of mountain.querySelectorAll('.ssx-track-choice')){
-          const match=!query||normalizedRegionText(track.dataset.regionTrack).includes(query);
-          track.hidden=!match;
+          const haystack=track.dataset.ssxSearchKey||
+            (track.dataset.ssxSearchKey=normalizedRegionText(track.dataset.regionTrack));
+          const match=!query||haystack.includes(query);
+          if(track.hidden===match)track.hidden=!match;
           if(match){mountainCount++;matches++;shown++;officialShown++;}
         }
-        mountain.hidden=mountainCount===0;
+        const hidden=mountainCount===0;
+        if(mountain.hidden!==hidden)mountain.hidden=hidden;
       }
-      region.hidden=matches===0;
-      region.open=query?matches>0:openedRegions.has(region.dataset.regionName);
+      const hidden=matches===0,expanded=query?matches>0:openedRegions.has(region.dataset.regionName);
+      if(region.hidden!==hidden)region.hidden=hidden;
+      if(region.open!==expanded)region.open=expanded;
     }
     const stats=$('ssxRegionMatches');
     if(stats){
       const caption=(regionI18n[language()]||regionI18n.en)[2];
       const archiveLabel=({pt:'DEV arquivadas',en:'archived DEV',de:'DEV im Archiv',
         es:'DEV archivadas',nl:'DEV in archief',fr:'DEV archivées'})[language()]||'archived DEV';
-      stats.textContent=officialShown+' '+caption+
-        (devShown?' · '+devShown+' '+archiveLabel:'');
+      const next=officialShown+' '+caption+(devShown?' · '+devShown+' '+archiveLabel:'');
+      if(stats.textContent!==next)stats.textContent=next;
     }
     const empty=$('ssxRegionNoMatches');
-    if(empty)empty.hidden=shown>0;
+    if(empty&&empty.hidden!==(shown>0))empty.hidden=shown>0;
     const clear=$('ssxRegionSearchClear');
-    if(clear)clear.hidden=!regionQuery;
+    if(clear&&clear.hidden!==!regionQuery)clear.hidden=!regionQuery;
+    browser.dataset.ssxSearchPasses=String(1+Number(browser.dataset.ssxSearchPasses||0));
+    browser.dataset.ssxSearchMs=String(Math.round((performance.now()-start)*100)/100);
     resetControlState();
   }
   const regionImages=['race.jpg','hero.jpg','survive.jpg','trick.jpg','riders.jpg'];
@@ -379,6 +402,26 @@
     const browser=text('section','','ssx-region-browser');
     browser.id='ssxRegionBrowser';
     browser.setAttribute('aria-label','Regiões, montanhas e pistas');
+    // Arrow keys navigate within the expanded banner, leaving Enter/Space to
+    // select the track normally and preserving the original results source.
+    browser.addEventListener('keydown',event=>{
+      const current=event.target.closest('button.ssx-track-choice');
+      if(!current||!['ArrowRight','ArrowLeft','ArrowDown','ArrowUp','Home','End'].includes(event.key))return;
+      const group=current.closest('details.ssx-region-group');
+      if(!group?.open)return;
+      const choices=[...group.querySelectorAll('button.ssx-track-choice:not([hidden])')]
+        .filter(button=>!button.closest('.ssx-mountain-section')?.hidden);
+      const i=choices.indexOf(current);
+      if(i<0)return;
+      event.preventDefault();
+      const next=event.key==='Home'?0:event.key==='End'?choices.length-1:
+        Math.max(0,Math.min(choices.length-1,i+(
+          event.key==='ArrowRight'||event.key==='ArrowDown'?1:-1)));
+      const target=choices[next];
+      target.focus({preventScroll:true});
+      target.scrollIntoView({block:'nearest',inline:'nearest',
+        behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
+    });
     // An inline toolbar cannot remain keyboard-inaccessible in a collapsed
     // region. When the selected banner closes, park it in the safe fallback;
     // when reopened, return it to the original Share action row.
@@ -752,6 +795,16 @@
     if(focusedMode)rail.querySelector('[data-ssx-sheet-mode="'+focusedMode+'"]')
       ?.focus({preventScroll:true});
   }
+  // Keep the selected mode visible inside its own horizontal rail without
+  // scrolling the entire page or displacing the active scorecard.
+  function revealSelectedDiscipline(rail){
+    if(!rail||rail.hidden||!rail.getClientRects().length)return;
+    const button=rail.querySelector('[aria-pressed="true"]');
+    if(!button||rail.scrollWidth<=rail.clientWidth+1)return;
+    const view=rail.getBoundingClientRect(),item=button.getBoundingClientRect();
+    if(item.right>view.right-5)rail.scrollLeft+=item.right-view.right+10;
+    else if(item.left<view.left+5)rail.scrollLeft+=item.left-view.left-10;
+  }
   function placeSheetModeFilter(){
     const rail=$('ssxSheetModeFilter');
     if(!rail)return;
@@ -773,6 +826,7 @@
       if(focusedMode)rail.querySelector('[data-ssx-sheet-mode="'+focusedMode+'"]')
         ?.focus({preventScroll:true});
     }
+    revealSelectedDiscipline(rail);
   }
   function syncSheetModeFilter(group,copy){
     const rail=$('ssxSheetModeFilter');
@@ -801,6 +855,7 @@
       button.setAttribute('aria-pressed',String(visible&&state.mode===mode));
       button.setAttribute('tabindex',visible?'0':'-1');
     }
+    revealSelectedDiscipline(rail);
   }
 
 
@@ -1138,14 +1193,14 @@
     regionSearch.value=regionQuery;
     regionSearch.addEventListener('input',()=>{
       regionQuery=regionSearch.value;
-      applyRegionSearch();
+      scheduleRegionSearch();
     });
     regionSearch.addEventListener('keydown',event=>{
       if(event.key==='Escape'&&regionQuery){
         event.preventDefault();
         regionQuery='';
         regionSearch.value='';
-        applyRegionSearch();
+        flushRegionSearch();
       }
     });
     const clearSearch=text('button','×','ssx-region-search-clear');
@@ -1156,7 +1211,7 @@
     clearSearch.addEventListener('click',()=>{
       regionQuery='';
       regionSearch.value='';
-      applyRegionSearch();
+      flushRegionSearch();
       regionSearch.focus();
     });
     searchBox.append(regionSearch,clearSearch);
@@ -1164,7 +1219,17 @@
     count.id='ssxRegionMatches';
     count.setAttribute('aria-live','polite');
     intro.append(searchBox,count);
-    intro.append(text('small','73 pistas do jogo principal · DEV/Testes em arquivo separado (22/08/2026)','ssx-region-curation-note'));
+    // The catalogue's provenance is editorial content, not a live counter.
+    // Localize it without changing the immutable 73 official / 8 DEV entries.
+    const curatorialNotes={
+      pt:'73 pistas do jogo principal · DEV/Testes em arquivo separado (22/08/2026)',
+      en:'73 official tracks · DEV/Tests in a separate archive (2026-08-22)',
+      de:'73 offizielle Strecken · DEV/Tests in einem separaten Archiv (22.08.2026)',
+      es:'73 pistas oficiales · DEV/Pruebas en un archivo separado (22/08/2026)',
+      nl:'73 officiële banen · DEV/Tests in een afzonderlijk archief (22-08-2026)',
+      fr:'73 pistes officielles · DEV/Tests dans des archives séparées (22/08/2026)'
+    };
+    intro.append(text('small',curatorialNotes[language()]||curatorialNotes.en,'ssx-region-curation-note'));
     index.append(intro);
     for(const [region,mountains] of regions){
       const section=document.createElement('details');
@@ -1211,11 +1276,15 @@
     // DEV belongs to the all-regions directory, never a filtered official
     // region or the source's 73-track counter.
     if(devPanel&&selectedRegion==='all')index.insertBefore(devPanel,noMatches);
-    // The old selected result can be removed only after preserving the rail.
+    // Pending search frames reference the previous gallery; refresh once.
+    if(regionSearchFrame){cancelAnimationFrame(regionSearchFrame);regionSearchFrame=0;}
+    const buildStart=performance.now();
     parkSheetModeFilter();
     browser.replaceChildren(index);
     placeSheetModeFilter();
     applyRegionSearch();
+    browser.dataset.ssxGalleryBuilds=String(1+Number(browser.dataset.ssxGalleryBuilds||0));
+    browser.dataset.ssxGalleryRenderMs=String(Math.round((performance.now()-buildStart)*100)/100);
   }
 
   function addUI() {

@@ -532,3 +532,44 @@ html[data-theme="light"] body.ssx-alpine-v37.ssx-alpine-v38 .ssx-region-detail .
     transition:none;
   }
 }
+
+
+/* R75 — interaction polish. Focus never relies on hover, local search is
+   visually distinct from the ranking data, and mode scrolling stays local. */
+body.ssx-alpine-v38 .ssx-region-search-box{
+  border-radius:11px;
+  transition:box-shadow .18s ease,background-color .18s ease;
+}
+body.ssx-alpine-v38 .ssx-region-search-box:focus-within{
+  box-shadow:0 0 0 2px rgba(67,215,237,.30);
+  background:rgba(67,215,237,.035);
+}
+body.ssx-alpine-v38 .ssx-region-group .ssx-track-choice:focus-visible{
+  outline:2px solid #53dff2;
+  outline-offset:2px;
+  box-shadow:0 0 0 4px rgba(23,112,139,.25);
+}
+body.ssx-alpine-v38 .ssx-region-no-matches{
+  border:1px dashed rgba(101,178,201,.30);
+  border-radius:11px;
+  background:rgba(19,58,78,.36);
+  padding:clamp(16px,2vw,25px);
+  color:#c4e3ef;
+}
+body.ssx-alpine-v38 .ssx-region-search-count{
+  font-variant-numeric:tabular-nums;
+  color:var(--next-subtle);
+}
+body.ssx-alpine-v38 .ssx-region-detail #ssxSheetModeFilter{
+  touch-action:pan-x;
+  scroll-padding-inline:8px;
+}
+body.ssx-alpine-v38 .ssx-region-detail .ssx-region-rank{
+  transition:background-color .18s ease,border-color .18s ease;
+}
+@media(prefers-reduced-motion:reduce){
+  body.ssx-alpine-v38 .ssx-region-search-box,
+  body.ssx-alpine-v38 .ssx-region-detail .ssx-region-rank{
+    transition:none;
+  }
+}
