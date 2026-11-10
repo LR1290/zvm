@@ -124,7 +124,7 @@ function loadV37Preview() {
     rankingStyle = fs.readFileSync(path.join(__dirname, 'ranking-r84.css'), 'utf8');
     rankingScript = fs.readFileSync(path.join(__dirname, 'ranking-r84.js'), 'utf8');
     if (!rankingStyle || !rankingScript || rankingStyle.length > 30000 || rankingScript.length > 12000
-      || /<\\/style/i.test(rankingStyle) || /<\\/script/i.test(rankingScript)) {
+      || /<\/style/i.test(rankingStyle) || /<\/script/i.test(rankingScript)) {
       throw new Error('SSX_R84_ASSET_VALIDATION');
     }
   } catch (cause) {
