@@ -7,11 +7,62 @@ const crypto = require('node:crypto');
 const zlib = require('node:zlib');
 
 const SSX_ROUTE = '/hobbies/ssx/ssx2012';
+const SSX_FAVICON_ROUTE = SSX_ROUTE + '/favicon.svg';
+const SSX_FAVICON_SHA256 = 'a40f363f991c115131176ff56871c7218dbe53124e956e64ab7f5b6f2d20061f';
 const SSX_V36_ARCHIVE_ROUTE = '/hobbies/ssx/ssx2012-v36';
 const SSX_V37_PREVIEW_ROUTE = '/hobbies/ssx/ssx2012-alpine-v37-preview';
 const SSX_BUNDLE_SHA256 = 'f80d0760eeb18042a081279f27da96e05dc5f7ed4362bc72e6a4739043897a5a';
 const SHA256 = 'd99aa1caaf9e9833ff85f899119043cbddaca66ce9bc9aa5f256990d331e42f0';
 const PARTS = 10;
+
+let ssxFaviconCache = null;
+// Route-scoped favicon only. Do not replace the main ZVM portal icon.
+function serveSSXFavicon(req, res, pathname) {
+  if (pathname !== SSX_FAVICON_ROUTE) return false;
+  const method = String(req.method || '').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') {
+    res.writeHead(405, { Allow: 'GET, HEAD', 'Cache-Control': 'no-store' });
+    res.end();
+    return true;
+  }
+  try {
+    if (!ssxFaviconCache) {
+      const candidate = fs.readFileSync(path.join(__dirname, 'favicon.svg'));
+      if (candidate.length < 300 || candidate.length > 4096 ||
+          crypto.createHash('sha256').update(candidate).digest('hex') !== SSX_FAVICON_SHA256) {
+        throw new Error('SSX_FAVICON_INTEGRITY_FAILURE');
+      }
+      ssxFaviconCache = candidate;
+    }
+  } catch (cause) {
+    console.error('[SSX-HOBBY] Favicon unavailable:', cause.code || cause.message);
+    res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(method === 'HEAD' ? undefined : 'SSX favicon unavailable');
+    return true;
+  }
+  const etag = '"ssx-favicon-' + SSX_FAVICON_SHA256.slice(0, 24) + '"';
+  const headers = {
+    'Content-Type': 'image/svg+xml; charset=utf-8',
+    'Cache-Control': 'public, max-age=86400, immutable',
+    'Content-Length': ssxFaviconCache.length,
+    ETag: etag,
+    'X-Content-Type-Options': 'nosniff',
+    'Cross-Origin-Resource-Policy': 'cross-origin',
+    'Access-Control-Allow-Origin': '*',
+    'Referrer-Policy': 'no-referrer',
+    'Content-Security-Policy': "default-src 'none'; object-src 'none'; frame-ancestors 'none'"
+  };
+  if (String((req.headers || {})['if-none-match'] || '').trim() === etag) {
+    delete headers['Content-Length'];
+    res.writeHead(304, headers);
+    res.end();
+    return true;
+  }
+  res.writeHead(200, headers);
+  res.end(method === 'HEAD' ? undefined : ssxFaviconCache);
+  return true;
+}
+
 
 // Read-only locally hosted SSX art: no browser hotlinking or arbitrary proxy URLs.
 // All assets are checksummed original publisher/gameplay JPEGs from the documented
@@ -158,7 +209,8 @@ html:not([data-ssx-boot="ready"]):not([data-ssx-boot="fallback"]) body{visibilit
   const updated = original
     .replace(/<\/head\s*>/i, '<style id="ssx-first-paint-style">\n' + firstPaintStyle + '\n</style>' + bootGuard + '<style id="ssx-alpine-v37-style">\n' + css + '\n</style><style id="ssx-v38-design">\n' + design + '\n</style>' + (rankingStyle ? '<style id="ssx-r84-rank-style">\n' + rankingStyle + '\n</style>' : '') + '</head>')
     .replace(/<\/body\s*>/i, '<script id="ssx-score-integrity-script">\n' + scoreIntegrity + '\n</script>' + '<script id="ssx-alpine-v37-script">\n' + js + '\n</script>' + '<script id="ssx-special-leaders-core-script">\n' + specialLeaderJs + '\n</script>' + '<script id="ssx-special-categories-v1-script">\n' + specialJs + '\n</script>' + (rankingScript ? '<script id="ssx-r84-rank-script">\n' + rankingScript + '\n</script>' : '') + '</body>')
-    .replace(/<title>[^<]*<\/title>/i, '<title>SSX 2012 · Recordes da Comunidade</title>');
+    .replace(/<title>[^<]*<\/title>/i, '<title>SSX 2012 · Recordes da Comunidade</title>')
+    .replace(/<\/head\s*>/i, '<link rel="icon" type="image/svg+xml" sizes="any" href="' + SSX_FAVICON_ROUTE + '?v=' + SSX_FAVICON_SHA256.slice(0, 12) + '"></head>');
   const data = Buffer.from(updated, 'utf8');
   const hash = crypto.createHash('sha256').update(data).digest('hex');
   v37Preview = { content: data, hash, gzip: null, br: null };
@@ -206,6 +258,7 @@ function bodyFor(encoding) {
 }
 
 function serveSSX2012(req, res, pathname) {
+  if(serveSSXFavicon(req,res,pathname))return true;
   if(serveSSXMedia(req,res,pathname))return true;
   const isPreview = pathname === SSX_V37_PREVIEW_ROUTE || pathname === SSX_V37_PREVIEW_ROUTE + '/';
   const isArchive = pathname === SSX_V36_ARCHIVE_ROUTE || pathname === SSX_V36_ARCHIVE_ROUTE + '/';
