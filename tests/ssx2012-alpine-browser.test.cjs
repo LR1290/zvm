@@ -1122,7 +1122,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
       assert.equal(measured.columns,columns,'Modal card columns at '+width+'px');
       assert.ok(measured.sheetWidth<=measured.viewport+1,'Result panel must not overflow viewport at '+width+'px');
       const responsiveMode=await evaluate(cdp.send,sid,"(()=>({bar:getComputedStyle(document.querySelector('#ssxSheetModeFilter')).display,top:getComputedStyle(document.querySelector('#alpineSubmodes')).display,screenOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,controls:[...document.querySelectorAll('#ssxSheetModeFilter button:not([hidden])')].map(el=>Math.round(el.getBoundingClientRect().width))}))()");
-      assert.equal(responsiveMode.bar,width<=1100?'flex':'grid','Persistent five-mode navigation must stay visible at '+width+'px');
+      assert.equal(responsiveMode.bar,'flex','The track-local five-mode control must remain a horizontal row at '+width+'px');
       assert.equal(responsiveMode.top,width<=900?'none':'flex','Original large-screen submodes must remain available at '+width+'px');
       assert.ok(responsiveMode.screenOverflow<=1,'No horizontal overflow at '+width+'px');
       const regionalGrid=await evaluate(cdp.send,sid,
