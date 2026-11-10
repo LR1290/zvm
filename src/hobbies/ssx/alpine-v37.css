@@ -3098,6 +3098,19 @@ body.ssx-alpine-v37 .topbar #ssxDirectActions > [data-ssx-action="adminBtn"]{
     gap:0 8px;
     padding:7px clamp(10px,3vw,22px) 6px;
   }
+  body.ssx-alpine-v37 .topbar .brand{
+    display:flex;
+    flex:1 1 auto;
+    align-items:center;
+    min-width:0;
+    max-width:calc(100% - 85px);
+  }
+  body.ssx-alpine-v37 .topbar .brand b{
+    display:inline;
+    font-size:.92rem;
+    letter-spacing:.01em;
+    white-space:nowrap;
+  }
   body.ssx-alpine-v37 #ssxHeaderUtilityStack > #ssxMobileQuickNav{
     display:grid;
     flex:0 0 auto;
