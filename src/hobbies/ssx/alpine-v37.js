@@ -379,6 +379,12 @@
     const browser=text('section','','ssx-region-browser');
     browser.id='ssxRegionBrowser';
     browser.setAttribute('aria-label','Regiões, montanhas e pistas');
+    // An inline toolbar cannot remain keyboard-inaccessible in a collapsed
+    // region. When the selected banner closes, park it in the safe fallback;
+    // when reopened, return it to the original Share action row.
+    browser.addEventListener('toggle',event=>{
+      if(event.target?.classList?.contains('ssx-region-group'))placeSheetModeFilter();
+    },true);
     browser.addEventListener('click',event=>{
       const summary=event.target.closest('summary.ssx-region-banner');
       if(summary&&!regionQuery){
@@ -754,7 +760,7 @@
       return;
     }
     const controls=$('ssxRegionBrowser')?.querySelector('.ssx-region-group > .ssx-region-detail .ssx-track-share-controls');
-    if(!controls){
+    if(!controls||!controls.closest('details.ssx-region-group')?.open){
       parkSheetModeFilter();
       return;
     }
