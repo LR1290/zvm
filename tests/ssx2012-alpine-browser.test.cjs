@@ -1074,11 +1074,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     const restored=await evaluate(cdp.send,sid,"(()=>{document.querySelector('[data-alpine-group=\"trick\"]').click();const before=document.body.dataset.ssxMode;document.querySelector('#alpineToggleTable').click();const all=document.body.dataset.ssxMode;document.querySelector('#alpineToggleTable').click();return {before,all,back:document.body.dataset.ssxMode};})()");
     assert.deepEqual(restored,{before:'trick',all:'all',back:'trick'},'Full table must return to actual prior mode');
 
-    const focus=await evaluate(cdp.send,sid,"(()=>{document.querySelector('[data-alpine-group=\"race\"]').click();const wings=document.querySelector('#ssxSheetModeFilter [data-ssx-sheet-mode=\"wings\"]');wings.focus();wings.click();return {mode:document.body.dataset.ssxMode,retained:document.activeElement===wings,
-        activeTag:document.activeElement?.tagName,activeText:document.activeElement?.textContent?.slice(0,55),
-        activeMode:document.activeElement?.dataset?.ssxSheetMode,
-        parent:wings.parentElement?.className,connected:wings.isConnected,
-        selected:document.querySelector('#ssxSheetModeFilter [aria-pressed=true]')?.dataset.ssxSheetMode};})()");
+    const focus=await evaluate(cdp.send,sid,"(()=>{document.querySelector('[data-alpine-group=\"race\"]').click();const wings=document.querySelector('#ssxSheetModeFilter [data-ssx-sheet-mode=\"wings\"]');wings.focus();wings.click();return {mode:document.body.dataset.ssxMode,retained:document.activeElement===wings,activeTag:document.activeElement?.tagName,activeText:document.activeElement?.textContent?.slice(0,55),activeMode:document.activeElement?.dataset?.ssxSheetMode,parent:wings.parentElement?.className,connected:wings.isConnected,selected:document.querySelector('#ssxSheetModeFilter [aria-pressed=true]')?.dataset.ssxSheetMode};})()");
     assert.equal(focus.mode,'wings');
     console.log('SSX_R74_FOCUS_DIAGNOSTIC',JSON.stringify(focus));
     assert.equal(focus.retained,true,'Mobile submode selection must retain focus on the visible control');
