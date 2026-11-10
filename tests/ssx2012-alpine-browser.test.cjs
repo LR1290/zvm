@@ -568,6 +568,10 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     await evaluate(cdp.send,sid,"window.scrollTo({top:0,behavior:'instant'})");
     await sleep(400);
 
+    const restoredMobileTitle=await evaluate(cdp.send,sid,
+      "document.querySelector('#heroTitle')?.textContent.trim()");
+    assert.equal(restoredMobileTitle,'Conquiste a montanha.',
+      'Legacy source/mode updates must not replace the localized community headline');
     const mobileHeroShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
     fs.writeFileSync(path.join(outDir,'ssx-v37-mobile-hero.png'),Buffer.from(mobileHeroShot.data,'base64'));
     // Dedicated pre-dialog Chromium captures. The old screenshots labeled
@@ -707,7 +711,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     const directNav=await evaluate(cdp.send,sid,"(()=>{const quick=document.querySelector('#ssxMobileQuickNav');const direct=document.querySelector('#ssxDirectActions');const brand=document.querySelector('.brand');const menu=document.querySelector('#mobileMenuBtn');const buttons=[...direct.querySelectorAll('button')];return{quickLabels:[...quick.querySelectorAll('button')].map(b=>b.textContent),directLabels:buttons.map(b=>b.textContent),brandHidden:getComputedStyle(brand).display==='none',legacyHidden:getComputedStyle(document.querySelector('#topNav')).display==='none',hamburgerRemoved:menu===null,panelRemoved:!document.querySelector('#ssxMobileMore'),actionable:buttons.every(b=>b.getBoundingClientRect().height>=40),screenOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth}})()");
     assert.deepEqual(directNav.quickLabels,['Recordes','Riders','Comunidade','Sobre']);
     assert.deepEqual(directNav.directLabels,['Ajustes','Guia','Dados','Submissões','Sobre os dados','Admin']);
-    assert.equal(directNav.brandHidden,true);
+    assert.equal(directNav.brandHidden,false,'SSX 2012 branding must remain visible on mobile');
     assert.equal(directNav.legacyHidden,true);
     assert.equal(directNav.hamburgerRemoved,true);
     assert.equal(directNav.panelRemoved,true);
