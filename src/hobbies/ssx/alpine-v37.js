@@ -1022,8 +1022,9 @@
     const banner=text('summary','','ssx-region-banner ssx-dev-banner');
     artForRegion(banner,'DEV');
     banner.append(text('strong','🧪 DEV / Testes'),text('span','⌄','ssx-region-chevron'));
-    const total=entries.reduce((n,e)=>n+e.runs.length,0);
-    banner.append(text('small',entries.length+' pistas · '+total+' registros históricos · Board / PS3'));
+    // Historical counts are available in the source/record rows, but should
+    // not appear as badges on photographic category banners.
+    banner.append(text('small','Pistas experimentais · Board / PS3 · arquivo histórico'));
     group.append(banner);
     const body=text('div','','ssx-dev-content');
     const note=text('p','Arquivo Google Sheets de 22/08/2026. Somente posições presentes na fonte; não integram o ranking principal.','ssx-dev-provenance');
