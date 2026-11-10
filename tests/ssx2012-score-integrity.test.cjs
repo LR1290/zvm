@@ -17,7 +17,7 @@ test('mode-specific presentation never changes underlying source values or rank 
     ['10,787,35m',5,'10,787.35 m','review-inferred-separators'],
     ['225 229,45m',3,'225,229.45 m','review-inferred-separators'],
     ['206.889.98m',3,'206,889.98 m','review-inferred-separators'],
-    ['1.200,50m',3,'1.200,50m','review-unparsed'],
+    ['1.200,50m',3,'1,200.50 m','review-inferred-separators'],
     ['12,456.70 m',5,'12,456.70 m','verified-format']
   ];
   for(const [raw,mode,display,status] of cases){
