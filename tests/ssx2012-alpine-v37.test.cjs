@@ -81,6 +81,7 @@ test('published v37 and preview are byte-identical; archival v36 remains byte-ex
   const view=enhanced.body.toString('utf8');
   assert.match(view,/id="ssx-alpine-v37-style"/);
   assert.match(view,/id="ssx-v38-design"/);
+  assert.match(view,/<link rel="icon" type="image\/svg\+xml" sizes="any" href="\/hobbies\/ssx\/ssx2012\/favicon\.svg\?v=a40f363f991c">/);
   assert.match(view,/id="ssx-r84-rank-style"/);
   assert.match(view,/id="ssx-r84-rank-script"/);
   assert.match(view,/ssx-alpine-v38/);
@@ -103,6 +104,7 @@ test('published v37 and preview are byte-identical; archival v36 remains byte-ex
     .replace(/<script id="ssx-score-integrity-script">[\s\S]*?<\/script>/,'')
     .replace(/<script id="ssx-special-categories-v1-script">[\s\S]*?<\/script>/,'')
     .replace(/<script id="ssx-special-leaders-core-script">[\s\S]*?<\/script>/,'')
+    .replace(/<link rel="icon" type="image\/svg\+xml" sizes="any" href="\/hobbies\/ssx\/ssx2012\/favicon\.svg\?v=a40f363f991c">/,'')
     .replace(/<title>[^<]*<\/title>/i,originalTitle[0]);
   assert.equal(stripped,baseline,'Record dataset, app code and legacy HTML must remain unchanged');
 }));
