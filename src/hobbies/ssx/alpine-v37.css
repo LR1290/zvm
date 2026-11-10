@@ -3093,3 +3093,26 @@ body.ssx-alpine-v37 .ssx-special-rider-label img.ssx-special-rider-flag{
 @media(prefers-reduced-motion:reduce){
   body.ssx-alpine-v37 #ssxDirectActions > :is(button,a){transition:none;}
 }
+
+/* R69 visual proof: two-column leader cards leave the full rider/track name
+   readable at 390px; the former 3rd score column squeezed names mid-word. */
+@media(max-width:650px){
+  body.ssx-alpine-v37 .ssx-special-record.ssx-special-leader{
+    grid-template-columns:30px minmax(0,1fr);
+    gap:6px 9px;
+  }
+  body.ssx-alpine-v37 .ssx-special-leader .ssx-special-rank{grid-column:1;grid-row:1;}
+  body.ssx-alpine-v37 .ssx-special-leader .ssx-special-identity{grid-column:2;grid-row:1;}
+  body.ssx-alpine-v37 .ssx-special-leader .ssx-special-score{
+    grid-column:2;grid-row:2;justify-self:start;
+  }
+  body.ssx-alpine-v37 .ssx-special-leader .ssx-special-leader-rider{
+    grid-column:2;grid-row:3;min-width:0;
+  }
+  body.ssx-alpine-v37 .ssx-special-leader .ssx-special-evidence{
+    grid-column:2;grid-row:4;justify-self:start;
+  }
+  body.ssx-alpine-v37 .ssx-special-leader .ssx-special-ref{
+    grid-column:2;grid-row:5;
+  }
+}
