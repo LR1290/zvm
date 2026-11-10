@@ -205,12 +205,16 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
       })()`);
       console.log('SSX_R70_FULL_WIDTH_'+width,JSON.stringify(geometry));
       assert.ok(geometry.site.width>=width*.98,'App must fill the desktop viewport at '+width+'px');
-      for(const part of ['hero','sheet','direct','archive']){
+      for(const part of ['hero','sheet','archive']){
         assert.ok(geometry[part].width>=width*.90,
           part+' must not remain a centered fixed-width column at '+width+'px');
         assert.ok(geometry[part].left>=-1&&geometry[part].right<=width+1,
           part+' must fit within '+width+'px viewport');
       }
+      assert.ok(geometry.direct.width<900,
+        'R71 utilities must remain a compact rail, not a full-width row at '+width+'px');
+      assert.ok(geometry.direct.right<=width+1&&geometry.direct.left>=-1,
+        'R71 utility rail must remain inside the header at '+width+'px');
       assert.ok(geometry.overflow<=1,'No horizontal overflow at '+width+'px');
       assert.equal(geometry.buttons,7,'Public action buttons must remain available');
       assert.equal(geometry.buttonCollision,false,'Wide action buttons must not overlap');
