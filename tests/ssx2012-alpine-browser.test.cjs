@@ -520,7 +520,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.ok(sourceTabs.includes('combined')&&sourceTabs.includes('oz'),'Original source filters must remain wired');
     await evaluate(cdp.send,sid,"document.querySelector('[data-source=oz]').click()");
     await sleep(180);
-    const ozRace=await evaluate(cdp.send,sid,"(()=>({source:document.querySelector('[data-source=oz]').classList.contains('active'),ranks:document.querySelectorAll('.ssx-region-detail .ssx-region-rank').length,canonical:document.querySelectorAll('#ssxSheetRegions [data-ssx-region]').length,progress:document.querySelector('#renderProgress')?.hidden}))()");
+    const ozRace=await evaluate(cdp.send,sid,"(()=>({source:document.querySelector('[data-source=oz]').classList.contains('active'),ranks:document.querySelectorAll('.ssx-region-group .ssx-region-detail .ssx-region-rank').length,canonical:document.querySelectorAll('#ssxSheetRegions [data-ssx-region]').length,progress:document.querySelector('#renderProgress')?.hidden}))()");
     assert.equal(ozRace.source,true);
     assert.equal(ozRace.ranks,0,'OZ standalone race mode has no ranked scores, so do not show stale combined data');
     const readableEmpty=await evaluate(cdp.send,sid,"(()=>({text:document.querySelector('.ssx-region-empty-inline')?.textContent,role:document.querySelector('.ssx-region-empty-inline')?.getAttribute('role'),visible:document.querySelector('.ssx-region-empty-inline')?.getBoundingClientRect().height>40}))()");
