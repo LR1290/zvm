@@ -717,10 +717,14 @@
       // The original sheet listens to bubbled clicks. Keep this internal mode
       // control independent so its source/title handlers cannot hijack it.
       event.stopPropagation();
+      const hadFocus=document.activeElement===button;
       if(button.dataset.ssxSheetMode!==state.mode)selectMode(button.dataset.ssxSheetMode);
       // selectMode -> sync already refreshes the canonical navigation.
       // Re-running updateCopy immediately caused duplicate DOM work per click.
       applyPublicCopy();
+      // Preserve keyboard focus even when the legacy historic-category
+      // renderer restores its previously active tab during this interaction.
+      if(hadFocus&&button.isConnected)button.focus({preventScroll:true});
     });
     // The original location is a fallback for the leader/table view only.
     // When a piste is displayed, the same live control moves beside Share.
