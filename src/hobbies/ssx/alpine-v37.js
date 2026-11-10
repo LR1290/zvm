@@ -1102,15 +1102,15 @@
         detail.append(noRecords);
       }
     }else detail.append(text('p',copy[5],'ssx-region-empty'));
-    // One persistent, fully wired mode selector: always directly below the
-    // selected track banner and immediately above its ranking/navigation.
-    // Move it before replacing the old detail to preserve listeners and focus.
+    // Keep the real mode selector visible in the catalogue header, not
+    // trapped inside a collapsed region. Move the existing node, retaining
+    // its original click listeners and focus (never clone controls).
     const modeFilter=$('ssxSheetModeFilter');
     if(modeFilter){
       if(document.body.dataset.ssxMobileView==='cards'){
         const cards=$('alpineMobileCards');
         if(cards)cards.before(modeFilter);
-      }else detail.insertBefore(modeFilter,detail.children[1]||null);
+      }else intro.append(modeFilter);
     }
     // Place the scorecards immediately under their own region/track choices.
     // There is no separate, sticky right-hand Top 16 pane.
@@ -1118,7 +1118,9 @@
       .find(group=>group.dataset.regionName===selected?.region);
     if(chosenRegion)chosenRegion.append(detail);
     const devPanel=devArchivePanel(curatedDevTracks(),copy);
-    if(devPanel)index.insertBefore(devPanel,noMatches);
+    // DEV belongs to the all-regions directory, never a filtered official
+    // region or the source's 73-track counter.
+    if(devPanel&&selectedRegion==='all')index.insertBefore(devPanel,noMatches);
     browser.replaceChildren(index);
     applyRegionSearch();
   }
