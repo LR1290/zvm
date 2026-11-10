@@ -173,6 +173,15 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
       Buffer.from(headerShot.data,'base64'));
     await evaluate(cdp.send,sid,"document.querySelector('.sheet-card').scrollIntoView({block:'start',behavior:'instant'})");
     await sleep(150);
+    const scrollVisibility=await evaluate(cdp.send,sid,`(()=>{
+      const head=document.querySelector('.sheet-head').getBoundingClientRect();
+      const nav=document.querySelector('.topbar').getBoundingClientRect();
+      return {headTop:head.top,navBottom:nav.bottom,
+        visible:head.top>=nav.bottom+2,
+        viewport:innerHeight};
+    })()`);
+    assert.equal(scrollVisibility.visible,true,
+      'Sticky header must not cover contextual record controls after navigation: '+JSON.stringify(scrollVisibility));
     const controlsShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
     fs.writeFileSync(path.join(headerArtifactDir,'ssx-r71-desktop-record-controls.png'),
       Buffer.from(controlsShot.data,'base64'));
