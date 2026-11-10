@@ -128,10 +128,55 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.ok(desktopGeometry.actions>=6,'Desktop shortcut row must expose direct actions');
     assert.equal(desktopGeometry.actionRows,1,'Desktop shortcuts must align in one orderly row');
     assert.equal(desktopGeometry.overlaps,false,'Desktop shortcuts must not collide');
-    assert.ok(desktopGeometry.actionHeights.every(h=>h>=39),'Shortcut click targets must be usable');
-    assert.equal(desktopGeometry.optionRows,2,'Four classification actions must fit in a tidy two-row grid');
-    assert.ok(desktopGeometry.optionHeights.every(h=>h>=40));
+    assert.ok(desktopGeometry.actionHeights.every(h=>h>=36),'Utility chips need real accessible click targets');
+    assert.equal(desktopGeometry.optionRows,1,'Desktop table controls must form one contextual row');
+    assert.ok(desktopGeometry.optionHeights.every(h=>h>=38));
     assert.ok(desktopGeometry.overflow<=1,'Desktop layout must not overflow horizontally');
+    const headerHierarchy=await evaluate(cdp.send,sid,`(()=>{
+      const topbar=document.querySelector('.topbar'),nav=document.querySelector('#topNav'),
+        tools=document.querySelector('#ssxDirectActions'),quick=document.querySelector('#ssxMobileQuickNav'),
+        hero=document.querySelector('.hero'),sheet=document.querySelector('.sheet-head'),
+        classification=document.querySelector('#ssxViewOptions .ssx-view-actions'),
+        mode=document.querySelector('#alpineModeLabel');
+      const rect=n=>{const r=n.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height};};
+      const chips=[...tools.querySelectorAll(':scope > button, :scope > a')].map(rect);
+      const controls=[...classification.querySelectorAll('button:not([hidden])')].map(rect);
+      return {navInside:topbar.contains(nav),utilitiesInside:tools.parentElement===topbar,
+        quickInside:quick.parentElement===topbar,
+        groups:[...tools.children].map(n=>n.dataset.ssxAction||n.className),
+        header:rect(topbar),main:rect(nav),utility:rect(tools),hero:rect(hero),
+        sheet:rect(sheet),mode:rect(mode),classification:rect(classification),
+        chips,controls,utilityColor:getComputedStyle(tools).backgroundColor,
+        utilityOverflow:getComputedStyle(tools).overflowX,
+        docOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};
+    })()`);
+    console.log('SSX_R71_HEADER_HIERARCHY',JSON.stringify(headerHierarchy));
+    assert.equal(headerHierarchy.navInside,true,'Main destinations belong in the main topbar');
+    assert.equal(headerHierarchy.utilitiesInside,true,'Utility actions must live inside the header, not below it');
+    assert.equal(headerHierarchy.quickInside,true,'Mobile destinations share the same semantic header');
+    assert.ok(headerHierarchy.utility.top>=headerHierarchy.main.bottom-1,
+      'The discreet utility row must follow the primary navigation');
+    assert.ok(headerHierarchy.hero.top>=headerHierarchy.header.bottom-1,
+      'The hero must remain below the entire header');
+    assert.ok(headerHierarchy.header.height<=135,'Desktop header must remain visually compact');
+    assert.ok(headerHierarchy.chips.every(r=>r.width<180&&r.height<=38),
+      'Utility controls must be compact chips rather than full-width blocks');
+    assert.ok(headerHierarchy.controls.every(r=>r.height<=40&&r.width<210),
+      'Contextual table actions must remain restrained and readable');
+    assert.ok(headerHierarchy.docOverflow<=1);
+    const headerArtifactDir=path.join(process.cwd(),'artifacts');
+    fs.mkdirSync(headerArtifactDir,{recursive:true});
+    await evaluate(cdp.send,sid,"window.scrollTo({top:0,behavior:'instant'})");
+    await sleep(150);
+    const headerShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+    fs.writeFileSync(path.join(headerArtifactDir,'ssx-r71-desktop-header.png'),
+      Buffer.from(headerShot.data,'base64'));
+    await evaluate(cdp.send,sid,"document.querySelector('.sheet-card').scrollIntoView({block:'start',behavior:'instant'})");
+    await sleep(150);
+    const controlsShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+    fs.writeFileSync(path.join(headerArtifactDir,'ssx-r71-desktop-record-controls.png'),
+      Buffer.from(controlsShot.data,'base64'));
+
     // R70: A full-HD/ultrawide monitor must not retain the previous 1360px
     // centered island. Measure real visible Chromium geometry.
     const wideDir=path.join(process.cwd(),'artifacts');
@@ -465,7 +510,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(grouped.fakeBootButtons,false,'Do not render non-interactive placeholders');
     const interactions=await evaluate(cdp.send,sid,"(()=>{const about=document.querySelector('#aboutBtn');about.click();const opened=document.querySelector('#aboutModal').getAttribute('aria-hidden');document.querySelector('[data-close=\"aboutModal\"]').click();const direct=document.querySelector('#ssxDirectActions');const buttons=[...direct.querySelectorAll('button')];const toolsHidden=getComputedStyle(document.querySelector('#toolsGroup')).display==='none';const advanced=document.querySelector('#alpineAdvancedFilters');advanced.querySelector('summary').click();const filterOpen=advanced.open;advanced.querySelector('summary').click();return{opened,labels:buttons.map(b=>b.textContent.trim()),visible:buttons.every(b=>getComputedStyle(b).display!=='none'&&b.getBoundingClientRect().height>=36),toolsHidden,filterOpen,hasManagement:buttons.some(b=>b.dataset.ssxAction==='adminBtn')}})()");
     assert.equal(interactions.opened,'false','About modal must still open');
-    assert.deepEqual(interactions.labels,['Ajustes','Guia','Sobre os dados','Submissões','Dados','Admin']);
+    assert.deepEqual(interactions.labels,['Ajustes','Guia','Dados','Submissões','Sobre os dados','Admin']);
     assert.equal(interactions.visible,true,'All public/management actions must be accessible without More');
     assert.equal(interactions.toolsHidden,true,'The redundant overflow trigger must not appear');
     assert.equal(interactions.hasManagement,true,'Admin and management shortcuts must be direct actions');
@@ -646,12 +691,43 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.ok(mobile.viewport<=430);
     const directNav=await evaluate(cdp.send,sid,"(()=>{const quick=document.querySelector('#ssxMobileQuickNav');const direct=document.querySelector('#ssxDirectActions');const brand=document.querySelector('.brand');const menu=document.querySelector('#mobileMenuBtn');const buttons=[...direct.querySelectorAll('button')];return{quickLabels:[...quick.querySelectorAll('button')].map(b=>b.textContent),directLabels:buttons.map(b=>b.textContent),brandHidden:getComputedStyle(brand).display==='none',legacyHidden:getComputedStyle(document.querySelector('#topNav')).display==='none',hamburgerRemoved:menu===null,panelRemoved:!document.querySelector('#ssxMobileMore'),actionable:buttons.every(b=>b.getBoundingClientRect().height>=40),screenOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth}})()");
     assert.deepEqual(directNav.quickLabels,['Recordes','Riders','Comunidade','Sobre']);
-    assert.deepEqual(directNav.directLabels,['Ajustes','Guia','Sobre os dados','Submissões','Dados','Admin']);
+    assert.deepEqual(directNav.directLabels,['Ajustes','Guia','Dados','Submissões','Sobre os dados','Admin']);
     assert.equal(directNav.brandHidden,true);
     assert.equal(directNav.legacyHidden,true);
     assert.equal(directNav.hamburgerRemoved,true);
     assert.equal(directNav.panelRemoved,true);
     assert.ok(directNav.actionable&&directNav.screenOverflow<=1);
+    const compactHeader=await evaluate(cdp.send,sid,`(()=>{
+      const header=document.querySelector('.topbar'),primary=document.querySelector('#ssxMobileQuickNav'),
+        utility=document.querySelector('#ssxDirectActions');
+      const rect=n=>{const r=n.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:r.height,width:r.width};};
+      return {header:rect(header),primary:rect(primary),utility:rect(utility),
+        insideHeader:header.contains(primary)&&header.contains(utility),
+        primaryFirst:primary.compareDocumentPosition(utility)&Node.DOCUMENT_POSITION_FOLLOWING,
+        utilityOverflow:getComputedStyle(utility).overflowX,
+        scrollWidth:utility.scrollWidth,clientWidth:utility.clientWidth,
+        docOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};
+    })()`);
+    console.log('SSX_R71_MOBILE_HEADER',JSON.stringify(compactHeader));
+    assert.ok(compactHeader.insideHeader,'Both navigation tiers must be inside the topbar');
+    assert.ok(compactHeader.primaryFirst,'Public mobile destinations must come before tools');
+    assert.ok(compactHeader.utility.top>=compactHeader.primary.bottom-1);
+    assert.ok(compactHeader.utility.height<=60,'Mobile utilities must use a thin rail, not a three-row grid');
+    assert.ok(compactHeader.docOverflow<=1);
+    assert.equal(compactHeader.utilityOverflow,'auto','Mobile utilities must scroll within their own rail');
+    const reachableAdmin=await evaluate(cdp.send,sid,`(()=>{
+      const rail=document.querySelector('#ssxDirectActions');
+      const admin=rail.querySelector('[data-ssx-action=adminBtn]');
+      admin.scrollIntoView({block:'nearest',inline:'end',behavior:'instant'});
+      const a=admin.getBoundingClientRect(),r=rail.getBoundingClientRect();
+      const result={visible:a.left>=r.left-1&&a.right<=r.right+1,scrollLeft:rail.scrollLeft,
+        adminHeight:a.height,scrollWidth:rail.scrollWidth,clientWidth:rail.clientWidth};
+      rail.scrollLeft=0;
+      return result;
+    })()`);
+    assert.equal(reachableAdmin.visible,true,'Admin must remain reachable by horizontal scrolling');
+    assert.ok(reachableAdmin.adminHeight>=40);
+
     const directChecks=await evaluate(cdp.send,sid,"(()=>{document.querySelector('#ssxDirectActions [data-ssx-action=introBtn]').click();const guide=document.querySelector('#introModal').getAttribute('aria-hidden');document.querySelector('[data-close=introModal]').click();document.querySelector('#ssxDirectActions [data-ssx-action=sources]').click();const sourcesOpen=document.querySelector('#alpineSources').open;const filtersOpen=document.querySelector('#alpineAdvancedFilters').open;return {guide,sourcesOpen,filtersOpen}})()");
     assert.equal(directChecks.guide,'false','Guide must open directly from the permanent navigation');
     assert.equal(directChecks.sourcesOpen,true,'Sources should be reached directly');
