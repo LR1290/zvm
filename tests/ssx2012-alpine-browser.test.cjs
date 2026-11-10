@@ -154,6 +154,11 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     const specials=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#ssxSpecialArchive');const tabs=[...root?.querySelectorAll('[data-ssx-special-group]')||[]];return{mounted:!!root,snapshot:root?.dataset.snapshot,authority:root?.dataset.ssxArchiveSource,records:Number(root?.dataset.records),tabs:tabs.map(b=>({key:b.dataset.ssxSpecialGroup,text:b.textContent.trim()})),link:document.querySelector('#ssxDirectActions a[href=\"#ssxSpecialArchive\"]')?.textContent,initial:root.querySelector('#ssxSpecialResults .ssx-special-record')?.querySelector('.ssx-special-score')?.textContent,mainCount:document.querySelectorAll('#ssxSheetRegions button').length,mainScore:document.querySelector('.ssx-region-detail .ssx-region-score')?.textContent,progress:document.querySelector('#renderProgress')?.hidden}})()");
     console.log('SSX_SPECIAL_UI_AUDIT',JSON.stringify(specials));
     assert.equal(specials.mounted,true,'Historical category section must mount in the canonical UI');
+    const archivePlacement=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#ssxSpecialArchive');const credits=document.querySelector('#ssxCredits');return {insideClosedCredits:credits.contains(root),parentTag:root.parentElement.tagName,display:getComputedStyle(root).display,accessible:!root.closest('details:not([open])')}})()");
+    assert.equal(archivePlacement.insideClosedCredits,false,'Historical records must not be nested in a collapsed credits panel');
+    assert.equal(archivePlacement.accessible,true,'Archive must be directly accessible from the public page');
+    assert.notEqual(archivePlacement.display,'none');
+
     assert.equal(specials.snapshot,'2026-08-22','Archived source must show its real snapshot date');
     assert.equal(specials.authority,'google-sheets-archive');
     assert.equal(specials.records,2205,'Every special Sheets record, including 137 Survive special rows, must be present');
