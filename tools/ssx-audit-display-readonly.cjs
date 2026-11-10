@@ -120,5 +120,5 @@ function audit(snapshot){
       riderNetScoresUsed:0,liveSheetCoverageVerified:false}
   };
 }
-if(require.main===module)process.stdout.write('SSX_R78_SOURCE_AUDIT '+JSON.stringify(audit(readPinnedSnapshot()))+'\n');
+if(require.main===module)process.stdout.write(JSON.stringify(audit(readPinnedSnapshot()),null,2)+'\n');
 module.exports={readPinnedSnapshot,audit,strictName,approximateKey};
