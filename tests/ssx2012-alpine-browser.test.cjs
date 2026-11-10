@@ -106,6 +106,32 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(firstPaint.loader,false,'First-paint shell should be removed only when ready');
     assert.equal(firstPaint.headline,'Conquiste a montanha.');
     const desktop=await evaluate(cdp.send,sid,"(()=>{const sources=document.querySelector('#alpineSources');return {cards:document.querySelectorAll('.alpine-mode-card').length,sourceClosed:!!sources&&!sources.open,advanced:!!document.querySelector('#alpineAdvancedFilters #categoryField'),rows:document.querySelectorAll('#sheet tr.rank-row').length,admin:!!document.querySelector('#dataBtn'),opaque:globalThis.origin==='null'};})()");
+    // R69: Chromium must validate actual control geometry, not merely labels.
+    const desktopGeometry=await evaluate(cdp.send,sid,`(()=>{
+      const direct=document.querySelector('#ssxDirectActions');
+      const shortcuts=[...direct.children].filter(el=>el.matches('button,a')&&getComputedStyle(el).display!=='none');
+      const options=[...document.querySelectorAll('#ssxViewOptions .ssx-view-actions > button:not([hidden])')]
+        .filter(el=>getComputedStyle(el).display!=='none');
+      const rects=shortcuts.map(el=>el.getBoundingClientRect());
+      const controls=options.map(el=>el.getBoundingClientRect());
+      const overlaps=rects.some((r,i)=>rects.slice(i+1).some(x=>
+        r.left<x.right-1&&r.right>x.left+1&&r.top<x.bottom-1&&r.bottom>x.top+1));
+      return {actions:shortcuts.length,overlaps,
+        actionRows:new Set(rects.map(x=>Math.round(x.top))).size,
+        actionHeights:rects.map(x=>Math.round(x.height)),
+        optionRows:new Set(controls.map(x=>Math.round(x.top))).size,
+        optionHeights:controls.map(x=>Math.round(x.height)),
+        viewport:document.documentElement.clientWidth,
+        overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};
+    })()`);
+    console.log('SSX_R69_DESKTOP_CONTROLS',JSON.stringify(desktopGeometry));
+    assert.ok(desktopGeometry.actions>=6,'Desktop shortcut row must expose direct actions');
+    assert.equal(desktopGeometry.actionRows,1,'Desktop shortcuts must align in one orderly row');
+    assert.equal(desktopGeometry.overlaps,false,'Desktop shortcuts must not collide');
+    assert.ok(desktopGeometry.actionHeights.every(h=>h>=39),'Shortcut click targets must be usable');
+    assert.equal(desktopGeometry.optionRows,2,'Four classification actions must fit in a tidy two-row grid');
+    assert.ok(desktopGeometry.optionHeights.every(h=>h>=40));
+    assert.ok(desktopGeometry.overflow<=1,'Desktop layout must not overflow horizontally');
     assert.equal(desktop.cards,4);
     assert.equal(desktop.sourceClosed,true);
     assert.equal(desktop.advanced,true);
@@ -438,6 +464,23 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(mobileRegional.shown,'grid','Mobile must render real region and mountain hierarchy');
     assert.equal(mobileRegional.redLight,'Red Light');
     assert.ok(mobileRegional.runs>0&&mobileRegional.flags>0,'Real flags and record rows must remain accessible');
+    // Confirm the mobile image paints: an img element with src/alt is not enough.
+    await evaluate(cdp.send,sid,"document.querySelector('.ssx-region-rider img.rider-flag')?.scrollIntoView({block:'center',behavior:'instant'})");
+    await sleep(220);
+    const mobileFlag=await evaluate(cdp.send,sid,`(()=>{
+      const image=document.querySelector('.ssx-region-rider img.rider-flag');
+      const style=getComputedStyle(image),r=image.getBoundingClientRect();
+      return {source:image.getAttribute('src'),naturalWidth:image.naturalWidth,
+        width:r.width,height:r.height,display:style.display,visibility:style.visibility,
+        opacity:Number(style.opacity),flagPreference:typeof prefs==='object'?prefs.showFlags:null};
+    })()`);
+    console.log('SSX_R69_MOBILE_RANKING_FLAG',JSON.stringify(mobileFlag));
+    assert.ok(mobileFlag.naturalWidth>0,'A real flag must load, not merely exist in the DOM');
+    assert.ok(mobileFlag.width>=18&&mobileFlag.height>=12,'Mobile flags must be visibly sized');
+    assert.notEqual(mobileFlag.display,'none');
+    assert.equal(mobileFlag.visibility,'visible');
+    assert.ok(mobileFlag.opacity>.9);
+
     assert.match(mobileRegional.art,/\/hobbies\/ssx\/media\/v37\//,'Region needs pinned game artwork');
     assert.equal(mobileRegional.navOverflow,false,'Regional mobile layout must not overflow screen');
     const resetMobile=await evaluate(cdp.send,sid,"(()=>({height:Math.round(document.querySelector('#ssxResetFilters').getBoundingClientRect().height),label:document.querySelector('#ssxResetFilters').textContent,contained:document.querySelector('.sheet-card #toolbar').contains(document.querySelector('#ssxResetFilters')),overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth}))()");
@@ -694,6 +737,30 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
         assert.equal(historicLeaderMobile.mode,'2');
         assert.equal(historicLeaderMobile.platform,'Android');
         assert.equal(historicLeaderMobile.podiumCount,3);
+        // Only source-proven rider flags are present. Verify actual pixel loading
+        // on phone widths, in both archived leader and podium cards.
+        await evaluate(cdp.send,sid,"document.querySelector('#ssxSpecialPodium').scrollIntoView({block:'center',behavior:'instant'})");
+        await sleep(260);
+        const archiveMobileFlag=await evaluate(cdp.send,sid,`(()=>{
+          const items=[...document.querySelectorAll('#ssxSpecialPodium img.ssx-special-rider-flag, #ssxSpecialResults .ssx-special-leader img.ssx-special-rider-flag')];
+          return items.map(img=>{
+            const r=img.getBoundingClientRect(),cs=getComputedStyle(img);
+            return {alt:img.alt,width:r.width,height:r.height,naturalWidth:img.naturalWidth,
+              complete:img.complete,display:cs.display,visibility:cs.visibility,
+              opacity:Number(cs.opacity),source:img.getAttribute('src')};
+          });
+        })()`);
+        console.log('SSX_R69_ARCHIVE_MOBILE_FLAGS_'+width,JSON.stringify(archiveMobileFlag.slice(0,8)));
+        assert.ok(archiveMobileFlag.length>=3,'The selected Android archive should have real source-mapped flags');
+        for(const flag of archiveMobileFlag){
+          assert.ok(flag.width>=18&&flag.height>=12,'Flag needs real visible dimensions');
+          assert.equal(flag.display,'block');
+          assert.equal(flag.visibility,'visible');
+          assert.ok(flag.opacity>.9);
+          assert.ok(flag.naturalWidth>0&&flag.complete,'Flags must finish decoding even in scrollable mobile lists');
+          assert.match(flag.source,/^blob:/,'Original v36 flag Blob must remain the only flag source');
+        }
+
         assert.equal(historicLeaderMobile.leaders,12);
         assert.equal(historicLeaderMobile.view,'true');
         assert.equal(historicLeaderMobile.cardOverflow,false,'Historical leader/podium cards must fit '+width+'px');
