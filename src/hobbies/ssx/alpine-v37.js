@@ -320,14 +320,14 @@
     const browser=$('ssxRegionBrowser');
     if(!browser)return;
     const query=normalizedRegionText(regionQuery);
-    let shown=0;
+    let shown=0,officialShown=0,devShown=0;
     for(const region of browser.querySelectorAll('.ssx-region-group,.ssx-dev-group')){
       let matches=0;
       if(region.classList.contains('ssx-dev-group')){
         for(const track of region.querySelectorAll('.ssx-dev-track-choice')){
           const match=!query||normalizedRegionText(track.textContent).includes(query);
           track.hidden=!match;
-          if(match){matches++;shown++;}
+          if(match){matches++;shown++;devShown++;}
         }
         region.hidden=matches===0;
         region.open=query?matches>0:openedRegions.has('DEV');
@@ -338,7 +338,7 @@
         for(const track of mountain.querySelectorAll('.ssx-track-choice')){
           const match=!query||normalizedRegionText(track.dataset.regionTrack).includes(query);
           track.hidden=!match;
-          if(match){mountainCount++;matches++;shown++;}
+          if(match){mountainCount++;matches++;shown++;officialShown++;}
         }
         mountain.hidden=mountainCount===0;
       }
@@ -346,7 +346,13 @@
       region.open=query?matches>0:openedRegions.has(region.dataset.regionName);
     }
     const stats=$('ssxRegionMatches');
-    if(stats)stats.textContent=shown+' '+(regionI18n[language()]||regionI18n.en)[2];
+    if(stats){
+      const caption=(regionI18n[language()]||regionI18n.en)[2];
+      const archiveLabel=({pt:'DEV arquivadas',en:'archived DEV',de:'DEV im Archiv',
+        es:'DEV archivadas',nl:'DEV in archief',fr:'DEV archivées'})[language()]||'archived DEV';
+      stats.textContent=officialShown+' '+caption+
+        (devShown?' · '+devShown+' '+archiveLabel:'');
+    }
     const empty=$('ssxRegionNoMatches');
     if(empty)empty.hidden=shown>0;
     const clear=$('ssxRegionSearchClear');
