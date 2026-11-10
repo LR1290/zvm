@@ -1085,7 +1085,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     const light=await evaluate(cdp.send,sid,"(()=>{const theme=document.querySelector('#theme');theme.value='light';theme.dispatchEvent(new Event('change',{bubbles:true}));return {selected:theme.value,applied:document.documentElement.getAttribute('data-theme'),bg:getComputedStyle(document.body).backgroundColor,card:getComputedStyle(document.querySelector('.alpine-card')).backgroundColor};})()");
     assert.equal(light.selected,'light');
     assert.equal(light.applied,'light');
-    assert.equal(light.bg,'rgb(237, 245, 250)');
+    assert.equal(light.bg,'rgb(238, 246, 250)','The rebuilt v38 light-theme canvas must remain readable');
     const lightRegion=await evaluate(cdp.send,sid,"(()=>({display:getComputedStyle(document.querySelector('#ssxRegionBrowser')).display,background:getComputedStyle(document.querySelector('.ssx-region-detail')).backgroundColor}))()");
     assert.equal(lightRegion.display,'grid');
     await evaluate(cdp.send,sid,"document.querySelector('.sheet-card').scrollIntoView({block:'start'})");
