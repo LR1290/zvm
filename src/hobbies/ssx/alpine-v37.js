@@ -402,6 +402,26 @@
     const browser=text('section','','ssx-region-browser');
     browser.id='ssxRegionBrowser';
     browser.setAttribute('aria-label','Regiões, montanhas e pistas');
+    // Arrow keys navigate within the expanded banner, leaving Enter/Space to
+    // select the track normally and preserving the original results source.
+    browser.addEventListener('keydown',event=>{
+      const current=event.target.closest('button.ssx-track-choice');
+      if(!current||!['ArrowRight','ArrowLeft','ArrowDown','ArrowUp','Home','End'].includes(event.key))return;
+      const group=current.closest('details.ssx-region-group');
+      if(!group?.open)return;
+      const choices=[...group.querySelectorAll('button.ssx-track-choice:not([hidden])')]
+        .filter(button=>!button.closest('.ssx-mountain-section')?.hidden);
+      const i=choices.indexOf(current);
+      if(i<0)return;
+      event.preventDefault();
+      const next=event.key==='Home'?0:event.key==='End'?choices.length-1:
+        Math.max(0,Math.min(choices.length-1,i+(
+          event.key==='ArrowRight'||event.key==='ArrowDown'?1:-1)));
+      const target=choices[next];
+      target.focus({preventScroll:true});
+      target.scrollIntoView({block:'nearest',inline:'nearest',
+        behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
+    });
     // An inline toolbar cannot remain keyboard-inaccessible in a collapsed
     // region. When the selected banner closes, park it in the safe fallback;
     // when reopened, return it to the original Share action row.
@@ -775,6 +795,16 @@
     if(focusedMode)rail.querySelector('[data-ssx-sheet-mode="'+focusedMode+'"]')
       ?.focus({preventScroll:true});
   }
+  // Keep the selected mode visible inside its own horizontal rail without
+  // scrolling the entire page or displacing the active scorecard.
+  function revealSelectedDiscipline(rail){
+    if(!rail||rail.hidden||!rail.getClientRects().length)return;
+    const button=rail.querySelector('[aria-pressed="true"]');
+    if(!button||rail.scrollWidth<=rail.clientWidth+1)return;
+    const view=rail.getBoundingClientRect(),item=button.getBoundingClientRect();
+    if(item.right>view.right-5)rail.scrollLeft+=item.right-view.right+10;
+    else if(item.left<view.left+5)rail.scrollLeft+=item.left-view.left-10;
+  }
   function placeSheetModeFilter(){
     const rail=$('ssxSheetModeFilter');
     if(!rail)return;
@@ -796,6 +826,7 @@
       if(focusedMode)rail.querySelector('[data-ssx-sheet-mode="'+focusedMode+'"]')
         ?.focus({preventScroll:true});
     }
+    revealSelectedDiscipline(rail);
   }
   function syncSheetModeFilter(group,copy){
     const rail=$('ssxSheetModeFilter');
@@ -824,6 +855,7 @@
       button.setAttribute('aria-pressed',String(visible&&state.mode===mode));
       button.setAttribute('tabindex',visible?'0':'-1');
     }
+    revealSelectedDiscipline(rail);
   }
 
 
