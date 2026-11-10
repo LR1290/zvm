@@ -48,10 +48,19 @@
         display=legacy[1]+'.'+legacy[2].padEnd(2,'0')+' '+legacy[3];
         status='review-inferred-separators';
       }else{
+        // Other archived Survive rows use a space or full stop as the
+        // thousands separator, then a comma OR dot before two decimals:
+        // "225 229,45m" / "206.889.98m". This is a display inference
+        // with provenance, never a verified source correction.
+        const historical=/^(\d{1,3}(?:[ .]\d{3})+)[,.](\d{2})\s*(m|km)$/i.exec(raw);
+        if(historical){
+          display=commaGroups(historical[1].replace(/[ .]/g,''))+'.'+historical[2]+' '+historical[3];
+          status='review-inferred-separators';
+        }
         const clean=/^(\d{1,15})(?:\.(\d{1,3}))?\s*(m|km)$/i.exec(raw);
         const grouped=/^(\d{1,3}(?:,\d{3})+)(?:\.(\d{1,3}))?\s*(m|km)$/i.exec(raw);
         const m=clean||grouped;
-        if(m)display=(clean?commaGroups(m[1]):m[1])+(m[2]?'.'+m[2]:'')+' '+m[3];
+        if(display===null&&m)display=(clean?commaGroups(m[1]):m[1])+(m[2]?'.'+m[2]:'')+' '+m[3];
       }
     }
     if(display===null)return {...base,status:'review-unparsed'};
