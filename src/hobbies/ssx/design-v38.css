@@ -655,3 +655,16 @@ html[data-theme="light"] body.ssx-alpine-v38 .ssx-identity-verification-note{
   color:#496e81;
   border-bottom-color:#cce1eb;
 }
+
+/* R78 visual QA: distances must never wrap their units onto a second line.
+   Reserve a real column for the score instead of squeezing evidence/buttons. */
+body.ssx-alpine-v37.ssx-alpine-v38 .ssx-special-score{
+  white-space:nowrap;
+  font-size:clamp(.81rem,.94vw,1.01rem);
+}
+@media(min-width:1025px){
+  body.ssx-alpine-v37.ssx-alpine-v38 .ssx-special-record:not(.ssx-special-leader){
+    grid-template-columns:30px minmax(0,1.1fr) minmax(125px,.65fr) auto;
+    gap:8px;
+  }
+}
