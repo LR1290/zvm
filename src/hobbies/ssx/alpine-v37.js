@@ -381,6 +381,10 @@
     browser.dataset.ssxSearchPasses=String(1+Number(browser.dataset.ssxSearchPasses||0));
     browser.dataset.ssxSearchMs=String(Math.round((performance.now()-start)*100)/100);
     resetControlState();
+    // applyRegionSearch can collapse a region programmatically after a
+    // score-only refresh. Keep the canonical mode rail out of closed details,
+    // rather than waiting for the asynchronous native <details> toggle event.
+    placeSheetModeFilter();
   }
   const regionImages=['race.jpg','hero.jpg','survive.jpg','trick.jpg','riders.jpg'];
   const regionIcons={Africa:'🌍',Alaska:'❄️',Alps:'🏔️',Antarctica:'🧊',Himalayas:'🏔️',Japan:'🌸','Mount Eddie':'🏂','New Zealand':'🌊',Patagonia:'🧗',Rockies:'🏔️',Siberia:'❄️',Training:'🎿',DEV:'🧪'};
