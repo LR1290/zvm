@@ -65,6 +65,8 @@ test('published v37 and preview are byte-identical; archival v36 remains byte-ex
   const baseline=original.body.toString('utf8');
   const view=enhanced.body.toString('utf8');
   assert.match(view,/id="ssx-alpine-v37-style"/);
+  assert.match(view,/id="ssx-v38-design"/);
+  assert.match(view,/ssx-alpine-v38/);
   assert.match(view,/id="ssx-alpine-v37-script"/);
   assert.match(view,/id="ssx-special-categories-v1-script"/);
   assert.match(view,/id="ssx-special-leaders-core-script"/);
@@ -76,6 +78,7 @@ test('published v37 and preview are byte-identical; archival v36 remains byte-ex
     .replace(/<style id="ssx-first-paint-style">[\s\S]*?<\/style>/,'')
     .replace(/<script id="ssx-boot-fallback">[\s\S]*?<\/script>/,'')
     .replace(/<style id="ssx-alpine-v37-style">[\s\S]*?<\/style>/,'')
+    .replace(/<style id="ssx-v38-design">[\s\S]*?<\/style>/,'')
     .replace(/<script id="ssx-alpine-v37-script">[\s\S]*?<\/script>/,'')
     .replace(/<script id="ssx-special-categories-v1-script">[\s\S]*?<\/script>/,'')
     .replace(/<script id="ssx-special-leaders-core-script">[\s\S]*?<\/script>/,'')
@@ -204,9 +207,15 @@ test('public SSX UI has neutral brand/title and no Edition release promotion',()
   assert.match(js,/installMobileNavigation/);
   assert.match(js,/ssxDirectActions/);
   assert.match(js,/ssx-region-detail/);
-  assert.match(js,/intro\.append\(modeFilter\)/,
-    'The mode switch must stay accessible above a closed region, not inside hidden Top 16');
-  assert.match(js,/cards\.before\(modeFilter\)/);
+  assert.match(js,/toolbar\.after\(rail\)/,
+    'The persistent five-mode selector must be mounted outside the collapsible regional gallery');
+  assert.match(js,/allowed=\['board','wings','trick','survive','special'\]/,
+    'All five authentic modes must remain accessible from the results');
+  const design=fs.readFileSync(path.join(dir,'design-v38.css'),'utf8');
+  assert.match(design,/ssx-next-reveal/);
+  assert.match(design,/prefers-reduced-motion/);
+  assert.doesNotMatch(design,/!important/i);
+  assert.doesNotMatch(design,/<\/style/i);
   assert.match(js,/function renderTrackLeaderCards\(root,copy\)/);
   assert.match(js,/function showTrackLeaders\(\)/);
   assert.match(js,/ssxLeadersToggle/);

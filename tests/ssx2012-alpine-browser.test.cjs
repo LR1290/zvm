@@ -401,6 +401,66 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(galleryGeometry.inline,true,'Real Top 16 must be a descendant of the chosen region');
     assert.equal(galleryGeometry.siblingDetail,false,'Remove the independent right-hand ranking pane');
     assert.ok(galleryGeometry.overflow<=1);
+    // R73: a new track selection must update only its local ranking, rather
+    // than destroying and rebuilding every regional banner and all mountains.
+    const switchedInPlace=await evaluate(cdp.send,sid,`(()=>{
+      const root=document.querySelector('#ssxRegionBrowser');
+      const africa=root.querySelector('.ssx-region-group[data-region-name="Africa"]');
+      const africaId=africa;
+      const countBefore=root.querySelectorAll('.ssx-region-group').length;
+      const other=[...africa.querySelectorAll('.ssx-track-choice')]
+        .find(button=>button.textContent.includes('Corkscrew'));
+      other.click();
+      const after=root.querySelector('.ssx-region-group[data-region-name="Africa"]');
+      const detail=after.querySelector('.ssx-region-detail');
+      const changed={sameRoot:after===africaId,title:detail?.querySelector('h3')?.textContent,
+        count:root.querySelectorAll('.ssx-region-group').length,
+        rankCount:detail?.querySelectorAll('.ssx-region-rank').length,
+        updateMs:Number(document.body.dataset.ssxLastTrackRenderMs||NaN),
+        unrelatedBannersRetained:countBefore===root.querySelectorAll('.ssx-region-group').length};
+      const original=[...after.querySelectorAll('.ssx-track-choice')]
+        .find(button=>button.textContent.includes('Red Light'));
+      original.click();
+      changed.restored=after.querySelector('.ssx-region-detail h3')?.textContent;
+      return changed;
+    })()`);
+    console.log('SSX_R73_INCREMENTAL_TRACK',JSON.stringify(switchedInPlace));
+    assert.equal(switchedInPlace.sameRoot,true,'Track changes must retain the mounted region banners');
+    assert.equal(switchedInPlace.unrelatedBannersRetained,true);
+    assert.equal(switchedInPlace.title,'Corkscrew');
+    assert.equal(switchedInPlace.restored,'Red Light');
+    assert.equal(switchedInPlace.rankCount,16);
+    assert.ok(Number.isFinite(switchedInPlace.updateMs)&&switchedInPlace.updateMs<350,
+      'Track-only interaction must stay responsive without a full directory rebuild');
+    const disciplineBar=await evaluate(cdp.send,sid,`(()=>{
+      const bar=document.querySelector('#ssxSheetModeFilter'),buttons=[...bar.querySelectorAll('button:not([hidden])')];
+      const r=bar.getBoundingClientRect();
+      return {present:!bar.hidden,visible:getComputedStyle(bar).display!=='none',
+        inSheet:bar.parentElement?.classList.contains('sheet-card'),
+        modes:buttons.map(b=>b.dataset.ssxSheetMode),
+        top:r.top,bottom:r.bottom,bannerTop:document.querySelector('#ssxRegionBrowser').getBoundingClientRect().top,
+        widths:buttons.map(b=>Math.round(b.getBoundingClientRect().width)),
+        animated:getComputedStyle(document.querySelector('.ssx-region-group .ssx-track-choice')).transitionDuration,
+        design:document.body.classList.contains('ssx-alpine-v38'),
+        designStyle:!!document.querySelector('#ssx-v38-design')};
+    })()`);
+    console.log('SSX_R73_DESIGN_SYSTEM',JSON.stringify(disciplineBar));
+    assert.equal(disciplineBar.design,true);
+    assert.equal(disciplineBar.designStyle,true);
+    assert.equal(disciplineBar.inSheet,true);
+    assert.equal(disciplineBar.visible,true);
+    assert.equal(disciplineBar.present,true);
+    assert.ok(disciplineBar.bottom<=disciplineBar.bannerTop,'Five-mode bar must precede banners');
+    assert.deepEqual(disciplineBar.modes,['board','wings','trick','survive','special']);
+    assert.ok(disciplineBar.widths.every(w=>w>=80),'All five controls must be usable on desktop');
+    assert.notEqual(disciplineBar.animated,'0s','Track interactions need restrained transitions');
+    await evaluate(cdp.send,sid,"document.querySelector('#ssxSheetModeFilter').scrollIntoView({block:'start',behavior:'instant'})");
+    await sleep(120);
+    const modeShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+    const v38Dir=path.join(process.cwd(),'artifacts');
+    fs.mkdirSync(v38Dir,{recursive:true});
+    fs.writeFileSync(path.join(v38Dir,'ssx-r73-desktop-five-modes.png'),Buffer.from(modeShot.data,'base64'));
+
     const r72Dir=path.join(process.cwd(),'artifacts');
     fs.mkdirSync(r72Dir,{recursive:true});
     await evaluate(cdp.send,sid,"document.querySelector('#ssxRegionBrowser').scrollIntoView({block:'start',behavior:'instant'})");
@@ -746,14 +806,41 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.ok(resetMobile.overflow<=1);
 
     const modeSheet=await evaluate(cdp.send,sid,"(()=>{const detail=document.querySelector('.ssx-region-detail');const bar=document.querySelector('#ssxSheetModeFilter');const header=detail.querySelector('.ssx-region-detail-header');const rank=detail.querySelector('.ssx-region-ranking');const buttons=[...bar.querySelectorAll('button:not([hidden])')];return {inIntro:bar.parentElement?.classList.contains('ssx-region-intro'),barDisplay:getComputedStyle(bar).display,beforeScores:bar.getBoundingClientRect().top<rank.getBoundingClientRect().top,independentOfClosedDetail:!detail.contains(bar),labels:buttons.map(b=>b.querySelector('.ssx-sheet-mode-name')?.textContent),active:bar.querySelector('[aria-pressed=true]')?.dataset.ssxSheetMode,hiddenUpper:getComputedStyle(document.querySelector('#alpineSubmodes')).display==='none',controlsHeight:buttons.map(b=>Math.round(b.getBoundingClientRect().height)),overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth}})()");
-    assert.equal(modeSheet.inIntro,true,'Mode selector belongs to the discoverable gallery header');
-    assert.equal(modeSheet.barDisplay,'grid','Board/Wingsuit must remain visible by scores');
+    assert.equal(modeSheet.inIntro,false,'Five disciplines belong to the persistent results bar');
+    assert.equal(modeSheet.barDisplay,'flex','The accessible five-mode rail must show above regional results');
     assert.equal(modeSheet.independentOfClosedDetail,true,'Mode selector stays accessible with all banners closed');
     assert.equal(modeSheet.beforeScores,true,'Mode selector must precede all selected-track scorecards');
-    assert.deepEqual(modeSheet.labels,['Board','Wingsuit']);
+    assert.deepEqual(modeSheet.labels,['Board','Wingsuit','Trick It!','Survive It!','Survive It! · Sem equipamentos']);
+    assert.equal(await evaluate(cdp.send,sid,
+      "document.querySelector('#ssxSheetModeFilter').parentElement.classList.contains('sheet-card')"),true);
     assert.equal(modeSheet.active,'wings');
     assert.equal(modeSheet.hiddenUpper,true,'No duplicated submode selectors in the hero');
     assert.ok(modeSheet.controlsHeight.every(h=>h>=44)&&modeSheet.overflow<=1);
+    const fullModeRow=await evaluate(cdp.send,sid,`(()=>{
+      const el=document.querySelector('#ssxSheetModeFilter');
+      const r=el.getBoundingClientRect(),buttons=[...el.querySelectorAll('button')];
+      return{width:r.width,viewport:document.documentElement.clientWidth,
+        scrollWidth:el.scrollWidth,clientWidth:el.clientWidth,
+        labels:buttons.map(b=>b.textContent.trim()),
+        heights:buttons.map(b=>Math.round(b.getBoundingClientRect().height)),
+        viewportOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,
+        visibleOnArrival:buttons.filter(b=>{const r=b.getBoundingClientRect(),w=el.getBoundingClientRect();return r.left>=w.left-1&&r.right<=w.right+1;}).length,
+        itemWidths:buttons.map(b=>Math.round(b.getBoundingClientRect().width))};
+    })()`);
+    console.log('SSX_R73_MOBILE_MODE_ROW',JSON.stringify(fullModeRow));
+    assert.equal(fullModeRow.labels.length,5);
+    assert.ok(fullModeRow.visibleOnArrival>=2,'At least two disciplines must be simultaneously visible on a 390px mobile screen');
+    assert.ok(fullModeRow.itemWidths.every(w=>w<=175),'Compact mode buttons must not expand to the full phone width');
+    assert.ok(fullModeRow.heights.every(h=>h>=44));
+    assert.ok(fullModeRow.viewportOverflow<=1);
+    await evaluate(cdp.send,sid,"document.querySelector('#ssxSheetModeFilter').scrollIntoView({block:'start',behavior:'instant'})");
+    await sleep(90);
+    const mobileModeShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+    const mobileModeDir=path.join(process.cwd(),'artifacts');
+    fs.mkdirSync(mobileModeDir,{recursive:true});
+    fs.writeFileSync(path.join(mobileModeDir,'ssx-r73-mobile-five-modes.png'),
+      Buffer.from(mobileModeShot.data,'base64'));
+
     const switchBoard=await evaluate(cdp.send,sid,"(()=>{document.querySelector('#ssxSheetModeFilter [data-ssx-sheet-mode=board]').click();return{mode:document.body.dataset.ssxMode,active:document.querySelector('#ssxSheetModeFilter [aria-pressed=true]')?.dataset.ssxSheetMode,hero:document.querySelector('#heroTitle')?.textContent,catalog:document.querySelectorAll('#ssxSheetRegions button').length}})()");
     assert.equal(switchBoard.mode,'board');
     assert.equal(switchBoard.active,'board');
@@ -769,9 +856,9 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(wingsScore.active,'wings');
     assert.equal(wingsScore.score,'01:11.92');
     const otherModes=await evaluate(cdp.send,sid,"(()=>{document.querySelector('[data-alpine-group=survive]').click();const surviving=[...document.querySelectorAll('#ssxSheetModeFilter button:not([hidden])')].map(b=>b.dataset.ssxSheetMode);document.querySelector('#ssxSheetModeFilter [data-ssx-sheet-mode=special]').click();const special=document.body.dataset.ssxMode;document.querySelector('[data-alpine-group=trick]').click();const trickHidden=document.querySelector('#ssxSheetModeFilter').hidden;document.querySelector('[data-alpine-group=race]').click();return {surviving,special,trickHidden,restored:document.body.dataset.ssxMode,active:document.querySelector('#ssxSheetModeFilter [aria-pressed=true]')?.dataset.ssxSheetMode}})()");
-    assert.deepEqual(otherModes.surviving,['survive','special']);
+    assert.deepEqual(otherModes.surviving,['board','wings','trick','survive','special']);
     assert.equal(otherModes.special,'special');
-    assert.equal(otherModes.trickHidden,true,'Do not show irrelevant Board/Wings controls in Trick It!');
+    assert.equal(otherModes.trickHidden,false,'All five modes must remain discoverable in Trick It!');
     assert.equal(otherModes.restored,'wings');
     assert.equal(otherModes.active,'wings');
 
@@ -935,7 +1022,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     await evaluate(cdp.send,sid,"document.querySelector('#ssxRegionsToggle').click()");
     await sleep(180);
     assert.equal(await evaluate(cdp.send,sid,"getComputedStyle(document.querySelector('#ssxRegionBrowser')).display"),'grid','Regions returns to the approved mountain browsing panel');
-    assert.equal(await evaluate(cdp.send,sid,"document.querySelector('#ssxSheetModeFilter').parentElement.classList.contains('ssx-region-intro')"),true);
+    assert.equal(await evaluate(cdp.send,sid,"document.querySelector('#ssxSheetModeFilter').parentElement.classList.contains('sheet-card')"),true);
 
     const detail=await evaluate(cdp.send,sid,"(()=>{const track=document.querySelector('#track');track.value='0';track.dispatchEvent(new Event('change',{bubbles:true}));return {track:track.value};})()");
     assert.equal(detail.track,'0','Red Light should exist as original track selector');
@@ -1002,7 +1089,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     const light=await evaluate(cdp.send,sid,"(()=>{const theme=document.querySelector('#theme');theme.value='light';theme.dispatchEvent(new Event('change',{bubbles:true}));return {selected:theme.value,applied:document.documentElement.getAttribute('data-theme'),bg:getComputedStyle(document.body).backgroundColor,card:getComputedStyle(document.querySelector('.alpine-card')).backgroundColor};})()");
     assert.equal(light.selected,'light');
     assert.equal(light.applied,'light');
-    assert.equal(light.bg,'rgb(237, 245, 250)');
+    assert.equal(light.bg,'rgb(238, 246, 250)','The rebuilt v38 light-theme canvas must remain readable');
     const lightRegion=await evaluate(cdp.send,sid,"(()=>({display:getComputedStyle(document.querySelector('#ssxRegionBrowser')).display,background:getComputedStyle(document.querySelector('.ssx-region-detail')).backgroundColor}))()");
     assert.equal(lightRegion.display,'grid');
     await evaluate(cdp.send,sid,"document.querySelector('.sheet-card').scrollIntoView({block:'start'})");
@@ -1018,7 +1105,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
       assert.equal(measured.columns,columns,'Modal card columns at '+width+'px');
       assert.ok(measured.sheetWidth<=measured.viewport+1,'Result panel must not overflow viewport at '+width+'px');
       const responsiveMode=await evaluate(cdp.send,sid,"(()=>({bar:getComputedStyle(document.querySelector('#ssxSheetModeFilter')).display,top:getComputedStyle(document.querySelector('#alpineSubmodes')).display,screenOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,controls:[...document.querySelectorAll('#ssxSheetModeFilter button:not([hidden])')].map(el=>Math.round(el.getBoundingClientRect().width))}))()");
-      assert.equal(responsiveMode.bar,width<=900?'grid':'none','Mobile sheet controls must respect breakpoint at '+width+'px');
+      assert.equal(responsiveMode.bar,width<=1100?'flex':'grid','Persistent five-mode navigation must stay visible at '+width+'px');
       assert.equal(responsiveMode.top,width<=900?'none':'flex','Original large-screen submodes must remain available at '+width+'px');
       assert.ok(responsiveMode.screenOverflow<=1,'No horizontal overflow at '+width+'px');
       const regionalGrid=await evaluate(cdp.send,sid,

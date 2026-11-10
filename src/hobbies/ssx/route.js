@@ -110,10 +110,13 @@ function loadBundle() {
 function loadV37Preview() {
   if (v37Preview) return v37Preview;
   const css = fs.readFileSync(path.join(__dirname, 'alpine-v37.css'), 'utf8');
+  // V38 presentation is a standalone, audited design system. Keep the
+  // original rules solely as compatibility for unmodified archived controls.
+  const design = fs.readFileSync(path.join(__dirname, 'design-v38.css'), 'utf8');
   const js = fs.readFileSync(path.join(__dirname, 'alpine-v37.js'), 'utf8');
   const specialJs = fs.readFileSync(path.join(__dirname, 'special-categories-v1.js'), 'utf8');
   const specialLeaderJs = fs.readFileSync(path.join(__dirname, 'special-leaders-core.js'), 'utf8');
-  if (/<\/style/i.test(css) || /<\/script/i.test(js) || /<\/script/i.test(specialJs) || /<\/script/i.test(specialLeaderJs)) {
+  if (/<\/style/i.test(css) || /<\/style/i.test(design) || /<\/script/i.test(js) || /<\/script/i.test(specialJs) || /<\/script/i.test(specialLeaderJs)) {
     throw new Error('SSX_V37_UNSAFE_INLINE_ASSET');
   }
   const original = content.toString('utf8');
@@ -137,7 +140,7 @@ html:not([data-ssx-boot="ready"]):not([data-ssx-boot="fallback"]) body{visibilit
     throw new Error('SSX_V37_DOCUMENT_ANCHOR_MISSING');
   }
   const updated = original
-    .replace(/<\/head\s*>/i, '<style id="ssx-first-paint-style">\n' + firstPaintStyle + '\n</style>' + bootGuard + '<style id="ssx-alpine-v37-style">\n' + css + '\n</style></head>')
+    .replace(/<\/head\s*>/i, '<style id="ssx-first-paint-style">\n' + firstPaintStyle + '\n</style>' + bootGuard + '<style id="ssx-alpine-v37-style">\n' + css + '\n</style><style id="ssx-v38-design">\n' + design + '\n</style></head>')
     .replace(/<\/body\s*>/i, '<script id="ssx-alpine-v37-script">\n' + js + '\n</script>' + '<script id="ssx-special-leaders-core-script">\n' + specialLeaderJs + '\n</script>' + '<script id="ssx-special-categories-v1-script">\n' + specialJs + '\n</script></body>')
     .replace(/<title>[^<]*<\/title>/i, '<title>SSX 2012 · Recordes da Comunidade</title>');
   const data = Buffer.from(updated, 'utf8');

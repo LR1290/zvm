@@ -411,7 +411,7 @@
       regionalSelection=choice.dataset.regionTrack;
       openedRegions.add(choice.dataset.regionName);
       syncTrackAddress();
-      renderRegionBrowser();
+      updateInlineTrack();
       if(window.matchMedia('(max-width:900px)').matches){
         const selected=$('ssxRegionBrowser')?.querySelector('.ssx-region-group .ssx-region-detail');
         if(selected)selected.scrollIntoView({block:'start',
@@ -718,18 +718,21 @@
       // control independent so its source/title handlers cannot hijack it.
       event.stopPropagation();
       if(button.dataset.ssxSheetMode!==state.mode)selectMode(button.dataset.ssxSheetMode);
-      updateCopy();
+      // selectMode -> sync already refreshes the canonical navigation.
+      // Re-running updateCopy immediately caused duplicate DOM work per click.
+      applyPublicCopy();
     });
+    // Stable location between the controls and the regional gallery.
+    // Never reparent the focusable rail during every track repaint.
     toolbar.after(rail);
   }
   function syncSheetModeFilter(group,copy){
     const rail=$('ssxSheetModeFilter');
     if(!rail)return;
-    const allowed=state.leaderCards?
-      ['board','wings','trick','survive','special']:
-      group==='race'?['board','wings']:
-      group==='survive'?['survive','special']:[];
-    rail.hidden=allowed.length===0||state.fullTable;
+    // The five real disciplines remain accessible directly in the results.
+    // Race It! and Survive subfilters must never disappear in gallery mode.
+    const allowed=['board','wings','trick','survive','special'];
+    rail.hidden=state.fullTable;
     rail.dataset.ssxLeadersModeSwitch=String(state.leaderCards);
     rail.setAttribute('aria-label',state.leaderCards?copy.modes:
       group==='race'?copy.race:
@@ -738,7 +741,11 @@
       const mode=button.dataset.ssxSheetMode;
       const visible=allowed.includes(mode);
       button.hidden=!visible;
-      const label=copy[mode==='survive'?'standard':mode]||mode;
+      const label=mode==='board'?copy.board:
+        mode==='wings'?copy.wings:
+        mode==='trick'?copy.trick:
+        mode==='survive'?copy.survive:
+        copy.survive+' · '+copy.special;
       const name=button.querySelector('.ssx-sheet-mode-name');
       if(name)name.textContent=label;
       button.setAttribute('aria-label',label);
@@ -854,7 +861,9 @@
   // DEV Tracks rows in G. These are not among the 73 main-game track IDs.
   // Fail closed if the original archive shape ever differs from this curation;
   // never manufacture missing #1-#16 positions or substitute Ozmonet names.
+  let curatedDevCache=null;
   function curatedDevTracks(){
+    if(curatedDevCache)return curatedDevCache;
     const raw=typeof G!=='undefined'&&Array.isArray(G)?G:null;
     const tracks=typeof TRACKS!=='undefined'&&Array.isArray(TRACKS)?TRACKS:null;
     const meta=typeof META!=='undefined'?META:null;
@@ -891,7 +900,8 @@
     }
     if(indexed.size!==8)return [];
     for(const track of indexed.values())track.runs.sort((a,b)=>Number(a.position.slice(1))-Number(b.position.slice(1)));
-    return [...indexed.values()].sort((a,b)=>a.id-b.id);
+    curatedDevCache=[...indexed.values()].sort((a,b)=>a.id-b.id);
+    return curatedDevCache;
   }
 
   function devArchivePanel(entries,copy){
@@ -952,6 +962,94 @@
     }
     group.append(body);
     return group;
+  }
+
+  // Build ONLY the selected scorecard. Static region/mountain navigation is
+  // kept mounted when changing tracks, eliminating dozens of DOM replacements.
+  function buildRegionalDetail(selected,entries,copy,toolsCopy){
+    const detail=text('div','','ssx-region-detail');
+    if(selected){
+      const header=text('header','','ssx-region-detail-header');
+      artForRegion(header,selected.region);
+      header.append(text('span',(regionIcons[selected.region]||'🏂')+' '+selected.region+' / '+selected.mountain),
+        text('h3',selected.track),text('small','🏆 '+selected.runs.length+' '+copy[3]));
+      detail.append(header);
+      const trackIndex=entries.findIndex(item=>item.key===selected.key);
+      const stepper=text('nav','','ssx-region-stepper');
+      stepper.setAttribute('aria-label',toolsCopy.navigation);
+      const previous=text('button','‹','ssx-region-step');
+      previous.type='button';
+      previous.dataset.ssxTrackStep='-1';
+      previous.disabled=trackIndex<=0;
+      previous.setAttribute('aria-label',toolsCopy.previous);
+      previous.title=toolsCopy.previous;
+      const position=text('span',(trackIndex+1)+' / '+entries.length,'ssx-region-step-count');
+      const next=text('button','›','ssx-region-step');
+      next.type='button';
+      next.dataset.ssxTrackStep='1';
+      next.disabled=trackIndex>=entries.length-1;
+      next.setAttribute('aria-label',toolsCopy.next);
+      next.title=toolsCopy.next;
+      stepper.append(previous,position,next);
+      detail.append(stepper,createTrackShareControl(selected));
+      const ranking=text('div','','ssx-region-ranking');
+      for(const run of selected.runs){
+        const item=text('div','','ssx-region-rank');
+        item.append(text('span',run.position+(run.position==='#1'?' 🏆':run.position==='#2'?' 🥈':run.position==='#3'?' 🥉':''),'ssx-region-position'));
+        const identity=text('div','','ssx-region-identity');
+        const name=text('button','','ssx-region-rider');
+        if(run.flag)name.append(run.flag.cloneNode(true));
+        const nameLabel=text('span',run.rider.textContent.trim());
+        name.append(nameLabel);
+        name.type='button';
+        name.title=run.rider.textContent.trim();
+        name.addEventListener('click',()=>run.rider.click());
+        identity.append(name);
+        if(run.source){
+          const source=text('small',run.source,'ssx-region-source');
+          source.title=run.source;
+          identity.append(source);
+        }
+        const metrics=text('div','','ssx-region-metrics');
+        metrics.append(text('strong',run.score,'ssx-region-score'));
+        if(run.video){
+          const proof=createYouTubeProof(run.video,copy[4],true);
+          proof.classList.add('ssx-region-proof');
+          metrics.append(proof);
+        }
+        item.append(identity,metrics);
+        ranking.append(item);
+      }
+      if(selected.runs.length)detail.append(ranking);
+      else {
+        const noRecords=text('p',copy[5],'ssx-region-empty ssx-region-empty-inline');
+        noRecords.setAttribute('role','status');
+        detail.append(noRecords);
+      }
+    }else detail.append(text('p',copy[5],'ssx-region-empty'));
+    return detail;
+  }
+
+  function updateInlineTrack(){
+    const browser=$('ssxRegionBrowser');
+    const start=performance.now();
+    if(!browser)return;
+    const indexed=new Map(indexedTracks(state.mode).map(item=>[item.key,item]));
+    const allEntries=completeTrackCatalog().map(item=>indexed.get(item.key)||item);
+    const entries=selectedRegion==='all'?allEntries:
+      allEntries.filter(item=>item.region===selectedRegion);
+    const selected=entries.find(item=>item.key===regionalSelection);
+    const group=[...browser.querySelectorAll('.ssx-region-group')].find(node=>
+      node.dataset.regionName===selected?.region);
+    if(!group){renderRegionBrowser();return;}
+    for(const old of browser.querySelectorAll('.ssx-region-group > .ssx-region-detail'))old.remove();
+    for(const button of browser.querySelectorAll('.ssx-track-choice[data-region-track]')){
+      button.setAttribute('aria-pressed',String(button.dataset.regionTrack===regionalSelection));
+    }
+    group.open=true;
+    group.append(buildRegionalDetail(selected,entries,regionI18n[language()]||regionI18n.en,
+      regionToolsCopy[language()]||regionToolsCopy.en));
+    document.body.dataset.ssxLastTrackRenderMs=String(Math.round(performance.now()-start));
   }
 
   function renderRegionBrowser(){
@@ -1049,76 +1147,9 @@
     noMatches.id='ssxRegionNoMatches';
     noMatches.hidden=true;
     index.append(noMatches);
-    const detail=text('div','','ssx-region-detail');
-    if(selected){
-      const header=text('header','','ssx-region-detail-header');
-      artForRegion(header,selected.region);
-      header.append(text('span',(regionIcons[selected.region]||'🏂')+' '+selected.region+' / '+selected.mountain),
-        text('h3',selected.track),text('small','🏆 '+selected.runs.length+' '+copy[3]));
-      detail.append(header);
-      const trackIndex=entries.findIndex(item=>item.key===selected.key);
-      const stepper=text('nav','','ssx-region-stepper');
-      stepper.setAttribute('aria-label',toolsCopy.navigation);
-      const previous=text('button','‹','ssx-region-step');
-      previous.type='button';
-      previous.dataset.ssxTrackStep='-1';
-      previous.disabled=trackIndex<=0;
-      previous.setAttribute('aria-label',toolsCopy.previous);
-      previous.title=toolsCopy.previous;
-      const position=text('span',(trackIndex+1)+' / '+entries.length,'ssx-region-step-count');
-      const next=text('button','›','ssx-region-step');
-      next.type='button';
-      next.dataset.ssxTrackStep='1';
-      next.disabled=trackIndex>=entries.length-1;
-      next.setAttribute('aria-label',toolsCopy.next);
-      next.title=toolsCopy.next;
-      stepper.append(previous,position,next);
-      detail.append(stepper,createTrackShareControl(selected));
-      const ranking=text('div','','ssx-region-ranking');
-      for(const run of selected.runs){
-        const item=text('div','','ssx-region-rank');
-        item.append(text('span',run.position+(run.position==='#1'?' 🏆':run.position==='#2'?' 🥈':run.position==='#3'?' 🥉':''),'ssx-region-position'));
-        const identity=text('div','','ssx-region-identity');
-        const name=text('button','','ssx-region-rider');
-        if(run.flag)name.append(run.flag.cloneNode(true));
-        const nameLabel=text('span',run.rider.textContent.trim());
-        name.append(nameLabel);
-        name.type='button';
-        name.title=run.rider.textContent.trim();
-        name.addEventListener('click',()=>run.rider.click());
-        identity.append(name);
-        if(run.source){
-          const source=text('small',run.source,'ssx-region-source');
-          source.title=run.source;
-          identity.append(source);
-        }
-        const metrics=text('div','','ssx-region-metrics');
-        metrics.append(text('strong',run.score,'ssx-region-score'));
-        if(run.video){
-          const proof=createYouTubeProof(run.video,copy[4],true);
-          proof.classList.add('ssx-region-proof');
-          metrics.append(proof);
-        }
-        item.append(identity,metrics);
-        ranking.append(item);
-      }
-      if(selected.runs.length)detail.append(ranking);
-      else {
-        const noRecords=text('p',copy[5],'ssx-region-empty ssx-region-empty-inline');
-        noRecords.setAttribute('role','status');
-        detail.append(noRecords);
-      }
-    }else detail.append(text('p',copy[5],'ssx-region-empty'));
-    // Keep the real mode selector visible in the catalogue header, not
-    // trapped inside a collapsed region. Move the existing node, retaining
-    // its original click listeners and focus (never clone controls).
-    const modeFilter=$('ssxSheetModeFilter');
-    if(modeFilter){
-      if(document.body.dataset.ssxMobileView==='cards'){
-        const cards=$('alpineMobileCards');
-        if(cards)cards.before(modeFilter);
-      }else intro.append(modeFilter);
-    }
+    const detail=buildRegionalDetail(selected,entries,copy,toolsCopy);
+    // The persistent five-mode rail remains mounted above the gallery so it
+    // never disappears inside a collapsed banner or loses keyboard focus.
     // Place the scorecards immediately under their own region/track choices.
     // There is no separate, sticky right-hand Top 16 pane.
     const chosenRegion=[...index.querySelectorAll('.ssx-region-group')]
@@ -1135,7 +1166,7 @@
   function addUI() {
     const hero=$('top'),toolbar=$('toolbar'),sheet=$('sheet'),tbody=$('tbody');
     if(!hero||!toolbar||!sheet||!tbody||$('alpine-modes'))return false;
-    document.body.classList.add('ssx-alpine-v37');
+    document.body.classList.add('ssx-alpine-v37','ssx-alpine-v38');
     if(navigator.connection?.saveData)document.body.classList.add('alpine-data-saver');
     const anchor=text('a','Explorar recordes','alpine-hero-cta');
     anchor.id='alpineExplore';
@@ -1437,7 +1468,6 @@
     if(mode==='survive'||mode==='special')state.lastSurvive=mode;
     document.querySelector('.sheet-card')?.classList.remove('alpine-show-table');
     sync();
-    scheduleCards();
     try {
       const url=new URL(location.href);
       url.searchParams.set('mode',mode);
