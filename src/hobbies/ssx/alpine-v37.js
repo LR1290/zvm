@@ -909,6 +909,7 @@
       const button=text('button','','ssx-track-choice ssx-dev-track-choice');
       button.type='button';
       button.dataset.ssxDevTrack=String(track.id);
+      button.dataset.ssxDevCount=String(track.runs.length);
       button.dataset.regionTrack=track.key;
       button.dataset.regionName='DEV';
       button.setAttribute('aria-pressed',String(selectedDevId===track.id));
