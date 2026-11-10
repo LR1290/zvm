@@ -344,6 +344,18 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     await evaluate(cdp.send,sid,
       "document.querySelector('#ssxSpecialResults .ssx-special-record').scrollIntoView({block:'center',behavior:'instant'})");
     await sleep(125);
+    const surviveVisual=await evaluate(cdp.send,sid,`(()=>{
+      const score=document.querySelector('#ssxSpecialResults .ssx-special-score');
+      const card=score?.closest('.ssx-special-record');
+      const style=getComputedStyle(score);
+      return {whiteSpace:style.whiteSpace,
+        scoreHeight:score?.getBoundingClientRect().height,
+        lineHeight:parseFloat(style.lineHeight)||parseFloat(style.fontSize)*1.3,
+        cardOverflow:(card?.scrollWidth||0)-(card?.clientWidth||0)};
+    })()`);
+    console.log('SSX_R78_SURVIVE_LAYOUT',JSON.stringify(surviveVisual));
+    assert.equal(surviveVisual.whiteSpace,'nowrap','Survive distances must keep numeric value and unit together');
+    assert.ok(surviveVisual.cardOverflow<=1,'Long formatted distance must not overflow a record card');
     const surviveProof=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
     fs.writeFileSync(path.join(forensicShotDir,'ssx-r78-survive-original-vs-display.png'),
       Buffer.from(surviveProof.data,'base64'));
