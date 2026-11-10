@@ -44,6 +44,21 @@ test('Alpine assets parse and have no remote scripts or credential material',()=
     assert.match(css,new RegExp('data-ssx-mode="'+mode+'"'));
   }
 });
+test('R84 ranking enhancement is read-only, local and movement-accessible',()=>{
+  const dir=path.join(__dirname,'../src/hobbies/ssx');
+  const css=fs.readFileSync(path.join(dir,'ranking-r84.css'),'utf8');
+  const js=fs.readFileSync(path.join(dir,'ranking-r84.js'),'utf8');
+  assert.doesNotThrow(()=>new vm.Script(js,{filename:'ranking-r84.js'}));
+  assert.match(css,/prefers-reduced-motion/);
+  assert.match(js,/IntersectionObserver/);
+  assert.match(js,/MutationObserver/);
+  assert.doesNotMatch(js,/fetch\\s*\\(|XMLHttpRequest|WebSocket|document\\.cookie|localStorage\\.setItem|innerHTML/);
+  assert.doesNotMatch(css,/!important/i);
+  assert.doesNotMatch(js,/<\\/script/i);
+  assert.doesNotMatch(css,/<\\/style/i);
+  assert.match(css,/rider-name/);
+  assert.match(css,/pos\\.one/);
+});
 test('published v37 and preview are byte-identical; archival v36 remains byte-exact',()=>harness(async base=>{
   const original=await rawFetch(base+SSX_V36_ARCHIVE_ROUTE);
   const enhanced=await rawFetch(base+SSX_V37_PREVIEW_ROUTE);
@@ -66,6 +81,8 @@ test('published v37 and preview are byte-identical; archival v36 remains byte-ex
   const view=enhanced.body.toString('utf8');
   assert.match(view,/id="ssx-alpine-v37-style"/);
   assert.match(view,/id="ssx-v38-design"/);
+  assert.match(view,/id="ssx-r84-rank-style"/);
+  assert.match(view,/id="ssx-r84-rank-script"/);
   assert.match(view,/ssx-alpine-v38/);
   assert.match(view,/id="ssx-alpine-v37-script"/);
   assert.match(view,/id="ssx-score-integrity-script"/);
@@ -80,6 +97,8 @@ test('published v37 and preview are byte-identical; archival v36 remains byte-ex
     .replace(/<script id="ssx-boot-fallback">[\s\S]*?<\/script>/,'')
     .replace(/<style id="ssx-alpine-v37-style">[\s\S]*?<\/style>/,'')
     .replace(/<style id="ssx-v38-design">[\s\S]*?<\/style>/,'')
+    .replace(/<style id="ssx-r84-rank-style">[\s\S]*?<\/style>/,'')
+    .replace(/<script id="ssx-r84-rank-script">[\s\S]*?<\/script>/,'')
     .replace(/<script id="ssx-alpine-v37-script">[\s\S]*?<\/script>/,'')
     .replace(/<script id="ssx-score-integrity-script">[\s\S]*?<\/script>/,'')
     .replace(/<script id="ssx-special-categories-v1-script">[\s\S]*?<\/script>/,'')
