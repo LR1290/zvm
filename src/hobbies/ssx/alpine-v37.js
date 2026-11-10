@@ -1150,7 +1150,8 @@
     parkSheetModeFilter();
     for(const old of browser.querySelectorAll('.ssx-region-group > .ssx-region-detail'))old.remove();
     for(const button of browser.querySelectorAll('.ssx-track-choice[data-region-track]')){
-      button.setAttribute('aria-pressed',String(button.dataset.regionTrack===regionalSelection));
+      const pressed=String(button.dataset.regionTrack===regionalSelection);
+      if(button.getAttribute('aria-pressed')!==pressed)button.setAttribute('aria-pressed',pressed);
     }
     group.open=true;
     group.append(buildRegionalDetail(selected,entries,regionI18n[language()]||regionI18n.en,
@@ -1170,6 +1171,26 @@
     renderRegionTabs(allEntries);
     if(!entries.some(item=>item.key===regionalSelection))regionalSelection=entries[0]?.key||'';
     const selected=entries.find(item=>item.key===regionalSelection);
+    // Region/mountain/track labels, search input and DEV provenance depend on
+    // catalogue scope and language, NOT on the current mode or score source.
+    // Keep their real DOM nodes stable across ranking updates so switching
+    // Board/Wingsuit and Google/Oz never reconstructs 73 track controls.
+    const layoutKey=JSON.stringify([selectedRegion,language(),selectedDevId]);
+    if(browser.dataset.ssxLayoutKey===layoutKey&&browser.querySelector('.ssx-region-index')){
+      const reuseStart=performance.now();
+      for(const choice of browser.querySelectorAll('.ssx-region-group .ssx-track-choice')){
+        const item=indexed.get(choice.dataset.regionTrack);
+        const count=item?.runs.length||0;
+        const badge=choice.querySelector('small');
+        const label=count+' '+copy[3];
+        if(badge&&badge.textContent!==label)badge.textContent=label;
+      }
+      updateInlineTrack();
+      applyRegionSearch();
+      browser.dataset.ssxGalleryReuses=String(1+Number(browser.dataset.ssxGalleryReuses||0));
+      browser.dataset.ssxGalleryReuseMs=String(Math.round((performance.now()-reuseStart)*100)/100);
+      return;
+    }
     const regions=new Map();
     for(const item of entries){
       if(!regions.has(item.region))regions.set(item.region,new Map());
@@ -1281,6 +1302,7 @@
     const buildStart=performance.now();
     parkSheetModeFilter();
     browser.replaceChildren(index);
+    browser.dataset.ssxLayoutKey=layoutKey;
     placeSheetModeFilter();
     applyRegionSearch();
     browser.dataset.ssxGalleryBuilds=String(1+Number(browser.dataset.ssxGalleryBuilds||0));
