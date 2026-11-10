@@ -23,6 +23,7 @@ jobs:
           node --check src/hobbies/ssx/alpine-v37.js
           node --check src/hobbies/ssx/special-categories-v1.js
           node --check src/hobbies/ssx/special-leaders-core.js
+          node --check src/hobbies/ssx/score-integrity.js
       - name: Run SSX v36 + v37 isolation regression
         run: node --test tests/ssx2012-route.test.cjs tests/ssx2012-alpine-v37.test.cjs
       - name: Read-only source provenance inventory
@@ -37,6 +38,13 @@ jobs:
           node --test tests/ssx2012-cli-evidence.test.cjs
       - name: Inspect original archived special-category structures (read-only)
         run: node --test tests/ssx2012-special-source-scan.test.cjs tests/ssx2012-special-leaders.test.cjs
+      - name: Audit original name variants and score notation (read-only)
+        run: |
+          node --check tools/ssx-audit-display-readonly.cjs
+          node --test tests/ssx2012-score-integrity.test.cjs
+          mkdir -p artifacts
+          node tools/ssx-audit-display-readonly.cjs > artifacts/ssx-r78-source-audit.json
+          node -e "const a=require('./artifacts/ssx-r78-source-audit.json');if(a.totalRows!==6024||a.safeguards.identityMerges!==0)process.exit(1)"
       - name: Chromium real desktop/mobile integration
         run: |
           google-chrome --version
@@ -46,5 +54,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ssx-v37-alpine-screenshots
-          path: artifacts/*.png
+          path: |
+            artifacts/*.png
+            artifacts/ssx-r78-source-audit.json
           if-no-files-found: ignore

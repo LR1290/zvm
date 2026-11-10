@@ -304,21 +304,83 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(specials.mainCount,13,'Main 73-track navigator must remain intact');
     assert.equal(specials.mainScore,'01:35.99');
     assert.equal(specials.progress,true);
-    const explore=await evaluate(cdp.send,sid,"(()=>{const tab=name=>document.querySelector('#ssxSpecialTabs [data-ssx-special-group=\"'+name+'\"]');const level=document.querySelector('#ssxSpecialLevel'),mode=document.querySelector('#ssxSpecialMode'),track=document.querySelector('#ssxSpecialTrack'),rows=document.querySelector('#ssxSpecialResults');const pick=(selector,value)=>{selector.value=String(value);selector.dispatchEvent(new Event('change',{bubbles:true}));};const info=()=>({count:Number(rows.dataset.visibleRecords),score:rows.querySelector('.ssx-special-score')?.textContent,mode:Number(rows.querySelector('.ssx-special-record')?.dataset.archivedMode),rank:rows.querySelector('.ssx-special-record')?.dataset.archivedPosition,proof:rows.querySelector('a.ssx-youtube-proof')?.href,hasMark:!!rows.querySelector('.ssx-youtube-icon'),source:rows.querySelector('.ssx-special-ref')?.textContent});pick(level,'Level 9');pick(mode,'0');pick(track,'2');const nine=info();tab('android').click();const androidModes=[...mode.options].map(o=>Number(o.value));pick(mode,'2');pick(track,'16');const android=info();tab('dev').click();pick(track,'79');const dev=info();tab('boost').click();pick(track,'2');const boost=info();tab('challenge').click();const challengeModes=[...mode.options].map(o=>Number(o.value));pick(track,'8');const special=info();return{nine,androidModes,android,dev,boost,challengeModes,special,mainScore:document.querySelector('.ssx-region-detail .ssx-region-score')?.textContent,mainMode:document.body.dataset.ssxMode,archiveNote:document.querySelector('#ssxSpecialNote')?.textContent}})()");
+    const explore=await evaluate(cdp.send,sid,"(()=>{const tab=name=>document.querySelector('#ssxSpecialTabs [data-ssx-special-group=\"'+name+'\"]');const level=document.querySelector('#ssxSpecialLevel'),mode=document.querySelector('#ssxSpecialMode'),track=document.querySelector('#ssxSpecialTrack'),rows=document.querySelector('#ssxSpecialResults');const pick=(selector,value)=>{selector.value=String(value);selector.dispatchEvent(new Event('change',{bubbles:true}));};const info=()=>({count:Number(rows.dataset.visibleRecords),score:rows.querySelector('.ssx-special-score')?.textContent,raw:rows.querySelector('.ssx-special-score')?.dataset.ssxOriginalScore,formatStatus:rows.querySelector('.ssx-special-score')?.dataset.ssxScoreStatus,mode:Number(rows.querySelector('.ssx-special-record')?.dataset.archivedMode),rank:rows.querySelector('.ssx-special-record')?.dataset.archivedPosition,proof:rows.querySelector('a.ssx-youtube-proof')?.href,hasMark:!!rows.querySelector('.ssx-youtube-icon'),source:rows.querySelector('.ssx-special-ref')?.textContent});pick(level,'Level 9');pick(mode,'0');pick(track,'2');const nine=info();tab('android').click();const androidModes=[...mode.options].map(o=>Number(o.value));pick(mode,'2');pick(track,'16');const android=info();tab('dev').click();pick(track,'79');const dev=info();tab('boost').click();pick(track,'2');const boost=info();tab('challenge').click();const challengeModes=[...mode.options].map(o=>Number(o.value));pick(track,'8');const special=info();return{nine,androidModes,android,dev,boost,challengeModes,special,mainScore:document.querySelector('.ssx-region-detail .ssx-region-score')?.textContent,mainMode:document.body.dataset.ssxMode,archiveNote:document.querySelector('#ssxSpecialNote')?.textContent}})()");
     console.log('SSX_SPECIAL_CATEGORY_SAMPLES',JSON.stringify(explore));
     assert.equal(explore.nine.score,'01:26.45','Level 9 Board times must match the source spreadsheet snapshot');
     assert.deepEqual(explore.androidModes,[0,1,2,3]);
-    assert.equal(explore.android.score,'4.460432E7','Android Trick score should preserve the raw historical value');
+    assert.equal(explore.android.score,'44,604,320','Android Trick should be displayed with grouped thousands');
+    assert.equal(explore.android.raw,'4.460432E7','Original exponent score must stay accessible');
     assert.equal(explore.android.mode,2);
     assert.equal(explore.dev.score,'00:34.79','Developer/test track must be read from its original ID');
-    assert.equal(explore.boost.score,'1:42.83','No Boost time should be read from the original G record');
+    assert.equal(explore.boost.score,'01:42.83','Race time should display canonical MM:SS.ss');
+    assert.equal(explore.boost.raw,'1:42.83','Original Race time must remain available');
     assert.match(explore.boost.proof,/youtu\.be/,'Real archived YouTube link must survive');
     assert.equal(explore.boost.hasMark,true);
     assert.deepEqual(explore.challengeModes,[5],'Archived Survive combined no Gear/Wings/Rewinds rule is a separate mode');
-    assert.equal(explore.special.score,'10,787,35m','Survive special distance must not be normalized into a race time');
+    assert.equal(explore.special.score,'10,787.35 m','Survive displays separators and explicit distance unit');
+    assert.equal(explore.special.raw,'10,787,35m','Original Survive score must remain available');
+    assert.equal(explore.special.formatStatus,'review-inferred-separators',
+      'Legacy mixed separators are an interpretation pending review, not a certified correction');
     assert.match(explore.archiveNote,/2026-08-22/);
     assert.equal(explore.mainMode,'board');
     assert.equal(explore.mainScore,'01:35.99','Opening archived categories cannot change public current rankings');
+    const scoreDisclosure=await evaluate(cdp.send,sid,`(()=>{
+      const detail=document.querySelector('.ssx-region-group .ssx-region-detail');
+      const note=detail.querySelector('.ssx-identity-verification-note');
+      const main=detail.querySelector('.ssx-region-score');
+      return {note:note?.textContent?.trim(),mainScore:main?.textContent?.trim(),
+        mainOriginal:main?.dataset.ssxOriginalScore,
+        formatter:typeof window.SSXScoreIntegrity?.format,
+        rawSurvivePresent:!!document.querySelector('#ssxSpecialArchive')};
+    })()`);
+    console.log('SSX_R78_DISPLAY_INTEGRITY',JSON.stringify(scoreDisclosure));
+    assert.match(scoreDisclosure.note,/identidades pendentes de verificação por ID/i);
+    assert.equal(scoreDisclosure.formatter,'function');
+    assert.equal(scoreDisclosure.mainScore,'01:35.99');
+    assert.equal(scoreDisclosure.mainOriginal,'01:35.99');
+    // Capture the exact UI result of the forensic formatter, not a mockup.
+    const forensicShotDir=path.join(process.cwd(),'artifacts');
+    fs.mkdirSync(forensicShotDir,{recursive:true});
+    await evaluate(cdp.send,sid,
+      "document.querySelector('#ssxSpecialResults .ssx-special-record').scrollIntoView({block:'center',behavior:'instant'})");
+    await sleep(125);
+    const surviveVisual=await evaluate(cdp.send,sid,`(()=>{
+      const score=document.querySelector('#ssxSpecialResults .ssx-special-score');
+      const card=score?.closest('.ssx-special-record');
+      const style=getComputedStyle(score);
+      return {whiteSpace:style.whiteSpace,
+        scoreHeight:score?.getBoundingClientRect().height,
+        lineHeight:parseFloat(style.lineHeight)||parseFloat(style.fontSize)*1.3,
+        cardOverflow:(card?.scrollWidth||0)-(card?.clientWidth||0)};
+    })()`);
+    console.log('SSX_R78_SURVIVE_LAYOUT',JSON.stringify(surviveVisual));
+    assert.equal(surviveVisual.whiteSpace,'nowrap','Survive distances must keep numeric value and unit together');
+    assert.ok(surviveVisual.cardOverflow<=1,'Long formatted distance must not overflow a record card');
+    const surviveProof=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+    fs.writeFileSync(path.join(forensicShotDir,'ssx-r78-survive-original-vs-display.png'),
+      Buffer.from(surviveProof.data,'base64'));
+    await evaluate(cdp.send,sid,`(()=>{
+      const tab=document.querySelector('#ssxSpecialTabs [data-ssx-special-group=android]');
+      tab.click();
+      const mode=document.querySelector('#ssxSpecialMode');
+      mode.value='2';mode.dispatchEvent(new Event('change',{bubbles:true}));
+      const track=document.querySelector('#ssxSpecialTrack');
+      track.value='16';track.dispatchEvent(new Event('change',{bubbles:true}));
+      document.querySelector('#ssxSpecialResults .ssx-special-record').scrollIntoView({
+        block:'center',behavior:'instant'
+      });
+    })()`);
+    await sleep(125);
+    const trickProof=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+    fs.writeFileSync(path.join(forensicShotDir,'ssx-r78-trick-commas-original-preserved.png'),
+      Buffer.from(trickProof.data,'base64'));
+    const screenshotScores=await evaluate(cdp.send,sid,`(()=>{
+      const node=document.querySelector('#ssxSpecialResults .ssx-special-score');
+      return {score:node?.textContent,raw:node?.dataset.ssxOriginalScore};
+    })()`);
+    assert.deepEqual(screenshotScores,{score:'44,604,320',raw:'4.460432E7'});
+
+
 
     // R66: every historical category reuses only the flag asset already
     // attributed to that exact rider in the frozen original v36 catalogue.
