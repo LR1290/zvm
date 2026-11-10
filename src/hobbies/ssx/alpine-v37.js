@@ -31,6 +31,10 @@
     if(className)node.className=className;
     return node;
   }
+  function displayScore(tag,raw,className,mode){
+    const node=text(tag,raw,className);
+    return window.SSXScoreIntegrity?.apply(node,raw,mode)||node;
+  }
 
   // UI copy is intentionally editorial, not a release/build status banner.
   // The underlying v36 controls remain attached to their original DOM IDs.
@@ -1061,7 +1065,7 @@
         identity.append(text('span',run.riderName,'ssx-region-rider ssx-dev-rider'),
           text('small',run.source,'ssx-region-source'));
         const metrics=text('div','','ssx-region-metrics');
-        metrics.append(text('strong',run.score,'ssx-region-score'));
+        metrics.append(displayScore('strong',run.score,'ssx-region-score','board'));
         if(run.video)metrics.append(createYouTubeProof(run.video,copy[4],true));
         record.append(identity,metrics);
         ranking.append(record);
@@ -1120,7 +1124,7 @@
           identity.append(source);
         }
         const metrics=text('div','','ssx-region-metrics');
-        metrics.append(text('strong',run.score,'ssx-region-score'));
+        metrics.append(displayScore('strong',run.score,'ssx-region-score',state.mode));
         if(run.video){
           const proof=createYouTubeProof(run.video,copy[4],true);
           proof.classList.add('ssx-region-proof');
@@ -1782,7 +1786,7 @@
       const rider=text('button',lead.rider.textContent.trim(),'alpine-card-rider');
       rider.type='button';
       rider.addEventListener('click',()=>lead.rider.click());
-      card.append(rider,text('div',lead.score,'alpine-card-score'));
+      card.append(rider,displayScore('div',lead.score,'alpine-card-score',state.mode));
       if(lead.source)card.append(text('span',lead.source,'alpine-card-top ssx-card-source'));
       if(lead.video){
         const proof=createYouTubeProof(lead.video,copy.proof);
