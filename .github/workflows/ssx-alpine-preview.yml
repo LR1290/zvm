@@ -44,6 +44,7 @@ jobs:
           node --test tests/ssx2012-score-integrity.test.cjs
           mkdir -p artifacts
           node tools/ssx-audit-display-readonly.cjs > artifacts/ssx-r78-source-audit.json
+          node -e "const a=require('./artifacts/ssx-r78-source-audit.json');if(a.totalRows!==6024||a.safeguards.identityMerges!==0)process.exit(1)"
       - name: Chromium real desktop/mobile integration
         run: |
           google-chrome --version
