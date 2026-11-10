@@ -71,6 +71,13 @@ test('archive special-category source data remains signed, complete and separate
   }
   assert.ok(sng.some(row=>row[1]===8&&row[3]===5&&row[5]==='10,787,35m'));
   assert.equal([...counts].filter(([name])=>name!=='Global Top 16').reduce((n,[,c])=>n+c,0)+sng.length,2205);
+  const devSource=g.filter(row=>row[0]==='DEV Tracks').map(row=>({
+    id:row[1],region:tracks[row[1]]?.[0],mountain:tracks[row[1]]?.[1],
+    track:tracks[row[1]]?.[2],position:row[2],mode:row[3],
+    rider:String(row[4]||''),score:String(row[5]||''),platform:String(row[7]||''),
+    originalSheet:row[9],originalCell:row[10]
+  }));
+  console.log('SSX_R72_DEV_CURATION '+JSON.stringify(devSource));
   console.log('SSX_VERIFIED_ARCHIVE_CATEGORIES '+JSON.stringify({
     snapshot:meta.snapshot,trackObjects:tracks.length,
     archivedSheetsRows:g.length,specialSurviveRows:sng.length,
