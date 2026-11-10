@@ -96,6 +96,10 @@
     node.textContent=content;
     return node;
   };
+  function displayScore(raw,mode){
+    const node=el('strong',raw,'ssx-special-score');
+    return window.SSXScoreIntegrity?.apply(node,raw,mode)||node;
+  }
   // Original v36's verified rider->flag assets and cached Blob URLs are the
   // only allowed source. Never infer nationality from gamertags or platforms.
   function archiveFlagForRider(name){
@@ -326,7 +330,7 @@
       const rank=el('span','#1','ssx-special-rank');
       const identity=el('div','','ssx-special-identity');
       identity.append(el('strong',row.track),el('small',(row.region||'')+' · '+(row.mountain||'')));
-      const score=el('strong',row.score,'ssx-special-score');
+      const score=displayScore(row.score,row.mode);
       const rider=el('div','','ssx-special-leader-rider');
       rider.append(archiveRiderLabel(row.rider,'strong'),el('small',row.platform||c.platform));
       const reference=el('small',c.source+': '+[row.sheet,row.cell].filter(Boolean).join(' · '),'ssx-special-ref');
@@ -369,7 +373,7 @@
       const rank=el('span','#'+row.position,'ssx-special-rank');
       const identity=el('div','','ssx-special-identity');
       identity.append(archiveRiderLabel(row.rider,'strong'),el('small',row.platform||c.platform));
-      const result=el('strong',row.score,'ssx-special-score');
+      const result=displayScore(row.score,row.mode);
       const reference=el('small',c.source+': '+[row.sheet,row.cell].filter(Boolean).join(' · '),'ssx-special-ref');
       const evidence=el('div','','ssx-special-evidence');
       if(row.proof){
