@@ -386,6 +386,66 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(regional.first,'Red Light');
     assert.ok(regional.regions>=2&&regional.rankCount>0&&regional.proof);
     assert.equal(regional.tableHidden,true);
+    // R72: structural proof of a single-column regional navigator and Top 16
+    // inside the selected region, not a second sticky/right-hand panel.
+    const galleryGeometry=await evaluate(cdp.send,sid,"(()=>{const browser=document.querySelector('#ssxRegionBrowser'),index=browser.querySelector('.ssx-region-index'),africa=[...index.querySelectorAll('.ssx-region-group')].find(g=>g.dataset.regionName==='Africa'),dev=index.querySelector('.ssx-dev-group'),detail=browser.querySelector('.ssx-region-detail');return {topbarPosition:getComputedStyle(document.querySelector('.topbar')).position,rootColumns:getComputedStyle(browser).gridTemplateColumns.split(' ').length,regionColumns:getComputedStyle(index).gridTemplateColumns.split(' ').length,banners:index.querySelectorAll('.ssx-region-group').length,dev:!!dev,devTracks:dev?.querySelectorAll('.ssx-dev-track-choice').length,devRows:[...dev?.querySelectorAll('.ssx-dev-track-choice small')||[]].map(el=>Number.parseInt(el.textContent,10)||0).reduce((a,b)=>a+b,0),inline:africa.contains(detail),siblingDetail:!!browser.querySelector(':scope > .ssx-region-detail'),galleryWidth:index.getBoundingClientRect().width,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};})()");
+    console.log('SSX_R72_GALLERY_DESKTOP',JSON.stringify(galleryGeometry));
+    assert.notEqual(galleryGeometry.topbarPosition,'sticky','The header must never overlay content as a sticky layer');
+    assert.notEqual(galleryGeometry.topbarPosition,'fixed','The header must scroll away normally');
+    assert.equal(galleryGeometry.rootColumns,1,'Regional browser must be full-width, not two columns');
+    assert.ok(galleryGeometry.regionColumns>=4,'Wide desktop should show at least four banners per gallery row');
+    assert.equal(galleryGeometry.banners,12,'All real main-game regions must remain');
+    assert.equal(galleryGeometry.dev,true,'Curated DEV should appear in the same gallery');
+    assert.equal(galleryGeometry.devTracks,8);
+    assert.equal(galleryGeometry.devRows,10);
+    assert.equal(galleryGeometry.inline,true,'Real Top 16 must be a descendant of the chosen region');
+    assert.equal(galleryGeometry.siblingDetail,false,'Remove the independent right-hand ranking pane');
+    assert.ok(galleryGeometry.overflow<=1);
+    const r72Dir=path.join(process.cwd(),'artifacts');
+    fs.mkdirSync(r72Dir,{recursive:true});
+    await evaluate(cdp.send,sid,"document.querySelector('#ssxRegionBrowser').scrollIntoView({block:'start',behavior:'instant'})");
+    await sleep(170);
+    const galleryShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+    fs.writeFileSync(path.join(r72Dir,'ssx-r72-desktop-region-gallery.png'),Buffer.from(galleryShot.data,'base64'));
+    const expandedRegion=await evaluate(cdp.send,sid,"(()=>{const africa=[...document.querySelectorAll('.ssx-region-group')].find(g=>g.dataset.regionName==='Africa');if(!africa.open)africa.querySelector('summary').click();const top=africa.querySelector('summary').getBoundingClientRect(),list=africa.querySelector('.ssx-mountain-list').getBoundingClientRect(),detail=africa.querySelector('.ssx-region-detail').getBoundingClientRect();return{expanded:africa.open,tracks:africa.querySelectorAll('.ssx-track-choice').length,rankCount:africa.querySelectorAll('.ssx-region-rank').length,belowBanner:list.top>=top.bottom-1,inlineBelowTracks:detail.top>=list.bottom-1,rankCols:getComputedStyle(africa.querySelector('.ssx-region-ranking')).gridTemplateColumns.split(' ').length,detailWidth:detail.width,viewport:document.documentElement.clientWidth};})()");
+    console.log('SSX_R72_INLINE_TOP16',JSON.stringify(expandedRegion));
+    assert.equal(expandedRegion.expanded,true);
+    assert.equal(expandedRegion.tracks,5,'The Africa banner exposes five curated main-game tracks');
+    assert.equal(expandedRegion.rankCount,16,'Red Light displays all 16 recorded positions');
+    assert.equal(expandedRegion.belowBanner,true);
+    assert.equal(expandedRegion.inlineBelowTracks,true,'Top 16 must follow the track cards, never the right column');
+    assert.ok(expandedRegion.rankCols>=2&&expandedRegion.detailWidth<=expandedRegion.viewport);
+    await evaluate(cdp.send,sid,"document.querySelector('.ssx-region-group[data-region-name=Africa] .ssx-region-detail').scrollIntoView({block:'start',behavior:'instant'})");
+    await sleep(150);
+    const inlineShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+    fs.writeFileSync(path.join(r72Dir,'ssx-r72-desktop-inline-top16.png'),Buffer.from(inlineShot.data,'base64'));
+    const devDetail=await evaluate(cdp.send,sid,"(()=>{const dev=document.querySelector('.ssx-dev-group');if(!dev.open)dev.querySelector('summary').click();const track=[...dev.querySelectorAll('.ssx-dev-track-choice')].find(n=>n.textContent.includes('TEST RAIL'));track.click();const group=document.querySelector('.ssx-dev-group'),detail=group.querySelector('.ssx-dev-detail');const selected=detail.querySelector('h3')?.textContent;const score=detail.querySelector('.ssx-region-score')?.textContent;const provenance=detail.querySelector('.ssx-region-source')?.textContent;const count=detail.querySelectorAll('.ssx-dev-rank').length;return{selected,score,provenance,count,inline:group.contains(detail),officialCount:document.querySelector('#ssxSheetRegions [data-ssx-region=all] .ssx-sheet-region-count')?.textContent,officialScore:document.querySelector('.ssx-region-group .ssx-region-score')?.textContent};})()");
+    console.log('SSX_R72_DEV_INLINE',JSON.stringify(devDetail));
+    assert.equal(devDetail.selected,'TEST RAIL');
+    assert.equal(devDetail.score,'00:34.79');
+    assert.match(devDetail.provenance,/D2/);
+    assert.equal(devDetail.count,1,'Do not fabricate the other 15 DEV positions');
+    assert.equal(devDetail.inline,true);
+    assert.equal(devDetail.officialCount,'73');
+    assert.equal(devDetail.officialScore,'01:35.99','DEV curation must not replace official Red Light scores');
+    await evaluate(cdp.send,sid,"document.querySelector('.ssx-dev-detail').scrollIntoView({block:'start',behavior:'instant'})");
+    await sleep(150);
+    const devShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+    fs.writeFileSync(path.join(r72Dir,'ssx-r72-desktop-dev-records.png'),Buffer.from(devShot.data,'base64'));
+    await evaluate(cdp.send,sid,"document.querySelector('.ssx-dev-group > summary').click()");
+    await evaluate(cdp.send,sid,"document.querySelector('#ssxSpecialTabs').scrollIntoView({block:'start',behavior:'instant'})");
+    await sleep(160);
+    const specialBannersShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+    fs.writeFileSync(path.join(r72Dir,'ssx-r72-historical-banner-categories.png'),Buffer.from(specialBannersShot.data,'base64'));
+    const historicalBanners=await evaluate(cdp.send,sid,"(()=>{const nav=document.querySelector('#ssxSpecialTabs'),tabs=[...nav.querySelectorAll('.ssx-special-tab')],first=tabs[0].getBoundingClientRect();return {count:tabs.length,columns:getComputedStyle(nav).gridTemplateColumns.split(' ').length,heights:tabs.map(el=>Math.round(el.getBoundingClientRect().height)),firstWidth:first.width,art:tabs.map(el=>getComputedStyle(el).backgroundImage.includes('/hobbies/ssx/media/v37/')),overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};})()");
+    assert.equal(historicalBanners.count,5);
+    assert.ok(historicalBanners.columns>=3&&historicalBanners.heights.every(v=>v>=90));
+    assert.ok(historicalBanners.art.every(Boolean),'All historical category cards need pinned game artwork');
+    assert.ok(historicalBanners.overflow<=1);
+    // A scrolled public header must be gone: no dark translucent overlay.
+    const overlay=await evaluate(cdp.send,sid,"(()=>{window.scrollTo({top:Math.min(document.documentElement.scrollHeight-900,2200),behavior:'instant'});const r=document.querySelector('.topbar').getBoundingClientRect();return{top:r.top,bottom:r.bottom,style:getComputedStyle(document.querySelector('.topbar')).position};})()");
+    assert.ok(overlay.bottom<0&&overlay.style!=='fixed'&&overlay.style!=='sticky','Header overlay must scroll completely away');
+
     const initialShare=await evaluate(cdp.send,sid,"(()=>{const button=document.querySelector('.ssx-track-share-button');const url=new URL(button.dataset.shareUrl);return {label:button.textContent,mode:url.searchParams.get('mode'),parts:JSON.parse(url.searchParams.get('ssxTrack')),origin:url.origin,pathname:url.pathname,hash:url.hash,manualInputHidden:document.querySelector('.ssx-track-share-manual').hidden,liveStatus:document.querySelector('.ssx-track-share-status').getAttribute('role')}})()");
     assert.match(initialShare.label,/Compartilhar pista/);
     assert.equal(initialShare.mode,'board');
@@ -431,16 +491,41 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     // Reset the old track field so the rest of the integration suite starts from an unfiltered sheet.
     await evaluate(cdp.send,sid,"(()=>{const track=document.querySelector('#track');track.value='';track.dispatchEvent(new Event('change',{bubbles:true}));})()");
 
-    const regionRoundTrip=await evaluate(cdp.send,sid,"(()=>{const rail=document.querySelector('#ssxSheetRegions');const results=[];for(const name of ['Alaska','Japan','Training','Africa','all']){rail.querySelector('[data-ssx-region=\"'+name+'\"]').click();const root=document.querySelector('#ssxRegionBrowser');results.push({requested:name,active:rail.querySelector('[aria-pressed=true]')?.dataset.ssxRegion,regions:root.querySelectorAll('.ssx-region-group').length,group:root.querySelector('.ssx-region-group')?.dataset.regionName,tracks:root.querySelectorAll('.ssx-track-choice').length,canonical:Number(rail.querySelector('[data-ssx-region=all] .ssx-sheet-region-count')?.textContent),progress:document.querySelector('#renderProgress')?.hidden});}return results;})()");
+    const regionRoundTrip=await evaluate(cdp.send,sid,"(()=>{const rail=document.querySelector('#ssxSheetRegions');const results=[];for(const name of ['Alaska','Japan','Training','Africa','all']){rail.querySelector('[data-ssx-region=\"'+name+'\"]').click();const root=document.querySelector('#ssxRegionBrowser');results.push({requested:name,active:rail.querySelector('[aria-pressed=true]')?.dataset.ssxRegion,regions:root.querySelectorAll('.ssx-region-group').length,group:root.querySelector('.ssx-region-group')?.dataset.regionName,tracks:root.querySelectorAll('.ssx-region-group .ssx-track-choice').length,canonical:Number(rail.querySelector('[data-ssx-region=all] .ssx-sheet-region-count')?.textContent),progress:document.querySelector('#renderProgress')?.hidden});}return results;})()");
     assert.deepEqual(regionRoundTrip.map(row=>row.active),['Alaska','Japan','Training','Africa','all'],'Every region tab must stay selected after native sheet redraw');
     assert.deepEqual(regionRoundTrip.map(row=>row.regions),[1,1,1,1,12],'Each region must retain its complete track directory');
     assert.deepEqual(regionRoundTrip.map(row=>row.tracks),[7,3,1,5,73],'All official SSX track counts must survive repeated region switching');
     assert.ok(regionRoundTrip.every(row=>row.canonical===73&&row.progress),'Region changes must not restart the loading sentinel');
+    const r72DevInventory=await evaluate(cdp.send,sid,`(()=>{
+      const group=document.querySelector('#ssxRegionBrowser .ssx-dev-group');
+      const tracks=[...group?.querySelectorAll('.ssx-dev-track-choice')||[]];
+      return{present:!!group,count:tracks.length,labels:tracks.map(b=>b.querySelector('strong')?.textContent),
+        counts:tracks.map(b=>Number(b.dataset.ssxDevCount||0)),
+        archive:group?.dataset.ssxProvenance,mainCount:document.querySelector('#ssxSheetRegions [data-ssx-region=all] .ssx-sheet-region-count')?.textContent};
+    })()`);
+    console.log('SSX_R72_DEV_DATA_CURATION',JSON.stringify(r72DevInventory));
+    assert.equal(r72DevInventory.present,true,'DEV has its own curated banner');
+    assert.equal(r72DevInventory.count,8,'Ten archived DEV scores belong to exactly eight recorded tracks');
+    assert.equal(r72DevInventory.counts.reduce((a,b)=>a+b,0),10);
+    assert.equal(r72DevInventory.archive,'google-sheets-2026-08-22');
+    assert.equal(r72DevInventory.mainCount,'73','Historical DEV rows cannot inflate the official catalogue');
+    assert.ok(r72DevInventory.labels.includes('TEST RAIL')&&r72DevInventory.labels.includes('Happiness'));
+    const provenanceTotals=await evaluate(cdp.send,sid,
+      "document.querySelector('#ssxRegionMatches')?.textContent.trim()");
+    assert.match(provenanceTotals,/73 pistas/,'The official count must stay 73, not 81');
+    assert.match(provenanceTotals,/8 DEV/,'Archived DEV entries must be itemized separately');
+
+    // Open Africa through its actual banner, not by untrusted test CSS.
+    await evaluate(cdp.send,sid,`(()=>{
+      const africa=[...document.querySelectorAll('.ssx-region-group')]
+        .find(g=>g.dataset.regionName==='Africa');
+      if(!africa.open)africa.querySelector('summary').click();
+    })()`);
     const sourceTabs=await evaluate(cdp.send,sid,"[...document.querySelectorAll('[data-source]')].map(x=>x.dataset.source)");
     assert.ok(sourceTabs.includes('combined')&&sourceTabs.includes('oz'),'Original source filters must remain wired');
     await evaluate(cdp.send,sid,"document.querySelector('[data-source=oz]').click()");
     await sleep(180);
-    const ozRace=await evaluate(cdp.send,sid,"(()=>({source:document.querySelector('[data-source=oz]').classList.contains('active'),ranks:document.querySelectorAll('.ssx-region-detail .ssx-region-rank').length,canonical:document.querySelectorAll('#ssxSheetRegions [data-ssx-region]').length,progress:document.querySelector('#renderProgress')?.hidden}))()");
+    const ozRace=await evaluate(cdp.send,sid,"(()=>({source:document.querySelector('[data-source=oz]').classList.contains('active'),ranks:document.querySelectorAll('.ssx-region-group .ssx-region-detail .ssx-region-rank').length,canonical:document.querySelectorAll('#ssxSheetRegions [data-ssx-region]').length,progress:document.querySelector('#renderProgress')?.hidden}))()");
     assert.equal(ozRace.source,true);
     assert.equal(ozRace.ranks,0,'OZ standalone race mode has no ranked scores, so do not show stale combined data');
     const readableEmpty=await evaluate(cdp.send,sid,"(()=>({text:document.querySelector('.ssx-region-empty-inline')?.textContent,role:document.querySelector('.ssx-region-empty-inline')?.getAttribute('role'),visible:document.querySelector('.ssx-region-empty-inline')?.getBoundingClientRect().height>40}))()");
@@ -472,7 +557,8 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(navigation.restored,'Red Light');
     assert.deepEqual(navigation.labels,['Pista anterior','Próxima pista']);
     const desktopDensity=await evaluate(cdp.send,sid,"(()=>{const item=document.querySelector('.ssx-region-rank');const proof=item.querySelector('.ssx-region-proof');const metrics=item.querySelector('.ssx-region-metrics');return {height:Math.round(item.getBoundingClientRect().height),score:metrics.querySelector('.ssx-region-score')?.textContent,accessible:proof?.getAttribute('aria-label'),proofWidth:proof?.getBoundingClientRect().width,gridColumns:getComputedStyle(item).gridTemplateColumns.split(' ').length}})()");
-    assert.ok(desktopDensity.height<=58,'Desktop ranking rows should be compact');
+    assert.ok(desktopDensity.height>=50&&desktopDensity.height<=112,
+      'Inline desktop scorecards must preserve their readable height');
     assert.equal(desktopDensity.gridColumns,3);
     assert.equal(desktopDensity.score,'01:35.99','Preserve full precision of race times');
     assert.ok(desktopDensity.proofWidth>=36&&desktopDensity.accessible,'Proof icon must be touchable and accessible');
@@ -627,6 +713,11 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(mobile.table,'none');
     assert.equal(mobile.cards,'none','Mobile now starts with the same regional explorer as desktop');
     assert.ok(mobile.records>0,'Read-only legacy card data must remain available for filtered views');
+    await evaluate(cdp.send,sid,`(()=>{
+      const africa=[...document.querySelectorAll('.ssx-region-group')]
+        .find(g=>g.dataset.regionName==='Africa');
+      if(!africa.open)africa.querySelector('summary').click();
+    })()`);
     const mobileRegional=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#ssxRegionBrowser');const africa=[...root.querySelectorAll('.ssx-region-group')].find(x=>x.dataset.regionName==='Africa');const banner=africa.querySelector('.ssx-region-banner');const detail=root.querySelector('.ssx-region-detail');const art=getComputedStyle(banner,'::before').backgroundImage;return {shown:getComputedStyle(root).display,cols:getComputedStyle(root).gridTemplateColumns,africa:!!africa,redLight:detail.querySelector('h3')?.textContent,runs:detail.querySelectorAll('.ssx-region-rank').length,flags:detail.querySelectorAll('.ssx-region-rider .rider-flag').length,art,navOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth+1}})()");
     assert.equal(mobileRegional.shown,'grid','Mobile must render real region and mountain hierarchy');
     assert.equal(mobileRegional.redLight,'Red Light');
@@ -654,11 +745,11 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.ok(resetMobile.height>=40&&resetMobile.contained);
     assert.ok(resetMobile.overflow<=1);
 
-    const modeSheet=await evaluate(cdp.send,sid,"(()=>{const detail=document.querySelector('.ssx-region-detail');const bar=document.querySelector('#ssxSheetModeFilter');const header=detail.querySelector('.ssx-region-detail-header');const rank=detail.querySelector('.ssx-region-ranking');const buttons=[...bar.querySelectorAll('button:not([hidden])')];return {inDetail:bar.parentElement===detail,barDisplay:getComputedStyle(bar).display,belowHeader:bar.getBoundingClientRect().top>=header.getBoundingClientRect().bottom-1,aboveScores:bar.getBoundingClientRect().bottom<=rank.getBoundingClientRect().top+1,labels:buttons.map(b=>b.querySelector('.ssx-sheet-mode-name')?.textContent),active:bar.querySelector('[aria-pressed=true]')?.dataset.ssxSheetMode,hiddenUpper:getComputedStyle(document.querySelector('#alpineSubmodes')).display==='none',controlsHeight:buttons.map(b=>Math.round(b.getBoundingClientRect().height)),overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth}})()");
-    assert.equal(modeSheet.inDetail,true,'Mode selector belongs directly inside the chosen track classification');
+    const modeSheet=await evaluate(cdp.send,sid,"(()=>{const detail=document.querySelector('.ssx-region-detail');const bar=document.querySelector('#ssxSheetModeFilter');const header=detail.querySelector('.ssx-region-detail-header');const rank=detail.querySelector('.ssx-region-ranking');const buttons=[...bar.querySelectorAll('button:not([hidden])')];return {inIntro:bar.parentElement?.classList.contains('ssx-region-intro'),barDisplay:getComputedStyle(bar).display,beforeScores:bar.getBoundingClientRect().top<rank.getBoundingClientRect().top,independentOfClosedDetail:!detail.contains(bar),labels:buttons.map(b=>b.querySelector('.ssx-sheet-mode-name')?.textContent),active:bar.querySelector('[aria-pressed=true]')?.dataset.ssxSheetMode,hiddenUpper:getComputedStyle(document.querySelector('#alpineSubmodes')).display==='none',controlsHeight:buttons.map(b=>Math.round(b.getBoundingClientRect().height)),overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth}})()");
+    assert.equal(modeSheet.inIntro,true,'Mode selector belongs to the discoverable gallery header');
     assert.equal(modeSheet.barDisplay,'grid','Board/Wingsuit must remain visible by scores');
-    assert.equal(modeSheet.belowHeader,true,'Mode selector must follow the chosen track banner');
-    assert.equal(modeSheet.aboveScores,true,'Mode selector must precede rider times');
+    assert.equal(modeSheet.independentOfClosedDetail,true,'Mode selector stays accessible with all banners closed');
+    assert.equal(modeSheet.beforeScores,true,'Mode selector must precede all selected-track scorecards');
     assert.deepEqual(modeSheet.labels,['Board','Wingsuit']);
     assert.equal(modeSheet.active,'wings');
     assert.equal(modeSheet.hiddenUpper,true,'No duplicated submode selectors in the hero');
@@ -694,7 +785,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(smallNav.stepLabel,'Próxima pista');
     assert.ok(smallNav.overflow<=1);
     const mobileDensity=await evaluate(cdp.send,sid,"(()=>{const rows=[...document.querySelectorAll('.ssx-region-detail .ssx-region-rank')];const row=rows[0];const proof=rows.find(x=>x.querySelector('.ssx-region-proof'))?.querySelector('.ssx-region-proof');const btn=row.querySelector('.ssx-region-rider');const score=row.querySelector('.ssx-region-score');const metrics=row.querySelector('.ssx-region-metrics');const banner=document.querySelector('.ssx-region-detail-header');return {maxHeight:Math.max(...rows.slice(0,8).map(x=>Math.round(x.getBoundingClientRect().height))),count:rows.length,proofHeight:Math.round(proof?.getBoundingClientRect().height||0),proofWidth:Math.round(proof?.getBoundingClientRect().width||0),proofLabel:proof?.getAttribute('aria-label'),score:score.textContent,rider:btn.textContent.trim(),hasFlags:!!btn.querySelector('.rider-flag'),metricsInline:Boolean(metrics.contains(score)&&proof?.closest('.ssx-region-metrics')?.contains(proof)),headerHeight:Math.round(banner.getBoundingClientRect().height),width:document.documentElement.scrollWidth,viewport:document.documentElement.clientWidth}})()");
-    assert.ok(mobileDensity.maxHeight<=68,'Eight rows should fit in substantially less height');
+    assert.ok(mobileDensity.maxHeight<=116,'Readable mobile scorecards must not clip their labels');
     assert.ok(mobileDensity.proofHeight>=36&&mobileDensity.proofWidth>=36&&mobileDensity.proofLabel,'Proof link retains an accessible target');
     assert.equal(mobileDensity.metricsInline,true,'Time and evidence should share one compact line');
     assert.equal(mobileDensity.score,'01:11.92','Mobile keeps complete Wingsuit time');
@@ -844,7 +935,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     await evaluate(cdp.send,sid,"document.querySelector('#ssxRegionsToggle').click()");
     await sleep(180);
     assert.equal(await evaluate(cdp.send,sid,"getComputedStyle(document.querySelector('#ssxRegionBrowser')).display"),'grid','Regions returns to the approved mountain browsing panel');
-    assert.equal(await evaluate(cdp.send,sid,"document.querySelector('#ssxSheetModeFilter').parentElement.classList.contains('ssx-region-detail')"),true);
+    assert.equal(await evaluate(cdp.send,sid,"document.querySelector('#ssxSheetModeFilter').parentElement.classList.contains('ssx-region-intro')"),true);
 
     const detail=await evaluate(cdp.send,sid,"(()=>{const track=document.querySelector('#track');track.value='0';track.dispatchEvent(new Event('change',{bubbles:true}));return {track:track.value};})()");
     assert.equal(detail.track,'0','Red Light should exist as original track selector');
@@ -930,6 +1021,12 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
       assert.equal(responsiveMode.bar,width<=900?'grid':'none','Mobile sheet controls must respect breakpoint at '+width+'px');
       assert.equal(responsiveMode.top,width<=900?'none':'flex','Original large-screen submodes must remain available at '+width+'px');
       assert.ok(responsiveMode.screenOverflow<=1,'No horizontal overflow at '+width+'px');
+      const regionalGrid=await evaluate(cdp.send,sid,
+        "getComputedStyle(document.querySelector('#ssxRegionBrowser .ssx-region-index')).gridTemplateColumns.split(' ').length");
+      if(width===390)assert.equal(regionalGrid,2,
+        'At 390px, show two photo banners per row without compressing inline scorecards');
+      if(width===320)assert.equal(regionalGrid,1,
+        'A 320px screen must keep a comfortably readable single banner per row');
       const specialResponsive=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#ssxSpecialArchive');const rect=root.getBoundingClientRect();const buttons=[...root.querySelectorAll('.ssx-special-tab')];const selects=[...root.querySelectorAll('.ssx-special-select')].filter(x=>getComputedStyle(x.closest('label')).display!=='none');return{width:Math.round(rect.width),viewport:document.documentElement.clientWidth,docOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,internalScroll:root.querySelector('#ssxSpecialTabs').scrollWidth>=root.querySelector('#ssxSpecialTabs').clientWidth,buttonHeights:buttons.map(x=>Math.round(x.getBoundingClientRect().height)),selectHeights:selects.map(x=>Math.round(x.getBoundingClientRect().height)),recordCount:root.querySelectorAll('.ssx-special-record').length}})()");
       assert.ok(specialResponsive.width<=specialResponsive.viewport+1,'Historical panel must fit at '+width+'px');
       assert.ok(specialResponsive.docOverflow<=1,'Historical panel must not stretch viewport at '+width+'px');
