@@ -352,14 +352,16 @@ body.ssx-alpine-v38 #ssxSpecialTabs .ssx-special-tab[aria-pressed="true"]{
     padding:10px;
     scroll-snap-type:x proximity;
   }
-  body.ssx-alpine-v38 #ssxSheetModeFilter .ssx-sheet-mode-option:not([hidden]){
+  body.ssx-alpine-v37.ssx-alpine-v38 #ssxSheetModeFilter .ssx-sheet-mode-option:not([hidden]){
     flex:0 0 auto;
-    min-width:132px;
-    width:auto;
-    max-width:200px;
-    min-height:45px;
+    width:clamp(116px,40vw,168px);
+    min-width:116px;
+    max-width:168px;
+    min-height:46px;
+    padding:8px 9px;
     scroll-snap-align:start;
-    font-size:.84rem;
+    font-size:.78rem;
+    line-height:1.18;
   }
 }
 @media(max-width:600px){
