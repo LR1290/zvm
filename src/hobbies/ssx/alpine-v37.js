@@ -95,12 +95,19 @@
       ['records','ssxNavRecords'],['riders','ridersBtn'],
       ['community','communityMenuBtn'],['about','aboutBtn']
     ])quick.append(item(key,action,'ssx-mobile-quick-link'));
+    // A real header hierarchy: public navigation first, compact utilities in
+    // the same header. The buttons are proxies; original v36 handlers stay put.
     for(const [key,action] of [
-      ['settings','settingsBtn'],['guide','introBtn'],['sources','sources'],
-      ['submissions','submissionsBtn'],['data','dataBtn'],['admin','adminBtn']
+      ['settings','settingsBtn'],['guide','introBtn'],['data','dataBtn'],
+      ['submissions','submissionsBtn'],['sources','sources'],['admin','adminBtn']
     ])direct.append(item(key,action,'ssx-direct-action'));
-    header.insertAdjacentElement('afterend',quick);
-    quick.insertAdjacentElement('afterend',direct);
+    // Original v36 header layout is not a flex contract. One full-row wrapper
+    // keeps public and utility navigation in vertical order at every width.
+    const stack=document.createElement('div');
+    stack.id='ssxHeaderUtilityStack';
+    stack.className='ssx-header-utility-stack';
+    stack.append(quick,direct);
+    header.append(stack);
     const navigate=event=>{
       const actionButton=event.target.closest('[data-ssx-action]');
       if(!actionButton)return;
@@ -125,6 +132,10 @@
   function applyPublicCopy() {
     const copy=publicCopy[language()]||publicCopy.en;
     document.title=copy.title;
+    // v36 may refresh the headline after source/mode changes. Restore the
+    // localized editorial title along with the other public copy every time.
+    const headline=$('heroTitle');
+    if(headline)headline.textContent=t().hero;
     const replacements=[
       ['heroDesc',copy.desc],
       ['ssxNavRecords',copy.records],

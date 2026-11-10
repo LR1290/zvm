@@ -192,7 +192,12 @@
   const direct=$('ssxDirectActions');
   const navLink=el('a','','ssx-direct-action ssx-special-nav-link');
   navLink.href='#ssxSpecialArchive';
-  if(direct)direct.append(navLink);
+  if(direct){
+    // Extra categories are a public destination, not an admin function.
+    const admin=direct.querySelector('[data-ssx-action="adminBtn"]');
+    if(admin)direct.insertBefore(navLink,admin);
+    else direct.append(navLink);
+  }
 
   let group='level',level='Level 1',mode=0,platform='PS3',trackId=null,view='records',selectedRider='';
   function available(){
