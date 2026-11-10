@@ -630,3 +630,28 @@ body.ssx-alpine-v38.alpine-data-saver :is(.ssx-region-group,.ssx-dev-group)::det
 body.ssx-alpine-v38.alpine-data-saver :is(.ssx-region-group,.ssx-dev-group) .ssx-region-chevron{
   transition:none;
 }
+
+/* R78 — source integrity, not cosmetic certification. Provenance is visible
+   but visually secondary. The original string is on every formatted score. */
+body.ssx-alpine-v38 .ssx-identity-verification-note{
+  margin:0;
+  padding:9px clamp(12px,1.3vw,19px);
+  color:var(--next-subtle);
+  font-size:clamp(.73rem,.8vw,.83rem);
+  line-height:1.5;
+  border-bottom:1px solid rgba(95,163,187,.15);
+}
+body.ssx-alpine-v38 .ssx-region-score[data-ssx-score-status^="review-"],
+body.ssx-alpine-v38 .ssx-special-score[data-ssx-score-status^="review-"]{
+  text-decoration:underline dotted rgba(255,211,133,.74) 1px;
+  text-underline-offset:3px;
+  cursor:help;
+}
+body.ssx-alpine-v38 :is(.ssx-region-score,.ssx-special-score,.alpine-card-score){
+  font-variant-numeric:tabular-nums;
+  font-feature-settings:"tnum" 1;
+}
+html[data-theme="light"] body.ssx-alpine-v38 .ssx-identity-verification-note{
+  color:#496e81;
+  border-bottom-color:#cce1eb;
+}
