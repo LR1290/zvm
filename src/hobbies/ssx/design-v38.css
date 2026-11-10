@@ -410,3 +410,125 @@ html[data-theme="light"] body.ssx-alpine-v38 #ssxSheetModeFilter .ssx-sheet-mode
   background:#c5ebf5;color:#08435a;border-color:#0a9ec6
 }
 html[data-theme="light"] body.ssx-alpine-v38 .ssx-region-browser{background:#eaf5f9}
+
+
+/* R74 — track-local controls. Share and the ONE canonical five-mode chooser
+   live in the same action row, directly above the selected piste's results.
+   The row follows the region instead of occupying an unrelated full-width bar.
+   Small screens scroll only the mode rail: never squeeze the share action. */
+body.ssx-alpine-v37.ssx-alpine-v38 .ssx-region-detail .ssx-track-share-controls{
+  display:grid;
+  grid-template-columns:max-content minmax(0,1fr);
+  align-items:center;
+  gap:8px 14px;
+  min-width:0;
+  padding:10px clamp(10px,1vw,18px);
+  background:#0c2636;
+  border-top:1px solid var(--next-border);
+  border-bottom:1px solid var(--next-border);
+}
+body.ssx-alpine-v37.ssx-alpine-v38 .ssx-region-detail .ssx-track-share-button{
+  grid-column:1;
+  grid-row:1;
+  min-height:45px;
+  white-space:nowrap;
+}
+body.ssx-alpine-v37.ssx-alpine-v38 .ssx-region-detail .ssx-track-share-controls > #ssxSheetModeFilter:not([hidden]){
+  display:flex;
+  grid-column:2;
+  grid-row:1;
+  flex-wrap:nowrap;
+  align-items:center;
+  justify-content:flex-end;
+  width:100%;
+  min-width:0;
+  max-width:100%;
+  min-height:45px;
+  margin:0;
+  padding:0;
+  gap:6px;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+  overflow-x:auto;
+  overflow-y:hidden;
+  overscroll-behavior-inline:contain;
+  scroll-snap-type:x proximity;
+  scrollbar-width:thin;
+}
+body.ssx-alpine-v37.ssx-alpine-v38 .ssx-region-detail #ssxSheetModeFilter .ssx-sheet-mode-option:not([hidden]){
+  display:flex;
+  flex:1 0 105px;
+  align-items:center;
+  justify-content:center;
+  min-width:105px;
+  min-height:45px;
+  max-width:205px;
+  width:auto;
+  margin:0;
+  padding:8px 10px;
+  border-radius:9px;
+  white-space:normal;
+  line-height:1.14;
+  font-size:clamp(.73rem,.78vw,.85rem);
+  scroll-snap-align:start;
+}
+body.ssx-alpine-v37.ssx-alpine-v38 .ssx-region-detail #ssxSheetModeFilter .ssx-sheet-mode-name{
+  min-width:0;
+  white-space:normal;
+  text-wrap:balance;
+}
+body.ssx-alpine-v37.ssx-alpine-v38 .ssx-region-detail .ssx-track-share-status:not(:empty),
+body.ssx-alpine-v37.ssx-alpine-v38 .ssx-region-detail .ssx-track-share-manual:not([hidden]){
+  grid-column:1 / -1;
+  grid-row:auto;
+}
+body.ssx-alpine-v37.ssx-alpine-v38 .ssx-region-detail .ssx-track-share-status:empty{
+  display:none;
+}
+/* Leader cards and legacy table are the only fallback presentations where
+   a selected track's Share row is not available. */
+body.ssx-alpine-v37.ssx-alpine-v38 .sheet-card > #ssxSheetModeFilter:not([hidden]){
+  display:flex;
+  flex-wrap:nowrap;
+  align-items:center;
+  gap:7px;
+  padding:9px clamp(10px,1.5vw,21px);
+  min-width:0;
+  overflow-x:auto;
+}
+@media(max-width:900px){
+  body.ssx-alpine-v37.ssx-alpine-v38 .ssx-region-detail .ssx-track-share-controls{
+    grid-template-columns:max-content minmax(0,1fr);
+    gap:7px;
+    padding:8px;
+  }
+  body.ssx-alpine-v37.ssx-alpine-v38 .ssx-region-detail .ssx-track-share-button{
+    min-height:44px;
+    padding:8px 9px;
+    font-size:.72rem;
+  }
+  body.ssx-alpine-v37.ssx-alpine-v38 .ssx-region-detail .ssx-track-share-controls > #ssxSheetModeFilter:not([hidden]){
+    justify-content:flex-start;
+    min-height:44px;
+  }
+  body.ssx-alpine-v37.ssx-alpine-v38 .ssx-region-detail #ssxSheetModeFilter .ssx-sheet-mode-option:not([hidden]){
+    flex:0 0 116px;
+    width:116px;
+    min-width:116px;
+    max-width:135px;
+    min-height:44px;
+    padding:7px;
+    font-size:.73rem;
+  }
+}
+html[data-theme="light"] body.ssx-alpine-v37.ssx-alpine-v38 .ssx-region-detail .ssx-track-share-controls{
+  background:#e6f3f9;
+  border-color:#c9dce6;
+}
+@media(prefers-reduced-motion:reduce){
+  body.ssx-alpine-v37.ssx-alpine-v38 .ssx-region-detail #ssxSheetModeFilter .ssx-sheet-mode-option{
+    transition:none;
+  }
+}
