@@ -272,6 +272,34 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(specials.authority,'google-sheets-archive');
     assert.equal(specials.records,2205,'Every special Sheets record, including 137 Survive special rows, must be present');
     assert.deepEqual(specials.tabs.map(t=>t.key),['level','android','dev','boost','challenge']);
+    assert.deepEqual(specials.tabs.map(t=>t.text),
+      ['Níveis baixos','Android','DEV / Testes','Sem boost','Survive sem Gear/Wings/Rewinds'],
+      'Photo banner labels must NOT expose archived row counts as if they were track counts');
+    assert.ok(specials.tabs.every(t=>!/[·–-]\\s*\\d+\\s*$/.test(t.text)),
+      'No special category banner should end with a numeric badge');
+    await evaluate(cdp.send,sid,"document.querySelector('#ssxSpecialArchive').scrollIntoView({block:'start',behavior:'instant'})");
+    await sleep(150);
+    const cleanArchiveDir=path.join(process.cwd(),'artifacts');
+    fs.mkdirSync(cleanArchiveDir,{recursive:true});
+    const cleanArchiveShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+    fs.writeFileSync(path.join(cleanArchiveDir,'ssx-r77-archive-no-count-banners.png'),
+      Buffer.from(cleanArchiveShot.data,'base64'));
+    const archiveSelectionMotion=await evaluate(cdp.send,sid,`(()=>{
+      const tab=document.querySelector('#ssxSpecialTabs [data-ssx-special-group=dev]');
+      tab.click();
+      const results=document.querySelector('#ssxSpecialResults');
+      const selected=[...document.querySelectorAll('#ssxSpecialTabs .ssx-special-tab')].find(x=>x.getAttribute('aria-pressed')==='true');
+      const state={selected:selected?.textContent?.trim(),
+        animating:results.getAnimations().length,
+        realDevScore:results.querySelector('.ssx-special-score')?.textContent};
+      document.querySelector('#ssxSpecialTabs [data-ssx-special-group=level]').click();
+      return state;
+    })()`);
+    console.log('SSX_R77_ARCHIVE_LABELS',JSON.stringify({tabs:specials.tabs,motion:archiveSelectionMotion}));
+    assert.equal(archiveSelectionMotion.selected,'DEV / Testes');
+    assert.ok(archiveSelectionMotion.animating>0,
+      'Switching a historic photo category must have a real animated content reveal');
+
     assert.match(specials.link,/categorias extras/i);
     assert.equal(specials.mainCount,13,'Main 73-track navigator must remain intact');
     assert.equal(specials.mainScore,'01:35.99');
@@ -397,10 +425,75 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(galleryGeometry.banners,12,'All real main-game regions must remain');
     assert.equal(galleryGeometry.dev,true,'Curated DEV should appear in the same gallery');
     assert.equal(galleryGeometry.devTracks,8);
+    const devBannerLabel=await evaluate(cdp.send,sid,
+      "document.querySelector('.ssx-dev-group > .ssx-region-banner')?.textContent.trim()");
+    assert.doesNotMatch(devBannerLabel,/\\b10\\s+registros\\b/,
+      'DEV gallery banner must not display a historical count as a title badge');
+
     assert.equal(galleryGeometry.devRows,10);
     assert.equal(galleryGeometry.inline,true,'Real Top 16 must be a descendant of the chosen region');
     assert.equal(galleryGeometry.siblingDetail,false,'Remove the independent right-hand ranking pane');
     assert.ok(galleryGeometry.overflow<=1);
+    // R77: the banner disclosure must animate in BOTH directions, rather
+    // than relying on hover transforms or animating only the entry scorecard.
+    const motionMeta=await evaluate(cdp.send,sid,`(()=>{
+      const alaska=document.querySelector('.ssx-region-group[data-region-name=Alaska]');
+      const css=getComputedStyle(alaska,'::details-content');
+      return {supports:CSS.supports('selector(details::details-content)'),
+        acceptsAuto:CSS.supports('interpolate-size','allow-keywords'),
+        transitions:css.transitionProperty,duration:css.transitionDuration,
+        reduced:matchMedia('(prefers-reduced-motion: reduce)').matches};
+    })()`);
+    console.log('SSX_R77_DISCLOSURE_SUPPORT',JSON.stringify(motionMeta));
+    if(motionMeta.supports&&motionMeta.acceptsAuto&&!motionMeta.reduced){
+      assert.match(motionMeta.transitions,/block-size/,
+        'Native details content must transition height on open AND close');
+      assert.match(motionMeta.transitions,/opacity/,
+        'Details content should fade as its height expands');
+      const animationState=await evaluate(cdp.send,sid,`(()=>{
+        const group=document.querySelector('.ssx-region-group[data-region-name=Alaska]');
+        group.scrollIntoView({block:'center',behavior:'instant'});
+        if(group.open)group.querySelector('summary').click();
+        group.querySelector('summary').click();
+        return {opened:group.open,active:group.getAnimations({subtree:true}).map(a=>a.constructor.name),
+          content:parseFloat(getComputedStyle(group,'::details-content').blockSize)};
+      })()`);
+      await sleep(100);
+      const openingMid=await evaluate(cdp.send,sid,`(()=>{
+        const group=document.querySelector('.ssx-region-group[data-region-name=Alaska]');
+        return {open:group.open,height:parseFloat(getComputedStyle(group,'::details-content').blockSize),
+          opacity:Number(getComputedStyle(group,'::details-content').opacity)};
+      })()`);
+      await sleep(450);
+      const openEnd=await evaluate(cdp.send,sid,`(()=>{
+        const group=document.querySelector('.ssx-region-group[data-region-name=Alaska]');
+        const height=parseFloat(getComputedStyle(group,'::details-content').blockSize);
+        const wasOpen=group.open;
+        group.querySelector('summary').click();
+        return {wasOpen,open:group.open,height};
+      })()`);
+      await sleep(100);
+      const closingMid=await evaluate(cdp.send,sid,`(()=>{
+        const group=document.querySelector('.ssx-region-group[data-region-name=Alaska]');
+        return {open:group.open,height:parseFloat(getComputedStyle(group,'::details-content').blockSize)};
+      })()`);
+      await sleep(450);
+      const closedEnd=await evaluate(cdp.send,sid,`(()=>{
+        const group=document.querySelector('.ssx-region-group[data-region-name=Alaska]');
+        return {open:group.open,height:parseFloat(getComputedStyle(group,'::details-content').blockSize)};
+      })()`);
+      console.log('SSX_R77_BIDIRECTIONAL_MOTION',JSON.stringify({animationState,openingMid,openEnd,closingMid,closedEnd}));
+      assert.equal(animationState.opened,true);
+      assert.equal(openEnd.wasOpen,true,'Region must stay open through its expansion animation');
+      assert.equal(openEnd.open,false,'Clicking the banner should begin closing it');
+      assert.equal(closedEnd.open,false);
+      assert.ok(openEnd.height>40,'Expanded banner must reveal content');
+      assert.ok(openingMid.height<openEnd.height,
+        'The expansion should pass through an intermediate height');
+      assert.ok(closingMid.height>closedEnd.height,
+        'The collapse should pass through an intermediate height');
+    }
+
     // R73: a new track selection must update only its local ranking, rather
     // than destroying and rebuilding every regional banner and all mountains.
     const switchedInPlace=await evaluate(cdp.send,sid,`(()=>{

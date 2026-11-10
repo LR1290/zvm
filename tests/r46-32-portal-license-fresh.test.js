@@ -25,8 +25,11 @@ try {
 }
 
 const keyCode = 'zv-audit-freshness-01';
-const oldExpiry = '2026-10-10T12:00:00.000Z';
-const newExpiry = '2026-11-10T12:00:00.000Z';
+// Keep both fixture dates in the future: this test verifies freshness and
+// explicit blocking, not expiry. The former hard-coded newExpiry reached the
+// current date (2026-11-10), changing "Inativa" to an expired-license status.
+const oldExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+const newExpiry = new Date(Date.now() + 37 * 24 * 60 * 60 * 1000).toISOString();
 const persisted = new Map([[keyCode, {
   label: 'Licença fictícia', active: true, maxUses: 3, phones: [],
   expiresAt: oldExpiry,

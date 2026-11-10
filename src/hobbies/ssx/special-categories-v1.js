@@ -401,7 +401,10 @@
     for(const [key,categories] of Object.entries(VERIFIED_GROUPS)){
       const count=categories.reduce((sum,name)=>sum+(index.get(name)?.length||0),0);
       if(!count)continue;
-      const tab=el('button',c[key]+' · '+count,'ssx-special-tab');
+      // A banner describes a category, not the number of archived rows.
+      // Previously 'DEV / Testes · 10' referred to ten records across eight
+      // tracks, misleading users. Keep counts only in provenance/results.
+      const tab=el('button',c[key],'ssx-special-tab');
       tab.type='button';
       tab.dataset.ssxSpecialGroup=key;
       tab.setAttribute('aria-pressed',String(key===group));
@@ -421,6 +424,19 @@
     selectedRider='';
     render();
     tabs.querySelector('[data-ssx-special-group="'+group+'"]')?.focus({preventScroll:true});
+    // Category photos switch like banners: a subtle content reveal, not a
+    // hard-cut. Do not animate when reduced motion or data saver is enabled.
+    const reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches||
+      navigator.connection?.saveData===true;
+    if(!reduced){
+      for(const region of [filters,views,podium,rows]){
+        if(region.hidden||!region.getClientRects().length)continue;
+        region.animate([
+          {opacity:0.55,transform:'translateY(9px)'},
+          {opacity:1,transform:'translateY(0)'}
+        ],{duration:300,easing:'cubic-bezier(.18,.75,.23,1)'});
+      }
+    }
   });
   levelSelect.addEventListener('change',()=>{
     level=levelSelect.value;

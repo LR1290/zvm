@@ -573,3 +573,60 @@ body.ssx-alpine-v38 .ssx-region-detail .ssx-region-rank{
     transition:none;
   }
 }
+
+
+/* R77 — regional/DEV banners: true opening AND closing animation.
+   Chromium supports the native ::details-content pseudo-element and
+   interpolate-size; unlike a one-way keyframe this also animates closing
+   without delaying or hijacking the accessible native <summary> behavior.
+   Unsupported browsers retain normal instant disclosure as a safe fallback. */
+@supports selector(details::details-content){
+  body.ssx-alpine-v38 :is(.ssx-region-group,.ssx-dev-group){
+    interpolate-size:allow-keywords;
+  }
+  body.ssx-alpine-v38 :is(.ssx-region-group,.ssx-dev-group)::details-content{
+    block-size:0;
+    opacity:0;
+    overflow:clip;
+    content-visibility:hidden;
+    transition:
+      block-size 340ms cubic-bezier(.22,.8,.22,1),
+      opacity 260ms ease,
+      content-visibility 340ms allow-discrete;
+    transition-behavior:allow-discrete;
+  }
+  body.ssx-alpine-v38 :is(.ssx-region-group,.ssx-dev-group)[open]::details-content{
+    block-size:auto;
+    opacity:1;
+    content-visibility:visible;
+  }
+}
+/* A distinct hover/expanded cue conveys the disclosure affordance even
+   when the browser does not implement animatable details content. */
+body.ssx-alpine-v38 :is(.ssx-region-group,.ssx-dev-group) > .ssx-region-banner{
+  transition:border-color 220ms ease,filter 220ms ease,
+    background-color 220ms ease;
+}
+body.ssx-alpine-v38 :is(.ssx-region-group,.ssx-dev-group) .ssx-region-chevron{
+  transition:transform 300ms cubic-bezier(.22,.8,.22,1);
+}
+body.ssx-alpine-v38 #ssxSpecialTabs .ssx-special-tab{
+  transition:transform 240ms cubic-bezier(.22,.8,.22,1),
+    box-shadow 240ms ease,border-color 240ms ease,filter 240ms ease;
+}
+@media(prefers-reduced-motion:reduce){
+  @supports selector(details::details-content){
+    body.ssx-alpine-v38 :is(.ssx-region-group,.ssx-dev-group)::details-content{
+      transition:none;
+    }
+  }
+  body.ssx-alpine-v38 :is(.ssx-region-group,.ssx-dev-group) > .ssx-region-banner,
+  body.ssx-alpine-v38 :is(.ssx-region-group,.ssx-dev-group) .ssx-region-chevron,
+  body.ssx-alpine-v38 #ssxSpecialTabs .ssx-special-tab{
+    transition:none;
+  }
+}
+body.ssx-alpine-v38.alpine-data-saver :is(.ssx-region-group,.ssx-dev-group)::details-content,
+body.ssx-alpine-v38.alpine-data-saver :is(.ssx-region-group,.ssx-dev-group) .ssx-region-chevron{
+  transition:none;
+}
