@@ -822,6 +822,11 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
         }
 
         assert.equal(historicLeaderMobile.leaders,12);
+        const compactLeaderColumns=await evaluate(cdp.send,sid,
+          "getComputedStyle(document.querySelector('#ssxSpecialResults .ssx-special-leader')).gridTemplateColumns.split(' ').length");
+        assert.equal(compactLeaderColumns,2,
+          'Archive rider names must not be squeezed by a third score column at '+width+'px');
+
         assert.equal(historicLeaderMobile.view,'true');
         assert.equal(historicLeaderMobile.cardOverflow,false,'Historical leader/podium cards must fit '+width+'px');
         assert.ok(historicLeaderMobile.overflow<=1,'Historical leaders must not stretch '+width+'px screen');
