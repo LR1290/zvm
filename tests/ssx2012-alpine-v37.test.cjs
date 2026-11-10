@@ -68,6 +68,7 @@ test('published v37 and preview are byte-identical; archival v36 remains byte-ex
   assert.match(view,/id="ssx-v38-design"/);
   assert.match(view,/ssx-alpine-v38/);
   assert.match(view,/id="ssx-alpine-v37-script"/);
+  assert.match(view,/id="ssx-score-integrity-script"/);
   assert.match(view,/id="ssx-special-categories-v1-script"/);
   assert.match(view,/id="ssx-special-leaders-core-script"/);
   assert.match(view,/id="sheet"/);
@@ -80,6 +81,7 @@ test('published v37 and preview are byte-identical; archival v36 remains byte-ex
     .replace(/<style id="ssx-alpine-v37-style">[\s\S]*?<\/style>/,'')
     .replace(/<style id="ssx-v38-design">[\s\S]*?<\/style>/,'')
     .replace(/<script id="ssx-alpine-v37-script">[\s\S]*?<\/script>/,'')
+    .replace(/<script id="ssx-score-integrity-script">[\s\S]*?<\/script>/,'')
     .replace(/<script id="ssx-special-categories-v1-script">[\s\S]*?<\/script>/,'')
     .replace(/<script id="ssx-special-leaders-core-script">[\s\S]*?<\/script>/,'')
     .replace(/<title>[^<]*<\/title>/i,originalTitle[0]);
