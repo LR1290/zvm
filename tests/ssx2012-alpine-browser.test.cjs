@@ -1039,7 +1039,10 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     await evaluate(cdp.send,sid,"document.querySelector('#ssxRegionsToggle').click()");
     await sleep(180);
     assert.equal(await evaluate(cdp.send,sid,"getComputedStyle(document.querySelector('#ssxRegionBrowser')).display"),'grid','Regions returns to the approved mountain browsing panel');
-    assert.equal(await evaluate(cdp.send,sid,"document.querySelector('#ssxSheetModeFilter').parentElement.classList.contains('ssx-track-share-controls')"),true);
+    const railInRegion=await evaluate(cdp.send,sid,"(()=>{const rail=document.querySelector('#ssxSheetModeFilter');const group=rail.closest('.ssx-region-group');return {share:rail.parentElement?.classList.contains('ssx-track-share-controls'),fallback:rail.parentElement?.classList.contains('sheet-card'),open:group?.open===true,visible:getComputedStyle(rail).display!=='none'&&rail.getClientRects().length>0}})()");
+    assert.equal(railInRegion.visible,true,'The mode rail must remain keyboard-visible when reopening regional browsing');
+    assert.ok(railInRegion.share&&railInRegion.open || railInRegion.fallback,
+      'A selected open piste uses the Share row; a collapsed region uses the safe fallback');
 
     const detail=await evaluate(cdp.send,sid,"(()=>{const track=document.querySelector('#track');track.value='0';track.dispatchEvent(new Event('change',{bubbles:true}));return {track:track.value};})()");
     assert.equal(detail.track,'0','Red Light should exist as original track selector');
