@@ -510,6 +510,11 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(r72DevInventory.archive,'google-sheets-2026-08-22');
     assert.equal(r72DevInventory.mainCount,'73','Historical DEV rows cannot inflate the official catalogue');
     assert.ok(r72DevInventory.labels.includes('TEST RAIL')&&r72DevInventory.labels.includes('Happiness'));
+    const provenanceTotals=await evaluate(cdp.send,sid,
+      "document.querySelector('#ssxRegionMatches')?.textContent.trim()");
+    assert.match(provenanceTotals,/73 pistas/,'The official count must stay 73, not 81');
+    assert.match(provenanceTotals,/8 DEV/,'Archived DEV entries must be itemized separately');
+
     // Open Africa through its actual banner, not by untrusted test CSS.
     await evaluate(cdp.send,sid,`(()=>{
       const africa=[...document.querySelectorAll('.ssx-region-group')]
@@ -1016,6 +1021,12 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
       assert.equal(responsiveMode.bar,width<=900?'grid':'none','Mobile sheet controls must respect breakpoint at '+width+'px');
       assert.equal(responsiveMode.top,width<=900?'none':'flex','Original large-screen submodes must remain available at '+width+'px');
       assert.ok(responsiveMode.screenOverflow<=1,'No horizontal overflow at '+width+'px');
+      const regionalGrid=await evaluate(cdp.send,sid,
+        "getComputedStyle(document.querySelector('#ssxRegionBrowser .ssx-region-index')).gridTemplateColumns.split(' ').length");
+      if(width===390)assert.equal(regionalGrid,2,
+        'At 390px, show two photo banners per row without compressing inline scorecards');
+      if(width===320)assert.equal(regionalGrid,1,
+        'A 320px screen must keep a comfortably readable single banner per row');
       const specialResponsive=await evaluate(cdp.send,sid,"(()=>{const root=document.querySelector('#ssxSpecialArchive');const rect=root.getBoundingClientRect();const buttons=[...root.querySelectorAll('.ssx-special-tab')];const selects=[...root.querySelectorAll('.ssx-special-select')].filter(x=>getComputedStyle(x.closest('label')).display!=='none');return{width:Math.round(rect.width),viewport:document.documentElement.clientWidth,docOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,internalScroll:root.querySelector('#ssxSpecialTabs').scrollWidth>=root.querySelector('#ssxSpecialTabs').clientWidth,buttonHeights:buttons.map(x=>Math.round(x.getBoundingClientRect().height)),selectHeights:selects.map(x=>Math.round(x.getBoundingClientRect().height)),recordCount:root.querySelectorAll('.ssx-special-record').length}})()");
       assert.ok(specialResponsive.width<=specialResponsive.viewport+1,'Historical panel must fit at '+width+'px');
       assert.ok(specialResponsive.docOverflow<=1,'Historical panel must not stretch viewport at '+width+'px');
