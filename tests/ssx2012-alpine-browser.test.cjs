@@ -468,8 +468,9 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
       const openEnd=await evaluate(cdp.send,sid,`(()=>{
         const group=document.querySelector('.ssx-region-group[data-region-name=Alaska]');
         const height=parseFloat(getComputedStyle(group,'::details-content').blockSize);
+        const wasOpen=group.open;
         group.querySelector('summary').click();
-        return {open:group.open,height};
+        return {wasOpen,open:group.open,height};
       })()`);
       await sleep(100);
       const closingMid=await evaluate(cdp.send,sid,`(()=>{
@@ -483,7 +484,8 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
       })()`);
       console.log('SSX_R77_BIDIRECTIONAL_MOTION',JSON.stringify({animationState,openingMid,openEnd,closingMid,closedEnd}));
       assert.equal(animationState.opened,true);
-      assert.equal(openEnd.open,true);
+      assert.equal(openEnd.wasOpen,true,'Region must stay open through its expansion animation');
+      assert.equal(openEnd.open,false,'Clicking the banner should begin closing it');
       assert.equal(closedEnd.open,false);
       assert.ok(openEnd.height>40,'Expanded banner must reveal content');
       assert.ok(openingMid.height<openEnd.height,
