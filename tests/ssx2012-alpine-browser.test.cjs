@@ -456,6 +456,42 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
 
     const mobileHeroShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
     fs.writeFileSync(path.join(outDir,'ssx-v37-mobile-hero.png'),Buffer.from(mobileHeroShot.data,'base64'));
+    // Dedicated pre-dialog Chromium captures. The old screenshots labeled
+    // "historical" were taken with Riders open or the page scrolled elsewhere;
+    // verify the target section truly occupies the viewport before saving.
+    const setViewportTarget=async selector=>{
+      const pos=await evaluate(cdp.send,sid,`(()=>{
+        const node=document.querySelector(${JSON.stringify(selector)});
+        node.scrollIntoView({block:'start',behavior:'instant'});
+        return {top:node.getBoundingClientRect().top,height:node.getBoundingClientRect().height,
+          scrollY:window.scrollY,viewport:window.innerHeight,documentHeight:document.documentElement.scrollHeight};
+      })()`);
+      await sleep(260);
+      const after=await evaluate(cdp.send,sid,`(()=>{
+        const node=document.querySelector(${JSON.stringify(selector)});
+        const rect=node.getBoundingClientRect();
+        return{top:rect.top,bottom:rect.bottom,scrollY:window.scrollY,
+          viewport:window.innerHeight,bodyOverflow:getComputedStyle(document.body).overflow,
+          modalOpen:[...document.querySelectorAll('.modal[aria-hidden="false"]')].map(el=>el.id)};
+      })()`);
+      assert.ok(after.top<after.viewport&&after.bottom>0,
+        'Chromium capture must show the intended visible section '+selector+' '+JSON.stringify({before:pos,after}));
+      assert.deepEqual(after.modalOpen,[],'No modal can obscure a visual regression capture');
+      return after;
+    };
+    await evaluate(cdp.send,sid,"(()=>{document.querySelector('#ssxSpecialTabs [data-ssx-special-group=android]').click();document.querySelector('#ssxSpecialViews [data-ssx-special-view=leaders]').click()})()");
+    const archiveFrame=await setViewportTarget('#ssxSpecialPodium');
+    console.log('SSX_R69_MOBILE_ARCHIVE_FRAME',JSON.stringify(archiveFrame));
+    const visibleFlags=await evaluate(cdp.send,sid,"(()=>[...document.querySelectorAll('#ssxSpecialPodium img.ssx-special-rider-flag')].map(img=>({alt:img.alt,loaded:img.naturalWidth>0,top:img.getBoundingClientRect().top,width:img.getBoundingClientRect().width})))()");
+    assert.ok(visibleFlags.length>0&&visibleFlags.every(img=>img.loaded&&img.width>=18),
+      'Mobile archived flags must be actually painted, not merely present: '+JSON.stringify(visibleFlags));
+    const archiveShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+    fs.writeFileSync(path.join(outDir,'ssx-r69-mobile-archive-flags.png'),Buffer.from(archiveShot.data,'base64'));
+    await evaluate(cdp.send,sid,"document.querySelector('#ssxSpecialViews [data-ssx-special-view=records]').click()");
+    await setViewportTarget('.ssx-region-detail');
+    const mainFlagsShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+    fs.writeFileSync(path.join(outDir,'ssx-r69-mobile-ranking-flags.png'),Buffer.from(mainFlagsShot.data,'base64'));
+
     const mobile=await evaluate(cdp.send,sid,"({cards:getComputedStyle(document.querySelector('#alpineMobileCards')).display,table:getComputedStyle(document.querySelector('.sheet-scroll')).display,records:document.querySelectorAll('#alpineMobileCards .alpine-card').length,mode:document.body.dataset.ssxMode,viewport:window.innerWidth})");
     assert.equal(mobile.table,'none');
     assert.equal(mobile.cards,'none','Mobile now starts with the same regional explorer as desktop');
