@@ -507,6 +507,8 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     await setViewportTarget('.ssx-region-detail');
     const mainFlagsShot=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
     fs.writeFileSync(path.join(outDir,'ssx-r69-mobile-ranking-flags.png'),Buffer.from(mainFlagsShot.data,'base64'));
+    // Restore the user's previously selected challenge tab after isolated visuals.
+    await evaluate(cdp.send,sid,"document.querySelector('#ssxSpecialTabs [data-ssx-special-group=challenge]').click()");
 
     const mobile=await evaluate(cdp.send,sid,"({cards:getComputedStyle(document.querySelector('#alpineMobileCards')).display,table:getComputedStyle(document.querySelector('.sheet-scroll')).display,records:document.querySelectorAll('#alpineMobileCards .alpine-card').length,mode:document.body.dataset.ssxMode,viewport:window.innerWidth})");
     assert.equal(mobile.table,'none');
