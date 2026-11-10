@@ -95,12 +95,13 @@
       ['records','ssxNavRecords'],['riders','ridersBtn'],
       ['community','communityMenuBtn'],['about','aboutBtn']
     ])quick.append(item(key,action,'ssx-mobile-quick-link'));
+    // A real header hierarchy: public navigation first, compact utilities in
+    // the same header. The buttons are proxies; original v36 handlers stay put.
     for(const [key,action] of [
-      ['settings','settingsBtn'],['guide','introBtn'],['sources','sources'],
-      ['submissions','submissionsBtn'],['data','dataBtn'],['admin','adminBtn']
+      ['settings','settingsBtn'],['guide','introBtn'],['data','dataBtn'],
+      ['submissions','submissionsBtn'],['sources','sources'],['admin','adminBtn']
     ])direct.append(item(key,action,'ssx-direct-action'));
-    header.insertAdjacentElement('afterend',quick);
-    quick.insertAdjacentElement('afterend',direct);
+    header.append(quick,direct);
     const navigate=event=>{
       const actionButton=event.target.closest('[data-ssx-action]');
       if(!actionButton)return;
