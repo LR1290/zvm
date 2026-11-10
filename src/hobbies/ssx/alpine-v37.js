@@ -101,7 +101,13 @@
       ['settings','settingsBtn'],['guide','introBtn'],['data','dataBtn'],
       ['submissions','submissionsBtn'],['sources','sources'],['admin','adminBtn']
     ])direct.append(item(key,action,'ssx-direct-action'));
-    header.append(quick,direct);
+    // Original v36 header layout is not a flex contract. One full-row wrapper
+    // keeps public and utility navigation in vertical order at every width.
+    const stack=document.createElement('div');
+    stack.id='ssxHeaderUtilityStack';
+    stack.className='ssx-header-utility-stack';
+    stack.append(quick,direct);
+    header.append(stack);
     const navigate=event=>{
       const actionButton=event.target.closest('[data-ssx-action]');
       if(!actionButton)return;
