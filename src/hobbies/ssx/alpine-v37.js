@@ -379,6 +379,12 @@
     const browser=text('section','','ssx-region-browser');
     browser.id='ssxRegionBrowser';
     browser.setAttribute('aria-label','Regiões, montanhas e pistas');
+    // An inline toolbar cannot remain keyboard-inaccessible in a collapsed
+    // region. When the selected banner closes, park it in the safe fallback;
+    // when reopened, return it to the original Share action row.
+    browser.addEventListener('toggle',event=>{
+      if(event.target?.classList?.contains('ssx-region-group'))placeSheetModeFilter();
+    },true);
     browser.addEventListener('click',event=>{
       const summary=event.target.closest('summary.ssx-region-banner');
       if(summary&&!regionQuery){
@@ -717,14 +723,56 @@
       // The original sheet listens to bubbled clicks. Keep this internal mode
       // control independent so its source/title handlers cannot hijack it.
       event.stopPropagation();
+      const hadFocus=document.activeElement===button;
       if(button.dataset.ssxSheetMode!==state.mode)selectMode(button.dataset.ssxSheetMode);
       // selectMode -> sync already refreshes the canonical navigation.
       // Re-running updateCopy immediately caused duplicate DOM work per click.
       applyPublicCopy();
+      // Preserve keyboard focus even when the legacy historic-category
+      // renderer restores its previously active tab during this interaction.
+      if(hadFocus&&button.isConnected)button.focus({preventScroll:true});
     });
-    // Stable location between the controls and the regional gallery.
-    // Never reparent the focusable rail during every track repaint.
+    // The original location is a fallback for the leader/table view only.
+    // When a piste is displayed, the same live control moves beside Share.
     toolbar.after(rail);
+  }
+  // R74: there is only ONE set of discipline buttons and click handlers.
+  // Temporarily park it before removing/rebuilding a detail, then attach it
+  // to the selected piste's existing Share row. Never clone the controls.
+  function parkSheetModeFilter(){
+    const rail=$('ssxSheetModeFilter');
+    const toolbar=$('toolbar');
+    if(!rail||!toolbar)return;
+    if(rail.parentElement?.classList.contains('sheet-card'))return;
+    const focusedMode=rail.contains(document.activeElement)
+      ? document.activeElement.closest('[data-ssx-sheet-mode]')?.dataset.ssxSheetMode:null;
+    const previousScroll=rail.scrollLeft;
+    toolbar.after(rail);
+    rail.scrollLeft=previousScroll;
+    if(focusedMode)rail.querySelector('[data-ssx-sheet-mode="'+focusedMode+'"]')
+      ?.focus({preventScroll:true});
+  }
+  function placeSheetModeFilter(){
+    const rail=$('ssxSheetModeFilter');
+    if(!rail)return;
+    if(state.fullTable||state.leaderCards||state.allPositions){
+      parkSheetModeFilter();
+      return;
+    }
+    const controls=$('ssxRegionBrowser')?.querySelector('.ssx-region-group > .ssx-region-detail .ssx-track-share-controls');
+    if(!controls||!controls.closest('details.ssx-region-group')?.open){
+      parkSheetModeFilter();
+      return;
+    }
+    if(rail.parentElement!==controls){
+      const focusedMode=rail.contains(document.activeElement)
+        ? document.activeElement.closest('[data-ssx-sheet-mode]')?.dataset.ssxSheetMode:null;
+      const previousScroll=rail.scrollLeft;
+      controls.append(rail);
+      rail.scrollLeft=previousScroll;
+      if(focusedMode)rail.querySelector('[data-ssx-sheet-mode="'+focusedMode+'"]')
+        ?.focus({preventScroll:true});
+    }
   }
   function syncSheetModeFilter(group,copy){
     const rail=$('ssxSheetModeFilter');
@@ -733,6 +781,7 @@
     // Race It! and Survive subfilters must never disappear in gallery mode.
     const allowed=['board','wings','trick','survive','special'];
     rail.hidden=state.fullTable;
+    if(state.fullTable||state.leaderCards||state.allPositions)parkSheetModeFilter();
     rail.dataset.ssxLeadersModeSwitch=String(state.leaderCards);
     rail.setAttribute('aria-label',state.leaderCards?copy.modes:
       group==='race'?copy.race:
@@ -1042,6 +1091,8 @@
     const group=[...browser.querySelectorAll('.ssx-region-group')].find(node=>
       node.dataset.regionName===selected?.region);
     if(!group){renderRegionBrowser();return;}
+    // Preserve the active navigation node and handlers during the fast detail swap.
+    parkSheetModeFilter();
     for(const old of browser.querySelectorAll('.ssx-region-group > .ssx-region-detail'))old.remove();
     for(const button of browser.querySelectorAll('.ssx-track-choice[data-region-track]')){
       button.setAttribute('aria-pressed',String(button.dataset.regionTrack===regionalSelection));
@@ -1049,6 +1100,7 @@
     group.open=true;
     group.append(buildRegionalDetail(selected,entries,regionI18n[language()]||regionI18n.en,
       regionToolsCopy[language()]||regionToolsCopy.en));
+    placeSheetModeFilter();
     document.body.dataset.ssxLastTrackRenderMs=String(Math.round(performance.now()-start));
   }
 
@@ -1159,7 +1211,10 @@
     // DEV belongs to the all-regions directory, never a filtered official
     // region or the source's 73-track counter.
     if(devPanel&&selectedRegion==='all')index.insertBefore(devPanel,noMatches);
+    // The old selected result can be removed only after preserving the rail.
+    parkSheetModeFilter();
     browser.replaceChildren(index);
+    placeSheetModeFilter();
     applyRegionSearch();
   }
 
