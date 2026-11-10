@@ -1687,14 +1687,14 @@ body.ssx-alpine-v37 #renderProgress:not([hidden]) {
 }
 
 /* R48: context-aware race/survival controls above every region banner on mobile. */
-body.ssx-alpine-v37 .ssx-region-detail > #ssxSheetModeFilter {display:none;}
+body.ssx-alpine-v37 .ssx-region-intro > #ssxSheetModeFilter {display:none;}
 body.ssx-alpine-v37 #ssxSheetModeFilter[hidden],
 body.ssx-alpine-v37 #ssxSheetModeFilter .ssx-sheet-mode-option[hidden] {display:none;}
 @media(max-width:900px){
   /* The upper hero controls are redundant when the same live control
      is placed directly above the regional directory. */
   body.ssx-alpine-v37 #alpine-modes #alpineSubmodes {display:none;}
-  body.ssx-alpine-v37 .ssx-region-detail > #ssxSheetModeFilter:not([hidden]){
+  body.ssx-alpine-v37 .ssx-region-intro > #ssxSheetModeFilter:not([hidden]){
     display:grid;
     grid-template-columns:repeat(2,minmax(0,1fr));
     gap:8px;
@@ -1735,7 +1735,7 @@ body.ssx-alpine-v37 #ssxSheetModeFilter .ssx-sheet-mode-option[hidden] {display:
     -webkit-overflow-scrolling:touch;
   }
 }
-html[data-theme="light"] body.ssx-alpine-v37 .ssx-region-detail > #ssxSheetModeFilter:not([hidden]){
+html[data-theme="light"] body.ssx-alpine-v37 .ssx-region-intro > #ssxSheetModeFilter:not([hidden]){
   background:#e8f3f9;border-bottom-color:#c5dfea;
 }
 html[data-theme="light"] body.ssx-alpine-v37 .ssx-sheet-mode-option:not([hidden]){
@@ -1974,7 +1974,7 @@ body.ssx-alpine-v37 #ssxViewOptions.ssx-view-options-direct{
     font-size:clamp(.71rem,2.6vw,.83rem);
     overflow-wrap:anywhere;text-align:center;
   }
-  body.ssx-alpine-v37 .ssx-region-detail > #ssxSheetModeFilter:not([hidden]){
+  body.ssx-alpine-v37 .ssx-region-intro > #ssxSheetModeFilter:not([hidden]){
     position:relative;margin:0;padding:8px 10px;min-width:0;max-width:100%;
   }
 }
@@ -3421,6 +3421,16 @@ body.ssx-alpine-v37 .ssx-region-intro .ssx-region-search-box{
   grid-column:2;
   grid-row:1/3;
   margin-top:0;
+}
+body.ssx-alpine-v37 .ssx-region-intro > #ssxSheetModeFilter{
+  grid-column:1/-1;
+  grid-row:auto;
+  width:100%;
+  min-width:0;
+  margin:5px 0 0;
+  border:1px solid rgba(72,119,146,.26);
+  border-radius:10px;
+  overflow:hidden;
 }
 body.ssx-alpine-v37 .ssx-region-intro .ssx-region-search-count,
 body.ssx-alpine-v37 .ssx-region-intro .ssx-region-curation-note{
