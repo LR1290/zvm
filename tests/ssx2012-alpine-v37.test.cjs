@@ -52,12 +52,12 @@ test('R84 ranking enhancement is read-only, local and movement-accessible',()=>{
   assert.match(css,/prefers-reduced-motion/);
   assert.match(js,/IntersectionObserver/);
   assert.match(js,/MutationObserver/);
-  assert.doesNotMatch(js,/fetch\\s*\\(|XMLHttpRequest|WebSocket|document\\.cookie|localStorage\\.setItem|innerHTML/);
+  assert.doesNotMatch(js,/fetch\s*\(|XMLHttpRequest|WebSocket|document\.cookie|localStorage\.setItem|innerHTML/);
   assert.doesNotMatch(css,/!important/i);
-  assert.doesNotMatch(js,/<\\/script/i);
-  assert.doesNotMatch(css,/<\\/style/i);
+  assert.doesNotMatch(js,/<\/script/i);
+  assert.doesNotMatch(css,/<\/style/i);
   assert.match(css,/rider-name/);
-  assert.match(css,/pos\\.one/);
+  assert.match(css,/pos\.one/);
 });
 test('published v37 and preview are byte-identical; archival v36 remains byte-exact',()=>harness(async base=>{
   const original=await rawFetch(base+SSX_V36_ARCHIVE_ROUTE);
