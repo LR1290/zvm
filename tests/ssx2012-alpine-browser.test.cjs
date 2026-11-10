@@ -141,8 +141,10 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
       const rect=n=>{const r=n.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height};};
       const chips=[...tools.querySelectorAll(':scope > button, :scope > a')].map(rect);
       const controls=[...classification.querySelectorAll('button:not([hidden])')].map(rect);
-      return {navInside:topbar.contains(nav),utilitiesInside:tools.parentElement===topbar,
-        quickInside:quick.parentElement===topbar,
+      return {navInside:topbar.contains(nav),utilitiesInside:tools.parentElement?.id==='ssxHeaderUtilityStack'&&
+          tools.parentElement?.parentElement===topbar,
+        quickInside:quick.parentElement?.id==='ssxHeaderUtilityStack'&&
+          quick.parentElement?.parentElement===topbar,
         groups:[...tools.children].map(n=>n.dataset.ssxAction||n.className),
         header:rect(topbar),main:rect(nav),utility:rect(tools),hero:rect(hero),
         sheet:rect(sheet),mode:rect(mode),classification:rect(classification),
