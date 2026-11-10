@@ -204,7 +204,8 @@ test('public SSX UI has neutral brand/title and no Edition release promotion',()
   assert.match(js,/installMobileNavigation/);
   assert.match(js,/ssxDirectActions/);
   assert.match(js,/ssx-region-detail/);
-  assert.match(js,/detail\.insertBefore\(modeFilter/);
+  assert.match(js,/intro\.append\(modeFilter\)/,
+    'The mode switch must stay accessible above a closed region, not inside hidden Top 16');
   assert.match(js,/cards\.before\(modeFilter\)/);
   assert.match(js,/function renderTrackLeaderCards\(root,copy\)/);
   assert.match(js,/function showTrackLeaders\(\)/);
