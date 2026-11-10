@@ -472,7 +472,18 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
         const rect=node.getBoundingClientRect();
         return{top:rect.top,bottom:rect.bottom,scrollY:window.scrollY,
           viewport:window.innerHeight,bodyOverflow:getComputedStyle(document.body).overflow,
-          modalOpen:[...document.querySelectorAll('.modal[aria-hidden="false"]')].map(el=>el.id)};
+          modalOpen:[...document.querySelectorAll('.modal[aria-hidden="false"]')].map(el=>el.id),
+          scrollRoot:document.scrollingElement?.tagName,
+          htmlOverflow:getComputedStyle(document.documentElement).overflow,
+          htmlScrollHeight:document.documentElement.scrollHeight,
+          bodyScrollHeight:document.body.scrollHeight,
+          bodyInlineOverflow:document.body.style.overflow,
+          hierarchy:(()=>{const out=[];let n=node;while(n&&out.length<9){
+            const css=getComputedStyle(n),r=n.getBoundingClientRect();
+            out.push({tag:n.tagName,id:n.id,className:String(n.className||'').slice(0,60),
+              top:Math.round(r.top),height:Math.round(r.height),scrollHeight:n.scrollHeight,
+              clientHeight:n.clientHeight,scrollTop:n.scrollTop,overflow:css.overflow,position:css.position});
+            n=n.parentElement;}return out;})()};
       })()`);
       assert.ok(after.top<after.viewport&&after.bottom>0,
         'Chromium capture must show the intended visible section '+selector+' '+JSON.stringify({before:pos,after}));
