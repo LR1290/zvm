@@ -441,6 +441,44 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(trackModeRow.sameRow,true,'Incremental track swaps must keep modes beside Share');
     assert.equal(trackModeRow.controls,1,'Never duplicate the canonical five-mode rail');
     assert.equal(trackModeRow.title,'Red Light');
+    // R76: changing ranking mode must not replace any region, mountain, DEV
+    // or search node; only per-track scorecounts and the selected Top 16 change.
+    const galleryBaseline=await evaluate(cdp.send,sid,`(()=>{
+      const root=document.querySelector('#ssxRegionBrowser');
+      const africa=root.querySelector('.ssx-region-group[data-region-name="Africa"]');
+      return{builds:Number(root.dataset.ssxGalleryBuilds||0),
+        reuses:Number(root.dataset.ssxGalleryReuses||0),
+        africa:africa?.dataset.regionName,regions:root.querySelectorAll('.ssx-region-group').length,
+        search:document.querySelector('#ssxRegionSearch')?.value};
+    })()`);
+    await evaluate(cdp.send,sid,"document.querySelector('#ssxSheetModeFilter [data-ssx-sheet-mode=wings]').click()");
+    await sleep(190);
+    const wingsReuse=await evaluate(cdp.send,sid,`(()=>{
+      const root=document.querySelector('#ssxRegionBrowser');
+      return{mode:document.body.dataset.ssxMode,
+        builds:Number(root.dataset.ssxGalleryBuilds||0),
+        reuses:Number(root.dataset.ssxGalleryReuses||0),
+        reuseMs:Number(root.dataset.ssxGalleryReuseMs||NaN),
+        score:root.querySelector('.ssx-region-detail .ssx-region-score')?.textContent,
+        mountedRegions:root.querySelectorAll('.ssx-region-group').length,
+        sameSearch:document.querySelector('#ssxRegionSearch')?.value==='',
+        nextShare:root.querySelector('.ssx-region-detail .ssx-track-share-button')?.textContent.includes('Compartilhar')};
+    })()`);
+    console.log('SSX_R76_MODE_REUSE',JSON.stringify({baseline:galleryBaseline,after:wingsReuse}));
+    assert.equal(wingsReuse.mode,'wings');
+    assert.equal(wingsReuse.score,'01:11.92','Reusing gallery must still hydrate genuine Wingsuit leaderboard');
+    assert.equal(wingsReuse.builds,galleryBaseline.builds,'Mode switch must retain the complete gallery DOM');
+    assert.ok(wingsReuse.reuses>galleryBaseline.reuses,'Mode switch must use partial scoreboard refresh');
+    assert.equal(wingsReuse.mountedRegions,12);
+    assert.equal(wingsReuse.sameSearch,true);
+    assert.equal(wingsReuse.nextShare,true);
+    assert.ok(Number.isFinite(wingsReuse.reuseMs)&&wingsReuse.reuseMs<350);
+    await evaluate(cdp.send,sid,"document.querySelector('#ssxSheetModeFilter [data-ssx-sheet-mode=board]').click()");
+    await sleep(190);
+    const restoredBoard=await evaluate(cdp.send,sid,"({score:document.querySelector('.ssx-region-detail .ssx-region-score')?.textContent,builds:Number(document.querySelector('#ssxRegionBrowser').dataset.ssxGalleryBuilds||0)})");
+    assert.equal(restoredBoard.score,'01:35.99');
+    assert.equal(restoredBoard.builds,galleryBaseline.builds,'Returning to Board should not rebuild all 12 banners');
+
 
     assert.ok(Number.isFinite(switchedInPlace.updateMs)&&switchedInPlace.updateMs<350,
       'Track-only interaction must stay responsive without a full directory rebuild');
@@ -597,6 +635,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     })()`);
     const sourceTabs=await evaluate(cdp.send,sid,"[...document.querySelectorAll('[data-source]')].map(x=>x.dataset.source)");
     assert.ok(sourceTabs.includes('combined')&&sourceTabs.includes('oz'),'Original source filters must remain wired');
+    const sourceBuildsBefore=await evaluate(cdp.send,sid,"Number(document.querySelector('#ssxRegionBrowser').dataset.ssxGalleryBuilds||0)");
     await evaluate(cdp.send,sid,"document.querySelector('[data-source=oz]').click()");
     await sleep(180);
     const ozRace=await evaluate(cdp.send,sid,"(()=>({source:document.querySelector('[data-source=oz]').classList.contains('active'),ranks:document.querySelectorAll('.ssx-region-group .ssx-region-detail .ssx-region-rank').length,canonical:document.querySelectorAll('#ssxSheetRegions [data-ssx-region]').length,progress:document.querySelector('#renderProgress')?.hidden}))()");
@@ -615,6 +654,9 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(combinedRace.source,true);
     assert.equal(combinedRace.score,'01:35.99','Restoring combined data must restore the real Red Light record');
     assert.ok(combinedRace.ranks>0&&combinedRace.regions===12);
+    const sourceBuildsAfter=await evaluate(cdp.send,sid,"Number(document.querySelector('#ssxRegionBrowser').dataset.ssxGalleryBuilds||0)");
+    assert.equal(sourceBuildsAfter,sourceBuildsBefore,
+      'Source changes must preserve the photographic directory, updating only the ranks');
 
 
     // R75: multiple rapid inputs must yield at most one per-frame gallery
