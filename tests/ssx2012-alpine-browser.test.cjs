@@ -617,7 +617,41 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.ok(combinedRace.ranks>0&&combinedRace.regions===12);
 
 
-    const discovery=await evaluate(cdp.send,sid,"(()=>{const search=document.querySelector('#ssxRegionSearch');const global=document.querySelector('#search');search.value='corkscrew';search.dispatchEvent(new Event('input',{bubbles:true}));const visible=[...document.querySelectorAll('.ssx-track-choice')].filter(b=>!b.hidden);const afterFilter={visible:visible.length,match:visible[0]?.textContent,hasClear:!document.querySelector('#ssxRegionSearchClear').hidden,inputFocus:false,globalQuery:global.value};search.focus();afterFilter.inputFocus=document.activeElement===search;search.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));return {...afterFilter,clearAfterEscape:search.value,shownAfterEscape:[...document.querySelectorAll('.ssx-track-choice')].filter(b=>!b.hidden).length,emptyHidden:document.querySelector('#ssxRegionNoMatches').hidden}})()");
+    // R75: multiple rapid inputs must yield at most one per-frame gallery
+    // search, with the original Escape clear remaining immediate and focused.
+    const searchBefore=await evaluate(cdp.send,sid,`(()=>{
+      const input=document.querySelector('#ssxRegionSearch');
+      const browser=document.querySelector('#ssxRegionBrowser');
+      const first=Number(browser.dataset.ssxSearchPasses||0);
+      const gallery=Number(browser.dataset.ssxGalleryBuilds||0);
+      for(const word of ['c','cor','cork','corkscrew']){
+        input.value=word;
+        input.dispatchEvent(new Event('input',{bubbles:true}));
+      }
+      input.focus();
+      return {first,gallery,focused:document.activeElement===input};
+    })()`);
+    await sleep(100);
+    const discovery=await evaluate(cdp.send,sid,`(()=>{
+      const input=document.querySelector('#ssxRegionSearch');
+      const browser=document.querySelector('#ssxRegionBrowser');
+      const global=document.querySelector('#search');
+      const visible=[...browser.querySelectorAll('.ssx-track-choice')].filter(b=>!b.hidden);
+      const passes=Number(browser.dataset.ssxSearchPasses||0)-${searchBefore.first};
+      const rebuilds=Number(browser.dataset.ssxGalleryBuilds||0)-${searchBefore.gallery};
+      const found={visible:visible.length,match:visible[0]?.textContent,
+        hasClear:!document.querySelector('#ssxRegionSearchClear').hidden,
+        inputFocus:document.activeElement===input,globalQuery:global.value,
+        coalescedPasses:passes,fullRebuilds:rebuilds};
+      input.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+      return {...found,clearAfterEscape:input.value,
+        shownAfterEscape:[...browser.querySelectorAll('.ssx-track-choice')].filter(b=>!b.hidden).length,
+        emptyHidden:document.querySelector('#ssxRegionNoMatches').hidden};
+    })()`);
+    console.log('SSX_R75_SEARCH_FRAME',JSON.stringify(discovery));
+    assert.equal(searchBefore.focused,true);
+    assert.equal(discovery.coalescedPasses,1,'Rapid search input must render once per frame, not every key');
+    assert.equal(discovery.fullRebuilds,0,'Search must not rebuild the full banner catalogue');
     assert.equal(discovery.visible,1,'Regional search should find Corkscrew');
     assert.match(discovery.match,/Corkscrew/);
     assert.equal(discovery.hasClear,true);
@@ -629,6 +663,22 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(navigation.disabled,true,'Previous track disabled at first position');
     assert.equal(navigation.nextTrack,'Corkscrew');
     assert.equal(navigation.restored,'Red Light');
+    const trackKeys=await evaluate(cdp.send,sid,`(()=>{
+      const africa=document.querySelector('.ssx-region-group[data-region-name="Africa"]');
+      const entries=[...africa.querySelectorAll('button.ssx-track-choice:not([hidden])')];
+      entries[0].focus();
+      entries[0].dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true,cancelable:true}));
+      const end=document.activeElement?.textContent?.trim();
+      document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Home',bubbles:true,cancelable:true}));
+      const home=document.activeElement?.textContent?.trim();
+      return {end,home,selected:africa.querySelector('.ssx-region-detail h3')?.textContent,regionOpen:africa.open};
+    })()`);
+    console.log('SSX_R75_TRACK_KEYBOARD',JSON.stringify(trackKeys));
+    assert.match(trackKeys.end,/Incoming/);
+    assert.match(trackKeys.home,/Red Light/);
+    assert.equal(trackKeys.selected,'Red Light','Keyboard focus navigation must not change record selections');
+    assert.equal(trackKeys.regionOpen,true);
+
     assert.deepEqual(navigation.labels,['Pista anterior','Próxima pista']);
     const desktopDensity=await evaluate(cdp.send,sid,"(()=>{const item=document.querySelector('.ssx-region-rank');const proof=item.querySelector('.ssx-region-proof');const metrics=item.querySelector('.ssx-region-metrics');return {height:Math.round(item.getBoundingClientRect().height),score:metrics.querySelector('.ssx-region-score')?.textContent,accessible:proof?.getAttribute('aria-label'),proofWidth:proof?.getBoundingClientRect().width,gridColumns:getComputedStyle(item).gridTemplateColumns.split(' ').length}})()");
     assert.ok(desktopDensity.height>=50&&desktopDensity.height<=112,
@@ -872,6 +922,26 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(wingsScore.mode,'wings');
     assert.equal(wingsScore.active,'wings');
     assert.equal(wingsScore.score,'01:11.92');
+    // R75: selecting a distant mode scrolls the *local* action rail only,
+    // even when the track's Share button occupies the same horizontal row.
+    await evaluate(cdp.send,sid,"document.querySelector('#ssxSheetModeFilter [data-ssx-sheet-mode=special]').click()");
+    await sleep(160);
+    const activeRail=await evaluate(cdp.send,sid,`(()=>{
+      const rail=document.querySelector('#ssxSheetModeFilter'),btn=rail.querySelector('[aria-pressed=true]');
+      const a=btn.getBoundingClientRect(),b=rail.getBoundingClientRect();
+      return {mode:btn.dataset.ssxSheetMode,scrollLeft:rail.scrollLeft,
+        fullyVisible:a.left>=b.left-2&&a.right<=b.right+2,
+        sameShareRow:rail.parentElement.classList.contains('ssx-track-share-controls'),
+        overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};
+    })()`);
+    console.log('SSX_R75_ACTIVE_RAIL',JSON.stringify(activeRail));
+    assert.equal(activeRail.mode,'special');
+    assert.equal(activeRail.fullyVisible,true,'Active mobile discipline must remain in view');
+    assert.equal(activeRail.sameShareRow,true);
+    assert.ok(activeRail.scrollLeft>0&&activeRail.overflow<=1);
+    await evaluate(cdp.send,sid,"document.querySelector('#ssxSheetModeFilter [data-ssx-sheet-mode=wings]').click()");
+    await sleep(150);
+
     const otherModes=await evaluate(cdp.send,sid,"(()=>{document.querySelector('[data-alpine-group=survive]').click();const surviving=[...document.querySelectorAll('#ssxSheetModeFilter button:not([hidden])')].map(b=>b.dataset.ssxSheetMode);document.querySelector('#ssxSheetModeFilter [data-ssx-sheet-mode=special]').click();const special=document.body.dataset.ssxMode;document.querySelector('[data-alpine-group=trick]').click();const trickHidden=document.querySelector('#ssxSheetModeFilter').hidden;document.querySelector('[data-alpine-group=race]').click();return {surviving,special,trickHidden,restored:document.body.dataset.ssxMode,active:document.querySelector('#ssxSheetModeFilter [aria-pressed=true]')?.dataset.ssxSheetMode}})()");
     assert.deepEqual(otherModes.surviving,['board','wings','trick','survive','special']);
     assert.equal(otherModes.special,'special');
