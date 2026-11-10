@@ -59,7 +59,7 @@ function audit(snapshot){
   const rows=[...snapshot.G.map(r=>({row:r,source:'G'})),
     ...snapshot.SNG.map(r=>({row:r,source:'SNG'}))];
   const modes=new Map(),names=new Map(),approximations=new Map();
-  const statusCounts={},sampleFormats={},scopes=new Map();
+  const statusCounts={},sampleFormats={},scopes=new Map(),reviewShapes=new Map();
   for(const [index,{row,source}] of rows.entries()){
     const category=source==='SNG'?'Survive Special':String(row[0]??'');
     const mode=Number(row[3]),platform=String(row[7]??''),rider=String(row[4]??'').trim();
@@ -69,6 +69,12 @@ function audit(snapshot){
     entry.statuses[result.status]=(entry.statuses[result.status]||0)+1;
     if(result.changed)entry.formatted++;
     if(result.status.startsWith('review-')){
+      const shape=result.raw.replace(/\d+/g,token=>'d'+token.length);
+      const key=JSON.stringify([mode,result.status,shape]);
+      if(!reviewShapes.has(key))reviewShapes.set(key,{mode,status:result.status,shape,rows:0,samples:[]});
+      const family=reviewShapes.get(key);
+      family.rows++;
+      if(family.samples.length<4)family.samples.push(result.raw);
       entry.needsReview++;
       if(!sampleFormats[result.status])sampleFormats[result.status]=[];
       if(sampleFormats[result.status].length<8)
@@ -103,6 +109,7 @@ function audit(snapshot){
     nearVariantGroups:nearSpellingCandidates.length,
     displayStatuses:statusCounts,modes:[...modes.values()].sort((a,b)=>a.mode-b.mode),
     samplesRequiringReview:sampleFormats,
+    reviewPatterns:[...reviewShapes.values()].sort((a,b)=>b.rows-a.rows||a.mode-b.mode).slice(0,45),
     nameCandidatesForManualReview:{
       caseOrWhitespace:exactSpellingCandidates.slice(0,20),
       punctuationOrAccent:nearSpellingCandidates.slice(0,20)
