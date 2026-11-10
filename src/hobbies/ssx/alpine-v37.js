@@ -132,6 +132,10 @@
   function applyPublicCopy() {
     const copy=publicCopy[language()]||publicCopy.en;
     document.title=copy.title;
+    // v36 may refresh the headline after source/mode changes. Restore the
+    // localized editorial title along with the other public copy every time.
+    const headline=$('heroTitle');
+    if(headline)headline.textContent=t().hero;
     const replacements=[
       ['heroDesc',copy.desc],
       ['ssxNavRecords',copy.records],
