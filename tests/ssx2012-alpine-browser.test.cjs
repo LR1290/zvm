@@ -559,6 +559,12 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     const publicButtons=await evaluate(cdp.send,sid,"(()=>{document.querySelector('#ssxMobileQuickNav [data-ssx-action=aboutBtn]').click();const about=document.querySelector('#aboutModal').getAttribute('aria-hidden');document.querySelector('[data-close=aboutModal]').click();document.querySelector('#ssxMobileQuickNav [data-ssx-action=ridersBtn]').click();const riderModal=document.querySelector('#ridersModal');return {about,riderModal:riderModal?.getAttribute('aria-hidden')||'not-found'}})()");
     assert.equal(publicButtons.about,'false','About must open from the visible mobile shortcut');
     assert.notEqual(publicButtons.riderModal,'not-found','Riders must retain the original content');
+    // Previously the mobile Chromium screenshots were obscured by Riders
+    // because this interaction left its modal open for every later capture.
+    const ridersClosed=await evaluate(cdp.send,sid,"(()=>{const modal=document.querySelector('#ridersModal');const close=document.querySelector('[data-close=ridersModal]');if(!modal||!close)return{found:false,closed:false};close.click();return{found:true,closed:modal.getAttribute('aria-hidden')==='true'};})()");
+    assert.equal(ridersClosed.found,true,'Riders dialog needs an actual close control');
+    assert.equal(ridersClosed.closed,true,'Riders dialog must close before visual inspection');
+
     const mobileViewActions=await evaluate(cdp.send,sid,"(()=>{const details=document.querySelector('#ssxViewOptions');const summary=details.querySelector('summary');const toggle=document.querySelector('#alpinePositionsToggle');const table=document.querySelector('#alpineToggleTable');return{visible:details.open&&!toggle.hidden&&toggle.getBoundingClientRect().width>=40&&table.getBoundingClientRect().width>=40,summaryHidden:getComputedStyle(summary).display==='none'}})()");
     assert.equal(mobileViewActions.visible,true,'Table/positions controls must stay directly available');
     assert.equal(mobileViewActions.summaryHidden,true,'Display controls must not require opening another menu');
