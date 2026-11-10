@@ -823,10 +823,14 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
         scrollWidth:el.scrollWidth,clientWidth:el.clientWidth,
         labels:buttons.map(b=>b.textContent.trim()),
         heights:buttons.map(b=>Math.round(b.getBoundingClientRect().height)),
-        viewportOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};
+        viewportOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,
+        visibleOnArrival:buttons.filter(b=>{const r=b.getBoundingClientRect(),w=el.getBoundingClientRect();return r.left>=w.left-1&&r.right<=w.right+1;}).length,
+        itemWidths:buttons.map(b=>Math.round(b.getBoundingClientRect().width))};
     })()`);
     console.log('SSX_R73_MOBILE_MODE_ROW',JSON.stringify(fullModeRow));
     assert.equal(fullModeRow.labels.length,5);
+    assert.ok(fullModeRow.visibleOnArrival>=2,'At least two disciplines must be simultaneously visible on a 390px mobile screen');
+    assert.ok(fullModeRow.itemWidths.every(w=>w<=175),'Compact mode buttons must not expand to the full phone width');
     assert.ok(fullModeRow.heights.every(h=>h>=44));
     assert.ok(fullModeRow.viewportOverflow<=1);
     await evaluate(cdp.send,sid,"document.querySelector('#ssxSheetModeFilter').scrollIntoView({block:'start',behavior:'instant'})");
