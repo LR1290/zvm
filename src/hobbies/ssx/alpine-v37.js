@@ -1105,6 +1105,18 @@
       next.title=toolsCopy.next;
       stepper.append(previous,position,next);
       detail.append(stepper,createTrackShareControl(selected));
+      // A rider name is a source claim, not an ID-certified identity. Keep
+      // provenance explicit until exact in-game IDs can be independently
+      // reconciled against the archived Ozmonet profiles.
+      const nameDisclosure={
+        pt:'Nomes conforme a fonte selecionada · identidades pendentes de verificação por ID',
+        en:'Names as recorded in the selected source · player IDs not yet verified',
+        de:'Namen aus der gewählten Quelle · Spieler-IDs noch nicht bestätigt',
+        es:'Nombres según la fuente elegida · identidades pendientes de verificar por ID',
+        nl:'Namen uit de gekozen bron · spelers-ID’s nog niet geverifieerd',
+        fr:'Noms de la source sélectionnée · identités non vérifiées par ID'
+      };
+      detail.append(text('p',nameDisclosure[language()]||nameDisclosure.en,'ssx-identity-verification-note'));
       const ranking=text('div','','ssx-region-ranking');
       for(const run of selected.runs){
         const item=text('div','','ssx-region-rank');
