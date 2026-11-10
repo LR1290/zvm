@@ -338,6 +338,36 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(scoreDisclosure.formatter,'function');
     assert.equal(scoreDisclosure.mainScore,'01:35.99');
     assert.equal(scoreDisclosure.mainOriginal,'01:35.99');
+    // Capture the exact UI result of the forensic formatter, not a mockup.
+    const forensicShotDir=path.join(process.cwd(),'artifacts');
+    fs.mkdirSync(forensicShotDir,{recursive:true});
+    await evaluate(cdp.send,sid,
+      "document.querySelector('#ssxSpecialResults .ssx-special-record').scrollIntoView({block:'center',behavior:'instant'})");
+    await sleep(125);
+    const surviveProof=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+    fs.writeFileSync(path.join(forensicShotDir,'ssx-r78-survive-original-vs-display.png'),
+      Buffer.from(surviveProof.data,'base64'));
+    await evaluate(cdp.send,sid,`(()=>{
+      const tab=document.querySelector('#ssxSpecialTabs [data-ssx-special-group=android]');
+      tab.click();
+      const mode=document.querySelector('#ssxSpecialMode');
+      mode.value='2';mode.dispatchEvent(new Event('change',{bubbles:true}));
+      const track=document.querySelector('#ssxSpecialTrack');
+      track.value='16';track.dispatchEvent(new Event('change',{bubbles:true}));
+      document.querySelector('#ssxSpecialResults .ssx-special-record').scrollIntoView({
+        block:'center',behavior:'instant'
+      });
+    })()`);
+    await sleep(125);
+    const trickProof=await cdp.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false},sid);
+    fs.writeFileSync(path.join(forensicShotDir,'ssx-r78-trick-commas-original-preserved.png'),
+      Buffer.from(trickProof.data,'base64'));
+    const screenshotScores=await evaluate(cdp.send,sid,`(()=>{
+      const node=document.querySelector('#ssxSpecialResults .ssx-special-score');
+      return {score:node?.textContent,raw:node?.dataset.ssxOriginalScore};
+    })()`);
+    assert.deepEqual(screenshotScores,{score:'44,604,320',raw:'4.460432E7'});
+
 
 
     // R66: every historical category reuses only the flag asset already
