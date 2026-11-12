@@ -647,8 +647,13 @@ async function readAdminKeySnapshot(code, deps = {}) {
     zvmInvalidateMongoOnNetworkError(error, db);
     throw error;
   }
-  return doc?.data?.[keyCode] && typeof doc.data[keyCode] === 'object'
-    ? cloneKeyRecordForCommit(doc.data[keyCode]) : null;
+  // Preserve BSON values only for an internal atomic CAS read. In particular,
+  // activations[] may contain Date instances; JSON cloning here would turn
+  // them into strings and make MongoDB's equality predicate never match.
+  // All ordinary callers continue receiving detached JSON-safe snapshots.
+  const record = doc?.data?.[keyCode];
+  if (!record || typeof record !== 'object') return null;
+  return deps.preserveBson === true ? record : cloneKeyRecordForCommit(record);
 }
 
 // R46.87 — Renovação atômica em uma única operação MongoDB.
@@ -754,7 +759,9 @@ async function mutateAdminKeyRecordStrict(code, mutator, deps = {}) {
   // Repetir somente após CAS sem correspondência confirmado pelo MongoDB.
   // Nunca repetir após erro de rede: resultado anterior pode ser incerto.
   for (let attempt = 0; attempt < 5; attempt++) {
-    const current = await readAdminKeySnapshot(keyCode, { db });
+    // CAS must compare the real BSON types, while the mutator receives a
+    // detached copy so that it cannot mutate MongoDB driver objects.
+    const current = await readAdminKeySnapshot(keyCode, { db, preserveBson: true });
     if (!current) return null;
     const draft = cloneKeyRecordForCommit(current);
     await mutator(draft);
