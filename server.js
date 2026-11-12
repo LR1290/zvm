@@ -6193,7 +6193,7 @@ function renderChromeStoreBadge(){
   </a>`;
 }
 
-function renderStandalonePortalDashboard(user, keyData, okMsg='') {
+function renderStandalonePortalDashboard(user, keyData, okMsg='', deviceMsg='') {
   const now = new Date();
 
   // ── Key status computation ───────────────────────────────────────
@@ -6291,7 +6291,7 @@ function renderStandalonePortalDashboard(user, keyData, okMsg='') {
   // Dispositivos cadastrados — só phones (número + posição do slot), nunca
   // IP/versão do WPP/último acesso técnico (isso fica só no painel admin).
   const deviceListHtml = (keyData && (keyData.phones||[]).length)
-    ? (keyData.phones||[]).map((phone,index)=>`<div class="device-row"><div class="device-num" aria-hidden="true">#${index+1}</div><div class="device-info"><div class="device-phone">${escHtml(phone)}</div><div class="device-meta">Slot ${index+1} de ${devMax||'∞'}</div></div><form method="POST" action="/cliente/dispositivos/remover" data-confirm="Remover este número da licença? O dispositivo perderá o acesso."><input type="hidden" name="index" value="${index}"><button type="submit" class="device-remove" aria-label="Remover número ${escHtml(phone)}">Remover</button></form></div>`).join('')
+    ? (keyData.phones||[]).map((phone,index)=>`<div class="device-row"><div class="device-num" aria-hidden="true">#${index+1}</div><div class="device-info"><div class="device-phone">${escHtml(phone)}</div><div class="device-meta">Slot ${index+1} de ${devMax||'∞'}</div></div><form method="POST" action="/cliente/dispositivos/remover" data-confirm="Remover este número da licença? O dispositivo perderá o acesso."><input type="hidden" name="keyCode" value="${escHtml(keyData.code||'')}"><input type="hidden" name="phone" value="${escHtml(phone)}"><button type="submit" class="device-remove" aria-label="Remover número ${escHtml(phone)}">Remover</button></form></div>`).join('')
     : '<div class="device-empty">Nenhum número vinculado. O primeiro acesso da extensão ocupará um slot.</div>';
 
   // ── Bloco de contagem regressiva — só existe pra chaves não-deferred com
@@ -6329,6 +6329,7 @@ ${renderClientPortalRail('overview')}
 
 ${updateBanner}
 ${okMsg ? `<div class="client-ok-banner">✅ ${escHtml(okMsg)}</div>` : ''}
+${deviceMsg ? `<div class="auth-alert err" role="alert">⚠ ${escHtml(deviceMsg)} <a href="/cliente">Atualizar dispositivos</a></div>` : ''}
 ${noKeySection}
 
 <div class="client-command-grid">
@@ -10405,7 +10406,13 @@ async function handleRequest(req, res) {
       const keyData = user.keyCode ? await readPortalKeySnapshot(user.keyCode, { db }) : null;
       const _dashOk = url.searchParams.get('ok');
       const _dashMsg = _dashOk === '2fa_off' ? '2FA desativado com sucesso.' : _dashOk === '1' ? 'Operação realizada com sucesso.' : '';
-      sendAuthHtml(res, renderStandalonePortalDashboard(user, keyData, _dashMsg)); return;
+      const _deviceFailure = url.searchParams.get('device');
+      const _dashDeviceMsg = _deviceFailure === 'changed'
+        ? 'A lista de dispositivos mudou antes da remoção. Nenhum outro número foi removido. Atualize e tente novamente.'
+        : _deviceFailure === 'refresh'
+          ? 'Esta página está desatualizada. Atualize a lista de dispositivos antes de remover um número.'
+          : '';
+      sendAuthHtml(res, renderStandalonePortalDashboard(user, keyData, _dashMsg, _dashDeviceMsg)); return;
     } catch(e) { console.error('[Portal] dashboard temporarily unavailable:', e.message); sendAuthHtml(res, renderPortalLicenseUnavailable('overview'), 503); return; }
   }
 
@@ -10537,28 +10544,42 @@ async function handleRequest(req, res) {
     if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
     const sess = getPortalUser(req);
     const form = await parseFormBody(req);
-    const indexRaw = String(form.get('index') || '');
-    if (!/^\d{1,3}$/.test(indexRaw)) { sendJson(res, { error: 'invalid_device' }, 400); return; }
+    // A identidade vem da lista que o cliente realmente visualizou, nunca
+    // da posicao atual: a ordem pode mudar depois que a pagina foi aberta.
+    const requestedPhone = String(form.get('phone') || '');
+    const requestedKeyCode = String(form.get('keyCode') || '');
+    if (!requestedPhone || requestedPhone.length > 64 || !normalizePhone(requestedPhone) ||
+        !/^[a-z0-9_-]{1,64}$/i.test(requestedKeyCode)) {
+      // Formularios antigos por indice nao podem excluir um numero diferente
+      // depois de uma reorganizacao. Recarregar e repetir e mais seguro.
+      res.writeHead(303, { Location: '/cliente?device=refresh' }); res.end(); return;
+    }
     try {
       const db = await getMongoDb();
       const user = await db.collection('portal_users').findOne({ _id: sess.email });
       if (!user?.keyCode) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
+      if (user.keyCode !== requestedKeyCode) {
+        res.writeHead(303, { Location: '/cliente?device=changed' }); res.end(); return;
+      }
       // Escolher o telefone na fonte canônica; a versão in-memory pode ser
       // anterior a uma renovação, bloqueio ou remoção feita pelo administrador.
       const snapshot = await readAdminKeySnapshot(user.keyCode, { db });
       if (!snapshot) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
-      const phone = Array.isArray(snapshot.phones) ? snapshot.phones[Number(indexRaw)] : null;
-      if (!phone) { sendJson(res, { error: 'device_not_found' }, 404); return; }
+      const phone = Array.isArray(snapshot.phones)
+        ? snapshot.phones.find(storedPhone => storedPhone === requestedPhone) : null;
+      if (!phone) {
+        res.writeHead(303, { Location: '/cliente?device=changed' }); res.end(); return;
+      }
       await mutateAdminKeyRecordStrict(user.keyCode, draft => {
-        if (!Array.isArray(draft.phones) || !draft.phones.some(p => normalizePhone(p) === normalizePhone(phone))) {
+        if (!Array.isArray(draft.phones) || !draft.phones.includes(phone)) {
           const e = new Error('device_changed'); e.code = 'device_changed'; throw e;
         }
         removePhoneFromKey(draft, phone);
       }, { db });
-      res.writeHead(302, { Location: '/cliente?ok=1' }); res.end(); return;
+      res.writeHead(303, { Location: '/cliente?ok=1' }); res.end(); return;
     } catch (e) {
       if (e?.code === 'device_changed' || e?.code === 'key_write_conflict') {
-        sendJson(res, { error: 'device_changed', retryable: true }, 409); return;
+        res.writeHead(303, { Location: '/cliente?device=changed' }); res.end(); return;
       }
       console.error('[Portal] remoção de dispositivo:', e.message);
       sendJson(res, { error: 'temporarily_unavailable' }, 503); return;
