@@ -112,7 +112,7 @@ const deps = new Function('_saveDebounce', 'keys', 'invalidateKeysHtmlCache', 'g
   assert.match(js, /if\(!visible\)\{const cb=row\.querySelector\('\.key-cb'\)/);
   assert.match(js, /filter\(row=>row&&row\.style\.display!=='none'\)/);
   const deleteUi = cut(js, 'let _adminDeleteInFlight=false;', '\nfunction toggleAllCheckboxes(checked)');
-  const batchUi = cut(js, 'async function deleteBatchKeys(){', '\nfunction filterLog(){');
+  const batchUi = cut(js, 'async function deleteBatchKeys(){', '\nasync function filterLog(){');
   const uiSource = deleteUi + '\n' + batchUi;
   const rows = [{ dataset: {code:'a',label:'A'}, style:{display:''} },
                 { dataset: {code:'b',label:'B'}, style:{display:'none'} }];
