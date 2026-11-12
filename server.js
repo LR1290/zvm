@@ -5457,10 +5457,10 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '3bcd52923d5c079c9ef24ec7253d799e831a648654061046f5d628ed84ccf295',
     compressible: true,
   }),
-  '/assets/zvm-admin-dashboard.6532a172fce6.js': Object.freeze({
+  '/assets/zvm-admin-dashboard.139cf6e868d9.js': Object.freeze({
     type: 'text/javascript; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.6532a172fce6.js'),
-    sha256: '6532a172fce690e0f3f5ca179c04d57a767691a9a4a0c07a64438a203bb05bbd',
+    file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.139cf6e868d9.js'),
+    sha256: '139cf6e868d990e0f3f5ca179c04d57a767691a9a4a0c07a64438a203bb05bbd',
     compressible: true,
   }),
   '/assets/zvm-analytics-dashboard.623a7bbac134.css': Object.freeze({
@@ -6786,7 +6786,7 @@ function renderAdminDashboard(opts = {}) {
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <template id="zvm-admin-users-data">${initialPortalUsersJson}</template>
-<script src="/assets/zvm-admin-dashboard.6532a172fce6.js" defer></script>
+<script src="/assets/zvm-admin-dashboard.139cf6e868d9.js" defer></script>
 </body></html>`;
 }
 
