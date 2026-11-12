@@ -10566,7 +10566,7 @@ async function handleRequest(req, res) {
       const snapshot = await readAdminKeySnapshot(user.keyCode, { db });
       if (!snapshot) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
       const phone = Array.isArray(snapshot.phones)
-        ? snapshot.phones.find(storedPhone => storedPhone === requestedPhone) : null;
+        ? (snapshot.phones.find(storedPhone => storedPhone === requestedPhone) || null) : null;
       if (!phone) {
         res.writeHead(303, { Location: '/cliente?device=changed' }); res.end(); return;
       }
