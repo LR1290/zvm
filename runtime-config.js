@@ -57,6 +57,12 @@ function validateRuntimeSecurityConfig(env = {}, authorityState = {}, featureSta
   if (localSafeMode && renderRuntime) problems.push('ZVM_LOCAL_SAFE_MODE_forbidden_on_render');
 
   if (runtimeEnv === 'production') {
+    // Fail closed: a production process must never silently disable build
+    // authorization. Registered customer releases remain unaffected.
+    if (!buildEnforce) problems.push('ZVM_BUILD_ENFORCE_required_in_production');
+    // DEV cohosting is only allowed with an authenticated Ed25519 signing
+    // authority. Keeping it off is preferable when no DEV client depends on it.
+    if (devCohostAllow && !devSignedBuildsAllow) problems.push('ZVM_DEV_COHOST_REQUIRES_SIGNED_BUILDS');
     if (buildEnforce && extensionIdCount < 1) problems.push('ZVM_EXTENSION_IDS_required');
     if (buildEnforce && registryV2ActiveCount < 1) problems.push('ZVM_BUILD_REGISTRY_V2_active_required');
     if (devBuildAllow) problems.push('ZVM_DEV_BUILD_ALLOW_forbidden_in_production');
