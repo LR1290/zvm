@@ -491,15 +491,56 @@ async function loadDb(opts = {}) {
   }
 }
 
-async function saveIpBlacklist() {
+// IPs no Admin são operações de segurança, nunca apenas um cache em memória.
+// Lê a verdade persistida. A escrita deve ser confirmada antes de afetar
+// ipBlacklist, que é consultado para bloquear requisições.
+const ADMIN_IP_BLACKLIST_LIMIT = 5000;
+async function readAdminIpBlacklistSnapshot(deps = {}) {
+  const db = deps.db || await getMongoDb();
+  let doc;
   try {
-    const db = await getMongoDb();
-    await db.collection('settings').updateOne(
-      { _id: 'main' },
-      { $set: { ipBlacklist: [...ipBlacklist], updatedAt: new Date() } },
-      { upsert: true }
+    doc = await db.collection('settings').findOne(
+      { _id: 'main' }, { projection: { ipBlacklist: 1, _id: 0 }, timeoutMS: 7000 }
     );
-  } catch (e) { console.warn('[DB] Erro ao salvar blacklist:', e.message); }
+  } catch (e) { zvmInvalidateMongoOnNetworkError(e, db); throw e; }
+  if (doc && doc.ipBlacklist !== undefined && !Array.isArray(doc.ipBlacklist)) {
+    throw new Error('invalid_ip_blacklist_store');
+  }
+  const raw = doc?.ipBlacklist || [];
+  const ips = [...new Set(raw.map(normalizeClientIp).filter(Boolean))];
+  return { raw, ips };
+}
+async function mutateAdminIpBlacklistStrict(operation, value, deps = {}) {
+  if (operation !== 'add' && operation !== 'remove') throw new Error('invalid_ip_blacklist_operation');
+  const ip = normalizeClientIp(value);
+  if (!ip) throw new Error('invalid_ip');
+  const db = deps.db || await getMongoDb();
+  const collection = db.collection('settings');
+  // Releitura canônica também entende endereços IPv4-mapped legados.
+  const before = await readAdminIpBlacklistSnapshot({ db });
+  if (operation === 'add' && before.ips.length >= ADMIN_IP_BLACKLIST_LIMIT && !before.ips.includes(ip)) {
+    const error = new Error('ip_blacklist_limit'); error.code = 'ip_blacklist_limit'; throw error;
+  }
+  if (operation === 'remove' || !before.ips.includes(ip)) {
+    // MongoDB modifica somente o elemento desta operação. Nunca sobrescreve
+    // a lista inteira: dois administradores podem alterar IPs diferentes.
+    // $pull reconhece também a representação legada de um mesmo IP.
+    const equivalents = [...new Set([ip, ...before.raw.filter(raw => normalizeClientIp(raw) === ip)])];
+    const update = operation === 'add'
+      ? { $addToSet: { ipBlacklist: ip }, $set: { updatedAt: new Date() } }
+      : { $pull: { ipBlacklist: { $in: equivalents } }, $set: { updatedAt: new Date() } };
+    try {
+      await collection.updateOne({ _id: 'main' }, update,
+        { upsert: operation === 'add', timeoutMS: 7000 });
+    } catch (e) { zvmInvalidateMongoOnNetworkError(e, db); throw e; }
+  }
+  // Confirmar resultado no próprio Mongo antes de mudar cache ou reportar OK.
+  const after = await readAdminIpBlacklistSnapshot({ db });
+  if (after.ips.includes(ip) !== (operation === 'add')) {
+    const error = new Error('ip_blacklist_conflict'); error.code = 'ip_blacklist_conflict'; throw error;
+  }
+  replaceIpBlacklist(after.ips);
+  return { ip, ips: [...ipBlacklist] };
 }
 
 async function persistRateBlocks() {
@@ -3099,18 +3140,6 @@ function replaceIpBlacklist(values) {
   }
   return [...ipBlacklist];
 }
-function addIpBlacklistEntry(value) {
-  const ip = normalizeClientIp(value);
-  if (!ip) return '';
-  ipBlacklist.add(ip);
-  return ip;
-}
-function removeIpBlacklistEntry(value) {
-  const ip = normalizeClientIp(value);
-  if (!ip) return '';
-  ipBlacklist.delete(ip);
-  return ip;
-}
 function isIpBlacklisted(value) {
   const ip = normalizeClientIp(value);
   return !!ip && ipBlacklist.has(ip);
@@ -5486,6 +5515,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: 'adbd0ce889680f8becb81c12ce5e70f4c09e4dd71771d868ebeb99523616cf9b',
     compressible: true,
   }),
+  '/assets/zvm-admin-dashboard.91efd97cea20.js': Object.freeze({
+    type: 'text/javascript; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.91efd97cea20.js'),
+    sha256: '91efd97cea203bf0d151777c286979cd8eb6d12199cb4fc58310726ae1310922',
+    compressible: true,
+  }),
   '/assets/zvm-analytics-dashboard.623a7bbac134.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-analytics-dashboard.623a7bbac134.css'),
@@ -6814,7 +6849,7 @@ function renderAdminDashboard(opts = {}) {
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <template id="zvm-admin-users-data">${initialPortalUsersJson}</template>
-<script src="/assets/zvm-admin-dashboard.adbd0ce88968.js" defer></script>
+<script src="/assets/zvm-admin-dashboard.91efd97cea20.js" defer></script>
 </body></html>`;
 }
 
@@ -9656,27 +9691,39 @@ async function handleRequest(req, res) {
   // ── IP Blacklist ──────────────────────────────────────────────────────────────
   if (p === R_ADMIN+'/api/ip-blacklist' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    sendJson(res, { ok: true, ips: [...ipBlacklist] }); return;
+    try {
+      const snapshot = await readAdminIpBlacklistSnapshot();
+      replaceIpBlacklist(snapshot.ips);
+      sendJson(res, { ok: true, ips: [...ipBlacklist] });
+    } catch (e) {
+      console.error('[ADMIN] Falha ao ler IP blacklist:', e.message);
+      sendJson(res, { ok:false, error:'admin_ip_blacklist_unavailable', retryable:true }, 503);
+    }
+    return;
   }
-  if (p === R_ADMIN+'/api/ip-blacklist/add' && req.method === 'POST') {
+  if ((p === R_ADMIN+'/api/ip-blacklist/add' || p === R_ADMIN+'/api/ip-blacklist/remove') && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
-    const _b = await parseBody(req);
-    const _ip = addIpBlacklistEntry(String(_b.ip || '').trim().slice(0, 80));
-    if (!_ip) { sendJson(res, { error: 'invalid_ip' }, 400); return; }
-    await saveIpBlacklist();
-    addAdminAuditLog({ actor: 'admin', action: 'ip_blacklist_add', keyCode: '-', label: '-', detail: _ip }).catch(()=>{});
-    sendJson(res, { ok: true, ips: [...ipBlacklist] }); return;
-  }
-  if (p === R_ADMIN+'/api/ip-blacklist/remove' && req.method === 'POST') {
-    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
-    const _b = await parseBody(req);
-    const _ip = removeIpBlacklistEntry(String(_b.ip || '').trim().slice(0, 80));
-    if (!_ip) { sendJson(res, { error: 'invalid_ip' }, 400); return; }
-    await saveIpBlacklist();
-    addAdminAuditLog({ actor: 'admin', action: 'ip_blacklist_remove', keyCode: '-', label: '-', detail: _ip }).catch(()=>{});
-    sendJson(res, { ok: true, ips: [...ipBlacklist] }); return;
+    const body = await parseBody(req);
+    const rawIp = typeof body?.ip === 'string' ? body.ip : '';
+    const requestedIp = rawIp.length <= 80 ? normalizeClientIp(rawIp) : '';
+    if (!requestedIp) { sendJson(res, { ok:false, error:'invalid_ip' }, 400); return; }
+    const operation = p.endsWith('/add') ? 'add' : 'remove';
+    // Um clique acidental não pode expulsar o administrador da própria rede.
+    if (operation === 'add' && requestedIp === normalizeClientIp(ip)) {
+      sendJson(res, { ok:false, error:'self_ip_block_forbidden' }, 409); return;
+    }
+    try {
+      const result = await mutateAdminIpBlacklistStrict(operation, requestedIp);
+      addAdminAuditLog({ actor:'admin', action: operation === 'add' ? 'ip_blacklist_add' : 'ip_blacklist_remove',
+        keyCode:'-', label:'-', detail:result.ip }).catch(()=>{});
+      sendJson(res, { ok:true, ips:result.ips }); return;
+    } catch (e) {
+      if (e?.code === 'ip_blacklist_limit') { sendJson(res, { ok:false, error:'ip_blacklist_limit' }, 409); return; }
+      if (e?.code === 'ip_blacklist_conflict') { sendJson(res, { ok:false, error:'ip_blacklist_conflict', retryable:true }, 409); return; }
+      console.error('[ADMIN] IP blacklist write/read:', e.message);
+      sendJson(res, { ok:false, error:'admin_ip_blacklist_unavailable', retryable:true }, 503); return;
+    }
   }
 
   // ── Exportar auditoria administrativa CSV ───────────────────────────────
@@ -11298,8 +11345,8 @@ module.exports.__test = Object.freeze({
   resolveUsageKey,
   normalizeClientIp,
   replaceIpBlacklist,
-  addIpBlacklistEntry,
-  removeIpBlacklistEntry,
+  readAdminIpBlacklistSnapshot,
+  mutateAdminIpBlacklistStrict,
   isIpBlacklisted,
   isAllowedExtensionOrigin,
   getIp,
