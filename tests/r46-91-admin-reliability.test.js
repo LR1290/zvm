@@ -113,15 +113,17 @@ function prepareCreation(h){
   }
   // 5. Lost confirmation must not auto-repeat DELETE; read-only reconciliation is safe.
   {
-    let deletes=0,gets=0;
+    let deletes=0,gets=0,refreshes=0;
     const h=harness({fetch:async(_url,options)=>{
       if(options?.method==='DELETE'){deletes++;throw new Error('socket drop');}
-      gets++;return reply(200,{phones:['111']});
+      if(_url.endsWith('/phones'))gets++;else refreshes++;
+      return reply(200,{phones:['111']});
     }});
     await h.run('openPhones')('license_a','A');
     await h.run('removePhone')({dataset:{idx:'0'}});
     assert.equal(deletes,1);
     assert.equal(gets,2);
+    assert.equal(refreshes,1);
     assert(h.toasts.some(x=>x.m.includes('Sem confirmação do servidor')));
     passed++;
   }
