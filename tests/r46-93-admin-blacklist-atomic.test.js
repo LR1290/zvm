@@ -91,6 +91,14 @@ const make= (initial,fail={})=>{
     assert(!x.local.has('203.0.113.11'));
     passed++;
   }
+  // 4. Lost confirmation after commit never fabricates local success.
+  {
+    const x=make(['203.0.113.10'], {read:state=>state.reads>=2});
+    await assert.rejects(x.mutateAdminIpBlacklistStrict('add','203.0.113.19'), /disconnected/);
+    assert(x.state.data.includes('203.0.113.19'), 'Mongo may have committed before read failure');
+    assert(!x.local.has('203.0.113.19'), 'never publish unconfirmed state locally');
+    passed++;
+  }
   // 4. Legacy IPv4-mapped value is removed together with canonical equivalent.
   {
     const x=make(['::ffff:203.0.113.10','203.0.113.10','2001:db8::1']);
