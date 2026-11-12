@@ -5457,6 +5457,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '3bcd52923d5c079c9ef24ec7253d799e831a648654061046f5d628ed84ccf295',
     compressible: true,
   }),
+  '/assets/zvm-admin-dashboard.6532a172fce6.js': Object.freeze({
+    type: 'text/javascript; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.6532a172fce6.js'),
+    sha256: '6532a172fce690e0f3f5ca179c04d57a767691a9a4a0c07a64438a203bb05bbd',
+    compressible: true,
+  }),
   '/assets/zvm-analytics-dashboard.623a7bbac134.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-analytics-dashboard.623a7bbac134.css'),
@@ -6468,7 +6474,7 @@ function renderAdminDashboard(opts = {}) {
     <span class="logo-ver">Administração</span>
   </div>
   <div class="hright">
-    <span class="hdr-meta" id="last-refresh">—</span>
+    <span class="hdr-meta" id="last-refresh" role="status" aria-live="polite">—</span>
     <span class="hdr-meta" id="hdr-users-count" title="Usuários no Portal" style="display:none;background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd);border-radius:var(--r-sm);padding:2px 8px;font-weight:700">👥 <span id="hdr-users-num">0</span></span>
     <span id="hdr-suspect-badge" title="Chaves suspeitas — clique para filtrar" style="background:#ff475718;color:#ff4757;border:1px solid #ff475730;border-radius:var(--r-sm);padding:2px 8px;font-weight:700;font-size:11px;cursor:pointer" onclick="document.getElementById('filter-status').value='suspect';switchTab('keys');filterKeys()">⚠ <span id="hdr-suspect-num">0</span> suspeita(s)</span>
     <span id="hdr-session-warn" style="display:none;background:#f0b42912;color:var(--orange);border:1px solid var(--org-brd);border-radius:var(--r-sm);padding:2px 8px;font-size:11px">⏱ Sessão expira em <span id="hdr-session-min">—</span> min</span>
@@ -6525,9 +6531,10 @@ function renderAdminDashboard(opts = {}) {
         <div class="fi-col"><span class="fi-lbl">Usos</span><input type="number" id="nuses" class="fi-num" placeholder="3" min="-1" style="width:56px"></div>
         <div class="fi-col" style="justify-content:flex-end;padding-bottom:1px"><label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--tx2);white-space:nowrap;cursor:pointer"><input type="checkbox" id="ndeferred" style="accent-color:var(--g);width:13px;height:13px">⏱ Ativar ao 1º uso</label></div>
         <input type="number" id="batch-qty" min="1" max="50" value="1" style="width:58px;padding:6px 8px;border:1px solid var(--brd);border-radius:6px;background:var(--bg);color:var(--tx);font-size:13px" title="Quantidade de chaves a gerar">
-<button class="btn bp" onclick="generateKey()">+ Gerar Chave(s)</button>
+<button class="btn bp" id="admin-generate-key-btn" onclick="generateKey()">+ Gerar Chave(s)</button>
       </div>
     </div>
+    <div id="admin-create-status" role="status" aria-live="polite" hidden style="display:none;padding:10px 14px;border:1px solid var(--org-brd);border-radius:10px;background:#f0b42912;color:var(--orange);font-size:13px;margin:10px 0"></div>
     <div class="search-bar">
       <input type="text" id="search-input" placeholder="Buscar por nome, chave, telefone ou IP…" oninput="filterKeys()" autocomplete="off" spellcheck="false">
       <select id="filter-status" onchange="filterKeys()">
@@ -6779,7 +6786,7 @@ function renderAdminDashboard(opts = {}) {
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <template id="zvm-admin-users-data">${initialPortalUsersJson}</template>
-<script src="/assets/zvm-admin-dashboard.3bcd52923d5c.js" defer></script>
+<script src="/assets/zvm-admin-dashboard.6532a172fce6.js" defer></script>
 </body></html>`;
 }
 
