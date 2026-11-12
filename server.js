@@ -6329,7 +6329,7 @@ ${renderClientPortalRail('overview')}
 
 ${updateBanner}
 ${okMsg ? `<div class="client-ok-banner">✅ ${escHtml(okMsg)}</div>` : ''}
-${deviceMsg ? `<div class="auth-alert err" role="alert">⚠ ${escHtml(deviceMsg)} <a href="/cliente">Atualizar dispositivos</a></div>` : ''}
+${deviceMsg ? `<div class="device-warning" role="alert">⚠ ${escHtml(deviceMsg)} <a href="/cliente">Atualizar dispositivos</a></div>` : ''}
 ${noKeySection}
 
 <div class="client-command-grid">
