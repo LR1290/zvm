@@ -23,7 +23,7 @@ const helperSource=segment('function adminErrorMessage(', 'function filterKeys('
 const creationSource=segment('let _adminGeneratingKeys = false;', 'async function doRefresh(');
 const refreshSource=segment('async function doRefresh(', 'setInterval(()=>');
 const phonesSource=segment('let _phonesReadGeneration=0', '\nfunction openNote(');
-const editsSource=segment('const _adminKeyEditsInFlight=new Set();', '\nfunction openPhones(');
+const editsSource=segment('const _adminKeyEditsInFlight=new Set();', '\nlet _phonesReadGeneration=0');
 const deferred=()=>{let resolve,reject; const promise=new Promise((a,b)=>{resolve=a;reject=b});return{promise,resolve,reject};};
 const reply=(status,data)=>({status,ok:status>=200&&status<300,json:async()=>data});
 const element=()=>({
@@ -109,7 +109,6 @@ function prepareCreation(h){
     d.resolve(reply(200,{ok:true}));
     await Promise.all([first,second]);
     assert.equal(h.get('phonesModal').classList.contains('open'),false);
-    assert.equal(h.get('phonesModal').getAttribute,undefined); // DOM fake tracks via method only
     passed++;
   }
   // 5. Lost confirmation must not auto-repeat DELETE; read-only reconciliation is safe.
