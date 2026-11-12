@@ -823,25 +823,42 @@ async function flushPendingSaves() {
 }
 
 async function deleteKeyFromDb(code, deps = {}) {
+  const keyCode = String(code || '');
+  if (!/^[a-z0-9_-]{1,64}$/i.test(keyCode)) throw new Error('invalid_key_code');
   const db = deps.db || await getMongoDb();
-  // DB-first: só remove do estado da instância depois que o Mongo confirmou.
-  await db.collection('store').updateOne(
-    { _id: 'keys' },
-    { $unset: { [`data.${code}`]: '' }, $set: { updatedAt: new Date() } }
+  // A chave precisa existir NO MONGODB no momento do DELETE. Um snapshot antigo
+  // nunca deve gerar sucesso ou atualizar o timestamp de um documento inexistente.
+  const field = `data.${keyCode}`;
+  const result = await db.collection('store').updateOne(
+    { _id: 'keys', [field]: { $exists: true } },
+    { $unset: { [field]: '' }, $set: { updatedAt: new Date() } }
   );
-  if (_saveDebounce.has(code)) { clearTimeout(_saveDebounce.get(code)); _saveDebounce.delete(code); }
-  delete keys[code];
+  if (result.matchedCount !== 1) {
+    const error = new Error('key_write_conflict'); error.code = 'key_write_conflict'; throw error;
+  }
+  if (_saveDebounce.has(keyCode)) { clearTimeout(_saveDebounce.get(keyCode)); _saveDebounce.delete(keyCode); }
+  delete keys[keyCode];
   invalidateKeysHtmlCache();
-  // Referência de portal é limpeza auxiliar; falha não reverte a exclusão já confirmada.
-  db.collection('portal_users').updateMany({ keyCode: code }, { $unset: { keyCode: '' } }).catch(() => {});
+  // Limpeza auxiliar; falha não reverte exclusão de licença já confirmada.
+  db.collection('portal_users').updateMany({ keyCode }, { $unset: { keyCode: '' } }).catch(() => {});
 }
 
 async function deleteKeysFromDbStrict(codes, deps = {}) {
-  const unique = [...new Set((codes || []).map(v => String(v || '')).filter(Boolean))];
-  if (!unique.length) return 0;
+  const unique = [...new Set((codes || []).map(v => String(v || '')))];
+  if (!unique.length || unique.some(code => !/^[a-z0-9_-]{1,64}$/i.test(code))) {
+    throw new Error('invalid_admin_batch_codes');
+  }
   const db = deps.db || await getMongoDb();
   const unset = Object.fromEntries(unique.map(code => [`data.${code}`, '']));
-  await db.collection('store').updateOne({ _id: 'keys' }, { $unset: unset, $set: { updatedAt: new Date() } });
+  const filter = { _id: 'keys' };
+  // Remoção atômica de TODAS as chaves selecionadas: se qualquer uma mudou
+  // desde a seleção, rejeitar o lote inteiro; jamais confirmar exclusão parcial.
+  for (const code of unique) filter[`data.${code}`] = { $exists: true };
+  const result = await db.collection('store').updateOne(filter,
+    { $unset: unset, $set: { updatedAt: new Date() } });
+  if (result.matchedCount !== 1) {
+    const error = new Error('key_write_conflict'); error.code = 'key_write_conflict'; throw error;
+  }
   for (const code of unique) {
     if (_saveDebounce.has(code)) { clearTimeout(_saveDebounce.get(code)); _saveDebounce.delete(code); }
     delete keys[code];
@@ -5463,6 +5480,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '139cf6e868d9e8cf10958c6171a8cdfa313c9c8eb365011ea6cfd97d50c80a55',
     compressible: true,
   }),
+  '/assets/zvm-admin-dashboard.adbd0ce88968.js': Object.freeze({
+    type: 'text/javascript; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.adbd0ce88968.js'),
+    sha256: 'adbd0ce889680f8becb81c12ce5e70f4c09e4dd71771d868ebeb99523616cf9b',
+    compressible: true,
+  }),
   '/assets/zvm-analytics-dashboard.623a7bbac134.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-analytics-dashboard.623a7bbac134.css'),
@@ -6429,7 +6452,12 @@ function normalizeAdminCreateLabel(value) {
 function parseAdminBatchDeleteCodes(body) {
   const rawCodes = Array.isArray(body?.codes) ? body.codes : [];
   if (!rawCodes.length) return { ok: false, error: 'nenhum código enviado', codes: [] };
-  return { ok: true, codes: rawCodes };
+  if (rawCodes.length > 200) return { ok: false, error: 'too_many_keys', codes: [] };
+  // Não truncar/sanitizar silenciosamente: isso poderia excluir outra chave.
+  if (!rawCodes.every(code => typeof code === 'string' && /^[a-z0-9_-]{1,64}$/i.test(code))) {
+    return { ok: false, error: 'invalid_key_codes', codes: [] };
+  }
+  return { ok: true, codes: [...new Set(rawCodes)] };
 }
 
 // Dashboard administrativo do banco canônico ZVM.
@@ -6786,7 +6814,7 @@ function renderAdminDashboard(opts = {}) {
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <template id="zvm-admin-users-data">${initialPortalUsersJson}</template>
-<script src="/assets/zvm-admin-dashboard.139cf6e868d9.js" defer></script>
+<script src="/assets/zvm-admin-dashboard.adbd0ce88968.js" defer></script>
 </body></html>`;
 }
 
@@ -9870,11 +9898,19 @@ async function handleRequest(req, res) {
     const body = await parseBody(req);
     const batchInput = parseAdminBatchDeleteCodes(body);
     if (!batchInput.ok) { sendJson(res, { error: batchInput.error }, 400); return; }
-    const validCodes = batchInput.codes.map(c => sanitizeId(String(c || ''), 40)).filter(c => c && keys[c]);
-    try { await deleteKeysFromDbStrict(validCodes); }
-    catch (e) { console.error('[DB] batch delete:', e.message); sendJson(res, { ok:false, error:'db_unavailable', retryable:true, deleted:0 }, 503); return; }
-    addAdminAuditLog({ actor: 'admin', action: 'key_batch_deleted', keyCode: '-', label: '-', detail: `${validCodes.length} chave(s): ${validCodes.slice(0,5).map(maskLicenseCode).join(', ')}` }).catch(()=>{});
-    sendJson(res, { ok: true, deleted: validCodes.length }); return;
+    let canonicalKeys;
+    try { canonicalKeys = await readAdminKeysSnapshot(); }
+    catch (e) { sendAdminKeyPersistFailure(res, e, 'read batch keys'); return; }
+    // Se uma chave já não existe no banco, não excluir as outras inadvertidamente.
+    const missing = batchInput.codes.filter(code => !Object.prototype.hasOwnProperty.call(canonicalKeys, code));
+    if (missing.length) {
+      sendJson(res, { ok:false, error:'key_write_conflict', retryable:true, deleted:0 }, 409); return;
+    }
+    let deleted;
+    try { deleted = await deleteKeysFromDbStrict(batchInput.codes); }
+    catch (e) { sendAdminKeyPersistFailure(res, e, 'batch delete'); return; }
+    addAdminAuditLog({ actor: 'admin', action: 'key_batch_deleted', keyCode: '-', label: '-', detail: `${deleted} chave(s): ${batchInput.codes.slice(0,5).map(maskLicenseCode).join(', ')}` }).catch(()=>{});
+    sendJson(res, { ok: true, deleted }); return;
   }
 
   const codeNote = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/note$`));
@@ -9894,9 +9930,14 @@ async function handleRequest(req, res) {
   const codeDelete = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)$`));
   if (codeDelete && req.method === 'DELETE') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    const _delLabel = keys[codeDelete]?.label || '';
-    try { await deleteKeyFromDb(codeDelete); } catch(e) { sendJson(res, { error: 'db_error' }, 500); return; }
-    addAdminAuditLog({ actor: 'admin', action: 'key_deleted', keyCode: codeDelete, label: _delLabel }).catch(()=>{});
+    if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
+    let current;
+    try { current = await readAdminKeySnapshot(codeDelete); }
+    catch(e) { sendAdminKeyPersistFailure(res, e, 'read delete key'); return; }
+    if (!current) { sendJson(res, { error:'not_found' }, 404); return; }
+    try { await deleteKeyFromDb(codeDelete); }
+    catch(e) { sendAdminKeyPersistFailure(res, e, 'delete key'); return; }
+    addAdminAuditLog({ actor: 'admin', action: 'key_deleted', keyCode: codeDelete, label: current.label || '' }).catch(()=>{});
     sendJson(res, { ok: true }); return;
   }
 
@@ -9982,8 +10023,11 @@ async function handleRequest(req, res) {
 
   if (p === R_ADMIN+'/api/export/csv' && req.method === 'GET') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    let snapshot;
+    try { snapshot = await readAdminKeysSnapshot(); }
+    catch (e) { sendJson(res, { ok:false, error:'admin_data_unavailable', retryable:true }, 503); return; }
     const header = 'Chave,Cliente,Status,Validade,Usos,Telefone,Último IP,Último Acesso,Criada em,Expira em,ZapSaver,Nota';
-    const rows = Object.entries(keys).map(([code, k]) => {
+    const rows = Object.entries(snapshot).map(([code, k]) => {
       const stLabel = getKeyDisplayStatus(k).toUpperCase();
       const cols = [
         code, k.label, stLabel,
@@ -9999,6 +10043,8 @@ async function handleRequest(req, res) {
       return cols.map(csvCell).join(',');
     });
     const csv = [header, ...rows].join('\r\n');
+    Object.entries(_SEC_HEADERS).forEach(([key,value]) => res.setHeader(key,value));
+    res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="zvm-chaves-${new Date().toISOString().slice(0,10)}.csv"`);
     res.writeHead(200); res.end('\uFEFF' + csv); return;
