@@ -55,7 +55,7 @@ function createLandingRenderer({ escHtml, favicon, sharedCssLink, landingCssLink
         <h3>${escHtml(plan.shortName || plan.name || plan.id)}</h3>
         <p>${escHtml(plan.subtitle || '')} · ${devices} ${devices===1?'número':'números'} de WhatsApp</p>
         <strong>${price}</strong><span class="r4624-plan-period">${plan.consult?'Implantação personalizada':'por mês'}</span>
-        <span class="r4624-plan-link">Ver detalhes do plano <span aria-hidden="true">→</span></span>
+        <span class="r4624-plan-link">Consultar detalhes <span aria-hidden="true">→</span></span>
       </a>`;
     }).join('');
   }
@@ -85,18 +85,43 @@ ${salesPaused ? '<section class="r466-sales-paused" role="status" aria-label="Co
       <h1>Organize o atendimento.<br><em>Automatize a rotina.</em></h1>
       <p>Organize clientes, acompanhe conversas e automatize tarefas sem sair do WhatsApp Web.</p>
       <div class="r466-hero-links">
-        <div class="r4618-hero-store" aria-label="Instalação pela Chrome Web Store">${storeBadgeMarkup}</div>
-        <a href="/?sec=produto" data-scroll-target="produto" class="r466-btn secondary">Ver como funciona</a>
+        <a href="/?sec=produto" data-scroll-target="produto" class="r466-btn primary">Explorar a ferramenta <span aria-hidden="true">→</span></a>
+        <a href="/planos" class="r466-btn secondary">Consultar planos</a>
       </div>
+      <div class="r4700-hero-support"><span class="r4700-official"><span aria-hidden="true">●</span> Feita para sua rotina no WhatsApp Web</span><div class="r4618-hero-store" aria-label="Instalação pela Chrome Web Store">${storeBadgeMarkup}</div></div>
       <p class="r466-license-note">Instalação gratuita. A ativação requer uma licença.</p>
     </div>
   </div>
   <a class="r4612-scroll-cue" href="/?sec=produto" data-scroll-target="produto" aria-label="Rolar para conhecer a ferramenta por dentro"><span class="r4612-scroll-mouse" aria-hidden="true"><i></i></span><span>Explore a ZVM</span></a>
 </section>
 
+<section class="r4700-product-trust" aria-label="Pilares da experiência ZVM">
+  <div class="r4700-trust-inner">
+    <span>${icon('users')} Atendimento com contexto</span>
+    <span>${icon('flow')} Organização em fluxos</span>
+    <span>${icon('book')} Biblioteca reutilizável</span>
+    <span>${icon('shield')} Controle de licença</span>
+  </div>
+</section>
+
 <section class="r466-product r4611-product-first" id="produto"><div class="r466-section-head centered r4612-product-head"><span>Veja a ferramenta por dentro</span><h2>Explore a ZVM em ação.</h2><p>Escolha uma aba para conhecer diferentes áreas do painel real.</p></div><div class="r466-demo">${renderProductTabs()}</div></section>
 
 
+
+<section class="r4700-journey" id="jornada" aria-labelledby="r4700-journey-title">
+  <div class="r4700-journey-intro">
+    <span class="r4700-eyebrow">Um fluxo de trabalho, não só uma lista de ferramentas</span>
+    <h2 id="r4700-journey-title">Da conversa ao acompanhamento. <em>Sem perder o fio.</em></h2>
+    <p>A ZVM reúne tarefas e informações que normalmente ficam espalhadas. Você mantém o controle do atendimento e organiza sua operação com mais clareza.</p>
+    <a href="/?sec=recursos" data-scroll-target="recursos" class="r4700-inline-link">Conhecer os recursos <span aria-hidden="true">↗</span></a>
+  </div>
+  <ol class="r4700-journey-list">
+    <li><span class="r4700-journey-num">01</span><div class="r4700-journey-icon">${icon('users')}</div><div><h3>Atenda</h3><p>Centralize o contexto de cada conversa no WhatsApp Web.</p></div></li>
+    <li><span class="r4700-journey-num">02</span><div class="r4700-journey-icon">${icon('funnel')}</div><div><h3>Organize</h3><p>Acompanhe clientes, etiquetas e etapas do seu processo.</p></div></li>
+    <li><span class="r4700-journey-num">03</span><div class="r4700-journey-icon">${icon('book')}</div><div><h3>Reutilize</h3><p>Encontre respostas e materiais da Biblioteca quando precisar.</p></div></li>
+    <li><span class="r4700-journey-num">04</span><div class="r4700-journey-icon">${icon('flow')}</div><div><h3>Automatize</h3><p>Prepare fluxos e envios com visibilidade sobre sua rotina.</p></div></li>
+  </ol>
+</section>
 
 <section class="r466-benefits" id="beneficios"><div class="r466-section-head centered"><span>Feita para o seu dia a dia</span><h2>Mais clareza. Menos tarefas repetidas.</h2><p>Deixe as conversas, os clientes e as tarefas organizados em um só lugar.</p></div><div class="r466-benefit-grid"><article>${icon('crm')}<h3>Acompanhe cada cliente</h3><p>Organize contatos, notas e etapas sem perder o contexto.</p></article><article>${icon('flow')}<h3>Automatize com controle</h3><p>Prepare fluxos e envios para facilitar o trabalho diário.</p></article><article>${icon('book')}<h3>Encontre tudo rapidamente</h3><p>Guarde mensagens e materiais que você usa com frequência.</p></article></div></section>
 
@@ -108,9 +133,9 @@ ${salesPaused ? '<section class="r466-sales-paused" role="status" aria-label="Co
 
 <section class="r466-plans" id="planos">${salesPaused ? '<div class="r466-sales-paused r466-sales-paused-inline" role="status"><strong>Compra indisponível temporariamente.</strong> Consulte os planos e retorne quando as vendas forem reabertas.</div>' : ''}<div class="r466-section-head centered"><span>Planos</span><h2>Um plano para cada ritmo.</h2><p>Instale gratuitamente pela loja oficial e escolha uma licença conforme a quantidade de números que sua operação precisa.</p></div><div class="r4624-plan-grid" aria-label="Planos e preços">${renderLandingPlans()}</div><p class="r4624-plans-note">Todos os planos incluem os mesmos recursos. O que muda é a quantidade de números de WhatsApp.</p></section>
 
-<section class="r466-faq" id="faq"><div class="r466-faq-layout"><div class="r466-section-head r466-faq-head"><span>Perguntas frequentes</span><h2>Respostas sem complicação.</h2></div><div class="r466-faq-list"><details><summary>O que é a ZVM - Automações?</summary><p>É uma extensão para WhatsApp Web que reúne CRM, Disparos, Fluxos, Funis, Biblioteca, Agenda, FollowUp e Assistentes IA.</p></details><details><summary>Preciso instalar outro programa?</summary><p>Não. A ZVM funciona como extensão do navegador e acompanha sua rotina dentro do WhatsApp Web.</p></details><details><summary>O que muda entre os planos?</summary><p>O conjunto de módulos é o mesmo. O que muda é a quantidade de números de WhatsApp autorizados na licença e o valor do período de 30 dias.</p></details><details><summary>Como recebo minha chave?</summary><p>Após a confirmação da compra, a chave é enviada automaticamente para o e-mail informado no pedido.</p></details><details><summary>Como funciona o suporte?</summary><p>Você pode falar diretamente com o suporte da ZVM pelo WhatsApp para dúvidas de instalação, ativação e uso.</p></details></div></div></section>
+<section class="r466-faq" id="faq"><div class="r466-faq-layout"><div class="r466-section-head r466-faq-head"><span>Perguntas frequentes</span><h2>Respostas sem complicação.</h2></div><div class="r466-faq-list"><details><summary>O que é a ZVM - Automações?</summary><p>É uma extensão para WhatsApp Web que reúne CRM, Disparos, Fluxos, Funis, Biblioteca, Agenda, FollowUp e Assistentes IA.</p></details><details><summary>Preciso instalar outro programa?</summary><p>Não. A ZVM funciona como extensão do navegador e acompanha sua rotina dentro do WhatsApp Web.</p></details><details><summary>O que muda entre os planos?</summary><p>O conjunto de módulos é o mesmo. O que muda é a quantidade de números de WhatsApp autorizados na licença e o valor do período de 30 dias.</p></details><details><summary>Como recebo minha chave?</summary><p>Após a confirmação da compra, a chave é enviada automaticamente para o e-mail informado no pedido.</p></details><details><summary>Preciso criar conta para comprar?</summary><p>Não. Quando as vendas estiverem abertas, você poderá comprar sem login, receber a chave por e-mail e vinculá-la depois à sua conta ZVM.</p></details><details><summary>Como funciona o suporte?</summary><p>Você pode falar diretamente com o suporte da ZVM pelo WhatsApp para dúvidas de instalação, ativação e uso.</p></details><a class="r4700-faq-more" href="/faq">Ver todas as perguntas e respostas <span aria-hidden="true">↗</span></a></div></div></section>
 
-<section class="r466-final"><div><span>ZVM - Automações</span><h2>Conheça uma forma mais simples<br><em>de trabalhar no WhatsApp.</em></h2><p>Baixe a extensão pela loja oficial e escolha sua licença para começar.</p><div class="r466-actions"><a href="/planos" class="r466-btn secondary">Conhecer planos</a></div></div></section>
+<section class="r466-final"><div><span>ZVM - Automações</span><h2>Conheça uma forma mais simples<br><em>de trabalhar no WhatsApp.</em></h2><p>Conheça os recursos, compare os planos e organize sua conta no seu ritmo. As vendas estão sujeitas à disponibilidade informada no site.</p><div class="r466-actions"><a href="/planos" class="r466-btn secondary">Conhecer planos</a></div></div></section>
 <script src="/assets/zvm-r46-landing-navigation.8996142ec21d.js" defer></script>
 </main>
 ${renderPublicFooter({supportUrl})}
