@@ -28,10 +28,17 @@ const pages=[
 ];
 const dir=path.join(root,'artifacts','visual-qa');fs.mkdirSync(dir,{recursive:true});
 async function run(){
+ const fakeAnalytics={
+  stats:{total:2,last30:2,last7:1,revenueTotal:119.8,revenueLast30:119.8,
+   revenueLast7:59.9,uniqueClients:2,returningClients:0,retentionRate:0,
+   byDay:[],byProduct:[{_id:'START',count:2,revenue:119.8}],byMethod:[],
+   byHour:[],topClients:[]},payments:[]
+ };
+ pages.push(['analytics',await api.renderAnalyticsDashboard(fakeAnalytics),'.analytics-hero']);
  const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
  let checks=0;
  try{
-  for(const [name,html,selector] of pages)for(const width of [1440,390,320]){
+  for(const [name,html,selector] of pages)for(const width of [1440,768,390,320]){
    const page=await browser.newPage({viewport:{width,height:width===1440?900:760},reducedMotion:'reduce'});
    let errors=[],external=0;
    page.on('pageerror',e=>errors.push(String(e.message)));
