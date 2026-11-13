@@ -5491,6 +5491,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: 'c06071e4d73ffd64f8010881eb91c9e43a493457105e03c352153a4c7f030c1a',
     compressible: true,
   }),
+  '/assets/zvm-console-design.272c14e87695.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-console-design.272c14e87695.css'),
+    sha256: '272c14e8769544d20c857749539f3c10f50c8933e38715ed01eb6b9fd3c11efc',
+    compressible: true,
+  }),
   '/assets/zvm-admin-dashboard.b892a520f957.js': Object.freeze({
     type: 'text/javascript; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.b892a520f957.js'),
@@ -5840,7 +5846,8 @@ function renderPortalPage(body, title='ZVM — Minha Conta', extra='', headExtra
 <link rel="stylesheet" href="/assets/zvm-r46-client-dashboard.64213392bec3.css"><link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css">
 ${headExtra}
 <link rel="stylesheet" href="/assets/zvm-r46-system.8873e4d662f5.css">
-</head><body>
+<link rel="stylesheet" href="/assets/zvm-console-design.272c14e87695.css">
+</head><body class="zvm-client-premium">
 <a class="portal-skip" href="#main-content">Ir para o conteúdo</a>
 <div class="page-wrap portal-page-wrap">
 ${extra}${body}
@@ -6384,7 +6391,7 @@ function renderStandalonePortalDashboard(user, keyData, okMsg='', deviceMsg='') 
 ${renderClientPortalRail('overview')}
 <main id="main-content" class="client-main" tabindex="-1">
 <div class="dash-topbar">
-  <div class="dash-page-heading"><span>Minha ZVM</span><strong>Visão geral</strong></div>
+  <div class="dash-page-heading"><span>ZVM · Área do cliente</span><h1>Minha conta</h1><p>Acesso, validade e dispositivos em um só lugar.</p></div>
   <div class="dash-topbar-user">
     ${renderClientAccountIdentity(user)}
     <a href="/cliente/logout" class="dash-logout">Sair da conta</a>
@@ -6395,6 +6402,24 @@ ${updateBanner}
 ${okMsg ? `<div class="client-ok-banner">✅ ${escHtml(okMsg)}</div>` : ''}
 ${deviceMsg ? `<div class="device-warning" role="alert">⚠ ${escHtml(deviceMsg)} <a href="/cliente">Atualizar dispositivos</a></div>` : ''}
 ${noKeySection}
+
+${keyData ? `<section class="client-quickfacts" aria-label="Resumo da licença">
+  <div class="client-quickfact">
+    <span class="client-qf-label">Situação da licença</span>
+    <strong>${escHtml(mainStatusTxt)}</strong>
+    <small>${escHtml(planName)} · Plano atual</small>
+  </div>
+  <div class="client-quickfact">
+    <span class="client-qf-label">Dispositivos vinculados</span>
+    <strong>${devUsed} ${devMax === null ? 'de ilimitados' : 'de '+devMax}</strong>
+    <small>${devMax === null ? 'Sem limite de dispositivos' : 'Números ligados à sua licença'}</small>
+  </div>
+  <div class="client-quickfact">
+    <span class="client-qf-label">Validade</span>
+    <strong>${escHtml(expiryDateText)}</strong>
+    <small>${escHtml(expTxt)}</small>
+  </div>
+</section>` : ''}
 
 <div class="client-command-grid">
   <section class="client-license-focus">
@@ -6529,8 +6554,10 @@ function renderAdminDashboard(opts = {}) {
 <link rel="stylesheet" href="/assets/zvm-admin-dashboard.c06071e4d73f.css">
 <link rel="stylesheet" href="/assets/zvm-r46-system.8873e4d662f5.css">
 <link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css">
+<link rel="stylesheet" href="/assets/zvm-console-design.272c14e87695.css">
 </head>
 <body class="zvm-admin-r6">
+<a class="zvm-skip-link" href="#zvm-admin-main">Ir para o conteúdo</a>
 <header>
   <div class="logo">
     ${_adminBrand}
@@ -6546,7 +6573,7 @@ function renderAdminDashboard(opts = {}) {
   </div>
 </header>
 <div class="admin-wrap">
-<nav class="rsidebar" id="rsidebar">
+<nav class="rsidebar" id="rsidebar" aria-label="Navegação administrativa">
   <div class="rsb-title">Menu</div>
   <button class="rtab active" data-tab="keys" onclick="switchTab('keys')"><span class="rtab-icon">🔑</span><span class="rtab-label">Chaves</span></button>
   <button class="rtab" data-tab="logs" onclick="switchTab('logs')"><span class="rtab-icon">📋</span><span class="rtab-label">Logs</span></button>
@@ -6554,9 +6581,27 @@ function renderAdminDashboard(opts = {}) {
   <button class="rtab" data-tab="users" onclick="switchTab('users')"><span class="rtab-icon">👥</span><span class="rtab-label">Usuários</span></button>
   <button class="rtab" data-tab="security" onclick="switchTab('security')"><span class="rtab-icon">🔒</span><span class="rtab-label">Segurança</span></button>
 </nav>
-<div class="admin-content">
+<main class="admin-content" id="zvm-admin-main" tabindex="-1">
 
-  ${`<section class="admin-overview"><div><span class="admin-overview-kicker">Centro de Operações</span><h1>Licenças, segurança e clientes em uma única leitura.</h1><p>Use esta visão para identificar rapidamente renovações, bloqueios, comportamento suspeito e crescimento do portal sem perder a densidade operacional da tabela.</p><div class="admin-overview-actions"><button class="primary" onclick="switchTab('keys')">🔑 Gerenciar chaves</button><button onclick="switchTab('users')">👥 Usuários do portal</button><button onclick="switchTab('security')">🛡 Revisar segurança</button><button onclick="switchTab('audit')">◎ Auditoria</button></div></div></section>`}
+  <section class="admin-overview" aria-labelledby="admin-overview-title">
+    <div class="zvm-overview-main">
+      <span class="admin-overview-kicker">ZVM · Centro de operações</span>
+      <h1 id="admin-overview-title">Toda a sua operação, sob controle.</h1>
+      <p>Licenças, clientes e segurança em uma visão clara. Use os indicadores para localizar o que exige atenção sem sair do painel.</p>
+      <div class="admin-overview-actions">
+        <button type="button" class="primary" onclick="switchTab('keys')">Gerenciar licenças</button>
+        <button type="button" onclick="switchTab('users')">Ver clientes</button>
+        <button type="button" onclick="switchTab('security')">Segurança</button>
+        <button type="button" onclick="switchTab('audit')">Auditoria</button>
+      </div>
+    </div>
+    <aside class="zvm-overview-help" aria-label="Orientações operacionais">
+      <strong>Operação com confiança</strong>
+      <p>As métricas e os registros são consultados no servidor. Confira a indicação de atualização antes de operações importantes.</p>
+      <div class="zvm-overview-step"><span class="zvm-step-number">01</span><span>Encontre a licença com busca, filtros e indicadores.</span></div>
+      <div class="zvm-overview-step"><span class="zvm-step-number">02</span><span>Confirme as alterações realizadas e consulte o histórico quando necessário.</span></div>
+    </aside>
+  </section>
 
 
   <div class="alert-strip" id="urgent-alert" style="${(expiredCount>0||expiringSoon>0)?'':'display:none'}">
@@ -6781,7 +6826,7 @@ function renderAdminDashboard(opts = {}) {
   </div>
   </div>
 
-</div><!-- /admin-content -->
+</main><!-- /admin-content -->
 </div><!-- /admin-wrap -->
 
 <!-- ── Modals ── -->
