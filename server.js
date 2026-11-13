@@ -5491,10 +5491,10 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: 'c06071e4d73ffd64f8010881eb91c9e43a493457105e03c352153a4c7f030c1a',
     compressible: true,
   }),
-  '/assets/zvm-auth-premium.2584b637bf22.css': Object.freeze({
+  '/assets/zvm-auth-premium.0ab8f63f1cb8.css': Object.freeze({
     type: 'text/css; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-auth-premium.2584b637bf22.css'),
-    sha256: '2584b637bf220a2ede6d68070d2b8cd7ca36d8f16c651e20033831a952755182',
+    file: path.join(__dirname, 'assets', 'zvm-auth-premium.0ab8f63f1cb8.css'),
+    sha256: '0ab8f63f1cb8dfdb18810c79ed19797308068cc81c51a8f564de6b23e21956a3',
     compressible: true,
   }),
   '/assets/zvm-console-design.fc18bc02c200.css': Object.freeze({
@@ -6943,7 +6943,7 @@ const _FAV = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewB
 const _CSS_SHARED = '<link rel="stylesheet" href="/assets/zvm-shared.6dac16eb7b5b.css">';
 const _CSS_SYSTEM = '<link rel="stylesheet" href="/assets/zvm-r46-system.8873e4d662f5.css">';
 const _CSS_STANDALONE = '<link rel="stylesheet" href="/assets/zvm-standalone.d6d2222fe00a.css">';
-const _CSS_AUTH = '<link rel="stylesheet" href="/assets/zvm-r46-auth.286cb26442a2.css"><link rel="stylesheet" href="/assets/zvm-auth-premium.2584b637bf22.css">';
+const _CSS_AUTH = '<link rel="stylesheet" href="/assets/zvm-r46-auth.286cb26442a2.css"><link rel="stylesheet" href="/assets/zvm-auth-premium.0ab8f63f1cb8.css">';
 const _CSS_PRIVILEGED_AUTH = '<link rel="stylesheet" href="/assets/zvm-privileged-auth.daab7ea4861a.css">';
 const _CSS_CLIENT_WORKSPACE = '<link rel="stylesheet" href="/assets/zvm-r46-client-workspace.6dbf0f685e67.css">';
 const _CSS_LANDING = '<link rel="stylesheet" href="/assets/zvm-r46-landing.af4c6e5c623b.css">';
