@@ -52,7 +52,7 @@ for(const [lang,html] of terms){
  assert(html.includes('r466-footer'),'Terms shared footer missing');
 }
 for(const [label,html] of [['404',err404],['500',err500]]){
- assert(html.includes('<main id="main-content" class="err-wrap">'),label+' semantic main missing');
+ assert(html.includes('<main id="main-content" class="err-wrap zvm-trust-error'),label+' semantic main missing');
  assert(html.includes('zvm-error-premium'),label+' missing page style');
  assert(html.includes('href="/"'),label+' cannot recover to home');
  assert(html.includes('r466-footer'),label+' missing shared footer');

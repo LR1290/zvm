@@ -5505,10 +5505,10 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: 'ab131a22bcdd11998b7564618bc24d7159f2ffd1fbece5c2475350d3a446404a',
     compressible: true,
   }),
-  '/assets/zvm-legal-premium.222751f96dd9.css': Object.freeze({
+  '/assets/zvm-legal-premium.29b8336d5c01.css': Object.freeze({
     type: 'text/css; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-legal-premium.222751f96dd9.css'),
-    sha256: '222751f96dd906db2fdce0d10922f2346eea078de6725759da13b6c09c71b3e2',
+    file: path.join(__dirname, 'assets', 'zvm-legal-premium.29b8336d5c01.css'),
+    sha256: '29b8336d5c01146ba429e32c644925de2cb948337be9becc63eb4ce4501aba36',
     compressible: true,
   }),
   '/assets/zvm-analytics-premium.98c1933c3e7f.css': Object.freeze({
@@ -6997,7 +6997,7 @@ const _CSS_PUBLIC_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-public-pre
 const _CSS_PUBLIC_EXPERIENCE = '<link rel="stylesheet" href="/assets/zvm-public-experience.b95326ae9de7.css">';
 const _CSS_REFERENCE_PUBLIC = '<link rel="stylesheet" href="/assets/zvm-reference-public.8fc0cb9c94d6.css">';
 const _CSS_SALES_STATE = '<link rel="stylesheet" href="/assets/zvm-sales-state.1422fd551ff5.css">';
-const _CSS_LEGAL_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-legal-premium.222751f96dd9.css">';
+const _CSS_LEGAL_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-legal-premium.29b8336d5c01.css">';
 const _CSS_ANALYTICS_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-analytics-premium.98c1933c3e7f.css">';
 const _CSS_FAQ = '<link rel="stylesheet" href="/assets/zvm-faq.b388ca55cbf4.css">';
 const _CSS_PRIVACY = '<link rel="stylesheet" href="/assets/zvm-privacy.7be30b7da0a1.css">';
@@ -7274,7 +7274,18 @@ ${ZVM_SALES_PAUSED ? '' : `<dialog class="checkout-dialog" aria-labelledby="chec
 
 // ──────────────── PRIVACIDADE ──────────────
 function renderPrivacyPage(portalUser = null) {
-  const updDate = new Date().toLocaleDateString('pt-BR', {month:'long',year:'numeric'});
+  const topics = [
+    ['dados','Dados tratados pela ZVM'],
+    ['uso','Como usamos os dados'],
+    ['terceiros','Integrações opcionais e terceiros'],
+    ['retencao','Armazenamento e retenção'],
+    ['seguranca','Segurança'],
+    ['direitos','Seus direitos (LGPD)'],
+    ['cookies','Cookies e rastreamento'],
+    ['google','Chrome Web Store e Uso Limitado'],
+    ['contato','Contato'],
+  ];
+  const toc = topics.map(([id,label],i)=>'<li><a href="#privacidade-'+id+'"><span aria-hidden="true">'+String(i+1).padStart(2,'0')+'</span>'+escHtml(label)+'</a></li>').join('');
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Política de Privacidade</title>
@@ -7286,12 +7297,17 @@ ${_sharedNav({activePath:'/privacidade',portalUser,showBack:true})}
 <main id="main-content" class="zvm-privacy-main"><div class="page-hero">
   <div class="page-hero-tag">Legal</div>
   <h1>Política de <span class="privacy-accent">Privacidade</span></h1>
-  <p>Última atualização: ${updDate}</p>
+  <p>Conheça o tratamento de dados, as medidas de segurança e os seus direitos.</p>
 </div>
-<div class="doc-wrap">
+<div class="zvm-trust-layout">
+  <aside class="zvm-trust-aside" aria-label="Navegação da política de privacidade">
+    <nav class="zvm-trust-toc" aria-label="Seções da política de privacidade"><h2>Nesta página</h2><ol>${toc}</ol></nav>
+    <div class="zvm-trust-help"><strong>Precisa de ajuda com seus dados?</strong><p>Entre em contato com o suporte sobre privacidade e licenças.</p><a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Contato e suporte <span aria-hidden="true">↗</span></a></div>
+  </aside>
+  <div class="doc-wrap zvm-trust-content">
   <div class="info-box"><strong>Resumo:</strong> A ZVM não usa telemetria comportamental, publicidade ou rastreamento de navegação. Tratamos apenas os dados necessários para conta, licença, segurança e recursos que o próprio usuário ativa. Não vendemos dados pessoais.</div>
-  <div class="doc-section">
-    <h2><span class="sec-num">1</span>Dados tratados pela ZVM</h2>
+  <section class="doc-section" id="privacidade-dados" aria-labelledby="heading-privacidade-dados">
+    <h2 id="heading-privacidade-dados"><span class="sec-num">1</span>Dados tratados pela ZVM</h2>
     <p>Tratamos somente as informações necessárias para prestar e proteger o serviço:</p>
     <ul>
       <li>Nome, e-mail e telefone quando o usuário cria uma conta no Portal do Cliente</li>
@@ -7300,9 +7316,9 @@ ${_sharedNav({activePath:'/privacidade',portalUser,showBack:true})}
       <li>Erros técnicos necessários para diagnóstico, sem registrar o conteúdo de mensagens do WhatsApp</li>
     </ul>
     <p>CRM, fluxos, biblioteca, notas, preferências e outros conteúdos criados pelo usuário permanecem localmente no navegador por padrão. A ZVM não coleta histórico de navegação nem mantém analytics comportamental sobre cliques, rolagem ou uso da interface.</p>
-  </div>
-  <div class="doc-section">
-    <h2><span class="sec-num">2</span>Como usamos os dados</h2>
+  </section>
+  <section class="doc-section" id="privacidade-uso" aria-labelledby="heading-privacidade-uso">
+    <h2 id="heading-privacidade-uso"><span class="sec-num">2</span>Como usamos os dados</h2>
     <ul>
       <li>Autenticar a conta, validar a licença e manter a sessão</li>
       <li>Aplicar limites comerciais e permitir o gerenciamento de números/dispositivos autorizados</li>
@@ -7311,9 +7327,9 @@ ${_sharedNav({activePath:'/privacidade',portalUser,showBack:true})}
       <li>Prestar suporte quando solicitado pelo próprio usuário</li>
     </ul>
     <p>Não usamos dados para publicidade, criação de perfil comercial do usuário, venda a terceiros, concessão de crédito ou finalidades alheias ao funcionamento da ZVM.</p>
-  </div>
-  <div class="doc-section">
-    <h2><span class="sec-num">3</span>Integrações opcionais e terceiros</h2>
+  </section>
+  <section class="doc-section" id="privacidade-terceiros" aria-labelledby="heading-privacidade-terceiros">
+    <h2 id="heading-privacidade-terceiros"><span class="sec-num">3</span>Integrações opcionais e terceiros</h2>
     <p>A ZVM só transmite conteúdo a serviços externos quando o usuário ativa explicitamente o recurso correspondente.</p>
     <ul>
       <li>OpenAI, Google Gemini ou xAI: somente quando o usuário configura a própria credencial e solicita um recurso de IA; apenas o conteúdo necessário à solicitação é enviado ao provedor escolhido</li>
@@ -7323,18 +7339,18 @@ ${_sharedNav({activePath:'/privacidade',portalUser,showBack:true})}
       <li>Provedores de infraestrutura podem processar dados estritamente para hospedagem, banco de dados, entrega de e-mail e segurança do serviço</li>
     </ul>
     <p>Não vendemos ou alugamos dados pessoais. Não transferimos dados para redes de publicidade, data brokers ou serviços de crédito.</p>
-  </div>
-  <div class="doc-section">
-    <h2><span class="sec-num">4</span>Armazenamento e retenção</h2>
+  </section>
+  <section class="doc-section" id="privacidade-retencao" aria-labelledby="heading-privacidade-retencao">
+    <h2 id="heading-privacidade-retencao"><span class="sec-num">4</span>Armazenamento e retenção</h2>
     <ul>
       <li>Dados funcionais da extensão são armazenados localmente no navegador sempre que possível</li>
       <li>Conta, licença e informações necessárias ao licenciamento ficam armazenadas no backend da ZVM</li>
       <li>Logs operacionais e de segurança podem conter IP, chave/licença e data/hora, sem conteúdo de mensagens, e são mantidos por até 90 dias</li>
       <li>Credenciais de integrações configuradas na extensão são protegidas localmente e não entram em backups comuns</li>
     </ul>
-  </div>
-  <div class="doc-section">
-    <h2><span class="sec-num">5</span>Segurança</h2>
+  </section>
+  <section class="doc-section" id="privacidade-seguranca" aria-labelledby="heading-privacidade-seguranca">
+    <h2 id="heading-privacidade-seguranca"><span class="sec-num">5</span>Segurança</h2>
     <p>Adotamos medidas técnicas e organizacionais para proteger os dados:</p>
     <ul>
       <li>Senhas armazenadas com hash forte e salt, nunca em texto puro</li>
@@ -7343,9 +7359,9 @@ ${_sharedNav({activePath:'/privacidade',portalUser,showBack:true})}
       <li>Sessões com expiração e controles de abuso</li>
       <li>Credenciais de integrações não são exibidas novamente após serem salvas</li>
     </ul>
-  </div>
-  <div class="doc-section">
-    <h2><span class="sec-num">6</span>Seus direitos (LGPD)</h2>
+  </section>
+  <section class="doc-section" id="privacidade-direitos" aria-labelledby="heading-privacidade-direitos">
+    <h2 id="heading-privacidade-direitos"><span class="sec-num">6</span>Seus direitos (LGPD)</h2>
     <p>De acordo com a Lei Geral de Proteção de Dados (Lei 13.709/2018), você pode solicitar:</p>
     <ul>
       <li>Acesso aos dados pessoais mantidos pela ZVM</li>
@@ -7354,22 +7370,22 @@ ${_sharedNav({activePath:'/privacidade',portalUser,showBack:true})}
       <li>Revogação de consentimento e informações sobre o tratamento</li>
     </ul>
     <p>Para exercer esses direitos, entre em contato pelo suporte.</p>
-  </div>
-  <div class="doc-section">
-    <h2><span class="sec-num">7</span>Cookies e rastreamento</h2>
+  </section>
+  <section class="doc-section" id="privacidade-cookies" aria-labelledby="heading-privacidade-cookies">
+    <h2 id="heading-privacidade-cookies"><span class="sec-num">7</span>Cookies e rastreamento</h2>
     <p>O Portal do Cliente utiliza cookies essenciais de sessão. O site também guarda sua escolha de idioma em um cookie funcional. Esses cookies não são usados para publicidade nem para acompanhar sua navegação.</p>
-  </div>
-  <div class="doc-section">
-    <h2><span class="sec-num">8</span>Chrome Web Store e Uso Limitado</h2>
+  </section>
+  <section class="doc-section" id="privacidade-google" aria-labelledby="heading-privacidade-google">
+    <h2 id="heading-privacidade-google"><span class="sec-num">8</span>Chrome Web Store e Uso Limitado</h2>
     <p>O uso de informações recebidas por meio das APIs do Google seguirá a Política de Dados do Usuário da Chrome Web Store, incluindo os requisitos de Uso Limitado. A ZVM limita o tratamento de dados ao seu propósito declarado e às operações solicitadas pelo usuário.</p>
     <p>Google OAuth (em homologação): integrações futuras com Google Drive ou Google People API só poderão acessar dados após autorização específica do usuário. Antes de cada ativação, a ZVM deverá informar quais arquivos ou contatos serão acessados, para que finalidade, onde poderão ser tratados ou armazenados e como revogar o acesso. O uso dos dados recebidos das APIs do Google deve respeitar a Política de Dados do Usuário dos Serviços de API do Google e seus requisitos de Uso Limitado; a ativação ou disponibilidade geral dessas integrações ainda não é afirmada.</p>
-  </div>
-  <div class="doc-section">
-    <h2><span class="sec-num">9</span>Contato</h2>
+  </section>
+  <section class="doc-section" id="privacidade-contato" aria-labelledby="heading-privacidade-contato">
+    <h2 id="heading-privacidade-contato"><span class="sec-num">9</span>Contato</h2>
     <p>Dúvidas sobre privacidade ou solicitações relacionadas a dados:<br>
     <a href="${ZVM_SUPPORT_URL}" class="privacy-contact" target="_blank" rel="noopener noreferrer">Falar com suporte</a></p>
-  </div>
-</div></main>
+  </section>
+</div></div></main>
 ${_standaloneFoot()}
 
 </body></html>`;
@@ -7503,26 +7519,43 @@ ${_standaloneFoot()}</body></html>`;
 function renderStandalone404Page(portalUser = null) {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Página não encontrada</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
+<title>ZVM — Página não encontrada</title><meta name="robots" content="noindex"><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
 ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_ERROR_404}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_LEGAL_PREMIUM}</head><body class="zvm-public-premium zvm-error-premium zvm-404-premium">${_sharedNav({activePath:'',portalUser,showBack:false})}
-<main id="main-content" class="err-wrap">
-  <div class="err-code" aria-hidden="true">404</div>
-  <h1 class="err-title">Essa página não existe.</h1>
-  <p class="err-sub">O link pode estar desatualizado ou o endereço foi digitado errado.</p>
-  <div class="err-actions"><a href="/" class="err-btn-outline">Voltar ao início</a><a href="/cliente" class="err-btn-primary">Portal do cliente</a></div>
+<main id="main-content" class="err-wrap zvm-trust-error">
+  <div class="zvm-error-grid"><div class="zvm-error-copy">
+    <span class="zvm-error-kicker">Não encontramos esta página</span>
+    <div class="err-code" aria-hidden="true">404</div>
+    <h1 class="err-title">Essa página não existe.</h1>
+    <p class="err-sub">O endereço pode ter mudado ou o link está desatualizado. Acesse uma das áreas oficiais da ZVM para continuar.</p>
+    <div class="err-actions"><a href="/" class="err-btn-primary">Ir para a página inicial</a><a href="/faq" class="err-btn-outline">Central de Ajuda</a></div>
+  </div>
+  <aside class="zvm-error-aside" aria-label="Atalhos para continuar"><span aria-hidden="true" class="zvm-error-deco">◇</span>
+    <h2>Por onde continuar?</h2>
+    <a href="/planos"><strong>Planos e Licenças</strong><span>Consulte as ofertas e o estado das vendas</span></a>
+    <a href="/cliente"><strong>Portal do Cliente</strong><span>Acesse sua conta e gerencie sua chave</span></a>
+    <a href="/faq"><strong>Perguntas Frequentes</strong><span>Encontre orientações sobre a ferramenta</span></a>
+  </aside></div>
 </main>${_standaloneFoot()}</body></html>`;
 }
 
 function renderStandalone500Page(portalUser = null) {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Indisponibilidade temporária</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
+<title>ZVM — Indisponibilidade temporária</title><meta name="robots" content="noindex"><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
 ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_ERROR_500}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_LEGAL_PREMIUM}</head><body class="zvm-public-premium zvm-error-premium zvm-500-premium">${_sharedNav({activePath:'',portalUser,showBack:false})}
-<main id="main-content" class="err-wrap">
-  <div class="err-icon" aria-hidden="true">⚠</div>
-  <h1 class="err-title">Estamos com uma indisponibilidade temporária</h1>
-  <p class="err-sub">Sua licença não foi alterada. Tente novamente em alguns instantes — se o problema persistir, fale com o suporte.</p>
-  <div class="err-actions"><a href="/" class="err-btn-primary">Tentar novamente</a></div>
+<main id="main-content" class="err-wrap zvm-trust-error zvm-error-500">
+  <div class="zvm-error-grid"><div class="zvm-error-copy">
+    <span class="zvm-error-kicker">Falha temporária do serviço</span>
+    <div class="err-icon" aria-hidden="true">!</div>
+    <h1 class="err-title">Estamos com uma indisponibilidade temporária.</h1>
+    <p class="err-sub">Não foi possível concluir esta solicitação. Tente novamente ou entre em contato com o suporte se o problema continuar.</p>
+    <div class="err-actions"><a href="/" class="err-btn-primary">Voltar à página inicial</a><a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer" class="err-btn-outline">Falar com suporte</a></div>
+  </div><aside class="zvm-error-aside" aria-label="Ações seguras"><span class="zvm-error-deco" aria-hidden="true">✳</span>
+    <h2>O que você pode fazer?</h2>
+    <p>Confira o endereço e tente novamente mais tarde. Evite repetir pagamentos enquanto verifica uma operação pendente.</p>
+    <a href="/faq"><strong>Consultar a Central de Ajuda</strong><span>Encontre respostas para dúvidas de acesso e licença</span></a>
+    <a href="/cliente"><strong>Meu Portal do Cliente</strong><span>Gerencie licenças quando o serviço voltar</span></a>
+  </aside></div>
 </main>${_standaloneFoot()}</body></html>`;
 }
 
