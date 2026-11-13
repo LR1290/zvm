@@ -38,14 +38,14 @@ for(const [kind,html,sitePath] of templates){
     assert(translated.includes('Without losing context.'),'English story emphasis missing');
     assert(translated.includes('Browse all questions and answers'),'English FAQ link missing');
    }else if(kind==='faq'){
-    assert(translated.includes('Help center • ZVM - Automações'),'English FAQ kicker missing');
-    assert(translated.includes('Answers for'),'English FAQ heading missing');
+    assert(translated.includes('Support and help'),'English FAQ kicker missing');
+    assert(translated.includes('Help Center.')&&translated.includes('Find your answer.'),'English FAQ heading missing');
     assert(translated.includes('questions available.'),'English FAQ count missing');
     assert(translated.includes('Get support'),'English support CTA missing');
    }else{
-    assert(translated.includes('Your workflow.'),'English Plans heading missing');
+    assert(translated.includes('Plans and Licenses'),'English Plans heading missing');
     assert(translated.includes('Three simple steps to access ZVM.'),'English purchase journey missing');
-    assert(translated.includes('Find the right license.'),'English plan selection missing');
+    assert(translated.includes('Plans for every need.'),'English plan selection missing');
    }
   }
  }
