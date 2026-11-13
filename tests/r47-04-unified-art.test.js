@@ -7,7 +7,8 @@ const assets=[
  ['zvm-reference-public.e92185a78fd4.css','e92185a78fd47a34a9522e9967ab2c84067f00c6294bc792bfdd4a0c21efc910','zvm-reference-public.8fc0cb9c94d6.css',['--zvm-art-halo','.r4701-hero-visual:after','.r4700-journey-list li','.price-card.featured','.r4701-plans-hero:before']],
  ['zvm-auth-premium.d44a7ff35e68.css','d44a7ff35e683572d8c5e11175c15d9db05ea3ab9816891617813afdb970e5a4','zvm-auth-premium.0ab8f63f1cb8.css',['.auth-promo::after','.auth-form-card::before','.auth-benefits li','prefers-contrast:more']],
  ['zvm-console-design.1ee8679046a6.css','1ee8679046a6429c4fdc26c4df29650f28299a8118397377cdf1cdf48d982d33','zvm-console-design.fc18bc02c200.css',['.admin-overview::before','.client-rail','.client-license-focus','.client-quickfact']],
- ['zvm-legal-premium.52736d436442.css','52736d43644292225a83aea79e052b9a40fe41c3f2673f3f183cd2f4dc702db3','zvm-legal-premium.29b8336d5c01.css',['.page-hero::before','.zvm-trust-toc','.zvm-error-aside']]
+ ['zvm-legal-premium.52736d436442.css','52736d43644292225a83aea79e052b9a40fe41c3f2673f3f183cd2f4dc702db3','zvm-legal-premium.29b8336d5c01.css',['.page-hero::before','.zvm-trust-toc','.zvm-error-aside']],
+ ['zvm-analytics-premium.cba05e60d098.css','cba05e60d098ba8481181176835069b8303b0683044dcdc1c50ea1fff8b5209d','zvm-analytics-premium.98c1933c3e7f.css',['.analytics-hero::before','.analytics-rail','.analytics-pulse','.chart-card','prefers-reduced-motion:reduce']]
 ];
 for(const [name,hash,old,selectors] of assets){
  const css=fs.readFileSync(path.join(root,'assets',name),'utf8');
@@ -50,6 +51,7 @@ for(const p of ['home','faq','plans'])includes(p,assets[0][0]);
 for(const p of ['login','register'])includes(p,assets[1][0]);
 for(const p of ['client','admin'])includes(p,assets[2][0]);
 for(const p of ['privacy','terms','notFound','unavailable'])includes(p,assets[3][0]);
+assert(server.includes('/assets/'+assets[4][0]),'Analytics new CSS not linked');
 assert(pages.home.includes('zvm-shell-home-real.a9c1a0d7b030.png'),'genuine product image removed');
 assert(pages.faq.includes('r4701-question-art'),'FAQ artwork lost');
 assert(pages.plans.includes('r4701-license-demo'),'approved pricing concept removed');
@@ -58,4 +60,4 @@ for(const p of ['home','faq','plans']){
  assert(!pages[p].includes('https://pay.cakto.com.br/'),'checkout leaked on '+p);
 }
 assert(server.includes("if (p === '/cakto/webhook' && req.method === 'POST')"),'existing Cakto delivery route missing');
-console.log('R47.04 PASS: four versioned CSS migrations, eleven rendered pages, real product art and paused commerce');
+console.log('R47.04 PASS: five versioned CSS migrations, eleven synchronously rendered pages, Analytics link, real product art and paused commerce');
