@@ -47,10 +47,10 @@ const faq=api.renderStandaloneFaqPage(null);
 const fixtureUser={name:'Cliente ficticio',email:'qa@example.invalid',keyCode:''};
 const logged=api.renderPlanosPage(fixtureUser);
 for(const [name,html,bodyClass] of [
- ['home',home,'r466-body zvm-public-premium'],
- ['plans',plans,'zvm-public-premium zvm-plans-premium'],
- ['faq',faq,'zvm-public-premium zvm-faq-premium'],
- ['plans-logged',logged,'zvm-public-premium zvm-plans-premium']]){
+ ['home',home,'r466-body zvm-public-premium zvm-experience'],
+ ['plans',plans,'zvm-public-premium zvm-plans-premium zvm-experience'],
+ ['faq',faq,'zvm-public-premium zvm-faq-premium zvm-experience'],
+ ['plans-logged',logged,'zvm-public-premium zvm-plans-premium zvm-experience']]){
  assert(html.includes('class="'+bodyClass+'"'),name+' missing scoped body');
  assert(html.includes('/assets/'+found[1]),name+' missing stylesheet');
  assert(html.includes('id="main-content"'),name+' missing main landmark');
@@ -68,7 +68,7 @@ assert(logged.includes('class="buyer-box"'),'signed-in purchase identity must re
 assert(logged.includes('qa@example.invalid'),'signed-in identity must match user');
 assert(!plans.includes('qa@example.invalid'),'anonymous page must not receive other identity');
 assert(faq.includes('class="faq-item"'),'native FAQ disclosures must remain');
-assert(faq.includes('<details class="faq-item">'),'FAQ must remain keyboard usable');
+assert(faq.includes('<details class="faq-item" data-faq-item>'),'FAQ must remain keyboard usable and filterable');
 for(const p of ['href="/cliente"','href="/planos"'])assert(home.includes(p),'home missing route '+p);
 assert(!source.includes('zvm-public-premium"\n<link rel="stylesheet"'),'unexpected HTML injection');
 console.log('R46.96 PASS: public SHA-256, contrast, 4 render states, 3 public pages and unchanged checkout/navigation contracts');
