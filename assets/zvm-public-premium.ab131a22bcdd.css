@@ -1,0 +1,312 @@
+/* ZVM R46.96 - Scoped public design system. Sources: WCAG 2.2, Carbon, Spectrum.
+   Presentation only: landing, plans, FAQ. Never changes checkout logic or prices. */
+body.zvm-public-premium{
+  --bg:#070d0b;--bg2:#101a16;--bg3:#15221c;--bg4:#1b2c23;
+  --brd:#263d32;--brd2:#365848;--g:#46e3a2;--g2:#32cd90;
+  --g-soft:rgba(70,227,162,.09);--g-brd:rgba(70,227,162,.32);
+  --tx:#f3f8f4;--tx2:#b7cbbf;--tx3:#94ad9d;
+  --zgreen:#46e3a2;--zmuted:#b7cbbf;--zline:rgba(70,227,162,.21);
+  --purple:#a8bcae;--r:12px;--r-sm:11px;--r-lg:22px;
+  --shadow-sm:0 8px 24px rgba(0,0,0,.22);
+  --shadow-lg:0 24px 64px rgba(0,0,0,.32);
+  --fs-display:clamp(36px,5.1vw,64px);
+  --fs-body-lg:17px;
+  color-scheme:dark;
+  background:radial-gradient(ellipse at 90% 0%,rgba(70,227,162,.075),transparent 34%),#070d0b;
+  color:#f3f8f4;
+}
+body.zvm-public-premium :is(a,button,input,select,summary,[role="button"]):focus-visible{
+  outline:2px solid #acf4cf;outline-offset:3px;
+}
+body.zvm-public-premium :is(a,button,summary){-webkit-tap-highlight-color:transparent}
+body.zvm-public-premium .znav.standalone-nav{
+  background:rgba(7,13,11,.94);border-bottom:1px solid #263d32;
+  box-shadow:0 8px 28px rgba(0,0,0,.18);backdrop-filter:blur(18px);
+}
+body.zvm-public-premium .standalone-nav .znav-links a{color:#c0d4c6}
+body.zvm-public-premium .standalone-nav .znav-links a:hover{color:#f3f8f4;border-color:#365848}
+body.zvm-public-premium .standalone-nav .znav-links a[aria-current="page"],
+body.zvm-public-premium .standalone-nav .znav-links a.nav-active{
+  color:#acf4cf;border-color:#365848;background:rgba(70,227,162,.09);
+}
+body.zvm-public-premium .standalone-nav .znav-action-links .nav-cta{
+  background:#46e3a2;color:#082118;border-color:#46e3a2;box-shadow:none;
+}
+body.zvm-public-premium .standalone-nav .znav-action-links .nav-cta:hover{
+  background:#7eedbf;color:#082118;border-color:#7eedbf;
+}
+body.zvm-public-premium .standalone-nav .nav-menu-toggle{
+  background:#15221c;border-color:#365848;color:#f3f8f4;
+}
+body.zvm-public-premium .r466-footer{
+  background:#080f0b;border-top:1px solid #263d32;
+}
+body.zvm-public-premium .r466-footer nav a{color:#b7cbbf}
+body.zvm-public-premium .r466-footer nav a:hover{color:#acf4cf}
+body.zvm-public-premium .r466-footer p,
+body.zvm-public-premium .r466-footer small{color:#a8bcae}
+
+/* Landing: preserve real product previews and existing shopping routes. */
+body.zvm-public-premium.r466-body .r466-hero{
+  background:radial-gradient(ellipse 54% 70% at 69% 26%,rgba(54,137,92,.18),transparent 78%),
+    linear-gradient(156deg,#101e17,#070d0b 76%);
+  border-bottom:1px solid #263d32;
+}
+body.zvm-public-premium .r466-hero-bg{opacity:.48}
+body.zvm-public-premium .r466-hero-layout{width:min(1240px,100%);gap:clamp(24px,5vw,75px)}
+body.zvm-public-premium .r466-hero-copy{max-width:870px}
+body.zvm-public-premium .r466-hero-copy h1{
+  color:#f3f8f4;font-size:clamp(37px,5.5vw,78px);line-height:1.08;letter-spacing:-.052em;
+  text-wrap:balance;
+}
+body.zvm-public-premium .r466-hero-copy h1 em{color:#acf4cf}
+body.zvm-public-premium .r466-hero-copy>p{color:#b7cbbf;max-width:57ch;line-height:1.7}
+body.zvm-public-premium .r466-kicker,
+body.zvm-public-premium .r466-section-head>span,
+body.zvm-public-premium .r466-final>div>span{color:#acf4cf}
+body.zvm-public-premium .r466-btn{border-radius:11px;min-height:48px}
+body.zvm-public-premium .r466-btn.secondary{
+  border-color:#365848;color:#f3f8f4;background:#13221a;
+}
+body.zvm-public-premium .r466-btn.secondary:hover{
+  border-color:#46e3a2;background:rgba(70,227,162,.11);
+}
+body.zvm-public-premium .r466-license-note{color:#b7cbbf}
+body.zvm-public-premium .r466-product,
+body.zvm-public-premium .r466-benefits,
+body.zvm-public-premium .r466-features,
+body.zvm-public-premium .r466-how,
+body.zvm-public-premium .r466-plans,
+body.zvm-public-premium .r466-faq{background:#070d0b}
+body.zvm-public-premium .r466-section-head h2{color:#f3f8f4;letter-spacing:-.045em}
+body.zvm-public-premium .r466-section-head p{color:#b7cbbf;line-height:1.7}
+body.zvm-public-premium .r466-demo{
+  border:1px solid #365848;border-radius:22px;
+  background:linear-gradient(135deg,#13231a,#0b140e);
+  box-shadow:0 24px 65px rgba(0,0,0,.3);
+}
+body.zvm-public-premium .r466-benefit-grid article,
+body.zvm-public-premium .r466-steps article{
+  border:1px solid #294637;border-radius:20px;
+  background:linear-gradient(155deg,#15231b,#0e1812);
+  box-shadow:0 11px 31px rgba(0,0,0,.11);
+}
+body.zvm-public-premium .r466-benefit-grid article h3,
+body.zvm-public-premium .r466-steps article h3{color:#f3f8f4}
+body.zvm-public-premium .r466-benefit-grid article p,
+body.zvm-public-premium .r466-steps article p{color:#b7cbbf}
+body.zvm-public-premium .r466-feature-explore details{
+  border-color:#365848;background:#101a16;border-radius:15px;
+}
+body.zvm-public-premium .r466-feature-explore summary{color:#f3f8f4}
+body.zvm-public-premium .r466-feature-explore details[open]{
+  border-color:#46e3a2;background:#14251b;
+}
+body.zvm-public-premium .r466-feature-explore .r466-explore-body{color:#b7cbbf}
+body.zvm-public-premium .r4624-plan-card{
+  border:1px solid #365848;border-radius:19px;
+  background:linear-gradient(160deg,#172820,#101a16);
+  box-shadow:0 16px 42px rgba(0,0,0,.14);
+}
+body.zvm-public-premium .r4624-plan-card.is-popular{border-color:#46e3a2}
+body.zvm-public-premium .r4624-plan-card strong{color:#f3f8f4}
+body.zvm-public-premium .r4624-plan-card p,
+body.zvm-public-premium .r4624-plan-card .r4624-plan-period{color:#b7cbbf}
+body.zvm-public-premium .r4624-plan-link{color:#acf4cf}
+body.zvm-public-premium .r466-faq-list details{
+  background:#101a16;border:1px solid #294637;border-radius:14px;
+}
+body.zvm-public-premium .r466-faq-list details[open]{border-color:#46e3a2}
+body.zvm-public-premium .r466-faq-list details p{color:#b7cbbf}
+body.zvm-public-premium .r466-final{
+  background:radial-gradient(ellipse at 80% 20%,rgba(70,227,162,.1),transparent 47%),#0d1711;
+  border-top:1px solid #365848;
+}
+
+/* Plans: genuine catalog values, preserved checkout dialog and recommendation radio. */
+body.zvm-public-premium.zvm-plans-premium .page-hero{
+  padding:clamp(68px,7.5vw,108px) 18px 52px;
+  background:radial-gradient(ellipse 66% 80% at 50% 0%,rgba(70,227,162,.105),transparent 74%),
+    linear-gradient(180deg,#101a16,#070d0b);
+  border-bottom:1px solid #263d32;
+}
+body.zvm-public-premium.zvm-plans-premium .page-hero-tag{
+  border:1px solid rgba(70,227,162,.3);border-radius:999px;
+  padding:8px 14px;background:rgba(70,227,162,.09);color:#acf4cf;
+}
+body.zvm-public-premium.zvm-plans-premium .page-hero h1{
+  color:#f3f8f4;font-size:clamp(35px,5vw,62px);letter-spacing:-.05em;
+  line-height:1.1;text-wrap:balance;
+}
+body.zvm-public-premium.zvm-plans-premium .page-hero h1 span{color:#acf4cf}
+body.zvm-public-premium.zvm-plans-premium .page-hero p{color:#b7cbbf;max-width:56ch}
+body.zvm-public-premium.zvm-plans-premium .plans-wrap{max-width:1290px;padding-top:36px}
+body.zvm-public-premium.zvm-plans-premium .need-picker{
+  padding:18px 24px 22px;max-width:740px;
+  border:1px solid #294637;border-radius:18px;background:#101a16;
+}
+body.zvm-public-premium.zvm-plans-premium .need-picker-label{color:#f3f8f4;font-size:16px}
+body.zvm-public-premium.zvm-plans-premium .need-opt span{
+  min-height:45px;min-width:76px;border-radius:11px;
+  border-color:#365848;background:#15221c;color:#d6e4dc;
+}
+body.zvm-public-premium.zvm-plans-premium .need-opt input:checked+span{
+  border-color:#46e3a2;background:rgba(70,227,162,.12);color:#acf4cf;
+}
+body.zvm-public-premium.zvm-plans-premium .purchase-note{
+  border:1px solid #365848;background:rgba(70,227,162,.065);
+  border-radius:13px;color:#d6e4dc;
+}
+body.zvm-public-premium.zvm-plans-premium .buyer-box{
+  border:1px solid #365848;background:#101a16;border-radius:14px;
+}
+body.zvm-public-premium.zvm-plans-premium .buyer-box-email{color:#acf4cf}
+body.zvm-public-premium.zvm-plans-premium .pricing-grid{gap:16px}
+body.zvm-public-premium.zvm-plans-premium .price-card{
+  padding:23px 24px 26px;min-width:0;border:1px solid #294637;border-radius:19px;
+  background:linear-gradient(160deg,#15251d,#0d1711 85%);
+  box-shadow:0 14px 38px rgba(0,0,0,.12);transition:border-color .18s,transform .18s,box-shadow .18s;
+}
+body.zvm-public-premium.zvm-plans-premium .price-card.featured{
+  border-color:#46e3a2;background:linear-gradient(160deg,#1a3225,#101d16 85%);
+}
+body.zvm-public-premium.zvm-plans-premium .price-card:hover{
+  border-color:#46e3a2;box-shadow:0 20px 48px rgba(0,0,0,.25);transform:translateY(-3px);
+}
+body.zvm-public-premium.zvm-plans-premium .price-badge{
+  background:#46e3a2;color:#082118;font-size:13px;font-weight:850;border-radius:7px;
+}
+body.zvm-public-premium.zvm-plans-premium .price-tier{
+  color:#f3f8f4;letter-spacing:-.02em;font-size:22px;
+}
+body.zvm-public-premium.zvm-plans-premium .price-subtitle,
+body.zvm-public-premium.zvm-plans-premium .price-per-strong{color:#acf4cf}
+body.zvm-public-premium.zvm-plans-premium .price-val{color:#f3f8f4;letter-spacing:-.05em}
+body.zvm-public-premium.zvm-plans-premium .price-devices,
+body.zvm-public-premium.zvm-plans-premium .price-per,
+body.zvm-public-premium.zvm-plans-premium .price-feats li{color:#b7cbbf}
+body.zvm-public-premium.zvm-plans-premium .price-divider{background:#294637}
+body.zvm-public-premium.zvm-plans-premium .plan-btn{
+  min-height:49px;border-radius:11px;font:800 15px/1.3 Inter,ui-sans-serif,system-ui,sans-serif;
+}
+body.zvm-public-premium.zvm-plans-premium .plan-btn-primary{
+  background:#46e3a2;color:#082118;border-color:#46e3a2;
+}
+body.zvm-public-premium.zvm-plans-premium .plan-btn-locked,
+body.zvm-public-premium.zvm-plans-premium .plan-btn-outline{
+  background:rgba(70,227,162,.07);color:#acf4cf;border-color:#365848;
+}
+body.zvm-public-premium.zvm-plans-premium .plans-footnote{color:#b7cbbf}
+body.zvm-public-premium.zvm-plans-premium .plans-footnote a{color:#acf4cf}
+body.zvm-public-premium.zvm-plans-premium .checkout-dialog{
+  background:#101a16;color:#f3f8f4;border-color:#365848;border-radius:20px;
+}
+body.zvm-public-premium.zvm-plans-premium .checkout-dialog::backdrop{background:rgba(1,8,5,.76)}
+body.zvm-public-premium.zvm-plans-premium .dialog-inner p{color:#b7cbbf}
+body.zvm-public-premium.zvm-plans-premium .modal-continue{
+  background:#46e3a2;color:#082118;border-color:#46e3a2;
+}
+
+/* FAQ: native details remain operable by keyboard, no click-only handlers. */
+body.zvm-public-premium.zvm-faq-premium .faq-hero{
+  max-width:1100px;padding:clamp(58px,7vw,86px) 24px 42px;
+}
+body.zvm-public-premium.zvm-faq-premium .faq-kicker{
+  display:inline-flex;color:#acf4cf;
+  border:1px solid #365848;background:rgba(70,227,162,.08);
+  border-radius:999px;padding:8px 14px;
+}
+body.zvm-public-premium.zvm-faq-premium .faq-hero h1{
+  color:#f3f8f4;font-size:clamp(35px,5vw,62px);letter-spacing:-.05em;
+  line-height:1.1;
+}
+body.zvm-public-premium.zvm-faq-premium .faq-hero p{color:#b7cbbf}
+body.zvm-public-premium.zvm-faq-premium .faq-wrap{
+  max-width:1100px;padding-bottom:100px;
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:18px 24px;align-items:start;
+}
+body.zvm-public-premium.zvm-faq-premium .faq-group{
+  margin:0;padding:24px;border:1px solid #294637;
+  border-radius:19px;background:linear-gradient(145deg,#15231b,#0e1812);
+}
+body.zvm-public-premium.zvm-faq-premium .faq-group h2{
+  color:#acf4cf;font-size:15px;font-weight:800;margin-bottom:12px;
+}
+body.zvm-public-premium.zvm-faq-premium .faq-item{
+  border-bottom:1px solid #294637;
+}
+body.zvm-public-premium.zvm-faq-premium .faq-item:last-child{border-bottom:0}
+body.zvm-public-premium.zvm-faq-premium .faq-item summary{
+  color:#f3f8f4;font-size:16px;line-height:1.5;min-height:54px;
+  padding:16px 0;cursor:pointer;align-items:center;
+}
+body.zvm-public-premium.zvm-faq-premium .faq-item summary::after{
+  content:"+";flex:0 0 30px;width:30px;height:30px;display:grid;place-items:center;
+  border:1px solid #365848;border-radius:9px;background:#101a16;color:#acf4cf;
+  font-size:18px;
+}
+body.zvm-public-premium.zvm-faq-premium .faq-item[open] summary::after{content:"-"}
+body.zvm-public-premium.zvm-faq-premium .faq-item[open] summary{color:#acf4cf}
+body.zvm-public-premium.zvm-faq-premium .faq-item p{
+  padding:0 8px 17px 0;color:#b7cbbf;font-size:15px;line-height:1.75;
+}
+body.zvm-public-premium.zvm-faq-premium .faq-support{
+  grid-column:1/-1;margin-top:4px;padding:25px 30px;border:1px solid #365848;
+  border-radius:18px;background:linear-gradient(120deg,#172c20,#101a16);
+}
+body.zvm-public-premium.zvm-faq-premium .faq-support strong{color:#f3f8f4}
+body.zvm-public-premium.zvm-faq-premium .faq-support p{color:#b7cbbf}
+body.zvm-public-premium.zvm-faq-premium .faq-support a{
+  min-height:46px;border-radius:11px;padding:12px 20px;
+  border-color:#46e3a2;background:#46e3a2;color:#082118;
+}
+
+/* Reflow and reduced-motion behavior are scoped to public pages. */
+@media(max-width:900px){
+  body.zvm-public-premium .standalone-nav .znav-links.is-open{
+    border-color:#365848;background:#101a16;box-shadow:0 18px 48px #0006;
+  }
+  body.zvm-public-premium.zvm-faq-premium .faq-wrap{grid-template-columns:1fr}
+}
+@media(max-width:620px){
+  body.zvm-public-premium .r466-hero-copy h1{font-size:clamp(34px,10vw,50px)}
+  body.zvm-public-premium .r466-hero{padding-inline:16px}
+  body.zvm-public-premium.zvm-plans-premium .page-hero{padding:48px 16px 32px}
+  body.zvm-public-premium.zvm-plans-premium .plans-wrap{padding:20px 14px 70px}
+  body.zvm-public-premium.zvm-plans-premium .need-picker{padding:17px 12px}
+  body.zvm-public-premium.zvm-plans-premium .need-opt span{min-width:60px;padding:10px 12px}
+  body.zvm-public-premium.zvm-plans-premium .price-card{padding:21px 19px 23px}
+  body.zvm-public-premium.zvm-faq-premium .faq-hero{padding:44px 16px 28px}
+  body.zvm-public-premium.zvm-faq-premium .faq-wrap{padding:0 14px 68px;gap:15px}
+  body.zvm-public-premium.zvm-faq-premium .faq-group{padding:17px}
+  body.zvm-public-premium.zvm-faq-premium .faq-support{padding:20px;flex-direction:column;align-items:stretch}
+  body.zvm-public-premium.zvm-faq-premium .faq-support a{width:100%;justify-content:center}
+}
+@media(prefers-reduced-motion:reduce){
+  body.zvm-public-premium .price-card,
+  body.zvm-public-premium .r4624-plan-card{transition:none;transform:none}
+}
+@media(prefers-contrast:more){
+  body.zvm-public-premium .price-card,
+  body.zvm-public-premium .faq-group,
+  body.zvm-public-premium .r466-benefit-grid article{border-color:#9cbfaa}
+}
+
+/* Visible label owns pointer hits; native radio remains keyboard focusable. */
+body.zvm-public-premium.zvm-plans-premium .need-opt input{
+  pointer-events:none;
+}
+body.zvm-public-premium.zvm-plans-premium .need-opt{
+  scroll-margin-top:100px;
+}
+
+/* Keep disclosure scroll targets unobscured by the sticky public navigation. */
+body.zvm-public-premium.zvm-faq-premium .faq-item summary{scroll-margin-top:100px}
+
+/* Legacy standalone CSS reopens the mobile nav via a later display:flex rule.
+   Keep hidden state authoritative; only .is-open reveals links. */
+@media(max-width:900px){
+  body.zvm-public-premium .standalone-nav .znav-links{display:none}
+  body.zvm-public-premium .standalone-nav .znav-links.is-open{display:flex}
+}
