@@ -93,9 +93,11 @@ async function run(){
       }
     }else{
       assert(await page.locator('.price-card').count()>=3,label+'/'+width+' pricing cards missing');
-      const chooser=page.locator('input[name="need"]').first();
-      await chooser.check();
-      assert(await chooser.isChecked(),label+'/'+width+' user cannot choose number of devices');
+      // The visible label is the actual public control; the radio is visually hidden
+      // under its span. Test a real user click, not a click on the transparent input.
+      const chooser=page.locator('.need-opt').first();
+      await chooser.locator('span').click();
+      assert(await chooser.locator('input[name="need"]').isChecked(),label+'/'+width+' user cannot choose number of devices');
       assert(await page.locator('.price-card.suggested').count()===1,label+'/'+width+' selector does not highlight exactly one card');
       if(label==='plans'){
         const btn=page.locator('.plan-btn-locked').first();
