@@ -1,0 +1,39 @@
+/* ZVM R46.99 - Only applies to commercial status notices. */
+.r466-sales-paused,
+.purchase-note.sales-paused-alert,
+.client-plans-public-style .sales-paused-alert{
+  display:block;max-width:1170px;margin:24px auto;padding:18px 22px;
+  background:linear-gradient(125deg,#242115,#181b14);
+  border:1px solid #9b8653;border-left:4px solid #f5ca77;
+  color:#f0e5c9;border-radius:14px;
+  line-height:1.65;font-size:15px;
+  box-shadow:0 12px 26px rgba(0,0,0,.13);
+}
+.r466-sales-paused strong,
+.sales-paused-alert strong{color:#ffe3a3;font-weight:800;}
+.r466-sales-paused a,
+.sales-paused-alert a{color:#fff2cd;text-decoration:underline;text-underline-offset:3px;}
+.r466-sales-paused a:focus-visible,
+.sales-paused-alert a:focus-visible{outline:2px solid #ffe4a9;outline-offset:3px;}
+.r466-sales-paused-inline{margin:0 auto 22px;max-width:980px;}
+.zvm-plans-premium .purchase-link-notice{
+  display:block;max-width:1050px;margin:24px auto;padding:18px 22px;
+  background:#12261d;border:1px solid #3b7557;border-left:4px solid #46e3a2;
+  border-radius:14px;color:#d7e9dd;line-height:1.65;font-size:15px;
+}
+.zvm-plans-premium .purchase-link-notice strong{color:#acf4cf;}
+.zvm-plans-premium .purchase-link-notice a,
+.zvm-plans-premium .modal-hint a{color:#acf4cf;text-decoration:underline;text-underline-offset:3px;}
+.zvm-plans-premium .purchase-link-notice a:focus-visible,
+.zvm-plans-premium .modal-hint a:focus-visible{outline:2px solid #acf4cf;outline-offset:3px;}
+.zvm-plans-premium .checkout-dialog .modal-hint{max-width:57ch;line-height:1.7;}
+.client-plans-public-style .sales-paused-alert{margin:15px auto 22px;}
+@media(max-width:620px){
+  .r466-sales-paused,.purchase-note.sales-paused-alert,
+  .client-plans-public-style .sales-paused-alert,
+  .zvm-plans-premium .purchase-link-notice{margin:14px 12px;padding:16px 17px;font-size:14px;}
+}
+@media(prefers-contrast:more){
+  .r466-sales-paused,.sales-paused-alert{border-color:#ffdf9a;}
+  .zvm-plans-premium .purchase-link-notice{border-color:#9ff5c9;}
+}

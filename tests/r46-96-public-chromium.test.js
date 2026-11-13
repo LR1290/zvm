@@ -108,17 +108,19 @@ async function run(){
       assert(hit,label+'/'+width+' visible price selector must own hit testing');
       assert(await page.locator('.price-card.suggested').count()===1,label+'/'+width+' selector does not highlight exactly one card');
       if(label==='plans'){
-        const btn=page.locator('.plan-btn-locked').first();
-        assert(await btn.count()>0,'anonymous purchase must require login');
+        const btn=page.locator('[data-buy-plan]').first();
+        assert(await btn.count()>0,'anonymous visitors should be allowed to buy');
+        assert.equal(await page.locator('[data-login-plan]').count(),0,'mandatory login gate still present');
         await btn.click();
         const dialog=page.locator('.checkout-dialog');
-        assert(await dialog.evaluate(el=>el.open),label+'/'+width+' checkout login dialog inaccessible');
-        assert(await dialog.locator('a[href="/cliente?redir=/planos"]').count()>0,'checkout login continuation missing');
+        assert(await dialog.evaluate(el=>el.open),label+'/'+width+' guest confirmation dialog inaccessible');
+        assert((await dialog.locator('.modal-hint').innerText()).includes('sem login obrigatório'),'missing license linking guidance');
+        assert((await dialog.locator('.modal-continue').getAttribute('href')).startsWith('https://pay.cakto.com.br/'),'guest checkout missing official Cakto link');
         await dialog.locator('.modal-cancel').click();
         assert(!(await dialog.evaluate(el=>el.open)),'checkout dialog did not close');
       }else{
         assert(await page.locator('.buyer-box').isVisible(),'buyer identity missing');
-        assert(await page.locator('.plan-btn-locked').count()===0,'logged-in buyer should not see login CTA');
+        assert(await page.locator('[data-buy-plan]').count()>0,'logged-in buyer missing checkout');
       }
     }
     // Full-page screenshots otherwise pin a sticky header at the last scrolled y.

@@ -2,7 +2,7 @@
 const {renderPublicFooter} = require('../footer');
 const {SUPPORT_URL} = require('../../../support-contact');
 
-function createLandingRenderer({ escHtml, favicon, sharedCssLink, landingCssLink, chromeStoreBadge, publicNav, plans = {} }) {
+function createLandingRenderer({ escHtml, favicon, sharedCssLink, landingCssLink, chromeStoreBadge, publicNav, plans = {}, salesPaused = false }) {
   const icon = name => {
     const paths = {
       crm:'<rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="16" rx="1"/><rect x="17" y="4" width="4" height="16" rx="1"/>',
@@ -72,6 +72,7 @@ function createLandingRenderer({ escHtml, favicon, sharedCssLink, landingCssLink
 <link rel="icon" type="image/svg+xml" href="${favicon}">${sharedCssLink}${landingCssLink}</head>
 <body class="r466-body zvm-public-premium">${typeof publicNav === 'function' ? publicNav(portalUser) : `<a class="r466-skip" href="#main-content">Pular para o conteúdo</a>`}
 <main id="main-content">
+${salesPaused ? '<section class="r466-sales-paused" role="status" aria-label="Comunicado sobre vendas"><strong>Vendas temporariamente suspensas.</strong> Estamos ajustando o sistema de compras. Nenhum novo checkout está disponível pelo site neste momento. Licenças existentes e compras já pagas continuam atendidas. <a href="/faq">Ver informações e suporte</a>.</section>' : ''}
 <section class="r466-hero r466-hero-centered">
   <div class="r466-hero-bg" aria-hidden="true"><svg class="r4618-ambient-wave wave-one" viewBox="0 0 1500 650" preserveAspectRatio="none"><path d="M-100 365 C260 540 385 160 775 354 S1190 520 1620 266"/></svg><svg class="r4618-ambient-wave wave-two" viewBox="0 0 1500 650" preserveAspectRatio="none"><path d="M-90 500 C350 275 565 580 892 435 S1290 255 1600 452"/></svg></div>
   <div class="r466-hero-float r466-float-crm" aria-hidden="true">${icon('crm')} CRM</div>
@@ -105,7 +106,7 @@ function createLandingRenderer({ escHtml, favicon, sharedCssLink, landingCssLink
 
 
 
-<section class="r466-plans" id="planos"><div class="r466-section-head centered"><span>Planos</span><h2>Um plano para cada ritmo.</h2><p>Instale gratuitamente pela loja oficial e escolha uma licença conforme a quantidade de números que sua operação precisa.</p></div><div class="r4624-plan-grid" aria-label="Planos e preços">${renderLandingPlans()}</div><p class="r4624-plans-note">Todos os planos incluem os mesmos recursos. O que muda é a quantidade de números de WhatsApp.</p></section>
+<section class="r466-plans" id="planos">${salesPaused ? '<div class="r466-sales-paused r466-sales-paused-inline" role="status"><strong>Compra indisponível temporariamente.</strong> Consulte os planos e retorne quando as vendas forem reabertas.</div>' : ''}<div class="r466-section-head centered"><span>Planos</span><h2>Um plano para cada ritmo.</h2><p>Instale gratuitamente pela loja oficial e escolha uma licença conforme a quantidade de números que sua operação precisa.</p></div><div class="r4624-plan-grid" aria-label="Planos e preços">${renderLandingPlans()}</div><p class="r4624-plans-note">Todos os planos incluem os mesmos recursos. O que muda é a quantidade de números de WhatsApp.</p></section>
 
 <section class="r466-faq" id="faq"><div class="r466-faq-layout"><div class="r466-section-head r466-faq-head"><span>Perguntas frequentes</span><h2>Respostas sem complicação.</h2></div><div class="r466-faq-list"><details><summary>O que é a ZVM - Automações?</summary><p>É uma extensão para WhatsApp Web que reúne CRM, Disparos, Fluxos, Funis, Biblioteca, Agenda, FollowUp e Assistentes IA.</p></details><details><summary>Preciso instalar outro programa?</summary><p>Não. A ZVM funciona como extensão do navegador e acompanha sua rotina dentro do WhatsApp Web.</p></details><details><summary>O que muda entre os planos?</summary><p>O conjunto de módulos é o mesmo. O que muda é a quantidade de números de WhatsApp autorizados na licença e o valor do período de 30 dias.</p></details><details><summary>Como recebo minha chave?</summary><p>Após a confirmação da compra, a chave é enviada automaticamente para o e-mail informado no pedido.</p></details><details><summary>Como funciona o suporte?</summary><p>Você pode falar diretamente com o suporte da ZVM pelo WhatsApp para dúvidas de instalação, ativação e uso.</p></details></div></div></section>
 

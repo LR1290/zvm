@@ -70,7 +70,8 @@ assert(!site.includes('149<span>,90'),'former unconfigured PRO v2 price is not p
 assert(site.includes('data-plan-id="solo"') && site.includes('39<span>,90'), 'SOLO public card must preserve historical R$39,90 price');
 assert(site.includes('data-plan-id="padrao"') && site.includes('data-plan-id="pro"'), 'START/PRO reuse the verified original Cakto contracts');
 assert(!site.includes('data-buy-plan="enterprise_v2"'));
-assert(site.includes('data-login-plan="padrao"') && site.includes('data-login-plan="pro"'), 'authenticated checkout required for each original Cakto offer');
+assert(site.includes('data-buy-plan="padrao"') && site.includes('data-buy-plan="pro"'), 'guest checkout must offer original Cakto plans when open');
+assert(!site.includes('data-login-plan='), 'no account may be required to reach the Cakto checkout');
 assert(!site.includes('data-buy-plan="start_v2"'),'inactive v2 checkout must never be substituted for the original offer');
 const portal=api.renderPortalPlans({email:'example@example.com'},{planId:'solo',maxUses:1});
 assert(portal.includes('94<span>,90')&&portal.includes('Sob consulta'));
@@ -90,4 +91,4 @@ assert.equal(api.resolveCaktoPlan({productName:'ZVM PRO'},{
 assert(!portal.includes('data-buy-plan="enterprise_v2"'),'Enterprise must never have a checkout');
 assert(!/<a class="plan-btn[^"]*"[^>]*>Sob consulta<\/a>/.test(site),'Enterprise is a badge, not a clickable offer');
 
-console.log('R46.62 catalogue, email, admin migration and fail-closed checkout gates PASS');
+console.log('R46.62 catalogue, email, admin migration and guest checkout gates PASS');

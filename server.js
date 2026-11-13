@@ -111,6 +111,8 @@ const COMMERCIAL_TX_CLAIM_WAIT_MS = Math.max(0, Math.min(15000, parseInt(process
 const COMMERCIAL_TX_CLAIM_RETENTION_DAYS = Math.max(30, Math.min(730, parseInt(process.env.COMMERCIAL_TX_CLAIM_RETENTION_DAYS || '400', 10) || 400));
 const IS_PRODUCTION = String(process.env.NODE_ENV || '').toLowerCase() === 'production' || String(process.env.RENDER || '').toLowerCase() === 'true';
 const ZVM_LOCAL_SAFE_MODE = /^(1|true|yes|on)$/i.test(String(process.env.ZVM_LOCAL_SAFE_MODE || '').trim());
+// Owner-controlled storefront switch: does not disable Cakto webhooks or previously paid deliveries.
+const ZVM_SALES_PAUSED = /^(1|true|yes|on)$/i.test(String(process.env.ZVM_SALES_PAUSED || '').trim());
 const ANALYTICS_PASS = process.env.ANALYTICS_PASS || '';
 // Opcional: se preenchida, exige TOTP além da senha pra entrar no Analytics
 // (mesma implementação de verifyTOTP já usada pro admin — nenhuma lib nova).
@@ -5395,10 +5397,10 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: 'd7d7bba83d4424fe90de4ba00d1c1ea627607a8cb56e0bee7a2590346aa27369',
     compressible: true,
   }),
-  '/assets/zvm-plans.26a755b1251d.js': Object.freeze({
+  '/assets/zvm-plans.3d82262649b9.js': Object.freeze({
     type: 'text/javascript; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-plans.26a755b1251d.js'),
-    sha256: '26a755b1251d9156fba66e60fee49dc195b2ca52044fbb5d36348baed18a955a',
+    file: path.join(__dirname, 'assets', 'zvm-plans.3d82262649b9.js'),
+    sha256: '3d82262649b9e75c7943b07f6f39088f66810346fdd142023afd3cbe8b9bccad',
     compressible: true,
   }),
   '/assets/zvm-shell-home-real.a9c1a0d7b030.png': Object.freeze({
@@ -5525,6 +5527,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     type: 'text/javascript; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-analytics-lab.e6a44a6e8392.js'),
     sha256: 'e6a44a6e83929ba9d2c1d1768f31e1069d0d9f756b7526264dd56d569c2abddf',
+    compressible: true,
+  }),
+  '/assets/zvm-sales-state.1422fd551ff5.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-sales-state.1422fd551ff5.css'),
+    sha256: '1422fd551ff5c1548fc1f7641a22263662755331d928eaaa0ff29f25f30931f9',
     compressible: true,
   }),
   '/assets/zvm-console-design.fc18bc02c200.css': Object.freeze({
@@ -6038,7 +6046,7 @@ function _securityPromo(eyebrow, title) {
 // abaixo corresponde a um recurso que o standalone realmente tem hoje.
 const ZVM_FAQ_ITEMS = [
   ['Como recebo minha licença depois da compra?', 'Assim que o pagamento é aprovado, sua chave é gerada e enviada automaticamente por e-mail. Você também acompanha tudo pelo painel Minha Conta.'],
-  ['Preciso criar uma conta antes de comprar?', 'Não é obrigatório, mas é recomendado: entrando antes da compra, sua chave é vinculada automaticamente à sua conta. Sem login, você recebe a chave só por e-mail.'],
+  ['Preciso criar uma conta antes de comprar?', 'Não. Quando as vendas estiverem abertas, você pode comprar diretamente na Cakto sem login ZVM. Informe um e-mail válido; depois do pagamento, a chave será enviada para ele. Crie ou acesse sua conta ZVM e vincule a chave pelo Portal do Cliente. Usar o mesmo e-mail ajuda na vinculação automática.'],
   ['Como instalar e acessar a ZVM?', 'Use sempre o link oficial disponibilizado pela ZVM, instale a extensão no navegador compatível e entre com sua conta. Se a licença ainda não estiver vinculada, faça a vinculação pelo Portal do Cliente.'],
   ['Quantos números posso usar?', 'Nos novos planos, START oferece 1 acesso e PRO oferece até 3. ENTERPRISE é sob consulta e não está disponível para compra automática. Contratos anteriores preservam seus limites.'],
   ['Como renovo minha licença?', 'No portal, acesse "Renovar / Alterar Plano" e conclua a compra pela Cakto — a renovação é aplicada automaticamente à sua chave.'],
@@ -6490,7 +6498,7 @@ function renderStandalonePortalPlans(user, keyData){
   const currentPlanId=String(keyData?.planId||'');
   // Preserve renewal for an existing historic contract independently of new v2 offers.
   const renewalPlan = Object.prototype.hasOwnProperty.call(ZVM_PLANS,currentPlanId) ? ZVM_PLANS[currentPlanId] : null;
-  const legacyRenewal = renewalPlan && keyData?.planId
+  const legacyRenewal = !ZVM_SALES_PAUSED && renewalPlan && keyData?.planId
     ? `<section class="client-legacy-renewal" aria-label="Renovação do contrato vigente" style="margin:16px auto;padding:18px;max-width:960px;border:1px solid var(--border,#295247);border-radius:14px;">
       <h2 style="font-size:18px;margin:0 0 8px;">Renovar contrato anterior</h2>
       <p style="margin:0 0 12px;">Sua licença atual é do plano ${escHtml(displayLicensePlan({planId:currentPlanId,maxUses:keyData?.maxUses}).label)}. Você pode renovar esse contrato sem migrar automaticamente para os novos planos.</p>
@@ -6504,9 +6512,11 @@ function renderStandalonePortalPlans(user, keyData){
     const identity=PLAN_IDENTITY[plan.id]||{subtitle:plan.subtitle||''};
     const action = plan.consult
       ? ''
-      : !plan.enabled
-        ? '<button type="button" class="plan-btn plan-btn-outline" disabled title="Aguardando liberação do checkout Cakto">Compra indisponível no momento</button>'
-        : '<button type="button" class="plan-btn '+(popular?'plan-btn-primary':'plan-btn-outline')+'" data-buy-plan="'+plan.id+'" data-checkout="'+escHtml(checkoutUrlForPortal(plan.checkoutUrl,user?.keyCode,user?.email,APP_SECRET))+'" data-plan-name="'+escHtml(plan.shortName)+'" data-devices="'+plan.maxUses+'" data-duration="'+plan.durationDays+'" data-price="'+price.whole+','+price.cents+'">'+(isCurrent?'Renovar este plano':'Escolher este plano')+'</button>';
+      : ZVM_SALES_PAUSED
+        ? '<button type="button" class="plan-btn plan-btn-outline" disabled aria-disabled="true">Vendas temporariamente pausadas</button>'
+        : !plan.enabled
+          ? '<button type="button" class="plan-btn plan-btn-outline" disabled title="Aguardando liberação do checkout Cakto">Compra indisponível no momento</button>'
+          : '<button type="button" class="plan-btn '+(popular?'plan-btn-primary':'plan-btn-outline')+'" data-buy-plan="'+plan.id+'" data-checkout="'+escHtml(checkoutUrlForPortal(plan.checkoutUrl,user?.keyCode,user?.email,APP_SECRET))+'" data-plan-name="'+escHtml(plan.shortName)+'" data-devices="'+plan.maxUses+'" data-duration="'+plan.durationDays+'" data-price="'+price.whole+','+price.cents+'">'+(isCurrent?'Renovar este plano':'Escolher este plano')+'</button>';
     return `<article class="price-card${popular?' featured':''}${isCurrent?' current-plan':''}" aria-labelledby="client-plan-${plan.id}" data-plan-id="${plan.id}">
       <div class="client-plan-tags">${isCurrent?'<span class="price-suggested-tag current-plan-tag">Plano atual</span>':''}${popular?'<span class="price-badge">Mais popular</span>':''}${plan.consult?'<span class="price-badge">Sob consulta</span>':''}</div>
       <span class="price-icon" aria-hidden="true">${PLAN_ICONS[plan.id]||''}</span>
@@ -6524,10 +6534,10 @@ function renderStandalonePortalPlans(user, keyData){
   const modal=`<dialog class="checkout-dialog" aria-labelledby="checkout-title"><div class="dialog-inner"><div class="modal-icon" aria-hidden="true">↗</div><h2 id="checkout-title">Confirmar plano</h2><div class="modal-plan-summary"><div class="modal-plan-name" id="modal-plan-name">—</div><div class="modal-plan-meta" id="modal-plan-meta">—</div><div class="modal-plan-price" id="modal-plan-price">—</div></div><div class="modal-account"><span class="modal-account-label">Compra vinculada à conta</span><strong class="modal-email">${escHtml(user?.email||'')}</strong></div><p class="modal-hint">Use este mesmo e-mail na página de pagamento para que sua licença seja ativada ou renovada automaticamente.</p><div class="modal-actions"><button type="button" class="modal-cancel">Voltar</button><a class="modal-continue" href="#" target="_blank" rel="noopener noreferrer">Continuar para pagamento →</a></div></div></dialog>`;
   const body=`<div class="client-shell">${renderClientPortalRail('plans')}<main id="main-content" class="client-main client-plans-main" tabindex="-1">
     <div class="dash-topbar"><div class="dash-page-heading"><span>Minha ZVM</span><strong>Renovações e planos</strong></div><div class="dash-topbar-user">${renderClientAccountIdentity(user)}<a href="/cliente/logout" class="dash-logout">Sair da conta</a></div></div>
-    <section class="client-plans-public-style"><header class="client-plans-public-head client-plan-intro"><span>Renove ou altere seu plano</span><h1>Escolha o plano ideal</h1><p>SOLO para 1 número, START para até 3, PRO para até 5 e ENTERPRISE sob consulta.</p></header>${needPicker}${legacyRenewal}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section><p class="plans-footnote">Precisa de mais de 10 números? <a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Falar com suporte</a></p></section>
-    ${modal}<script src="/assets/zvm-plans.26a755b1251d.js" defer></script>
+    <section class="client-plans-public-style"><header class="client-plans-public-head client-plan-intro"><span>Renove ou altere seu plano</span><h1>Escolha o plano ideal</h1><p>SOLO para 1 número, START para até 3, PRO para até 5 e ENTERPRISE sob consulta.</p></header>${ZVM_SALES_PAUSED ? '<div class="purchase-note sales-paused-alert" role="status"><strong>Vendas e renovações temporariamente suspensas.</strong> Estamos realizando ajustes; sua licença atual não será modificada.</div>' : ''}${needPicker}${legacyRenewal}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section><p class="plans-footnote">Precisa de mais de 10 números? <a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Falar com suporte</a></p></section>
+    ${ZVM_SALES_PAUSED ? '' : modal}<script src="/assets/zvm-plans.3d82262649b9.js" defer></script>
   </main></div>`;
-  return renderPortalPage(body,'ZVM — Renovações e Planos','',_CSS_PLANS);
+  return renderPortalPage(body,'ZVM — Renovações e Planos','',_CSS_PLANS+_CSS_SALES_STATE);
 }
 
 // ──────────── fim portal do cliente ────────────────────────────
@@ -6966,6 +6976,7 @@ const _CSS_PRIVILEGED_AUTH = '<link rel="stylesheet" href="/assets/zvm-privilege
 const _CSS_CLIENT_WORKSPACE = '<link rel="stylesheet" href="/assets/zvm-r46-client-workspace.6dbf0f685e67.css">';
 const _CSS_LANDING = '<link rel="stylesheet" href="/assets/zvm-r46-landing.af4c6e5c623b.css">';
 const _CSS_PUBLIC_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-public-premium.ab131a22bcdd.css">';
+const _CSS_SALES_STATE = '<link rel="stylesheet" href="/assets/zvm-sales-state.1422fd551ff5.css">';
 const _CSS_LEGAL_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-legal-premium.222751f96dd9.css">';
 const _CSS_ANALYTICS_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-analytics-premium.98c1933c3e7f.css">';
 const _CSS_FAQ = '<link rel="stylesheet" href="/assets/zvm-faq.b388ca55cbf4.css">';
@@ -7096,9 +7107,10 @@ const renderLandingPage = createLandingRenderer({
   escHtml,
   favicon: _FAV,
   sharedCssLink: _CSS_SHARED + _CSS_STANDALONE,
-  landingCssLink: _CSS_LANDING + _CSS_SYSTEM + _CSS_PUBLIC_PREMIUM,
+  landingCssLink: _CSS_LANDING + _CSS_SYSTEM + _CSS_PUBLIC_PREMIUM + _CSS_SALES_STATE,
   chromeStoreBadge: renderChromeStoreBadge,
   plans: ZVM_PUBLIC_PLANS,
+  salesPaused: ZVM_SALES_PAUSED,
   publicNav: portalUser => _sharedNav({ activePath: '/', portalUser, showBack: false }),
 });
 
@@ -7145,13 +7157,15 @@ function renderPlanosPage(portalUser = null) {
     const popular = plan.id === 'pro_v2';
     const identity = PLAN_IDENTITY[plan.id] || { subtitle: '' };
     const icon = PLAN_ICONS[plan.id] || '';
+    // Checkout de visitante: Cakto coleta e-mail e envia a chave sem exigir sessão ZVM.
+    // Quando logado, o claim assinado continua permitindo renovação da chave correta.
     const action = plan.consult
       ? ''
-      : !plan.enabled
-        ? '<button class="plan-btn plan-btn-outline" type="button" disabled title="Checkout Cakto ainda não vinculado a esta oferta">Compra indisponível no momento</button>'
-        : isLoggedIn
-          ? '<button type="button" class="plan-btn '+(popular?'plan-btn-primary':'plan-btn-outline')+'" data-buy-plan="'+plan.id+'" data-checkout="'+escHtml(checkoutUrlForPortal(plan.checkoutUrl,portalUser?.keyCode,portalUser?.email,APP_SECRET))+'" data-plan-name="'+escHtml(plan.shortName)+'" data-devices="'+plan.maxUses+'" data-duration="'+plan.durationDays+'" data-price="'+price.whole+','+price.cents+'">Comprar '+escHtml(plan.shortName)+'</button>'
-          : '<button type="button" class="plan-btn plan-btn-locked" data-login-plan="'+plan.id+'">Entre para comprar</button>';
+      : ZVM_SALES_PAUSED
+        ? '<button class="plan-btn plan-btn-outline" type="button" disabled aria-disabled="true">Vendas temporariamente pausadas</button>'
+        : !plan.enabled
+          ? '<button class="plan-btn plan-btn-outline" type="button" disabled title="Checkout Cakto ainda não vinculado a esta oferta">Compra indisponível no momento</button>'
+          : '<button type="button" class="plan-btn '+(popular?'plan-btn-primary':'plan-btn-outline')+'" data-buy-plan="'+plan.id+'" data-checkout="'+escHtml(isLoggedIn ? checkoutUrlForPortal(plan.checkoutUrl,portalUser?.keyCode,portalUser?.email,APP_SECRET) : plan.checkoutUrl)+'" data-plan-name="'+escHtml(plan.shortName)+'" data-devices="'+plan.maxUses+'" data-duration="'+plan.durationDays+'" data-price="'+price.whole+','+price.cents+'">Comprar '+escHtml(plan.shortName)+'</button>';
     return `<article class="price-card${popular?' featured':''}" aria-labelledby="plan-${plan.id}" data-plan-id="${plan.id}">
       <div class="client-plan-tags">${popular?'<span class="price-badge">Mais popular</span>':''}${plan.consult?'<span class="price-badge">Sob consulta</span>':''}</div>
       <span class="price-icon" aria-hidden="true">${icon}</span>
@@ -7175,28 +7189,27 @@ function renderPlanosPage(portalUser = null) {
     <div class="need-options">${NEED_OPTIONS.map(opt => `<label class="need-opt"><input type="radio" name="need" value="${opt.planId}"><span>${opt.label}</span></label>`).join('')}</div>
   </div>`;
 
-  const buyerBox = isLoggedIn ? `<div class="buyer-box"><div class="buyer-box-label">Comprando para:</div><div class="buyer-box-email">${escHtml(portalUser.email || '')}</div><p class="buyer-box-hint">Use este mesmo e-mail na página de pagamento para que a compra seja vinculada automaticamente à sua conta.</p></div>` : '';
-  const purchaseNote = !isLoggedIn ? `<div class="purchase-note"><span aria-hidden="true">●</span><span>Entre na sua conta antes da compra. Assim, sua licença é vinculada automaticamente.</span></div>` : '';
+  const buyerBox = isLoggedIn && !ZVM_SALES_PAUSED ? `<div class="buyer-box"><div class="buyer-box-label">Conta conectada:</div><div class="buyer-box-email">${escHtml(portalUser.email || '')}</div><p class="buyer-box-hint">No pagamento, informe este mesmo e-mail para facilitar a associação da licença.</p></div>` : '';
+  const purchaseNote = ZVM_SALES_PAUSED
+    ? '<div class="purchase-note sales-paused-alert" role="status"><strong>Vendas temporariamente suspensas.</strong> Estamos realizando ajustes. Nenhum novo checkout está disponível pelo site neste momento. Compras já pagas seguem em processamento e suporte permanece disponível.</div>'
+    : '<div class="purchase-note purchase-link-notice" role="note"><strong>Não precisa criar conta para comprar.</strong> Informe um e-mail válido no pagamento: a chave será enviada para ele. Depois, <a href="/cliente/registro">crie uma conta</a> ou <a href="/cliente">entre na sua conta</a> e <a href="/cliente/vincular">vincule a chave</a> no Portal do Cliente. Use o mesmo e-mail da compra para facilitar a vinculação automática.</div>';
 
-  const modalContent = isLoggedIn ? `
+  const modalContent = ZVM_SALES_PAUSED ? '' : `
     <div class="modal-icon" aria-hidden="true">↗</div><h2 id="checkout-title">Confirmar plano</h2>
     <div class="modal-plan-summary"><div class="modal-plan-name" id="modal-plan-name">—</div><div class="modal-plan-meta" id="modal-plan-meta">—</div><div class="modal-plan-price" id="modal-plan-price">—</div></div>
-    <div class="modal-account"><span class="modal-account-label">Compra vinculada à conta</span><strong class="modal-email">${escHtml(portalUser.email || '')}</strong></div>
-    <p class="modal-hint">Use este mesmo e-mail na página de pagamento para que sua licença seja ativada automaticamente.</p>
-    <div class="modal-actions"><button type="button" class="modal-cancel">Voltar</button><a class="modal-continue" href="#" target="_blank" rel="noopener noreferrer">Continuar para pagamento →</a></div>` : `
-    <div class="modal-icon locked" aria-hidden="true">⌁</div><h2 id="checkout-title">Faça login antes de comprar</h2>
-    <p>Para vincular a compra à sua conta e entregar ou renovar sua chave sem problemas, entre ou crie sua conta ZVM antes de continuar.</p>
-    <div class="modal-actions"><button type="button" class="modal-cancel">Agora não</button><a class="modal-login" href="/cliente?redir=/planos">Entrar</a><a class="modal-continue" href="/cliente/registro?redir=/planos">Criar conta</a></div>`;
+    ${isLoggedIn ? `<div class="modal-account"><span class="modal-account-label">Conta ZVM</span><strong class="modal-email">${escHtml(portalUser.email || '')}</strong></div>` : ''}
+    <p class="modal-hint"><strong>Compra sem login obrigatório.</strong> Informe seu e-mail correto na Cakto para receber a chave. Depois da compra, acesse <a href="/cliente/vincular">Portal do Cliente → Vincular chave</a>. Se já tiver uma conta, use o mesmo e-mail do pagamento.</p>
+    <div class="modal-actions"><button type="button" class="modal-cancel">Voltar</button><a class="modal-continue" href="#" target="_blank" rel="noopener noreferrer">Continuar para pagamento →</a></div>`;
 
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="description" content="Planos ZVM SOLO (R$39,90, 1 número), START (R$59,90, 3 números), PRO (R$94,90, 5 números) e ENTERPRISE sob consulta.">
 <title>ZVM — Planos e Preços</title><link rel="icon" type="image/svg+xml" href="${_FAV}">
-${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PLANS}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}</head><body class="zvm-public-premium zvm-plans-premium">${_sharedNav({activePath:'/planos',portalUser,showBack:true})}
+${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PLANS}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_SALES_STATE}</head><body class="zvm-public-premium zvm-plans-premium">${_sharedNav({activePath:'/planos',portalUser,showBack:true})}
 <main id="main-content"><header class="page-hero"><div class="page-hero-tag">Licenças ZVM</div><h1>Escolha seu <span>ritmo de operação</span></h1><p>Todos os planos têm os mesmos recursos. O limite muda apenas conforme a quantidade de números conectados.</p></header>
 <div class="plans-wrap">${needPicker}${buyerBox}${purchaseNote}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section><p class="plans-footnote">Precisa de mais números? <a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Converse com o suporte</a></p></div></main>
-<dialog class="checkout-dialog" aria-labelledby="checkout-title"><div class="dialog-inner">${modalContent}</div></dialog>${_standaloneFoot()}
-<script src="/assets/zvm-plans.26a755b1251d.js" defer></script></body></html>`;
+${ZVM_SALES_PAUSED ? '' : `<dialog class="checkout-dialog" aria-labelledby="checkout-title"><div class="dialog-inner">${modalContent}</div></dialog>`}${_standaloneFoot()}
+<script src="/assets/zvm-plans.3d82262649b9.js" defer></script></body></html>`;
 }
 
 // ──────────────── PRIVACIDADE ──────────────
