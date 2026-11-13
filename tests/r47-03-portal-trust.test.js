@@ -31,6 +31,7 @@ assert.equal((portal.match(/aria-current="page"/g)||[]).length,1,'only active po
 assert.match(portal,/Vendas e renovações temporariamente suspensas\./,'expiry banner hides sales pause');
 assert.match(portal,/class="expiry-alert-cta">Consultar planos<\/a>/,'expired license falsely promises instant renewal');
 assert.doesNotMatch(portal,/class="expiry-alert-cta">Renovar agora<\/a>/,'paused renewal CTA leaked');
+assert.doesNotMatch(portal,/>Renovar \/ mudar plano<\/a>/,'account card incorrectly advertises a paused sale');
 assert.match(portal,/class="client-ok-banner" role="status" aria-live="polite"/,'success feedback inaccessible');
 const plans=api.renderPortalPlans(user,expired);
 assert.match(plans,/<a href="\/cliente\/planos" class="active" aria-current="page">/,'plans link not announced as current');
