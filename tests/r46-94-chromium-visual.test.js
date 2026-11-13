@@ -79,7 +79,16 @@ async function run(){
       inner:window.innerWidth,
       body:document.body.scrollWidth
     }));
-    assert(overflow.scroll<=width+4,label+'/'+width+' horizontal viewport overflow: '+JSON.stringify(overflow));
+    if(overflow.scroll>width+4){
+      const offenders=await page.evaluate(()=>{
+        return [...document.body.querySelectorAll('*')].map(el=>({tag:el.tagName.toLowerCase(),
+          className:typeof el.className==='string'?el.className.slice(0,100):'',
+          right:Math.round(el.getBoundingClientRect().right),
+          width:Math.round(el.getBoundingClientRect().width)}))
+          .filter(x=>x.right>innerWidth+4).sort((a,b)=>b.right-a.right).slice(0,8);
+      });
+      assert.fail(label+'/'+width+' horizontal viewport overflow: '+JSON.stringify({overflow,offenders}));
+    }
     if(label==='admin'){
       const nav=page.locator('#rsidebar');
       assert(await nav.isVisible(),'Admin navigation should always remain visible');
