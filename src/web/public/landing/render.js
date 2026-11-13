@@ -111,7 +111,7 @@ ${salesPaused ? '<section class="r466-sales-paused" role="status" aria-label="Co
 <section class="r4700-journey" id="jornada" aria-labelledby="r4700-journey-title">
   <div class="r4700-journey-intro">
     <span class="r4700-eyebrow">Um fluxo de trabalho, não só uma lista de ferramentas</span>
-    <h2 id="r4700-journey-title">Da conversa ao acompanhamento. <em>Sem perder o fio.</em></h2>
+    <h2 id="r4700-journey-title">Da conversa ao próximo passo. <em>Sem perder o contexto.</em></h2>
     <p>A ZVM reúne tarefas e informações que normalmente ficam espalhadas. Você mantém o controle do atendimento e organiza sua operação com mais clareza.</p>
     <a href="/?sec=recursos" data-scroll-target="recursos" class="r4700-inline-link">Conhecer os recursos <span aria-hidden="true">↗</span></a>
   </div>
