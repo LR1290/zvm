@@ -73,7 +73,7 @@ function createLandingRenderer({ escHtml, favicon, sharedCssLink, landingCssLink
 <body class="r466-body zvm-public-premium zvm-experience">${typeof publicNav === 'function' ? publicNav(portalUser) : `<a class="r466-skip" href="#main-content">Pular para o conteúdo</a>`}
 <main id="main-content">
 ${salesPaused ? '<section class="r466-sales-paused" role="status" aria-label="Comunicado sobre vendas"><strong>Vendas temporariamente suspensas.</strong> Estamos ajustando o sistema de compras. Nenhum novo checkout está disponível pelo site neste momento. Licenças existentes e compras já pagas continuam atendidas. <a href="/faq">Ver informações e suporte</a>.</section>' : ''}
-<section class="r466-hero r466-hero-centered">
+<section class="r466-hero r466-hero-centered r4701-hero">
   <div class="r466-hero-bg" aria-hidden="true"><svg class="r4618-ambient-wave wave-one" viewBox="0 0 1500 650" preserveAspectRatio="none"><path d="M-100 365 C260 540 385 160 775 354 S1190 520 1620 266"/></svg><svg class="r4618-ambient-wave wave-two" viewBox="0 0 1500 650" preserveAspectRatio="none"><path d="M-90 500 C350 275 565 580 892 435 S1290 255 1600 452"/></svg></div>
   <div class="r466-hero-float r466-float-crm" aria-hidden="true">${icon('crm')} CRM</div>
   <div class="r466-hero-float r466-float-fluxos" aria-hidden="true">${icon('flow')} Fluxos</div>
@@ -81,16 +81,22 @@ ${salesPaused ? '<section class="r466-sales-paused" role="status" aria-label="Co
   <div class="r466-hero-float r466-float-ia" aria-hidden="true">${icon('sparkle')} IA</div>
   <div class="r466-hero-layout">
     <div class="r466-hero-copy">
-      <span class="r466-kicker">Extensão para WhatsApp Web</span>
+      <span class="r466-kicker">Plataforma de atendimento e automações</span>
       <h1>Organize o atendimento.<br><em>Automatize a rotina.</em></h1>
-      <p>Organize clientes, acompanhe conversas e automatize tarefas sem sair do WhatsApp Web.</p>
+      <p>Centralize seus atendimentos no WhatsApp Web, organize operações, padronize processos e trabalhe com mais clareza usando automação.</p>
       <div class="r466-hero-links">
         <a href="/?sec=produto" data-scroll-target="produto" class="r466-btn primary">Explorar a ferramenta <span aria-hidden="true">→</span></a>
         <a href="/planos" class="r466-btn secondary">Consultar planos</a>
       </div>
+      <div class="r4701-hero-highlights" aria-label="Destaques"><span>${icon('users')} Atendimento organizado</span><span>${icon('flow')} Fluxos e automações</span><span>${icon('shield')} Controle da operação</span></div>
       <div class="r4700-hero-support"><span class="r4700-official"><span aria-hidden="true">●</span> Feita para sua rotina no WhatsApp Web</span><div class="r4618-hero-store" aria-label="Instalação pela Chrome Web Store">${storeBadgeMarkup}</div></div>
       <p class="r466-license-note">Instalação gratuita. A ativação requer uma licença.</p>
     </div>
+    <figure class="r4701-hero-visual">
+      <div class="r4701-window-chrome"><span class="r4701-window-brand"><i aria-hidden="true"></i>ZVM</span><span>Uma visão do painel real</span><span class="r4701-window-dots" aria-hidden="true">•••</span></div>
+      <img src="/assets/zvm-shell-home-real.a9c1a0d7b030.png" alt="Captura de tela real do painel principal da extensão ZVM - Automações, mostrando recursos de gerenciamento." width="1180" height="710" loading="eager" fetchpriority="high" decoding="async">
+      <figcaption>Visualização da interface ZVM — os dados exibidos pertencem à captura de demonstração.</figcaption>
+    </figure>
   </div>
   <a class="r4612-scroll-cue" href="/?sec=produto" data-scroll-target="produto" aria-label="Rolar para conhecer a ferramenta por dentro"><span class="r4612-scroll-mouse" aria-hidden="true"><i></i></span><span>Explore a ZVM</span></a>
 </section>
@@ -103,10 +109,6 @@ ${salesPaused ? '<section class="r466-sales-paused" role="status" aria-label="Co
     <span>${icon('shield')} Controle de licença</span>
   </div>
 </section>
-
-<section class="r466-product r4611-product-first" id="produto"><div class="r466-section-head centered r4612-product-head"><span>Veja a ferramenta por dentro</span><h2>Explore a ZVM em ação.</h2><p>Escolha uma aba para conhecer diferentes áreas do painel real.</p></div><div class="r466-demo">${renderProductTabs()}</div></section>
-
-
 
 <section class="r4700-journey" id="jornada" aria-labelledby="r4700-journey-title">
   <div class="r4700-journey-intro">
@@ -123,9 +125,39 @@ ${salesPaused ? '<section class="r466-sales-paused" role="status" aria-label="Co
   </ol>
 </section>
 
+<section class="r466-product r4611-product-first" id="produto"><div class="r466-section-head centered r4612-product-head"><span>Veja a ferramenta por dentro</span><h2>Explore a ZVM em ação.</h2><p>Escolha uma aba para conhecer diferentes áreas do painel real.</p></div><div class="r466-demo">${renderProductTabs()}</div></section>
+
+
+
 <section class="r466-benefits" id="beneficios"><div class="r466-section-head centered"><span>Feita para o seu dia a dia</span><h2>Mais clareza. Menos tarefas repetidas.</h2><p>Deixe as conversas, os clientes e as tarefas organizados em um só lugar.</p></div><div class="r466-benefit-grid"><article>${icon('crm')}<h3>Acompanhe cada cliente</h3><p>Organize contatos, notas e etapas sem perder o contexto.</p></article><article>${icon('flow')}<h3>Automatize com controle</h3><p>Prepare fluxos e envios para facilitar o trabalho diário.</p></article><article>${icon('book')}<h3>Encontre tudo rapidamente</h3><p>Guarde mensagens e materiais que você usa com frequência.</p></article></div></section>
 
-<section class="r466-features" id="recursos"><div class="r466-section-head"><span>Recursos</span><h2>Uma ferramenta. Muitas possibilidades.</h2><p>Conheça os recursos disponíveis, sem precisar descobrir tudo de uma vez.</p></div><div class="r466-feature-explore"><details><summary>${icon('crm')}<span>Atendimento e CRM</span><span class="r466-explore-more">Saiba mais</span></summary><div class="r466-explore-body"><article><h3>CRM e Funis</h3><p>Organize clientes, etapas, notas e próximos passos.</p></article><article><h3>Agenda e FollowUp</h3><p>Mantenha seus compromissos e acompanhamentos por perto.</p></article></div></details><details><summary>${icon('flow')}<span>Automações</span><span class="r466-explore-more">Saiba mais</span></summary><div class="r466-explore-body"><article><h3>Fluxos</h3><p>Crie sequências visuais para tarefas recorrentes.</p></article><article><h3>Disparos</h3><p>Prepare listas e acompanhe os envios com cuidado.</p></article></div></details><details><summary>${icon('book')}<span>Conteúdo e organização</span><span class="r466-explore-more">Saiba mais</span></summary><div class="r466-explore-body"><article><h3>Biblioteca</h3><p>Reutilize mensagens, áudios, imagens, vídeos e documentos.</p></article><article><h3>Assistentes IA</h3><p>Personalize os assistentes de acordo com sua rotina.</p></article></div></details></div></section>
+<section class="r466-features r4701-features" id="recursos">
+  <div class="r466-section-head centered"><span>Recursos</span><h2>Tudo o que você precisa em um só lugar.</h2><p>Recursos integrados para atendimento, automação e organização da sua operação.</p></div>
+  <div class="r4701-feature-grid">
+    <a href="/?sec=produto" data-scroll-target="produto" class="r4701-feature-card"><span class="r4701-feature-icon">${icon('users')}</span><span><strong>CRM</strong><small>Contatos, histórico, etiquetas e etapas de relacionamento.</small></span><span class="r4701-feature-arrow" aria-hidden="true">↗</span></a>
+    <a href="/?sec=produto" data-scroll-target="produto" class="r4701-feature-card"><span class="r4701-feature-icon">${icon('flow')}</span><span><strong>Fluxos</strong><small>Monte e acompanhe sequências de automação visual.</small></span><span class="r4701-feature-arrow" aria-hidden="true">↗</span></a>
+    <a href="/?sec=produto" data-scroll-target="produto" class="r4701-feature-card"><span class="r4701-feature-icon">${icon('book')}</span><span><strong>Biblioteca</strong><small>Respostas, arquivos e materiais prontos para reutilização.</small></span><span class="r4701-feature-arrow" aria-hidden="true">↗</span></a>
+    <a href="/?sec=produto" data-scroll-target="produto" class="r4701-feature-card"><span class="r4701-feature-icon">${icon('send')}</span><span><strong>Disparos</strong><small>Prepare envios para contatos com acompanhamento e controle.</small></span><span class="r4701-feature-arrow" aria-hidden="true">↗</span></a>
+    <a href="/?sec=produto" data-scroll-target="produto" class="r4701-feature-card"><span class="r4701-feature-icon">${icon('crm')}</span><span><strong>Organização</strong><small>Tenha uma visão clara do trabalho e dos próximos passos.</small></span><span class="r4701-feature-arrow" aria-hidden="true">↗</span></a>
+    <a href="/planos" class="r4701-feature-card"><span class="r4701-feature-icon">${icon('shield')}</span><span><strong>Planos e licenças</strong><small>Consulte condições e gerencie acessos no Portal do Cliente.</small></span><span class="r4701-feature-arrow" aria-hidden="true">↗</span></a>
+  </div>
+  <div class="r466-feature-explore"><details><summary>${icon('crm')}<span>Atendimento e CRM</span><span class="r466-explore-more">Saiba mais</span></summary><div class="r466-explore-body"><article><h3>CRM e Funis</h3><p>Organize clientes, etapas, notas e próximos passos.</p></article><article><h3>Agenda e FollowUp</h3><p>Mantenha seus compromissos e acompanhamentos por perto.</p></article></div></details><details><summary>${icon('flow')}<span>Automações</span><span class="r466-explore-more">Saiba mais</span></summary><div class="r466-explore-body"><article><h3>Fluxos</h3><p>Crie sequências visuais para tarefas recorrentes.</p></article><article><h3>Disparos</h3><p>Prepare listas e acompanhe os envios com cuidado.</p></article></div></details><details><summary>${icon('book')}<span>Conteúdo e organização</span><span class="r466-explore-more">Saiba mais</span></summary><div class="r466-explore-body"><article><h3>Biblioteca</h3><p>Reutilize mensagens, áudios, imagens, vídeos e documentos.</p></article><article><h3>Assistentes IA</h3><p>Personalize os assistentes de acordo com sua rotina.</p></article></div></details></div></section>
+
+<section class="r4701-workflow-showcase" aria-labelledby="r4701-showcase-title">
+  <div class="r4701-flow-preview" role="img" aria-label="Exemplo ilustrativo de fluxo: início da conversa, envio de resposta e encaminhamento de atendimento.">
+    <div class="r4701-flow-top"><span>◈ ZVM</span><small>Exemplo de fluxo • Visão ilustrativa</small><span class="r4701-flow-status">Estrutura visual</span></div>
+    <div class="r4701-flow-canvas">
+      <div class="r4701-flow-node"><span class="r4701-flow-dot">●</span><strong>Início</strong><small>Uma conversa é iniciada</small></div>
+      <div class="r4701-flow-line"></div>
+      <div class="r4701-flow-node active"><span class="r4701-flow-dot">✉</span><strong>Enviar mensagem</strong><small>Use um modelo da Biblioteca</small></div>
+      <div class="r4701-flow-line"></div>
+      <div class="r4701-flow-node"><span class="r4701-flow-dot">◇</span><strong>Próximo passo</strong><small>Acompanhar ou encaminhar</small></div>
+    </div>
+  </div>
+  <div class="r4701-showcase-copy"><span class="r4700-eyebrow">Automação na prática</span><h2 id="r4701-showcase-title">Fluxos pensados para o seu jeito de trabalhar.</h2><p>Reúna tarefas repetidas em sequências visuais, reaproveite conteúdo e mantenha o contexto do atendimento.</p>
+  <ul><li>Etapas visuais para organizar rotinas</li><li>Modelos reutilizáveis da Biblioteca</li><li>Conexão com o contexto do cliente</li><li>Acompanhamento com mais clareza</li></ul>
+  <a class="r4700-inline-link" href="/?sec=produto" data-scroll-target="produto">Ver as telas da ZVM <span aria-hidden="true">↗</span></a></div>
+</section>
 
 <section class="r466-how" id="como-funciona"><div class="r466-section-head centered"><span>Como funciona</span><h2>Comece em três passos.</h2></div><div class="r466-steps"><article><b>01</b><h3>Instale e ative</h3><p>Instale a extensão, valide sua chave e entre normalmente no WhatsApp Web.</p></article><article><b>02</b><h3>Configure sua rotina</h3><p>Crie CRMs, modelos, fluxos, funis e conteúdos conforme sua necessidade.</p></article><article><b>03</b><h3>Trabalhe com contexto</h3><p>Use os recursos da ZVM enquanto mantém o atendimento no WhatsApp Web.</p></article></div></section>
 

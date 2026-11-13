@@ -1,4 +1,4 @@
-name: ZVM Chromium UI visual QA (R47.00)
+name: ZVM Chromium UI visual QA (R47.01)
 
 on:
   pull_request:
@@ -9,6 +9,7 @@ on:
       - 'assets/zvm-public-premium.*.css'
       - 'assets/zvm-sales-state.*.css'
       - 'assets/zvm-public-experience.*.css'
+      - 'assets/zvm-reference-public.*.css'
       - 'assets/zvm-faq-experience.*.js'
       - 'assets/zvm-plans.*.js'
       - 'assets/zvm-legal-premium.*.css'
@@ -33,6 +34,8 @@ on:
       - 'src/web/public/i18n-copy.js'
       - 'src/web/public/i18n.js'
       - 'tests/r47-00-public-chromium.test.js'
+      - 'tests/r47-01-reference-public.test.js'
+      - 'tests/r47-01-reference-public-chromium.test.js'
       - '.github/workflows/ui-visual-r46-94.yml'
   workflow_dispatch:
 
@@ -67,11 +70,12 @@ jobs:
           node tests/r46-98-analytics-chromium.test.js
           node tests/r46-99-paused-chromium.test.js
           node tests/r47-00-public-chromium.test.js
+          node tests/r47-01-reference-public-chromium.test.js
       - name: Upload visual screenshots for review
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: zvm-r47-00-chromium-visuals
+          name: zvm-r47-01-chromium-visuals
           path: artifacts/visual-qa/*.png
           if-no-files-found: ignore
           retention-days: 7

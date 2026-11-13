@@ -41,6 +41,16 @@
   if(form)form.addEventListener('submit',function(event){event.preventDefault();});
   input.addEventListener('input',filter);
   input.addEventListener('search',filter);
+  // Native, non-intrusive help search shortcut. Do not steal focus when
+  // dialogs or editable content outside the FAQ search are active.
+  document.addEventListener('keydown',function(event){
+    if(event.defaultPrevented||event.altKey||event.shiftKey||!event.key)return;
+    if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){
+      event.preventDefault();
+      input.focus();
+      input.select();
+    }
+  });
   input.addEventListener('keydown',function(event){
     if(event.key==='Escape'&&input.value){event.preventDefault();input.value='';filter();}
   });
