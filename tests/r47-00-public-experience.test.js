@@ -10,7 +10,7 @@ const source=fs.readFileSync(path.join(root,'server.js'),'utf8');
 const htmlSource=fs.readFileSync(path.join(root,'src/web/public/landing/render.js'),'utf8');
 for(const [name,digest] of [
  ['zvm-public-experience.862ced6be719.css','862ced6be719acb9d55c15a91aa4b5be0b4da94fc7ff1e84fcf7faba84d328a7'],
- ['zvm-faq-experience.531cb23ececc.js','531cb23ececcb3ce1a1ac99349df1618c25c6ac88c9ea92d536aed58bc70f9b2']
+ ['zvm-faq-experience.66e20508c9af.js','66e20508c9af0aeba58ab817a92730b3edcaae342ae680664155a5a566de5b92']
 ]){
  const body=fs.readFileSync(path.join(root,'assets',name));
  const actual=crypto.createHash('sha256').update(body).digest('hex');
@@ -19,7 +19,7 @@ for(const [name,digest] of [
  assert(source.includes('/assets/'+name),'asset must appear in HTML or link constant: '+name);
 }
 const css=fs.readFileSync(path.join(root,'assets/zvm-public-experience.862ced6be719.css'),'utf8');
-const js=fs.readFileSync(path.join(root,'assets/zvm-faq-experience.531cb23ececc.js'),'utf8');
+const js=fs.readFileSync(path.join(root,'assets/zvm-faq-experience.66e20508c9af.js'),'utf8');
 assert(!css.includes('!important'),'new public experience CSS must not accumulate overrides');
 assert(css.includes('@media(max-width:460px)'),'mobile 320px responsive rule absent');
 assert(css.includes('prefers-reduced-motion:reduce'),'reduced motion rule absent');
