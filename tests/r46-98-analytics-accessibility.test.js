@@ -10,7 +10,7 @@ const source=fs.readFileSync(path.join(root,'server.js'),'utf8');
 const assetNames=[
  'zvm-analytics-dashboard.95454273c23e.js',
  'zvm-analytics-lab.e6a44a6e8392.js',
- 'zvm-analytics-premium.98c1933c3e7f.css',
+ 'zvm-analytics-premium.cba05e60d098.css',
 ];
 for(const file of assetNames){
  const content=fs.readFileSync(path.join(root,'assets',file));
