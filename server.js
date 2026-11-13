@@ -5535,6 +5535,18 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '1422fd551ff5c1548fc1f7641a22263662755331d928eaaa0ff29f25f30931f9',
     compressible: true,
   }),
+  '/assets/zvm-public-experience.b95326ae9de7.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-public-experience.b95326ae9de7.css'),
+    sha256: 'b95326ae9de7ae949428a2ae00cd925287f523a9c44a8a1a0a2d25f1d2506c7e',
+    compressible: true,
+  }),
+  '/assets/zvm-faq-experience.66e20508c9af.js': Object.freeze({
+    type: 'text/javascript; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-faq-experience.66e20508c9af.js'),
+    sha256: '66e20508c9af0aeba58ab817a92730b3edcaae342ae680664155a5a566de5b92',
+    compressible: true,
+  }),
   '/assets/zvm-console-design.fc18bc02c200.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-console-design.fc18bc02c200.css'),
@@ -6534,10 +6546,10 @@ function renderStandalonePortalPlans(user, keyData){
   const modal=`<dialog class="checkout-dialog" aria-labelledby="checkout-title"><div class="dialog-inner"><div class="modal-icon" aria-hidden="true">↗</div><h2 id="checkout-title">Confirmar plano</h2><div class="modal-plan-summary"><div class="modal-plan-name" id="modal-plan-name">—</div><div class="modal-plan-meta" id="modal-plan-meta">—</div><div class="modal-plan-price" id="modal-plan-price">—</div></div><div class="modal-account"><span class="modal-account-label">Compra vinculada à conta</span><strong class="modal-email">${escHtml(user?.email||'')}</strong></div><p class="modal-hint">Use este mesmo e-mail na página de pagamento para que sua licença seja ativada ou renovada automaticamente.</p><div class="modal-actions"><button type="button" class="modal-cancel">Voltar</button><a class="modal-continue" href="#" target="_blank" rel="noopener noreferrer">Continuar para pagamento →</a></div></div></dialog>`;
   const body=`<div class="client-shell">${renderClientPortalRail('plans')}<main id="main-content" class="client-main client-plans-main" tabindex="-1">
     <div class="dash-topbar"><div class="dash-page-heading"><span>Minha ZVM</span><strong>Renovações e planos</strong></div><div class="dash-topbar-user">${renderClientAccountIdentity(user)}<a href="/cliente/logout" class="dash-logout">Sair da conta</a></div></div>
-    <section class="client-plans-public-style"><header class="client-plans-public-head client-plan-intro"><span>Renove ou altere seu plano</span><h1>Escolha o plano ideal</h1><p>SOLO para 1 número, START para até 3, PRO para até 5 e ENTERPRISE sob consulta.</p></header>${ZVM_SALES_PAUSED ? '<div class="purchase-note sales-paused-alert" role="status"><strong>Vendas e renovações temporariamente suspensas.</strong> Estamos realizando ajustes; sua licença atual não será modificada.</div>' : ''}${needPicker}${legacyRenewal}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section><p class="plans-footnote">Precisa de mais de 10 números? <a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Falar com suporte</a></p></section>
+    <section class="client-plans-public-style"><header class="client-plans-public-head client-plan-intro"><span>Renove ou altere seu plano</span><h1>Seu acesso, suas escolhas.</h1><p>Compare os planos e gerencie sua licença sem perder o histórico da conta.</p></header>${renderPurchaseJourney()}${ZVM_SALES_PAUSED ? '<div class="purchase-note sales-paused-alert" role="status"><strong>Vendas e renovações temporariamente suspensas.</strong> Estamos realizando ajustes; sua licença atual não será modificada.</div>' : ''}${needPicker}${legacyRenewal}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section><p class="plans-footnote">Precisa de mais de 10 números? <a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Falar com suporte</a></p></section>
     ${ZVM_SALES_PAUSED ? '' : modal}<script src="/assets/zvm-plans.3d82262649b9.js" defer></script>
   </main></div>`;
-  return renderPortalPage(body,'ZVM — Renovações e Planos','',_CSS_PLANS+_CSS_SALES_STATE);
+  return renderPortalPage(body,'ZVM — Renovações e Planos','',_CSS_PLANS+_CSS_SALES_STATE+_CSS_PUBLIC_EXPERIENCE);
 }
 
 // ──────────── fim portal do cliente ────────────────────────────
@@ -6976,6 +6988,7 @@ const _CSS_PRIVILEGED_AUTH = '<link rel="stylesheet" href="/assets/zvm-privilege
 const _CSS_CLIENT_WORKSPACE = '<link rel="stylesheet" href="/assets/zvm-r46-client-workspace.6dbf0f685e67.css">';
 const _CSS_LANDING = '<link rel="stylesheet" href="/assets/zvm-r46-landing.af4c6e5c623b.css">';
 const _CSS_PUBLIC_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-public-premium.ab131a22bcdd.css">';
+const _CSS_PUBLIC_EXPERIENCE = '<link rel="stylesheet" href="/assets/zvm-public-experience.b95326ae9de7.css">';
 const _CSS_SALES_STATE = '<link rel="stylesheet" href="/assets/zvm-sales-state.1422fd551ff5.css">';
 const _CSS_LEGAL_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-legal-premium.222751f96dd9.css">';
 const _CSS_ANALYTICS_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-analytics-premium.98c1933c3e7f.css">';
@@ -7107,7 +7120,7 @@ const renderLandingPage = createLandingRenderer({
   escHtml,
   favicon: _FAV,
   sharedCssLink: _CSS_SHARED + _CSS_STANDALONE,
-  landingCssLink: _CSS_LANDING + _CSS_SYSTEM + _CSS_PUBLIC_PREMIUM + _CSS_SALES_STATE,
+  landingCssLink: _CSS_LANDING + _CSS_SYSTEM + _CSS_PUBLIC_PREMIUM + _CSS_SALES_STATE + _CSS_PUBLIC_EXPERIENCE,
   chromeStoreBadge: renderChromeStoreBadge,
   plans: ZVM_PUBLIC_PLANS,
   salesPaused: ZVM_SALES_PAUSED,
@@ -7148,6 +7161,20 @@ const NEED_OPTIONS = [
   { planId:'pro', label:'Até 5' },
   { planId:'enterprise_v2', label:'Até 10' },
 ];
+
+// Shared journey for the public pricing page and authenticated renewals.
+// Payment itself is always performed by Cakto; this section has no checkout links.
+function renderPurchaseJourney() {
+  const action = ZVM_SALES_PAUSED ? 'Aguarde a reabertura dos checkouts' : 'Pague com segurança no checkout Cakto';
+  return `<section class="r4700-purchase-journey" aria-labelledby="r4700-purchase-title">
+    <div class="r4700-purchase-heading"><span>Como funciona</span><h2 id="r4700-purchase-title">Três passos para organizar seu acesso.</h2></div>
+    <ol class="r4700-purchase-steps">
+      <li><span class="r4700-purchase-index">01</span><div><strong>Escolha sua licença</strong><p>Compare quantidade de números e período de acesso.</p></div></li>
+      <li><span class="r4700-purchase-index">02</span><div><strong>${action}</strong><p>O pagamento acontece fora do site ZVM, pela Cakto. Sem login obrigatório na ZVM.</p></div></li>
+      <li><span class="r4700-purchase-index">03</span><div><strong>Receba e vincule a chave</strong><p>Use um e-mail válido na compra. Depois, <a href="/cliente/vincular">vincule a licença</a> à sua conta ZVM.</p></div></li>
+    </ol>
+  </section>`;
+}
 
 function renderPlanosPage(portalUser = null) {
   const isLoggedIn = !!portalUser;
@@ -7205,9 +7232,11 @@ function renderPlanosPage(portalUser = null) {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="description" content="Planos ZVM SOLO (R$39,90, 1 número), START (R$59,90, 3 números), PRO (R$94,90, 5 números) e ENTERPRISE sob consulta.">
 <title>ZVM — Planos e Preços</title><link rel="icon" type="image/svg+xml" href="${_FAV}">
-${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PLANS}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_SALES_STATE}</head><body class="zvm-public-premium zvm-plans-premium">${_sharedNav({activePath:'/planos',portalUser,showBack:true})}
-<main id="main-content"><header class="page-hero"><div class="page-hero-tag">Licenças ZVM</div><h1>Escolha seu <span>ritmo de operação</span></h1><p>Todos os planos têm os mesmos recursos. O limite muda apenas conforme a quantidade de números conectados.</p></header>
-<div class="plans-wrap">${needPicker}${buyerBox}${purchaseNote}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section><p class="plans-footnote">Precisa de mais números? <a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Converse com o suporte</a></p></div></main>
+${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PLANS}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_SALES_STATE}${_CSS_PUBLIC_EXPERIENCE}</head><body class="zvm-public-premium zvm-plans-premium zvm-experience">${_sharedNav({activePath:'/planos',portalUser,showBack:true})}
+<main id="main-content" class="r4700-plans-main"><header class="page-hero r4700-plans-hero"><div class="page-hero-tag">Licenças ZVM • 30 dias</div><h1>Seu ritmo de trabalho.<br><span>Sua licença ZVM.</span></h1><p>Todos os planos oferecem a mesma experiência. Escolha pelo número de WhatsApps autorizados e acompanhe sua licença no Portal do Cliente.</p></header>
+<div class="plans-wrap">${purchaseNote}${renderPurchaseJourney()}<div class="r4700-plans-selection"><div class="r4700-selection-header"><span>Compare os planos</span><h2>Encontre o acesso ideal.</h2></div>${needPicker}${buyerBox}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section></div>
+<section class="r4700-plans-assurance" aria-label="O que está incluído"><div><span aria-hidden="true">✓</span><strong>Recursos completos</strong><p>CRM, Fluxos, Funis, Biblioteca e demais módulos disponíveis na extensão.</p></div><div><span aria-hidden="true">✓</span><strong>Clareza na licença</strong><p>Prazo, número de acessos e gerenciamento ficam visíveis no Portal do Cliente.</p></div><div><span aria-hidden="true">✓</span><strong>Suporte para começar</strong><p>Orientações de instalação e vinculação pelo canal oficial da ZVM.</p></div></section>
+<p class="plans-footnote">Tem dúvidas sobre sua escolha? <a href="/faq">Consulte as perguntas frequentes</a> ou <a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">fale com o suporte</a>.</p></div></main>
 ${ZVM_SALES_PAUSED ? '' : `<dialog class="checkout-dialog" aria-labelledby="checkout-title"><div class="dialog-inner">${modalContent}</div></dialog>`}${_standaloneFoot()}
 <script src="/assets/zvm-plans.3d82262649b9.js" defer></script></body></html>`;
 }
@@ -7332,18 +7361,61 @@ function renderStandaloneLandingPage(portalUser = null) {
 }
 
 function renderStandaloneFaqPage(portalUser = null) {
-  // Fonte única: ZVM_FAQ_ITEMS. Reagrupada aqui só pra manter a categorização
-  // visual (Compra/Produto/Conta) que a página já tinha — o texto de cada
-  // pergunta/resposta vem sempre do mesmo array usado no mini-FAQ do
-  // dashboard, então as duas superfícies nunca divergem.
+  // FAQ copy remains the shared canonical ZVM_FAQ_ITEMS used by the portal.
   const groups = [
-    ['Compra e licença', [_faqPick('Como recebo minha licença'), _faqPick('Preciso criar uma conta'), _faqPick('Preciso usar o mesmo e-mail'), _faqPick('Minha compra foi aprovada')]],
-    ['Gerenciar sua licença', [_faqPick('Como renovo'), _faqPick('Posso alterar'), _faqPick('Onde vejo a validade'), _faqPick('Minha chave expirou'), _faqPick('Como vincular uma chave')]],
-    ['Produto e uso', [_faqPick('Como instalar e acessar'), _faqPick('Quantos números'), _faqPick('Como removo um dispositivo'), _faqPick('Como funciona o 2FA')]],
-    ['Conta e suporte', [_faqPick('Onde encontro a versão oficial'), _faqPick('Esqueci minha senha'), _faqPick('Como falo com o suporte')]],
+    ['compra', 'Compra e licença', [_faqPick('Como recebo minha licença'), _faqPick('Preciso criar uma conta'), _faqPick('Preciso usar o mesmo e-mail'), _faqPick('Minha compra foi aprovada')]],
+    ['licenca', 'Gerenciar sua licença', [_faqPick('Como renovo'), _faqPick('Posso alterar'), _faqPick('Onde vejo a validade'), _faqPick('Minha chave expirou'), _faqPick('Como vincular uma chave')]],
+    ['produto', 'Produto e uso', [_faqPick('Como instalar e acessar'), _faqPick('Quantos números'), _faqPick('Como removo um dispositivo'), _faqPick('Como funciona o 2FA')]],
+    ['conta', 'Conta e suporte', [_faqPick('Onde encontro a versão oficial'), _faqPick('Esqueci minha senha'), _faqPick('Como falo com o suporte')]],
   ];
-  const content = groups.map(([title, items]) => `<section class="faq-group"><h2>${title}</h2>${items.map(([q,a])=>`<details class="faq-item"><summary>${q}</summary><p>${a}</p></details>`).join('')}</section>`).join('');
-  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ZVM — Perguntas Frequentes</title><meta name="description" content="Dúvidas sobre compra, instalação, licença, planos, dispositivos, conta e suporte da ZVM - Automações."><link rel="icon" type="image/svg+xml" href="${_FAV}">${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_FAQ}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}</head><body class="zvm-public-premium zvm-faq-premium">${_sharedNav({activePath:'/faq',portalUser,showBack:true})}<main id="main-content"><header class="faq-hero"><div class="faq-kicker">Central de respostas</div><h1>Ajuda sem rodeios</h1><p>Compra, entrega, validade e dispositivos explicados de forma direta.</p></header><div class="faq-wrap">${content}<aside class="faq-support"><div><strong>Não encontrou sua resposta?</strong><p>O WhatsApp continua disponível como canal de suporte.</p></div><a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Falar com suporte</a></aside></div></main>${_standaloneFoot()}</body></html>`;
+  const total = groups.reduce((sum, group) => sum + group[2].length, 0);
+  const topics = groups.map(([id, title, items], i) =>
+    `<a class="r4700-topic-link" href="#faq-${id}"><span class="r4700-topic-num" aria-hidden="true">0${i + 1}</span><span>${escHtml(title)}</span><span class="r4700-topic-count">${items.length}</span></a>`
+  ).join('');
+  const content = groups.map(([id, title, items], i) => `<section class="faq-group" id="faq-${id}" aria-labelledby="faq-heading-${id}">
+    <div class="r4700-faq-group-head"><span class="r4700-topic-num" aria-hidden="true">0${i + 1}</span><h2 id="faq-heading-${id}">${escHtml(title)}</h2><span class="r4700-question-count">${items.length} perguntas</span></div>
+    ${items.map(([q, a]) => `<details class="faq-item" data-faq-item><summary>${escHtml(q)}</summary><p>${escHtml(a)}</p></details>`).join('')}
+  </section>`).join('');
+  const pause = ZVM_SALES_PAUSED
+    ? '<aside class="r4700-faq-pause" role="status"><strong>Vendas temporariamente suspensas.</strong> As informações sobre compra continuam disponíveis para consulta. Pedidos já pagos seguem em atendimento.</aside>'
+    : '';
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZVM — Central de Ajuda e Perguntas Frequentes</title>
+<meta name="description" content="Encontre orientações sobre compra sem login, entrega de chave, instalação, planos, dispositivos, conta e suporte da ZVM - Automações.">
+<link rel="icon" type="image/svg+xml" href="${_FAV}">
+${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_FAQ}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_SALES_STATE}${_CSS_PUBLIC_EXPERIENCE}
+</head><body class="zvm-public-premium zvm-faq-premium zvm-experience">
+${_sharedNav({activePath:'/faq',portalUser,showBack:true})}
+<main id="main-content" class="r4700-faq-main">
+  <header class="faq-hero">
+    <div class="faq-kicker">Central de ajuda • ZVM - Automações</div>
+    <h1>Uma resposta para<br><em>cada etapa da sua jornada.</em></h1>
+    <p>Da primeira instalação ao gerenciamento da sua licença, encontre orientações claras para seguir trabalhando.</p>
+    <div class="r4700-faq-highlights"><span>Compra e ativação</span><span>Conta e segurança</span><span>Uso da ferramenta</span></div>
+  </header>
+  <div class="r4700-faq-layout">
+    <aside class="r4700-faq-rail" aria-label="Navegação da central de ajuda">
+      <div class="r4700-faq-rail-title">Explore por assunto <span>${total} respostas</span></div>
+      <nav class="r4700-faq-topics" aria-label="Assuntos frequentes">${topics}</nav>
+      <div class="r4700-faq-rail-help"><span>Precisa conversar?</span><p>Nosso suporte está disponível para orientar sua instalação e vinculação.</p><a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Falar com o suporte <span aria-hidden="true">↗</span></a></div>
+    </aside>
+    <div class="faq-wrap r4700-faq-content">
+      ${pause}
+      <form role="search" class="r4700-faq-search">
+        <label for="faq-search">O que você precisa resolver?</label>
+        <div class="r4700-faq-search-field"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" id="faq-search" placeholder="Busque por compra, chave, e-mail, dispositivos..." autocomplete="off" aria-describedby="faq-result-status"></div>
+        <p id="faq-result-status" role="status" aria-live="polite">${total} perguntas disponíveis.</p>
+      </form>
+      <div id="faq-groups" class="r4700-faq-groups">${content}</div>
+      <div id="faq-no-results" class="r4700-faq-empty" hidden><strong>Nenhuma pergunta encontrada.</strong><p>Tente outra palavra ou entre em contato com o suporte.</p></div>
+      <aside class="faq-support"><div><strong>Ainda ficou com alguma dúvida?</strong><p>Fale com o atendimento ZVM sobre licenças, configuração ou acesso à ferramenta.</p></div><a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Abrir suporte <span aria-hidden="true">↗</span></a></aside>
+    </div>
+  </div>
+</main>
+${_standaloneFoot()}
+<script src="/assets/zvm-faq-experience.66e20508c9af.js" defer></script>
+</body></html>`;
 }
 
 // Tipografia do corpo do documento (renderPrivacyPage)
