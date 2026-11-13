@@ -9,7 +9,7 @@ const root=path.resolve(__dirname,'..');
 const source=fs.readFileSync(path.join(root,'server.js'),'utf8');
 const htmlSource=fs.readFileSync(path.join(root,'src/web/public/landing/render.js'),'utf8');
 for(const [name,digest] of [
- ['zvm-public-experience.a4975afdd005.css','a4975afdd0057815454bf7d2a5b7c05159a8755524c49c556b75c3b4290129bc'],
+ ['zvm-public-experience.862ced6be719.css','862ced6be719acb9d55c15a91aa4b5be0b4da94fc7ff1e84fcf7faba84d328a7'],
  ['zvm-faq-experience.531cb23ececc.js','531cb23ececcb3ce1a1ac99349df1618c25c6ac88c9ea92d536aed58bc70f9b2']
 ]){
  const body=fs.readFileSync(path.join(root,'assets',name));
@@ -18,7 +18,7 @@ for(const [name,digest] of [
  assert(source.includes("sha256: '"+actual+"'"),'asset must be registered by full digest: '+name);
  assert(source.includes('/assets/'+name),'asset must appear in HTML or link constant: '+name);
 }
-const css=fs.readFileSync(path.join(root,'assets/zvm-public-experience.a4975afdd005.css'),'utf8');
+const css=fs.readFileSync(path.join(root,'assets/zvm-public-experience.862ced6be719.css'),'utf8');
 const js=fs.readFileSync(path.join(root,'assets/zvm-faq-experience.531cb23ececc.js'),'utf8');
 assert(!css.includes('!important'),'new public experience CSS must not accumulate overrides');
 assert(css.includes('@media(max-width:460px)'),'mobile 320px responsive rule absent');
@@ -49,7 +49,7 @@ const portal=api.renderPortalPlans(customer,{planId:'solo',maxUses:1,expiresAt:'
 const home=api.renderStandaloneLandingPage(null);
 const faq=api.renderStandaloneFaqPage(null);
 for(const [type,html] of [['landing',home],['plans-guest',guest],['plans-member',member],['faq',faq]]){
- assert(html.includes('/assets/zvm-public-experience.a4975afdd005.css'),type+' missing experience CSS');
+ assert(html.includes('/assets/zvm-public-experience.862ced6be719.css'),type+' missing experience CSS');
  assert(html.includes('zvm-experience'),type+' missing scoped class');
  assert(html.includes('id="main-content"'),type+' missing main landmark');
 }
@@ -90,6 +90,6 @@ for(const [name,html] of [['guest',guest],['member',member],['portal',portal]]){
 assert(guest.includes('39<span>,90')&&guest.includes('59<span>,90')&&guest.includes('94<span>,90'),'original licensed prices altered');
 assert(!guest.includes('data-login-plan='),'mandatory login gate must remain retired');
 assert(guest.includes('r4700-plans-assurance'),'product capabilities comparison missing');
-assert(portal.includes('/assets/zvm-public-experience.a4975afdd005.css'),'client plans need same design language');
+assert(portal.includes('/assets/zvm-public-experience.862ced6be719.css'),'client plans need same design language');
 assert(source.includes("if (p === '/cakto/webhook' && req.method === 'POST')"),'webhook for already-paid purchases removed');
 console.log('R47.00 PASS: 5 page states, 16 FAQ questions, shared purchase journey, genuine demo, responsive asset SHA and paused sales');
