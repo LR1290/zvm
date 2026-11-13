@@ -5509,10 +5509,10 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '222751f96dd906db2fdce0d10922f2346eea078de6725759da13b6c09c71b3e2',
     compressible: true,
   }),
-  '/assets/zvm-analytics-premium.75b34337c294.css': Object.freeze({
+  '/assets/zvm-analytics-premium.98c1933c3e7f.css': Object.freeze({
     type: 'text/css; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-analytics-premium.75b34337c294.css'),
-    sha256: '75b34337c2945201a425f61b7b85325e0f3d9d0ca01c140d7de0ae6e46c3ab11',
+    file: path.join(__dirname, 'assets', 'zvm-analytics-premium.98c1933c3e7f.css'),
+    sha256: '98c1933c3e7f2fe53c189d19019c83a845b9d7ce7f04504b02bc431160b2e52a',
     compressible: true,
   }),
   '/assets/zvm-analytics-dashboard.95454273c23e.js': Object.freeze({
@@ -5575,19 +5575,7 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '623a7bbac134712dcc57feb6098ed81d2bbc0dd01507904244153201524ebcd8',
     compressible: true,
   }),
-  '/assets/zvm-analytics-dashboard.5977bc6ce33f.js': Object.freeze({
-    type: 'text/javascript; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-analytics-dashboard.5977bc6ce33f.js'),
-    sha256: '5977bc6ce33f0d85e773c9d09c7778f90b5b7849923d5fad7dc7a76b8e489398',
-    compressible: true,
-  }),
 
-  '/assets/zvm-analytics-lab.889fc1e2fb48.js': Object.freeze({
-    type: 'text/javascript; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-analytics-lab.889fc1e2fb48.js'),
-    sha256: '889fc1e2fb4880b6098b0fe64add1ceb916a9187a2bf34bbb6bdb7f5d713a9ef',
-    compressible: true,
-  }),
   '/assets/zvm-analytics-lab.40519085ae68.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-analytics-lab.40519085ae68.css'),
@@ -6979,7 +6967,7 @@ const _CSS_CLIENT_WORKSPACE = '<link rel="stylesheet" href="/assets/zvm-r46-clie
 const _CSS_LANDING = '<link rel="stylesheet" href="/assets/zvm-r46-landing.af4c6e5c623b.css">';
 const _CSS_PUBLIC_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-public-premium.ab131a22bcdd.css">';
 const _CSS_LEGAL_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-legal-premium.222751f96dd9.css">';
-const _CSS_ANALYTICS_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-analytics-premium.75b34337c294.css">';
+const _CSS_ANALYTICS_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-analytics-premium.98c1933c3e7f.css">';
 const _CSS_FAQ = '<link rel="stylesheet" href="/assets/zvm-faq.b388ca55cbf4.css">';
 const _CSS_PRIVACY = '<link rel="stylesheet" href="/assets/zvm-privacy.7be30b7da0a1.css">';
 const _CSS_TERMS = '<link rel="stylesheet" href="/assets/zvm-terms.f1c470efdbbb.css">';
