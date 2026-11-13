@@ -14,6 +14,7 @@ const sha=crypto.createHash('sha256').update(css).digest('hex');
 assert.equal(found[2],sha.slice(0,12),'public asset prefix SHA-256');
 assert(source.includes("sha256: '"+sha+"'"),'asset registry SHA must match file');
 assert(css.includes('body.zvm-public-premium'),'style must be page-scoped');
+assert(css.includes('.standalone-nav .znav-links{display:none}'),'mobile navigation must not be forced open by legacy CSS');
 assert(!css.includes('!important'),'new design must not add specificity debt');
 for(const x of ['@media(max-width:900px)','@media(max-width:620px)',
  'prefers-reduced-motion:reduce','prefers-contrast:more','focus-visible']){
