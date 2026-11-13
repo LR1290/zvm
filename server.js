@@ -5535,6 +5535,18 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '1422fd551ff5c1548fc1f7641a22263662755331d928eaaa0ff29f25f30931f9',
     compressible: true,
   }),
+  '/assets/zvm-public-experience.a4975afdd005.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-public-experience.a4975afdd005.css'),
+    sha256: 'a4975afdd0057815454bf7d2a5b7c05159a8755524c49c556b75c3b4290129bc',
+    compressible: true,
+  }),
+  '/assets/zvm-faq-experience.531cb23ececc.js': Object.freeze({
+    type: 'text/javascript; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-faq-experience.531cb23ececc.js'),
+    sha256: '531cb23ececcb3ce1a1ac99349df1618c25c6ac88c9ea92d536aed58bc70f9b2',
+    compressible: true,
+  }),
   '/assets/zvm-console-design.fc18bc02c200.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-console-design.fc18bc02c200.css'),
@@ -6537,7 +6549,7 @@ function renderStandalonePortalPlans(user, keyData){
     <section class="client-plans-public-style"><header class="client-plans-public-head client-plan-intro"><span>Renove ou altere seu plano</span><h1>Seu acesso, suas escolhas.</h1><p>Compare os planos e gerencie sua licença sem perder o histórico da conta.</p></header>${renderPurchaseJourney()}${ZVM_SALES_PAUSED ? '<div class="purchase-note sales-paused-alert" role="status"><strong>Vendas e renovações temporariamente suspensas.</strong> Estamos realizando ajustes; sua licença atual não será modificada.</div>' : ''}${needPicker}${legacyRenewal}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section><p class="plans-footnote">Precisa de mais de 10 números? <a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Falar com suporte</a></p></section>
     ${ZVM_SALES_PAUSED ? '' : modal}<script src="/assets/zvm-plans.3d82262649b9.js" defer></script>
   </main></div>`;
-  return renderPortalPage(body,'ZVM — Renovações e Planos','',_CSS_PLANS+_CSS_SALES_STATE);
+  return renderPortalPage(body,'ZVM — Renovações e Planos','',_CSS_PLANS+_CSS_SALES_STATE+_CSS_PUBLIC_EXPERIENCE);
 }
 
 // ──────────── fim portal do cliente ────────────────────────────
@@ -6976,6 +6988,7 @@ const _CSS_PRIVILEGED_AUTH = '<link rel="stylesheet" href="/assets/zvm-privilege
 const _CSS_CLIENT_WORKSPACE = '<link rel="stylesheet" href="/assets/zvm-r46-client-workspace.6dbf0f685e67.css">';
 const _CSS_LANDING = '<link rel="stylesheet" href="/assets/zvm-r46-landing.af4c6e5c623b.css">';
 const _CSS_PUBLIC_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-public-premium.ab131a22bcdd.css">';
+const _CSS_PUBLIC_EXPERIENCE = '<link rel="stylesheet" href="/assets/zvm-public-experience.a4975afdd005.css">';
 const _CSS_SALES_STATE = '<link rel="stylesheet" href="/assets/zvm-sales-state.1422fd551ff5.css">';
 const _CSS_LEGAL_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-legal-premium.222751f96dd9.css">';
 const _CSS_ANALYTICS_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-analytics-premium.98c1933c3e7f.css">';
@@ -7107,7 +7120,7 @@ const renderLandingPage = createLandingRenderer({
   escHtml,
   favicon: _FAV,
   sharedCssLink: _CSS_SHARED + _CSS_STANDALONE,
-  landingCssLink: _CSS_LANDING + _CSS_SYSTEM + _CSS_PUBLIC_PREMIUM + _CSS_SALES_STATE,
+  landingCssLink: _CSS_LANDING + _CSS_SYSTEM + _CSS_PUBLIC_PREMIUM + _CSS_SALES_STATE + _CSS_PUBLIC_EXPERIENCE,
   chromeStoreBadge: renderChromeStoreBadge,
   plans: ZVM_PUBLIC_PLANS,
   salesPaused: ZVM_SALES_PAUSED,
@@ -7219,7 +7232,7 @@ function renderPlanosPage(portalUser = null) {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="description" content="Planos ZVM SOLO (R$39,90, 1 número), START (R$59,90, 3 números), PRO (R$94,90, 5 números) e ENTERPRISE sob consulta.">
 <title>ZVM — Planos e Preços</title><link rel="icon" type="image/svg+xml" href="${_FAV}">
-${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PLANS}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_SALES_STATE}</head><body class="zvm-public-premium zvm-plans-premium">${_sharedNav({activePath:'/planos',portalUser,showBack:true})}
+${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PLANS}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_SALES_STATE}${_CSS_PUBLIC_EXPERIENCE}</head><body class="zvm-public-premium zvm-plans-premium zvm-experience">${_sharedNav({activePath:'/planos',portalUser,showBack:true})}
 <main id="main-content" class="r4700-plans-main"><header class="page-hero r4700-plans-hero"><div class="page-hero-tag">Licenças ZVM • 30 dias</div><h1>Seu ritmo de trabalho.<br><span>Sua licença ZVM.</span></h1><p>Todos os planos oferecem a mesma experiência. Escolha pelo número de WhatsApps autorizados e acompanhe sua licença no Portal do Cliente.</p></header>
 <div class="plans-wrap">${purchaseNote}${renderPurchaseJourney()}<div class="r4700-plans-selection"><div class="r4700-selection-header"><span>Compare os planos</span><h2>Encontre o acesso ideal.</h2></div>${needPicker}${buyerBox}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section></div>
 <section class="r4700-plans-assurance" aria-label="O que está incluído"><div><span aria-hidden="true">✓</span><strong>Recursos completos</strong><p>CRM, Fluxos, Funis, Biblioteca e demais módulos disponíveis na extensão.</p></div><div><span aria-hidden="true">✓</span><strong>Clareza na licença</strong><p>Prazo, número de acessos e gerenciamento ficam visíveis no Portal do Cliente.</p></div><div><span aria-hidden="true">✓</span><strong>Suporte para começar</strong><p>Orientações de instalação e vinculação pelo canal oficial da ZVM.</p></div></section>
