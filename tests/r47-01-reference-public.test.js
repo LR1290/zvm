@@ -56,7 +56,7 @@ assert.equal((faq.match(/id="faq-search"/g)||[]).length,1,'FAQ search should not
 assert(faq.indexOf('id="faq-search"')<faq.indexOf('class="r4700-faq-layout"'),'FAQ search should be full-width above content');
 assert(faq.includes('Ctrl + K'),'the shown FAQ shortcut must be functional');
 assert(faq.includes('class="r4700-faq-pause"'),'amber sales-paused banner must remain');
-assert(faq.includes('href="/cliente/vincular"')===false || faq.includes('/cliente/vincular'),'FAQ canonical keys valid');
+
 
 assert(plans.includes('class="r4701-license-demo"'),'Plans visual license preview missing');
 assert(plans.includes('Prévia ilustrativa'),'do not pass off illustrative data as real');
