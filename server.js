@@ -7363,17 +7363,31 @@ function renderStandaloneLandingPage(portalUser = null) {
 function renderStandaloneFaqPage(portalUser = null) {
   // FAQ copy remains the shared canonical ZVM_FAQ_ITEMS used by the portal.
   const groups = [
-    ['compra', 'Compra e licença', [_faqPick('Como recebo minha licença'), _faqPick('Preciso criar uma conta'), _faqPick('Preciso usar o mesmo e-mail'), _faqPick('Minha compra foi aprovada')]],
-    ['licenca', 'Gerenciar sua licença', [_faqPick('Como renovo'), _faqPick('Posso alterar'), _faqPick('Onde vejo a validade'), _faqPick('Minha chave expirou'), _faqPick('Como vincular uma chave')]],
-    ['produto', 'Produto e uso', [_faqPick('Como instalar e acessar'), _faqPick('Quantos números'), _faqPick('Como removo um dispositivo'), _faqPick('Como funciona o 2FA')]],
-    ['conta', 'Conta e suporte', [_faqPick('Onde encontro a versão oficial'), _faqPick('Esqueci minha senha'), _faqPick('Como falo com o suporte')]],
+    ['compra', 'Compra e Licença', [_faqPick('Como recebo minha licença'), _faqPick('Preciso criar uma conta'), _faqPick('Preciso usar o mesmo e-mail'), _faqPick('Minha compra foi aprovada')]],
+    ['produto', 'Produto e Recursos', [_faqPick('Como instalar e acessar'), _faqPick('Quantos números'), _faqPick('Como removo um dispositivo'), _faqPick('Como funciona o 2FA')]],
+    ['conta', 'Conta e Acesso', [_faqPick('Onde encontro a versão oficial'), _faqPick('Esqueci minha senha'), _faqPick('Como falo com o suporte')]],
+    ['licenca', 'Planos e Pagamentos', [_faqPick('Como renovo'), _faqPick('Posso alterar'), _faqPick('Onde vejo a validade'), _faqPick('Minha chave expirou'), _faqPick('Como vincular uma chave')]],
   ];
+  const icons = Object.freeze({
+    compra: '<path d="M3 4h2l2 10h11l2-7H6"/><circle cx="9" cy="19" r="1"/><circle cx="18" cy="19" r="1"/>',
+    produto: '<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M7 8h10M7 12h10M7 16h6"/>',
+    conta: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>',
+    licenca: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 10h18M7 15h5"/>',
+  });
+  const faqIcon = id => '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">'+(icons[id] || icons.produto)+'</svg>';
+  const summaries = Object.freeze({
+    compra:'Entrega de chave, e-mail e ativação da licença.',
+    produto:'Instalação, dispositivos e utilização da ZVM.',
+    conta:'Acesso à conta, segurança e canais de suporte.',
+    licenca:'Planos, renovação e vinculação da chave.',
+  });
+  const tiles = groups.map(([id,title,items]) => `<a class="r4701-faq-tile" href="#faq-${id}"><span class="r4701-faq-tile-icon">${faqIcon(id)}</span><span class="r4701-faq-tile-body"><strong>${escHtml(title)}</strong><small>${escHtml(summaries[id])}</small></span><span aria-hidden="true" class="r4701-faq-tile-arrow">↗</span></a>`).join('');
   const total = groups.reduce((sum, group) => sum + group[2].length, 0);
   const topics = groups.map(([id, title, items], i) =>
-    `<a class="r4700-topic-link" href="#faq-${id}"><span class="r4700-topic-num" aria-hidden="true">0${i + 1}</span><span>${escHtml(title)}</span><span class="r4700-topic-count">${items.length}</span></a>`
+    `<a class="r4700-topic-link" href="#faq-${id}"><span class="r4701-rail-icon">${faqIcon(id)}</span><span>${escHtml(title)}</span><span class="r4700-topic-count">${items.length}</span></a>`
   ).join('');
   const content = groups.map(([id, title, items], i) => `<section class="faq-group" id="faq-${id}" aria-labelledby="faq-heading-${id}">
-    <div class="r4700-faq-group-head"><span class="r4700-topic-num" aria-hidden="true">0${i + 1}</span><h2 id="faq-heading-${id}">${escHtml(title)}</h2><span class="r4700-question-count">${items.length} perguntas</span></div>
+    <div class="r4700-faq-group-head"><span class="r4701-group-icon">${faqIcon(id)}</span><div><h2 id="faq-heading-${id}">${escHtml(title)}</h2><p class="r4701-group-intro">${escHtml(summaries[id])}</p></div><span class="r4700-question-count">${items.length} perguntas</span></div>
     ${items.map(([q, a]) => `<details class="faq-item" data-faq-item><summary>${escHtml(q)}</summary><p>${escHtml(a)}</p></details>`).join('')}
   </section>`).join('');
   const pause = ZVM_SALES_PAUSED
@@ -7388,26 +7402,30 @@ ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_FAQ}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}$
 </head><body class="zvm-public-premium zvm-faq-premium zvm-experience">
 ${_sharedNav({activePath:'/faq',portalUser,showBack:true})}
 <main id="main-content" class="r4700-faq-main">
-  <header class="faq-hero">
-    <div class="faq-kicker">Central de ajuda • ZVM - Automações</div>
-    <h1>Uma resposta para<br><em>cada etapa da sua jornada.</em></h1>
-    <p>Da primeira instalação ao gerenciamento da sua licença, encontre orientações claras para seguir trabalhando.</p>
-    <div class="r4700-faq-highlights"><span>Compra e ativação</span><span>Conta e segurança</span><span>Uso da ferramenta</span></div>
+  <header class="faq-hero r4701-faq-hero">
+    <div class="r4701-faq-hero-text"><div class="faq-kicker">Suporte e ajuda</div>
+    <h1>Central de Ajuda.<br><em>Encontre sua resposta.</em></h1>
+    <p>Orientações sobre instalação, compra, ativação, planos e uso da ZVM. Tudo organizado para você resolver sua dúvida rapidamente.</p></div>
+    <div class="r4701-question-art" aria-hidden="true"><span class="r4701-question-art-back"></span><span class="r4701-question-art-front"><span>?</span></span></div>
   </header>
+  <div class="r4701-faq-top" aria-label="Busca e categorias da ajuda">      <form role="search" class="r4700-faq-search">
+        <label for="faq-search">Buscar na Central de Ajuda</label>
+        <div class="r4700-faq-search-field"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" id="faq-search" placeholder="Buscar na Central de Ajuda..." autocomplete="off" aria-describedby="faq-result-status"></div>
+        <kbd class="r4701-faq-shortcut" aria-hidden="true">Ctrl + K</kbd><p id="faq-result-status" role="status" aria-live="polite">${total} perguntas disponíveis.</p>
+      </form>
+    <div class="r4701-faq-top-title">Navegue por categoria</div>
+    <nav class="r4701-faq-tile-grid" aria-label="Categorias de ajuda">${tiles}</nav>
+  </div>
+  ${pause}
   <div class="r4700-faq-layout">
     <aside class="r4700-faq-rail" aria-label="Navegação da central de ajuda">
-      <div class="r4700-faq-rail-title">Explore por assunto <span>${total} respostas</span></div>
+      <div class="r4700-faq-rail-title">Categorias <span>${total} respostas</span></div>
       <nav class="r4700-faq-topics" aria-label="Assuntos frequentes">${topics}</nav>
-      <div class="r4700-faq-rail-help"><span>Precisa conversar?</span><p>Nosso suporte está disponível para orientar sua instalação e vinculação.</p><a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Falar com o suporte <span aria-hidden="true">↗</span></a></div>
+      <div class="r4700-faq-rail-help"><span class="r4701-help-icon" aria-hidden="true">✳</span><strong>Precisa de mais ajuda?</strong><p>Fale com o suporte ZVM sobre instalação, ativação e vinculação de chaves.</p><a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Falar com o suporte <span aria-hidden="true">↗</span></a><ul><li>Suporte de ativação</li><li>Orientação de uso</li><li>Atendimento pelo canal oficial</li></ul></div>
     </aside>
     <div class="faq-wrap r4700-faq-content">
-      ${pause}
-      <form role="search" class="r4700-faq-search">
-        <label for="faq-search">O que você precisa resolver?</label>
-        <div class="r4700-faq-search-field"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" id="faq-search" placeholder="Busque por compra, chave, e-mail, dispositivos..." autocomplete="off" aria-describedby="faq-result-status"></div>
-        <p id="faq-result-status" role="status" aria-live="polite">${total} perguntas disponíveis.</p>
-      </form>
-      <div id="faq-groups" class="r4700-faq-groups">${content}</div>
+
+      <div id="faq-groups" class="r4700-faq-groups"><div class="r4701-questions-heading"><div><span>Respostas disponíveis</span><h2>Perguntas frequentes</h2><p>Selecione uma pergunta para visualizar a resposta.</p></div></div>${content}</div>
       <div id="faq-no-results" class="r4700-faq-empty" hidden><strong>Nenhuma pergunta encontrada.</strong><p>Tente outra palavra ou entre em contato com o suporte.</p></div>
       <aside class="faq-support"><div><strong>Ainda ficou com alguma dúvida?</strong><p>Fale com o atendimento ZVM sobre licenças, configuração ou acesso à ferramenta.</p></div><a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Abrir suporte <span aria-hidden="true">↗</span></a></aside>
     </div>
