@@ -68,12 +68,15 @@ async function run(){
     assert(await page.locator('main#main-content').count()>0,label+'/'+width+' missing semantic main');
     if(width<=390){
       const nav=page.locator('.nav-menu-toggle');
+      const mobileLinks=page.locator('.standalone-nav .znav-links');
       assert(await nav.isVisible(),label+'/'+width+' missing mobile navigation button');
+      assert(await mobileLinks.isHidden(),label+'/'+width+' collapsed mobile navigation must be visually hidden');
       await nav.click();
       assert.equal(await nav.getAttribute('aria-expanded'),'true',label+'/'+width+' menu failed to open');
       assert(await page.locator('.standalone-nav .znav-links').isVisible(),label+'/'+width+' mobile routes hidden');
       await page.keyboard.press('Escape');
       assert.equal(await nav.getAttribute('aria-expanded'),'false',label+'/'+width+' Escape failed to close nav');
+      assert(await mobileLinks.isHidden(),label+'/'+width+' mobile menu still visible after Escape');
     }
     if(label==='landing'){
       assert(await page.locator('.r466-hero h1').isVisible(),label+'/'+width+' hero missing');
@@ -118,6 +121,9 @@ async function run(){
         assert(await page.locator('.plan-btn-locked').count()===0,'logged-in buyer should not see login CTA');
       }
     }
+    // Full-page screenshots otherwise pin a sticky header at the last scrolled y.
+    await page.evaluate(()=>window.scrollTo({top:0,behavior:'auto'}));
+    await page.waitForTimeout(40);
     await page.screenshot({path:path.join(output,'public-'+label+'-'+width+'.png'),fullPage:true,animations:'disabled'});
     screenshots++;
     await page.close();
