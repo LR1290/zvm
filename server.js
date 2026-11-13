@@ -5503,6 +5503,18 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: 'ab131a22bcdd11998b7564618bc24d7159f2ffd1fbece5c2475350d3a446404a',
     compressible: true,
   }),
+  '/assets/zvm-legal-premium.222751f96dd9.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-legal-premium.222751f96dd9.css'),
+    sha256: '222751f96dd906db2fdce0d10922f2346eea078de6725759da13b6c09c71b3e2',
+    compressible: true,
+  }),
+  '/assets/zvm-analytics-premium.75b34337c294.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-analytics-premium.75b34337c294.css'),
+    sha256: '75b34337c2945201a425f61b7b85325e0f3d9d0ca01c140d7de0ae6e46c3ab11',
+    compressible: true,
+  }),
   '/assets/zvm-console-design.fc18bc02c200.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-console-design.fc18bc02c200.css'),
@@ -6954,6 +6966,8 @@ const _CSS_PRIVILEGED_AUTH = '<link rel="stylesheet" href="/assets/zvm-privilege
 const _CSS_CLIENT_WORKSPACE = '<link rel="stylesheet" href="/assets/zvm-r46-client-workspace.6dbf0f685e67.css">';
 const _CSS_LANDING = '<link rel="stylesheet" href="/assets/zvm-r46-landing.af4c6e5c623b.css">';
 const _CSS_PUBLIC_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-public-premium.ab131a22bcdd.css">';
+const _CSS_LEGAL_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-legal-premium.222751f96dd9.css">';
+const _CSS_ANALYTICS_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-analytics-premium.75b34337c294.css">';
 const _CSS_FAQ = '<link rel="stylesheet" href="/assets/zvm-faq.b388ca55cbf4.css">';
 const _CSS_PRIVACY = '<link rel="stylesheet" href="/assets/zvm-privacy.7be30b7da0a1.css">';
 const _CSS_TERMS = '<link rel="stylesheet" href="/assets/zvm-terms.f1c470efdbbb.css">';
@@ -7193,10 +7207,10 @@ function renderPrivacyPage(portalUser = null) {
 <title>ZVM — Política de Privacidade</title>
 <meta name="description" content="Política de Privacidade da ZVM - Automações: conta, licença, segurança, armazenamento local, integrações opcionais e direitos do usuário.">
 <link rel="icon" type="image/svg+xml" href="${_FAV}">
-${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PRIVACY}${_CSS_SYSTEM}</head>
-<body>
+${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PRIVACY}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_LEGAL_PREMIUM}</head>
+<body class="zvm-public-premium zvm-legal-premium zvm-privacy-premium">
 ${_sharedNav({activePath:'/privacidade',portalUser,showBack:true})}
-<div class="page-hero">
+<main id="main-content" class="zvm-privacy-main"><div class="page-hero">
   <div class="page-hero-tag">Legal</div>
   <h1>Política de <span class="privacy-accent">Privacidade</span></h1>
   <p>Última atualização: ${updDate}</p>
@@ -7282,7 +7296,7 @@ ${_sharedNav({activePath:'/privacidade',portalUser,showBack:true})}
     <p>Dúvidas sobre privacidade ou solicitações relacionadas a dados:<br>
     <a href="${ZVM_SUPPORT_URL}" class="privacy-contact" target="_blank" rel="noopener noreferrer">Falar com suporte</a></p>
   </div>
-</div>
+</div></main>
 ${_sharedFoot()}
 
 </body></html>`;
@@ -7325,7 +7339,7 @@ function renderStandaloneFaqPage(portalUser = null) {
 // via CSS extra anexado depois de _standaloneCss (mesma técnica de
 // applyStandaloneFrame), sem tocar renderPrivacyPage.
 function renderStandalonePrivacyPage(portalUser = null) {
-  return applyStandaloneFrame(renderPrivacyPage(portalUser), { activePath: '/privacidade', portalUser, showBack: true });
+  return renderPrivacyPage(portalUser).replace(/<footer class="zfooter">[\\s\\S]*?<\\/footer>/, _standaloneFoot());
 }
 
 function renderStandaloneTermsPage(portalUser = null, locale = 'pt-BR') {
@@ -7346,8 +7360,8 @@ function renderStandaloneTermsPage(portalUser = null, locale = 'pt-BR') {
 <link rel="alternate" hreflang="en" href="https://zvm.onrender.com/termos?lang=en">
 <link rel="alternate" hreflang="x-default" href="https://zvm.onrender.com/termos">
 <link rel="icon" type="image/svg+xml" href="${_FAV}">
-${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PRIVACY}${_CSS_TERMS}${_CSS_SYSTEM}</head>
-<body class="zvm-terms-page">${_sharedNav({activePath:'/termos',portalUser,showBack:true})}
+${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PRIVACY}${_CSS_TERMS}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_LEGAL_PREMIUM}</head>
+<body class="zvm-terms-page zvm-public-premium zvm-legal-premium">${_sharedNav({activePath:'/termos',portalUser,showBack:true})}
 <main id="main-content" class="terms-main">${renderTermsDocument(lang, ZVM_SUPPORT_URL)}</main>
 ${_standaloneFoot()}</body></html>`;
 }
@@ -7356,8 +7370,8 @@ function renderStandalone404Page(portalUser = null) {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Página não encontrada</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
-${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_ERROR_404}${_CSS_SYSTEM}</head><body>${_sharedNav({activePath:'',portalUser,showBack:false})}
-<main class="err-wrap">
+${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_ERROR_404}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_LEGAL_PREMIUM}</head><body class="zvm-public-premium zvm-error-premium zvm-404-premium">${_sharedNav({activePath:'',portalUser,showBack:false})}
+<main id="main-content" class="err-wrap">
   <div class="err-code" aria-hidden="true">404</div>
   <h1 class="err-title">Essa página não existe.</h1>
   <p class="err-sub">O link pode estar desatualizado ou o endereço foi digitado errado.</p>
@@ -7369,8 +7383,8 @@ function renderStandalone500Page(portalUser = null) {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Indisponibilidade temporária</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
-${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_ERROR_500}${_CSS_SYSTEM}</head><body>${_sharedNav({activePath:'',portalUser,showBack:false})}
-<main class="err-wrap">
+${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_ERROR_500}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_LEGAL_PREMIUM}</head><body class="zvm-public-premium zvm-error-premium zvm-500-premium">${_sharedNav({activePath:'',portalUser,showBack:false})}
+<main id="main-content" class="err-wrap">
   <div class="err-icon" aria-hidden="true">⚠</div>
   <h1 class="err-title">Estamos com uma indisponibilidade temporária</h1>
   <p class="err-sub">Sua licença não foi alterada. Tente novamente em alguns instantes — se o problema persistir, fale com o suporte.</p>
@@ -7504,7 +7518,7 @@ async function renderAnalyticsDashboard(fixture = null) {
 <link rel="stylesheet" href="/assets/zvm-analytics-dashboard.623a7bbac134.css">
 <link rel="stylesheet" href="/assets/zvm-analytics-lab.40519085ae68.css">
 <link rel="stylesheet" href="/assets/zvm-r46-system.8873e4d662f5.css">
-<link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css"></head><body>
+<link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css">${_CSS_ANALYTICS_PREMIUM}</head><body class="zvm-analytics-premium">
 <div class="analytics-shell">
 <aside class="analytics-rail" aria-label="Navegação do Analytics">
   <div class="analytics-rail-brand">${renderStandaloneBrand('compact')}<div class="analytics-rail-kicker">Analytics privado</div></div>
