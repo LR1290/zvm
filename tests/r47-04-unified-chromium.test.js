@@ -15,7 +15,7 @@ const key={code:'r4704-test-key',label:'Laboratório',planId:'solo',active:true,
  expiresAt:'2032-01-01T00:00:00.000Z',createdAt:'2026-11-01T00:00:00.000Z'};
 const pages=[
  ['home',api.renderStandaloneLandingPage(null),'.r4701-hero-visual'],
- ['faq',api.renderStandaloneFaqPage(null),'.r4701-faq-hero'],
+ ['faq',api.renderStandaloneFaqPage(null),'.r4700-faq-search input'],
  ['plans',api.renderPlanosPage(null),'.r4701-license-demo'],
  ['login',api.renderStandalonePortalLogin(),'.auth-form-card'],
  ['register',api.renderStandalonePortalRegister(),'.auth-form-card'],
