@@ -29,6 +29,9 @@ on:
       - 'tests/r46-99-guest-checkout.test.js'
       - 'tests/r46-99-paused-chromium.test.js'
       - 'tests/r47-00-public-experience.test.js'
+      - 'tests/r47-00-public-i18n.test.js'
+      - 'src/web/public/i18n-copy.js'
+      - 'src/web/public/i18n.js'
       - 'tests/r47-00-public-chromium.test.js'
       - '.github/workflows/ui-visual-r46-94.yml'
   workflow_dispatch:
