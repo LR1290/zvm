@@ -6,7 +6,7 @@ const root=path.resolve(__dirname,'..'),server=fs.readFileSync(path.join(root,'s
 const assets=[
  ['zvm-reference-public.e92185a78fd4.css','e92185a78fd47a34a9522e9967ab2c84067f00c6294bc792bfdd4a0c21efc910','zvm-reference-public.8fc0cb9c94d6.css',['--zvm-art-halo','.r4701-hero-visual:after','.r4700-journey-list li','.price-card.featured','.r4701-plans-hero:before']],
  ['zvm-auth-premium.d44a7ff35e68.css','d44a7ff35e683572d8c5e11175c15d9db05ea3ab9816891617813afdb970e5a4','zvm-auth-premium.0ab8f63f1cb8.css',['.auth-promo::after','.auth-form-card::before','.auth-benefits li','prefers-contrast:more']],
- ['zvm-console-design.ddfd8c83fb96.css','ddfd8c83fb96e467d2778d78ad84e3cb760a2adecf7168f4ad18ed06f5650ba1','zvm-console-design.fc18bc02c200.css',['.admin-overview::before','.client-rail','.client-license-focus','.client-quickfact']],
+ ['zvm-console-design.1ee8679046a6.css','1ee8679046a6429c4fdc26c4df29650f28299a8118397377cdf1cdf48d982d33','zvm-console-design.fc18bc02c200.css',['.admin-overview::before','.client-rail','.client-license-focus','.client-quickfact']],
  ['zvm-legal-premium.52736d436442.css','52736d43644292225a83aea79e052b9a40fe41c3f2673f3f183cd2f4dc702db3','zvm-legal-premium.29b8336d5c01.css',['.page-hero::before','.zvm-trust-toc','.zvm-error-aside']]
 ];
 for(const [name,hash,old,selectors] of assets){
