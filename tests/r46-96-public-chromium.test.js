@@ -96,8 +96,12 @@ async function run(){
       // The visible label is the actual public control; the radio is visually hidden
       // under its span. Test a real user click, not a click on the transparent input.
       const chooser=page.locator('.need-opt').first();
+      // Mimic a reader scrolling the chooser to a visible place below the sticky nav.
+      await chooser.evaluate(el=>el.scrollIntoView({block:'center',behavior:'instant'}));
       await chooser.locator('span').click();
       assert(await chooser.locator('input[name="need"]').isChecked(),label+'/'+width+' user cannot choose number of devices');
+      const hit=await chooser.locator('span').evaluate(el=>document.elementFromPoint(el.getBoundingClientRect().x+el.getBoundingClientRect().width/2,el.getBoundingClientRect().y+el.getBoundingClientRect().height/2)===el);
+      assert(hit,label+'/'+width+' visible price selector must own hit testing');
       assert(await page.locator('.price-card.suggested').count()===1,label+'/'+width+' selector does not highlight exactly one card');
       if(label==='plans'){
         const btn=page.locator('.plan-btn-locked').first();
