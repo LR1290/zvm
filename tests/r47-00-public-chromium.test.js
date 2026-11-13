@@ -4,6 +4,7 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),Module=require('node:module');
 const {chromium}=require('playwright');
+const {localizePublicHtml}=require('../src/web/public/i18n');
 const root=path.resolve(__dirname,'..');
 process.env.ZVM_SALES_PAUSED='1';
 process.env.RENDER='true';
@@ -19,6 +20,7 @@ const buyer={name:'Browser Test Buyer',email:'qa@example.invalid',keyCode:'zv-fa
 const fixtures=[
  ['landing',api.renderStandaloneLandingPage(null)],
  ['faq',api.renderStandaloneFaqPage(null)],
+ ['faq-en',localizePublicHtml(api.renderStandaloneFaqPage(null),'en',{path:'/faq'})],
  ['plans',api.renderPlanosPage(null)],
  ['plans-member',api.renderPlanosPage(buyer)]
 ];
@@ -66,15 +68,16 @@ async function run(){
       assert(await page.locator('.r4700-journey').isVisible());
       assert(await page.locator('.r4700-hero-support .chrome-store-banner').count()===1);
       assert(await page.locator('a[href="/faq"]').count()>0);
-    }else if(label==='faq'){
+    }else if(label==='faq'||label==='faq-en'){
       const search=page.locator('#faq-search');
       assert(await search.isVisible(),label+'/'+width+' FAQ search hidden');
       assert.equal(await page.locator('[data-faq-item]').count(),16);
-      assert.equal((await page.locator('#faq-result-status').textContent()).trim(),'16 perguntas disponíveis.');
-      await search.fill('licenca');
+      const isEnglish=label==='faq-en';
+      assert.equal((await page.locator('#faq-result-status').textContent()).trim(),isEnglish?'16 questions available.':'16 perguntas disponíveis.');
+      await search.fill(isEnglish?'license':'licenca');
       const visible=await page.locator('[data-faq-item]:visible').count();
       assert(visible>0&&visible<16,'diacritic-insensitive FAQ search failed '+visible);
-      assert.equal((await page.locator('#faq-result-status').textContent()).trim(),visible+' de 16 perguntas encontradas.');
+      assert.equal((await page.locator('#faq-result-status').textContent()).trim(),isEnglish?visible+' of 16 questions found.':visible+' de 16 perguntas encontradas.');
       await search.fill('um-assunto-que-nao-existe-em-nenhuma-pergunta');
       assert(await page.locator('#faq-no-results').isVisible(),'empty result message not shown');
       assert.equal(await page.locator('[data-faq-item]:visible').count(),0);
@@ -102,7 +105,7 @@ async function run(){
     count++;await page.close();
    }
   }
-  console.log('R47.00 CHROMIUM PASS: '+count+' updated public page scenarios, keyboard/search, no overflow, no Cakto requests');
+  console.log('R47.00 CHROMIUM PASS: '+count+' updated public page scenarios, keyboard/search in PT/EN, no overflow, no Cakto requests');
  }finally{await browser.close();}
 }
 run().catch(e=>{console.error(e);process.exitCode=1});
