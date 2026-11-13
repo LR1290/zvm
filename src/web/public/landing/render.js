@@ -55,7 +55,7 @@ function createLandingRenderer({ escHtml, favicon, sharedCssLink, landingCssLink
         <h3>${escHtml(plan.shortName || plan.name || plan.id)}</h3>
         <p>${escHtml(plan.subtitle || '')} · ${devices} ${devices===1?'número':'números'} de WhatsApp</p>
         <strong>${price}</strong><span class="r4624-plan-period">${plan.consult?'Implantação personalizada':'por mês'}</span>
-        <span class="r4624-plan-link">Consultar detalhes <span aria-hidden="true">→</span></span>
+        <span class="r4624-plan-link">Ver detalhes do plano <span aria-hidden="true">→</span></span>
       </a>`;
     }).join('');
   }
