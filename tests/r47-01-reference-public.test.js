@@ -45,7 +45,8 @@ assert.equal((home.match(/class="r4701-feature-card"/g)||[]).length,6,'six modul
 assert(home.includes('class="r4701-workflow-showcase"'),'workflow feature section missing');
 assert(home.includes('Visão ilustrativa'),'visual workflow must be labelled as illustrative');
 assert(home.includes('Vendas temporariamente suspensas.'),'pause notice must remain');
-assert.equal((home.match(/r466-btn (?:primary|secondary)/g)||[]).length,2,'hero CTA count changed');
+const heroSection=home.slice(home.indexOf('<section class="r466-hero'),home.indexOf('<section class="r4700-product-trust"'));
+assert.equal((heroSection.match(/r466-btn (?:primary|secondary)/g)||[]).length,2,'hero CTA count changed');
 assert(landingSource.includes('renderProductTabs()'),'real product tabs must remain');
 
 assert(faq.includes('class="r4701-question-art"'),'FAQ reference hero artwork missing');
