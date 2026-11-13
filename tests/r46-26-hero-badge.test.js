@@ -12,7 +12,7 @@ assert.match(hero,/r466-hero-centered/,'centered hero content used instead of tw
 assert.doesNotMatch(hero,/class="r466-hero-visual"/,'real app screenshot stays in product demo, not side of hero');
 assert.match(hero,/r466-hero-float/,'original airy floating category accents return');
 assert.equal((hero.match(/data-store-fixture="true"/g)||[]).length,1,'only one Chrome Web Store download CTA');
-assert.equal((hero.match(/class="r466-btn /g)||[]).length,1,'one secondary explore CTA');
+assert.equal((hero.match(/class="r466-btn /g)||[]).length,2,'product exploration and plans CTAs stay beside one official install badge');
 assert.match(html,/id="produto"/,'full real product demo remains below the hero');
 for(const [locale,needle] of [['pt-BR','Organize o atendimento.'],['pt-PT','Organize o atendimento.'],['en','Streamline your customer conversations.']]){
  const translated=localizePublicHtml(html,locale,{path:'/'});
