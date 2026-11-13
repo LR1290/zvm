@@ -57,13 +57,13 @@ function languageOptionsMarkup(locale,path='/') {
 function translateDynamicLabel(value,locale) {
   // R47.00 FAQ counts are dynamic. Translate only the numeric UI labels,
   // never the license/product records or HTML attributes.
-  const available=value.match(/^(\\d+) perguntas disponíveis\\.$/);
+  const available=value.match(/^(\d+) perguntas disponíveis\.$/);
   if(available && locale==='en')return available[1]+' questions available.';
-  const matching=value.match(/^(\\d+) de (\\d+) perguntas encontradas\\.$/);
+  const matching=value.match(/^(\d+) de (\d+) perguntas encontradas\.$/);
   if(matching && locale==='en')return matching[1]+' of '+matching[2]+' questions found.';
-  const topic=value.match(/^(\\d+) perguntas$/);
+  const topic=value.match(/^(\d+) perguntas$/);
   if(topic && locale==='en')return topic[1]+' questions';
-  const answers=value.match(/^(\\d+) respostas$/);
+  const answers=value.match(/^(\d+) respostas$/);
   if(answers && locale==='en')return answers[1]+' answers';
   const count=value.match(/^(\d+) (número|números) de WhatsApp$/);
   if(count && locale==='en')return `${count[1]} WhatsApp ${Number(count[1])===1?'number':'numbers'}`;
