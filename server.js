@@ -6300,7 +6300,7 @@ function renderClientPortalRail(active='overview'){
     ['password','Senha','/cliente/senha'],
     ['email','E-mail','/cliente/email']
   ];
-  const links=items.map(([id,label,href])=>`<a href="${href}" class="${active===id?'active':''}"><span class="client-nav-icon">${portalUiIcon(id)}</span><span>${label}</span></a>`).join('');
+  const links=items.map(([id,label,href])=>`<a href="${href}" class="${active===id?'active':''}"${active===id?' aria-current="page"':''}><span class="client-nav-icon">${portalUiIcon(id)}</span><span>${label}</span></a>`).join('');
   return `<aside class="client-rail" aria-label="Navegação da conta">
     <div class="client-rail-brand">
       <div class="client-rail-logo">${renderStandaloneBrand('compact')}</div>
@@ -6365,8 +6365,8 @@ function renderStandalonePortalDashboard(user, keyData, okMsg='', deviceMsg='') 
   }
   const expiryAlert = expiryTier ? `<div class="expiry-alert ${expiryTier}" role="status">
     <span class="expiry-alert-icon" aria-hidden="true">${expiryTier==='critico'?'⛔':'⚠'}</span>
-    <span class="expiry-alert-text">${expiryTier==='critico'?'Sua licença expirou.':expiryTier==='forte'?'Sua licença vence em menos de 72 horas.':'Sua licença vence em menos de 7 dias.'}</span>
-    <a href="/cliente/planos" class="expiry-alert-cta">Renovar agora</a>
+    <span class="expiry-alert-text">${expiryTier==='critico'?'Sua licença expirou.':expiryTier==='forte'?'Sua licença vence em menos de 72 horas.':'Sua licença vence em menos de 7 dias.'}${ZVM_SALES_PAUSED?' Vendas e renovações temporariamente suspensas.':''}</span>
+    <a href="/cliente/planos" class="expiry-alert-cta">${ZVM_SALES_PAUSED?'Consultar planos':'Renovar agora'}</a>
   </div>` : '';
 
   // ── Status pill ──────────────────────────────────────────────────
@@ -6455,7 +6455,7 @@ ${renderClientPortalRail('overview')}
 </div>
 
 ${updateBanner}
-${okMsg ? `<div class="client-ok-banner">✅ ${escHtml(okMsg)}</div>` : ''}
+${okMsg ? `<div class="client-ok-banner" role="status" aria-live="polite">✅ ${escHtml(okMsg)}</div>` : ''}
 ${deviceMsg ? `<div class="device-warning" role="alert">⚠ ${escHtml(deviceMsg)} <a href="/cliente">Atualizar dispositivos</a></div>` : ''}
 ${noKeySection}
 
@@ -6624,7 +6624,7 @@ function renderAdminDashboard(opts = {}) {
   <div class="hright">
     <span class="hdr-meta" id="last-refresh" role="status" aria-live="polite">—</span>
     <span class="hdr-meta" id="hdr-users-count" title="Usuários no Portal" style="display:none;background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd);border-radius:var(--r-sm);padding:2px 8px;font-weight:700">👥 <span id="hdr-users-num">0</span></span>
-    <span id="hdr-suspect-badge" title="Chaves suspeitas — clique para filtrar" style="background:#ff475718;color:#ff4757;border:1px solid #ff475730;border-radius:var(--r-sm);padding:2px 8px;font-weight:700;font-size:11px;cursor:pointer" onclick="document.getElementById('filter-status').value='suspect';switchTab('keys');filterKeys()">⚠ <span id="hdr-suspect-num">0</span> suspeita(s)</span>
+    <button type="button" id="hdr-suspect-badge" title="Filtrar chaves suspeitas" style="background:#ff475718;color:#ff4757;border:1px solid #ff475730;border-radius:var(--r-sm);padding:2px 8px;font:inherit;font-weight:700;font-size:11px;min-height:32px;cursor:pointer" onclick="document.getElementById('filter-status').value='suspect';switchTab('keys');filterKeys()">⚠ <span id="hdr-suspect-num">0</span> suspeita(s)</button>
     <span id="hdr-session-warn" style="display:none;background:#f0b42912;color:var(--orange);border:1px solid var(--org-brd);border-radius:var(--r-sm);padding:2px 8px;font-size:11px">⏱ Sessão expira em <span id="hdr-session-min">—</span> min</span>
     <button class="btn bw" onclick="doRefresh(true)">↻ Atualizar</button>
     ${renderZvmActionHub('admin')}
