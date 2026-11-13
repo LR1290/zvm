@@ -1,4 +1,4 @@
-name: ZVM Chromium UI visual QA (R46.96)
+name: ZVM Chromium UI visual QA (R46.97)
 
 on:
   pull_request:
@@ -7,12 +7,16 @@ on:
       - 'assets/zvm-console-design.*.css'
       - 'assets/zvm-auth-premium.*.css'
       - 'assets/zvm-public-premium.*.css'
+      - 'assets/zvm-legal-premium.*.css'
+      - 'assets/zvm-analytics-premium.*.css'
       - 'src/web/public/landing/render.js'
       - 'assets/zvm-admin-dashboard.*.js'
       - 'tests/r46-94-chromium-visual.test.js'
       - 'tests/r46-95-auth-ui.test.js'
       - 'tests/r46-96-public-design.test.js'
       - 'tests/r46-96-public-chromium.test.js'
+      - 'tests/r46-97-legal-analytics-chromium.test.js'
+      - 'tests/r46-97-legal-analytics-design.test.js'
       - '.github/workflows/ui-visual-r46-94.yml'
   workflow_dispatch:
 
@@ -43,11 +47,12 @@ jobs:
         run: |
           node tests/r46-94-chromium-visual.test.js
           node tests/r46-96-public-chromium.test.js
+          node tests/r46-97-legal-analytics-chromium.test.js
       - name: Upload visual screenshots for review
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: zvm-r46-96-chromium-visuals
+          name: zvm-r46-97-chromium-visuals
           path: artifacts/visual-qa/*.png
           if-no-files-found: ignore
           retention-days: 7
