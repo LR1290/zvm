@@ -5491,6 +5491,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: 'c06071e4d73ffd64f8010881eb91c9e43a493457105e03c352153a4c7f030c1a',
     compressible: true,
   }),
+  '/assets/zvm-auth-premium.0ab8f63f1cb8.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-auth-premium.0ab8f63f1cb8.css'),
+    sha256: '0ab8f63f1cb8dfdb18810c79ed19797308068cc81c51a8f564de6b23e21956a3',
+    compressible: true,
+  }),
   '/assets/zvm-console-design.fc18bc02c200.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-console-design.fc18bc02c200.css'),
@@ -5909,7 +5915,7 @@ function renderStandalonePortalLogin(err = '', redir = '', ok = '') {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Entrar</title><link rel="icon" type="image/svg+xml" href="${_FAV}">
 ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_AUTH}${_CSS_SYSTEM}</head>
-<body class="zvm-auth-immersive">
+<body class="zvm-auth-immersive zvm-auth-premium">
 <a class="skip-link" href="#main-content">Ir para o formulário</a>
 <main id="main-content" class="auth-shell">
   <section class="auth-promo"><div class="auth-promo-inner">
@@ -5948,7 +5954,7 @@ function renderStandalonePortalRegister(err = '', vals = {}, redir = '') {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Criar Conta</title><link rel="icon" type="image/svg+xml" href="${_FAV}">
 ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_AUTH}${_CSS_SYSTEM}</head>
-<body class="zvm-auth-immersive">
+<body class="zvm-auth-immersive zvm-auth-premium">
 <a class="skip-link" href="#main-content">Ir para o formulário</a>
 <main id="main-content" class="auth-shell auth-register">
   <section class="auth-promo"><div class="auth-promo-inner">
@@ -6044,7 +6050,7 @@ function renderStandalone2FAVerify(err = '') {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Verificação em Duas Etapas</title><link rel="icon" type="image/svg+xml" href="${_FAV}">
 ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_AUTH}${_CSS_SYSTEM}</head>
-<body>${_sharedNav({ variant: 'auth' })}
+<body class="zvm-auth-premium">${_sharedNav({ variant: 'auth' })}
 <main id="main-content" class="auth-shell">
   ${_securityPromo('Portal do Cliente', 'Proteja sua conta <em>ZVM</em>')}
   <div class="auth-form-wrap">
@@ -6150,7 +6156,7 @@ function renderStandalonePortalResetRequest(err = '', ok = '') {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Recuperar Senha</title><link rel="icon" type="image/svg+xml" href="${_FAV}">
 ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_AUTH}${_CSS_SYSTEM}</head>
-<body>${_sharedNav({ variant: 'auth' })}
+<body class="zvm-auth-premium">${_sharedNav({ variant: 'auth' })}
 <main id="main-content" class="auth-shell">
   <div class="auth-promo">
     <div class="auth-promo-inner">
@@ -6188,7 +6194,7 @@ function renderStandalonePortalResetForm(err = '', ok = '', token = '') {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Redefinir Senha</title><link rel="icon" type="image/svg+xml" href="${_FAV}">
 ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_AUTH}${_CSS_SYSTEM}</head>
-<body>${_sharedNav({ variant: 'auth' })}
+<body class="zvm-auth-premium">${_sharedNav({ variant: 'auth' })}
 <main id="main-content" class="auth-shell">
   <div class="auth-promo">
     <div class="auth-promo-inner">
@@ -6908,7 +6914,7 @@ function renderAdminLogin(error = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM Admin</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
-${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_AUTH}${_CSS_PRIVILEGED_AUTH}${_CSS_SYSTEM}</head><body class="zvm-auth-immersive">
+${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_AUTH}${_CSS_PRIVILEGED_AUTH}${_CSS_SYSTEM}</head><body class="zvm-auth-immersive zvm-auth-premium">
 <main class="auth-shell">
   <section class="auth-promo" aria-hidden="true"><div class="auth-promo-inner">
     <div class="admin-auth-tag">Área administrativa</div>
@@ -6919,11 +6925,11 @@ ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_AUTH}${_CSS_PRIVILEGED_AUTH}${_CSS_SYSTEM
   <section class="auth-form-wrap"><div class="auth-form-card">
     <div class="auth-form-brand">${renderStandaloneBrand('auth')}</div>
     <h2>Entrar no painel</h2><p class="auth-form-hint">Acesso administrativo ZVM.</p><div class="auth-secure-chip">Sessão administrativa protegida</div>
-    ${error ? `<div class="auth-alert err">${escHtml(error)}</div>` : ''}
+    ${error ? `<div class="auth-alert err" role="alert">${escHtml(error)}</div>` : ''}
     <form method="POST" action="${R_ADMIN}/login">
-      <div class="auth-field"><label>Usuário</label><input type="text" name="user" autocomplete="username" required></div>
-      <div class="auth-field"><label>Senha</label><input type="password" name="pass" autocomplete="current-password" required></div>
-      ${TOTP_SECRET ? `<div class="auth-field"><label>Código 2FA</label><input type="text" name="totp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" autocomplete="one-time-code" class="zvm-privileged-totp-admin"></div>` : ''}
+      <div class="auth-field"><label for="admin-user">Usuário</label><input id="admin-user" type="text" name="user" autocomplete="username" required></div>
+      <div class="auth-field"><label for="admin-pass">Senha</label><input id="admin-pass" type="password" name="pass" autocomplete="current-password" required></div>
+      ${TOTP_SECRET ? `<div class="auth-field"><label for="admin-totp">Código 2FA</label><input id="admin-totp" type="text" name="totp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" autocomplete="one-time-code" class="zvm-privileged-totp-admin"></div>` : ''}
       <button type="submit" class="auth-submit">Entrar</button>
     </form>
     <div class="auth-footnote">Acesso reservado à administração.</div>
@@ -6937,7 +6943,7 @@ const _FAV = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewB
 const _CSS_SHARED = '<link rel="stylesheet" href="/assets/zvm-shared.6dac16eb7b5b.css">';
 const _CSS_SYSTEM = '<link rel="stylesheet" href="/assets/zvm-r46-system.8873e4d662f5.css">';
 const _CSS_STANDALONE = '<link rel="stylesheet" href="/assets/zvm-standalone.d6d2222fe00a.css">';
-const _CSS_AUTH = '<link rel="stylesheet" href="/assets/zvm-r46-auth.286cb26442a2.css">';
+const _CSS_AUTH = '<link rel="stylesheet" href="/assets/zvm-r46-auth.286cb26442a2.css"><link rel="stylesheet" href="/assets/zvm-auth-premium.0ab8f63f1cb8.css">';
 const _CSS_PRIVILEGED_AUTH = '<link rel="stylesheet" href="/assets/zvm-privileged-auth.daab7ea4861a.css">';
 const _CSS_CLIENT_WORKSPACE = '<link rel="stylesheet" href="/assets/zvm-r46-client-workspace.6dbf0f685e67.css">';
 const _CSS_LANDING = '<link rel="stylesheet" href="/assets/zvm-r46-landing.af4c6e5c623b.css">';
@@ -7377,7 +7383,7 @@ function renderAnalyticsLogin(error = '') {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Analytics</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
 ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_AUTH}${_CSS_PRIVILEGED_AUTH}${_CSS_SYSTEM}</head>
-<body>
+<body class="zvm-auth-premium">
 <main class="auth-shell zvm-privileged-auth-shell">
   <section class="auth-promo" aria-hidden="true"><div class="auth-promo-inner">
     <div class="auth-eyebrow">ZVM Analytics</div>

@@ -1,12 +1,14 @@
-name: R46.94 Chromium UI visual QA
+name: ZVM Chromium UI visual QA (R46.95)
 
 on:
   pull_request:
     paths:
       - 'server.js'
       - 'assets/zvm-console-design.*.css'
+      - 'assets/zvm-auth-premium.*.css'
       - 'assets/zvm-admin-dashboard.*.js'
       - 'tests/r46-94-chromium-visual.test.js'
+      - 'tests/r46-95-auth-ui.test.js'
       - '.github/workflows/ui-visual-r46-94.yml'
   workflow_dispatch:
 
@@ -39,7 +41,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: zvm-r46-94-chromium-visuals
+          name: zvm-r46-95-chromium-visuals
           path: artifacts/visual-qa/*.png
           if-no-files-found: ignore
           retention-days: 7
