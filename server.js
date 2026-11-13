@@ -5529,6 +5529,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: 'e6a44a6e83929ba9d2c1d1768f31e1069d0d9f756b7526264dd56d569c2abddf',
     compressible: true,
   }),
+  '/assets/zvm-sales-state.1422fd551ff5.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-sales-state.1422fd551ff5.css'),
+    sha256: '1422fd551ff5c1548fc1f7641a22263662755331d928eaaa0ff29f25f30931f9',
+    compressible: true,
+  }),
   '/assets/zvm-console-design.fc18bc02c200.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-console-design.fc18bc02c200.css'),
@@ -6040,7 +6046,7 @@ function _securityPromo(eyebrow, title) {
 // abaixo corresponde a um recurso que o standalone realmente tem hoje.
 const ZVM_FAQ_ITEMS = [
   ['Como recebo minha licença depois da compra?', 'Assim que o pagamento é aprovado, sua chave é gerada e enviada automaticamente por e-mail. Você também acompanha tudo pelo painel Minha Conta.'],
-  ['Preciso criar uma conta antes de comprar?', 'Não é obrigatório, mas é recomendado: entrando antes da compra, sua chave é vinculada automaticamente à sua conta. Sem login, você recebe a chave só por e-mail.'],
+  ['Preciso criar uma conta antes de comprar?', 'Não. Quando as vendas estiverem abertas, você pode comprar diretamente na Cakto sem login ZVM. Informe um e-mail válido; depois do pagamento, a chave será enviada para ele. Crie ou acesse sua conta ZVM e vincule a chave pelo Portal do Cliente. Usar o mesmo e-mail ajuda na vinculação automática.'],
   ['Como instalar e acessar a ZVM?', 'Use sempre o link oficial disponibilizado pela ZVM, instale a extensão no navegador compatível e entre com sua conta. Se a licença ainda não estiver vinculada, faça a vinculação pelo Portal do Cliente.'],
   ['Quantos números posso usar?', 'Nos novos planos, START oferece 1 acesso e PRO oferece até 3. ENTERPRISE é sob consulta e não está disponível para compra automática. Contratos anteriores preservam seus limites.'],
   ['Como renovo minha licença?', 'No portal, acesse "Renovar / Alterar Plano" e conclua a compra pela Cakto — a renovação é aplicada automaticamente à sua chave.'],
@@ -6531,7 +6537,7 @@ function renderStandalonePortalPlans(user, keyData){
     <section class="client-plans-public-style"><header class="client-plans-public-head client-plan-intro"><span>Renove ou altere seu plano</span><h1>Escolha o plano ideal</h1><p>SOLO para 1 número, START para até 3, PRO para até 5 e ENTERPRISE sob consulta.</p></header>${ZVM_SALES_PAUSED ? '<div class="purchase-note sales-paused-alert" role="status"><strong>Vendas e renovações temporariamente suspensas.</strong> Estamos realizando ajustes; sua licença atual não será modificada.</div>' : ''}${needPicker}${legacyRenewal}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section><p class="plans-footnote">Precisa de mais de 10 números? <a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Falar com suporte</a></p></section>
     ${ZVM_SALES_PAUSED ? '' : modal}<script src="/assets/zvm-plans.26a755b1251d.js" defer></script>
   </main></div>`;
-  return renderPortalPage(body,'ZVM — Renovações e Planos','',_CSS_PLANS);
+  return renderPortalPage(body,'ZVM — Renovações e Planos','',_CSS_PLANS+_CSS_SALES_STATE);
 }
 
 // ──────────── fim portal do cliente ────────────────────────────
@@ -6970,6 +6976,7 @@ const _CSS_PRIVILEGED_AUTH = '<link rel="stylesheet" href="/assets/zvm-privilege
 const _CSS_CLIENT_WORKSPACE = '<link rel="stylesheet" href="/assets/zvm-r46-client-workspace.6dbf0f685e67.css">';
 const _CSS_LANDING = '<link rel="stylesheet" href="/assets/zvm-r46-landing.af4c6e5c623b.css">';
 const _CSS_PUBLIC_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-public-premium.ab131a22bcdd.css">';
+const _CSS_SALES_STATE = '<link rel="stylesheet" href="/assets/zvm-sales-state.1422fd551ff5.css">';
 const _CSS_LEGAL_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-legal-premium.222751f96dd9.css">';
 const _CSS_ANALYTICS_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-analytics-premium.98c1933c3e7f.css">';
 const _CSS_FAQ = '<link rel="stylesheet" href="/assets/zvm-faq.b388ca55cbf4.css">';
@@ -7100,7 +7107,7 @@ const renderLandingPage = createLandingRenderer({
   escHtml,
   favicon: _FAV,
   sharedCssLink: _CSS_SHARED + _CSS_STANDALONE,
-  landingCssLink: _CSS_LANDING + _CSS_SYSTEM + _CSS_PUBLIC_PREMIUM,
+  landingCssLink: _CSS_LANDING + _CSS_SYSTEM + _CSS_PUBLIC_PREMIUM + _CSS_SALES_STATE,
   chromeStoreBadge: renderChromeStoreBadge,
   plans: ZVM_PUBLIC_PLANS,
   salesPaused: ZVM_SALES_PAUSED,
@@ -7198,7 +7205,7 @@ function renderPlanosPage(portalUser = null) {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="description" content="Planos ZVM SOLO (R$39,90, 1 número), START (R$59,90, 3 números), PRO (R$94,90, 5 números) e ENTERPRISE sob consulta.">
 <title>ZVM — Planos e Preços</title><link rel="icon" type="image/svg+xml" href="${_FAV}">
-${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PLANS}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}</head><body class="zvm-public-premium zvm-plans-premium">${_sharedNav({activePath:'/planos',portalUser,showBack:true})}
+${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PLANS}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_SALES_STATE}</head><body class="zvm-public-premium zvm-plans-premium">${_sharedNav({activePath:'/planos',portalUser,showBack:true})}
 <main id="main-content"><header class="page-hero"><div class="page-hero-tag">Licenças ZVM</div><h1>Escolha seu <span>ritmo de operação</span></h1><p>Todos os planos têm os mesmos recursos. O limite muda apenas conforme a quantidade de números conectados.</p></header>
 <div class="plans-wrap">${needPicker}${buyerBox}${purchaseNote}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section><p class="plans-footnote">Precisa de mais números? <a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Converse com o suporte</a></p></div></main>
 ${ZVM_SALES_PAUSED ? '' : `<dialog class="checkout-dialog" aria-labelledby="checkout-title"><div class="dialog-inner">${modalContent}</div></dialog>`}${_standaloneFoot()}
