@@ -5553,10 +5553,10 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: 'e92185a78fd47a34a9522e9967ab2c84067f00c6294bc792bfdd4a0c21efc910',
     compressible: true,
   }),
-  '/assets/zvm-console-design.ddfd8c83fb96.css': Object.freeze({
+  '/assets/zvm-console-design.1ee8679046a6.css': Object.freeze({
     type: 'text/css; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-console-design.ddfd8c83fb96.css'),
-    sha256: 'ddfd8c83fb96e467d2778d78ad84e3cb760a2adecf7168f4ad18ed06f5650ba1',
+    file: path.join(__dirname, 'assets', 'zvm-console-design.1ee8679046a6.css'),
+    sha256: '1ee8679046a6429c4fdc26c4df29650f28299a8118397377cdf1cdf48d982d33',
     compressible: true,
   }),
   '/assets/zvm-admin-dashboard.b892a520f957.js': Object.freeze({
@@ -5902,7 +5902,7 @@ function renderPortalPage(body, title='ZVM — Minha Conta', extra='', headExtra
 <link rel="stylesheet" href="/assets/zvm-r46-client-dashboard.64213392bec3.css"><link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css">
 ${headExtra}
 <link rel="stylesheet" href="/assets/zvm-r46-system.8873e4d662f5.css">
-<link rel="stylesheet" href="/assets/zvm-console-design.ddfd8c83fb96.css">
+<link rel="stylesheet" href="/assets/zvm-console-design.1ee8679046a6.css">
 </head><body class="zvm-client-premium">
 <a class="portal-skip" href="#main-content">Ir para o conteúdo</a>
 <div class="page-wrap portal-page-wrap">
@@ -6612,7 +6612,7 @@ function renderAdminDashboard(opts = {}) {
 <link rel="stylesheet" href="/assets/zvm-admin-dashboard.c06071e4d73f.css">
 <link rel="stylesheet" href="/assets/zvm-r46-system.8873e4d662f5.css">
 <link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css">
-<link rel="stylesheet" href="/assets/zvm-console-design.ddfd8c83fb96.css">
+<link rel="stylesheet" href="/assets/zvm-console-design.1ee8679046a6.css">
 </head>
 <body class="zvm-admin-r6">
 <a class="zvm-skip-link" href="#zvm-admin-main">Ir para o conteúdo</a>
