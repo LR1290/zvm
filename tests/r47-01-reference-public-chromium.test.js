@@ -65,7 +65,7 @@ async function run(){
    }else if(name.startsWith('faq')){
     const isEnglish=name==='faq-en';
     assert.equal(await page.locator('.r4701-faq-tile').count(),4);
-    assert(await page.locator('.r4701-faq-pause').count()===0||true); // documented banner is r4700-faq-pause
+
     assert(await page.locator('.r4700-faq-pause').isVisible());
     assert.equal(await page.locator('[data-faq-item]').count(),16);
     const search=page.locator('#faq-search');
