@@ -1,0 +1,45 @@
+name: R46.94 Chromium UI visual QA
+
+on:
+  pull_request:
+    paths:
+      - 'server.js'
+      - 'assets/zvm-console-design.*.css'
+      - 'assets/zvm-admin-dashboard.*.js'
+      - 'tests/r46-94-chromium-visual.test.js'
+      - '.github/workflows/ui-visual-r46-94.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  chromium-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install backend dependencies
+        run: npm ci --ignore-scripts --no-fund --no-audit
+      - name: Install pinned Chromium test tool
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund playwright@1.65.0
+          npx playwright install --with-deps chromium
+      - name: Browser QA with mock users (never production)
+        env:
+          CI: 'true'
+        run: node tests/r46-94-chromium-visual.test.js
+      - name: Upload visual screenshots for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zvm-r46-94-chromium-visuals
+          path: artifacts/visual-qa/*.png
+          if-no-files-found: ignore
+          retention-days: 7
