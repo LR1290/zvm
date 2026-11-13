@@ -86,6 +86,21 @@ async function run(){
       assert(await page.locator('.client-quickfacts .client-quickfact').count()===3);
       assert(await page.locator('.client-device-list .device-row').count()===2);
       assert(await page.locator('a[href="/cliente/2fa/setup"]').count()>0);
+      if(width<=390){
+       const rail=await page.locator('.client-rail').evaluate(el=>{
+         const nav=el.querySelector('.client-nav');
+         return {
+           height:el.getBoundingClientRect().height,
+           display:getComputedStyle(nav).display,
+           scrollable:nav.scrollWidth>nav.clientWidth,
+           card:getComputedStyle(el.querySelector('.client-rail-card')).display,
+         };
+       });
+       assert(rail.height<210,'mobile account navigation must not cover first viewport: '+JSON.stringify(rail));
+       assert.equal(rail.display,'flex','mobile nav must stay in a single swipeable row');
+       assert.equal(rail.card,'none','redundant rail card must be hidden on small screens');
+       assert(rail.scrollable,'all account routes must remain reachable by horizontal scroll');
+      }
       if(width===320){
        const display=await page.locator('.client-command-grid').evaluate(el=>getComputedStyle(el).gridTemplateColumns);
        assert(display&&!display.includes('330px'),'mobile cards must reflow');
