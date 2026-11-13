@@ -6485,7 +6485,7 @@ ${keyData ? `<section class="client-quickfacts" aria-label="Resumo da licença">
     ${expiryAlert}
     ${countdownBlock}
     <div class="client-focus-actions">
-      <a class="primary" href="/cliente/planos">Renovar / mudar plano</a>
+      <a class="primary" href="/cliente/planos">${ZVM_SALES_PAUSED?'Consultar planos':'Renovar / mudar plano'}</a>
       <a href="/cliente/2fa/setup">🛡 Segurança</a>
       ${hasKey ? `<form method="POST" action="/cliente/desvincular" data-confirm="Tem certeza? Isso desvinculará sua chave desta conta."><button type="submit" class="client-unlink">🔓 Desvincular chave</button></form>` : ''}
     </div>
