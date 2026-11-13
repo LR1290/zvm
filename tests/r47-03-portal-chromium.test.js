@@ -80,15 +80,15 @@ async function main(){
     assert.equal(await page.locator('#filter-status').inputValue(),'suspect','native keyboard filter failed');
    }
    if(name==='faq-pt'){
-    assert((await page.locator('main').innerText()).includes('As renovações estão temporariamente suspensas.'));
+    assert((await page.locator('main').textContent()).includes('As renovações estão temporariamente suspensas.'));
    }
    if(name==='faq-en'){
-    assert((await page.locator('main').innerText()).includes('Renewals are temporarily paused.'));
-    assert((await page.locator('main').innerText()).includes('Do not retry payments while checkout is unavailable.'));
+    assert((await page.locator('main').textContent()).includes('Renewals are temporarily paused.'));
+    assert((await page.locator('main').textContent()).includes('Do not retry payments while checkout is unavailable.'));
    }
    if(name==='planos'){
     assert.equal(await page.locator('[data-buy-plan]').count(),0,'paused purchase button leaked');
-    assert((await page.locator('main').innerText()).includes('As renovações estão temporariamente suspensas.'));
+    assert((await page.locator('main').textContent()).includes('As renovações estão temporariamente suspensas.'));
    }
    await page.screenshot({path:path.join(out,'r47-03-'+name+'-'+width+'.png'),fullPage:true,animations:'disabled'});
    await page.close();count++;
