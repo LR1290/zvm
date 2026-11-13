@@ -8,7 +8,7 @@ const html=render();
 const hero=html.split('</section>')[0];
 assert.match(hero,/<h1>Organize o atendimento\./,'restored human-facing hero H1');
 assert.match(hero,/r466-hero-centered/,'hero uses original centered composition');
-assert.equal((hero.match(/class="r466-btn /g)||[]).length,1,'one exploration CTA plus canonical store badge');
+assert.equal((hero.match(/class="r466-btn /g)||[]).length,2,'one product exploration CTA and one plans CTA, with a separate canonical store badge');
 assert.match(hero,/data-scroll-target="produto"/,'see product CTA');
 assert.match(hero,/href="https:\/\/chromewebstore\.google\.com/,'official store CTA');
 assert.doesNotMatch(hero,/r4611-hero-orbits/,'no decorative orbits');
