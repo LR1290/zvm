@@ -84,6 +84,7 @@ async function run(){
       assert(await page.locator('a[href^="/planos"]').count()>0,'landing plans link missing');
     }else if(label==='faq'){
       const item=page.locator('.faq-item').first();
+      await item.locator('summary').evaluate(el=>el.scrollIntoView({block:'center',behavior:'auto'}));
       await item.locator('summary').click();
       assert(await item.evaluate(el=>el.open),label+'/'+width+' FAQ disclosure not operable');
       assert(await item.locator('p').isVisible(),label+'/'+width+' FAQ answer hidden');
