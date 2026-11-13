@@ -5509,10 +5509,22 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '222751f96dd906db2fdce0d10922f2346eea078de6725759da13b6c09c71b3e2',
     compressible: true,
   }),
-  '/assets/zvm-analytics-premium.75b34337c294.css': Object.freeze({
+  '/assets/zvm-analytics-premium.98c1933c3e7f.css': Object.freeze({
     type: 'text/css; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-analytics-premium.75b34337c294.css'),
-    sha256: '75b34337c2945201a425f61b7b85325e0f3d9d0ca01c140d7de0ae6e46c3ab11',
+    file: path.join(__dirname, 'assets', 'zvm-analytics-premium.98c1933c3e7f.css'),
+    sha256: '98c1933c3e7f2fe53c189d19019c83a845b9d7ce7f04504b02bc431160b2e52a',
+    compressible: true,
+  }),
+  '/assets/zvm-analytics-dashboard.95454273c23e.js': Object.freeze({
+    type: 'text/javascript; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-analytics-dashboard.95454273c23e.js'),
+    sha256: '95454273c23ec440f8c6b4400652772c1519a56fe6caeb86928a1d7a6eb78769',
+    compressible: true,
+  }),
+  '/assets/zvm-analytics-lab.e6a44a6e8392.js': Object.freeze({
+    type: 'text/javascript; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-analytics-lab.e6a44a6e8392.js'),
+    sha256: 'e6a44a6e83929ba9d2c1d1768f31e1069d0d9f756b7526264dd56d569c2abddf',
     compressible: true,
   }),
   '/assets/zvm-console-design.fc18bc02c200.css': Object.freeze({
@@ -5563,19 +5575,7 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '623a7bbac134712dcc57feb6098ed81d2bbc0dd01507904244153201524ebcd8',
     compressible: true,
   }),
-  '/assets/zvm-analytics-dashboard.5977bc6ce33f.js': Object.freeze({
-    type: 'text/javascript; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-analytics-dashboard.5977bc6ce33f.js'),
-    sha256: '5977bc6ce33f0d85e773c9d09c7778f90b5b7849923d5fad7dc7a76b8e489398',
-    compressible: true,
-  }),
 
-  '/assets/zvm-analytics-lab.889fc1e2fb48.js': Object.freeze({
-    type: 'text/javascript; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-analytics-lab.889fc1e2fb48.js'),
-    sha256: '889fc1e2fb4880b6098b0fe64add1ceb916a9187a2bf34bbb6bdb7f5d713a9ef',
-    compressible: true,
-  }),
   '/assets/zvm-analytics-lab.40519085ae68.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-analytics-lab.40519085ae68.css'),
@@ -6967,7 +6967,7 @@ const _CSS_CLIENT_WORKSPACE = '<link rel="stylesheet" href="/assets/zvm-r46-clie
 const _CSS_LANDING = '<link rel="stylesheet" href="/assets/zvm-r46-landing.af4c6e5c623b.css">';
 const _CSS_PUBLIC_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-public-premium.ab131a22bcdd.css">';
 const _CSS_LEGAL_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-legal-premium.222751f96dd9.css">';
-const _CSS_ANALYTICS_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-analytics-premium.75b34337c294.css">';
+const _CSS_ANALYTICS_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-analytics-premium.98c1933c3e7f.css">';
 const _CSS_FAQ = '<link rel="stylesheet" href="/assets/zvm-faq.b388ca55cbf4.css">';
 const _CSS_PRIVACY = '<link rel="stylesheet" href="/assets/zvm-privacy.7be30b7da0a1.css">';
 const _CSS_TERMS = '<link rel="stylesheet" href="/assets/zvm-terms.f1c470efdbbb.css">';
@@ -7505,6 +7505,12 @@ async function renderAnalyticsDashboard(fixture = null) {
     return `<div class="hour-bars" aria-label="Vendas por hora">${vals.map((v,i)=>`<div class="hour-col" title="${String(i).padStart(2,'0')}h · ${v} venda(s)"><span style="height:${Math.max(5,Math.round(v/max*100))}%"></span><small>${i%3===0?String(i).padStart(2,'0'):''}</small></div>`).join('')}</div>`;
   }
   const salesTrendViz = lineViz(daySeries,'revenue');
+  const salesDailyTable = `<details class="analytics-chart-data">
+    <summary>Ver dados diarios de vendas e receita em tabela</summary>
+    <div class="ov"><table><caption>Vendas e receita dos ultimos 30 dias</caption>
+      <thead><tr><th scope="col">Data</th><th scope="col">Vendas</th><th scope="col">Receita</th></tr></thead>
+      <tbody>${daySeries.map(x=>`<tr><th scope="row">${escH(x.key)}</th><td>${x.count}</td><td>${fmtBRL(x.revenue)}</td></tr>`).join('')}</tbody>
+    </table></div></details>`;
   const productViz = horizontalBars(stats?.byProduct||[], 'revenue', fmtBRL, 'Ainda não há receita por produto.');
   const hourChartViz = hourViz(stats?.byHour||[]);
   const methodViz = horizontalBars(stats?.byMethod||[], 'count', v=>`${v} venda${v===1?'':'s'}`, 'Ainda não há métodos de pagamento registrados.');
@@ -7519,10 +7525,11 @@ async function renderAnalyticsDashboard(fixture = null) {
 <link rel="stylesheet" href="/assets/zvm-analytics-lab.40519085ae68.css">
 <link rel="stylesheet" href="/assets/zvm-r46-system.8873e4d662f5.css">
 <link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css">${_CSS_ANALYTICS_PREMIUM}</head><body class="zvm-analytics-premium">
+<a class="analytics-skip" href="#analytics-main">Pular para o conteudo principal</a>
 <div class="analytics-shell">
 <aside class="analytics-rail" aria-label="Navegação do Analytics">
   <div class="analytics-rail-brand">${renderStandaloneBrand('compact')}<div class="analytics-rail-kicker">Analytics privado</div></div>
-  <nav class="analytics-nav">
+  <nav class="analytics-nav" aria-label="Secoes do Analytics">
     <a class="active" href="#overview">◫ Visão executiva</a>
     <a href="#performance">↗ Performance</a>
     <a href="#customers">◎ Clientes</a>
@@ -7534,11 +7541,11 @@ async function renderAnalyticsDashboard(fixture = null) {
 <header class="analytics-topbar">
   <div class="analytics-title"><span>ZVM Analytics</span><strong>Visão executiva</strong></div>
   <div class="analytics-actions">
-    <button class="btn lab-toggle" onclick="toggleLab()">◇ Laboratório</button>
+    <button type="button" class="btn lab-toggle" id="lab-toggle" aria-controls="lab-body" aria-expanded="false" onclick="toggleLab()">◇ Laboratório</button>
     ${renderZvmActionHub('analytics')}
   </div>
 </header>
-<main>
+<main id="analytics-main" tabindex="-1">
   <section class="analytics-hero" id="overview">
     <div><span class="analytics-hero-kicker">Operação comercial</span><h1>O que está acontecendo com a receita da ZVM.</h1><p>Receita, recorrência, produtos e pagamentos organizados para leitura rápida — com testes claramente isolados dos dados reais.</p></div>
     <div class="analytics-hero-pulse">
@@ -7565,7 +7572,7 @@ async function renderAnalyticsDashboard(fixture = null) {
     <div class="sc"><div class="sc-icon">📦</div><div class="n blue">${stats?.byProduct?.length||0}</div><div class="l">Produtos Ativos</div><div class="sub-n">${(stats?.byProduct||[]).slice(0,2).map(p=>escH(p._id||'?')+'('+p.count+')').join(', ')||'—'}</div></div>
     <div class="sc"><div class="sc-icon">💳</div><div class="n blue">${escH((stats?.byMethod||[])[0]?._id)||'—'}</div><div class="l">Método + Usado</div><div class="sub-n">${(stats?.byMethod||[])[0]?.count||0} transações</div></div>
     <div class="sc"><div class="sc-icon">📉</div><div class="n ${(stats?.churnRate||0)>50?'red':(stats?.churnRate||0)>25?'gold':''}">${stats?.churnRate||0}%</div><div class="l">Taxa de Churn (30d)</div><div class="sub-n">${stats?.churnedKeys||0} de ${stats?.expiredKeys||0} expiradas</div></div>
-    <div class="sc"><div class="sc-icon">⏰</div><div class="n blue">${(stats?.byHour||[]).sort((a,b)=>b.count-a.count)[0]?._id||'—'}h</div><div class="l">Horário de Pico</div><div class="sub-n">${(stats?.byHour||[]).sort((a,b)=>b.count-a.count)[0]?.count||0} vendas neste horário</div></div>
+    <div class="sc"><div class="sc-icon">⏰</div><div class="n blue">${peakHour?._id||'—'}h</div><div class="l">Horário de Pico</div><div class="sub-n">${peakHour?.count||0} vendas neste horário</div></div>
     <div class="sc" style="border-color:#f0b42930"><div class="sc-icon">🧪</div><div class="n" style="color:#f0b429">${stats?.simCount||0}</div><div class="l">Simulações</div><div class="sub-n">Não conta como receita real</div></div>
   </div>
 
@@ -7583,11 +7590,11 @@ async function renderAnalyticsDashboard(fixture = null) {
     <div class="sh"><div class="st">🧪 Laboratório de Testes</div></div>
     <div class="lab-body" id="lab-body">
       <div class="lab-banner">⚠ AMBIENTE DE TESTES — nenhuma venda da Cakto será efetuada.</div>
-      <div class="lab-modes" role="tablist" aria-label="Atividades do laboratório">
-        <button type="button" role="tab" data-lab-mode="sale" aria-selected="true" class="is-active">Simular venda</button>
-        <button type="button" role="tab" data-lab-mode="email" aria-selected="false">Testar e-mail</button>
+      <div class="lab-modes" role="tablist" aria-label="Atividades do laboratorio">
+        <button type="button" id="lab-tab-sale" role="tab" data-lab-mode="sale" aria-selected="true" aria-controls="lab-sale-pane" tabindex="0" class="is-active">Simular venda</button>
+        <button type="button" id="lab-tab-email" role="tab" data-lab-mode="email" aria-selected="false" aria-controls="lab-email-pane" tabindex="-1">Testar e-mail</button>
       </div>
-      <section class="lab-mode-pane lab-sale-pane" id="lab-sale-pane" role="tabpanel" aria-label="Simular venda">
+      <section class="lab-mode-pane lab-sale-pane" id="lab-sale-pane" role="tabpanel" aria-labelledby="lab-tab-sale" tabindex="0">
         <div class="lab-pane-card">
           <h3>Simulação financeira isolada</h3>
           <p class="lab-hint">Confira o contrato, depois execute uma venda fictícia. Registros são identificados como testMode:true. A simulação não envia e-mails; use a outra aba para isso.</p>
@@ -7606,10 +7613,10 @@ async function renderAnalyticsDashboard(fixture = null) {
           <div class="lab-field"><label for="lab-method">Método simulado</label><select id="lab-method"><option value="pix">Pix</option><option value="credit_card">Cartão de crédito</option></select></div>
           <input type="checkbox" id="lab-send-email" hidden disabled>
           <div class="lab-actions"><button class="btn blab" id="lab-btn-sim" onclick="labPreview()">Conferir cenário</button><button class="btn bcancel" onclick="labCancel()">Limpar</button></div>
-          <div id="lab-result" aria-live="polite"></div>
+          <div id="lab-result" role="status" aria-live="polite"></div>
         </div>
       </section>
-      <section class="lab-mode-pane" id="lab-email-pane" role="tabpanel" aria-label="Testar e-mail" hidden>
+      <section class="lab-mode-pane" id="lab-email-pane" role="tabpanel" aria-labelledby="lab-tab-email" tabindex="0" hidden>
         <div class="lab-mail-grid">
           <div class="lab-pane-card">
             <h3>Prévia e teste de entrega</h3>
@@ -7623,7 +7630,7 @@ async function renderAnalyticsDashboard(fixture = null) {
             <div class="lab-field"><label for="lab-tpl-email">Destinatário de teste</label><input id="lab-tpl-email" type="email" placeholder="email-que-voce-acessa@dominio.com" maxlength="160"></div>
             <p class="lab-email-tip">Visualizar é somente leitura. Enviar teste solicita confirmação e envia uma licença DEMO, sem transação na Cakto. O ENTERPRISE permanece comercialmente sob consulta.</p>
             <div class="lab-actions"><button type="button" class="btn blab lab-mail-action" id="lab-mail-preview-btn">Visualizar</button><button type="button" class="btn blab lab-mail-action" id="lab-mail-send-btn">Enviar e-mail de teste</button></div>
-            <div id="lab-email-status" aria-live="polite"></div>
+            <div id="lab-email-status" role="status" aria-live="polite"></div>
           </div>
           <div class="lab-pane-card lab-mail-preview">
             <h3>Pré-visualização</h3><p class="lab-hint">O corpo abaixo é HTML com texto selecionável. As imagens só formam a moldura artística.</p>
@@ -7672,6 +7679,7 @@ async function renderAnalyticsDashboard(fixture = null) {
     <div class="chart-card">
       <div class="chart-title">📊 Vendas e Receita — últimos 30 dias</div>
       ${salesTrendViz}
+      ${salesDailyTable}
     </div>
     <div class="chart-card">
       <div class="chart-title">🥧 Receita por Produto</div>
@@ -7710,7 +7718,8 @@ async function renderAnalyticsDashboard(fixture = null) {
     <div class="sec">
       <div class="sh"><div class="st">🏆 Top Clientes</div></div>
       <div class="ov"><table>
-        <thead><tr><th>Email</th><th style="text-align:center">Compras</th><th style="text-align:right">Total Gasto</th></tr></thead>
+        <caption class="analytics-visually-hidden">Clientes com mais compras</caption>
+        <thead><tr><th scope="col">Email</th><th scope="col" style="text-align:center">Compras</th><th scope="col" style="text-align:right">Total Gasto</th></tr></thead>
         <tbody>${topClientsRows}</tbody>
       </table></div>
     </div>
@@ -7721,23 +7730,25 @@ async function renderAnalyticsDashboard(fixture = null) {
     <div class="sh">
       <div class="st">💳 Histórico de Pagamentos</div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <input type="text" id="search" placeholder="🔍 Cliente, email, produto..." oninput="filterTable()">
-        <div class="period-btns" id="test-filter-btns">
-          <button class="pb active" onclick="setTestFilter('all',this)">Todos</button>
-          <button class="pb" onclick="setTestFilter('real',this)">Reais</button>
-          <button class="pb" onclick="setTestFilter('test',this)">Testes</button>
+        <label class="analytics-visually-hidden" for="search">Buscar no historico de pagamentos</label><input type="search" id="search" placeholder="🔍 Cliente, email, produto..." oninput="filterTable()">
+        <div class="period-btns" id="test-filter-btns" role="group" aria-label="Tipo de pagamento">
+          <button type="button" class="pb active" aria-pressed="true" onclick="setTestFilter('all',this)">Todos</button>
+          <button type="button" class="pb" aria-pressed="false" onclick="setTestFilter('real',this)">Reais</button>
+          <button type="button" class="pb" aria-pressed="false" onclick="setTestFilter('test',this)">Testes</button>
         </div>
-        <div class="period-btns">
-          <button class="pb active" onclick="setPeriod(7,this)">7d</button>
-          <button class="pb" onclick="setPeriod(30,this)">30d</button>
-          <button class="pb" onclick="setPeriod(90,this)">90d</button>
-          <button class="pb" onclick="setPeriod(0,this)">Todos</button>
+        <div class="period-btns" role="group" aria-label="Periodo de pagamentos">
+          <button type="button" class="pb" aria-pressed="false" onclick="setPeriod(7,this)">7d</button>
+          <button type="button" class="pb" aria-pressed="false" onclick="setPeriod(30,this)">30d</button>
+          <button type="button" class="pb" aria-pressed="false" onclick="setPeriod(90,this)">90d</button>
+          <button type="button" class="pb active" aria-pressed="true" onclick="setPeriod(0,this)">Todos</button>
         </div>
       </div>
     </div>
+    <p class="analytics-filter-feedback" id="analytics-filter-status" role="status" aria-live="polite"></p>
     <div class="ov">
       <table>
-        <thead><tr><th>Data</th><th>Cliente</th><th>Email</th><th>Produto</th><th>Valor</th><th>Status</th><th>Chave</th><th>Origem</th></tr></thead>
+        <caption class="analytics-visually-hidden">Historico de pagamentos</caption>
+        <thead><tr><th scope="col">Data</th><th scope="col">Cliente</th><th scope="col">Email</th><th scope="col">Produto</th><th scope="col">Valor</th><th scope="col">Status</th><th scope="col">Chave</th><th scope="col">Origem</th></tr></thead>
         <tbody id="payments-body">${paymentsRows}</tbody>
       </table>
     </div>
@@ -7749,8 +7760,8 @@ async function renderAnalyticsDashboard(fixture = null) {
 
 
 
-<script src="/assets/zvm-analytics-dashboard.5977bc6ce33f.js" defer></script>
-<script src="/assets/zvm-analytics-lab.889fc1e2fb48.js" defer></script>
+<script src="/assets/zvm-analytics-dashboard.95454273c23e.js" defer></script>
+<script src="/assets/zvm-analytics-lab.e6a44a6e8392.js" defer></script>
 </body></html>`;
 }
 

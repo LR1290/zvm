@@ -8,20 +8,38 @@ const _ANALYTICS_ROOT=document.documentElement.dataset.analyticsRoot||'/analytic
 // pra combinar as três condições sem uma sobrescrever a outra.
 let _periodCutoff=null,_testFilter='all';
 function applyFilters(){
-  const q=(document.getElementById('search').value||'').toLowerCase();
+  const q=(document.getElementById('search').value||'').trim().toLocaleLowerCase('pt-BR');
+  let visible=0,total=0;
   document.querySelectorAll('#payments-body tr[data-row]').forEach(r=>{
+    total++;
     const okSearch=!q||r.dataset.row.includes(q);
     const okPeriod=!_periodCutoff||r.dataset.paid>=_periodCutoff;
     const okTest=_testFilter==='all'||(_testFilter==='test'?r.dataset.test==='1':r.dataset.test==='0');
-    r.style.display=(okSearch&&okPeriod&&okTest)?'':'none';
+    const show=okSearch&&okPeriod&&okTest;
+    r.style.display=show?'':'none';
+    if(show)visible++;
   });
+  const count=document.getElementById('analytics-filter-status');
+  if(count)count.textContent=visible+' de '+total+' pagamentos exibidos.';
 }
 function filterTable(){applyFilters();}
-function setPeriod(days,btn){btn.parentElement.querySelectorAll('.pb').forEach(b=>b.classList.remove('active'));btn.classList.add('active');_periodCutoff=days?new Date(Date.now()-days*86400000).toISOString():null;applyFilters();}
-function setTestFilter(mode,btn){btn.parentElement.querySelectorAll('.pb').forEach(b=>b.classList.remove('active'));btn.classList.add('active');_testFilter=mode;applyFilters();}
+function selectFilterButton(btn){
+  btn.parentElement.querySelectorAll('.pb').forEach(b=>{
+    const active=b===btn;
+    b.classList.toggle('active',active);
+    b.setAttribute('aria-pressed',String(active));
+  });
+}
+function setPeriod(days,btn){selectFilterButton(btn);_periodCutoff=days?new Date(Date.now()-days*86400000).toISOString():null;applyFilters();}
+function setTestFilter(mode,btn){selectFilterButton(btn);_testFilter=mode;applyFilters();}
 
 // ── Laboratório de Testes ────────────────────────────────────────────
-function toggleLab(){document.getElementById('lab-body').classList.toggle('open');}
+function toggleLab(){
+  const panel=document.getElementById('lab-body');
+  const open=panel.classList.toggle('open');
+  const toggle=document.getElementById('lab-toggle');
+  if(toggle)toggle.setAttribute('aria-expanded',String(open));
+}
 
 function labFormData(){
   return {
@@ -233,6 +251,7 @@ async function purgeFetchPreview(mode){
   try{
     const r=await fetch(_ANALYTICS_ROOT+'/api/purge/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mode})});
     const d=await r.json();
+    if(mode!==purgeCurrentMode()||!document.getElementById('purge-dialog').open)return;
     if(!r.ok){labRenderStatus(box,labErrorMessage(r.status,d));return;}
     _purgeLastPreview=d;
     const label={test:'de teste',real:'reais',all:'no total (testes + reais)'}[mode]||'';
@@ -321,3 +340,6 @@ async function purgeExecute(){
   },{rootMargin:'-18% 0px -65% 0px',threshold:[0,.1,.35]});
   map.forEach(function(link,id){var section=document.getElementById(id);if(section)io.observe(section);});
 })();
+
+// Sync assistive status with the default unfiltered payment table.
+if(document.getElementById('analytics-filter-status'))applyFilters();

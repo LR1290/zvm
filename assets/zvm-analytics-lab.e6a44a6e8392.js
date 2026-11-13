@@ -5,7 +5,18 @@ const root=document.getElementById('lab-sec');if(!root)return;
 const $=id=>document.getElementById(id);
 const sale=$('lab-sale-pane'),email=$('lab-email-pane'),tabs=[...root.querySelectorAll('[data-lab-mode]')];
 function tab(mode){sale.hidden=mode!=='sale';email.hidden=mode!=='email';tabs.forEach(b=>{const active=b.dataset.labMode===mode;b.classList.toggle('is-active',active);b.setAttribute('aria-selected',String(active));b.tabIndex=active?0:-1;});}
-tabs.forEach(b=>b.addEventListener('click',()=>tab(b.dataset.labMode)));
+tabs.forEach(b=>{
+ b.addEventListener('click',()=>tab(b.dataset.labMode));
+ b.addEventListener('keydown',event=>{
+  if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+  event.preventDefault();
+  const i=tabs.indexOf(b);
+  const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:
+    (i+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;
+  tab(tabs[next].dataset.labMode);
+  tabs[next].focus();
+ });
+});
 const plan=$('lab-mail-plan'),kind=$('lab-mail-kind'),status=$('lab-email-status'),frame=$('lab-iframe'),hidden=$('lab-tpl');
 function selection(){const id=plan.value,type=kind.value;if(!['start','pro','enterprise'].includes(id)||!['new','renewal'].includes(type))return null;return {planId:id,kind:type,template:'delivery_'+(type==='renewal'?'renewal_':'')+id};}
 function update(){const s=selection();if(!s)return;hidden.value=s.template;frame.removeAttribute('srcdoc');frame.style.display='none';status.textContent='Selecione Visualizar para gerar a prévia. Nada será enviado automaticamente.';const label=$('lab-mail-summary');if(label)label.textContent=plan.options[plan.selectedIndex].text+' · '+(s.kind==='renewal'?'Renovação':'Nova licença');}
