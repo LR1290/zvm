@@ -5497,6 +5497,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '0ab8f63f1cb8dfdb18810c79ed19797308068cc81c51a8f564de6b23e21956a3',
     compressible: true,
   }),
+  '/assets/zvm-public-premium.ab131a22bcdd.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-public-premium.ab131a22bcdd.css'),
+    sha256: 'ab131a22bcdd11998b7564618bc24d7159f2ffd1fbece5c2475350d3a446404a',
+    compressible: true,
+  }),
   '/assets/zvm-console-design.fc18bc02c200.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-console-design.fc18bc02c200.css'),
@@ -6947,6 +6953,7 @@ const _CSS_AUTH = '<link rel="stylesheet" href="/assets/zvm-r46-auth.286cb26442a
 const _CSS_PRIVILEGED_AUTH = '<link rel="stylesheet" href="/assets/zvm-privileged-auth.daab7ea4861a.css">';
 const _CSS_CLIENT_WORKSPACE = '<link rel="stylesheet" href="/assets/zvm-r46-client-workspace.6dbf0f685e67.css">';
 const _CSS_LANDING = '<link rel="stylesheet" href="/assets/zvm-r46-landing.af4c6e5c623b.css">';
+const _CSS_PUBLIC_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-public-premium.ab131a22bcdd.css">';
 const _CSS_FAQ = '<link rel="stylesheet" href="/assets/zvm-faq.b388ca55cbf4.css">';
 const _CSS_PRIVACY = '<link rel="stylesheet" href="/assets/zvm-privacy.7be30b7da0a1.css">';
 const _CSS_TERMS = '<link rel="stylesheet" href="/assets/zvm-terms.f1c470efdbbb.css">';
@@ -7075,7 +7082,7 @@ const renderLandingPage = createLandingRenderer({
   escHtml,
   favicon: _FAV,
   sharedCssLink: _CSS_SHARED + _CSS_STANDALONE,
-  landingCssLink: _CSS_LANDING + _CSS_SYSTEM,
+  landingCssLink: _CSS_LANDING + _CSS_SYSTEM + _CSS_PUBLIC_PREMIUM,
   chromeStoreBadge: renderChromeStoreBadge,
   plans: ZVM_PUBLIC_PLANS,
   publicNav: portalUser => _sharedNav({ activePath: '/', portalUser, showBack: false }),
@@ -7171,7 +7178,7 @@ function renderPlanosPage(portalUser = null) {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="description" content="Planos ZVM SOLO (R$39,90, 1 número), START (R$59,90, 3 números), PRO (R$94,90, 5 números) e ENTERPRISE sob consulta.">
 <title>ZVM — Planos e Preços</title><link rel="icon" type="image/svg+xml" href="${_FAV}">
-${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PLANS}${_CSS_SYSTEM}</head><body>${_sharedNav({activePath:'/planos',portalUser,showBack:true})}
+${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PLANS}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}</head><body class="zvm-public-premium zvm-plans-premium">${_sharedNav({activePath:'/planos',portalUser,showBack:true})}
 <main id="main-content"><header class="page-hero"><div class="page-hero-tag">Licenças ZVM</div><h1>Escolha seu <span>ritmo de operação</span></h1><p>Todos os planos têm os mesmos recursos. O limite muda apenas conforme a quantidade de números conectados.</p></header>
 <div class="plans-wrap">${needPicker}${buyerBox}${purchaseNote}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section><p class="plans-footnote">Precisa de mais números? <a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Converse com o suporte</a></p></div></main>
 <dialog class="checkout-dialog" aria-labelledby="checkout-title"><div class="dialog-inner">${modalContent}</div></dialog>${_standaloneFoot()}
@@ -7309,7 +7316,7 @@ function renderStandaloneFaqPage(portalUser = null) {
     ['Conta e suporte', [_faqPick('Onde encontro a versão oficial'), _faqPick('Esqueci minha senha'), _faqPick('Como falo com o suporte')]],
   ];
   const content = groups.map(([title, items]) => `<section class="faq-group"><h2>${title}</h2>${items.map(([q,a])=>`<details class="faq-item"><summary>${q}</summary><p>${a}</p></details>`).join('')}</section>`).join('');
-  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ZVM — Perguntas Frequentes</title><meta name="description" content="Dúvidas sobre compra, instalação, licença, planos, dispositivos, conta e suporte da ZVM - Automações."><link rel="icon" type="image/svg+xml" href="${_FAV}">${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_FAQ}${_CSS_SYSTEM}</head><body>${_sharedNav({activePath:'/faq',portalUser,showBack:true})}<main id="main-content"><header class="faq-hero"><div class="faq-kicker">Central de respostas</div><h1>Ajuda sem rodeios</h1><p>Compra, entrega, validade e dispositivos explicados de forma direta.</p></header><div class="faq-wrap">${content}<aside class="faq-support"><div><strong>Não encontrou sua resposta?</strong><p>O WhatsApp continua disponível como canal de suporte.</p></div><a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Falar com suporte</a></aside></div></main>${_standaloneFoot()}</body></html>`;
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ZVM — Perguntas Frequentes</title><meta name="description" content="Dúvidas sobre compra, instalação, licença, planos, dispositivos, conta e suporte da ZVM - Automações."><link rel="icon" type="image/svg+xml" href="${_FAV}">${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_FAQ}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}</head><body class="zvm-public-premium zvm-faq-premium">${_sharedNav({activePath:'/faq',portalUser,showBack:true})}<main id="main-content"><header class="faq-hero"><div class="faq-kicker">Central de respostas</div><h1>Ajuda sem rodeios</h1><p>Compra, entrega, validade e dispositivos explicados de forma direta.</p></header><div class="faq-wrap">${content}<aside class="faq-support"><div><strong>Não encontrou sua resposta?</strong><p>O WhatsApp continua disponível como canal de suporte.</p></div><a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Falar com suporte</a></aside></div></main>${_standaloneFoot()}</body></html>`;
 }
 
 // Tipografia do corpo do documento (renderPrivacyPage)

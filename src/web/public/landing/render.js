@@ -70,7 +70,7 @@ function createLandingRenderer({ escHtml, favicon, sharedCssLink, landingCssLink
 <title>ZVM - Automações | CRM e automação no WhatsApp Web</title>
 <meta name="description" content="CRM, Disparos, Fluxos, Funis, Biblioteca, Agenda, FollowUp e Assistentes IA integrados ao WhatsApp Web.">
 <link rel="icon" type="image/svg+xml" href="${favicon}">${sharedCssLink}${landingCssLink}</head>
-<body class="r466-body">${typeof publicNav === 'function' ? publicNav(portalUser) : `<a class="r466-skip" href="#main-content">Pular para o conteúdo</a>`}
+<body class="r466-body zvm-public-premium">${typeof publicNav === 'function' ? publicNav(portalUser) : `<a class="r466-skip" href="#main-content">Pular para o conteúdo</a>`}
 <main id="main-content">
 <section class="r466-hero r466-hero-centered">
   <div class="r466-hero-bg" aria-hidden="true"><svg class="r4618-ambient-wave wave-one" viewBox="0 0 1500 650" preserveAspectRatio="none"><path d="M-100 365 C260 540 385 160 775 354 S1190 520 1620 266"/></svg><svg class="r4618-ambient-wave wave-two" viewBox="0 0 1500 650" preserveAspectRatio="none"><path d="M-90 500 C350 275 565 580 892 435 S1290 255 1600 452"/></svg></div>
