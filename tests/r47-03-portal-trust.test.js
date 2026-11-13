@@ -38,6 +38,20 @@ assert.match(plans,/<a href="\/cliente\/planos" class="active" aria-current="pag
 assert.match(plans,/Vendas e renovações temporariamente suspensas\./);
 assert.doesNotMatch(plans,/data-buy-plan=/,'disabled sales must not expose checkout');
 assert.doesNotMatch(plans,/https:\/\/pay\.cakto\.com\.br\//,'payment link exposed while paused');
+const {localizePublicHtml}=require('../src/web/public/i18n');
+const faq=api.renderStandaloneFaqPage(null);
+const publicPlans=api.renderPlanosPage(null);
+for(const [name,html] of [['faq',faq],['public plans',publicPlans]]){
+ assert.match(html,/As renovações estão temporariamente suspensas\./,name+' should explain pause');
+ assert.match(html,/A troca de plano por compra está temporariamente suspensa\./,name+' should explain change limitation');
+ assert.doesNotMatch(html,/Entre no portal e clique em &quot;Renovar agora&quot;/,name+' must not promise a disabled renewal');
+}
+for(const [lang,label] of [['en','Renewals are temporarily paused.'],['pt-PT','As renovações estão temporariamente suspensas.']]){
+ const localized=localizePublicHtml(faq,lang,{path:'/faq'});
+ assert(localized.includes(label),lang+' FAQ pause copy is untranslated');
+ if(lang==='en')assert(localized.includes('Do not retry payments while checkout is unavailable.'),'EN expired key guidance absent');
+ if(lang==='pt-PT')assert(localized.includes('Não repita pagamentos enquanto não existir checkout disponível.'),'PT-PT expired key guidance absent');
+}
 const admin=api.renderAdminDashboard({keysSnapshot:{'qa-zvm-r4703':expired},portalUsers:[],portalUserCount:0});
 assert.match(admin,/<button type="button" id="hdr-suspect-badge"/,'suspect filter must be keyboard operable');
 assert.match(admin,/id="hdr-suspect-badge"[^>]*onclick="[^"]*filterKeys\(\)/,'filter action disconnected');
