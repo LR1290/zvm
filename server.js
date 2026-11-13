@@ -7297,7 +7297,7 @@ ${_sharedNav({activePath:'/privacidade',portalUser,showBack:true})}
     <a href="${ZVM_SUPPORT_URL}" class="privacy-contact" target="_blank" rel="noopener noreferrer">Falar com suporte</a></p>
   </div>
 </div></main>
-${_sharedFoot()}
+${_standaloneFoot()}
 
 </body></html>`;
 }
@@ -7339,7 +7339,7 @@ function renderStandaloneFaqPage(portalUser = null) {
 // via CSS extra anexado depois de _standaloneCss (mesma técnica de
 // applyStandaloneFrame), sem tocar renderPrivacyPage.
 function renderStandalonePrivacyPage(portalUser = null) {
-  return renderPrivacyPage(portalUser).replace(/<footer class="zfooter">[\\s\\S]*?<\\/footer>/, _standaloneFoot());
+  return renderPrivacyPage(portalUser);
 }
 
 function renderStandaloneTermsPage(portalUser = null, locale = 'pt-BR') {
