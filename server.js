@@ -5397,10 +5397,10 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: 'd7d7bba83d4424fe90de4ba00d1c1ea627607a8cb56e0bee7a2590346aa27369',
     compressible: true,
   }),
-  '/assets/zvm-plans.26a755b1251d.js': Object.freeze({
+  '/assets/zvm-plans.3d82262649b9.js': Object.freeze({
     type: 'text/javascript; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-plans.26a755b1251d.js'),
-    sha256: '26a755b1251d9156fba66e60fee49dc195b2ca52044fbb5d36348baed18a955a',
+    file: path.join(__dirname, 'assets', 'zvm-plans.3d82262649b9.js'),
+    sha256: '3d82262649b9e75c7943b07f6f39088f66810346fdd142023afd3cbe8b9bccad',
     compressible: true,
   }),
   '/assets/zvm-shell-home-real.a9c1a0d7b030.png': Object.freeze({
@@ -6535,7 +6535,7 @@ function renderStandalonePortalPlans(user, keyData){
   const body=`<div class="client-shell">${renderClientPortalRail('plans')}<main id="main-content" class="client-main client-plans-main" tabindex="-1">
     <div class="dash-topbar"><div class="dash-page-heading"><span>Minha ZVM</span><strong>Renovações e planos</strong></div><div class="dash-topbar-user">${renderClientAccountIdentity(user)}<a href="/cliente/logout" class="dash-logout">Sair da conta</a></div></div>
     <section class="client-plans-public-style"><header class="client-plans-public-head client-plan-intro"><span>Renove ou altere seu plano</span><h1>Escolha o plano ideal</h1><p>SOLO para 1 número, START para até 3, PRO para até 5 e ENTERPRISE sob consulta.</p></header>${ZVM_SALES_PAUSED ? '<div class="purchase-note sales-paused-alert" role="status"><strong>Vendas e renovações temporariamente suspensas.</strong> Estamos realizando ajustes; sua licença atual não será modificada.</div>' : ''}${needPicker}${legacyRenewal}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section><p class="plans-footnote">Precisa de mais de 10 números? <a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Falar com suporte</a></p></section>
-    ${ZVM_SALES_PAUSED ? '' : modal}<script src="/assets/zvm-plans.26a755b1251d.js" defer></script>
+    ${ZVM_SALES_PAUSED ? '' : modal}<script src="/assets/zvm-plans.3d82262649b9.js" defer></script>
   </main></div>`;
   return renderPortalPage(body,'ZVM — Renovações e Planos','',_CSS_PLANS+_CSS_SALES_STATE);
 }
@@ -7209,7 +7209,7 @@ ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PLANS}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM
 <main id="main-content"><header class="page-hero"><div class="page-hero-tag">Licenças ZVM</div><h1>Escolha seu <span>ritmo de operação</span></h1><p>Todos os planos têm os mesmos recursos. O limite muda apenas conforme a quantidade de números conectados.</p></header>
 <div class="plans-wrap">${needPicker}${buyerBox}${purchaseNote}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section><p class="plans-footnote">Precisa de mais números? <a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">Converse com o suporte</a></p></div></main>
 ${ZVM_SALES_PAUSED ? '' : `<dialog class="checkout-dialog" aria-labelledby="checkout-title"><div class="dialog-inner">${modalContent}</div></dialog>`}${_standaloneFoot()}
-<script src="/assets/zvm-plans.26a755b1251d.js" defer></script></body></html>`;
+<script src="/assets/zvm-plans.3d82262649b9.js" defer></script></body></html>`;
 }
 
 // ──────────────── PRIVACIDADE ──────────────
