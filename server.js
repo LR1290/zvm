@@ -7181,13 +7181,13 @@ function renderPlanosPage(portalUser = null) {
   const cards = Object.values(ZVM_PUBLIC_PLANS).map(plan => {
     const price = formatPlanPrice(plan.price);
     const perDevice = plan.consult ? '' : (plan.price / plan.maxUses).toFixed(2).replace('.', ',');
-    const popular = plan.id === 'pro_v2';
+    const popular = plan.id === 'pro';
     const identity = PLAN_IDENTITY[plan.id] || { subtitle: '' };
     const icon = PLAN_ICONS[plan.id] || '';
     // Checkout de visitante: Cakto coleta e-mail e envia a chave sem exigir sessão ZVM.
     // Quando logado, o claim assinado continua permitindo renovação da chave correta.
     const action = plan.consult
-      ? ''
+      ? '<a class="plan-btn plan-btn-outline r4701-contact-plan" href="'+escHtml(ZVM_SUPPORT_URL)+'" target="_blank" rel="noopener noreferrer">Consultar a equipe ↗</a>'
       : ZVM_SALES_PAUSED
         ? '<button class="plan-btn plan-btn-outline" type="button" disabled aria-disabled="true">Vendas temporariamente pausadas</button>'
         : !plan.enabled
@@ -7233,9 +7233,33 @@ function renderPlanosPage(portalUser = null) {
 <meta name="description" content="Planos ZVM SOLO (R$39,90, 1 número), START (R$59,90, 3 números), PRO (R$94,90, 5 números) e ENTERPRISE sob consulta.">
 <title>ZVM — Planos e Preços</title><link rel="icon" type="image/svg+xml" href="${_FAV}">
 ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PLANS}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_SALES_STATE}${_CSS_PUBLIC_EXPERIENCE}</head><body class="zvm-public-premium zvm-plans-premium zvm-experience">${_sharedNav({activePath:'/planos',portalUser,showBack:true})}
-<main id="main-content" class="r4700-plans-main"><header class="page-hero r4700-plans-hero"><div class="page-hero-tag">Licenças ZVM • 30 dias</div><h1>Seu ritmo de trabalho.<br><span>Sua licença ZVM.</span></h1><p>Todos os planos oferecem a mesma experiência. Escolha pelo número de WhatsApps autorizados e acompanhe sua licença no Portal do Cliente.</p></header>
-<div class="plans-wrap">${purchaseNote}${renderPurchaseJourney()}<div class="r4700-plans-selection"><div class="r4700-selection-header"><span>Compare os planos</span><h2>Encontre o acesso ideal.</h2></div>${needPicker}${buyerBox}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section></div>
+<main id="main-content" class="r4700-plans-main r4701-plans-main">
+<header class="page-hero r4700-plans-hero r4701-plans-hero"><div class="r4701-plans-hero-inner">
+  <div class="r4701-plans-hero-copy"><div class="page-hero-tag">Planos e Licenças</div><h1>Planos e <span>Licenças.</span></h1><p>Um único produto, todos os recursos da ZVM. Escolha sua licença conforme o número de WhatsApps que precisa conectar e gerencie tudo no Portal do Cliente.</p>
+    <div class="r4701-plans-hero-actions"><a class="r4701-button primary" href="#selecionar-plano">Ver planos abaixo ↓</a><a class="r4701-button secondary" href="/?sec=produto">Ver a ZVM na prática ↗</a></div>
+    <div class="r4701-plans-hero-highlights"><span>✓ Mesmo produto</span><span>✓ Recursos inclusos</span><span>✓ Licença gerenciável</span></div>
+  </div>
+  <div class="r4701-license-demo" role="img" aria-label="Representação ilustrativa do gerenciamento de licenças ZVM, sem dados de clientes.">
+    <div class="r4701-license-demo-bar"><span><i aria-hidden="true"></i>ZVM</span><small>Painel de licenças • ilustração</small><span aria-hidden="true">◦◦◦</span></div>
+    <div class="r4701-license-demo-shell"><div class="r4701-license-demo-side" aria-hidden="true"><strong>◈ Início</strong><span>◎ CRM</span><span>◇ Fluxos</span><span>▤ Biblioteca</span><span>↗ Disparos</span><span class="active">▣ Planos e Licenças</span></div>
+    <div class="r4701-license-demo-content"><div class="r4701-license-demo-heading"><strong>Planos e Licenças</strong><small>Consulte seus acessos</small></div><div class="r4701-license-demo-grid"><div><small>Licença</small><strong>ZVM PRO</strong><span>Até ${ZVM_PUBLIC_PLANS.pro.maxUses} números</span></div><div><small>Seu portal</small><strong>Gerencie</strong><span>Chaves e acessos</span></div><div><small>Vinculação</small><strong>Por chave</strong><span>Após a compra</span></div><div><small>Ativação</small><strong>Na sua conta</strong><span>Controle de acesso</span></div></div></div></div>
+    <div class="r4701-license-caption">Prévia ilustrativa · informações demonstrativas</div>
+  </div>
+</div></header>
+<div class="plans-wrap">
+${purchaseNote}
+<div class="r4700-plans-selection" id="selecionar-plano"><div class="r4700-selection-header"><span>Escolha seu plano</span><h2>Planos para cada necessidade.</h2><p>Mais números, mais flexibilidade. Os preços e limites abaixo são os valores reais cadastrados na ZVM.</p></div>${needPicker}${buyerBox}<section class="pricing-grid" aria-label="Planos ZVM">${cards}</section></div>
+<section class="r4701-plans-included" aria-labelledby="r4701-included-title">
+  <div class="r4701-plans-included-copy"><span class="r4700-eyebrow">Comparativo</span><h2 id="r4701-included-title">O que está incluído em todos os planos.</h2><p>O conjunto de módulos é o mesmo. O limite de números e o preço variam conforme a licença escolhida.</p></div>
+  <div class="r4701-plans-included-grid"><article><span>◇</span><div><strong>Fluxos e Funis</strong><small>Organização das automações</small></div></article><article><span>▤</span><div><strong>Biblioteca</strong><small>Conteúdo reutilizável</small></div></article><article><span>♧</span><div><strong>CRM</strong><small>Contatos e etapas</small></div></article><article><span>➤</span><div><strong>Disparos</strong><small>Preparação e controle</small></div></article><article><span>▥</span><div><strong>Organização</strong><small>Gestão da rotina</small></div></article><article><span>↻</span><div><strong>Licenciamento</strong><small>Chaves e acessos</small></div></article></div>
+</section>
+${renderPurchaseJourney()}
+<div class="r4701-license-advice"><span aria-hidden="true">⚿</span><div><strong>A chave é vinculada depois da compra</strong><p>Quando os pagamentos estiverem disponíveis, informe seu e-mail na Cakto. Depois de receber a licença, acesse o <a href="/cliente/vincular">Portal do Cliente</a> para vincular a chave à sua conta ZVM. Não é necessário fazer login antes de comprar.</p></div></div>
+<section class="r4701-plans-faq" aria-labelledby="r4701-plans-faq-title"><div><span class="r4700-eyebrow">FAQ</span><h2 id="r4701-plans-faq-title">Dúvidas sobre planos e licenças.</h2><p>Respostas rápidas sobre o funcionamento da licença, pagamento e gerenciamento.</p><a href="/faq" class="r4701-button secondary">Ver FAQ completa ↗</a></div><div class="r4701-plans-faq-list">
+${[_faqPick('Preciso criar uma conta'),_faqPick('Como recebo minha licença'),_faqPick('Como renovo'),_faqPick('Como vincular uma chave'),_faqPick('Posso alterar')].map(([q,a])=>`<details><summary>${escHtml(q)}</summary><p>${escHtml(a)}</p></details>`).join('')}
+</div></section>
 <section class="r4700-plans-assurance" aria-label="O que está incluído"><div><span aria-hidden="true">✓</span><strong>Recursos completos</strong><p>CRM, Fluxos, Funis, Biblioteca e demais módulos disponíveis na extensão.</p></div><div><span aria-hidden="true">✓</span><strong>Clareza na licença</strong><p>Prazo, número de acessos e gerenciamento ficam visíveis no Portal do Cliente.</p></div><div><span aria-hidden="true">✓</span><strong>Suporte para começar</strong><p>Orientações de instalação e vinculação pelo canal oficial da ZVM.</p></div></section>
+<div class="r4701-plans-final"><div><h2>Pronto para organizar seu atendimento?</h2><p>${ZVM_SALES_PAUSED ? 'As vendas estão temporariamente suspensas. Você pode conhecer os recursos e preparar sua conta enquanto isso.' : 'Escolha uma licença, receba sua chave e vincule-a à sua conta para começar.'}</p></div><div>${ZVM_SALES_PAUSED ? '<span class="r4701-pause-pill" role="status">Vendas em pausa</span>' : '<a class="r4701-button primary" href="#selecionar-plano">Comparar planos ↑</a>'}</div></div>
 <p class="plans-footnote">Tem dúvidas sobre sua escolha? <a href="/faq">Consulte as perguntas frequentes</a> ou <a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer">fale com o suporte</a>.</p></div></main>
 ${ZVM_SALES_PAUSED ? '' : `<dialog class="checkout-dialog" aria-labelledby="checkout-title"><div class="dialog-inner">${modalContent}</div></dialog>`}${_standaloneFoot()}
 <script src="/assets/zvm-plans.3d82262649b9.js" defer></script></body></html>`;
