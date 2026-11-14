@@ -111,8 +111,9 @@ const COMMERCIAL_TX_CLAIM_WAIT_MS = Math.max(0, Math.min(15000, parseInt(process
 const COMMERCIAL_TX_CLAIM_RETENTION_DAYS = Math.max(30, Math.min(730, parseInt(process.env.COMMERCIAL_TX_CLAIM_RETENTION_DAYS || '400', 10) || 400));
 const IS_PRODUCTION = String(process.env.NODE_ENV || '').toLowerCase() === 'production' || String(process.env.RENDER || '').toLowerCase() === 'true';
 const ZVM_LOCAL_SAFE_MODE = /^(1|true|yes|on)$/i.test(String(process.env.ZVM_LOCAL_SAFE_MODE || '').trim());
-// Owner-controlled storefront switch: does not disable Cakto webhooks or previously paid deliveries.
-const ZVM_SALES_PAUSED = /^(1|true|yes|on)$/i.test(String(process.env.ZVM_SALES_PAUSED || '').trim());
+// Storefront fails closed if this setting is absent or unrecognized. Owner must explicitly opt in to sales.
+// This does not disable Cakto webhooks, existing licenses, or previously paid deliveries.
+const ZVM_SALES_PAUSED = !/^(0|false|no|off)$/i.test(String(process.env.ZVM_SALES_PAUSED ?? '').trim());
 const ANALYTICS_PASS = process.env.ANALYTICS_PASS || '';
 // Opcional: se preenchida, exige TOTP além da senha pra entrar no Analytics
 // (mesma implementação de verifyTOTP já usada pro admin — nenhuma lib nova).
@@ -6073,7 +6074,7 @@ const ZVM_FAQ_ITEMS = [
   ['Como removo um dispositivo?', 'Em Minha Conta, na seção "Dispositivos cadastrados", clique em Remover ao lado do número.'],
   ['Como vincular uma chave que já tenho?', 'Em Minha Conta, acesse "Vincular chave" e informe o código recebido — ela passa a aparecer no seu painel.'],
   ['Minha chave expirou. O que faço?', ZVM_SALES_PAUSED ? 'Sua chave continua vinculada à sua conta, mas as renovações estão temporariamente suspensas. Consulte os planos e, se precisar de orientação sobre o acesso, fale com o suporte. Não tente repetir pagamentos sem checkout disponível.' : 'Entre no portal e clique em "Renovar agora" — a validade é atualizada assim que o pagamento é confirmado. Seus dispositivos vinculados continuam salvos e voltam a funcionar assim que a chave é renovada.'],
-  ['Preciso usar o mesmo e-mail na compra?', 'Sim. Use o mesmo e-mail cadastrado na sua conta ZVM na página de pagamento da Cakto pra chave ser vinculada automaticamente.'],
+  ['Preciso usar o mesmo e-mail na compra?', ZVM_SALES_PAUSED ? 'Não. Quando as compras forem reabertas, você poderá comprar sem criar uma conta. Informe um e-mail válido para receber a chave; se já tiver conta ZVM, usar o mesmo e-mail facilita a associação. Caso contrário, vincule a chave no Portal do Cliente.' : 'Não. Você pode comprar sem criar uma conta. Informe um e-mail válido para receber a chave; se já tiver conta ZVM, usar o mesmo e-mail facilita a associação. Caso contrário, vincule a chave no Portal do Cliente.'],
   ['Como funciona o 2FA?', 'Ative em Segurança 2FA: adicione a chave de configuração no seu aplicativo autenticador e confirme com o código de 6 dígitos a cada login.'],
   ['Onde encontro a versão oficial?', 'Use o link oficial disponibilizado pela ZVM no site ou no Portal do Cliente. Evite instalar cópias de terceiros ou arquivos recebidos por fontes não verificadas.'],
   ['Minha compra foi aprovada mas a chave não apareceu.', 'Aguarde alguns minutos para o processamento automático. Se persistir, fale com o suporte.'],
