@@ -5343,10 +5343,10 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '6dac16eb7b5b103668a2350e94d0e0fcb75c5f3e93051a7626bee286375dcfd6',
     compressible: true,
   }),
-  '/assets/zvm-r46-system.8873e4d662f5.css': Object.freeze({
+  '/assets/zvm-r46-system.aa366d924866.css': Object.freeze({
     type: 'text/css; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-r46-system.8873e4d662f5.css'),
-    sha256: '8873e4d662f5be5eb9c80b9b584762b7eb8267a068522f09926c2f5d9d9b108d',
+    file: path.join(__dirname, 'assets', 'zvm-r46-system.aa366d924866.css'),
+    sha256: 'aa366d92486687fb82d3e3dc17f5f846c204f1b3ac799b76d6c7a427932306cf',
     compressible: true,
   }),
   '/assets/zvm-standalone.d6d2222fe00a.css': Object.freeze({
@@ -5901,7 +5901,7 @@ function renderPortalPage(body, title='ZVM — Minha Conta', extra='', headExtra
 <link rel="icon" type="image/svg+xml" href="${fav}">
 <link rel="stylesheet" href="/assets/zvm-r46-client-dashboard.64213392bec3.css"><link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css">
 ${headExtra}
-<link rel="stylesheet" href="/assets/zvm-r46-system.8873e4d662f5.css">
+<link rel="stylesheet" href="/assets/zvm-r46-system.aa366d924866.css">
 <link rel="stylesheet" href="/assets/zvm-console-design.1ee8679046a6.css">
 </head><body class="zvm-client-premium">
 <a class="portal-skip" href="#main-content">Ir para o conteúdo</a>
@@ -6610,7 +6610,7 @@ function renderAdminDashboard(opts = {}) {
 <title>ZVM — Administração</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/assets/zvm-admin-dashboard.c06071e4d73f.css">
-<link rel="stylesheet" href="/assets/zvm-r46-system.8873e4d662f5.css">
+<link rel="stylesheet" href="/assets/zvm-r46-system.aa366d924866.css">
 <link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css">
 <link rel="stylesheet" href="/assets/zvm-console-design.1ee8679046a6.css">
 </head>
@@ -6987,7 +6987,7 @@ ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_AUTH}${_CSS_PRIVILEGED_AUTH}${_CSS_SYSTEM
 // ──────────── SHARED PAGE HELPERS ───────────────────────────────
 const _FAV = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2308080f'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E";
 const _CSS_SHARED = '<link rel="stylesheet" href="/assets/zvm-shared.6dac16eb7b5b.css">';
-const _CSS_SYSTEM = '<link rel="stylesheet" href="/assets/zvm-r46-system.8873e4d662f5.css">';
+const _CSS_SYSTEM = '<link rel="stylesheet" href="/assets/zvm-r46-system.aa366d924866.css">';
 const _CSS_STANDALONE = '<link rel="stylesheet" href="/assets/zvm-standalone.d6d2222fe00a.css">';
 const _CSS_AUTH = '<link rel="stylesheet" href="/assets/zvm-r46-auth.286cb26442a2.css"><link rel="stylesheet" href="/assets/zvm-auth-premium.d44a7ff35e68.css">';
 const _CSS_PRIVILEGED_AUTH = '<link rel="stylesheet" href="/assets/zvm-privileged-auth.daab7ea4861a.css">';
@@ -7690,7 +7690,7 @@ async function renderAnalyticsDashboard(fixture = null) {
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/assets/zvm-analytics-dashboard.623a7bbac134.css">
 <link rel="stylesheet" href="/assets/zvm-analytics-lab.40519085ae68.css">
-<link rel="stylesheet" href="/assets/zvm-r46-system.8873e4d662f5.css">
+<link rel="stylesheet" href="/assets/zvm-r46-system.aa366d924866.css">
 <link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css">${_CSS_ANALYTICS_PREMIUM}</head><body class="zvm-analytics-premium">
 <a class="analytics-skip" href="#analytics-main">Pular para o conteudo principal</a>
 <div class="analytics-shell">
@@ -8911,7 +8911,7 @@ async function handleRequest(req, res) {
     const dbOk = _publicStatusCache.dbOk;
     const upSec = Math.floor(process.uptime());
     const upStr = upSec < 60 ? upSec + 's' : upSec < 3600 ? Math.floor(upSec/60) + 'm' : Math.floor(upSec/3600) + 'h ' + Math.floor((upSec%3600)/60) + 'm';
-    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="60"><title>ZVM — Status</title><link rel="stylesheet" href="/assets/zvm-status.be29b1782339.css"><link rel="stylesheet" href="/assets/zvm-r46-system.8873e4d662f5.css"></head><body><div class="card"><div class="logo">${renderStandaloneBrand('compact')}</div><h1>Status do Serviço</h1><div class="row"><span class="label">API</span><span class="value ok">● Operacional</span></div><div class="row"><span class="label">Banco de Dados</span><span class="value ${dbOk?'ok':'fail'}">${dbOk?'● Conectado':'● Desconectado'}</span></div><div class="row"><span class="label">Uptime</span><span class="value">${upStr}</span></div><div class="ts">Atualizado: ${new Date().toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</div></div></body></html>`;
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="60"><title>ZVM — Status</title><link rel="stylesheet" href="/assets/zvm-status.be29b1782339.css"><link rel="stylesheet" href="/assets/zvm-r46-system.aa366d924866.css"></head><body><div class="card"><div class="logo">${renderStandaloneBrand('compact')}</div><h1>Status do Serviço</h1><div class="row"><span class="label">API</span><span class="value ok">● Operacional</span></div><div class="row"><span class="label">Banco de Dados</span><span class="value ${dbOk?'ok':'fail'}">${dbOk?'● Conectado':'● Desconectado'}</span></div><div class="row"><span class="label">Uptime</span><span class="value">${upStr}</span></div><div class="ts">Atualizado: ${new Date().toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</div></div></body></html>`;
     res.writeHead(dbOk ? 200 : 503, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', ..._SEC_HEADERS, 'Content-Security-Policy': _CSP_PUBLIC_STRICT });
     res.end(html);
     return;
