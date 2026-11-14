@@ -6067,12 +6067,12 @@ const ZVM_FAQ_ITEMS = [
   ['Preciso criar uma conta antes de comprar?', 'Não. Quando as vendas estiverem abertas, você pode comprar diretamente na Cakto sem login ZVM. Informe um e-mail válido; depois do pagamento, a chave será enviada para ele. Crie ou acesse sua conta ZVM e vincule a chave pelo Portal do Cliente. Usar o mesmo e-mail ajuda na vinculação automática.'],
   ['Como instalar e acessar a ZVM?', 'Use sempre o link oficial disponibilizado pela ZVM, instale a extensão no navegador compatível e entre com sua conta. Se a licença ainda não estiver vinculada, faça a vinculação pelo Portal do Cliente.'],
   ['Quantos números posso usar?', 'Nos novos planos, START oferece 1 acesso e PRO oferece até 3. ENTERPRISE é sob consulta e não está disponível para compra automática. Contratos anteriores preservam seus limites.'],
-  ['Como renovo minha licença?', 'No portal, acesse "Renovar / Alterar Plano" e conclua a compra pela Cakto — a renovação é aplicada automaticamente à sua chave.'],
-  ['Posso alterar meu plano?', 'Sim. Escolha outro plano em Planos; a chave existente passa a usar o novo limite de dispositivos.'],
+  ['Como renovo minha licença?', ZVM_SALES_PAUSED ? 'As renovações estão temporariamente suspensas. Consulte os planos no Portal do Cliente; quando os pagamentos voltarem a ficar disponíveis, a renovação será feita pelo checkout da Cakto.' : 'No portal, acesse "Renovar / Alterar Plano" e conclua a compra pela Cakto — a renovação é aplicada automaticamente à sua chave.'],
+  ['Posso alterar meu plano?', ZVM_SALES_PAUSED ? 'A troca de plano por compra está temporariamente suspensa. Você pode consultar as opções em Planos, mas não há checkout disponível enquanto as vendas estiverem pausadas.' : 'Sim. Escolha outro plano em Planos; a chave existente passa a usar o novo limite de dispositivos.'],
   ['Onde vejo a validade da minha licença?', 'No painel Minha Conta, nas seções "Minha licença" e "Resumo da conta".'],
   ['Como removo um dispositivo?', 'Em Minha Conta, na seção "Dispositivos cadastrados", clique em Remover ao lado do número.'],
   ['Como vincular uma chave que já tenho?', 'Em Minha Conta, acesse "Vincular chave" e informe o código recebido — ela passa a aparecer no seu painel.'],
-  ['Minha chave expirou. O que faço?', 'Entre no portal e clique em "Renovar agora" — a validade é atualizada assim que o pagamento é confirmado. Seus dispositivos vinculados continuam salvos e voltam a funcionar assim que a chave é renovada.'],
+  ['Minha chave expirou. O que faço?', ZVM_SALES_PAUSED ? 'Sua chave continua vinculada à sua conta, mas as renovações estão temporariamente suspensas. Consulte os planos e, se precisar de orientação sobre o acesso, fale com o suporte. Não tente repetir pagamentos sem checkout disponível.' : 'Entre no portal e clique em "Renovar agora" — a validade é atualizada assim que o pagamento é confirmado. Seus dispositivos vinculados continuam salvos e voltam a funcionar assim que a chave é renovada.'],
   ['Preciso usar o mesmo e-mail na compra?', 'Sim. Use o mesmo e-mail cadastrado na sua conta ZVM na página de pagamento da Cakto pra chave ser vinculada automaticamente.'],
   ['Como funciona o 2FA?', 'Ative em Segurança 2FA: adicione a chave de configuração no seu aplicativo autenticador e confirme com o código de 6 dígitos a cada login.'],
   ['Onde encontro a versão oficial?', 'Use o link oficial disponibilizado pela ZVM no site ou no Portal do Cliente. Evite instalar cópias de terceiros ou arquivos recebidos por fontes não verificadas.'],
@@ -6300,7 +6300,7 @@ function renderClientPortalRail(active='overview'){
     ['password','Senha','/cliente/senha'],
     ['email','E-mail','/cliente/email']
   ];
-  const links=items.map(([id,label,href])=>`<a href="${href}" class="${active===id?'active':''}"><span class="client-nav-icon">${portalUiIcon(id)}</span><span>${label}</span></a>`).join('');
+  const links=items.map(([id,label,href])=>`<a href="${href}" class="${active===id?'active':''}"${active===id?' aria-current="page"':''}><span class="client-nav-icon">${portalUiIcon(id)}</span><span>${label}</span></a>`).join('');
   return `<aside class="client-rail" aria-label="Navegação da conta">
     <div class="client-rail-brand">
       <div class="client-rail-logo">${renderStandaloneBrand('compact')}</div>
@@ -6365,8 +6365,8 @@ function renderStandalonePortalDashboard(user, keyData, okMsg='', deviceMsg='') 
   }
   const expiryAlert = expiryTier ? `<div class="expiry-alert ${expiryTier}" role="status">
     <span class="expiry-alert-icon" aria-hidden="true">${expiryTier==='critico'?'⛔':'⚠'}</span>
-    <span class="expiry-alert-text">${expiryTier==='critico'?'Sua licença expirou.':expiryTier==='forte'?'Sua licença vence em menos de 72 horas.':'Sua licença vence em menos de 7 dias.'}</span>
-    <a href="/cliente/planos" class="expiry-alert-cta">Renovar agora</a>
+    <span class="expiry-alert-text">${expiryTier==='critico'?'Sua licença expirou.':expiryTier==='forte'?'Sua licença vence em menos de 72 horas.':'Sua licença vence em menos de 7 dias.'}${ZVM_SALES_PAUSED?' Vendas e renovações temporariamente suspensas.':''}</span>
+    <a href="/cliente/planos" class="expiry-alert-cta">${ZVM_SALES_PAUSED?'Consultar planos':'Renovar agora'}</a>
   </div>` : '';
 
   // ── Status pill ──────────────────────────────────────────────────
@@ -6455,7 +6455,7 @@ ${renderClientPortalRail('overview')}
 </div>
 
 ${updateBanner}
-${okMsg ? `<div class="client-ok-banner">✅ ${escHtml(okMsg)}</div>` : ''}
+${okMsg ? `<div class="client-ok-banner" role="status" aria-live="polite">✅ ${escHtml(okMsg)}</div>` : ''}
 ${deviceMsg ? `<div class="device-warning" role="alert">⚠ ${escHtml(deviceMsg)} <a href="/cliente">Atualizar dispositivos</a></div>` : ''}
 ${noKeySection}
 
@@ -6485,7 +6485,7 @@ ${keyData ? `<section class="client-quickfacts" aria-label="Resumo da licença">
     ${expiryAlert}
     ${countdownBlock}
     <div class="client-focus-actions">
-      <a class="primary" href="/cliente/planos">Renovar / mudar plano</a>
+      <a class="primary" href="/cliente/planos">${ZVM_SALES_PAUSED?'Consultar planos':'Renovar / mudar plano'}</a>
       <a href="/cliente/2fa/setup">🛡 Segurança</a>
       ${hasKey ? `<form method="POST" action="/cliente/desvincular" data-confirm="Tem certeza? Isso desvinculará sua chave desta conta."><button type="submit" class="client-unlink">🔓 Desvincular chave</button></form>` : ''}
     </div>
@@ -6624,7 +6624,7 @@ function renderAdminDashboard(opts = {}) {
   <div class="hright">
     <span class="hdr-meta" id="last-refresh" role="status" aria-live="polite">—</span>
     <span class="hdr-meta" id="hdr-users-count" title="Usuários no Portal" style="display:none;background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd);border-radius:var(--r-sm);padding:2px 8px;font-weight:700">👥 <span id="hdr-users-num">0</span></span>
-    <span id="hdr-suspect-badge" title="Chaves suspeitas — clique para filtrar" style="background:#ff475718;color:#ff4757;border:1px solid #ff475730;border-radius:var(--r-sm);padding:2px 8px;font-weight:700;font-size:11px;cursor:pointer" onclick="document.getElementById('filter-status').value='suspect';switchTab('keys');filterKeys()">⚠ <span id="hdr-suspect-num">0</span> suspeita(s)</span>
+    <button type="button" id="hdr-suspect-badge" title="Filtrar chaves suspeitas" style="background:#ff475718;color:#ff4757;border:1px solid #ff475730;border-radius:var(--r-sm);padding:2px 8px;font:inherit;font-weight:700;font-size:11px;min-height:32px;cursor:pointer" onclick="document.getElementById('filter-status').value='suspect';switchTab('keys');filterKeys()">⚠ <span id="hdr-suspect-num">0</span> suspeita(s)</button>
     <span id="hdr-session-warn" style="display:none;background:#f0b42912;color:var(--orange);border:1px solid var(--org-brd);border-radius:var(--r-sm);padding:2px 8px;font-size:11px">⏱ Sessão expira em <span id="hdr-session-min">—</span> min</span>
     <button class="btn bw" onclick="doRefresh(true)">↻ Atualizar</button>
     ${renderZvmActionHub('admin')}
