@@ -74,7 +74,11 @@ async function run(){
      background:getComputedStyle(el).backgroundImage,boxShadow:getComputedStyle(el).boxShadow}));
    assert(visual.background!=='none'||visual.boxShadow!=='none',name+'/'+width+' missing art direction '+JSON.stringify(visual));
    assert.equal(await page.locator('[data-buy-plan],a[href^="https://pay.cakto.com.br/"]').count(),0,name+' leaked checkout');
-   if(name==='home')assert(await page.locator('.r4701-hero-visual img').evaluate(im=>im.complete&&im.naturalWidth>0),'genuine product image missing');
+   if(name==='home'){
+    assert(await page.locator('.r4701-hero-visual img').evaluate(im=>im.complete&&im.naturalWidth>0),'genuine product image missing');
+    const heroArt=await page.locator('.r4701-hero').evaluate(el=>getComputedStyle(el).backgroundImage);
+    assert(heroArt.includes('radial-gradient'),width+' Home gradient not painted: '+heroArt);
+   }
    if(name==='plans'){
     const planArt=await page.evaluate(()=>{
       const hero=document.querySelector('.r4701-plans-hero');
@@ -85,7 +89,7 @@ async function run(){
     });
     assert(planArt.halo!=='none'&&planArt.halo!=='normal',width+' Plans decorative art missing');
     assert(['3px','4px'].includes(planArt.cardStripe),width+' Plans pricing accent missing '+JSON.stringify(planArt));
-    assert(planArt.heroBackground!=='none'&&planArt.heroBackground.length>5,width+' Plans background lost '+JSON.stringify(planArt));
+    assert(planArt.heroBackground.includes('radial-gradient'),width+' Plans gradient not painted '+JSON.stringify(planArt));
     const badge=page.locator('.price-card.featured .price-badge').first();
     assert(await badge.isVisible(),width+' featured plan badge hidden');
     const geometry=await badge.evaluate(el=>{
