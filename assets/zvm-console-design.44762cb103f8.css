@@ -343,3 +343,20 @@ body.zvm-client-premium .client-key-command{
  body.zvm-client-premium .client-rail .client-rail-card,
  body.zvm-client-premium .client-rail .client-rail-version{display:none!important}
 }
+
+/* R47.05 — expand operational canvases only on wide desktops.
+   Sidebars, modal dimensions and data/text measures are unchanged. */
+@media (min-width:1280px){
+ body.zvm-admin-r6 .admin-content{
+  max-width:1900px;width:100%;
+  padding-inline:clamp(26px,2.4vw,52px);
+ }
+ body.zvm-client-premium .client-shell{
+  /* The existing R8 client shell is already full-width; do not introduce an
+     ultrawide left-aligned cap while its legacy margin authority is active. */
+  width:100%;
+ }
+ body.zvm-client-premium .page-wrap.portal-page-wrap{
+  padding-inline:clamp(18px,2.4vw,45px);
+ }
+}

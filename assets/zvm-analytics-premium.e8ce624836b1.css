@@ -193,3 +193,11 @@ body.zvm-analytics-premium :is(.sc,.analytics-pulse,.insight-card,.chart-card):h
 @media(prefers-contrast:more){
  body.zvm-analytics-premium :is(.analytics-hero,.analytics-pulse,.sc,.insight-card,.chart-card){border-color:#9fdbb7}
 }
+
+/* R47.05 — larger analytical workspace; metrics and chart calculations unchanged. */
+@media (min-width:1280px){
+ body.zvm-analytics-premium .analytics-workspace main{
+  width:100%;max-width:1900px;
+  padding-inline:clamp(26px,2.4vw,52px);
+ }
+}

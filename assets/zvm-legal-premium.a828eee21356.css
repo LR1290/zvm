@@ -345,3 +345,31 @@ body.zvm-public-premium.zvm-error-premium .zvm-error-aside{
 @media(prefers-reduced-motion:reduce){
  body.zvm-public-premium.zvm-privacy-premium .zvm-trust-toc a{transition:none}
 }
+
+/* R47.05 — wider institutional pages; legal text retains its readable line measure. */
+@media (min-width:1280px){
+ body.zvm-public-premium:is(.zvm-legal-premium,.zvm-error-premium){
+  --r475-legal-wide:min(1840px,calc(100% - clamp(48px,6.25vw,136px)));
+ }
+ body.zvm-public-premium.zvm-privacy-premium .zvm-trust-layout{
+  width:var(--r475-legal-wide);max-width:none;
+  grid-template-columns:minmax(250px,315px) minmax(0,1fr);
+  gap:clamp(30px,3.8vw,78px);
+ }
+ body.zvm-public-premium.zvm-legal-premium .terms-wrap{
+  width:var(--r475-legal-wide);max-width:none;
+  grid-template-columns:minmax(250px,315px) minmax(0,1fr);
+  gap:clamp(30px,3.8vw,78px);
+  padding-inline:0;
+ }
+ body.zvm-public-premium.zvm-error-premium .zvm-error-grid{
+  width:var(--r475-legal-wide);max-width:none;
+  grid-template-columns:minmax(0,1.12fr) minmax(320px,.88fr);
+ }
+ body.zvm-public-premium.zvm-legal-premium .r466-footer-inner{
+  width:var(--r475-legal-wide);max-width:none;
+ }
+ body.zvm-public-premium.zvm-legal-premium :is(.doc-section,.terms-section) :is(p,li){
+  max-width:82ch;
+ }
+}

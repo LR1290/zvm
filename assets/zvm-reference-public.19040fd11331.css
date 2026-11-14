@@ -903,3 +903,48 @@ body.zvm-plans-premium.zvm-experience .r4701-plans-final:before{
 @media(prefers-contrast:more){
  body.zvm-experience :is(.r4701-feature-card,.r4701-faq-tile,.price-card){border-color:#93d4ac}
 }
+
+/* R47.05 — wide desktop: meaningful use of horizontal space without stretching prose.
+   All width changes begin on desktop; tablet and phone breakpoints are unchanged. */
+@media (min-width:1280px){
+ body.zvm-experience{
+  --r475-wide:min(1840px,calc(100% - clamp(48px,6.25vw,136px)));
+  --xp-max:1840px;
+ }
+ body.r466-body.zvm-experience .r466-hero.r4701-hero{padding-inline:0}
+ body.r466-body.zvm-experience .r4701-hero .r466-hero-layout{
+  width:var(--r475-wide);max-width:none;
+  grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr);
+  gap:clamp(46px,4.8vw,105px);
+ }
+ body.r466-body.zvm-experience .r4701-hero .r466-hero-copy h1{
+  font-size:clamp(55px,4.25vw,86px);
+ }
+ body.r466-body.zvm-experience :is(.r466-product,.r466-benefits,.r466-features,.r466-how,.r466-plans,.r466-faq,.r4701-features){
+  width:var(--r475-wide);max-width:none;padding-inline:0;
+ }
+ body.r466-body.zvm-experience :is(.r4700-journey,.r4700-trust-inner,.r4701-workflow-showcase){
+  width:var(--r475-wide);max-width:none;
+ }
+ body.zvm-experience .r466-footer-inner{
+  width:var(--r475-wide);max-width:none;
+ }
+ body.r466-body.zvm-experience .r466-final>div{
+  max-width:min(1040px,100%);
+ }
+ body.zvm-faq-premium.zvm-experience :is(.faq-hero.r4701-faq-hero,.r4701-faq-top,.r4700-faq-pause,.r4700-faq-layout){
+  width:var(--r475-wide);max-width:none;
+ }
+ body.zvm-faq-premium.zvm-experience .r4700-faq-layout{
+  grid-template-columns:minmax(260px,320px) minmax(0,1fr);
+  gap:clamp(28px,3.5vw,74px);
+ }
+ body.zvm-plans-premium.zvm-experience .r4701-plans-hero-inner{
+  width:var(--r475-wide);max-width:none;
+  grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);
+  gap:clamp(36px,4.2vw,92px);
+ }
+ body.zvm-plans-premium.zvm-experience .plans-wrap{
+  width:var(--r475-wide);max-width:none;padding-inline:0;
+ }
+}
