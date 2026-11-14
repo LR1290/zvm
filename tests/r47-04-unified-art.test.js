@@ -24,6 +24,21 @@ for(const [name,hash,old,selectors] of assets){
  assert(fresh.includes('@media('),'new visual rules lack responsive/accessibility media');
  assert(!fresh.includes('!important'),'R47.04 must add no specificity overrides: '+name);
 }
+// A global R46 legacy CSS !important had neutralized R47.04 backgrounds.
+const systemFile='zvm-r46-system.aa366d924866.css';
+const legacySystemFile='zvm-r46-system.8873e4d662f5.css';
+const systemCss=fs.readFileSync(path.join(root,'assets',systemFile),'utf8');
+assert.equal(crypto.createHash('sha256').update(systemCss).digest('hex'),
+ 'aa366d92486687fb82d3e3dc17f5f846c204f1b3ac799b76d6c7a427932306cf',
+ 'immutable global CSS fingerprint');
+assert(server.includes('/assets/'+systemFile),'new canonical system CSS not linked');
+assert(!server.includes(legacySystemFile),'obsolete global CSS registry leaked');
+assert(!fs.existsSync(path.join(root,'assets',legacySystemFile)),
+ 'unreferenced legacy system CSS retained');
+assert(!systemCss.includes('.page-hero{background:transparent!important'),
+ 'global hero transparent lock blocks the approved illustrations');
+assert(!systemCss.includes(',.analytics-hero,.analytics-pulse,.analytics-insights>*,.admin-overview,.admin-pulse,.chart-card,.viz-frame,.doc-section,.faq-item{background:linear-gradient(180deg,rgba(8,20,13,.90),rgba(4,11,7,.90))!important'),
+ 'global surface important lock still masks local art');
 process.env.ZVM_SALES_PAUSED='1';process.env.RENDER='true';
 process.env.ADMIN_USER='r4704-test-admin';process.env.ADMIN_PASS='r4704-test-only';
 process.env.MONGODB_URI='mongodb://127.0.0.1:27017/zvm_r4704_offline';
