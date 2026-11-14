@@ -1,0 +1,950 @@
+/* ZVM R47.01 — reference-faithful public pages.
+   Presentation only; keep real prices, license semantics and sales pause. */
+body.zvm-experience{
+ --r471-bg:#060e0b;--r471-surface:#0e1914;--r471-panel:#11221a;
+ --r471-line:#28513c;--r471-green:#46e3a2;--r471-green-lite:#9ff4c4;
+ --r471-white:#f4f8f5;--r471-muted:#b5c6b9;--r471-amber:#f7cd7c;
+ background:#070e0b;color:var(--r471-white);
+}
+body.zvm-experience :is(.r4701-button,.r4701-feature-card,.r4701-faq-tile,.r4701-contact-plan):focus-visible{
+ outline:3px solid #b0ffd3;outline-offset:4px;
+}
+body.zvm-experience .r4701-button{
+ display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:50px;
+ padding:12px 22px;text-decoration:none;border-radius:12px;font-weight:800;font-size:14px;
+ transition:background .18s ease,border-color .18s ease,transform .18s ease;
+}
+body.zvm-experience .r4701-button.primary{background:linear-gradient(145deg,#6ff5af,#1dd577);color:#052017;border:1px solid #59eea0}
+body.zvm-experience .r4701-button.secondary{border:1px solid #547060;background:#101a15;color:#f1f7f2}
+body.zvm-experience .r4701-button:hover{transform:translateY(-2px)}
+body.zvm-experience .r4701-button.primary:hover{background:#a6f8ce}
+body.zvm-experience .r4701-button.secondary:hover{border-color:#a1d5b4;background:#17291e}
+
+/* LANDING — split hero with genuine product photography from the ZVM UI. */
+body.r466-body.zvm-experience .r466-hero.r4701-hero{
+ min-height:0;padding:clamp(70px,8vw,112px) 25px clamp(58px,7vw,95px);
+ background:radial-gradient(ellipse at 78% 26%,rgba(16,181,95,.25),transparent 72%),
+ linear-gradient(155deg,#08130e 5%,#040a08 100%);
+ border-bottom:1px solid #183627;
+}
+body.zvm-experience .r4701-hero .r466-hero-bg{
+ position:absolute;inset:0;pointer-events:none;opacity:.42;
+}
+body.zvm-experience .r4701-hero .r466-hero-layout{
+ display:grid;grid-template-columns:minmax(0,.91fr) minmax(0,1.09fr);
+ align-items:center;gap:clamp(25px,3.2vw,52px);width:min(1290px,100%);
+ margin:0 auto;position:relative;z-index:2;
+}
+body.zvm-experience .r4701-hero .r466-hero-copy{
+ max-width:none;min-width:0;margin:0;text-align:left;
+}
+body.zvm-experience .r4701-hero .r466-hero-copy h1{
+ max-width:none;text-align:left;margin:25px 0 23px;
+ font-size:clamp(41px,4.5vw,70px);letter-spacing:-.066em;line-height:1.065;
+}
+body.zvm-experience .r4701-hero .r466-hero-copy>p{
+ max-width:55ch;text-align:left;margin:0;font-size:clamp(16px,1.6vw,18px);
+ line-height:1.8;color:#c3d4c7;
+}
+body.zvm-experience .r4701-hero .r466-hero-links{
+ justify-content:flex-start;margin:27px 0 0;gap:11px;
+}
+body.zvm-experience .r4701-hero .r466-hero-links .r466-btn{
+ min-width:0;min-height:51px;padding:12px 20px;font-size:14px;border-radius:12px;
+}
+body.zvm-experience .r4701-hero-highlights{
+ display:flex;gap:13px 21px;flex-wrap:wrap;margin:27px 0 0;
+ color:#c6dbcc;font-size:13px;font-weight:660;
+}
+body.zvm-experience .r4701-hero-highlights span{display:inline-flex;gap:8px;align-items:center}
+body.zvm-experience .r4701-hero-highlights svg{
+ display:block;width:17px;height:17px;fill:none;
+ stroke:var(--r471-green);stroke-width:1.85;stroke-linecap:round;stroke-linejoin:round;
+}
+body.zvm-experience .r4701-hero .r4700-hero-support{
+ justify-content:flex-start;margin-top:24px;
+}
+body.zvm-experience .r4701-hero .r466-license-note{
+ margin:12px 0 0;text-align:left;font-size:12px;color:#abbfb0;
+}
+body.zvm-experience .r4701-hero .r466-hero-float{
+ display:none;
+}
+body.zvm-experience .r4701-hero-visual{
+ margin:0;min-width:0;width:100%;position:relative;padding:0;
+ border:1px solid #2d7750;background:#09120e;overflow:hidden;
+ border-radius:20px;box-shadow:0 30px 95px rgba(0,0,0,.48),0 0 80px rgba(25,197,93,.13);
+ transform:perspective(1500px) rotateY(-2deg);
+}
+body.zvm-experience .r4701-window-chrome{
+ height:41px;display:flex;align-items:center;justify-content:space-between;
+ gap:9px;padding:0 14px;background:#101f17;border-bottom:1px solid #284536;
+ color:#b9d3c2;font-size:12px;
+}
+body.zvm-experience .r4701-window-brand{
+ display:flex;align-items:center;gap:8px;font-weight:850;
+ font-size:15px;color:#f1f8f2;
+}
+body.zvm-experience .r4701-window-brand i,
+body.zvm-experience .r4701-license-demo-bar i{
+ display:inline-block;width:16px;height:16px;
+ background:linear-gradient(135deg,transparent 26%,#46e3a2 27% 43%,transparent 44% 54%,#46e3a2 55% 73%,transparent 74%);
+}
+body.zvm-experience .r4701-window-dots{color:#75af87;letter-spacing:2px}
+body.zvm-experience .r4701-hero-visual img{
+ display:block;width:100%;height:auto;max-width:100%;
+ object-fit:cover;object-position:top;aspect-ratio:1.6;
+}
+body.zvm-experience .r4701-hero-visual figcaption{
+ padding:9px 14px;border-top:1px solid #183727;background:#0b1610;
+ color:#98baa4;font-size:11px;text-align:center;line-height:1.5;
+}
+body.zvm-experience .r4701-hero .r4612-scroll-cue{display:none}
+body.zvm-experience .r4700-product-trust{background:#0b1710;border-block-color:#244330}
+
+/* JOURNEY — the horizontal four-step sequence from the approved reference. */
+body.zvm-experience .r4700-journey{
+ width:min(1210px,calc(100% - 46px));padding:clamp(60px,7vw,95px) 0 40px;
+ display:block;margin:auto;border:0;
+}
+body.zvm-experience .r4700-journey-intro{
+ position:static;text-align:center;margin:0 auto 36px;max-width:850px;
+}
+body.zvm-experience .r4700-journey h2{
+ margin:10px auto 13px;font-size:clamp(30px,3.5vw,45px);
+ max-width:760px;letter-spacing:-.05em;line-height:1.16;
+}
+body.zvm-experience .r4700-journey-intro p{
+ margin:auto;font-size:15px;line-height:1.8;max-width:74ch;
+}
+body.zvm-experience .r4700-journey .r4700-inline-link{margin-top:16px}
+body.zvm-experience .r4700-journey-list{
+ display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:25px;
+}
+body.zvm-experience .r4700-journey-list li{
+ min-height:0;display:flex;align-items:flex-start;flex-direction:column;
+ gap:9px;padding:10px 3px 0;background:none;border:0;border-radius:0;position:relative;
+}
+body.zvm-experience .r4700-journey-list li:not(:last-child):after{
+ content:'';position:absolute;top:34px;left:82px;right:-13px;
+ height:1px;background:linear-gradient(90deg,#2f7551,#1c382a);
+}
+body.zvm-experience .r4700-journey-icon{
+ order:-1;width:56px;height:56px;border-radius:15px;background:#0e2419;
+ border:1px solid #36a36d;color:#63efaa;
+}
+body.zvm-experience .r4700-journey-num{
+ margin:0;padding:3px 9px;border-radius:50px;background:#2be88d;
+ color:#052015;font-weight:850;font-size:11px;
+}
+body.zvm-experience .r4700-journey h3{margin:0;font-size:19px}
+body.zvm-experience .r4700-journey-list p{max-width:26ch;font-size:14px}
+
+/* RESOURCES — six compact cards like the concept. */
+body.zvm-experience .r4701-features{
+ max-width:1250px;margin:0 auto;padding:clamp(48px,6vw,88px) 22px;
+}
+body.zvm-experience .r4701-features .r466-section-head{max-width:900px;margin:0 auto 30px}
+body.zvm-experience .r4701-feature-grid{
+ display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;
+ margin:0 auto 33px;
+}
+body.zvm-experience .r4701-feature-card{
+ display:grid;grid-template-columns:47px minmax(0,1fr) 20px;
+ align-items:center;gap:13px;min-height:98px;padding:15px 16px;
+ border:1px solid #315440;border-radius:16px;background:linear-gradient(140deg,#13231a,#0a1510);
+ text-decoration:none;color:#f1f8f2;transition:transform .2s,border-color .2s,background .2s;
+}
+body.zvm-experience .r4701-feature-card:hover{
+ border-color:#63dc98;background:#162e20;transform:translateY(-3px);
+}
+body.zvm-experience .r4701-feature-icon{
+ display:grid;place-items:center;width:46px;height:46px;border-radius:12px;
+ color:#62ecaa;background:linear-gradient(140deg,#174b30,#0e291d);
+}
+body.zvm-experience .r4701-feature-icon svg{
+ width:24px;height:24px;fill:none;stroke:currentColor;
+ stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round;
+}
+body.zvm-experience .r4701-feature-card strong{display:block;font-size:16px;margin-bottom:4px}
+body.zvm-experience .r4701-feature-card small{
+ display:block;font-size:12.5px;color:#b6cebd;line-height:1.55;
+}
+body.zvm-experience .r4701-feature-arrow{color:#aee9c3;font-size:21px}
+
+/* FLOW SHOWCASE — illustrative flow with no fictitious performance claims. */
+body.zvm-experience .r4701-workflow-showcase{
+ width:min(1220px,calc(100% - 48px));margin:45px auto 84px;
+ display:grid;grid-template-columns:1.07fr .93fr;align-items:center;gap:clamp(30px,5vw,72px);
+}
+body.zvm-experience .r4701-flow-preview{
+ border:1px solid #237247;border-radius:18px;background:#08130e;overflow:hidden;
+ box-shadow:0 18px 60px rgba(0,0,0,.33),0 0 70px rgba(39,203,118,.08);
+}
+body.zvm-experience .r4701-flow-top{
+ display:flex;gap:8px;justify-content:space-between;align-items:center;padding:13px 17px;
+ border-bottom:1px solid #254032;color:#e8f4ea;font-size:14px;
+}
+body.zvm-experience .r4701-flow-top small{font-size:11px;color:#aacbb4}
+body.zvm-experience .r4701-flow-status{
+ padding:5px 9px;border-radius:6px;background:#16412a;color:#88f5b5;font-size:11px;
+}
+body.zvm-experience .r4701-flow-canvas{
+ display:flex;flex-direction:column;align-items:center;padding:33px 18px 35px;
+ background-image:radial-gradient(#284031 1px,transparent 1px);
+ background-size:18px 18px;
+}
+body.zvm-experience .r4701-flow-node{
+ width:min(265px,94%);padding:12px 15px;background:#15251b;
+ border:1px solid #3a5945;border-radius:12px;color:#f1f9f2;
+ display:grid;grid-template-columns:27px 1fr;gap:3px 8px;
+}
+body.zvm-experience .r4701-flow-node.active{border-color:#35b275;background:#142d1f}
+body.zvm-experience .r4701-flow-dot{
+ display:grid;place-items:center;grid-row:span 2;
+ width:26px;height:26px;border-radius:7px;background:#22543a;color:#9cf2bb;
+}
+body.zvm-experience .r4701-flow-node strong{font-size:13px}
+body.zvm-experience .r4701-flow-node small{font-size:11px;color:#bbcec0}
+body.zvm-experience .r4701-flow-line{height:23px;width:2px;background:#39b777;position:relative}
+body.zvm-experience .r4701-flow-line:after{content:'⌄';position:absolute;color:#39db86;bottom:-7px;left:-4px}
+body.zvm-experience .r4701-showcase-copy h2{
+ color:#f3f8f4;font-size:clamp(32px,3.7vw,50px);line-height:1.1;
+ letter-spacing:-.055em;margin:13px 0 18px;
+}
+body.zvm-experience .r4701-showcase-copy p{
+ font-size:16px;color:#b8cbbd;line-height:1.75;max-width:54ch;
+}
+body.zvm-experience .r4701-showcase-copy ul{
+ margin:18px 0 0;padding:0;list-style:none;display:grid;gap:12px;
+}
+body.zvm-experience .r4701-showcase-copy li{
+ display:flex;align-items:center;gap:10px;font-size:14px;color:#d6e7db;
+}
+body.zvm-experience .r4701-showcase-copy li:before{
+ content:'✓';display:grid;place-items:center;flex:none;width:21px;height:21px;
+ border-radius:50%;background:#135236;color:#76efab;font-weight:900;
+}
+body.zvm-experience .r4701-showcase-copy .r4700-inline-link{margin-top:24px}
+body.zvm-experience .r466-faq{border-top-color:#274633}
+body.zvm-experience .r466-final{
+ border:1px solid #1e7a4c;border-radius:22px;
+ background:radial-gradient(ellipse at 70% 110%,rgba(31,214,111,.23),transparent 64%),#0c2117;
+}
+body.zvm-experience .r466-final h2{letter-spacing:-.04em}
+
+/* FAQ — premium search-focused help center. */
+body.zvm-faq-premium.zvm-experience .r4701-faq-main{
+ background:radial-gradient(ellipse at 77% 2%,rgba(20,162,87,.14),transparent 83%);
+}
+body.zvm-faq-premium.zvm-experience .faq-hero.r4701-faq-hero{
+ width:min(1240px,calc(100% - 48px));max-width:none;
+ display:grid;grid-template-columns:1.4fr .6fr;align-items:center;gap:25px;
+ min-height:255px;padding:50px 0 30px;margin:0 auto;
+}
+body.zvm-faq-premium.zvm-experience .r4701-faq-hero h1{
+ font-size:clamp(44px,5vw,69px);margin:13px 0 17px;line-height:1.09;letter-spacing:-.06em;
+}
+body.zvm-faq-premium.zvm-experience .r4701-faq-hero h1 em{color:#55e7a0}
+body.zvm-faq-premium.zvm-experience .r4701-faq-hero p{max-width:61ch;font-size:17px}
+body.zvm-faq-premium.zvm-experience .r4701-question-art{
+ display:grid;place-items:center;min-height:215px;position:relative;
+ filter:drop-shadow(0 13px 35px rgba(9,186,93,.16));
+}
+body.zvm-faq-premium.zvm-experience .r4701-question-art-back{
+ position:absolute;width:145px;height:145px;border:1px solid #3c8656;
+ border-radius:26px;transform:rotate(20deg) translate(21px,0);
+ background:linear-gradient(140deg,#174c30,#08150e);
+ box-shadow:0 0 40px rgba(29,195,89,.2);
+}
+body.zvm-faq-premium.zvm-experience .r4701-question-art-front{
+ position:relative;width:145px;height:145px;border:1px solid #41d786;
+ display:grid;place-items:center;border-radius:24px;transform:rotate(-7deg);
+ background:linear-gradient(160deg,#1c6341,#091d13);
+}
+body.zvm-faq-premium.zvm-experience .r4701-question-art-front span{
+ display:grid;place-items:center;width:91px;height:91px;border-radius:27px;
+ background:linear-gradient(155deg,#15a65c,#0b482a);border:1px solid #44ef9d;
+ color:#dcffe8;font-size:75px;line-height:1;font-weight:700;
+}
+body.zvm-faq-premium.zvm-experience .r4701-faq-top{
+ width:min(1240px,calc(100% - 48px));margin:0 auto 23px;
+}
+body.zvm-faq-premium.zvm-experience .r4700-faq-search{
+ position:relative;margin:0 0 22px;padding:0;border:0;background:transparent;
+}
+body.zvm-faq-premium.zvm-experience .r4700-faq-search label{
+ position:absolute;width:1px;height:1px;clip-path:inset(50%);overflow:hidden;white-space:nowrap;
+}
+body.zvm-faq-premium.zvm-experience .r4700-faq-search input{
+ min-height:60px;border:1px solid #37c980;border-radius:18px;padding:16px 106px 16px 50px;
+ background:#0a1710;box-shadow:0 0 29px rgba(26,188,102,.10);
+}
+body.zvm-faq-premium.zvm-experience .r4700-faq-search input:focus{border-color:#a0f2c8;box-shadow:0 0 0 3px rgba(80,229,147,.17)}
+body.zvm-faq-premium.zvm-experience .r4701-faq-shortcut{
+ position:absolute;right:13px;top:16px;display:inline-block;
+ padding:5px 8px;border:1px solid #426d50;border-radius:6px;
+ background:#12241a;color:#b9d3bd;font:700 12px ui-monospace,monospace;
+}
+body.zvm-faq-premium.zvm-experience #faq-result-status{margin:7px 0 0;padding-left:3px;font-size:12px}
+body.zvm-faq-premium.zvm-experience .r4701-faq-top-title{font-size:16px;font-weight:800;margin:24px 0 14px}
+body.zvm-faq-premium.zvm-experience .r4701-faq-tile-grid{
+ display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;
+}
+body.zvm-faq-premium.zvm-experience .r4701-faq-tile{
+ min-width:0;display:grid;grid-template-columns:39px minmax(0,1fr) 14px;
+ align-items:center;gap:10px;text-decoration:none;color:#f2f8f3;
+ background:#0f1f17;border:1px solid #315c44;
+ border-radius:14px;padding:13px;min-height:83px;
+ transition:border-color .18s,background .18s,transform .18s;
+}
+body.zvm-faq-premium.zvm-experience .r4701-faq-tile:hover{
+ border-color:#4ce79b;background:#173021;transform:translateY(-2px);
+}
+body.zvm-faq-premium.zvm-experience .r4701-faq-tile-icon,
+body.zvm-faq-premium.zvm-experience .r4701-group-icon,
+body.zvm-faq-premium.zvm-experience .r4701-rail-icon{
+ display:grid;place-items:center;flex:none;width:38px;height:38px;border-radius:10px;
+ color:#50f0a0;background:#123f2a;
+}
+body.zvm-faq-premium.zvm-experience .r4701-faq-tile-icon svg,
+body.zvm-faq-premium.zvm-experience .r4701-group-icon svg,
+body.zvm-faq-premium.zvm-experience .r4701-rail-icon svg{
+ width:22px;height:22px;stroke:currentColor;stroke-width:1.7;fill:none;
+ stroke-linecap:round;stroke-linejoin:round;
+}
+body.zvm-faq-premium.zvm-experience .r4701-faq-tile-body strong{display:block;font-size:13px;line-height:1.3}
+body.zvm-faq-premium.zvm-experience .r4701-faq-tile-body small{display:block;color:#aac5b2;line-height:1.45;font-size:11px;margin-top:4px}
+body.zvm-faq-premium.zvm-experience .r4701-faq-tile-arrow{font-size:16px;color:#abdaba}
+body.zvm-faq-premium.zvm-experience .r4700-faq-pause{
+ width:min(1240px,calc(100% - 48px));margin:20px auto 30px;
+ border:1px solid #9b7e38;border-left:4px solid #f5ca77;
+ background:linear-gradient(110deg,#302411,#15190f);padding:15px 20px;
+ border-radius:13px;color:#f2dfba;font-size:14px;
+}
+body.zvm-faq-premium.zvm-experience .r4700-faq-layout{
+ width:min(1240px,calc(100% - 48px));
+ grid-template-columns:minmax(220px,275px) minmax(0,1fr);
+ gap:28px;padding-bottom:75px;
+}
+body.zvm-faq-premium.zvm-experience .r4700-faq-rail{
+ padding:16px;border-color:#29533c;background:linear-gradient(155deg,#0f2519,#0d1911);
+}
+body.zvm-faq-premium.zvm-experience .r4700-faq-rail-title{font-size:16px;padding:10px 10px 15px}
+body.zvm-faq-premium.zvm-experience .r4701-rail-icon{
+ width:27px;height:27px;border-radius:7px;background:transparent;color:#a2f3bf;
+}
+body.zvm-faq-premium.zvm-experience .r4701-rail-icon svg{width:20px;height:20px}
+body.zvm-faq-premium.zvm-experience .r4700-topic-link{font-weight:710}
+body.zvm-faq-premium.zvm-experience .r4700-topic-link:first-child{
+ background:#125c34;color:#f3fff6;
+}
+body.zvm-faq-premium.zvm-experience .r4700-faq-rail-help{
+ display:block;margin-top:20px;padding:22px 13px 17px;border:1px solid #2a774b;
+ border-radius:15px;background:linear-gradient(155deg,#123923,#0b1c12);
+}
+body.zvm-faq-premium.zvm-experience .r4701-help-icon{
+ display:grid;place-items:center;width:47px;height:47px;border-radius:13px;
+ background:#16653b;color:#b6ffd0;font-size:27px;margin-bottom:10px;
+}
+body.zvm-faq-premium.zvm-experience .r4700-faq-rail-help strong{display:block;font-size:18px;color:#f6faf6}
+body.zvm-faq-premium.zvm-experience .r4700-faq-rail-help a{
+ display:flex;align-items:center;justify-content:center;gap:6px;
+ min-height:43px;padding:8px 13px;margin-top:13px;
+ border-radius:9px;background:linear-gradient(130deg,#80ffc0,#19d46d);
+ color:#052017;font-weight:850;
+}
+body.zvm-faq-premium.zvm-experience .r4700-faq-rail-help ul{
+ display:grid;gap:9px;list-style:none;margin:18px 0 0;padding:0;
+}
+body.zvm-faq-premium.zvm-experience .r4700-faq-rail-help li{
+ font-size:12px;color:#c3e2cc;display:flex;gap:8px;align-items:center;
+}
+body.zvm-faq-premium.zvm-experience .r4700-faq-rail-help li:before{content:'✓';color:#67edab}
+body.zvm-faq-premium.zvm-experience .r4701-questions-heading{padding:0 0 10px}
+body.zvm-faq-premium.zvm-experience .r4701-questions-heading span{font-size:12px;color:#84eeb1;text-transform:uppercase;letter-spacing:.1em}
+body.zvm-faq-premium.zvm-experience .r4701-questions-heading h2{font-size:27px;letter-spacing:-.035em;margin:7px 0}
+body.zvm-faq-premium.zvm-experience .r4701-questions-heading p{font-size:14px;color:#b4cbbb;margin:0}
+body.zvm-faq-premium.zvm-experience .r4700-faq-groups{gap:21px}
+body.zvm-faq-premium.zvm-experience .faq-group{
+ background:transparent;border:0;margin:0;padding:0;
+}
+body.zvm-faq-premium.zvm-experience .r4700-faq-group-head{
+ border:0;padding:5px 0 12px;gap:12px;
+}
+body.zvm-faq-premium.zvm-experience .r4701-group-icon{width:43px;height:43px}
+body.zvm-faq-premium.zvm-experience .r4700-faq-group-head h2{font-size:20px}
+body.zvm-faq-premium.zvm-experience .r4701-group-intro{margin:4px 0 0;color:#a8c6b2;font-size:13px}
+body.zvm-faq-premium.zvm-experience .faq-item{
+ border:1px solid #31523d;border-radius:9px;background:#101b16;
+ margin:0 0 5px;overflow:hidden;
+}
+body.zvm-faq-premium.zvm-experience .faq-item summary{
+ min-height:45px;padding:11px 15px;font-size:14px;line-height:1.45;
+}
+body.zvm-faq-premium.zvm-experience .faq-item p{font-size:14px;padding:0 16px 16px;line-height:1.75}
+body.zvm-faq-premium.zvm-experience .faq-item summary:after{
+ border:0;background:none;width:auto;height:auto;color:#9feaba;font-size:20px;
+}
+body.zvm-faq-premium.zvm-experience .faq-support{
+ margin-top:25px;background:radial-gradient(ellipse at 85% 100%,rgba(26,216,104,.13),transparent 60%),#10241a;
+ border-color:#2d774c;
+}
+
+/* PLANS — split preview, real catalog, comparison, journey and license-link guidance. */
+body.zvm-plans-premium.zvm-experience .r4701-plans-hero{
+ text-align:left;padding:clamp(55px,6.7vw,88px) 24px 48px;
+ background:radial-gradient(ellipse at 82% 16%,rgba(17,188,94,.18),transparent 81%),#07110c;
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-hero-inner{
+ max-width:1240px;margin:0 auto;display:grid;
+ grid-template-columns:minmax(0,.87fr) minmax(0,1.13fr);gap:clamp(25px,5vw,72px);align-items:center;
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-hero-copy{min-width:0}
+body.zvm-plans-premium.zvm-experience .r4701-plans-hero h1{
+ max-width:none;text-align:left;font-size:clamp(42px,4.8vw,70px);
+ margin:10px 0 22px;line-height:1.08;
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-hero p{
+ text-align:left;margin:0;max-width:52ch;font-size:16px;line-height:1.8;
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-hero-actions{
+ display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin:26px 0 21px;
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-hero-highlights{
+ display:flex;gap:10px 18px;flex-wrap:wrap;
+ color:#b4dbc1;font-size:12px;font-weight:700;
+}
+body.zvm-plans-premium.zvm-experience .r4701-license-demo{
+ width:100%;min-width:0;border-radius:19px;overflow:hidden;
+ border:1px solid #31714b;background:#0a140e;
+ box-shadow:0 30px 65px rgba(0,0,0,.35),0 0 45px rgba(29,180,99,.13);
+}
+body.zvm-plans-premium.zvm-experience .r4701-license-demo-bar{
+ display:flex;align-items:center;justify-content:space-between;gap:8px;
+ min-height:39px;padding:8px 14px;background:#102017;
+ border-bottom:1px solid #284c37;color:#eaf4ec;
+}
+body.zvm-plans-premium.zvm-experience .r4701-license-demo-bar>span:first-child{
+ display:inline-flex;align-items:center;gap:7px;font-weight:850;font-size:15px;
+}
+body.zvm-plans-premium.zvm-experience .r4701-license-demo-bar small{font-size:11px;color:#afc8b5}
+body.zvm-plans-premium.zvm-experience .r4701-license-demo-shell{
+ display:grid;grid-template-columns:118px minmax(0,1fr);min-height:275px;
+}
+body.zvm-plans-premium.zvm-experience .r4701-license-demo-side{
+ display:grid;align-content:start;gap:12px;background:#0a1810;
+ border-right:1px solid #244030;padding:21px 9px;font-size:11px;color:#b3c8ba;
+}
+body.zvm-plans-premium.zvm-experience .r4701-license-demo-side .active{
+ padding:9px 7px;background:#145031;border-radius:8px;color:#e0ffed;
+}
+body.zvm-plans-premium.zvm-experience .r4701-license-demo-content{padding:22px;min-width:0}
+body.zvm-plans-premium.zvm-experience .r4701-license-demo-heading{
+ display:grid;gap:5px;color:#f3f9f5;margin-bottom:19px;
+}
+body.zvm-plans-premium.zvm-experience .r4701-license-demo-heading strong{font-size:18px}
+body.zvm-plans-premium.zvm-experience .r4701-license-demo-heading small{font-size:11px;color:#b5caba}
+body.zvm-plans-premium.zvm-experience .r4701-license-demo-grid{
+ display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;
+}
+body.zvm-plans-premium.zvm-experience .r4701-license-demo-grid>div{
+ display:grid;gap:5px;min-width:0;padding:12px 14px;background:#101f17;
+ border:1px solid #294634;border-radius:11px;
+}
+body.zvm-plans-premium.zvm-experience .r4701-license-demo-grid small{font-size:11px;color:#a4bfab}
+body.zvm-plans-premium.zvm-experience .r4701-license-demo-grid strong{font-size:16px;color:#edfff3}
+body.zvm-plans-premium.zvm-experience .r4701-license-demo-grid span{font-size:10px;color:#9dcfb1}
+body.zvm-plans-premium.zvm-experience .r4701-license-caption{
+ padding:8px 11px;border-top:1px solid #20412f;
+ color:#a3c5ad;font-size:10px;text-align:center;
+}
+body.zvm-plans-premium.zvm-experience .r4700-plans-selection{
+ padding-top:45px;margin-bottom:35px;border:0;
+}
+body.zvm-plans-premium.zvm-experience .r4700-selection-header p{
+ color:#b7cabd;max-width:72ch;margin:9px auto 0;font-size:14px;line-height:1.6;
+}
+body.zvm-plans-premium.zvm-experience .pricing-grid{
+ gap:13px;
+}
+body.zvm-plans-premium.zvm-experience .price-card{
+ border:1px solid #326248;border-radius:18px;padding:27px 22px 22px;
+ background:linear-gradient(145deg,#0d1b13,#0a160f);
+ min-width:0;box-shadow:none;
+}
+body.zvm-plans-premium.zvm-experience .price-card.featured{
+ border-color:#49ec97;background:linear-gradient(145deg,#103920,#0b2216);
+ box-shadow:0 0 0 1px rgba(55,218,126,.35),0 17px 60px rgba(5,56,27,.2);
+}
+body.zvm-plans-premium.zvm-experience .price-card .price-badge{
+ background:#45e691;color:#052517;border-radius:50px;font-size:10px;
+ padding:7px 10px;top:-12px;
+}
+body.zvm-plans-premium.zvm-experience .price-tier{
+ color:#f4faf5;font-size:25px;font-weight:850;
+}
+body.zvm-plans-premium.zvm-experience .price-subtitle{
+ color:#b8d7c3;letter-spacing:0;text-transform:none;
+ font-size:13px;font-weight:600;min-height:24px;
+}
+body.zvm-plans-premium.zvm-experience .price-val{font-size:clamp(32px,3vw,43px);letter-spacing:-.045em;overflow-wrap:anywhere}
+body.zvm-plans-premium.zvm-experience .price-feats li{font-size:13px}
+body.zvm-plans-premium.zvm-experience .plan-btn{
+ min-height:48px;margin-top:auto;
+}
+body.zvm-plans-premium.zvm-experience .plan-btn:disabled{
+ opacity:1;cursor:not-allowed;border:1px solid #466353;background:#1e3026;color:#d6e3d9;
+}
+body.zvm-plans-premium.zvm-experience .r4701-contact-plan{border-color:#447d59;color:#b4edca}
+body.zvm-plans-premium.zvm-experience .r4701-plans-included{
+ margin:35px 0 45px;padding:32px 0;
+ border-top:1px solid #2e563d;border-bottom:1px solid #2e563d;
+ display:grid;grid-template-columns:.9fr 1.1fr;gap:38px;align-items:center;
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-included-copy h2{
+ color:#f3faf4;font-size:clamp(28px,3.2vw,41px);
+ letter-spacing:-.05em;line-height:1.15;margin:11px 0 14px;
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-included-copy p{font-size:15px;color:#b4c8b8;line-height:1.75}
+body.zvm-plans-premium.zvm-experience .r4701-plans-included-grid{
+ display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-included-grid article{
+ display:grid;grid-template-columns:35px minmax(0,1fr);gap:10px;align-items:center;
+ min-height:80px;border:1px solid #2d5d41;border-radius:13px;
+ background:#0e2017;padding:12px;
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-included-grid article>span{
+ display:grid;place-items:center;width:34px;height:34px;border-radius:10px;
+ background:#12442b;color:#65ecaa;font-size:23px;
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-included-grid strong{font-size:14px;color:#eef9ef;display:block}
+body.zvm-plans-premium.zvm-experience .r4701-plans-included-grid small{display:block;font-size:11px;color:#aecab5;margin-top:4px}
+body.zvm-plans-premium.zvm-experience .r4700-purchase-journey{
+ max-width:none;padding:0;margin:35px 0 23px;background:none;border:0;
+}
+body.zvm-plans-premium.zvm-experience .r4700-purchase-heading h2{
+ font-size:clamp(26px,3vw,39px);letter-spacing:-.045em;
+}
+body.zvm-plans-premium.zvm-experience .r4700-purchase-steps li{
+ background:#0e1d14;border-color:#2a5b40;min-height:128px;padding:20px;
+}
+body.zvm-plans-premium.zvm-experience .r4700-purchase-index{
+ width:39px;height:39px;font-size:14px;border:1px solid #43c57f;
+}
+body.zvm-plans-premium.zvm-experience .r4701-license-advice{
+ display:flex;align-items:flex-start;gap:19px;padding:20px 24px;
+ margin:0 0 48px;background:linear-gradient(125deg,#133d26,#0b1b13);
+ border:1px solid #2ab76d;border-radius:15px;
+}
+body.zvm-plans-premium.zvm-experience .r4701-license-advice>span{
+ display:grid;place-items:center;width:40px;height:40px;flex:none;
+ border:1px solid #3dbd7a;border-radius:12px;background:#0c311e;
+ color:#7beca9;font-size:26px;
+}
+body.zvm-plans-premium.zvm-experience .r4701-license-advice strong{font-size:18px;color:#f0fff3}
+body.zvm-plans-premium.zvm-experience .r4701-license-advice p{font-size:14px;line-height:1.75;color:#c0dbc9;margin:7px 0 0}
+body.zvm-plans-premium.zvm-experience .r4701-license-advice a{color:#aaffcd;text-decoration:underline;text-underline-offset:3px}
+body.zvm-plans-premium.zvm-experience .r4701-plans-faq{
+ display:grid;grid-template-columns:.85fr 1.15fr;gap:40px;padding:23px 0 42px;
+ border-bottom:1px solid #244b34;
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-faq h2{
+ font-size:clamp(26px,3vw,40px);line-height:1.17;
+ color:#f2f8f3;letter-spacing:-.05em;margin:12px 0;
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-faq p{font-size:15px;color:#b7cbbb;line-height:1.7}
+body.zvm-plans-premium.zvm-experience .r4701-plans-faq .r4701-button{margin-top:20px}
+body.zvm-plans-premium.zvm-experience .r4701-plans-faq-list{display:grid;align-content:start;gap:7px}
+body.zvm-plans-premium.zvm-experience .r4701-plans-faq-list details{
+ background:#101e15;border:1px solid #30573e;border-radius:10px;overflow:hidden;
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-faq-list summary{
+ padding:13px 15px;font-weight:720;font-size:13px;color:#eef7ef;cursor:pointer;
+ list-style:none;display:flex;gap:12px;justify-content:space-between;
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-faq-list summary::-webkit-details-marker{display:none}
+body.zvm-plans-premium.zvm-experience .r4701-plans-faq-list summary:after{content:'⌄';color:#abedc2;font-size:20px;line-height:.8}
+body.zvm-plans-premium.zvm-experience .r4701-plans-faq-list details[open] summary:after{content:'⌃'}
+body.zvm-plans-premium.zvm-experience .r4701-plans-faq-list details p{margin:0;padding:2px 15px 16px;font-size:13px}
+body.zvm-plans-premium.zvm-experience .r4700-plans-assurance{margin-top:30px}
+body.zvm-plans-premium.zvm-experience .r4701-plans-final{
+ display:flex;align-items:center;justify-content:space-between;gap:30px;
+ border:1px solid #21804b;border-radius:20px;padding:28px 32px;margin-top:42px;
+ background:radial-gradient(ellipse at 65% 120%,rgba(28,233,111,.25),transparent 66%),#0c2517;
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-final h2{
+ font-size:clamp(25px,3vw,37px);letter-spacing:-.04em;margin:0 0 8px;
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-final p{
+ color:#bfd3c4;font-size:14px;line-height:1.7;margin:0;max-width:67ch;
+}
+body.zvm-plans-premium.zvm-experience .r4701-pause-pill{
+ display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;
+ border:1px solid #738e76;border-radius:12px;color:#dbe9de;
+ background:#29382d;padding:13px 18px;font-size:13px;font-weight:760;
+}
+body.zvm-plans-premium.zvm-experience .plans-wrap{padding-bottom:75px}
+
+
+/* R47.04 — ZVM art direction, applied inside the active reference stylesheet.
+   CSS art is decorative; real app screenshot, plan catalog and accessible actions remain canonical. */
+body.zvm-experience{
+ --zvm-art-halo:rgba(70,227,162,.19);
+ --zvm-art-edge:rgba(130,245,178,.23);
+ --zvm-art-surface:#0c1912;
+ --zvm-art-grid:rgba(96,188,128,.085);
+ --zvm-art-depth:0 26px 76px rgba(0,0,0,.33);
+}
+body.zvm-experience .znav{
+ border-bottom-color:rgba(119,229,161,.18);
+ box-shadow:0 12px 40px rgba(0,0,0,.14);
+}
+body.r466-body.zvm-experience .r4701-hero{
+ position:relative;
+ background:
+   radial-gradient(ellipse at 82% 24%,rgba(21,189,104,.23),transparent 78%),
+   radial-gradient(ellipse at 6% 79%,rgba(39,133,85,.17),transparent 90%),
+   linear-gradient(151deg,#091811,#050b08 76%);
+}
+body.r466-body.zvm-experience .r4701-hero:before{
+ content:"";position:absolute;inset:0;pointer-events:none;opacity:.32;
+ background-image:linear-gradient(var(--zvm-art-grid) 1px,transparent 1px),
+   linear-gradient(90deg,var(--zvm-art-grid) 1px,transparent 1px);
+ background-size:52px 52px;
+ -webkit-mask-image:linear-gradient(105deg,transparent 20%,#000 100%);
+ mask-image:linear-gradient(105deg,transparent 20%,#000 100%);
+}
+body.zvm-experience .r4701-hero-visual{
+ border-color:#397b56;
+ box-shadow:0 38px 95px rgba(0,0,0,.52),0 0 0 7px rgba(70,227,162,.035),
+  0 0 95px rgba(47,218,117,.15);
+}
+body.zvm-experience .r4701-hero-visual:after{
+ content:"";position:absolute;inset:0;border-radius:inherit;
+ pointer-events:none;box-shadow:inset 0 0 0 1px rgba(170,255,202,.16);
+}
+body.zvm-experience .r4701-window-chrome{
+ background:linear-gradient(90deg,#142c1d,#0e1c15 72%);
+}
+body.zvm-experience .r4701-hero-highlights span{
+ border:1px solid rgba(90,188,129,.19);border-radius:999px;
+ padding:8px 11px;background:rgba(16,49,29,.58);
+}
+body.zvm-experience .r4700-product-trust{
+ background:linear-gradient(90deg,#0c2117,#0a1710,#0c2117);
+}
+body.zvm-experience .r4700-journey-list li{
+ padding:24px 19px 20px;min-height:205px;
+ border:1px solid #2a4d37;border-radius:19px;
+ background:linear-gradient(155deg,rgba(22,53,34,.77),rgba(9,22,15,.96));
+ box-shadow:inset 0 1px rgba(183,255,214,.055),0 17px 39px rgba(0,0,0,.12);
+}
+body.zvm-experience .r4700-journey-list li:not(:last-child):after{
+ top:46px;left:75px;right:-17px;z-index:1;background:linear-gradient(90deg,#49bd7c,#255c40);
+}
+body.zvm-experience .r4700-journey-icon{
+ box-shadow:0 0 0 7px rgba(42,166,97,.07),inset 0 1px rgba(190,255,211,.12);
+}
+body.zvm-experience .r4701-features{
+ position:relative;isolation:isolate;
+}
+body.zvm-experience .r4701-features:before{
+ content:"";position:absolute;z-index:-1;inset:8% -2% 0;pointer-events:none;
+ background:radial-gradient(ellipse at 50% 30%,rgba(22,143,81,.11),transparent 63%);
+}
+body.zvm-experience .r4701-feature-card{
+ min-height:124px;padding:19px 19px;
+ border-color:#345944;border-radius:18px;
+ background:linear-gradient(142deg,#173525 0%,#0b1b13 63%,#09150f);
+ box-shadow:inset 0 1px rgba(170,255,212,.08),0 16px 42px rgba(0,0,0,.12);
+}
+body.zvm-experience .r4701-feature-card:nth-child(3n+2){
+ background:linear-gradient(142deg,#13271e,#0a1914 68%,#0b2118);
+}
+body.zvm-experience .r4701-feature-card:hover{
+ border-color:#64d999;box-shadow:0 18px 46px rgba(0,0,0,.24),0 0 30px rgba(37,199,115,.08);
+}
+body.zvm-experience .r4701-feature-icon{
+ width:48px;height:48px;border:1px solid rgba(125,244,169,.22);
+ box-shadow:inset 0 1px rgba(190,255,219,.10);
+}
+body.zvm-experience .r466-demo{
+ border:1px solid rgba(103,202,135,.26);
+ border-radius:24px;
+ box-shadow:var(--zvm-art-depth),0 0 70px rgba(35,176,103,.07);
+ background:#0a1510;
+}
+body.zvm-experience .r4701-flow-preview{
+ border-color:#3c9968;
+ box-shadow:0 28px 83px rgba(0,0,0,.39),0 0 75px rgba(34,193,98,.11);
+}
+body.zvm-experience .r4701-flow-canvas{
+ background-image:
+  radial-gradient(circle at 50% 45%,rgba(25,159,86,.22),transparent 61%),
+  radial-gradient(#365441 1px,transparent 1px);
+ background-size:auto,20px 20px;
+}
+body.zvm-experience .r466-final{
+ position:relative;overflow:hidden;
+ background:
+  radial-gradient(circle at 92% 12%,rgba(83,242,150,.14),transparent 31%),
+  radial-gradient(ellipse at 35% 115%,rgba(31,214,111,.21),transparent 65%),#0c2117;
+ box-shadow:0 24px 78px rgba(0,0,0,.22);
+}
+body.zvm-experience .r466-final:before{
+ content:"";position:absolute;width:260px;height:260px;right:-110px;top:-155px;
+ border:1px solid rgba(167,255,200,.21);border-radius:50%;pointer-events:none;
+ box-shadow:0 0 0 31px rgba(122,247,172,.024),0 0 0 61px rgba(122,247,172,.02);
+}
+/* Plans: carry the same atmospheric illustration and surface language as the FAQ. */
+body.zvm-plans-premium.zvm-experience .r4701-plans-hero{
+ position:relative;isolation:isolate;overflow:clip;
+ background:
+  radial-gradient(ellipse at 80% 37%,rgba(46,197,111,.31),transparent 74%),
+  radial-gradient(ellipse at 2% 88%,rgba(25,133,79,.18),transparent 79%),
+  linear-gradient(145deg,#0d2919,#06120c 71%);
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-hero-inner{
+ position:relative;z-index:1;
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-hero:after{
+ content:"";position:absolute;right:4%;top:6%;z-index:0;
+ width:min(45vw,560px);aspect-ratio:1;border-radius:50%;
+ border:1px solid rgba(125,231,164,.25);pointer-events:none;
+ box-shadow:0 0 0 33px rgba(115,237,167,.049),0 0 0 67px rgba(115,237,167,.027),
+ 0 0 0 102px rgba(115,237,167,.014);
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-hero:before{
+ content:"";position:absolute;inset:0;z-index:0;pointer-events:none;opacity:.37;
+ background-image:linear-gradient(rgba(86,187,128,.22) 1px,transparent 1px),
+ linear-gradient(90deg,rgba(86,187,128,.22) 1px,transparent 1px);
+ background-size:54px 54px;
+ -webkit-mask-image:linear-gradient(90deg,transparent 21%,#000 100%);
+ mask-image:linear-gradient(90deg,transparent 21%,#000 100%);
+}
+body.zvm-plans-premium.zvm-experience .r4701-license-demo{
+ border-color:#58be80;border-radius:24px;
+ background:linear-gradient(145deg,#10271a,#08150d);
+ box-shadow:0 39px 92px rgba(0,0,0,.46),0 0 0 8px rgba(70,227,162,.062),
+  0 0 102px rgba(42,202,107,.21);
+ transform:perspective(1500px) rotateY(-3deg);
+}
+body.zvm-plans-premium.zvm-experience .r4701-license-demo-bar{
+ background:linear-gradient(90deg,#153421,#0c1e15);
+}
+body.zvm-plans-premium.zvm-experience .r4701-license-demo-grid>div{
+ background:linear-gradient(145deg,#193725,#102019);
+ border-color:#366548;
+}
+body.zvm-plans-premium.zvm-experience .price-card{
+ position:relative;
+ border-color:#42785a;border-radius:22px;
+ background:
+  radial-gradient(circle at 94% 2%,rgba(62,179,108,.20),transparent 46%),
+  linear-gradient(159deg,#1c412c 0%,#11271b 48%,#091711 100%);
+ box-shadow:inset 0 1px rgba(188,255,214,.11),0 23px 54px rgba(0,0,0,.23);
+}
+body.zvm-plans-premium.zvm-experience .price-card:before{
+ content:"";position:absolute;top:0;left:18px;right:18px;height:3px;
+ border-radius:0 0 3px 3px;pointer-events:none;
+ background:linear-gradient(90deg,transparent,rgba(118,232,158,.70),transparent);
+}
+body.zvm-plans-premium.zvm-experience .price-card:hover{
+ border-color:#72b88b;box-shadow:0 19px 56px rgba(0,0,0,.23);
+}
+body.zvm-plans-premium.zvm-experience .price-card.featured{
+ border-color:#71e4a2;
+ background:
+  radial-gradient(ellipse at 100% 0%,rgba(76,225,126,.32),transparent 59%),
+  linear-gradient(154deg,#1a5835,#103421 52%,#0c2217 100%);
+ box-shadow:0 0 0 1px rgba(84,222,145,.46),0 32px 83px rgba(7,73,35,.24);
+}
+body.zvm-plans-premium.zvm-experience .price-card.featured:before{
+ height:4px;background:linear-gradient(90deg,transparent,#6ceaaa 48%,transparent);
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-included-grid article{
+ background:linear-gradient(145deg,#143323,#0c2016);
+ border-color:#32634a;border-radius:17px;
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-faq-list details{
+ border-radius:14px;background:#12251a;border-color:#355b41;
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-final{
+ position:relative;overflow:hidden;
+ background:
+  radial-gradient(ellipse at 85% 25%,rgba(65,227,127,.20),transparent 61%),
+  linear-gradient(135deg,#143621,#0b2115);
+ box-shadow:0 20px 55px rgba(0,0,0,.20);
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-final:before{
+ content:"";position:absolute;width:220px;height:220px;right:-76px;top:-105px;
+ border-radius:50%;border:1px solid rgba(175,255,212,.20);
+ box-shadow:0 0 0 28px rgba(174,249,200,.026),0 0 0 55px rgba(174,249,200,.016);
+ pointer-events:none;
+}
+@media(max-width:760px){
+ body.zvm-experience .r4700-journey-list li{
+  padding:17px;min-height:0;gap:10px;
+ }
+ body.zvm-experience .r4700-journey-list li:not(:last-child):after{display:none}
+ body.zvm-experience .r4701-hero-visual{transform:none;box-shadow:0 18px 56px rgba(0,0,0,.30)}
+ body.zvm-plans-premium.zvm-experience .r4701-license-demo{
+  box-shadow:0 20px 54px rgba(0,0,0,.34);transform:none;
+ }
+ body.zvm-plans-premium.zvm-experience .r4701-plans-hero:after{
+  width:330px;right:-140px;top:15%;opacity:.5;
+ }
+}
+@media(max-width:420px){
+ body.zvm-experience .r4701-feature-card{min-height:110px;padding:15px}
+ body.zvm-experience .r4701-feature-icon{width:43px;height:43px}
+ body.zvm-plans-premium.zvm-experience .price-card{padding:23px 18px}
+}
+@media(prefers-reduced-motion:reduce){
+ body.zvm-experience .r4701-feature-card:hover,
+ body.zvm-experience .r4701-button:hover{transform:none}
+}
+@media(prefers-contrast:more){
+ body.zvm-experience .r4700-journey-list li,
+ body.zvm-experience .r4701-feature-card,
+ body.zvm-plans-premium.zvm-experience .price-card{border-color:#9edbb5}
+}
+
+/* Adaptive without horizontal clipping. */
+@media(max-width:1080px){
+ body.zvm-experience .r4701-hero .r466-hero-layout{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px}
+ body.zvm-experience .r4701-feature-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ body.zvm-faq-premium.zvm-experience .r4701-faq-tile-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ body.zvm-plans-premium.zvm-experience .r4701-plans-hero-inner{gap:25px}
+}
+@media(max-width:810px){
+ body.zvm-experience .r4701-hero .r466-hero-layout{grid-template-columns:minmax(0,1fr)}
+ body.zvm-experience .r4701-hero .r466-hero-copy{text-align:center}
+ body.zvm-experience .r4701-hero .r466-hero-copy h1{text-align:center;font-size:clamp(39px,6.4vw,62px)}
+ body.zvm-experience .r4701-hero .r466-hero-copy>p{text-align:center;margin-inline:auto}
+ body.zvm-experience .r4701-hero .r466-hero-links,.zvm-experience .r4701-hero .r4700-hero-support,
+ body.zvm-experience .r4701-hero .r4701-hero-highlights{justify-content:center}
+ body.zvm-experience .r4701-hero .r466-license-note{text-align:center}
+ body.zvm-experience .r4701-hero-visual{max-width:650px;margin:8px auto 0;transform:none}
+ body.zvm-experience .r4700-journey-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:26px}
+ body.zvm-experience .r4700-journey-list li:after{display:none}
+ body.zvm-experience .r4701-workflow-showcase{grid-template-columns:minmax(0,1fr);gap:28px}
+ body.zvm-faq-premium.zvm-experience .faq-hero.r4701-faq-hero{grid-template-columns:1fr .45fr}
+ body.zvm-faq-premium.zvm-experience .r4701-question-art-front{width:100px;height:100px}
+ body.zvm-faq-premium.zvm-experience .r4701-question-art-back{width:100px;height:100px}
+ body.zvm-faq-premium.zvm-experience .r4701-question-art-front span{width:63px;height:63px;font-size:51px}
+ body.zvm-faq-premium.zvm-experience .r4700-faq-layout{grid-template-columns:1fr}
+ body.zvm-faq-premium.zvm-experience .r4700-faq-rail{position:static}
+ body.zvm-faq-premium.zvm-experience .r4700-faq-topics{grid-template-columns:repeat(2,minmax(0,1fr))}
+ body.zvm-plans-premium.zvm-experience .r4701-plans-hero-inner{grid-template-columns:minmax(0,1fr)}
+ body.zvm-plans-premium.zvm-experience .r4701-license-demo{max-width:590px;margin:auto}
+ body.zvm-plans-premium.zvm-experience .r4701-plans-included{grid-template-columns:minmax(0,1fr);gap:21px}
+ body.zvm-plans-premium.zvm-experience .r4701-plans-faq{grid-template-columns:minmax(0,1fr);gap:22px}
+}
+@media(max-width:570px){
+ body.r466-body.zvm-experience .r466-hero.r4701-hero{padding:53px 16px 51px}
+ body.zvm-experience .r4701-hero .r466-hero-copy h1{font-size:clamp(35px,9vw,49px)}
+ body.zvm-experience .r4701-hero .r466-hero-links .r466-btn{width:100%}
+ body.zvm-experience .r4701-hero-highlights{gap:10px 15px;font-size:12px}
+ body.zvm-experience .r4701-window-chrome>span:nth-child(2){display:none}
+ body.zvm-experience .r4700-journey-list{gap:21px 15px}
+ body.zvm-experience .r4700-journey-icon{width:47px;height:47px}
+ body.zvm-experience .r4700-journey-list li{padding:4px}
+ body.zvm-experience .r4700-journey h3{font-size:17px}
+ body.zvm-experience .r4700-journey-list p{font-size:12px}
+ body.zvm-experience .r4701-feature-grid{grid-template-columns:minmax(0,1fr)}
+ body.zvm-experience .r4701-feature-card{min-height:85px}
+ body.zvm-experience .r4701-workflow-showcase{width:calc(100% - 32px);margin:20px auto 65px}
+ body.zvm-faq-premium.zvm-experience .faq-hero.r4701-faq-hero{grid-template-columns:minmax(0,1fr);gap:4px}
+ body.zvm-faq-premium.zvm-experience .r4701-faq-hero h1{font-size:clamp(34px,9.5vw,42px)}
+ body.zvm-faq-premium.zvm-experience .r4701-question-art{min-height:120px}
+ body.zvm-faq-premium.zvm-experience .r4701-question-art-front{width:76px;height:76px;border-radius:15px}
+ body.zvm-faq-premium.zvm-experience .r4701-question-art-back{width:76px;height:76px;border-radius:15px}
+ body.zvm-faq-premium.zvm-experience .r4701-question-art-front span{width:51px;height:51px;font-size:42px;border-radius:15px}
+ body.zvm-faq-premium.zvm-experience .r4701-faq-top,
+ body.zvm-faq-premium.zvm-experience .r4700-faq-layout,
+ body.zvm-faq-premium.zvm-experience .faq-hero.r4701-faq-hero,
+ body.zvm-faq-premium.zvm-experience .r4700-faq-pause{width:calc(100% - 28px)}
+ body.zvm-faq-premium.zvm-experience .r4701-faq-tile-grid{grid-template-columns:minmax(0,1fr)}
+ body.zvm-faq-premium.zvm-experience .r4700-faq-search input{padding-right:20px}
+ body.zvm-faq-premium.zvm-experience .r4701-faq-shortcut{display:none}
+ body.zvm-faq-premium.zvm-experience .r4700-faq-topics{grid-template-columns:minmax(0,1fr)}
+ body.zvm-faq-premium.zvm-experience .r4700-faq-rail-help{display:none}
+ body.zvm-faq-premium.zvm-experience .r4700-faq-group-head h2{font-size:18px}
+ body.zvm-faq-premium.zvm-experience .r4700-question-count{font-size:11px}
+ body.zvm-plans-premium.zvm-experience .r4701-plans-hero{padding:50px 17px 37px}
+ body.zvm-plans-premium.zvm-experience .r4701-plans-hero h1{font-size:clamp(38px,10vw,49px)}
+ body.zvm-plans-premium.zvm-experience .r4701-plans-hero-actions .r4701-button{width:100%}
+ body.zvm-plans-premium.zvm-experience .r4701-license-demo-shell{grid-template-columns:79px minmax(0,1fr)}
+ body.zvm-plans-premium.zvm-experience .r4701-license-demo-side{padding:12px 6px;font-size:9px;gap:10px}
+ body.zvm-plans-premium.zvm-experience .r4701-license-demo-side .active{padding:7px 4px}
+ body.zvm-plans-premium.zvm-experience .r4701-license-demo-content{padding:13px}
+ body.zvm-plans-premium.zvm-experience .r4701-license-demo-grid{gap:6px}
+ body.zvm-plans-premium.zvm-experience .r4701-license-demo-grid>div{padding:10px 8px}
+ body.zvm-plans-premium.zvm-experience .r4701-license-demo-grid strong{font-size:12px}
+ body.zvm-plans-premium.zvm-experience .r4701-license-demo-grid span{font-size:9px}
+ body.zvm-plans-premium.zvm-experience .r4701-license-demo-bar small{display:none}
+ body.zvm-plans-premium.zvm-experience .r4701-plans-included-grid{grid-template-columns:minmax(0,1fr)}
+ body.zvm-plans-premium.zvm-experience .r4701-license-advice{padding:16px;gap:12px}
+ body.zvm-plans-premium.zvm-experience .r4701-license-advice>span{width:32px;height:32px;font-size:20px}
+ body.zvm-plans-premium.zvm-experience .r4701-plans-final{flex-direction:column;align-items:flex-start;padding:22px}
+}
+@media(max-width:350px){
+ body.zvm-experience .r4700-journey-list{grid-template-columns:minmax(0,1fr)}
+ body.zvm-experience .r4701-hero-highlights{flex-direction:column;align-items:center}
+ body.zvm-plans-premium.zvm-experience .r4701-license-demo-side{display:none}
+ body.zvm-plans-premium.zvm-experience .r4701-license-demo-shell{grid-template-columns:minmax(0,1fr)}
+}
+@media(prefers-reduced-motion:reduce){
+ body.zvm-experience :is(.r4701-button,.r4701-feature-card,.r4701-faq-tile){transition:none;transform:none}
+}
+@media(prefers-contrast:more){
+ body.zvm-experience :is(.r4701-feature-card,.r4701-faq-tile,.price-card){border-color:#93d4ac}
+}
+
+/* R47.05 — wide desktop: meaningful use of horizontal space without stretching prose.
+   All width changes begin on desktop; tablet and phone breakpoints are unchanged. */
+@media (min-width:1280px){
+ body.zvm-experience{
+  --r475-wide:min(1840px,calc(100% - clamp(48px,6.25vw,136px)));
+  --xp-max:1840px;
+ }
+ body.r466-body.zvm-experience .r466-hero.r4701-hero{padding-inline:0}
+ body.r466-body.zvm-experience .r4701-hero .r466-hero-layout{
+  width:var(--r475-wide);max-width:none;
+  grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr);
+  gap:clamp(46px,4.8vw,105px);
+ }
+ body.r466-body.zvm-experience .r4701-hero .r466-hero-copy h1{
+  font-size:clamp(55px,4.25vw,86px);
+ }
+ body.r466-body.zvm-experience :is(.r466-product,.r466-benefits,.r466-features,.r466-how,.r466-plans,.r466-faq,.r4701-features){
+  width:var(--r475-wide);max-width:none;padding-inline:0;
+ }
+ body.r466-body.zvm-experience :is(.r4700-journey,.r4700-trust-inner,.r4701-workflow-showcase){
+  width:var(--r475-wide);max-width:none;
+ }
+ body.zvm-experience .r466-footer-inner{
+  width:var(--r475-wide);max-width:none;
+ }
+ body.r466-body.zvm-experience .r466-final>div{
+  max-width:min(1040px,100%);
+ }
+ body.zvm-faq-premium.zvm-experience :is(.faq-hero.r4701-faq-hero,.r4701-faq-top,.r4700-faq-pause,.r4700-faq-layout){
+  width:var(--r475-wide);max-width:none;
+ }
+ body.zvm-faq-premium.zvm-experience .r4700-faq-layout{
+  grid-template-columns:minmax(260px,320px) minmax(0,1fr);
+  gap:clamp(28px,3.5vw,74px);
+ }
+ body.zvm-plans-premium.zvm-experience .r4701-plans-hero-inner{
+  width:var(--r475-wide);max-width:none;
+  grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);
+  gap:clamp(36px,4.2vw,92px);
+ }
+ body.zvm-plans-premium.zvm-experience .plans-wrap{
+  width:var(--r475-wide);max-width:none;padding-inline:0;
+ }
+}
