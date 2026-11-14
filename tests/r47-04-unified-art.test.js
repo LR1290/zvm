@@ -19,6 +19,7 @@ for(const [name,hash,old,selectors] of assets){
  assert(!server.includes(old),'retired CSS still referenced by server: '+old);
  for(const sel of selectors)assert(css.includes(sel),'missing cohesive visual element '+name+'/'+sel);
  if(!name.includes('console-design'))assert(!css.includes('!important'),'new styling debt in '+name);
+ assert(!/radial-gradient\(\s*ellipse\s+\d+(?:\.\d+)?%\s+\d+(?:\.\d+)?%\s+at/i.test(css),'invalid elliptical gradient syntax '+name);
  const fresh=css.slice(css.indexOf('/* R47.04'),name.includes('console-design')?css.indexOf('/* Legacy R8 set'):undefined);
  assert(fresh.includes('@media('),'new visual rules lack responsive/accessibility media');
  assert(!fresh.includes('!important'),'R47.04 must add no specificity overrides: '+name);
