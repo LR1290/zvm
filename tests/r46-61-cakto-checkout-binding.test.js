@@ -2,6 +2,8 @@
 const assert=require('node:assert/strict');
 const path=require('node:path');
 const Module=require('node:module');
+// Exercise explicit sales-enabled checkout; production default is now fail-closed.
+process.env.ZVM_SALES_PAUSED='0';
 process.env.RENDER='true';
 process.env.ADMIN_USER='synthetic-admin';
 process.env.ADMIN_PASS='synthetic-password';
