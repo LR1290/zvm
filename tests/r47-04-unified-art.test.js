@@ -4,10 +4,10 @@ const assert=require('node:assert/strict');
 const crypto=require('node:crypto'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module');
 const root=path.resolve(__dirname,'..'),server=fs.readFileSync(path.join(root,'server.js'),'utf8');
 const assets=[
- ['zvm-reference-public.8ab0217a54b3.css','8ab0217a54b394dcd8f1dea10cd6e7145a9e7550f605cde5644e800f971d55c9','zvm-reference-public.8fc0cb9c94d6.css',['--zvm-art-halo','.r4701-hero-visual:after','.r4700-journey-list li','.price-card.featured','.r4701-plans-hero:before']],
+ ['zvm-reference-public.dea9e334f766.css','dea9e334f766deabb6f458713c469995353866ebdd5721a40100f5b11c281aae','zvm-reference-public.8fc0cb9c94d6.css',['--zvm-art-halo','.r4701-hero-visual:after','.r4700-journey-list li','.price-card.featured','.r4701-plans-hero:before']],
  ['zvm-auth-premium.d44a7ff35e68.css','d44a7ff35e683572d8c5e11175c15d9db05ea3ab9816891617813afdb970e5a4','zvm-auth-premium.0ab8f63f1cb8.css',['.auth-promo::after','.auth-form-card::before','.auth-benefits li','prefers-contrast:more']],
  ['zvm-console-design.1ee8679046a6.css','1ee8679046a6429c4fdc26c4df29650f28299a8118397377cdf1cdf48d982d33','zvm-console-design.fc18bc02c200.css',['.admin-overview::before','.client-rail','.client-license-focus','.client-quickfact']],
- ['zvm-legal-premium.52736d436442.css','52736d43644292225a83aea79e052b9a40fe41c3f2673f3f183cd2f4dc702db3','zvm-legal-premium.29b8336d5c01.css',['.page-hero::before','.zvm-trust-toc','.zvm-error-aside']],
+ ['zvm-legal-premium.0a3567075aa3.css','0a3567075aa39cde12f05e4244ed4f7af52deac2da0306cac4af23963bae0886','zvm-legal-premium.29b8336d5c01.css',['.page-hero::before','.zvm-trust-toc','.zvm-error-aside']],
  ['zvm-analytics-premium.cba05e60d098.css','cba05e60d098ba8481181176835069b8303b0683044dcdc1c50ea1fff8b5209d','zvm-analytics-premium.98c1933c3e7f.css',['.analytics-hero::before','.analytics-rail','.analytics-pulse','.chart-card','prefers-reduced-motion:reduce']]
 ];
 for(const [name,hash,old,selectors] of assets){
