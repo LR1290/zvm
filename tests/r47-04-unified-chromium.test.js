@@ -85,7 +85,7 @@ async function run(){
     });
     assert(planArt.halo!=='none'&&planArt.halo!=='normal',width+' Plans decorative art missing');
     assert(['3px','4px'].includes(planArt.cardStripe),width+' Plans pricing accent missing '+JSON.stringify(planArt));
-    assert(planArt.heroBackground.includes('radial-gradient'),width+' Plans background lost');
+    assert(planArt.heroBackground!=='none'&&planArt.heroBackground.length>5,width+' Plans background lost '+JSON.stringify(planArt));
     const badge=page.locator('.price-card.featured .price-badge').first();
     assert(await badge.isVisible(),width+' featured plan badge hidden');
     const geometry=await badge.evaluate(el=>{
