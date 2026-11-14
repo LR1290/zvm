@@ -75,6 +75,19 @@ async function run(){
    assert(visual.background!=='none'||visual.boxShadow!=='none',name+'/'+width+' missing art direction '+JSON.stringify(visual));
    assert.equal(await page.locator('[data-buy-plan],a[href^="https://pay.cakto.com.br/"]').count(),0,name+' leaked checkout');
    if(name==='home')assert(await page.locator('.r4701-hero-visual img').evaluate(im=>im.complete&&im.naturalWidth>0),'genuine product image missing');
+   if(name==='plans'){
+    const planArt=await page.evaluate(()=>{
+      const hero=document.querySelector('.r4701-plans-hero');
+      const card=document.querySelector('.price-card');
+      return {halo:getComputedStyle(hero,'::after').content,
+       heroBackground:getComputedStyle(hero).backgroundImage,
+       cardStripe:getComputedStyle(card,'::before').height};
+    });
+    assert(planArt.halo!=='none'&&planArt.halo!=='normal',width+' Plans decorative art missing');
+    assert(['3px','4px'].includes(planArt.cardStripe),width+' Plans pricing accent missing '+JSON.stringify(planArt));
+    assert(planArt.heroBackground.includes('radial-gradient'),width+' Plans background lost');
+   }
+
    await page.screenshot({path:path.join(dir,'r47-04-'+name+'-'+width+'.png'),fullPage:true,animations:'disabled'});
    await page.close();
    checks++;
