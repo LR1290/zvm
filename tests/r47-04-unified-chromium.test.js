@@ -114,9 +114,14 @@ async function run(){
     assert(await badge.isVisible(),width+' featured plan badge hidden');
     const geometry=await badge.evaluate(el=>{
      const card=el.closest('.price-card'),rect=el.getBoundingClientRect(),parent=card.getBoundingClientRect();
-     return {badgeTop:rect.top,cardTop:parent.top,overflow:getComputedStyle(card).overflowX};
+     return {badgeTop:rect.top,badgeBottom:rect.bottom,badgeLeft:rect.left,badgeRight:rect.right,
+       cardTop:parent.top,cardBottom:parent.bottom,cardLeft:parent.left,cardRight:parent.right,
+       position:getComputedStyle(el).position,overflow:getComputedStyle(card).overflowX};
     });
-    assert.equal(geometry.overflow,'visible',width+' featured badge clipped by card surface');
+    assert(geometry.badgeTop>=geometry.cardTop-1&&geometry.badgeBottom<=geometry.cardBottom+1,
+      width+' featured badge vertically clipped: '+JSON.stringify(geometry));
+    assert(geometry.badgeLeft>=geometry.cardLeft-1&&geometry.badgeRight<=geometry.cardRight+1,
+      width+' featured badge horizontally clipped: '+JSON.stringify(geometry));
 
    }
 
