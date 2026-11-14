@@ -5,10 +5,10 @@ const path=require('node:path'),fs=require('node:fs'),crypto=require('node:crypt
 const root=path.resolve(__dirname,'..');
 const server=fs.readFileSync(path.join(root,'server.js'),'utf8');
 const landingSource=fs.readFileSync(path.join(root,'src/web/public/landing/render.js'),'utf8');
-const cssName='zvm-reference-public.8ab0217a54b3.css';
+const cssName='zvm-reference-public.dea9e334f766.css';
 const css=fs.readFileSync(path.join(root,'assets',cssName),'utf8');
 const digest=crypto.createHash('sha256').update(css).digest('hex');
-assert.equal(digest,'8ab0217a54b394dcd8f1dea10cd6e7145a9e7550f605cde5644e800f971d55c9');
+assert.equal(digest,'dea9e334f766deabb6f458713c469995353866ebdd5721a40100f5b11c281aae');
 assert(server.includes("sha256: '"+digest+"'"),'new CSS full SHA missing');
 assert(server.includes('/assets/'+cssName),'new CSS asset missing from allowlist/renderers');
 assert(!css.includes('!important'),'no new CSS specificity hacks');
