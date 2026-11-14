@@ -23,10 +23,10 @@ const pages=[
  ['register',api.renderStandalonePortalRegister(),'.auth-shell',true,'zvm-auth-premium.a96f915db3f4.css'],
  ['client',api.renderPortalDashboard(user,key,'',''),'.client-shell',false,'zvm-console-design.44762cb103f8.css'],
  ['admin',api.renderAdminDashboard({keysSnapshot:{[key.code]:key},portalUsers:[],portalUserCount:0}),'.admin-content',false,'zvm-console-design.44762cb103f8.css'],
- ['privacy',api.renderStandalonePrivacyPage(null),'.zvm-trust-layout',true,'zvm-legal-premium.a314c8aa9ae1.css'],
- ['terms',api.renderStandaloneTermsPage(null,'pt-BR'),'.terms-wrap',true,'zvm-legal-premium.a314c8aa9ae1.css'],
- ['404',api.renderStandalone404Page(null),'.zvm-error-grid',true,'zvm-legal-premium.a314c8aa9ae1.css'],
- ['500',api.renderStandalone500Page(null),'.zvm-error-grid',true,'zvm-legal-premium.a314c8aa9ae1.css']
+ ['privacy',api.renderStandalonePrivacyPage(null),'.zvm-trust-layout',true,'zvm-legal-premium.a828eee21356.css'],
+ ['terms',api.renderStandaloneTermsPage(null,'pt-BR'),'.terms-wrap',true,'zvm-legal-premium.a828eee21356.css'],
+ ['404',api.renderStandalone404Page(null),'.zvm-error-grid',true,'zvm-legal-premium.a828eee21356.css'],
+ ['500',api.renderStandalone500Page(null),'.zvm-error-grid',true,'zvm-legal-premium.a828eee21356.css']
 ];
 const shots=path.join(root,'artifacts','visual-qa');fs.mkdirSync(shots,{recursive:true});
 async function run(){
