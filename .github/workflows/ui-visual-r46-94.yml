@@ -5,6 +5,7 @@ on:
     paths:
       - 'server.js'
       - 'assets/zvm-console-design.*.css'
+      - 'assets/zvm-r46-system.*.css'
       - 'assets/zvm-auth-premium.*.css'
       - 'assets/zvm-public-premium.*.css'
       - 'assets/zvm-sales-state.*.css'
@@ -41,8 +42,8 @@ on:
       - 'tests/r47-03-portal-chromium.test.js'
       - 'tests/r47-04-unified-art.test.js'
       - 'tests/r47-04-unified-chromium.test.js'
+      - 'tests/r47-04-commercial-fail-closed.test.js'
       - 'tests/r47-03-portal-trust.test.js'
-      - 'src/web/public/i18n-copy.js'
       - '.github/workflows/ui-visual-r46-94.yml'
   workflow_dispatch:
 
