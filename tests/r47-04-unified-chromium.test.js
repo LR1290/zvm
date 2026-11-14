@@ -89,7 +89,27 @@ async function run(){
     });
     assert(planArt.halo!=='none'&&planArt.halo!=='normal',width+' Plans decorative art missing');
     assert(['3px','4px'].includes(planArt.cardStripe),width+' Plans pricing accent missing '+JSON.stringify(planArt));
-    assert(planArt.heroBackground.includes('radial-gradient'),width+' Plans gradient not painted '+JSON.stringify(planArt));
+    if(!planArt.heroBackground.includes('radial-gradient')){
+     const proof=await page.evaluate(()=>{
+      const el=document.querySelector('.r4701-plans-hero');
+      const rules=[];
+      for(const sh of document.styleSheets){
+       let entries=[];try{entries=Array.from(sh.cssRules||[])}catch(e){}
+       for(const rule of entries){
+        const name=rule.selectorText||'';
+        if(name.includes('plans-hero')&&name.includes('{')===false){
+         let matching=false;try{matching=el.matches(name)}catch(e){}
+         if(matching)rules.push({from:(sh.href||'inline').split('/').pop(),selector:name,
+          background:rule.style.getPropertyValue('background'),important:rule.style.getPropertyPriority('background')});
+        }
+       }
+      }
+      return {body:document.body.className,heroClass:el.className,inline:el.getAttribute('style'),
+        background:getComputedStyle(el).background,links:Array.from(document.querySelectorAll('link[rel=stylesheet]')).map(x=>({href:x.href,loaded:!!x.sheet})),
+        matchingRules:rules.slice(-25)};
+     });
+     throw new Error(width+' Plans gradient not painted '+JSON.stringify({planArt,proof}));
+    }
     const badge=page.locator('.price-card.featured .price-badge').first();
     assert(await badge.isVisible(),width+' featured plan badge hidden');
     const geometry=await badge.evaluate(el=>{
