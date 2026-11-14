@@ -111,8 +111,9 @@ const COMMERCIAL_TX_CLAIM_WAIT_MS = Math.max(0, Math.min(15000, parseInt(process
 const COMMERCIAL_TX_CLAIM_RETENTION_DAYS = Math.max(30, Math.min(730, parseInt(process.env.COMMERCIAL_TX_CLAIM_RETENTION_DAYS || '400', 10) || 400));
 const IS_PRODUCTION = String(process.env.NODE_ENV || '').toLowerCase() === 'production' || String(process.env.RENDER || '').toLowerCase() === 'true';
 const ZVM_LOCAL_SAFE_MODE = /^(1|true|yes|on)$/i.test(String(process.env.ZVM_LOCAL_SAFE_MODE || '').trim());
-// Owner-controlled storefront switch: does not disable Cakto webhooks or previously paid deliveries.
-const ZVM_SALES_PAUSED = /^(1|true|yes|on)$/i.test(String(process.env.ZVM_SALES_PAUSED || '').trim());
+// Storefront fails closed if this setting is absent or unrecognized. Owner must explicitly opt in to sales.
+// This does not disable Cakto webhooks, existing licenses, or previously paid deliveries.
+const ZVM_SALES_PAUSED = !/^(0|false|no|off)$/i.test(String(process.env.ZVM_SALES_PAUSED ?? '').trim());
 const ANALYTICS_PASS = process.env.ANALYTICS_PASS || '';
 // Opcional: se preenchida, exige TOTP além da senha pra entrar no Analytics
 // (mesma implementação de verifyTOTP já usada pro admin — nenhuma lib nova).
@@ -5343,10 +5344,10 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '6dac16eb7b5b103668a2350e94d0e0fcb75c5f3e93051a7626bee286375dcfd6',
     compressible: true,
   }),
-  '/assets/zvm-r46-system.8873e4d662f5.css': Object.freeze({
+  '/assets/zvm-r46-system.aa366d924866.css': Object.freeze({
     type: 'text/css; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-r46-system.8873e4d662f5.css'),
-    sha256: '8873e4d662f5be5eb9c80b9b584762b7eb8267a068522f09926c2f5d9d9b108d',
+    file: path.join(__dirname, 'assets', 'zvm-r46-system.aa366d924866.css'),
+    sha256: 'aa366d92486687fb82d3e3dc17f5f846c204f1b3ac799b76d6c7a427932306cf',
     compressible: true,
   }),
   '/assets/zvm-standalone.d6d2222fe00a.css': Object.freeze({
@@ -5493,10 +5494,10 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: 'c06071e4d73ffd64f8010881eb91c9e43a493457105e03c352153a4c7f030c1a',
     compressible: true,
   }),
-  '/assets/zvm-auth-premium.0ab8f63f1cb8.css': Object.freeze({
+  '/assets/zvm-auth-premium.d44a7ff35e68.css': Object.freeze({
     type: 'text/css; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-auth-premium.0ab8f63f1cb8.css'),
-    sha256: '0ab8f63f1cb8dfdb18810c79ed19797308068cc81c51a8f564de6b23e21956a3',
+    file: path.join(__dirname, 'assets', 'zvm-auth-premium.d44a7ff35e68.css'),
+    sha256: 'd44a7ff35e683572d8c5e11175c15d9db05ea3ab9816891617813afdb970e5a4',
     compressible: true,
   }),
   '/assets/zvm-public-premium.ab131a22bcdd.css': Object.freeze({
@@ -5505,16 +5506,16 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: 'ab131a22bcdd11998b7564618bc24d7159f2ffd1fbece5c2475350d3a446404a',
     compressible: true,
   }),
-  '/assets/zvm-legal-premium.29b8336d5c01.css': Object.freeze({
+  '/assets/zvm-legal-premium.0a3567075aa3.css': Object.freeze({
     type: 'text/css; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-legal-premium.29b8336d5c01.css'),
-    sha256: '29b8336d5c01146ba429e32c644925de2cb948337be9becc63eb4ce4501aba36',
+    file: path.join(__dirname, 'assets', 'zvm-legal-premium.0a3567075aa3.css'),
+    sha256: '0a3567075aa39cde12f05e4244ed4f7af52deac2da0306cac4af23963bae0886',
     compressible: true,
   }),
-  '/assets/zvm-analytics-premium.98c1933c3e7f.css': Object.freeze({
+  '/assets/zvm-analytics-premium.cba05e60d098.css': Object.freeze({
     type: 'text/css; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-analytics-premium.98c1933c3e7f.css'),
-    sha256: '98c1933c3e7f2fe53c189d19019c83a845b9d7ce7f04504b02bc431160b2e52a',
+    file: path.join(__dirname, 'assets', 'zvm-analytics-premium.cba05e60d098.css'),
+    sha256: 'cba05e60d098ba8481181176835069b8303b0683044dcdc1c50ea1fff8b5209d',
     compressible: true,
   }),
   '/assets/zvm-analytics-dashboard.95454273c23e.js': Object.freeze({
@@ -5547,16 +5548,16 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '5cf1ddccd70018f9b6ca96b3b61a4ef55a09b1782a7193c080b2b247ea6b191e',
     compressible: true,
   }),
-  '/assets/zvm-reference-public.8fc0cb9c94d6.css': Object.freeze({
+  '/assets/zvm-reference-public.dea9e334f766.css': Object.freeze({
     type: 'text/css; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-reference-public.8fc0cb9c94d6.css'),
-    sha256: '8fc0cb9c94d627999c8965f13ea85d7e7d4d55f0792e484760306507f4325bb6',
+    file: path.join(__dirname, 'assets', 'zvm-reference-public.dea9e334f766.css'),
+    sha256: 'dea9e334f766deabb6f458713c469995353866ebdd5721a40100f5b11c281aae',
     compressible: true,
   }),
-  '/assets/zvm-console-design.fc18bc02c200.css': Object.freeze({
+  '/assets/zvm-console-design.1ee8679046a6.css': Object.freeze({
     type: 'text/css; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-console-design.fc18bc02c200.css'),
-    sha256: 'fc18bc02c2003fec0ff8773a5e8293741c10afd8a1412178f952398595a3bd59',
+    file: path.join(__dirname, 'assets', 'zvm-console-design.1ee8679046a6.css'),
+    sha256: '1ee8679046a6429c4fdc26c4df29650f28299a8118397377cdf1cdf48d982d33',
     compressible: true,
   }),
   '/assets/zvm-admin-dashboard.b892a520f957.js': Object.freeze({
@@ -5901,8 +5902,8 @@ function renderPortalPage(body, title='ZVM — Minha Conta', extra='', headExtra
 <link rel="icon" type="image/svg+xml" href="${fav}">
 <link rel="stylesheet" href="/assets/zvm-r46-client-dashboard.64213392bec3.css"><link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css">
 ${headExtra}
-<link rel="stylesheet" href="/assets/zvm-r46-system.8873e4d662f5.css">
-<link rel="stylesheet" href="/assets/zvm-console-design.fc18bc02c200.css">
+<link rel="stylesheet" href="/assets/zvm-r46-system.aa366d924866.css">
+<link rel="stylesheet" href="/assets/zvm-console-design.1ee8679046a6.css">
 </head><body class="zvm-client-premium">
 <a class="portal-skip" href="#main-content">Ir para o conteúdo</a>
 <div class="page-wrap portal-page-wrap">
@@ -6073,7 +6074,7 @@ const ZVM_FAQ_ITEMS = [
   ['Como removo um dispositivo?', 'Em Minha Conta, na seção "Dispositivos cadastrados", clique em Remover ao lado do número.'],
   ['Como vincular uma chave que já tenho?', 'Em Minha Conta, acesse "Vincular chave" e informe o código recebido — ela passa a aparecer no seu painel.'],
   ['Minha chave expirou. O que faço?', ZVM_SALES_PAUSED ? 'Sua chave continua vinculada à sua conta, mas as renovações estão temporariamente suspensas. Consulte os planos e, se precisar de orientação sobre o acesso, fale com o suporte. Não tente repetir pagamentos sem checkout disponível.' : 'Entre no portal e clique em "Renovar agora" — a validade é atualizada assim que o pagamento é confirmado. Seus dispositivos vinculados continuam salvos e voltam a funcionar assim que a chave é renovada.'],
-  ['Preciso usar o mesmo e-mail na compra?', 'Sim. Use o mesmo e-mail cadastrado na sua conta ZVM na página de pagamento da Cakto pra chave ser vinculada automaticamente.'],
+  ['Preciso usar o mesmo e-mail na compra?', ZVM_SALES_PAUSED ? 'Não. Quando as compras forem reabertas, você poderá comprar sem criar uma conta. Informe um e-mail válido para receber a chave; se já tiver conta ZVM, usar o mesmo e-mail facilita a associação. Caso contrário, vincule a chave no Portal do Cliente.' : 'Não. Você pode comprar sem criar uma conta. Informe um e-mail válido para receber a chave; se já tiver conta ZVM, usar o mesmo e-mail facilita a associação. Caso contrário, vincule a chave no Portal do Cliente.'],
   ['Como funciona o 2FA?', 'Ative em Segurança 2FA: adicione a chave de configuração no seu aplicativo autenticador e confirme com o código de 6 dígitos a cada login.'],
   ['Onde encontro a versão oficial?', 'Use o link oficial disponibilizado pela ZVM no site ou no Portal do Cliente. Evite instalar cópias de terceiros ou arquivos recebidos por fontes não verificadas.'],
   ['Minha compra foi aprovada mas a chave não apareceu.', 'Aguarde alguns minutos para o processamento automático. Se persistir, fale com o suporte.'],
@@ -6610,9 +6611,9 @@ function renderAdminDashboard(opts = {}) {
 <title>ZVM — Administração</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/assets/zvm-admin-dashboard.c06071e4d73f.css">
-<link rel="stylesheet" href="/assets/zvm-r46-system.8873e4d662f5.css">
+<link rel="stylesheet" href="/assets/zvm-r46-system.aa366d924866.css">
 <link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css">
-<link rel="stylesheet" href="/assets/zvm-console-design.fc18bc02c200.css">
+<link rel="stylesheet" href="/assets/zvm-console-design.1ee8679046a6.css">
 </head>
 <body class="zvm-admin-r6">
 <a class="zvm-skip-link" href="#zvm-admin-main">Ir para o conteúdo</a>
@@ -6987,18 +6988,18 @@ ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_AUTH}${_CSS_PRIVILEGED_AUTH}${_CSS_SYSTEM
 // ──────────── SHARED PAGE HELPERS ───────────────────────────────
 const _FAV = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2308080f'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E";
 const _CSS_SHARED = '<link rel="stylesheet" href="/assets/zvm-shared.6dac16eb7b5b.css">';
-const _CSS_SYSTEM = '<link rel="stylesheet" href="/assets/zvm-r46-system.8873e4d662f5.css">';
+const _CSS_SYSTEM = '<link rel="stylesheet" href="/assets/zvm-r46-system.aa366d924866.css">';
 const _CSS_STANDALONE = '<link rel="stylesheet" href="/assets/zvm-standalone.d6d2222fe00a.css">';
-const _CSS_AUTH = '<link rel="stylesheet" href="/assets/zvm-r46-auth.286cb26442a2.css"><link rel="stylesheet" href="/assets/zvm-auth-premium.0ab8f63f1cb8.css">';
+const _CSS_AUTH = '<link rel="stylesheet" href="/assets/zvm-r46-auth.286cb26442a2.css"><link rel="stylesheet" href="/assets/zvm-auth-premium.d44a7ff35e68.css">';
 const _CSS_PRIVILEGED_AUTH = '<link rel="stylesheet" href="/assets/zvm-privileged-auth.daab7ea4861a.css">';
 const _CSS_CLIENT_WORKSPACE = '<link rel="stylesheet" href="/assets/zvm-r46-client-workspace.6dbf0f685e67.css">';
 const _CSS_LANDING = '<link rel="stylesheet" href="/assets/zvm-r46-landing.af4c6e5c623b.css">';
 const _CSS_PUBLIC_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-public-premium.ab131a22bcdd.css">';
 const _CSS_PUBLIC_EXPERIENCE = '<link rel="stylesheet" href="/assets/zvm-public-experience.b95326ae9de7.css">';
-const _CSS_REFERENCE_PUBLIC = '<link rel="stylesheet" href="/assets/zvm-reference-public.8fc0cb9c94d6.css">';
+const _CSS_REFERENCE_PUBLIC = '<link rel="stylesheet" href="/assets/zvm-reference-public.dea9e334f766.css">';
 const _CSS_SALES_STATE = '<link rel="stylesheet" href="/assets/zvm-sales-state.1422fd551ff5.css">';
-const _CSS_LEGAL_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-legal-premium.29b8336d5c01.css">';
-const _CSS_ANALYTICS_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-analytics-premium.98c1933c3e7f.css">';
+const _CSS_LEGAL_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-legal-premium.0a3567075aa3.css">';
+const _CSS_ANALYTICS_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-analytics-premium.cba05e60d098.css">';
 const _CSS_FAQ = '<link rel="stylesheet" href="/assets/zvm-faq.b388ca55cbf4.css">';
 const _CSS_PRIVACY = '<link rel="stylesheet" href="/assets/zvm-privacy.7be30b7da0a1.css">';
 const _CSS_TERMS = '<link rel="stylesheet" href="/assets/zvm-terms.f1c470efdbbb.css">';
@@ -7690,7 +7691,7 @@ async function renderAnalyticsDashboard(fixture = null) {
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/assets/zvm-analytics-dashboard.623a7bbac134.css">
 <link rel="stylesheet" href="/assets/zvm-analytics-lab.40519085ae68.css">
-<link rel="stylesheet" href="/assets/zvm-r46-system.8873e4d662f5.css">
+<link rel="stylesheet" href="/assets/zvm-r46-system.aa366d924866.css">
 <link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css">${_CSS_ANALYTICS_PREMIUM}</head><body class="zvm-analytics-premium">
 <a class="analytics-skip" href="#analytics-main">Pular para o conteudo principal</a>
 <div class="analytics-shell">
@@ -8911,7 +8912,7 @@ async function handleRequest(req, res) {
     const dbOk = _publicStatusCache.dbOk;
     const upSec = Math.floor(process.uptime());
     const upStr = upSec < 60 ? upSec + 's' : upSec < 3600 ? Math.floor(upSec/60) + 'm' : Math.floor(upSec/3600) + 'h ' + Math.floor((upSec%3600)/60) + 'm';
-    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="60"><title>ZVM — Status</title><link rel="stylesheet" href="/assets/zvm-status.be29b1782339.css"><link rel="stylesheet" href="/assets/zvm-r46-system.8873e4d662f5.css"></head><body><div class="card"><div class="logo">${renderStandaloneBrand('compact')}</div><h1>Status do Serviço</h1><div class="row"><span class="label">API</span><span class="value ok">● Operacional</span></div><div class="row"><span class="label">Banco de Dados</span><span class="value ${dbOk?'ok':'fail'}">${dbOk?'● Conectado':'● Desconectado'}</span></div><div class="row"><span class="label">Uptime</span><span class="value">${upStr}</span></div><div class="ts">Atualizado: ${new Date().toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</div></div></body></html>`;
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="60"><title>ZVM — Status</title><link rel="stylesheet" href="/assets/zvm-status.be29b1782339.css"><link rel="stylesheet" href="/assets/zvm-r46-system.aa366d924866.css"></head><body><div class="card"><div class="logo">${renderStandaloneBrand('compact')}</div><h1>Status do Serviço</h1><div class="row"><span class="label">API</span><span class="value ok">● Operacional</span></div><div class="row"><span class="label">Banco de Dados</span><span class="value ${dbOk?'ok':'fail'}">${dbOk?'● Conectado':'● Desconectado'}</span></div><div class="row"><span class="label">Uptime</span><span class="value">${upStr}</span></div><div class="ts">Atualizado: ${new Date().toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'})}</div></div></body></html>`;
     res.writeHead(dbOk ? 200 : 503, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', ..._SEC_HEADERS, 'Content-Security-Policy': _CSP_PUBLIC_STRICT });
     res.end(html);
     return;

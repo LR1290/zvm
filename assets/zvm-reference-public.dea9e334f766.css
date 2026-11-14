@@ -23,7 +23,7 @@ body.zvm-experience .r4701-button.secondary:hover{border-color:#a1d5b4;backgroun
 /* LANDING — split hero with genuine product photography from the ZVM UI. */
 body.r466-body.zvm-experience .r466-hero.r4701-hero{
  min-height:0;padding:clamp(70px,8vw,112px) 25px clamp(58px,7vw,95px);
- background:radial-gradient(ellipse 50% 75% at 78% 26%,rgba(16,181,95,.25),transparent 72%),
+ background:radial-gradient(ellipse at 78% 26%,rgba(16,181,95,.25),transparent 72%),
  linear-gradient(155deg,#08130e 5%,#040a08 100%);
  border-bottom:1px solid #183627;
 }
@@ -235,7 +235,7 @@ body.zvm-experience .r466-final h2{letter-spacing:-.04em}
 
 /* FAQ — premium search-focused help center. */
 body.zvm-faq-premium.zvm-experience .r4701-faq-main{
- background:radial-gradient(ellipse 55% 17% at 77% 2%,rgba(20,162,87,.14),transparent 83%);
+ background:radial-gradient(ellipse at 77% 2%,rgba(20,162,87,.14),transparent 83%);
 }
 body.zvm-faq-premium.zvm-experience .faq-hero.r4701-faq-hero{
  width:min(1240px,calc(100% - 48px));max-width:none;
@@ -394,7 +394,7 @@ body.zvm-faq-premium.zvm-experience .faq-support{
 /* PLANS — split preview, real catalog, comparison, journey and license-link guidance. */
 body.zvm-plans-premium.zvm-experience .r4701-plans-hero{
  text-align:left;padding:clamp(55px,6.7vw,88px) 24px 48px;
- background:radial-gradient(ellipse 44% 83% at 82% 16%,rgba(17,188,94,.18),transparent 81%),#07110c;
+ background:radial-gradient(ellipse at 82% 16%,rgba(17,188,94,.18),transparent 81%),#07110c;
 }
 body.zvm-plans-premium.zvm-experience .r4701-plans-hero-inner{
  max-width:1240px;margin:0 auto;display:grid;
@@ -586,6 +586,231 @@ body.zvm-plans-premium.zvm-experience .r4701-pause-pill{
  background:#29382d;padding:13px 18px;font-size:13px;font-weight:760;
 }
 body.zvm-plans-premium.zvm-experience .plans-wrap{padding-bottom:75px}
+
+
+/* R47.04 — ZVM art direction, applied inside the active reference stylesheet.
+   CSS art is decorative; real app screenshot, plan catalog and accessible actions remain canonical. */
+body.zvm-experience{
+ --zvm-art-halo:rgba(70,227,162,.19);
+ --zvm-art-edge:rgba(130,245,178,.23);
+ --zvm-art-surface:#0c1912;
+ --zvm-art-grid:rgba(96,188,128,.085);
+ --zvm-art-depth:0 26px 76px rgba(0,0,0,.33);
+}
+body.zvm-experience .znav{
+ border-bottom-color:rgba(119,229,161,.18);
+ box-shadow:0 12px 40px rgba(0,0,0,.14);
+}
+body.r466-body.zvm-experience .r4701-hero{
+ position:relative;
+ background:
+   radial-gradient(ellipse at 82% 24%,rgba(21,189,104,.23),transparent 78%),
+   radial-gradient(ellipse at 6% 79%,rgba(39,133,85,.17),transparent 90%),
+   linear-gradient(151deg,#091811,#050b08 76%);
+}
+body.r466-body.zvm-experience .r4701-hero:before{
+ content:"";position:absolute;inset:0;pointer-events:none;opacity:.32;
+ background-image:linear-gradient(var(--zvm-art-grid) 1px,transparent 1px),
+   linear-gradient(90deg,var(--zvm-art-grid) 1px,transparent 1px);
+ background-size:52px 52px;
+ -webkit-mask-image:linear-gradient(105deg,transparent 20%,#000 100%);
+ mask-image:linear-gradient(105deg,transparent 20%,#000 100%);
+}
+body.zvm-experience .r4701-hero-visual{
+ border-color:#397b56;
+ box-shadow:0 38px 95px rgba(0,0,0,.52),0 0 0 7px rgba(70,227,162,.035),
+  0 0 95px rgba(47,218,117,.15);
+}
+body.zvm-experience .r4701-hero-visual:after{
+ content:"";position:absolute;inset:0;border-radius:inherit;
+ pointer-events:none;box-shadow:inset 0 0 0 1px rgba(170,255,202,.16);
+}
+body.zvm-experience .r4701-window-chrome{
+ background:linear-gradient(90deg,#142c1d,#0e1c15 72%);
+}
+body.zvm-experience .r4701-hero-highlights span{
+ border:1px solid rgba(90,188,129,.19);border-radius:999px;
+ padding:8px 11px;background:rgba(16,49,29,.58);
+}
+body.zvm-experience .r4700-product-trust{
+ background:linear-gradient(90deg,#0c2117,#0a1710,#0c2117);
+}
+body.zvm-experience .r4700-journey-list li{
+ padding:24px 19px 20px;min-height:205px;
+ border:1px solid #2a4d37;border-radius:19px;
+ background:linear-gradient(155deg,rgba(22,53,34,.77),rgba(9,22,15,.96));
+ box-shadow:inset 0 1px rgba(183,255,214,.055),0 17px 39px rgba(0,0,0,.12);
+}
+body.zvm-experience .r4700-journey-list li:not(:last-child):after{
+ top:46px;left:75px;right:-17px;z-index:1;background:linear-gradient(90deg,#49bd7c,#255c40);
+}
+body.zvm-experience .r4700-journey-icon{
+ box-shadow:0 0 0 7px rgba(42,166,97,.07),inset 0 1px rgba(190,255,211,.12);
+}
+body.zvm-experience .r4701-features{
+ position:relative;isolation:isolate;
+}
+body.zvm-experience .r4701-features:before{
+ content:"";position:absolute;z-index:-1;inset:8% -2% 0;pointer-events:none;
+ background:radial-gradient(ellipse at 50% 30%,rgba(22,143,81,.11),transparent 63%);
+}
+body.zvm-experience .r4701-feature-card{
+ min-height:124px;padding:19px 19px;
+ border-color:#345944;border-radius:18px;
+ background:linear-gradient(142deg,#173525 0%,#0b1b13 63%,#09150f);
+ box-shadow:inset 0 1px rgba(170,255,212,.08),0 16px 42px rgba(0,0,0,.12);
+}
+body.zvm-experience .r4701-feature-card:nth-child(3n+2){
+ background:linear-gradient(142deg,#13271e,#0a1914 68%,#0b2118);
+}
+body.zvm-experience .r4701-feature-card:hover{
+ border-color:#64d999;box-shadow:0 18px 46px rgba(0,0,0,.24),0 0 30px rgba(37,199,115,.08);
+}
+body.zvm-experience .r4701-feature-icon{
+ width:48px;height:48px;border:1px solid rgba(125,244,169,.22);
+ box-shadow:inset 0 1px rgba(190,255,219,.10);
+}
+body.zvm-experience .r466-demo{
+ border:1px solid rgba(103,202,135,.26);
+ border-radius:24px;
+ box-shadow:var(--zvm-art-depth),0 0 70px rgba(35,176,103,.07);
+ background:#0a1510;
+}
+body.zvm-experience .r4701-flow-preview{
+ border-color:#3c9968;
+ box-shadow:0 28px 83px rgba(0,0,0,.39),0 0 75px rgba(34,193,98,.11);
+}
+body.zvm-experience .r4701-flow-canvas{
+ background-image:
+  radial-gradient(circle at 50% 45%,rgba(25,159,86,.22),transparent 61%),
+  radial-gradient(#365441 1px,transparent 1px);
+ background-size:auto,20px 20px;
+}
+body.zvm-experience .r466-final{
+ position:relative;overflow:hidden;
+ background:
+  radial-gradient(circle at 92% 12%,rgba(83,242,150,.14),transparent 31%),
+  radial-gradient(ellipse at 35% 115%,rgba(31,214,111,.21),transparent 65%),#0c2117;
+ box-shadow:0 24px 78px rgba(0,0,0,.22);
+}
+body.zvm-experience .r466-final:before{
+ content:"";position:absolute;width:260px;height:260px;right:-110px;top:-155px;
+ border:1px solid rgba(167,255,200,.21);border-radius:50%;pointer-events:none;
+ box-shadow:0 0 0 31px rgba(122,247,172,.024),0 0 0 61px rgba(122,247,172,.02);
+}
+/* Plans: carry the same atmospheric illustration and surface language as the FAQ. */
+body.zvm-plans-premium.zvm-experience .r4701-plans-hero{
+ position:relative;isolation:isolate;overflow:clip;
+ background:
+  radial-gradient(ellipse at 80% 37%,rgba(46,197,111,.31),transparent 74%),
+  radial-gradient(ellipse at 2% 88%,rgba(25,133,79,.18),transparent 79%),
+  linear-gradient(145deg,#0d2919,#06120c 71%);
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-hero-inner{
+ position:relative;z-index:1;
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-hero:after{
+ content:"";position:absolute;right:4%;top:6%;z-index:0;
+ width:min(45vw,560px);aspect-ratio:1;border-radius:50%;
+ border:1px solid rgba(125,231,164,.25);pointer-events:none;
+ box-shadow:0 0 0 33px rgba(115,237,167,.049),0 0 0 67px rgba(115,237,167,.027),
+ 0 0 0 102px rgba(115,237,167,.014);
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-hero:before{
+ content:"";position:absolute;inset:0;z-index:0;pointer-events:none;opacity:.37;
+ background-image:linear-gradient(rgba(86,187,128,.22) 1px,transparent 1px),
+ linear-gradient(90deg,rgba(86,187,128,.22) 1px,transparent 1px);
+ background-size:54px 54px;
+ -webkit-mask-image:linear-gradient(90deg,transparent 21%,#000 100%);
+ mask-image:linear-gradient(90deg,transparent 21%,#000 100%);
+}
+body.zvm-plans-premium.zvm-experience .r4701-license-demo{
+ border-color:#58be80;border-radius:24px;
+ background:linear-gradient(145deg,#10271a,#08150d);
+ box-shadow:0 39px 92px rgba(0,0,0,.46),0 0 0 8px rgba(70,227,162,.062),
+  0 0 102px rgba(42,202,107,.21);
+ transform:perspective(1500px) rotateY(-3deg);
+}
+body.zvm-plans-premium.zvm-experience .r4701-license-demo-bar{
+ background:linear-gradient(90deg,#153421,#0c1e15);
+}
+body.zvm-plans-premium.zvm-experience .r4701-license-demo-grid>div{
+ background:linear-gradient(145deg,#193725,#102019);
+ border-color:#366548;
+}
+body.zvm-plans-premium.zvm-experience .price-card{
+ position:relative;
+ border-color:#42785a;border-radius:22px;
+ background:
+  radial-gradient(circle at 94% 2%,rgba(62,179,108,.20),transparent 46%),
+  linear-gradient(159deg,#1c412c 0%,#11271b 48%,#091711 100%);
+ box-shadow:inset 0 1px rgba(188,255,214,.11),0 23px 54px rgba(0,0,0,.23);
+}
+body.zvm-plans-premium.zvm-experience .price-card:before{
+ content:"";position:absolute;top:0;left:18px;right:18px;height:3px;
+ border-radius:0 0 3px 3px;pointer-events:none;
+ background:linear-gradient(90deg,transparent,rgba(118,232,158,.70),transparent);
+}
+body.zvm-plans-premium.zvm-experience .price-card:hover{
+ border-color:#72b88b;box-shadow:0 19px 56px rgba(0,0,0,.23);
+}
+body.zvm-plans-premium.zvm-experience .price-card.featured{
+ border-color:#71e4a2;
+ background:
+  radial-gradient(ellipse at 100% 0%,rgba(76,225,126,.32),transparent 59%),
+  linear-gradient(154deg,#1a5835,#103421 52%,#0c2217 100%);
+ box-shadow:0 0 0 1px rgba(84,222,145,.46),0 32px 83px rgba(7,73,35,.24);
+}
+body.zvm-plans-premium.zvm-experience .price-card.featured:before{
+ height:4px;background:linear-gradient(90deg,transparent,#6ceaaa 48%,transparent);
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-included-grid article{
+ background:linear-gradient(145deg,#143323,#0c2016);
+ border-color:#32634a;border-radius:17px;
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-faq-list details{
+ border-radius:14px;background:#12251a;border-color:#355b41;
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-final{
+ position:relative;overflow:hidden;
+ background:
+  radial-gradient(ellipse at 85% 25%,rgba(65,227,127,.20),transparent 61%),
+  linear-gradient(135deg,#143621,#0b2115);
+ box-shadow:0 20px 55px rgba(0,0,0,.20);
+}
+body.zvm-plans-premium.zvm-experience .r4701-plans-final:before{
+ content:"";position:absolute;width:220px;height:220px;right:-76px;top:-105px;
+ border-radius:50%;border:1px solid rgba(175,255,212,.20);
+ box-shadow:0 0 0 28px rgba(174,249,200,.026),0 0 0 55px rgba(174,249,200,.016);
+ pointer-events:none;
+}
+@media(max-width:760px){
+ body.zvm-experience .r4700-journey-list li{
+  padding:17px;min-height:0;gap:10px;
+ }
+ body.zvm-experience .r4700-journey-list li:not(:last-child):after{display:none}
+ body.zvm-experience .r4701-hero-visual{transform:none;box-shadow:0 18px 56px rgba(0,0,0,.30)}
+ body.zvm-plans-premium.zvm-experience .r4701-license-demo{
+  box-shadow:0 20px 54px rgba(0,0,0,.34);transform:none;
+ }
+ body.zvm-plans-premium.zvm-experience .r4701-plans-hero:after{
+  width:330px;right:-140px;top:15%;opacity:.5;
+ }
+}
+@media(max-width:420px){
+ body.zvm-experience .r4701-feature-card{min-height:110px;padding:15px}
+ body.zvm-experience .r4701-feature-icon{width:43px;height:43px}
+ body.zvm-plans-premium.zvm-experience .price-card{padding:23px 18px}
+}
+@media(prefers-reduced-motion:reduce){
+ body.zvm-experience .r4701-feature-card:hover,
+ body.zvm-experience .r4701-button:hover{transform:none}
+}
+@media(prefers-contrast:more){
+ body.zvm-experience .r4700-journey-list li,
+ body.zvm-experience .r4701-feature-card,
+ body.zvm-plans-premium.zvm-experience .price-card{border-color:#9edbb5}
+}
 
 /* Adaptive without horizontal clipping. */
 @media(max-width:1080px){

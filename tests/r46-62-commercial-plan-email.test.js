@@ -53,6 +53,8 @@ assert.equal(oldOutbox.subject,'ZVM — Renovação confirmada');
 assert(!oldOutbox.html.includes('BEM-VINDO(A)'),'renewal copy must differ from new order');
 assert(!buildKeyDeliveryEmail({planId:'solo',maxUses:3,code:'test'}).html.includes('ZVM START'),'inconsistent persisted license must not be misbranded');
 
+// Commercial regression fixtures opt into sales; live storefront defaults to paused.
+process.env.ZVM_SALES_PAUSED='0';
 process.env.RENDER='true';
 process.env.ADMIN_USER='test_admin';
 process.env.ADMIN_PASS='test_secret';

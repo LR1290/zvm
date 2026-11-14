@@ -165,6 +165,86 @@ body.zvm-client-premium .client-tool-icon{flex:0 0 38px;height:38px;background:v
 body.zvm-client-premium .client-tool strong{font-size:14px;color:var(--zvm-ink)}
 body.zvm-client-premium .client-tool span{font-size:12px;color:var(--zvm-muted)}
 body.zvm-client-premium .portal-footer{color:var(--zvm-muted);background:transparent;border-top:1px solid var(--zvm-border);font-size:12px}
+
+/* R47.04 — consistent product-console art, without changing functional grids. */
+body.zvm-admin-r6,
+body.zvm-client-premium{
+ --zvm-art-bg:#07110c;--zvm-art-stroke:#326047;
+ --zvm-art-highlight:rgba(70,227,162,.14);
+}
+body.zvm-admin-r6 > header{
+ background:linear-gradient(90deg,rgba(7,18,12,.97),rgba(11,26,17,.94));
+ border-bottom-color:#306245;
+}
+body.zvm-admin-r6 .admin-overview{
+ position:relative;isolation:isolate;overflow:clip;
+ border-color:#397a52;
+ background:
+  radial-gradient(ellipse at 91% 18%,rgba(71,227,144,.18),transparent 45%),
+  radial-gradient(ellipse at 20% 100%,rgba(29,128,72,.12),transparent 60%),
+  linear-gradient(150deg,#1b3927,#0e1f17 81%);
+ box-shadow:0 25px 68px rgba(0,0,0,.20);
+}
+body.zvm-admin-r6 .admin-overview::before{
+ content:"";position:absolute;z-index:-1;width:200px;height:200px;right:0;top:-110px;
+ border-radius:50%;border:1px solid rgba(166,247,197,.20);
+ box-shadow:0 0 0 29px rgba(108,220,145,.022),0 0 0 60px rgba(108,220,145,.018);
+ pointer-events:none;
+}
+body.zvm-admin-r6 .sc{
+ background:linear-gradient(152deg,#1a3927,#0e1c14 81%);
+ border-color:#345f45;box-shadow:inset 0 1px rgba(185,255,212,.055);
+}
+body.zvm-admin-r6 .sec{
+ border-color:#2b5540;
+ background:linear-gradient(160deg,#14281c,#0f1c15 42%);
+}
+body.zvm-admin-r6 .rsidebar,
+body.zvm-admin-r6 .rsidebar:hover,
+body.zvm-admin-r6 .rsidebar:focus-within{
+ background:linear-gradient(180deg,#142b1d,#0b1710 79%);
+ border-right-color:#30563e;
+}
+body.zvm-client-premium .client-rail{
+ background:
+  radial-gradient(ellipse at 0% 0%,rgba(78,233,139,.12),transparent 58%),
+  linear-gradient(180deg,#163021,#0b1710 85%);
+ border-color:#366148;
+}
+body.zvm-client-premium .client-license-focus,
+body.zvm-client-premium .client-devices-focus{
+ position:relative;
+ border-color:#346c4c;
+ background:
+  radial-gradient(ellipse at 94% 7%,rgba(62,196,117,.095),transparent 45%),
+  linear-gradient(154deg,#193827,#0e1e16 75%);
+ box-shadow:0 20px 53px rgba(0,0,0,.16),inset 0 1px rgba(194,255,218,.055);
+}
+body.zvm-client-premium .client-quickfact{
+ border-color:#366148;
+ background:linear-gradient(150deg,#1a3725,#0d2017);
+}
+body.zvm-client-premium .client-tool{
+ border-color:#35634a;
+ background:linear-gradient(142deg,#183527,#0d2118);
+}
+body.zvm-client-premium .dash-topbar{
+ border-bottom-color:#306046;
+}
+body.zvm-client-premium .client-key-command{
+ background:linear-gradient(140deg,#0f2619,#0b1c14);
+ border-color:#397856;
+}
+@media(max-width:760px){
+ body.zvm-admin-r6 .admin-overview::before{width:155px;height:155px;right:0;top:-65px}
+ body.zvm-client-premium .client-license-focus,
+ body.zvm-client-premium .client-devices-focus{box-shadow:0 12px 29px rgba(0,0,0,.14)}
+}
+@media(prefers-contrast:more){
+ body.zvm-admin-r6 .sc,body.zvm-admin-r6 .sec,
+ body.zvm-client-premium .client-license-focus,body.zvm-client-premium .client-devices-focus{border-color:#9bdcb8}
+}
+
 /* Legacy R8 set desktop layout sizes with !important for earlier views.
    Scoped migration exceptions below are necessary until its remaining
    unrelated account forms move into this design system. Only these 4

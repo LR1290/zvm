@@ -121,3 +121,75 @@ body.zvm-analytics-premium #analytics-main:focus-visible{
   body.zvm-analytics-premium .analytics-chart-data{border-top-color:#a8c6b2}
   body.zvm-analytics-premium .period-btns [aria-pressed="true"]{border-width:2px}
 }
+
+/* R47.04 — institutional art direction shared with public pages and consoles.
+   Decoration is confined to each component; no analytics state or numeric data changes. */
+body.zvm-analytics-premium .analytics-rail{
+ border-color:#315d44;
+ background:
+  radial-gradient(ellipse at 12% 5%,rgba(56,195,107,.13),transparent 49%),
+  linear-gradient(170deg,#14301f,#0b1912 79%);
+}
+body.zvm-analytics-premium .analytics-topbar{
+ background:linear-gradient(90deg,rgba(8,20,13,.97),rgba(14,33,22,.96));
+ border-bottom-color:#315b43;
+}
+body.zvm-analytics-premium .analytics-hero{
+ position:relative;overflow:clip;
+ background:
+  radial-gradient(ellipse at 86% 10%,rgba(48,204,123,.21),transparent 56%),
+  radial-gradient(ellipse at 18% 94%,rgba(34,130,81,.11),transparent 60%),
+  linear-gradient(151deg,#1a3826,#0d1c15);
+ border-color:#377b54;
+ box-shadow:0 27px 69px rgba(0,0,0,.19),inset 0 1px rgba(165,255,198,.06);
+}
+body.zvm-analytics-premium .analytics-hero::before{
+ content:"";position:absolute;right:-30px;top:-115px;
+ width:240px;height:240px;border:1px solid rgba(175,246,198,.18);
+ border-radius:50%;pointer-events:none;
+ box-shadow:0 0 0 28px rgba(141,237,179,.025),0 0 0 57px rgba(141,237,179,.016);
+}
+body.zvm-analytics-premium .analytics-pulse{
+ position:relative;border-color:#39654b;
+ background:linear-gradient(142deg,#153621,#0d2017);
+}
+body.zvm-analytics-premium .analytics-rail-card{
+ border-color:#3b654b;
+ background:linear-gradient(145deg,#183324,#0e2117);
+}
+body.zvm-analytics-premium .sc{
+ background:linear-gradient(155deg,#173525,#0d2017 79%);
+ border-color:#366249;
+ box-shadow:inset 0 1px rgba(183,255,212,.05),0 9px 24px rgba(0,0,0,.09);
+}
+body.zvm-analytics-premium .insight-card{
+ border-color:#356148;
+ background:linear-gradient(145deg,#193628,#0d2118);
+}
+body.zvm-analytics-premium .chart-card,
+body.zvm-analytics-premium .sec{
+ border-color:#355f47;
+ background:linear-gradient(155deg,#142a1d,#0d1b14 80%);
+}
+body.zvm-analytics-premium .analytics-advanced{
+ border-color:#356047;
+ background:linear-gradient(145deg,#122e1e,#0e2017);
+}
+body.zvm-analytics-premium :is(.sc,.analytics-pulse,.insight-card,.chart-card){
+ transition:border-color .18s ease,box-shadow .18s ease;
+}
+body.zvm-analytics-premium :is(.sc,.analytics-pulse,.insight-card,.chart-card):hover{
+ border-color:#4f8c66;
+}
+@media(max-width:700px){
+ body.zvm-analytics-premium .analytics-hero::before{
+  right:0;top:-80px;width:150px;height:150px;opacity:.64;
+ }
+ body.zvm-analytics-premium .analytics-hero{box-shadow:0 14px 33px rgba(0,0,0,.13)}
+}
+@media(prefers-reduced-motion:reduce){
+ body.zvm-analytics-premium :is(.sc,.analytics-pulse,.insight-card,.chart-card){transition:none}
+}
+@media(prefers-contrast:more){
+ body.zvm-analytics-premium :is(.analytics-hero,.analytics-pulse,.sc,.insight-card,.chart-card){border-color:#9fdbb7}
+}

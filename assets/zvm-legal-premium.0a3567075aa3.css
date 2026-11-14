@@ -44,7 +44,7 @@ body.zvm-public-premium.zvm-legal-premium{
  --trust-accent:#74eeb1;--trust-mute:#b8cdbe;
 }
 body.zvm-public-premium.zvm-legal-premium .page-hero{
- background:radial-gradient(ellipse 48% 88% at 72% 0%,rgba(29,169,94,.17),transparent 82%),
+ background:radial-gradient(ellipse at 72% 0%,rgba(29,169,94,.17),transparent 82%),
  linear-gradient(150deg,#08150e,#09110c);
  border-bottom:1px solid #2c553a;min-height:244px;
  display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -167,7 +167,7 @@ body.zvm-public-premium.zvm-legal-premium :is(.zvm-trust-toc,.terms-toc) a:focus
 body.zvm-public-premium.zvm-error-premium .err-wrap.zvm-trust-error{
  display:block;min-height:max(630px,calc(100svh - 64px));
  max-width:none;margin:0;padding:clamp(66px,8vw,116px) 22px;
- background:radial-gradient(ellipse 52% 65% at 75% 16%,rgba(24,196,102,.13),transparent 70%),#07100b;
+ background:radial-gradient(ellipse at 75% 16%,rgba(24,196,102,.13),transparent 70%),#07100b;
 }
 body.zvm-public-premium.zvm-error-premium .zvm-error-grid{
  width:min(1210px,100%);margin:0 auto;display:grid;
@@ -244,6 +244,47 @@ body.zvm-public-premium.zvm-error-premium .err-actions a:focus-visible,
 body.zvm-public-premium.zvm-error-premium .zvm-error-aside a:focus-visible{
  outline:3px solid #a9f9ca;outline-offset:3px;
 }
+
+/* R47.04 — institutional trust pages share the same subtle artwork as Help and Plans. */
+body.zvm-public-premium.zvm-legal-premium .page-hero{
+ position:relative;isolation:isolate;overflow:hidden;
+ background:
+  radial-gradient(ellipse at 83% 30%,rgba(37,185,107,.19),transparent 54%),
+  radial-gradient(ellipse at 11% 85%,rgba(37,133,82,.11),transparent 64%),
+  linear-gradient(147deg,#0f2418,#07110d);
+ border-bottom:1px solid rgba(105,205,141,.22);
+}
+body.zvm-public-premium.zvm-legal-premium .page-hero::before{
+ content:"";position:absolute;z-index:-1;width:280px;height:280px;
+ top:-150px;right:8%;border-radius:50%;
+ border:1px solid rgba(150,244,182,.22);
+ box-shadow:0 0 0 28px rgba(150,244,182,.025),0 0 0 58px rgba(150,244,182,.017);
+ pointer-events:none;
+}
+body.zvm-public-premium.zvm-privacy-premium .zvm-trust-toc,
+body.zvm-public-premium.zvm-legal-premium .terms-toc{
+ background:linear-gradient(160deg,#142e1e,#0d1c14);
+ border-color:#366b4a;
+}
+body.zvm-public-premium.zvm-privacy-premium .zvm-trust-content .doc-section,
+body.zvm-public-premium.zvm-legal-premium .terms-section{
+ border-color:#335a44;
+ background:linear-gradient(165deg,#14281c,#0e1a13 70%);
+}
+body.zvm-public-premium.zvm-error-premium .zvm-error-aside{
+ background:linear-gradient(150deg,#193824,#0d2117 76%);
+ border-color:#3b8058;
+}
+@media(max-width:720px){
+ body.zvm-public-premium.zvm-legal-premium .page-hero::before{
+  right:-115px;top:-175px;opacity:.65;
+ }
+}
+@media(prefers-contrast:more){
+ body.zvm-public-premium.zvm-privacy-premium .zvm-trust-content .doc-section,
+ body.zvm-public-premium.zvm-legal-premium .terms-section{border-color:#a4debb}
+}
+
 @media(max-width:980px){
  body.zvm-public-premium.zvm-privacy-premium .zvm-trust-layout{
   grid-template-columns:minmax(190px,225px) minmax(0,1fr);gap:20px;

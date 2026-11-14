@@ -6,6 +6,8 @@ const path=require('node:path');
 const Module=require('node:module');
 const {chromium}=require('playwright');
 const root=path.resolve(__dirname,'..');
+// Modal/guest-checkout behavior is exercised only with an explicit sales-open fixture.
+process.env.ZVM_SALES_PAUSED='0';
 process.env.RENDER='true';
 process.env.ADMIN_USER='zvm-public-visual-fixture';
 process.env.ADMIN_PASS='zvm-public-visual-test-only';

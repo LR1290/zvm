@@ -30,6 +30,8 @@ assert(contrast('#f3f8f4','#101a16')>=4.5,'primary text contrast');
 assert(contrast('#b7cbbf','#101a16')>=4.5,'secondary text contrast');
 assert(contrast('#082118','#46e3a2')>=4.5,'CTA contrast');
 
+// Commercial regression fixtures opt into sales; live storefront defaults to paused.
+process.env.ZVM_SALES_PAUSED='0';
 process.env.RENDER='true';process.env.ADMIN_USER='public-qa';
 process.env.ADMIN_PASS='public-only-fixture';process.env.MONGODB_URI='mongodb://127.0.0.1:27017/public_qa_offline';
 const original=Module._load;

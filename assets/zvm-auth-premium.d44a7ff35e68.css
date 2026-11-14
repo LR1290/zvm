@@ -84,6 +84,69 @@ body.zvm-auth-premium .znav{background:rgba(7,13,11,.95);border-bottom-color:#26
 body.zvm-auth-premium :is(a,button,input,select,textarea):focus-visible{
   outline:2px solid #acf4cf;outline-offset:3px;
 }
+
+/* R47.04 — auth shares the FAQ's layered emerald editorial art. */
+body.zvm-auth-premium .auth-promo{
+ isolation:isolate;
+ background:
+  radial-gradient(circle at 74% 73%,rgba(43,215,113,.16),transparent 33%),
+  radial-gradient(ellipse at 12% 8%,rgba(76,232,139,.15),transparent 49%),
+  linear-gradient(155deg,#12281b,#07110d 70%);
+}
+body.zvm-auth-premium .auth-promo::after{
+ content:"";position:absolute;z-index:0;pointer-events:none;
+ width:min(56vw,450px);aspect-ratio:1;right:-12%;bottom:-15%;
+ border-radius:50%;border:1px solid rgba(127,245,172,.22);
+ background:
+  radial-gradient(circle at center,rgba(61,239,134,.13) 0 6px,transparent 7px),
+  repeating-radial-gradient(circle at center,transparent 0 39px,rgba(108,231,155,.12) 40px 41px,transparent 42px 77px);
+ -webkit-mask-image:radial-gradient(circle,#000 25%,transparent 85%);
+ mask-image:radial-gradient(circle,#000 25%,transparent 85%);
+}
+body.zvm-auth-premium .auth-promo h1{
+ text-wrap:balance;text-shadow:0 10px 30px rgba(0,0,0,.20);
+}
+body.zvm-auth-premium .auth-benefits li,
+body.zvm-auth-premium .admin-auth-meta>div{
+ border:1px solid rgba(114,207,149,.24);border-radius:15px;
+ background:linear-gradient(118deg,rgba(22,52,35,.82),rgba(10,25,17,.92));
+}
+body.zvm-auth-premium .auth-benefit-icon{
+ background:linear-gradient(135deg,#185034,#102c20);
+}
+body.zvm-auth-premium .auth-form-wrap{
+ background:
+  radial-gradient(ellipse at 88% 11%,rgba(43,161,91,.09),transparent 52%),
+  #080e0b;
+}
+body.zvm-auth-premium .auth-form-card{
+ position:relative;overflow:hidden;
+ border:1px solid #32664b;border-radius:23px;
+ background:linear-gradient(153deg,#152c1e,#0d1a13 55%,#0c1610);
+ box-shadow:0 32px 85px rgba(0,0,0,.30),inset 0 1px rgba(185,255,214,.06);
+}
+body.zvm-auth-premium .auth-form-card::before{
+ content:"";position:absolute;top:0;left:8%;right:8%;height:1px;
+ background:linear-gradient(90deg,transparent,rgba(163,254,191,.57),transparent);
+ pointer-events:none;
+}
+body.zvm-auth-premium .auth-field input{
+ border-color:#38644b;background:#091610;
+}
+body.zvm-auth-premium .auth-submit{
+ background:linear-gradient(135deg,#82f6b3,#38da91);
+ color:#072117;
+ box-shadow:0 12px 30px rgba(42,194,108,.10);
+}
+@media(max-width:640px){
+ body.zvm-auth-premium .auth-promo::after{width:250px;right:-95px;bottom:-100px;opacity:.55}
+ body.zvm-auth-premium .auth-form-card{border-radius:19px}
+}
+@media(prefers-contrast:more){
+ body.zvm-auth-premium .auth-form-card,
+ body.zvm-auth-premium .auth-benefits li{border-color:#9ad9b5}
+}
+
 @media(max-width:980px){
   body.zvm-auth-premium .auth-shell{display:grid;grid-template-columns:minmax(0,1fr);min-height:auto}
   body.zvm-auth-premium .auth-promo{padding:36px clamp(18px,5vw,36px);border-right:0;border-bottom:1px solid #263d32}

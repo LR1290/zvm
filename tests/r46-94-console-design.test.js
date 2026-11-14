@@ -62,6 +62,8 @@ assert(ratio('#94ad9d','#101a16')>=4.5,'muted text contrast AA');
 assert(ratio('#082118','#46e3a2')>=4.5,'primary CTA contrast AA');
 passed++;
 
+// Historical expired-license CTA fixture intentionally exercises explicitly enabled sales.
+process.env.ZVM_SALES_PAUSED='0';
 process.env.RENDER='true';
 process.env.ADMIN_USER='qa-ui';
 process.env.ADMIN_PASS='qa-ui-secret';
