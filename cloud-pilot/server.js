@@ -108,6 +108,12 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
     const counts=Object.fromEntries(Object.keys(MODULES).map(name=>[name,Array.isArray(current.modules[name])?current.modules[name].length:0]));
     return json(res,200,{revision:current.revision,updatedAt:current.updatedAt,counts,modules:Object.keys(MODULES),sending:false});
    }
+   if(req.method==='GET'&&pathname==='/api/workspace/export'){
+    const data=await store.readWorkspace(user.email);
+    return json(res,200,{format:'ZVM_CLOUD_V1',version:1,createdAt:new Date().toISOString(),
+      note:'Somente rascunhos Cloud. Não contém mídias locais, autenticação ou chaves.',
+      revision:data.revision,modules:data.modules});
+   }
    const moduleRoute=/^\/api\/workspace\/([a-zA-Z]+)$/.exec(pathname);
    if(moduleRoute){
     const name=moduleRoute[1];
@@ -151,12 +157,6 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
     console.log('[ZVM-CLOUD] authorized import categories='+Object.keys(plan.counts).join(',')+'; no real sending');
     return json(res,200,{ok:true,revision:committed.revision,counts:plan.counts,warnings:plan.warnings,
       sending:false});
-   }
-   if(req.method==='GET'&&pathname==='/api/workspace/export'){
-    const data=await store.readWorkspace(user.email);
-    return json(res,200,{format:'ZVM_CLOUD_V1',version:1,createdAt:new Date().toISOString(),
-      note:'Somente rascunhos Cloud. Não contém mídias locais, autenticação ou chaves.',
-      revision:data.revision,modules:data.modules});
    }
    if(pathname==='/api/draft'){
     if(req.method==='GET'){
