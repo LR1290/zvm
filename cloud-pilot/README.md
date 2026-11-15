@@ -1,40 +1,33 @@
-# ZVM Cloud — piloto privado de e-mail e senha (R2)
+# ZVM Cloud DEV — login do Portal do Cliente + chave DEV
 
-## Estado e escopo
-Projeto separado do servidor principal `zvm.onrender.com`. O acesso é por **URL comum + e-mail e senha**, não por links únicos. Existem dois papéis: administrador e **uma** conta de cliente para o piloto. Não existe cadastro público, disparo de mensagens, agendamento real, importação de contatos, integração WhatsApp ou alteração de licenças da extensão.
+## Endereço e hospedagem
+Cloud utiliza o MESMO serviço Render do site oficial, em https://zvm.onrender.com/dev/cloud/.
+Qualquer pessoa com conta válida pode fazer login por e-mail/senha na rota oficial POST /cliente/login.
+2FA do Portal é respeitado; o retorno é por redirecionamento local validado /dev/cloud/.
+Não existe banco de senhas paralelo, administrador Cloud especial ou link individual.
 
-A aplicação oferece painel responsivo, login, gestão de conta autorizada e rascunho de mensagem de teste **salvo no MongoDB**, quando configurado. O banco é fixado no código como `zvm_cloud_pilot`, separado do `zapvoice` de produção. A conta de conexão deve ter exclusivamente `readWrite` em `zvm_cloud_pilot`. Não reutilizar a credencial de produção do MongoDB nem a senha de cliente.
+## Autorização DEV, obrigatória após o login
+1. Após autenticar no Portal do Cliente, Cloud solicita a CHAVE DE LICENÇA DEV.
+2. A chave precisa estar VINCULADA à mesma conta no portal, estar ativa/não expirada, e com Acesso DEV habilitado pelo administrador.
+3. O servidor valida o vínculo e o estado atual da licença na autoridade persistida do servidor principal, sem confiar no frontend ou cache legado.
+4. Apenas SHA256 da chave e SHA256 da sessão Portal são gravados na base Cloud, para um grant máximo de oito horas.
+5. Toda API privada revalida a licença DEV; desabilitar DEV, expirar a chave, trocar sessão ou sair do Portal revoga efetivamente o acesso.
+6. Cadastro e vínculo continuam nos fluxos oficiais /cliente/registro e /cliente/vincular.
+7. Não é criado um código compartilhado universal nem autorizadas chaves normais.
 
-## Segurança do provisionamento
-Sem `CLOUD_MONGODB_URI`, `CLOUD_ADMIN_EMAIL` e `CLOUD_ADMIN_PASSWORD_SCRYPT` válidos, o login fica **selado**; não há fallback para conta aberta. Defina credenciais pelo painel seguro de variáveis de ambiente do Render.
+## Banco e isolamento
+Variável CLOUD_MONGODB_URI permanece no serviço principal.
+Banco exclusivo zvm_cloud_pilot: cloud_dev_grants e drafts (uma entrada por e-mail da conta autenticada).
+O usuário de conexão Cloud não tem permissão de leitura/escrita no banco de licenças zapvoice.
+Antigo login paralelo /dev/cloud/api/login e cadastro /dev/cloud/api/admin/guest são aposentados (404).
 
-O administrador acessa o mesmo formulário da convidada e verá a aba Administração. Ali, cria/atualiza somente uma conta, usando e-mail e senha de pelo menos 12 caracteres. A senha é armazenada como scrypt com salt aleatório; a interface não a expõe após o cadastro. Trocar de e-mail revoga sessões anteriores e elimina o rascunho antigo. Revogar remove a conta, suas sessões e seu rascunho.
+## Sem execução de mensagens
+O laboratório permanece sem API oficial WhatsApp, sem disparos, sem agendamentos reais e sem filas 24/7.
 
-Para gerar **somente** o hash da senha do administrador localmente (não no GitHub):
-```
-node -e "const c=require('node:crypto');const p=process.env.CLOUD_ADMIN_PASSWORD;if(!p||p.length<12)process.exit(1);const s=c.randomBytes(16);console.log(s.toString('hex')+':'+c.scryptSync(p,s,32).toString('hex'))"
-```
-A senha em texto puro deve ser fornecida pela variável de ambiente local `CLOUD_ADMIN_PASSWORD`. Guarde o hash como `CLOUD_ADMIN_PASSWORD_SCRYPT` no Render. Não envie a senha na conversa.
+## Comandos de QA
+npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+npm run check
+node --test cloud-pilot/test/pilot.test.js cloud-pilot/test/mount.test.js
 
-## Deploy
-Repositório: `LR1290/zvm`
-Branch: `pilot/zvm-cloud-single-user-20261115`
-Serviço de testes: `zvm-cloud-piloto-privado`
-Build:
-```
-npm ci --omit=dev --ignore-scripts --no-audit --no-fund && node --check cloud-pilot/server.js && node --check cloud-pilot/store.js && node --check cloud-pilot/public/app.js && node --test cloud-pilot/test/pilot.test.js
-```
-Start:
-```
-node cloud-pilot/server.js
-```
-Variáveis: `CLOUD_MONGODB_URI`, `CLOUD_ADMIN_EMAIL`, `CLOUD_ADMIN_PASSWORD_SCRYPT`.
-Não configure variáveis com senhas ou URIs no repositório.
-
-## Limitações
-Render Free pode suspender o serviço; sessões autenticadas são persistidas no banco e têm duração de oito horas. O MongoDB Atlas gratuito tem limites de armazenamento e conexões. Rascunhos não constituem campanhas reais e os botões de envio não existem. Ainda não há integração Meta nem fila de mensagens 24/7.
-
-O repositório, site principal, licenciamento e dados da ZVM Desktop permanecem inalterados.
-
-## Testes
-`node --test cloud-pilot/test/pilot.test.js` valida: conta única, login e origem, isolamento admin/convidada, rascunhos persistidos no store, revogação, selo quando infraestrutura indisponível e inexistência de endpoint de disparo.
+Após deploy, confirmar sem autenticação: GET /dev/cloud/api/session retorna loggedIn:false, devAuthorized:false, sending:false.
+Não publicar senhas, chaves ou credenciais em GitHub, respostas ou logs.
