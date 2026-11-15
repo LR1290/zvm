@@ -9,7 +9,7 @@ function createMemoryStore(){
   async setUser(user){const previous=users.get('guest');if(previous&&previous.email!==user.email)drafts.delete('guest');users.set('guest',clone(user));sessions.forEach((s,key)=>{if(s.subject==='guest')sessions.delete(key);});return true;},
   async revokeUser(){users.delete('guest');drafts.delete('guest');sessions.forEach((s,key)=>{if(s.subject==='guest')sessions.delete(key);});},
   async newSession(id,data){sessions.set(id,clone(data));},
-  async session(id){const s=sessions.get(id);if(s&&s.expiresAt>Date.now())return clone(s);sessions.delete(id);return null;},
+  async session(id){const s=sessions.get(id);if(s&&new Date(s.expiresAt).getTime()>Date.now())return clone(s);sessions.delete(id);return null;},
   async endSession(id){sessions.delete(id);},
   async draft(){return clone(drafts.get('guest'));},
   async setDraft(doc){drafts.set('guest',clone(doc));return clone(doc);},
