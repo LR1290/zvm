@@ -80,3 +80,13 @@ const {execFileSync}=require('node:child_process');
 test('main server root syntax remains valid',()=>{
  execFileSync(process.execPath,['--check',require('node:path').join(__dirname,'../../server.js')],{timeout:15000});
 });
+
+// Full backend regression on Render: exercises the unchanged production suite before promotion.
+test('Full backend regression on Render',()=>{
+ const {spawnSync}=require('node:child_process');
+ const root=require('node:path').join(__dirname,'../..');
+ for(const args of [['ci','--omit=dev','--ignore-scripts','--no-audit','--no-fund'],['run','check']]){
+  const run=spawnSync('npm',args,{cwd:root,encoding:'utf8',timeout:240000,maxBuffer:8*1024*1024});
+  assert.equal(run.status,0,'npm '+args.join(' ')+' failed: '+(run.error?.message||'')+'\n'+(run.stdout||'').slice(-3500)+'\n'+(run.stderr||'').slice(-3500));
+ }
+});
