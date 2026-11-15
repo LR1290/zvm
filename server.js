@@ -1,6 +1,7 @@
 const ZVM_BUILD_ID = '2026-10-08-r46-16-cakto-queue-recovery';
 const { resolveClientIp } = require('./client-ip-policy');
 const { createLandingRenderer } = require('./src/web/public/landing/render');
+const { renderOwnerSalesLanding } = require('./src/web/public/landing/owner');
 const { renderPublicFooter } = require('./src/web/public/footer');
 const { TERMS, renderTermsDocument } = require('./src/web/public/terms');
 const { SUPPORT_URL: ZVM_SUPPORT_URL } = require('./src/support-contact');
@@ -5485,6 +5486,18 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '8996142ec21d4769e5df12a06bafc7d80f748e9a6e698de5632737d272f857de',
     compressible: true,
   }),
+  '/assets/zvm-owner-site.ddd1b37eb938.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-owner-site.ddd1b37eb938.css'),
+    sha256: 'ddd1b37eb9389e319ae91777abd20b19efeb5024b7629a1fbdd2215fe04abb5c',
+    compressible: true,
+  }),
+  '/assets/zvm-sales-owner.76ccce3f6669.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-sales-owner.76ccce3f6669.css'),
+    sha256: '76ccce3f666924644952fd3cce80e6bf881768526e360bdb76798a1da10eac5d',
+    compressible: true,
+  }),
   '/assets/zvm-r46-landing.af4c6e5c623b.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-r46-landing.af4c6e5c623b.css'),
@@ -5753,8 +5766,22 @@ function sendJson(res, data, status = 200) {
   res.end(buf);
 }
 
+// Owner-approved identity is applied once, after each page's legacy sheets.
+// Scope to document types that actually use this theme; preserve the independent
+// sales homepage, API responses, assets, scripts, checkouts and Cloud application.
+const ZVM_OWNER_SITE_THEME = '<link rel="stylesheet" href="/assets/zvm-owner-site.ddd1b37eb938.css">';
+function applyOwnerSiteTheme(html) {
+  if (typeof html !== 'string' || !html.includes('</head>') ||
+      html.includes('/assets/zvm-owner-site.ddd1b37eb938.css')) return html;
+  if (!/<body\b[^>]*class=["'][^"']*\bzvm-(?:public-premium|client-premium|auth-premium|admin-r6)\b/.test(html)) {
+    return html;
+  }
+  return html.replace('</head>', ZVM_OWNER_SITE_THEME + '</head>');
+}
+
 function sendHtml(res, html, status = 200) {
   // Paginas sensiveis (portal/admin/analytics/erros de sessao) continuam NO-STORE.
+  html = applyOwnerSiteTheme(html);
   const buf = Buffer.from(html, 'utf8');
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
@@ -5806,6 +5833,7 @@ function sendAuthHtml(res, html, status = 200) {
     }
   }
   // Auth/conta e Portal atual: sem script/style/handlers inline; CSP fechada em 'self'.
+  html = applyOwnerSiteTheme(html);
   const buf = Buffer.from(html, 'utf8');
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
@@ -5826,7 +5854,11 @@ function sendPublicHtml(res, html, status = 200) {
   const request = res.req || {};
   const currentPath = new URL(String(request.url || '/'), 'https://zvm.invalid').pathname;
   const localeInfo = resolvePublicLocale(request);
-  if (['/', '/planos', '/faq', '/privacidade', '/termos'].includes(currentPath) && status === 200) {
+  if (currentPath === '/' && status === 200) {
+    // Owner-provided campaign layout is authored in pt-BR; don't apply translations
+    // belonging to the retired homepage (Planos, FAQ and legal remain localized).
+    res.setHeader('Content-Language', 'pt-BR');
+  } else if (['/planos', '/faq', '/privacidade', '/termos'].includes(currentPath) && status === 200) {
     html = localizePublicHtml(html, localeInfo.locale, { path: currentPath });
     res.setHeader('Content-Language', localeInfo.locale);
     _appendVary(res, 'Accept-Language');
@@ -5839,6 +5871,7 @@ function sendPublicHtml(res, html, status = 200) {
   // - private: nunca permite cache compartilhado/CDN servir pagina de outro usuario;
   // - no-cache: navegador pode guardar, mas precisa revalidar antes de reutilizar;
   // - ETag: resposta identica vira 304 sem retransmitir dezenas de KB de HTML.
+  html = applyOwnerSiteTheme(html);
   const buf = Buffer.from(html, 'utf8');
   const etag = _htmlEtag(buf);
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -7118,8 +7151,8 @@ function _sharedNav(options = '', legacyPortalUser = null) {
   }
 
   const mainLinks = [
-    ['/?sec=produto', 'Ferramenta'],
-    ['/?sec=recursos', 'Recursos'],
+    ['/#recursos', 'Recursos'],
+    ['/#como', 'Como funciona'],
     ['/planos', 'Planos'],
     ['/faq', 'FAQ'],
     ['/privacidade', 'Privacidade'],
@@ -10771,8 +10804,14 @@ async function handleRequest(req, res) {
   }
 
   if (req.method === 'GET' && p === '/') {
-    const _sess = isPortalSession(req) ? getPortalUser(req) : null;
-    sendPublicHtml(res, renderStandaloneLandingPage(_sess)); return;
+    // Public owner landing. Checkout remains under /planos (with the existing Cakto gates).
+    sendPublicHtml(res, renderOwnerSalesLanding({
+      plans: ZVM_PUBLIC_PLANS,
+      salesPaused: ZVM_SALES_PAUSED,
+      escHtml,
+      testimonialsJson: process.env.ZVM_SALES_TESTIMONIALS_JSON || '',
+      supportUrl: ZVM_SUPPORT_URL
+    })); return;
   }
   if (req.method === 'GET' && p === '/verificar') {
     res.writeHead(302, { Location: getVerifyRedirect(isPortalSession(req)) }); res.end(); return;

@@ -56,7 +56,7 @@
   <button data-page="campaigns">Campanhas</button>
   <button data-page="flows">Fluxos</button>
   <button data-page="funnels">Funis</button>
-  <button data-page="library">Biblioteca</button>
+  <button data-page="library">Biblioteca</button><button data-page="contacts">Contatos</button><button data-page="crm">CRM</button><button data-page="labels">Etiquetas</button><button data-page="quickReplies">Respostas</button><button data-page="campaigns">Disparos</button><button data-page="agenda">Agenda</button><button data-page="settings">Configurações</button><button data-page="migration">Importar R17</button>
  </nav>
  <section class="view" id="summary">
   <div class="stats">
@@ -66,21 +66,29 @@
   </div>
   <div class="panel section"><h2>Teste de conexão</h2><p class="muted">Verifique o servidor sem utilizar contatos ou enviar mensagens.</p><button class="primary" id="ping">Testar conexão</button><p class="result" id="response" aria-live="polite"></p></div>
  </section>
- <section class="view" id="campaigns" hidden>
-  <div class="panel section"><h2>Rascunho de campanha</h2><p class="muted">Salvo no banco privado da Cloud, por conta. Isso não agenda nem envia mensagens.</p>
-   <label for="name">Nome</label><input id="name" maxlength="80" placeholder="Ex.: Campanha de novembro">
-   <label for="message">Mensagem de exemplo</label><textarea id="message" rows="5" maxlength="2000" placeholder="Escreva sua mensagem..."></textarea>
-   <div class="actions"><button id="save" class="primary">Salvar na nuvem</button><button id="clear" class="secondary">Limpar</button></div>
-   <p class="result" id="saved" aria-live="polite"></p>
-   <div class="preview"><small>PRÉVIA</small><p id="preview">A mensagem aparecerá aqui.</p></div>
+ 
+ 
+ <section class="view" id="contacts" hidden><div class="panel section"><h2>Contatos</h2><p class="muted">Organize contatos e selecione destinatários antes de preparar campanhas. Nenhum envio automático.</p><div id="cloud-list-contacts"></div></div></section>
+ <section class="view" id="crm" hidden><div class="panel section"><h2>CRM</h2><p class="muted">Pipelines e etapas comerciais. Contatos do backup permanecem associados às colunas originais.</p><div id="cloud-list-crm"></div></div></section>
+ <section class="view" id="labels" hidden><div class="panel section"><h2>Etiquetas</h2><p class="muted">Marcadores para organizar seus contatos e automações.</p><div id="cloud-list-labels"></div></div></section>
+ <section class="view" id="quickReplies" hidden><div class="panel section"><h2>Respostas rápidas</h2><p class="muted">Textos e sequências salvos como rascunho, sem conexão com WhatsApp Web.</p><div id="cloud-list-quickReplies"></div></div></section>
+ <section class="view" id="campaigns" hidden><div class="panel section"><h2>Disparos</h2><p class="muted">Prepare uma campanha, selecione destinatários e confira nomes e telefones. O botão de envio não está disponível.</p><div id="cloud-list-campaigns"></div></div></section>
+ <section class="view" id="agenda" hidden><div class="panel section"><h2>Agenda</h2><p class="muted">Planejamento de mensagens. Nada será executado com os dispositivos desligados nesta etapa.</p><div id="cloud-list-agenda"></div></div></section>
+ <section class="view" id="settings" hidden><div class="panel section"><h2>Configurações</h2><p class="muted">Preferências pessoais do espaço de trabalho Cloud.</p><div id="cloud-list-settings"></div></div></section>
+ <section class="view" id="migration" hidden>
+  <div class="panel section"><h2>Importar dados da ZVM Desktop</h2><p class="muted">Selecione um backup <strong>JSON</strong> exportado da ZVM. Primeiro analisaremos os dados, sem substituir seus rascunhos. Só depois da confirmação faremos a gravação.</p>
+   <label for="backupFile">Backup JSON da extensão</label><input id="backupFile" type="file" accept=".json,application/json">
+   <button id="inspectBackup" type="button" class="primary">Verificar compatibilidade</button>
+   <div id="backupReview" aria-live="polite"></div>
+   <p class="tiny">Esta versão não aceita ZIP, .extbackup, dados de mídia locais, sessões, senhas ou licenças. Não oferecemos restauração silenciosa; os itens não suportados são informados na prévia.</p>
   </div>
  </section>
- <section class="view" id="flows" hidden><div class="panel section"><h2>Fluxos</h2><p class="muted">Execução ainda indisponível. A integração oficial será homologada separadamente.</p><span class="tag">Em preparação</span></div></section>
- <section class="view" id="funnels" hidden><div class="panel section"><h2>Funis</h2><p class="muted">Agendamentos reais dependem de um executor oficial e fila persistente.</p><span class="tag">Em preparação</span></div></section>
- <section class="view" id="library" hidden><div class="panel section"><h2>Biblioteca</h2><p class="muted">Experimente as mensagens de teste na guia Campanhas. Mídias ainda não estão sincronizadas.</p><span class="tag">Sem sincronização</span></div></section>
+<section class="view" id="flows" hidden><div class="panel section"><h2>Fluxos</h2><p class="muted">Crie e organize definições de Fluxos. Execução real desativada.</p><div id="cloud-list-flows"></div></div></section>
+ <section class="view" id="funnels" hidden><div class="panel section"><h2>Funis</h2><p class="muted">Planeje Funis e suas etapas. Agendamentos reais desativados.</p><div id="cloud-list-funnels"></div></div></section>
+ <section class="view" id="library" hidden><div class="panel section"><h2>Biblioteca</h2><p class="muted">Mensagens reutilizáveis e itens de conteúdo. Mídias locais exigem migração específica.</p><div id="cloud-list-library"></div></div></section>
  <footer><a href="/cliente">Minha conta ZVM</a> · <a href="/cliente/logout">Sair do site</a> · ZVM Cloud DEV sem envios reais</footer>
 </section>
 </main>
-<script defer src="app.js"></script>
+<script defer src="app.js"></script><script defer src="workspace.js"></script>
 </body>
 </html>
