@@ -7,3 +7,34 @@ a:hover{color:#c4ffe8}
 .login .tiny{line-height:1.6}
 #devGate .error{min-height:24px}
 @media(max-width:420px){.login h1{font-size:26px}.login{margin:20px auto}.login form{margin-top:16px}.chip{padding:6px 9px}}
+
+/* Cloud workspaces — responsive and keyboard-accessible. No!important. */
+.workspace-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:16px 0}
+.workspace-items{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:12px;margin-top:16px}
+.workspace-item{display:flex;justify-content:space-between;gap:12px;align-items:start;min-width:0;background:#0b1d1f;border:1px solid #29494d;padding:17px;border-radius:13px}
+.workspace-item-info{display:flex;flex-direction:column;gap:7px;min-width:0;overflow-wrap:anywhere}
+.workspace-item-info strong{font-size:15px}.workspace-item-info small{color:var(--muted);line-height:1.4}
+.workspace-item-actions{display:flex;flex-wrap:wrap;gap:7px;justify-content:flex-end}
+.workspace-item-actions button{min-height:39px;padding:8px 11px;font-size:12px}
+.workspace-editor{background:#0a1c1d;border:1px solid #3b6965;padding:20px;border-radius:14px;margin:18px 0 24px}
+.workspace-editor h3{font-size:18px;margin:0 0 14px}
+.workspace-field{margin-bottom:12px}.workspace-field label{margin:7px 0}.workspace-field textarea{min-height:95px}
+.workspace-audience{border:1px solid #34534d;border-radius:12px;background:#112b2a;padding:15px;margin:18px 0;max-height:350px;overflow:auto}
+.workspace-audience h3{font-size:15px}.workspace-audience .muted{font-size:13px}
+.workspace-contact-check{display:flex;align-items:center;gap:12px;padding:8px 0;margin:0;font-weight:400;border-bottom:1px solid #284441}
+.workspace-contact-check input{width:20px;height:20px;min-width:20px;accent-color:var(--green)}
+.workspace-import-review{margin-top:20px;padding:16px;border-radius:12px;background:#0b2224;border:1px solid #3b6965}
+.workspace-import-review small{display:block;color:#f5cd93;margin:9px 0;overflow-wrap:anywhere}
+.workspace-import-review select{display:block;width:100%;max-width:430px;border:1px solid #3b6965;background:#0b2224;color:var(--text);border-radius:10px;padding:12px;margin:6px 0 18px}
+.workspace-status{color:#9fefca;overflow-wrap:anywhere;margin:12px 0}.workspace-status.error{color:#ffb8ad}
+#backupFile{display:block;max-width:100%;font-size:13px}
+#backupReview p{overflow-wrap:anywhere}
+@media(max-width:720px){
+ .workspace-items{grid-template-columns:minmax(0,1fr)}
+ .workspace-item{flex-direction:column}
+ .workspace-item-actions{width:100%;justify-content:flex-start}
+ .workspace-item-actions button{flex:1}
+ .workspace-editor{padding:15px 12px}
+ .workspace-actions button{flex:1}
+ .tabs{scroll-padding-inline:10px}
+}
