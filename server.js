@@ -5486,6 +5486,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '8996142ec21d4769e5df12a06bafc7d80f748e9a6e698de5632737d272f857de',
     compressible: true,
   }),
+  '/assets/zvm-owner-site.ddd1b37eb938.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-owner-site.ddd1b37eb938.css'),
+    sha256: 'ddd1b37eb9389e319ae91777abd20b19efeb5024b7629a1fbdd2215fe04abb5c',
+    compressible: true,
+  }),
   '/assets/zvm-sales-owner.6a148f96da38.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-sales-owner.6a148f96da38.css'),
@@ -5760,8 +5766,22 @@ function sendJson(res, data, status = 200) {
   res.end(buf);
 }
 
+// Owner-approved identity is applied once, after each page's legacy sheets.
+// Scope to document types that actually use this theme; preserve the independent
+// sales homepage, API responses, assets, scripts, checkouts and Cloud application.
+const ZVM_OWNER_SITE_THEME = '<link rel="stylesheet" href="/assets/zvm-owner-site.ddd1b37eb938.css">';
+function applyOwnerSiteTheme(html) {
+  if (typeof html !== 'string' || !html.includes('</head>') ||
+      html.includes('/assets/zvm-owner-site.ddd1b37eb938.css')) return html;
+  if (!/<body\b[^>]*class=["'][^"']*\bzvm-(?:public-premium|client-premium|auth-premium|admin-r6)\b/.test(html)) {
+    return html;
+  }
+  return html.replace('</head>', ZVM_OWNER_SITE_THEME + '</head>');
+}
+
 function sendHtml(res, html, status = 200) {
   // Paginas sensiveis (portal/admin/analytics/erros de sessao) continuam NO-STORE.
+  html = applyOwnerSiteTheme(html);
   const buf = Buffer.from(html, 'utf8');
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
@@ -5813,6 +5833,7 @@ function sendAuthHtml(res, html, status = 200) {
     }
   }
   // Auth/conta e Portal atual: sem script/style/handlers inline; CSP fechada em 'self'.
+  html = applyOwnerSiteTheme(html);
   const buf = Buffer.from(html, 'utf8');
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
@@ -5850,6 +5871,7 @@ function sendPublicHtml(res, html, status = 200) {
   // - private: nunca permite cache compartilhado/CDN servir pagina de outro usuario;
   // - no-cache: navegador pode guardar, mas precisa revalidar antes de reutilizar;
   // - ETag: resposta identica vira 304 sem retransmitir dezenas de KB de HTML.
+  html = applyOwnerSiteTheme(html);
   const buf = Buffer.from(html, 'utf8');
   const etag = _htmlEtag(buf);
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -7129,8 +7151,8 @@ function _sharedNav(options = '', legacyPortalUser = null) {
   }
 
   const mainLinks = [
-    ['/?sec=produto', 'Ferramenta'],
-    ['/?sec=recursos', 'Recursos'],
+    ['/#recursos', 'Recursos'],
+    ['/#como', 'Como funciona'],
     ['/planos', 'Planos'],
     ['/faq', 'FAQ'],
     ['/privacidade', 'Privacidade'],
