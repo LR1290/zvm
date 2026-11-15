@@ -85,5 +85,5 @@ for (const [fn, next] of [
 }
 assert(server.includes('salesPaused: ZVM_SALES_PAUSED'));
 assert(server.includes("if (p === '/cliente' || p === '/cliente/')"));
-assert(server.includes("if (p === '/dev/cloud'") || server.includes("mountZvmCloud") || server.includes('cloudMount'));
+assert(server.includes('if (await serveZVMCloud(req, res, p)) return;'), 'Cloud mount must remain active');
 console.log('ZVM owner visual system: SHA-256, CSS, portal, auth, legal, admin, menu and Cloud isolation passed.');
