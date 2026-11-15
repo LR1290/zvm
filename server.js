@@ -5447,10 +5447,10 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '8996142ec21d4769e5df12a06bafc7d80f748e9a6e698de5632737d272f857de',
     compressible: true,
   }),
-  '/assets/zvm-sales-landing.66445dac266a.css': Object.freeze({
+  '/assets/zvm-sales-landing.f3c4d0fcb541.css': Object.freeze({
     type: 'text/css; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-sales-landing.66445dac266a.css'),
-    sha256: '66445dac266a5c8c834bea47614692e59b1f57ac75c79c116437f47ef3928067',
+    file: path.join(__dirname, 'assets', 'zvm-sales-landing.f3c4d0fcb541.css'),
+    sha256: 'f3c4d0fcb541824b05d533c26ce3e5d6f71528624cd37a3b28e81f0a3c55bbcd',
     compressible: true,
   }),
   '/assets/zvm-r46-landing.af4c6e5c623b.css': Object.freeze({
@@ -7151,7 +7151,7 @@ function renderCompactSalesPage(portalUser = null) {
   return renderSalesPage({
     escHtml, favicon: _FAV,
     sharedCssLink: _CSS_SHARED + _CSS_STANDALONE + _CSS_SYSTEM + _CSS_PUBLIC_PREMIUM + _CSS_REFERENCE_PUBLIC,
-    cssUrl: '/assets/zvm-sales-landing.66445dac266a.css',
+    cssUrl: '/assets/zvm-sales-landing.f3c4d0fcb541.css',
     publicNav: () => _sharedNav({ activePath: '/vendas', portalUser, showBack: false }),
     plans: ZVM_PUBLIC_PLANS,
     salesPaused: ZVM_SALES_PAUSED,
