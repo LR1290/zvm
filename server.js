@@ -5492,10 +5492,10 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: 'ddd1b37eb9389e319ae91777abd20b19efeb5024b7629a1fbdd2215fe04abb5c',
     compressible: true,
   }),
-  '/assets/zvm-sales-owner.6a148f96da38.css': Object.freeze({
+  '/assets/zvm-sales-owner.76ccce3f6669.css': Object.freeze({
     type: 'text/css; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-sales-owner.6a148f96da38.css'),
-    sha256: '6a148f96da38d94a0b661b09263c38691549f186ae25e44c086506b543210ca8',
+    file: path.join(__dirname, 'assets', 'zvm-sales-owner.76ccce3f6669.css'),
+    sha256: '76ccce3f666924644952fd3cce80e6bf881768526e360bdb76798a1da10eac5d',
     compressible: true,
   }),
   '/assets/zvm-r46-landing.af4c6e5c623b.css': Object.freeze({
