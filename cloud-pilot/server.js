@@ -40,6 +40,7 @@ function createServer(config={}){
  const adminEmail=safeEmail(config.adminEmail??process.env.CLOUD_ADMIN_EMAIL??'');
  const adminPassHash=String(config.adminPassHash??process.env.CLOUD_ADMIN_PASSWORD_SCRYPT??'');
  const adminConfigured=!!adminEmail&&PASS_SPEC.test(adminPassHash);
+ const adminVersion=hashToken(adminPassHash);
  const store=config.store||null;
  const attempts=new Map();let checkCount=0;
  async function identity(req){
@@ -48,7 +49,7 @@ function createServer(config={}){
   const session=await store.session(hashToken(token));
   if(!session||!(new Date(session.expiresAt).getTime()>Date.now()))return null;
   if(session.subject==='admin'){
-   if(!adminConfigured||session.email!==adminEmail)return null;
+   if(!adminConfigured||session.email!==adminEmail||session.adminVersion!==adminVersion)return null;
    return {role:'admin',email:adminEmail,subject:'admin'};
   }
   if(session.subject==='guest'){
@@ -97,7 +98,7 @@ function createServer(config={}){
     if(!valid||(role==='guest'&&(!user||!user.enabled||user.email!==email)))return json(res,401,{error:'invalid_credentials'});
     attempts.delete(ip);
     const token=crypto.randomBytes(32).toString('base64url');
-    await store.newSession(hashToken(token),{subject:role,email,expiresAt:new Date(Date.now()+SESSION_MS)});
+    await store.newSession(hashToken(token),{subject:role,email,adminVersion:role==='admin'?adminVersion:null,expiresAt:new Date(Date.now()+SESSION_MS)});
     return json(res,200,{ok:true,role},{'Set-Cookie':sessionCookie(token,28800)});
    }
    if(req.method==='POST'&&pathname==='/api/logout'){
