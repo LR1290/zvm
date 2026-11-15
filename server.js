@@ -1,6 +1,7 @@
 const ZVM_BUILD_ID = '2026-10-08-r46-16-cakto-queue-recovery';
 const { resolveClientIp } = require('./client-ip-policy');
 const { createLandingRenderer } = require('./src/web/public/landing/render');
+const { renderSalesPage } = require('./src/web/public/landing/sales');
 const { renderPublicFooter } = require('./src/web/public/footer');
 const { TERMS, renderTermsDocument } = require('./src/web/public/terms');
 const { SUPPORT_URL: ZVM_SUPPORT_URL } = require('./src/support-contact');
@@ -5446,6 +5447,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '8996142ec21d4769e5df12a06bafc7d80f748e9a6e698de5632737d272f857de',
     compressible: true,
   }),
+  '/assets/zvm-sales-landing.66445dac266a.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-sales-landing.66445dac266a.css'),
+    sha256: '66445dac266a5c8c834bea47614692e59b1f57ac75c79c116437f47ef3928067',
+    compressible: true,
+  }),
   '/assets/zvm-r46-landing.af4c6e5c623b.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-r46-landing.af4c6e5c623b.css'),
@@ -7136,6 +7143,20 @@ const renderLandingPage = createLandingRenderer({
   publicNav: portalUser => _sharedNav({ activePath: '/', portalUser, showBack: false }),
 });
 
+// R47 sales landing: isolated public route, canonical plan links and manual proof approval.
+function renderCompactSalesPage(portalUser = null) {
+  return renderSalesPage({
+    escHtml, favicon: _FAV,
+    sharedCssLink: _CSS_SHARED + _CSS_STANDALONE + _CSS_SYSTEM + _CSS_PUBLIC_PREMIUM + _CSS_REFERENCE_PUBLIC,
+    cssUrl: '/assets/zvm-sales-landing.66445dac266a.css',
+    publicNav: () => _sharedNav({ activePath: '/vendas', portalUser, showBack: false }),
+    plans: ZVM_PUBLIC_PLANS,
+    salesPaused: ZVM_SALES_PAUSED,
+    testimonialsJson: process.env.ZVM_SALES_TESTIMONIALS_JSON || '',
+    campaignEndAt: process.env.ZVM_SALES_PROMO_END_AT || ''
+  });
+}
+
 // ──────────────── VERIFICAR CHAVE ──────────────
 // Legacy public key-management UI removed in R44.10.
 // Historical aliases now redirect to the authenticated /cliente portal.
@@ -8677,7 +8698,7 @@ const HTTP_TRAFFIC_RETENTION_MS = 24 * 60 * 60 * 1000;
 const HTTP_TRAFFIC_MAX_ENTRIES = 4096;
 const _httpTrafficBuckets = new Map();
 const HTTP_TRAFFIC_PUBLIC_PATHS = new Set([
-  '/', '/health', '/status', '/robots.txt', '/hobbies/ssx/ssx2012', '/client/status', '/client/remove-phone',
+  '/', '/vendas', '/health', '/status', '/robots.txt', '/hobbies/ssx/ssx2012', '/client/status', '/client/remove-phone',
   '/api/checkkey', '/cakto/webhook', '/meta/webhook', '/faq', '/planos', '/privacidade', '/termos',
   ZVM_BRAND_ICON_ASSET, ZVM_FOUNDER_AVATAR_ASSET,
 ]);
@@ -10624,6 +10645,12 @@ async function handleRequest(req, res) {
 
   if (p === '/politica' && req.method === 'GET') {
     res.writeHead(301, { Location: '/privacidade' }); res.end(); return;
+  }
+
+  if (p === '/vendas' && req.method === 'GET') {
+    const portalUser = isPortalSession(req) ? getPortalUser(req) : null;
+    res.setHeader('Content-Language', 'pt-BR');
+    sendPublicHtml(res, renderCompactSalesPage(portalUser)); return;
   }
 
   if (p === '/faq' && req.method === 'GET') {
