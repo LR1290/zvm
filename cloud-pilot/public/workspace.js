@@ -75,6 +75,13 @@
   }
   mount.append(list);
  }
+ async function loadAll(){
+  const snapshot=await api('/api/workspace');
+  for(const name of Object.keys(MODULES)){
+   cache.set(name,{module:name,revision:snapshot.revision,records:snapshot.data?.[name]||[]});
+   render(name);
+  }
+ }
  async function load(module){
   const mount=byId('cloud-list-'+module);
   if(!mount||!enabled)return;
@@ -140,7 +147,7 @@
     const index=newRecords.findIndex(x=>x.id===draft.id);
     if(index<0)newRecords.push(draft);else newRecords[index]=draft;
     const saved=await api('/api/workspace/'+module,mutation('PUT',{records:newRecords,revision:loaded.revision}));
-    form.remove();await load(module);message(mount,'Salvo com segurança na Cloud (revisão '+saved.revision+').');
+    form.remove();await loadAll();message(mount,'Salvo com segurança na Cloud (revisão '+saved.revision+').');
    }catch(error){
     message(mount,error.message==='workspace_conflict'?'Outro salvamento ocorreu. Atualize antes de editar.':error.message,true);
     if(error.message==='workspace_conflict')await load(module);
@@ -153,7 +160,7 @@
   try{
    const current=cache.get(module)||await get(module);
    await api('/api/workspace/'+module,mutation('PUT',{records:current.records.filter(x=>x.id!==record.id),revision:current.revision}));
-   await load(module);message(mount,'Item excluído somente da Cloud.');
+   await loadAll();message(mount,'Item excluído somente da Cloud.');
   }catch(error){message(mount,error.message==='workspace_conflict'?'Dados atualizados em outra sessão. Atualize e revise.':'Não foi possível excluir.',true);}
  }
  async function inspectBackup(){
@@ -187,7 +194,7 @@
      card.replaceChildren(tag('p','Importação confirmada na revisão '+result.revision+'.'+
       ' Nenhuma mensagem foi enviada.','workspace-status'));
      cache.clear();
-     for(const module of Object.keys(MODULES))await load(module);
+     await loadAll();
     }catch(error){message(card,error.message==='workspace_conflict'?'Os dados mudaram desde a prévia. Faça uma nova análise.':'Importação bloqueada: '+error.message,true);}
    },'primary'));
    root.append(card);
@@ -210,7 +217,10 @@
  }
  async function ready(){
   enabled=true;
-  for(const module of Object.keys(MODULES))await load(module);
+  try{await loadAll();}catch(error){
+   const mount=byId('cloud-list-contacts');
+   if(mount)message(mount,'Não foi possível carregar os espaços de trabalho.',true);
+  }
  }
  function locked(){enabled=false;cache.clear();importPlan=null;for(const module of Object.keys(MODULES)){const area=byId('cloud-list-'+module);if(area)area.replaceChildren();}}
  window.addEventListener('zvm-cloud-ready',ready);
