@@ -73,3 +73,10 @@ test('owner provisions one guest via email/password, cloud draft persists; revoc
   r=await get(root,'/api/overview',oc);assert.equal(r.status,401);
  }finally{await new Promise(r=>server.close(r));}
 });
+
+// Shared-service contract is verified in the same Render build used by the isolated pilot.
+require('./mount.test.js');
+const {execFileSync}=require('node:child_process');
+test('main server root syntax remains valid',()=>{
+ execFileSync(process.execPath,['--check',require('node:path').join(__dirname,'../../server.js')],{timeout:15000});
+});
