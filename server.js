@@ -10809,7 +10809,8 @@ async function handleRequest(req, res) {
       plans: ZVM_PUBLIC_PLANS,
       salesPaused: ZVM_SALES_PAUSED,
       escHtml,
-      testimonialsJson: process.env.ZVM_SALES_TESTIMONIALS_JSON || ''
+      testimonialsJson: process.env.ZVM_SALES_TESTIMONIALS_JSON || '',
+      supportUrl: ZVM_SUPPORT_URL
     })); return;
   }
   if (req.method === 'GET' && p === '/verificar') {
