@@ -31,7 +31,7 @@ function approvedTestimonials(raw, escHtml) {
     '<div class="cards c3">' + cards + '</div></div></section>';
 }
 
-function renderOwnerSalesLanding({ plans, salesPaused, escHtml, testimonialsJson = '' }) {
+function renderOwnerSalesLanding({ plans, salesPaused, escHtml, testimonialsJson = '', supportUrl = '' }) {
   if (!plans || typeof escHtml !== 'function') throw new TypeError('Missing sales page dependencies');
   const paused = salesPaused !== false;
   const tokens = Object.create(null);
@@ -39,6 +39,8 @@ function renderOwnerSalesLanding({ plans, salesPaused, escHtml, testimonialsJson
   tokens.ZVM_NOTE_HIDDEN = paused ? '' : ' hidden';
   tokens.ZVM_TESTIMONIALS = approvedTestimonials(testimonialsJson, escHtml);
   tokens.ZVM_YEAR = String(new Date().getUTCFullYear());
+  // Only the configured support WhatsApp endpoint is permitted in owner markup.
+  tokens.ZVM_SUPPORT_URL = escHtml(/^https:\/\/wa\.me\/[0-9]{8,15}\?text=[a-zA-Z0-9%_.~+\-]*$/.test(supportUrl) ? supportUrl : '/faq');
 
   for (const [name, id] of Object.entries(PLAN_KEYS)) {
     const plan = plans[id];

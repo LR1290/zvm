@@ -46,3 +46,24 @@ footer{border-top:1px solid #1c1c1c;padding:40px 0;color:var(--mut);font-size:14
 .zvm-testimonials .role{color:var(--mut);font-size:14px}
 
 @media(min-width:1280px){.wrap{max-width:min(1540px,calc(100% - 120px))}}
+
+/* Owner menu: native details, keyboard access, no JS. */
+.owner-skip-link{position:fixed;left:14px;top:-96px;z-index:110;padding:12px 18px;border-radius:14px;background:#14cd67;color:#06130b;font-weight:800}
+.owner-skip-link:focus{top:12px}
+#main-content{scroll-margin-top:80px}
+.nav{position:relative}
+header .owner-mobile-menu{display:none;padding:0;margin:0;border:0;border-radius:0;background:transparent}
+header .owner-mobile-menu summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none;font:700 14px Inter,system-ui,sans-serif;min-height:42px;padding:10px 16px;color:#f2f2f2;border:1px solid #414141;border-radius:99px;background:#1a1a1a}
+header .owner-mobile-menu summary::-webkit-details-marker{display:none}
+header .owner-mobile-menu summary::after{content:"";width:6px;height:6px;border:solid #14cd67;border-width:0 2px 2px 0;transform:rotate(45deg);margin:0 0 4px 3px}
+header .owner-mobile-menu[open] summary{border-color:#14cd67;background:#17241c}
+header .owner-mobile-menu[open] summary::after{transform:rotate(225deg);margin:5px 0 0 3px}
+header .owner-menu-panel{position:absolute;top:calc(100% - 5px);right:24px;z-index:60;display:grid;gap:4px;width:min(310px,calc(100vw - 36px));padding:12px;background:#141414;border:1px solid #363636;border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.56)}
+header .owner-menu-panel a{min-height:42px;display:flex;align-items:center;padding:10px 13px;border-radius:12px;font-weight:650;font-size:15px;color:#f2f2f2}
+header .owner-menu-panel a:hover,header .owner-menu-panel a:focus-visible{background:#1b3323;color:#83f2ae}
+header .nav nav a{transition:color .16s ease}
+header .nav nav a:hover{color:#14cd67}
+@media(max-width:1100px){header .nav nav{display:none}header .owner-mobile-menu{display:block;margin-left:auto}}
+@media(max-width:600px){header .nav{height:64px;gap:10px}header .nav img{height:31px;max-width:125px;object-fit:contain}header .nav .btn{width:auto;min-height:42px;padding:10px 13px;font-size:12px;white-space:nowrap}header .owner-mobile-menu summary{padding:9px 12px;font-size:13px}header .owner-menu-panel{right:0;top:calc(100% - 2px)}.owner-skip-link{font-size:13px}}
+@media(max-width:390px){header .nav{gap:6px}header .nav img{max-width:94px;height:28px}header .nav .btn{padding:9px 10px;font-size:11px}header .owner-mobile-menu summary{padding:8px 10px}}
+@media(prefers-reduced-motion:reduce){.owner-skip-link,header .nav nav a{transition:none}}
