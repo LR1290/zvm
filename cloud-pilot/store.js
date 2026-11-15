@@ -6,7 +6,7 @@ function createMemoryStore(){
  const users=new Map(), sessions=new Map(), drafts=new Map();
  return {
   async user(){return clone(users.get('guest'));},
-  async setUser(user){users.set('guest',clone(user));sessions.forEach((s,key)=>{if(s.subject==='guest')sessions.delete(key);});return true;},
+  async setUser(user){const previous=users.get('guest');if(previous&&previous.email!==user.email)drafts.delete('guest');users.set('guest',clone(user));sessions.forEach((s,key)=>{if(s.subject==='guest')sessions.delete(key);});return true;},
   async revokeUser(){users.delete('guest');drafts.delete('guest');sessions.forEach((s,key)=>{if(s.subject==='guest')sessions.delete(key);});},
   async newSession(id,data){sessions.set(id,clone(data));},
   async session(id){const s=sessions.get(id);if(s&&s.expiresAt>Date.now())return clone(s);sessions.delete(id);return null;},
@@ -30,6 +30,8 @@ async function createMongoStore(uri){
  return {
   async user(){return users.findOne({_id:'guest'});},
   async setUser(user){
+   const previous=await users.findOne({_id:'guest'});
+   if(previous&&previous.email!==user.email)await drafts.deleteOne({_id:'guest'});
    await users.replaceOne({_id:'guest'},Object.assign({_id:'guest'},user),{upsert:true});
    await sessions.deleteMany({subject:'guest'});
    return true;
