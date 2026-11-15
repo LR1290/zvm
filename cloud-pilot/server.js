@@ -106,7 +106,7 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
    if(req.method==='GET'&&pathname==='/api/workspace'){
     const current=await store.readWorkspace(user.email);
     const counts=Object.fromEntries(Object.keys(MODULES).map(name=>[name,Array.isArray(current.modules[name])?current.modules[name].length:0]));
-    return json(res,200,{revision:current.revision,updatedAt:current.updatedAt,counts,modules:Object.keys(MODULES),sending:false});
+    return json(res,200,{revision:current.revision,updatedAt:current.updatedAt,counts,moduleNames:Object.keys(MODULES),data:current.modules,sending:false});
    }
    if(req.method==='GET'&&pathname==='/api/workspace/export'){
     const data=await store.readWorkspace(user.email);
