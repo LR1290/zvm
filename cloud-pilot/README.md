@@ -1,42 +1,33 @@
-# ZVM Cloud — piloto sob /dev/cloud no mesmo servidor
+# ZVM Cloud DEV — login do Portal do Cliente + chave DEV
 
-Endereço escolhido: **https://zvm.onrender.com/dev/cloud/** (o caminho sem barra final redireciona para o mesmo painel). A Cloud utiliza **o mesmo serviço Render Starter**, porta e processo Node da ZVM Desktop/site, no padrão modular de `src/hobbies/ssx/route.js`. Não há outro serviço ou domínio exigido.
+## Endereço e hospedagem
+Cloud utiliza o MESMO serviço Render do site oficial, em https://zvm.onrender.com/dev/cloud/.
+Qualquer pessoa com conta válida pode fazer login por e-mail/senha na rota oficial POST /cliente/login.
+2FA do Portal é respeitado; o retorno é por redirecionamento local validado /dev/cloud/.
+Não existe banco de senhas paralelo, administrador Cloud especial ou link individual.
 
-## Limites do piloto
+## Autorização DEV, obrigatória após o login
+1. Após autenticar no Portal do Cliente, Cloud solicita a CHAVE DE LICENÇA DEV.
+2. A chave precisa estar VINCULADA à mesma conta no portal, estar ativa/não expirada, e com Acesso DEV habilitado pelo administrador.
+3. O servidor valida o vínculo e o estado atual da licença na autoridade persistida do servidor principal, sem confiar no frontend ou cache legado.
+4. Apenas SHA256 da chave e SHA256 da sessão Portal são gravados na base Cloud, para um grant máximo de oito horas.
+5. Toda API privada revalida a licença DEV; desabilitar DEV, expirar a chave, trocar sessão ou sair do Portal revoga efetivamente o acesso.
+6. Cadastro e vínculo continuam nos fluxos oficiais /cliente/registro e /cliente/vincular.
+7. Não é criado um código compartilhado universal nem autorizadas chaves normais.
 
-- E-mail e senha, sem links por cliente; administrador e uma conta de convidada.
-- Frontend responsivo; rascunhos (sem envios) persistidos SOMENTE se a conexão Cloud com MongoDB estiver autorizada.
-- WhatsApp Cloud API, fluxos/funis reais, contatos, agendamentos, execuções e webhooks NÃO estão habilitados.
-- Sem cadastro público. A administração autoriza, substitui ou revoga a única conta.
-- Sem variáveis de ambiente seguras, login permanece **selado**; não reutilizar credenciais do painel principal.
+## Banco e isolamento
+Variável CLOUD_MONGODB_URI permanece no serviço principal.
+Banco exclusivo zvm_cloud_pilot: cloud_dev_grants e drafts (uma entrada por e-mail da conta autenticada).
+O usuário de conexão Cloud não tem permissão de leitura/escrita no banco de licenças zapvoice.
+Antigo login paralelo /dev/cloud/api/login e cadastro /dev/cloud/api/admin/guest são aposentados (404).
 
-## Instalação em produção
+## Sem execução de mensagens
+O laboratório permanece sem API oficial WhatsApp, sem disparos, sem agendamentos reais e sem filas 24/7.
 
-O servidor principal `server.js` importa `serveZVMCloud` de `src/web/cloud/route.js`. O adaptador intercepta somente `/dev/cloud` e `/dev/cloud/*`, retirando o prefixo antes de delegar ao handler. Demais rotas e autenticações continuam atendidas pelos handlers de produção inalterados.
-
-No Render, usar o mesmo serviço `zvm` (`zvm.onrender.com`, plano Starter, branch `main`, `npm start`, health `/ready`). Após merge e validação, realizar deploy manual, pois `autoDeploy=no`.
-
-Não inventar variáveis nem copiar segredos para o Git. Para ativar o piloto, provisionar de forma privada:
-- `CLOUD_ADMIN_EMAIL` — e-mail do administrador do piloto;
-- `CLOUD_ADMIN_PASSWORD_SCRYPT` — hash salt:hash (scrypt, salt de 16 bytes);
-- `CLOUD_MONGODB_URI` — URI de credencial de **baixo privilégio**, permitindo somente `readWrite` no banco `zvm_cloud_pilot`. Pode usar o cluster Atlas existente, mas NÃO use o usuário/admin ou URI da produção.
-
-Sem essas três configurações, a interface aparece em /dev/cloud/, porém todos os logins e persistência permanecem indisponíveis por segurança.
-
-Criar o hash administrador localmente, com a senha fornecida em variável `CLOUD_ADMIN_PASSWORD`:
-```sh
-node -e "const c=require('node:crypto');const p=process.env.CLOUD_ADMIN_PASSWORD;if(!p||p.length<12)process.exit(1);const s=c.randomBytes(16);console.log(s.toString('hex')+':'+c.scryptSync(p,s,32).toString('hex'))"
-```
-Não colocar senhas em chat, repositório, capturas ou logs.
-
-## Testes e desenvolvimento
-
-A execução standalone de `cloud-pilot/server.js` é mantida **somente** como harness de testes isolados. O acesso comercial utilizará o servidor principal, sem segundo serviço permanente.
-
-```sh
-npm ci --ignore-scripts
+## Comandos de QA
+npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 npm run check
 node --test cloud-pilot/test/pilot.test.js cloud-pilot/test/mount.test.js
-```
 
-A integração só deve ser publicada após teste da rota, autenticação, regressão e health `/ready`; nenhuma política comercial ou conta atual pode ser modificada. Revogar convite deve eliminar sessões e rascunhos antigos. Antes de habilitar envios reais: Meta Cloud API oficial, permissão, consentimento, custo, webhooks, idempotência e filas duráveis com executor adequado.
+Após deploy, confirmar sem autenticação: GET /dev/cloud/api/session retorna loggedIn:false, devAuthorized:false, sending:false.
+Não publicar senhas, chaves ou credenciais em GitHub, respostas ou logs.
