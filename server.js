@@ -5794,7 +5794,10 @@ function sendPublicHtml(res, html, status = 200) {
   const request = res.req || {};
   const currentPath = new URL(String(request.url || '/'), 'https://zvm.invalid').pathname;
   const localeInfo = resolvePublicLocale(request);
-  if (['/', '/planos', '/faq', '/privacidade', '/termos'].includes(currentPath) && status === 200) {
+  if (currentPath === '/' && process.env.ZVM_SALES_LANDING_PRIMARY === '1' && status === 200) {
+    // This concise campaign currently has Brazilian Portuguese copy only.
+    res.setHeader('Content-Language', 'pt-BR');
+  } else if (['/', '/planos', '/faq', '/privacidade', '/termos'].includes(currentPath) && status === 200) {
     html = localizePublicHtml(html, localeInfo.locale, { path: currentPath });
     res.setHeader('Content-Language', localeInfo.locale);
     _appendVary(res, 'Accept-Language');
@@ -10760,7 +10763,8 @@ async function handleRequest(req, res) {
 
   if (req.method === 'GET' && p === '/') {
     const _sess = isPortalSession(req) ? getPortalUser(req) : null;
-    sendPublicHtml(res, renderStandaloneLandingPage(_sess)); return;
+    const campaignIsPrimary = process.env.ZVM_SALES_LANDING_PRIMARY === '1';
+    sendPublicHtml(res, campaignIsPrimary ? renderCompactSalesPage(_sess) : renderStandaloneLandingPage(_sess)); return;
   }
   if (req.method === 'GET' && p === '/verificar') {
     res.writeHead(302, { Location: getVerifyRedirect(isPortalSession(req)) }); res.end(); return;
