@@ -1,8 +1,10 @@
 'use strict';
 (()=>{
  const el=id=>document.getElementById(id);
+ // The same frontend works at / (standalone tests) and /dev/cloud/ (main service).
+ const base=new URL(document.currentScript.src).pathname.replace(/\/app\.js$/,'');
  async function call(url,opts={}){
-  const res=await fetch(url,Object.assign({credentials:'same-origin',cache:'no-store'},opts));
+  const res=await fetch(base+url,Object.assign({credentials:'same-origin',cache:'no-store'},opts));
   let x={};try{x=await res.json();}catch{}
   if(!res.ok)throw Error(x.error||'network');
   return x;

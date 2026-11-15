@@ -36,7 +36,7 @@ function safeEmail(value){
  if(typeof value!=='string')return '';
  const v=value.trim().toLowerCase();return /^[^\s@]{1,64}@[^\s@]{1,189}\.[^\s@]{2,25}$/.test(v)&&v.length<=254?v:'';
 }
-function createServer(config={}){
+function createHandler(config={}){
  const adminEmail=safeEmail(config.adminEmail??process.env.CLOUD_ADMIN_EMAIL??'');
  const adminPassHash=String(config.adminPassHash??process.env.CLOUD_ADMIN_PASSWORD_SCRYPT??'');
  const adminConfigured=!!adminEmail&&PASS_SPEC.test(adminPassHash);
@@ -59,7 +59,7 @@ function createServer(config={}){
   }
   return null;
  }
- const server=http.createServer(async(req,res)=>{
+ return async function handleCloudRequest(req,res){
   const pathname=new URL(req.url||'/','http://localhost').pathname;
   res.setHeader('X-Content-Type-Options','nosniff');
   res.setHeader('Referrer-Policy','no-referrer');
@@ -150,9 +150,9 @@ function createServer(config={}){
    console.error('[cloud-pilot] error class:',error?.name||'Error');
    return json(res,503,{error:'temporarily_unavailable'});
   }
- });
- return server;
+ };
 }
+function createServer(config={}){return http.createServer(createHandler(config));}
 async function start(){
  let store=null;
  if(process.env.CLOUD_MONGODB_URI)store=await createMongoStore(process.env.CLOUD_MONGODB_URI);
@@ -160,4 +160,4 @@ async function start(){
  server.listen(Number(process.env.PORT||10000),'0.0.0.0',()=>console.log('ZVM Cloud isolated pilot ready; real sending disabled'));
 }
 if(require.main===module)start().catch(e=>{console.error('[cloud-pilot] could not start:',e?.name||'Error');process.exitCode=1;});
-module.exports={createServer,validatePass,passwordHash,safeEmail};
+module.exports={createHandler,createServer,validatePass,passwordHash,safeEmail};

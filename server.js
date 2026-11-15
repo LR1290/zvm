@@ -24,6 +24,7 @@ const fs     = require('fs');
 const path   = require('path');
 const zlib   = require('zlib');
 const { serveSSX2012 } = require('./src/hobbies/ssx/route');
+const { serveZVMCloud } = require('./src/web/cloud/route');
 const net    = require('net');
 const { MongoClient } = require('mongodb');
 // Fonte de configuração:
@@ -8814,6 +8815,8 @@ async function handleRequest(req, res) {
 
   if (sendPublicAsset(req, res, p)) return;
   if (serveSSX2012(req, res, p)) return;
+  // Cloud pilot follows the SSX subroute pattern: no second listener or service.
+  if (await serveZVMCloud(req, res, p)) return;
 
   // /robots.txt — páginas públicas podem ser indexadas; superfícies de
   // conta, licenciamento, APIs e operação permanecem fora de crawling.
@@ -8831,6 +8834,7 @@ async function handleRequest(req, res) {
       'Disallow: /analytics',
       'Disallow: /verificar',
       'Disallow: /hobbies/ssx/',
+      'Disallow: /dev/cloud/',
       'Disallow: /health',
       'Disallow: /ready',
       'Disallow: /status',
