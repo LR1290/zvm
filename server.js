@@ -1,6 +1,7 @@
 const ZVM_BUILD_ID = '2026-10-08-r46-16-cakto-queue-recovery';
 const { resolveClientIp } = require('./client-ip-policy');
 const { createLandingRenderer } = require('./src/web/public/landing/render');
+const { renderOwnerSalesLanding } = require('./src/web/public/landing/owner');
 const { renderPublicFooter } = require('./src/web/public/footer');
 const { TERMS, renderTermsDocument } = require('./src/web/public/terms');
 const { SUPPORT_URL: ZVM_SUPPORT_URL } = require('./src/support-contact');
@@ -5485,6 +5486,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '8996142ec21d4769e5df12a06bafc7d80f748e9a6e698de5632737d272f857de',
     compressible: true,
   }),
+  '/assets/zvm-sales-owner.6a148f96da38.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-sales-owner.6a148f96da38.css'),
+    sha256: '6a148f96da38d94a0b661b09263c38691549f186ae25e44c086506b543210ca8',
+    compressible: true,
+  }),
   '/assets/zvm-r46-landing.af4c6e5c623b.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-r46-landing.af4c6e5c623b.css'),
@@ -5826,7 +5833,11 @@ function sendPublicHtml(res, html, status = 200) {
   const request = res.req || {};
   const currentPath = new URL(String(request.url || '/'), 'https://zvm.invalid').pathname;
   const localeInfo = resolvePublicLocale(request);
-  if (['/', '/planos', '/faq', '/privacidade', '/termos'].includes(currentPath) && status === 200) {
+  if (currentPath === '/' && status === 200) {
+    // Owner-provided campaign layout is authored in pt-BR; don't apply translations
+    // belonging to the retired homepage (Planos, FAQ and legal remain localized).
+    res.setHeader('Content-Language', 'pt-BR');
+  } else if (['/planos', '/faq', '/privacidade', '/termos'].includes(currentPath) && status === 200) {
     html = localizePublicHtml(html, localeInfo.locale, { path: currentPath });
     res.setHeader('Content-Language', localeInfo.locale);
     _appendVary(res, 'Accept-Language');
@@ -10771,8 +10782,13 @@ async function handleRequest(req, res) {
   }
 
   if (req.method === 'GET' && p === '/') {
-    const _sess = isPortalSession(req) ? getPortalUser(req) : null;
-    sendPublicHtml(res, renderStandaloneLandingPage(_sess)); return;
+    // Public owner landing. Checkout remains under /planos (with the existing Cakto gates).
+    sendPublicHtml(res, renderOwnerSalesLanding({
+      plans: ZVM_PUBLIC_PLANS,
+      salesPaused: ZVM_SALES_PAUSED,
+      escHtml,
+      testimonialsJson: process.env.ZVM_SALES_TESTIMONIALS_JSON || ''
+    })); return;
   }
   if (req.method === 'GET' && p === '/verificar') {
     res.writeHead(302, { Location: getVerifyRedirect(isPortalSession(req)) }); res.end(); return;
