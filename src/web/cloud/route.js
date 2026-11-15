@@ -8,12 +8,12 @@ const BASE='/dev/cloud';
 const REQUEST_TIMEOUT_RETRY_MS=30000;
 
 function createCloudRoute(options={}){
- const factory=options.factory||async()=>{
+ const factory=options.factory||(async()=>{
   // No fallback to ZVM Desktop's database credentials. Cloud must be explicitly provisioned.
   const uri=String(process.env.CLOUD_MONGODB_URI||'').trim();
   const store=uri?await createMongoStore(uri):null;
   return createHandler({store});
- };
+ });
  let loader=null;
  let nextRetry=0;
  async function getHandler(){
