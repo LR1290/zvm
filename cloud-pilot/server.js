@@ -46,7 +46,7 @@ function createServer(config={}){
   const token=getCookie(req);
   if(!store||!token||token.length>128)return null;
   const session=await store.session(hashToken(token));
-  if(!session||!(session.expiresAt>new Date()))return null;
+  if(!session||!(new Date(session.expiresAt).getTime()>Date.now()))return null;
   if(session.subject==='admin'){
    if(!adminConfigured||session.email!==adminEmail)return null;
    return {role:'admin',email:adminEmail,subject:'admin'};
