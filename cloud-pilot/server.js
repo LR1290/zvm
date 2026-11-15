@@ -73,6 +73,7 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
     const devAuthorized=await activated(user);
     return json(res,200,{loggedIn:!!user,email:user?.email||null,devAuthorized,devRequired:!!user&&!devAuthorized,persistence:!!store,sending:false,mode:'dev-pilot'});
    }
+   if(pathname==='/api/login'||pathname==='/api/admin/guest')return json(res,404,{error:'not_found'});
    if(!user)return json(res,401,{error:'site_login_required'});
    if(!store||typeof verifyDevKey!=='function')return json(res,503,{error:'cloud_unavailable'});
    if(req.method==='POST'&&pathname==='/api/dev/activate'){
