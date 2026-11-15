@@ -102,3 +102,17 @@ test('unprovisioned db stays sealed and no DEV grant can be issued',async()=>{
   assert.equal((await request(root,'/api/dev/activate',{method:'POST',body:{key:DEV}})).status,401);
  }finally{await new Promise(r=>server.close(r));}
 });
+
+// QA harness: Render invokes only this file in its build command.
+// Exercise the nested-route mount and the entire existing production regression.
+require('./mount.test.js');
+test('full production regression on Render',()=>{
+ if(process.env.ZVM_CLOUD_QA_NESTED==='1')return;
+ const {spawnSync}=require('node:child_process');
+ const root=require('node:path').join(__dirname,'../..');
+ const env={...process.env,ZVM_CLOUD_QA_NESTED:'1'};
+ for(const args of [['ci','--omit=dev','--ignore-scripts','--no-audit','--no-fund'],['run','check']]){
+  const result=spawnSync('npm',args,{cwd:root,env,encoding:'utf8',timeout:240000,maxBuffer:12*1024*1024});
+  assert.equal(result.status,0,'npm '+args.join(' ')+' failed: '+String(result.error?.message||'')+'\n'+(result.stdout||'').slice(-8000)+'\n'+(result.stderr||'').slice(-8000));
+ }
+});
