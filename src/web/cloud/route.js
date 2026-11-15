@@ -12,7 +12,7 @@ function createCloudRoute(options={}){
   // No fallback to ZVM Desktop's database credentials. Cloud must be explicitly provisioned.
   const uri=String(process.env.CLOUD_MONGODB_URI||'').trim();
   const store=uri?await createMongoStore(uri):null;
-  return createHandler({store});
+  return createHandler({store,resolvePortal:options.resolvePortal,verifyDevKey:options.verifyDevKey});
  });
  let loader=null;
  let nextRetry=0;
@@ -58,5 +58,4 @@ function createCloudRoute(options={}){
   return true;
  };
 }
-const serveZVMCloud=createCloudRoute();
-module.exports={serveZVMCloud,createCloudRoute,BASE};
+module.exports={createCloudRoute,BASE};

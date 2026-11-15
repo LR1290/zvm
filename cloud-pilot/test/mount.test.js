@@ -1,65 +1,52 @@
 'use strict';
-const test=require('node:test'),assert=require('node:assert/strict'),http=require('node:http'),fs=require('node:fs'),path=require('node:path');
+const test=require('node:test'),assert=require('node:assert/strict'),http=require('node:http'),fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const {createCloudRoute,BASE}=require('../../src/web/cloud/route');
-const {createHandler,passwordHash}=require('../server');
+const {createHandler}=require('../server');
 const {createMemoryStore}=require('../store');
-const owner='owner@example.org',ownerPassword='Strong-Owner-Password-2026';
-test('mounted Cloud serves only /dev/cloud and keeps host endpoints isolated',async()=>{
- const store=createMemoryStore();
+test('same Node listener mounts only /dev/cloud and preserves portal redirect and DEV challenge',async()=>{
+ const store=createMemoryStore(),account='person@example.org',license='dev-enabled-license';
+ const session=crypto.createHash('sha256').update('session-token').digest('hex'),keyHash=crypto.createHash('sha256').update(license).digest('hex');
  const cloud=createCloudRoute({factory:async()=>createHandler({
-  store,adminEmail:owner,adminPassHash:passwordHash(ownerPassword)
+  store,
+  resolvePortal:async req=>req.headers.cookie==='zv_portal=test_session'?{email:account,sessionId:session,expiresAt:Date.now()+3600000}:null,
+  verifyDevKey:async(email,code,fingerprint)=>email!==account?false:code===license?{keyHash}:code===null&&fingerprint===keyHash?true:false
  })});
- const srv=http.createServer(async(req,res)=>{
-  const pathname=new URL(req.url,'http://localhost').pathname;
-  try{if(await cloud(req,res,pathname))return;}catch(e){res.writeHead(500);res.end('Internal');return;}
-  res.writeHead(404,{'Content-Type':'text/plain'});res.end('not-found-from-main');
+ const main=http.createServer(async(req,res)=>{
+  if(await cloud(req,res,new URL(req.url,'http://localhost').pathname))return;
+  res.writeHead(404,{'Content-Type':'text/plain'});res.end('other_main_route');
  });
- await new Promise(resolve=>srv.listen(0,'127.0.0.1',resolve));
- const base='http://127.0.0.1:'+srv.address().port;
- const request=(url,method='GET',payload=null,cookie='',origin=base)=>{
-  const options={method,headers:{...(cookie?{Cookie:cookie}:{})}};
-  if(method!=='GET'&&method!=='HEAD'){options.headers.Origin=origin;options.headers['Content-Type']='application/json';options.body=JSON.stringify(payload||{});}
-  return fetch(base+url,options);
- };
+ await new Promise(done=>main.listen(0,'127.0.0.1',done));
+ const root='http://127.0.0.1:'+main.address().port;
+ const req=(pathname,{method='GET',body=null,cookie='',origin=root}={})=>fetch(root+pathname,{method,headers:{...(cookie?{Cookie:cookie}:{}),...(method!=='GET'?{Origin:origin,'Content-Type':'application/json'}:{})},...(method==='GET'?{}:{body:JSON.stringify(body||{})}),redirect:'manual'});
  try{
   assert.equal(BASE,'/dev/cloud');
-  let r=await fetch(base+'/dev/cloud',{redirect:'manual'});
-  assert.equal(r.status,308);assert.equal(r.headers.get('location'),'/dev/cloud/');
-  r=await request('/dev/cloud/');
-  assert.equal(r.status,200);const html=await r.text();
-  assert.match(html,/href="styles\.css"/);assert.match(html,/src="app\.js"/);
-  assert.doesNotMatch(html,/href="\/styles\.css"/);
-  r=await request('/dev/cloud/styles.css');assert.equal(r.status,200);assert.match(r.headers.get('content-type'),/text\/css/);
-  r=await request('/dev/cloud/app.js');assert.equal(r.status,200);
-  const js=await r.text();assert.match(js,/document\.currentScript\.src/);assert.match(js,/base\+url/);
-  r=await request('/dev/cloud/api/session');assert.equal(r.status,200);assert.equal((await r.json()).loggedIn,false);
-  r=await request('/api/session');assert.equal(r.status,404);assert.equal(await r.text(),'not-found-from-main');
-  r=await request('/dev/cloud-other');assert.equal(r.status,404);
-  r=await request('/dev/cloud/api/login','POST',{email:owner,password:ownerPassword},'','https://other.example');
-  assert.equal(r.status,403);
-  r=await request('/dev/cloud/api/login','POST',{email:owner,password:ownerPassword});
-  assert.equal(r.status,200);const cookie=r.headers.get('set-cookie').split(';')[0];
-  assert.match(cookie,/__Host-zvm_cloud_pilot=/);
-  r=await request('/dev/cloud/api/admin/guest','POST',{email:'guest@example.org',password:'Strong-Guest-Password-2026'},cookie);
-  assert.equal(r.status,200);
-  r=await request('/dev/cloud/api/login','POST',{email:'guest@example.org',password:'Strong-Guest-Password-2026'});
-  assert.equal(r.status,200);const guestCookie=r.headers.get('set-cookie').split(';')[0];
-  r=await request('/dev/cloud/api/draft','PUT',{name:'Teste',message:'Apenas rascunho'},guestCookie);
-  assert.equal(r.status,200);
-  r=await request('/dev/cloud/api/draft','GET',null,guestCookie);
-  assert.equal((await r.json()).message,'Apenas rascunho');
-  r=await request('/dev/cloud/api/send','POST',{to:'123'},guestCookie);
-  assert.equal(r.status,404);
-  r=await request('/dev/cloud/api/overview','GET',null,guestCookie);
-  const overview=await r.json();assert.equal(overview.sending,'disabled');
-  assert.equal(overview.whatsapp,'not_connected');
- }finally{await new Promise(resolve=>srv.close(resolve));}
+  let response=await req('/dev/cloud');assert.equal(response.status,308);assert.equal(response.headers.get('location'),'/dev/cloud/');
+  response=await req('/dev/cloud/');assert.equal(response.status,200);const html=await response.text();
+  assert.match(html,/action="\/cliente\/login"/);
+  assert.match(html,/name="redir" value="\/dev\/cloud\/"/);
+  assert.match(html,/id="devGate"/);
+  response=await req('/dev/cloud/styles.css');assert.equal(response.status,200);
+  response=await req('/dev/cloud/app.js');assert.equal(response.status,200);
+  assert.match(await response.text(),/api\/dev\/activate/);
+  response=await req('/dev/cloud/api/session');assert.equal(response.status,200);
+  assert.equal((await response.json()).loggedIn,false);
+  response=await req('/dev/cloud/api/overview');assert.equal(response.status,401);
+  response=await req('/dev/cloud/api/session',{cookie:'zv_portal=test_session'});assert.equal((await response.json()).devRequired,true);
+  response=await req('/dev/cloud/api/dev/activate',{method:'POST',cookie:'zv_portal=test_session',body:{key:license}});assert.equal(response.status,200);
+  response=await req('/dev/cloud/api/draft',{method:'PUT',cookie:'zv_portal=test_session',body:{name:'Test',message:'Demo'}});assert.equal(response.status,200);
+  response=await req('/dev/cloud/api/draft',{cookie:'zv_portal=test_session'});assert.equal((await response.json()).message,'Demo');
+  response=await req('/dev/cloud-other');assert.equal(response.status,404);assert.equal(await response.text(),'other_main_route');
+  response=await req('/api/session');assert.equal(response.status,404);
+  response=await req('/dev/cloud/api/send',{method:'POST',cookie:'zv_portal=test_session'});assert.equal(response.status,404);
+ }finally{await new Promise(done=>main.close(done));}
 });
-test('main server references isolated Cloud before the legacy route table',()=>{
+test('production server uses validated portal callbacks, not secondary passwords',()=>{
  const code=fs.readFileSync(path.join(__dirname,'../../server.js'),'utf8');
- assert.match(code,/require\('\.\/src\/web\/cloud\/route'\)/);
- const mount=code.indexOf('if (await serveZVMCloud(req, res, p)) return;');
- const first=code.indexOf('async function handleRequest(req, res)');
- assert.ok(mount>first && mount<first+1800);
+ assert.match(code,/const \{ createCloudRoute \} = require\('\.\/src\/web\/cloud\/route'\)/);
+ assert.match(code,/const serveZVMCloud = createCloudRoute\(/);
+ assert.match(code,/if \(!isPortalSession\(req\)\) return null/);
+ assert.match(code,/extensionDevAccessAllowed\(keyCode, record\)/);
+ assert.match(code,/readPortalKeySnapshot\(keyCode, \{ db \}\)/);
+ assert.match(code,/if \(await serveZVMCloud\(req, res, p\)\) return;/);
  assert.match(code,/Disallow: \/dev\/cloud\//);
 });

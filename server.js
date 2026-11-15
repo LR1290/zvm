@@ -24,7 +24,46 @@ const fs     = require('fs');
 const path   = require('path');
 const zlib   = require('zlib');
 const { serveSSX2012 } = require('./src/hobbies/ssx/route');
-const { serveZVMCloud } = require('./src/web/cloud/route');
+const { createCloudRoute } = require('./src/web/cloud/route');
+// ZVM Cloud shares the portal login but never reuses ADMIN_PASS, portal passwords,
+// or the extension's commercial license writes. DEV authorization is revalidated
+// against current, persisted license status on every privileged Cloud request.
+const serveZVMCloud = createCloudRoute({
+  resolvePortal: async (req) => {
+    if (!isPortalSession(req)) return null; // includes completed portal 2FA
+    const session = getPortalUser(req);
+    const match = String(req.headers.cookie || '').match(/(?:^|;\s*)zv_portal=([a-f0-9]{64})(?:;|$)/);
+    if (!session || !match || !session.email) return null;
+    const db = await getMongoDb();
+    const user = await db.collection('portal_users').findOne(
+      { _id: String(session.email).toLowerCase() },
+      { projection: { _id: 1, banned: 1, verified: 1 } }
+    );
+    if (!user || user.banned === true) return null;
+    return {
+      email: String(session.email).toLowerCase(),
+      sessionId: crypto.createHash('sha256').update(match[1]).digest('hex'),
+      expiresAt: new Date(session.expiresAt).getTime(),
+    };
+  },
+  verifyDevKey: async (email, rawCode, storedKeyHash) => {
+    const db = await getMongoDb();
+    const user = await db.collection('portal_users').findOne(
+      { _id: email },
+      { projection: { keyCode: 1, banned: 1 } }
+    );
+    if (!user || user.banned === true) return false;
+    const keyCode = String(user.keyCode || '').trim().toLowerCase();
+    if (!/^[a-z0-9_-]{1,64}$/.test(keyCode)) return false;
+    if (rawCode !== null && !safeCompare(keyCode, rawCode)) return false;
+    const fingerprint = crypto.createHash('sha256').update(keyCode).digest('hex');
+    if (storedKeyHash !== null && !safeCompare(fingerprint, storedKeyHash)) return false;
+    // Read the authoritative DB record, never the in-memory cache of old licenses.
+    const record = await readPortalKeySnapshot(keyCode, { db });
+    if (!extensionLicenseIsUsable(record) || !extensionDevAccessAllowed(keyCode, record)) return false;
+    return rawCode !== null ? { keyHash: fingerprint } : true;
+  },
+});
 const net    = require('net');
 const { MongoClient } = require('mongodb');
 // Fonte de configuração:
