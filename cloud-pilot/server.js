@@ -4,6 +4,7 @@
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path');
 const {createMongoStore}=require('./store');
 const {MODULES,moduleCheck,checkAudience,planLegacy,mergeModules,checkWhole}=require('./workspace-domain');
+const {changeCrmBoard}=require('./crm-board-domain');
 const Media=require('./media-domain');
 const Meta=require('./meta-webhook');
 const ASSETS={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','application/javascript; charset=utf-8'],'/styles.css':['styles.css','text/css; charset=utf-8'],'/workspace.js':['workspace.js','application/javascript; charset=utf-8'],'/backup-zip.js':['backup-zip.js','application/javascript; charset=utf-8'],'/cloud-ui.js':['cloud-ui.js','application/javascript; charset=utf-8'],'/cloud-ui.css':['cloud-ui.css','text/css; charset=utf-8']};
@@ -160,6 +161,26 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
    if(req.method==='GET'&&pathname==='/api/meta/status'){
     const status=Meta.readiness(process.env,store);
     return json(res,200,{provider:'whatsapp_business_platform',webhookReady:status.configured&&status.ownerEmail===user.email,sending:false,transportEnabled:false,credentialsConfiguredForUser:status.configured&&status.ownerEmail===user.email});
+   }
+   // CRM R21 — validated draft-only operations, tenant scope and global CAS.
+   if(req.method==='POST'&&pathname==='/api/crm/board'){
+    let payload;try{payload=await readJson(req,20000);}
+    catch{return json(res,400,{error:'invalid_crm_payload'});}
+    if(!Number.isSafeInteger(payload.revision)||payload.revision<0)
+     return json(res,400,{error:'invalid_revision'});
+    const current=await store.readWorkspace(user.email);
+    if(current.revision!==payload.revision)
+     return json(res,409,{error:'workspace_conflict',revision:current.revision});
+    let result,modules;
+    try{
+     result=changeCrmBoard(current.modules.crm||[],current.modules.contacts||[],payload);
+     modules={...current.modules,crm:moduleCheck('crm',result.records)};
+     checkWhole(modules);
+    }catch(error){return json(res,422,{error:error.code||'crm_board_invalid'});}
+    const saved=await store.writeWorkspace(user.email,current.revision,modules);
+    if(saved.conflict)return json(res,409,{error:'workspace_conflict'});
+    return json(res,200,{ok:true,revision:saved.revision,action:result.action,
+     pipelineId:result.pipelineId,columns:result.columns,cards:result.cards,sending:false});
    }
    if(req.method==='GET'&&pathname==='/api/workspace'){
     const current=await store.readWorkspace(user.email);
