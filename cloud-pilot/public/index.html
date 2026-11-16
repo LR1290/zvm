@@ -7,9 +7,16 @@
 <meta name="robots" content="noindex,nofollow">
 <title>ZVM Cloud • Acesso DEV</title>
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="cloud-ui.css">
 </head>
 <body>
-<header><span class="brand"><b class="logo">Z</b><span><strong>ZVM Cloud</strong><small>Laboratório de testes</small></span></span><span class="chip">DEV</span></header>
+<header>
+ <span class="brand"><b class="logo" aria-hidden="true">Z</b><span><strong>ZVM</strong><small>AUTOMAÇÕES • CLOUD DEV</small></span></span>
+ <button class="cloud-command-button" id="cloudCommandButton" type="button" aria-label="Buscar módulos (Ctrl K)" title="Buscar módulos — Ctrl K">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><span>Buscar ou executar uma ação...</span><kbd>Ctrl K</kbd>
+ </button>
+ <span class="chip">DEV</span>
+</header>
 <main>
 <section id="loading" class="panel login">
  <div class="hero-mark">Z</div>
@@ -54,27 +61,39 @@
 </section>
 <section id="app" hidden>
  <div class="heading">
-  <div><p class="eyebrow">ZVM CLOUD • DEV</p><h1>Seu espaço de trabalho</h1><p class="muted">Experimente rascunhos e verifique a conexão com o servidor.</p></div>
+  <div><p class="eyebrow" id="cloudPageCategory">VISÃO GERAL • ZVM CLOUD</p><h1 id="cloudPageTitle">Painel de controle</h1><p class="muted" id="cloudPageSubtitle">Visão dos dados reais guardados na sua conta.</p></div>
   <button id="leaveDev" class="secondary" type="button">Bloquear DEV</button>
  </div>
- <div class="notice">🔒 <span><b>Ambiente de demonstração.</b> O WhatsApp Cloud API e os envios/agendamentos reais permanecem desativados. Rascunhos são privados por conta.</span></div>
- <nav class="tabs" aria-label="Navegação">
-  <button data-page="summary" class="active">Visão geral</button>
-  <button data-page="campaigns">Campanhas</button>
-  <button data-page="flows">Fluxos</button>
-  <button data-page="funnels">Funis</button>
-  <button data-page="library">Biblioteca</button><button data-page="contacts">Contatos</button><button data-page="crm">CRM</button><button data-page="labels">Etiquetas</button><button data-page="quickReplies">Respostas</button><button data-page="agenda">Agenda</button><button data-page="settings">Configurações</button><button data-page="migration">Importar R17</button><button data-page="integration">WhatsApp oficial</button>
+ <div class="notice"><span aria-hidden="true">●</span><span><b>Cloud DEV protegida.</b> Seus dados ficam isolados por conta. Envios e agendamentos automáticos estão desativados até homologação oficial do WhatsApp Business.</span></div>
+ <nav class="tabs" aria-label="Navegação ZVM Cloud">
+ <span class="cloud-nav-group">VISÃO GERAL</span>
+ <button type="button" data-page="summary" class="active">Painel de controle</button>
+ <span class="cloud-nav-group">AUTOMAÇÕES</span>
+ <button type="button" data-page="campaigns">Disparos</button>
+ <button type="button" data-page="flows">Fluxos</button>
+ <button type="button" data-page="funnels">Funis</button>
+ <span class="cloud-nav-group">GESTÃO</span>
+ <button type="button" data-page="crm">CRM</button>
+ <button type="button" data-page="labels">Etiquetas</button>
+ <button type="button" data-page="contacts">Contatos</button>
+ <span class="cloud-nav-group">CONTEÚDO</span>
+ <button type="button" data-page="library">Biblioteca</button>
+ <button type="button" data-page="quickReplies">Respostas rápidas</button>
+ <button type="button" data-page="agenda">Agenda</button>
+ <span class="cloud-nav-group">SISTEMA</span>
+ <button type="button" data-page="migration">Importar extensão</button>
+ <button type="button" data-page="integration">WhatsApp oficial</button>
+ <button type="button" data-page="settings">Configurações</button>
  </nav>
  <section class="view" id="summary">
   <div class="stats">
-   <div class="panel stat"><small>Mensagens enviadas</small><strong>0</strong><span>Envio desativado</span></div>
-   <div class="panel stat"><small>Campanhas agendadas</small><strong>0</strong><span>Fila desativada</span></div>
-   <div class="panel stat"><small>WhatsApp oficial</small><strong>—</strong><span>Não conectado</span></div>
+   <div class="panel stat"><small>Contatos cadastrados</small><strong id="cloudContacts">—</strong><span>Base de destinatários</span></div>
+   <div class="panel stat"><small>Itens da Biblioteca</small><strong id="cloudLibrary">—</strong><span>Mensagens e conteúdos</span></div>
+   <div class="panel stat"><small>Fluxos e Funis</small><strong id="cloudAutomations">—</strong><span>Definições armazenadas</span></div>
   </div>
-  <div class="panel section"><h2>Teste de conexão</h2><p class="muted">Verifique o servidor sem utilizar contatos ou enviar mensagens.</p><button class="primary" id="ping">Testar conexão</button><p class="result" id="response" aria-live="polite"></p></div>
+  <h2 class="cloud-module-title">Seus módulos</h2><div class="cloud-launch-grid" id="cloudModulesOverview" aria-label="Atalhos dos módulos"></div>
+  <div class="panel section" style="margin-top:22px"><h2>Diagnóstico da conexão</h2><p class="muted">Verifique o servidor sem acessar o WhatsApp ou enviar mensagens.</p><button class="primary" id="ping">Testar conexão</button><p class="result" id="response" aria-live="polite"></p></div>
  </section>
- 
- 
  <section class="view" id="contacts" hidden><div class="panel section"><h2>Contatos</h2><p class="muted">Organize contatos e selecione destinatários antes de preparar campanhas. Nenhum envio automático.</p><div id="cloud-list-contacts"></div></div></section>
  <section class="view" id="crm" hidden><div class="panel section"><h2>CRM</h2><p class="muted">Pipelines e etapas comerciais. Contatos do backup permanecem associados às colunas originais.</p><div id="cloud-list-crm"></div></div></section>
  <section class="view" id="labels" hidden><div class="panel section"><h2>Etiquetas</h2><p class="muted">Marcadores para organizar seus contatos e automações.</p><div id="cloud-list-labels"></div></div></section>
@@ -113,6 +132,12 @@
  <footer><a href="/cliente">Minha conta ZVM</a> · <a href="/cliente/logout">Sair do site</a> · ZVM Cloud DEV sem envios reais</footer>
 </section>
 </main>
-<script defer src="app.js"></script><script defer src="backup-zip.js"></script><script defer src="workspace.js"></script>
+<div class="cloud-command-dialog" id="cloudCommandDialog" hidden>
+ <div class="cloud-command-box" role="dialog" aria-modal="true" aria-label="Buscar módulos da ZVM">
+  <div class="cloud-command-top"><input id="cloudCommandInput" type="search" autocomplete="off" aria-label="Digite o nome de um módulo" placeholder="Buscar módulo ou função..."><button id="cloudCommandClose" type="button" aria-label="Fechar busca">Esc</button></div>
+  <div class="cloud-command-results" id="cloudCommandResults" aria-label="Resultados de navegação"></div>
+ </div>
+</div>
+<script defer src="app.js"></script><script defer src="backup-zip.js"></script><script defer src="workspace.js"></script><script defer src="cloud-ui.js"></script>
 </body>
 </html>
