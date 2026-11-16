@@ -1,0 +1,65 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict');
+const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+const {createMemoryStore}=require('../store');
+const base=path.join(__dirname,'..');
+const file=name=>fs.readFileSync(path.join(base,name),'utf8');
+const hash=code=>crypto.createHash('sha256').update(code).digest('hex');
+
+test('R22: memory grants are account-scoped, independent of login sessions and revocable',async()=>{
+ const store=createMemoryStore();
+ const email='one@example.org',other='two@example.org';
+ const fingerprint=hash('synthetic-dev-key');
+ await store.grantAccount(email,fingerprint);
+ assert.equal((await store.getAccountGrant(email)).keyHash,fingerprint);
+ assert.equal(await store.getAccountGrant(other),null);
+ assert.equal((await store.getAccountGrant('ONE@example.org')).keyHash,fingerprint);
+ const leaked=JSON.stringify(await store.getAccountGrant(email));
+ assert.doesNotMatch(leaked,/synthetic-dev-key/);
+ await store.grantAccount(email,hash('rotated-key'));
+ assert.equal((await store.getAccountGrant(email)).keyHash,hash('rotated-key'));
+ await store.revokeAccountGrant(email);
+ assert.equal(await store.getAccountGrant(email),null);
+ assert.equal(await store.getAccountGrant(other),null);
+});
+test('R22: no session TTL, no raw key, no implicit migration of legacy session grants',()=>{
+ const server=file('server.js'),store=file('store.js');
+ assert.match(server,/store\.getAccountGrant\(user\.email\)/);
+ assert.match(server,/store\.grantAccount\(user\.email,result\.keyHash\)/);
+ assert.match(server,/store\.revokeAccountGrant\(user\.email\)/);
+ assert.match(server,/verifyDevKey\(user\.email,null,grant\.keyHash\)/);
+ assert.doesNotMatch(server,/store\.getGrant\(user\.sessionId\)/);
+ assert.doesNotMatch(server,/Math\.min\(user\.expiresAt,Date\.now\(\)\+8\*60\*60/);
+ assert.match(store,/cloud_dev_account_grants/);
+ assert.match(store,/workspaceId\(email\)/);
+ assert.doesNotMatch(store,/grants\.createIndex/);
+ assert.doesNotMatch(store,/grant\(sessionId,email,keyHash/);
+});
+test('R22: login remains on official site with CSRF; only account-authenticated DEV access works',()=>{
+ const html=file('public/index.html'),app=file('public/app.js');
+ assert.match(html,/id="cloudLoginForm"/);
+ assert.match(html,/id="cloudLoginCsrf"/);
+ assert.match(html,/name="zvm_portal_csrf"/);
+ assert.match(app,/fetch\('\/cliente\/form-token'/);
+ assert.match(app,/form\.submit\(\)/);
+ assert.match(app,/if\(!status\.loggedIn\)\{screen\('login'\);return;\}/);
+ assert.match(app,/if\(!status\.devAuthorized\)\{screen\('devGate'\);return;\}/);
+ assert.match(app,/window\.confirm\('Desvincular a chave DEV desta conta/);
+ assert.match(html,/id="cloudDevSettingsStatus"/);
+ assert.match(html,/id="cloudSidebarEmail"/);
+ assert.equal((html.match(/id="leaveDev"/g)||[]).length,1);
+});
+test('R22: Studio-style desktop navigation and responsive mobile UX are real elements, not decoration',()=>{
+ const html=file('public/index.html'),css=file('public/cloud-ui.css'),ui=file('public/cloud-ui.js');
+ assert.match(html,/id="cloudSidebarToggle"/);
+ assert.match(html,/cloud-sidebar-account/);
+ assert.match(html,/data-page="crm"/);
+ assert.match(html,/id="cloudCrmBoard"/);
+ assert.match(html,/cloud-crm-board\.js/);
+ assert.match(css,/grid-template-columns:244px minmax\(0,1fr\)/);
+ assert.match(css,/cloud-menu-collapsed #app/);
+ assert.match(css,/@media\(max-width:900px\)/);
+ assert.match(ui,/zvm-cloud-sidebar-collapsed/);
+ assert.match(ui,/cloud-nav-label/);
+ assert.doesNotMatch(css,/!important/);
+});

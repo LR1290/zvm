@@ -7,7 +7,12 @@
  if(typeof module==='object'&&module.exports)module.exports=api;
  else Object.defineProperty(root,'ZVMCloudZip',{value:api,writable:false,configurable:false});
 })(typeof self!=='undefined'?self:globalThis,function(){
- const MAX_ARCHIVE=512*1024*1024,MAX_JSON=20*1024*1024,MAX_CENTRAL=2*1024*1024,MAX_ENTRIES=4000;
+ // ZIP32 is indexed without reading whole archives into memory. Individual
+ // media restoration remains bounded by the R24 account/file quotas.
+ const MAX_ARCHIVE=2200*1024*1024,MAX_JSON=32*1024*1024,
+  MAX_CENTRAL=4*1024*1024,MAX_ENTRIES=5000,MAX_ASSET=32*1024*1024;
+ const TOKEN=/^asset-[a-z0-9]+$/,REF=/^extapp-zip-asset:(asset-[a-z0-9]+)$/;
+ const RESTORABLE=new Set(['image/jpeg','image/png','image/webp','application/pdf','audio/mpeg','audio/ogg','video/mp4']);
  const crcTable=new Uint32Array(256);
  for(let n=0;n<256;n++){let c=n;for(let i=0;i<8;i++)c=(c&1)?(0xedb88320^(c>>>1)):(c>>>1);crcTable[n]=c>>>0;}
  function crc32(bytes,initial=0xffffffff){let c=initial;for(const x of bytes)c=crcTable[(c^x)&255]^(c>>>8);return c>>>0;}
@@ -15,7 +20,7 @@
  function u16(v,o){return v.getUint16(o,true);}
  function u32(v,o){return v.getUint32(o,true);}
  function safePath(name){
-  if(!name||name.length>320||name.includes('\\')||name.startsWith('/')||/^[A-Za-z]:/.test(name))return false;
+  if(!name||name.length>320||/[\x00-\x1f\x7f]/.test(name)||name.includes('\\')||name.startsWith('/')||/^[A-Za-z]:/.test(name))return false;
   const clean=name.endsWith('/')?name.slice(0,-1):name;
   return clean.split('/').every(part=>part.length>0&&part!=='.'&&part!=='..');
  }
@@ -47,29 +52,135 @@
   if(name!==item.name)throw invalid('zip_local_name_mismatch');
   const dataStart=end+x;
   if(dataStart+item.packed>file.size)throw invalid('zip_truncated');
+  if(Number.isSafeInteger(item.centralOffset)&&dataStart+item.packed>item.centralOffset)throw invalid('zip_entry_overlaps_directory');
   return file.slice(dataStart,dataStart+item.packed);
  }
- async function jsonText(file,entry){
-  if(entry.size>MAX_JSON||entry.packed>MAX_JSON)throw invalid('zip_json_too_large');
+ async function entryBytes(file,entry,limit){
+  if(entry.size>limit||entry.packed>limit)throw invalid('zip_entry_too_large');
   if(entry.packed&&entry.size/entry.packed>150)throw invalid('zip_expansion_ratio');
   const data=await localData(file,entry);
   let stream=data.stream();
   if(entry.method===8){
    if(typeof DecompressionStream!=='function')throw invalid('zip_deflate_unsupported');
-   try{stream=stream.pipeThrough(new DecompressionStream('deflate-raw'));}catch{throw invalid('zip_deflate_unsupported');}
+   try{stream=stream.pipeThrough(new DecompressionStream('deflate-raw'));}
+   catch{throw invalid('zip_deflate_unsupported');}
   }else if(entry.packed!==entry.size)throw invalid('zip_stored_length_mismatch');
   const reader=stream.getReader(),parts=[];let size=0,crc=0xffffffff;
   try{
    for(;;){
     const {value,done}=await reader.read();if(done)break;
     size+=value.byteLength;
-    if(size>entry.size||size>MAX_JSON)throw invalid('zip_expansion_overflow');
+    if(size>entry.size||size>limit)throw invalid('zip_expansion_overflow');
     crc=crc32(value,crc);parts.push(value);
    }
   }finally{try{await reader.cancel();}catch{}reader.releaseLock();}
   if(size!==entry.size||((crc^0xffffffff)>>>0)!==(entry.crc>>>0))throw invalid('zip_crc_or_size_mismatch');
-  const bytes=new Uint8Array(size);let offset=0;for(const part of parts){bytes.set(part,offset);offset+=part.length;}
-  return new TextDecoder('utf-8',{fatal:true}).decode(bytes);
+  const bytes=new Uint8Array(size);
+  let offset=0;for(const part of parts){bytes.set(part,offset);offset+=part.length;}
+  return bytes;
+ }
+ async function jsonText(file,entry){
+  if(entry.size>MAX_JSON||entry.packed>MAX_JSON)throw invalid('zip_json_too_large');
+  return new TextDecoder('utf-8',{fatal:true}).decode(await entryBytes(file,entry,MAX_JSON));
+ }
+ function validMime(bytes,mime){
+  const char=(off,n)=>String.fromCharCode(...bytes.subarray(off,off+n));
+  if(mime==='image/png')return bytes.length>=8&&[137,80,78,71,13,10,26,10].every((v,i)=>v===bytes[i]);
+  if(mime==='image/jpeg')return bytes.length>=4&&bytes[0]===255&&bytes[1]===216&&bytes[2]===255;
+  if(mime==='image/webp')return bytes.length>=12&&char(0,4)==='RIFF'&&char(8,4)==='WEBP';
+  if(mime==='application/pdf')return bytes.length>=5&&char(0,5)==='%PDF-';
+  if(mime==='audio/mpeg')return bytes.length>=3&&(char(0,3)==='ID3'||(bytes[0]===255&&(bytes[1]&224)===224));
+  if(mime==='audio/ogg')return bytes.length>=4&&char(0,4)==='OggS';
+  if(mime==='video/mp4')return bytes.length>=12&&char(4,4)==='ftyp';
+  return false;
+ }
+ function sourceTokens(value,budget){
+  const seen=new Set();
+  function walk(input,depth){
+   if(++budget.nodes>100000||depth>16)throw invalid('zip_asset_source_too_complex');
+   if(typeof input==='string'){
+    const value=input.trim(),match=REF.exec(value);
+    if(match){seen.add(match[1]);return;}
+    // R17 can embed physical media tokens in serialized sidecar JSON:
+    // backup.assets[itemId] = JSON.stringify({data:"extapp-zip-asset:asset-1"}).
+    if(value.length>262144||!((value[0]==='{'&&value[value.length-1]==='}')||
+      (value[0]==='['&&value[value.length-1]===']')))return;
+    try{walk(JSON.parse(value),depth+1);}catch(error){
+     if(error?.code&&String(error.code).startsWith('zip_asset_'))throw error;
+    }
+    return;
+   }
+   if(!input||typeof input!=='object')return;
+   if(Array.isArray(input)){
+    if(input.length>5000)throw invalid('zip_asset_source_too_complex');
+    for(const part of input)walk(part,depth+1);
+    return;
+   }
+   const fields=Object.entries(input);
+   if(fields.length>5000)throw invalid('zip_asset_source_too_complex');
+   for(const [key,part] of fields){
+    if(key==='__proto__'||key==='prototype'||key==='constructor')throw invalid('zip_asset_source_invalid');
+    walk(part,depth+1);
+   }
+  }
+  walk(value,0);
+  return [...seen];
+ }
+ function manifestAssets(backup,entries,selected){
+  const declared=backup.binaryAssets;
+  if(declared===undefined||declared===null){
+   if(backup.assetEncoding==='external')throw invalid('zip_asset_manifest_missing');
+   return [];
+  }
+  if(!Array.isArray(declared)||declared.length>MAX_ENTRIES)throw invalid('zip_asset_manifest_invalid');
+  const byPath=new Map(entries.map(e=>[e.name,e]));
+  const assets=backup.assets&&typeof backup.assets==='object'&&!Array.isArray(backup.assets)?backup.assets:{};
+  const tokenOwners=new Map(),budget={nodes:0};
+  for(const [sourceId,value] of Object.entries(assets)){
+   if(['__proto__','prototype','constructor'].includes(sourceId))throw invalid('zip_asset_source_invalid');
+   for(const token of sourceTokens(value,budget)){
+    const owners=tokenOwners.get(token)||[];
+    owners.push(sourceId);tokenOwners.set(token,owners);
+   }
+  }
+  const tokens=new Set(),paths=new Set(),out=[];
+  for(const meta of declared){
+   if(!meta||typeof meta!=='object'||Array.isArray(meta))throw invalid('zip_asset_manifest_invalid');
+   const id=String(meta.id||''),p=String(meta.path||''),mime=String(meta.mimeType||'').toLowerCase().trim();
+   const size=meta.sizeBytes;
+   if(!TOKEN.test(id)||tokens.has(id)||!safePath(p)||!p.startsWith('assets/')||paths.has(p)||
+     !Number.isSafeInteger(size)||size<=0||size>MAX_ARCHIVE)throw invalid('zip_asset_manifest_invalid');
+   tokens.add(id);paths.add(p);
+   const entry=byPath.get(p);
+   if(!entry||entry.name.endsWith('/')||entry.size!==size)throw invalid('zip_asset_entry_mismatch');
+   const owners=tokenOwners.get(id)||[];
+   if(owners.length>1)throw invalid('zip_asset_ambiguous_owner');
+   const rawName=String(meta.fileName||p.split('/').pop());
+   const name=rawName.replace(/[/\\\x00-\x1f\x7f]/g,'-').trim().slice(0,120)||'anexo';
+   out.push({id,path:p,name,mime,sizeBytes:size,sourceId:owners[0]||null,
+     eligible:RESTORABLE.has(mime)&&size<=MAX_ASSET&&owners.length===1,
+     reason:!RESTORABLE.has(mime)?'unsupported_mime':size>MAX_ASSET?'asset_over_32mb':owners.length===0?'unlinked_source':null});
+  }
+  // R17's ZIP writer includes exactly the declared binary assets.
+  if(backup.assetEncoding==='external'){
+   for(const entry of entries){
+    if(entry.name===selected||entry.name.endsWith('/'))continue;
+    if(!paths.has(entry.name))throw invalid('zip_unexpected_asset');
+   }
+   if([...tokenOwners.keys()].some(id=>!tokens.has(id)))throw invalid('zip_asset_reference_missing');
+  }
+  return out;
+ }
+ async function readAsset(file,inspection,id){
+  if(!inspection||!Array.isArray(inspection.assets)||!TOKEN.test(String(id||'')))
+   throw invalid('zip_asset_not_selected');
+  const item=inspection.assets.find(a=>a.id===id);
+  if(!item||!item.eligible)throw invalid('zip_asset_not_restorable');
+  const entry=(inspection._entries||[]).find(e=>e.name===item.path);
+  if(!entry||entry.size!==item.sizeBytes)throw invalid('zip_asset_entry_mismatch');
+  const bytes=await entryBytes(file,entry,MAX_ASSET);
+  if(!validMime(bytes,item.mime))throw invalid('zip_asset_signature_mismatch');
+  return new Blob([bytes],{type:item.mime});
  }
  async function inspect(file){
   if(!file||typeof file.slice!=='function'||!Number.isFinite(file.size)||file.size<22||file.size>MAX_ARCHIVE)throw invalid('zip_size_unsupported');
@@ -86,6 +197,8 @@
   const entries=[];const unique=new Set();let cursor=0;
   for(let i=0;i<count;i++){
    const entry=metaEntry(file,central,cursor,central.byteLength);
+   if(entry.offset>=centralOffset)throw invalid('zip_local_overlaps_directory');
+   entry.centralOffset=centralOffset;
    const lower=entry.name.toLowerCase();
    if(unique.has(lower))throw invalid('zip_duplicate_names');unique.add(lower);
    entries.push(entry);cursor=entry.next;
@@ -99,9 +212,12 @@
   const text=await jsonText(file,selected[0]);
   let backup;try{backup=JSON.parse(text);}catch{throw invalid('zip_invalid_json');}
   if(!backup||typeof backup!=='object'||Array.isArray(backup))throw invalid('zip_invalid_manifest');
+  const assets=manifestAssets(backup,entries,selected[0].name);
   return {backup,manifest:selected[0].name,entries:entries.length,
    mediaEntries:entries.filter(e=>!e.name.endsWith('/')&&e!==selected[0]).length,
-   totalUncompressed:entries.reduce((n,e)=>n+e.size,0)};
+   totalUncompressed:entries.reduce((n,e)=>n+e.size,0),assets,
+   _entries:entries.map(e=>({name:e.name,flags:e.flags,method:e.method,size:e.size,
+    packed:e.packed,offset:e.offset,crc:e.crc,centralOffset:e.centralOffset}))};
  }
- return Object.freeze({inspect,safePath});
+ return Object.freeze({inspect,readAsset,safePath});
 });

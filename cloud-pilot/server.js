@@ -1,12 +1,18 @@
 'use strict';
 // Cloud demo controller: reuse real ZVM portal accounts, require a DEV-enabled license.
 // No message dispatch, scheduling, WhatsApp webhook or public registration exists here.
-const http=require('node:http'),fs=require('node:fs'),path=require('node:path');
+const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const {createMongoStore}=require('./store');
 const {MODULES,moduleCheck,checkAudience,planLegacy,mergeModules,checkWhole}=require('./workspace-domain');
+const {changeCrmBoard,checkCrmLinks}=require('./crm-board-domain');
+const FlowGraph=require('./flow-graph-domain');
 const Media=require('./media-domain');
+const Large=require('./large-media-domain');
+const Quota=require('./media-quota');
+const Downloads=require('./verified-media-download');
+const {checkLibraryRecords}=require('./library-domain');
 const Meta=require('./meta-webhook');
-const ASSETS={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','application/javascript; charset=utf-8'],'/styles.css':['styles.css','text/css; charset=utf-8'],'/workspace.js':['workspace.js','application/javascript; charset=utf-8'],'/backup-zip.js':['backup-zip.js','application/javascript; charset=utf-8']};
+const ASSETS={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','application/javascript; charset=utf-8'],'/styles.css':['styles.css','text/css; charset=utf-8'],'/workspace.js':['workspace.js','application/javascript; charset=utf-8'],'/backup-zip.js':['backup-zip.js','application/javascript; charset=utf-8'],'/cloud-ui.js':['cloud-ui.js','application/javascript; charset=utf-8'],'/cloud-ui.css':['cloud-ui.css','text/css; charset=utf-8'],'/cloud-crm-board.js':['cloud-crm-board.js','application/javascript; charset=utf-8'],'/cloud-crm-board.css':['cloud-crm-board.css','text/css; charset=utf-8'],'/cloud-library.js':['cloud-library.js','application/javascript; charset=utf-8'],'/cloud-library.css':['cloud-library.css','text/css; charset=utf-8'],'/backup-asset-links.js':['backup-asset-links.js','application/javascript; charset=utf-8'],'/flow-graph-core.js':['flow-graph-core.js','application/javascript; charset=utf-8'],'/cloud-flow-studio.js':['cloud-flow-studio.js','application/javascript; charset=utf-8'],'/cloud-flow-studio.css':['cloud-flow-studio.css','text/css; charset=utf-8']};
 const MAX_TRIES=8, WINDOW_MS=15*60*1000;
 function json(res,status,body){
  res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});
@@ -28,9 +34,77 @@ async function readJson(req,maxBytes=8192){
  }
  return JSON.parse(text||'{}');
 }
+async function readBinary(req,maxBytes=Large.CHUNK_BYTES){
+ if(String(req.headers['content-type']||'').toLowerCase()!=='application/octet-stream')throw Error('invalid_content_type');
+ const parts=[];let total=0;
+ for await(const part of req){
+  const bytes=Buffer.isBuffer(part)?part:Buffer.from(part);
+  total+=bytes.length;if(total>maxBytes)throw Error('chunk_too_large');
+  parts.push(bytes);
+ }
+ return Buffer.concat(parts,total);
+}
+function largeError(error){
+ const code=error?.code||'invalid_large_upload';
+ const status=code==='large_media_limit'||code==='chunk_too_large'?413:
+  /^(upload_already_active|media_id_collision|chunk_conflict|chunk_out_of_order|upload_incomplete|upload_finalizing|upload_in_progress|media_quota_conflict|media_storage_quota|media_item_quota)$/.test(code)?409:
+  code==='upload_not_found'||code==='media_not_found'?404:422;
+ return {code,status};
+}
+async function commitWorkspace(store,email,revision,modules){
+ try{return await store.writeWorkspace(email,revision,modules);}
+ catch(error){
+  const code=error?.code||'workspace_transaction_failed';
+  // Domain validation is repeated inside the transaction to close races.
+  // Return actionable 422 errors instead of disguising invalid drafts as 503s.
+  if(code==='unknown_library_media'||code.startsWith('invalid_library')||
+     code.startsWith('library_'))return {invalid:true,error:code};
+  throw error;
+ }
+}
+async function streamLargeDownload(store,email,file,res,method,gate){
+ const release=gate.acquire(email);
+ const aborter=new AbortController();
+ let released=false;
+ const onClose=()=>{
+  aborter.abort();
+  cleanup();
+ };
+ const cleanup=()=>{
+  if(released)return;
+  released=true;
+  release();
+  res.off('finish',cleanup);res.off('close',onClose);
+ };
+ // Count in-flight responses until the socket is done, not just until end()
+ // schedules a potentially large send into Node's outgoing write buffer.
+ res.once('finish',cleanup);
+ res.once('close',onClose);
+ try{
+  const bytes=await Downloads.verifiedSnapshot(store,email,file,{
+   signal:aborter.signal,cancelled:()=>res.destroyed||aborter.signal.aborted
+  });
+  if(res.destroyed)return cleanup();
+  res.writeHead(200,{
+   'Content-Type':file.mime,
+   'Content-Length':file.size,
+   'Content-Disposition':file.mime.startsWith('image/')?
+    'inline; filename="zvm-cloud-anexo"':'attachment; filename="zvm-cloud-anexo"',
+   'Cache-Control':'no-store',
+   'X-Content-Type-Options':'nosniff',
+   'X-Download-Options':'noopen',
+   'Cross-Origin-Resource-Policy':'same-origin'
+  });
+  res.end(method==='HEAD'?undefined:bytes);
+ }catch(error){
+  cleanup();
+  throw error;
+ }
+}
 function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
  // No alternate password database and no fallback identity from caller-supplied email.
  const failures=new Map();
+ const downloadGate=Downloads.createDownloadGate();
  let pingCount=0;
  async function portal(req){
   if(typeof resolvePortal!=='function')return null;
@@ -42,9 +116,13 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
  }
  async function activated(user){
   if(!user||!store||typeof verifyDevKey!=='function')return false;
-  const grant=await store.getGrant(user.sessionId);
-  if(!grant||grant.email!==user.email||!(new Date(grant.expiresAt).getTime()>Date.now()))return false;
-  // Re-check the authoritative, current DEV status on every privileged request.
+  // DEV trust belongs to the authenticated Portal ACCOUNT, never to a browser
+  // session or 8-hour TTL. Do not migrate legacy per-session grants implicitly:
+  // explicit revocation must not be resurrected by another old session.
+  const grant=await store.getAccountGrant(user.email);
+  if(!grant||typeof grant.keyHash!=='string'||!/^[a-f0-9]{64}$/.test(grant.keyHash))return false;
+  // Each privileged request checks the CURRENT authoritative license. Revoked,
+  // unlinked, replaced or no-longer-DEV keys stop working immediately.
   return (await verifyDevKey(user.email,null,grant.keyHash))===true;
  }
  return async function handleCloudRequest(req,res){
@@ -76,28 +154,30 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
    const user=await portal(req);
    if(req.method==='GET'&&pathname==='/api/session'){
     const devAuthorized=await activated(user);
-    return json(res,200,{loggedIn:!!user,email:user?.email||null,devAuthorized,devRequired:!!user&&!devAuthorized,persistence:!!store,sending:false,mode:'dev-pilot'});
+    return json(res,200,{loggedIn:!!user,email:user?.email||null,devAuthorized,devRequired:!!user&&!devAuthorized,persistence:!!store,rememberedForAccount:devAuthorized,sending:false,mode:'dev-pilot'});
    }
    if(pathname==='/api/login'||pathname==='/api/admin/guest')return json(res,404,{error:'not_found'});
    if(!user)return json(res,401,{error:'site_login_required'});
    if(!store||typeof verifyDevKey!=='function')return json(res,503,{error:'cloud_unavailable'});
    if(req.method==='POST'&&pathname==='/api/dev/activate'){
-    const prev=failures.get(user.sessionId)||{count:0,until:0};
+    const prev=failures.get(user.email)||{count:0,until:0};
     if(prev.until<=Date.now()){prev.count=0;prev.until=Date.now()+WINDOW_MS;}
-    prev.count++;failures.set(user.sessionId,prev);
+    prev.count++;failures.set(user.email,prev);
     if(prev.count>MAX_TRIES)return json(res,429,{error:'try_again_later'});
     let data;try{data=await readJson(req);}catch{return json(res,400,{error:'invalid_request'});}
     const code=typeof data.key==='string'?data.key.trim().toLowerCase():'';
     if(!/^[a-z0-9_-]{1,64}$/.test(code))return json(res,400,{error:'invalid_key'});
     const result=await verifyDevKey(user.email,code,null);
     if(!result||typeof result.keyHash!=='string'||!/^[a-f0-9]{64}$/.test(result.keyHash))return json(res,403,{error:'dev_key_not_authorized'});
-    await store.grant(user.sessionId,user.email,result.keyHash,Math.min(user.expiresAt,Date.now()+8*60*60*1000));
-    failures.delete(user.sessionId);
-    return json(res,200,{ok:true,devAuthorized:true});
+    await store.grantAccount(user.email,result.keyHash);
+    failures.delete(user.email);
+    return json(res,200,{ok:true,devAuthorized:true,rememberedForAccount:true});
    }
    if(req.method==='POST'&&pathname==='/api/dev/leave'){
-    await store.revokeGrant(user.sessionId);
-    return json(res,200,{ok:true});
+    // Explicit unlink is account-wide, not just a sign-out from this session.
+    await store.revokeAccountGrant(user.email);
+    failures.delete(user.email);
+    return json(res,200,{ok:true,devAuthorized:false,rememberedForAccount:false});
    }
    if(!await activated(user))return json(res,403,{error:'dev_key_required'});
    if(req.method==='GET'&&pathname==='/api/overview'){
@@ -106,30 +186,87 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
    if(req.method==='POST'&&pathname==='/api/ping'){
     pingCount++;return json(res,200,{ok:true,at:new Date().toISOString(),number:pingCount});
    }
+   // R24 resumable file chunks. Security gates above apply to every operation.
+   if(store.large&&pathname==='/api/media/uploads'){
+    if(req.method==='GET')return json(res,200,{upload:await store.large.status(user.email),sending:false});
+    if(req.method==='POST'){
+     let body;try{body=await readJson(req,2000);}catch{return json(res,400,{error:'invalid_upload'});}
+     let payload;
+     try{
+      payload=await store.beginMediaUpload(user.email,body);
+     }catch(error){const err=largeError(error);return json(res,err.status,{error:err.code});}
+     return json(res,200,{ok:true,...payload,sending:false});
+    }
+   }
+   const uploadPart=/^\/api\/media\/uploads\/([a-f0-9]{32})\/(\d{1,3})$/.exec(pathname);
+   if(store.large&&uploadPart&&req.method==='PUT'){
+    let bytes;try{bytes=await readBinary(req);}catch{return json(res,413,{error:'chunk_payload_invalid'});}
+    try{
+     const progress=await store.large.append(user.email,uploadPart[1],Number(uploadPart[2]),bytes,String(req.headers['x-chunk-sha256']||''));
+     return json(res,200,{ok:true,upload:progress,sending:false});
+    }catch(error){const err=largeError(error);return json(res,err.status,{error:err.code});}
+   }
+   const uploadEnd=/^\/api\/media\/uploads\/([a-f0-9]{32})\/complete$/.exec(pathname);
+   if(store.large&&uploadEnd&&req.method==='POST'){
+    try{
+     const done=await store.completeMediaUpload(user.email,uploadEnd[1]);
+     const vault=await store.readMedia(user.email),large=await store.large.list(user.email);
+     return json(res,200,{ok:true,duplicate:done.duplicate,mediaId:done.file.id,...Large.combined(vault,large),sending:false});
+    }catch(error){const err=largeError(error);return json(res,err.status,{error:err.code});}
+   }
+   const uploadCancel=/^\/api\/media\/uploads\/([a-f0-9]{32})$/.exec(pathname);
+   if(store.large&&uploadCancel&&req.method==='DELETE'){
+    try{await store.cancelMediaUpload(user.email,uploadCancel[1]);return json(res,200,{ok:true,sending:false});}
+    catch(error){const err=largeError(error);return json(res,err.status,{error:err.code});}
+   }
    // Private media vault: bounded binary storage, signature verification, tenant scope.
    // Media objects are never served from public static paths.
    if(req.method==='GET'&&pathname==='/api/media'){
     const vault=await store.readMedia(user.email);
-    return json(res,200,{...Media.output(vault),sending:false});
+    const large=store.large?await store.large.list(user.email):[];
+    const pending=store.large?await store.large.status(user.email):null;
+    const quota=Quota.budget(vault.items,large,pending);
+    return json(res,200,{...Large.combined(vault,large),
+     reservedBytes:quota.reservedBytes,reservedItems:quota.reservedItems,
+     availableBytes:quota.availableBytes,availableItems:quota.availableItems,sending:false});
    }
    if(req.method==='POST'&&pathname==='/api/media'){
     let payload;try{payload=await readJson(req,1500000);}catch{return json(res,413,{error:'media_payload_too_large'});}
-    let media;
-    try{media=Media.decode(payload);}catch(error){return json(res,422,{error:error.code||'invalid_media'});}
+    let item;
+    try{item=Media.decode(payload);}catch(error){return json(res,422,{error:error.code||'invalid_media'});}
+    if(!Number.isSafeInteger(payload.revision)||payload.revision<0)
+     return json(res,400,{error:'invalid_revision'});
+    let result;
+    try{result=await store.addLegacyMedia(user.email,item,payload.revision);}
+    catch(error){const mapped=largeError(error);return json(res,mapped.status,{error:mapped.code});}
+    if(result.conflict)return json(res,409,{error:result.code||'media_revision_conflict'});
     const current=await store.readMedia(user.email);
-    let updated;try{updated=Media.add(current,media,payload.revision);}
-    catch(error){return json(res,error.code==='media_revision_conflict'?409:422,{error:error.code||'media_rejected'});}
-    if(updated.duplicate)return json(res,200,{ok:true,duplicate:true,mediaId:media.id,...Media.output(current)});
-    const result=await store.writeMedia(user.email,current.revision,updated.next.items);
-    if(result.conflict)return json(res,409,{error:'media_revision_conflict'});
-    return json(res,200,{ok:true,duplicate:false,mediaId:media.id,...Media.output({...updated.next,revision:result.revision})});
+    const large=store.large?await store.large.list(user.email):[];
+    return json(res,200,{ok:true,duplicate:result.duplicate===true,mediaId:item.id,
+     ...Large.combined(current,large),sending:false});
    }
    const mediaPath=/^\/api\/media\/(m_[a-f0-9]{40})$/.exec(pathname);
    if(mediaPath){
     const id=mediaPath[1];
     if(req.method==='GET'||req.method==='HEAD'){
      const vault=await store.readMedia(user.email),media=vault.items.find(x=>x.id===id);
-     if(!media)return json(res,404,{error:'media_not_found'});
+     if(!media){
+      const file=store.large?await store.large.get(user.email,id):null;
+      if(!file)return json(res,404,{error:'media_not_found'});
+      try{await streamLargeDownload(store,user.email,file,res,req.method,downloadGate);}
+      catch(error){
+       if(error?.code==='download_aborted')return;
+       if(!res.headersSent){
+        if(error?.code==='download_busy'){
+         res.setHeader('Retry-After','2');
+         return json(res,429,{error:'download_busy'});
+        }
+        return json(res,503,{error:'large_media_integrity_failed'});
+       }
+       res.destroy(error);
+      }
+      return;
+     }
      const bytes=Media.getBytes(media);
      if(bytes.length!==media.size||Media.sha(bytes)!==media.sha256||!Media.mimeDetected(bytes,media.mime)){
       return json(res,503,{error:'media_integrity_failed'});
@@ -146,20 +283,46 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
     }
     if(req.method==='DELETE'){
      let payload;try{payload=await readJson(req);}catch{return json(res,400,{error:'invalid_request'});}
-     const workspace=await store.readWorkspace(user.email);
-     const linked=(workspace.modules.library||[]).some(x=>x.mediaId===id);
-     if(linked)return json(res,409,{error:'media_still_linked_to_library'});
+     if(!Number.isSafeInteger(payload.revision)||payload.revision<0)
+      return json(res,400,{error:'invalid_revision'});
+     // One owner fence/transaction protects both Library CAS and file deletion.
+     // An earlier readWorkspace check followed by a separate delete was unsafe.
+     let result;
+     try{result=await store.removeMediaIfUnlinked(user.email,id,payload.revision);}
+     catch(error){return json(res,503,{error:'media_transaction_unavailable'});}
+     if(result.conflict){
+      const code=result.code||'media_revision_conflict';
+      return json(res,code==='media_not_found'?404:409,{error:code});
+     }
      const vault=await store.readMedia(user.email);
-     let next;try{next=Media.remove(vault,id,payload.revision);}
-     catch(error){return json(res,error.code==='media_revision_conflict'?409:422,{error:error.code||'invalid_media_delete'});}
-     const result=await store.writeMedia(user.email,vault.revision,next.items);
-     if(result.conflict)return json(res,409,{error:'media_revision_conflict'});
-     return json(res,200,{ok:true,revision:result.revision,...Media.output({...next,revision:result.revision})});
+     const large=store.large?await store.large.list(user.email):[];
+     return json(res,200,{ok:true,...Large.combined(vault,large),sending:false});
     }
    }
    if(req.method==='GET'&&pathname==='/api/meta/status'){
     const status=Meta.readiness(process.env,store);
     return json(res,200,{provider:'whatsapp_business_platform',webhookReady:status.configured&&status.ownerEmail===user.email,sending:false,transportEnabled:false,credentialsConfiguredForUser:status.configured&&status.ownerEmail===user.email});
+   }
+   // CRM R21 — validated draft-only operations, tenant scope and global CAS.
+   if(req.method==='POST'&&pathname==='/api/crm/board'){
+    let payload;try{payload=await readJson(req,20000);}
+    catch{return json(res,400,{error:'invalid_crm_payload'});}
+    if(!Number.isSafeInteger(payload.revision)||payload.revision<0)
+     return json(res,400,{error:'invalid_revision'});
+    const current=await store.readWorkspace(user.email);
+    if(current.revision!==payload.revision)
+     return json(res,409,{error:'workspace_conflict',revision:current.revision});
+    let result,modules;
+    try{
+     result=changeCrmBoard(current.modules.crm||[],current.modules.contacts||[],payload);
+     modules={...current.modules,crm:moduleCheck('crm',result.records)};
+     checkWhole(modules);checkCrmLinks(modules.crm||[],modules.contacts||[]);
+    }catch(error){return json(res,422,{error:error.code||'crm_board_invalid'});}
+    const saved=await commitWorkspace(store,user.email,current.revision,modules);
+    if(saved.conflict)return json(res,409,{error:'workspace_conflict'});
+    if(saved.invalid)return json(res,422,{error:saved.error});
+    return json(res,200,{ok:true,revision:saved.revision,action:result.action,
+     pipelineId:result.pipelineId,columns:result.columns,cards:result.cards,sending:false});
    }
    if(req.method==='GET'&&pathname==='/api/workspace'){
     const current=await store.readWorkspace(user.email);
@@ -172,6 +335,30 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
       note:'Somente rascunhos Cloud. Não contém mídias locais, autenticação ou chaves.',
       revision:data.revision,modules:data.modules});
    }
+   if(req.method==='POST'&&pathname==='/api/workspace/flows/graph'){
+    let input;
+    try{input=await readJson(req,64000);}
+    catch{return json(res,400,{error:'flow_graph_payload_invalid'});}
+    if(!Number.isSafeInteger(input.revision)||input.revision<0)
+     return json(res,400,{error:'invalid_revision'});
+    const current=await store.readWorkspace(user.email);
+    if(current.revision!==input.revision)
+     return json(res,409,{error:'workspace_conflict',revision:current.revision});
+    let changed,modules;
+    try{
+     changed=FlowGraph.update(current.modules.flows||[],input);
+     modules={...current.modules,flows:moduleCheck('flows',changed.flows)};
+     checkWhole(modules);
+     checkAudience('flows',modules.flows,modules.contacts||[]);
+    }catch(error){return json(res,422,{error:error?.code||'flow_graph_invalid'});}
+    let saved;
+    try{saved=await commitWorkspace(store,user.email,current.revision,modules);}
+    catch{return json(res,503,{error:'workspace_transaction_failed'});}
+    if(saved.conflict)return json(res,409,{error:'workspace_conflict'});
+    if(saved.invalid)return json(res,422,{error:saved.error});
+    return json(res,200,{ok:true,revision:saved.revision,flow:changed.flow,
+     review:changed.review,sending:false});
+   }
    const moduleRoute=/^\/api\/workspace\/([a-zA-Z]+)$/.exec(pathname);
    if(moduleRoute){
     const name=moduleRoute[1];
@@ -181,6 +368,10 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
      return json(res,200,{module:name,revision:current.revision,records:current.modules[name]||[],updatedAt:current.updatedAt,sending:false});
     }
     if(req.method==='PUT'){
+     // The old generic writer could replace R17 graphs without validating
+     // startNodeId, links or protected advanced-node fields.
+     // Backups still use the separate preview/commit pipeline.
+     if(name==='flows')return json(res,405,{error:'use_flow_graph_editor'});
      let payload;try{payload=await readJson(req,950000);}catch{return json(res,400,{error:'invalid_payload'});}
      if(!Number.isSafeInteger(payload.revision)||payload.revision<0)return json(res,400,{error:'invalid_revision'});
      let records;
@@ -188,18 +379,15 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
      const current=await store.readWorkspace(user.email);
      if(current.revision!==payload.revision)return json(res,409,{error:'workspace_conflict',revision:current.revision});
      if(name==='library'){
-      const vault=await store.readMedia(user.email);
-      const mediaIds=new Set(vault.items.map(x=>x.id));
-      for(const record of records){
-       if(record.mediaId&&!mediaIds.has(record.mediaId))return json(res,422,{error:'unknown_library_media'});
-       if(record.contentStatus==='ready'&&!record.text&&!record.mediaId)return json(res,422,{error:'library_source_required'});
-      }
+      try{const vault=await store.readMedia(user.email);checkLibraryRecords(records,[...vault.items,...(store.large?await store.large.list(user.email):[])]);}
+      catch(error){return json(res,422,{error:error.code||'invalid_library'});}
      }
      const modules={...current.modules,[name]:records};
-     try{checkWhole(modules);for(const audienceModule of ['campaigns','flows','funnels'])checkAudience(audienceModule,modules[audienceModule]||[],modules.contacts||[]);}
+     try{checkWhole(modules);checkCrmLinks(modules.crm||[],modules.contacts||[]);for(const audienceModule of ['campaigns','flows','funnels'])checkAudience(audienceModule,modules[audienceModule]||[],modules.contacts||[]);}
      catch(error){return json(res,422,{error:error.code||'workspace_invalid'});}
-     const saved=await store.writeWorkspace(user.email,current.revision,modules);
+     const saved=await commitWorkspace(store,user.email,current.revision,modules);
      if(saved.conflict)return json(res,409,{error:'workspace_conflict'});
+    if(saved.invalid)return json(res,422,{error:saved.error});
      return json(res,200,{ok:true,module:name,revision:saved.revision,updatedAt:saved.updatedAt,count:records.length});
     }
    }
@@ -217,10 +405,15 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
     if(!Number.isSafeInteger(input.revision)||input.revision<0||input.revision!==current.revision)return json(res,409,{error:'workspace_conflict',revision:current.revision});
     if(typeof input.digest!=='string'||input.digest!==plan.digest)return json(res,409,{error:'backup_changed_since_preview'});
     let modules;
-    try{modules=mergeModules(current.modules,plan.modules,mode);checkWhole(modules);}
+    try{
+     modules=mergeModules(current.modules,plan.modules,mode);checkWhole(modules);
+     checkCrmLinks(modules.crm||[],modules.contacts||[]);
+     if(Array.isArray(modules.library)){const vault=await store.readMedia(user.email);checkLibraryRecords(modules.library,[...vault.items,...(store.large?await store.large.list(user.email):[])]);}
+    }
     catch(error){return json(res,422,{error:error.code||'import_failed'});}
-    const committed=await store.writeWorkspace(user.email,current.revision,modules);
+    const committed=await commitWorkspace(store,user.email,current.revision,modules);
     if(committed.conflict)return json(res,409,{error:'workspace_conflict'});
+    if(committed.invalid)return json(res,422,{error:committed.error});
     console.log('[ZVM-CLOUD] authorized import categories='+Object.keys(plan.counts).join(',')+'; no real sending');
     return json(res,200,{ok:true,revision:committed.revision,counts:plan.counts,warnings:plan.warnings,
       sending:false});
