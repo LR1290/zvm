@@ -10291,7 +10291,7 @@ async function handleRequest(req, res) {
       });
     } catch(e) {
       if(e?.code==='max_uses_below_linked_devices'){
-        sendJson(res,{ok:false,error:'max_uses_below_linked_devices',linkedCount:e.linkedCount},409);return;
+        sendJson(res,{ok:false,error:'max_uses_below_linked_devices',linkedCount:e.linkedCount},422);return;
       }
       sendAdminKeyPersistFailure(res,e,'max-uses');return;
     }
