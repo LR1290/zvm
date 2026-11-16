@@ -11,8 +11,9 @@ function readiness(env=process.env,store=null){
  const enabled=env.CLOUD_META_WEBHOOK_ENABLED==='1';
  const verifyToken=String(env.CLOUD_META_VERIFY_TOKEN||''),appSecret=String(env.CLOUD_META_APP_SECRET||'');
  const ownerEmail=String(env.CLOUD_META_OWNER_EMAIL||'').trim().toLowerCase();
- const configured=enabled&&verifyToken.length>=24&&appSecret.length>=24&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)&&!!store&&typeof store.recordMetaEvent==='function';
- return {enabled,configured,ownerEmail:configured?ownerEmail:null,sendEnabled:false};
+ const phoneId=String(env.CLOUD_META_PHONE_NUMBER_ID||'').trim();
+ const configured=enabled&&verifyToken.length>=24&&appSecret.length>=24&&/^\d{6,30}$/.test(phoneId)&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)&&!!store&&typeof store.recordMetaEvent==='function';
+ return {enabled,configured,ownerEmail:configured?ownerEmail:null,phoneId:configured?phoneId:null,sendEnabled:false};
 }
 function handshake(url,verifyToken){
  const mode=url.searchParams.get('hub.mode'),code=url.searchParams.get('hub.verify_token'),challenge=url.searchParams.get('hub.challenge');
@@ -72,6 +73,7 @@ async function handleWebhook(req,res,{env=process.env,store}={}){
  let data,summary;
  try{data=JSON.parse(bytes.toString('utf8'));summary=eventSummary(data);}
  catch{res.writeHead(400);res.end();return true;}
+ if(summary.phoneNumberIds.some(id=>id!==state.phoneId)){res.writeHead(403);res.end();return true;}
  const digest=crypto.createHash('sha256').update(bytes).digest('hex');
  try{await store.recordMetaEvent(state.ownerEmail,digest,summary);}
  catch{res.writeHead(503);res.end();return true;}
