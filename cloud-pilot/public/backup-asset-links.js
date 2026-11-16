@@ -18,8 +18,10 @@
    return result('asset_not_eligible');
   if(!Array.isArray(records)||!Array.isArray(assets))return result('invalid_mapping');
   // Never choose a random asset if two ZIP tokens claim the same physical item.
-  if(assets.filter(item=>item.sourceId===asset.sourceId).length!==1)
-   return result('duplicate_asset_source');
+  const claimants=assets.filter(item=>item&&item.sourceId===asset.sourceId);
+  if(!claimants.some(item=>item.id===asset.id&&item.mime===asset.mime&&item.eligible===true))
+   return result('asset_not_declared');
+  if(claimants.length!==1)return result('duplicate_asset_source');
   const matched=records.filter(item=>item&&typeof item==='object'&&
    ORIGINS.has(item.originStore)&&Object.prototype.hasOwnProperty.call(MIMES,item.kind)&&
    String(item.sourceId||item.id)===asset.sourceId);
