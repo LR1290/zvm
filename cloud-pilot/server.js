@@ -49,6 +49,16 @@ function largeError(error){
   code==='upload_not_found'||code==='media_not_found'?404:422;
  return {code,status};
 }
+async function commitWorkspace(store,email,revision,modules){
+ try{return await store.writeWorkspace(email,revision,modules);}
+ catch(error){
+  const code=error?.code||'workspace_transaction_failed';
+  if(['unknown_library_media','library_media_kind_mismatch','library_media_required',
+   'library_text_required','invalid_library_kind','invalid_library_status',
+   'invalid_library_media'].includes(code))return {invalid:true,error:code};
+  throw error;
+ }
+}
 async function validateLargeDownload(store,email,file){
  const digest=crypto.createHash('sha256');
  let length=0,count=0,first=null;
@@ -255,24 +265,20 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
     }
     if(req.method==='DELETE'){
      let payload;try{payload=await readJson(req);}catch{return json(res,400,{error:'invalid_request'});}
-     const workspace=await store.readWorkspace(user.email);
-     const linked=(workspace.modules.library||[]).some(x=>x.mediaId===id);
-     if(linked)return json(res,409,{error:'media_still_linked_to_library'});
+     if(!Number.isSafeInteger(payload.revision)||payload.revision<0)
+      return json(res,400,{error:'invalid_revision'});
+     // One owner fence/transaction protects both Library CAS and file deletion.
+     // An earlier readWorkspace check followed by a separate delete was unsafe.
+     let result;
+     try{result=await store.removeMediaIfUnlinked(user.email,id,payload.revision);}
+     catch(error){return json(res,503,{error:'media_transaction_unavailable'});}
+     if(result.conflict){
+      const code=result.code||'media_revision_conflict';
+      return json(res,code==='media_not_found'?404:409,{error:code});
+     }
      const vault=await store.readMedia(user.email);
      const large=store.large?await store.large.list(user.email):[];
-     const largeFile=large.find(x=>x.id===id);
-     if(largeFile){
-      if(!Number.isSafeInteger(payload.revision)||payload.revision!==vault.revision)
-       return json(res,409,{error:'media_revision_conflict'});
-      try{await store.large.remove(user.email,id);}
-      catch(error){const err=largeError(error);return json(res,err.status,{error:err.code});}
-      return json(res,200,{ok:true,...Large.combined(vault,await store.large.list(user.email)),sending:false});
-     }
-     let next;try{next=Media.remove(vault,id,payload.revision);}
-     catch(error){return json(res,error.code==='media_revision_conflict'?409:422,{error:error.code||'invalid_media_delete'});}
-     const result=await store.writeMedia(user.email,vault.revision,next.items);
-     if(result.conflict)return json(res,409,{error:'media_revision_conflict'});
-     return json(res,200,{ok:true,revision:result.revision,...Large.combined({...next,revision:result.revision},large)});
+     return json(res,200,{ok:true,...Large.combined(vault,large),sending:false});
     }
    }
    if(req.method==='GET'&&pathname==='/api/meta/status'){
@@ -294,8 +300,9 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
      modules={...current.modules,crm:moduleCheck('crm',result.records)};
      checkWhole(modules);checkCrmLinks(modules.crm||[],modules.contacts||[]);
     }catch(error){return json(res,422,{error:error.code||'crm_board_invalid'});}
-    const saved=await store.writeWorkspace(user.email,current.revision,modules);
+    const saved=await commitWorkspace(store,user.email,current.revision,modules);
     if(saved.conflict)return json(res,409,{error:'workspace_conflict'});
+    if(saved.invalid)return json(res,422,{error:saved.error});
     return json(res,200,{ok:true,revision:saved.revision,action:result.action,
      pipelineId:result.pipelineId,columns:result.columns,cards:result.cards,sending:false});
    }
@@ -332,8 +339,9 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
      const modules={...current.modules,[name]:records};
      try{checkWhole(modules);checkCrmLinks(modules.crm||[],modules.contacts||[]);for(const audienceModule of ['campaigns','flows','funnels'])checkAudience(audienceModule,modules[audienceModule]||[],modules.contacts||[]);}
      catch(error){return json(res,422,{error:error.code||'workspace_invalid'});}
-     const saved=await store.writeWorkspace(user.email,current.revision,modules);
+     const saved=await commitWorkspace(store,user.email,current.revision,modules);
      if(saved.conflict)return json(res,409,{error:'workspace_conflict'});
+    if(saved.invalid)return json(res,422,{error:saved.error});
      return json(res,200,{ok:true,module:name,revision:saved.revision,updatedAt:saved.updatedAt,count:records.length});
     }
    }
@@ -357,8 +365,9 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
      if(Array.isArray(modules.library)){const vault=await store.readMedia(user.email);checkLibraryRecords(modules.library,[...vault.items,...(store.large?await store.large.list(user.email):[])]);}
     }
     catch(error){return json(res,422,{error:error.code||'import_failed'});}
-    const committed=await store.writeWorkspace(user.email,current.revision,modules);
+    const committed=await commitWorkspace(store,user.email,current.revision,modules);
     if(committed.conflict)return json(res,409,{error:'workspace_conflict'});
+    if(committed.invalid)return json(res,422,{error:committed.error});
     console.log('[ZVM-CLOUD] authorized import categories='+Object.keys(plan.counts).join(',')+'; no real sending');
     return json(res,200,{ok:true,revision:committed.revision,counts:plan.counts,warnings:plan.warnings,
       sending:false});
