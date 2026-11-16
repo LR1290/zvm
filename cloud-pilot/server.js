@@ -4,7 +4,9 @@
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path');
 const {createMongoStore}=require('./store');
 const {MODULES,moduleCheck,checkAudience,planLegacy,mergeModules,checkWhole}=require('./workspace-domain');
-const ASSETS={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','application/javascript; charset=utf-8'],'/styles.css':['styles.css','text/css; charset=utf-8'],'/workspace.js':['workspace.js','application/javascript; charset=utf-8']};
+const Media=require('./media-domain');
+const Meta=require('./meta-webhook');
+const ASSETS={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','application/javascript; charset=utf-8'],'/styles.css':['styles.css','text/css; charset=utf-8'],'/workspace.js':['workspace.js','application/javascript; charset=utf-8'],'/backup-zip.js':['backup-zip.js','application/javascript; charset=utf-8']};
 const MAX_TRIES=8, WINDOW_MS=15*60*1000;
 function json(res,status,body){
  res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});
@@ -68,6 +70,7 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
      res.end(req.method==='HEAD'?undefined:data);
     });
    }
+   if(pathname==='/meta/webhook')return Meta.handleWebhook(req,res,{store});
    if(!pathname.startsWith('/api/'))return json(res,404,{error:'not_found'});
    if(['POST','PUT','PATCH','DELETE'].includes(req.method)&&!originAllowed(req))return json(res,403,{error:'origin_denied'});
    const user=await portal(req);
@@ -103,6 +106,61 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
    if(req.method==='POST'&&pathname==='/api/ping'){
     pingCount++;return json(res,200,{ok:true,at:new Date().toISOString(),number:pingCount});
    }
+   // Private media vault: bounded binary storage, signature verification, tenant scope.
+   // Media objects are never served from public static paths.
+   if(req.method==='GET'&&pathname==='/api/media'){
+    const vault=await store.readMedia(user.email);
+    return json(res,200,{...Media.output(vault),sending:false});
+   }
+   if(req.method==='POST'&&pathname==='/api/media'){
+    let payload;try{payload=await readJson(req,1500000);}catch{return json(res,413,{error:'media_payload_too_large'});}
+    let media;
+    try{media=Media.decode(payload);}catch(error){return json(res,422,{error:error.code||'invalid_media'});}
+    const current=await store.readMedia(user.email);
+    let updated;try{updated=Media.add(current,media,payload.revision);}
+    catch(error){return json(res,error.code==='media_revision_conflict'?409:422,{error:error.code||'media_rejected'});}
+    if(updated.duplicate)return json(res,200,{ok:true,duplicate:true,mediaId:media.id,...Media.output(current)});
+    const result=await store.writeMedia(user.email,current.revision,updated.next.items);
+    if(result.conflict)return json(res,409,{error:'media_revision_conflict'});
+    return json(res,200,{ok:true,duplicate:false,mediaId:media.id,...Media.output({...updated.next,revision:result.revision})});
+   }
+   const mediaPath=/^\/api\/media\/(m_[a-f0-9]{40})$/.exec(pathname);
+   if(mediaPath){
+    const id=mediaPath[1];
+    if(req.method==='GET'||req.method==='HEAD'){
+     const vault=await store.readMedia(user.email),media=vault.items.find(x=>x.id===id);
+     if(!media)return json(res,404,{error:'media_not_found'});
+     const bytes=Media.getBytes(media);
+     if(bytes.length!==media.size||Media.sha(bytes)!==media.sha256||!Media.mimeDetected(bytes,media.mime)){
+      return json(res,503,{error:'media_integrity_failed'});
+     }
+     res.writeHead(200,{
+      'Content-Type':media.mime,'Content-Length':bytes.length,
+      'Content-Disposition':'attachment; filename="zvm-cloud-anexo"',
+      'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',
+      'X-Download-Options':'noopen',
+      'Cross-Origin-Resource-Policy':'same-origin'
+     });
+     res.end(req.method==='HEAD'?undefined:bytes);
+     return;
+    }
+    if(req.method==='DELETE'){
+     let payload;try{payload=await readJson(req);}catch{return json(res,400,{error:'invalid_request'});}
+     const workspace=await store.readWorkspace(user.email);
+     const linked=(workspace.modules.library||[]).some(x=>x.mediaId===id);
+     if(linked)return json(res,409,{error:'media_still_linked_to_library'});
+     const vault=await store.readMedia(user.email);
+     let next;try{next=Media.remove(vault,id,payload.revision);}
+     catch(error){return json(res,error.code==='media_revision_conflict'?409:422,{error:error.code||'invalid_media_delete'});}
+     const result=await store.writeMedia(user.email,vault.revision,next.items);
+     if(result.conflict)return json(res,409,{error:'media_revision_conflict'});
+     return json(res,200,{ok:true,revision:result.revision,...Media.output({...next,revision:result.revision})});
+    }
+   }
+   if(req.method==='GET'&&pathname==='/api/meta/status'){
+    const status=Meta.readiness(process.env,store);
+    return json(res,200,{provider:'whatsapp_business_platform',webhookReady:status.configured&&status.ownerEmail===user.email,sending:false,transportEnabled:false,credentialsConfiguredForUser:status.configured&&status.ownerEmail===user.email});
+   }
    if(req.method==='GET'&&pathname==='/api/workspace'){
     const current=await store.readWorkspace(user.email);
     const counts=Object.fromEntries(Object.keys(MODULES).map(name=>[name,Array.isArray(current.modules[name])?current.modules[name].length:0]));
@@ -129,6 +187,14 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
      try{records=moduleCheck(name,payload.records);}catch(error){return json(res,422,{error:error.code||'invalid_module'});}
      const current=await store.readWorkspace(user.email);
      if(current.revision!==payload.revision)return json(res,409,{error:'workspace_conflict',revision:current.revision});
+     if(name==='library'){
+      const vault=await store.readMedia(user.email);
+      const mediaIds=new Set(vault.items.map(x=>x.id));
+      for(const record of records){
+       if(record.mediaId&&!mediaIds.has(record.mediaId))return json(res,422,{error:'unknown_library_media'});
+       if(record.contentStatus==='ready'&&!record.text&&!record.mediaId)return json(res,422,{error:'library_source_required'});
+      }
+     }
      const modules={...current.modules,[name]:records};
      try{checkWhole(modules);for(const audienceModule of ['campaigns','flows','funnels'])checkAudience(audienceModule,modules[audienceModule]||[],modules.contacts||[]);}
      catch(error){return json(res,422,{error:error.code||'workspace_invalid'});}

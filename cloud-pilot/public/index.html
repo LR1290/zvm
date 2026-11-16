@@ -56,7 +56,7 @@
   <button data-page="campaigns">Campanhas</button>
   <button data-page="flows">Fluxos</button>
   <button data-page="funnels">Funis</button>
-  <button data-page="library">Biblioteca</button><button data-page="contacts">Contatos</button><button data-page="crm">CRM</button><button data-page="labels">Etiquetas</button><button data-page="quickReplies">Respostas</button><button data-page="campaigns">Disparos</button><button data-page="agenda">Agenda</button><button data-page="settings">Configurações</button><button data-page="migration">Importar R17</button>
+  <button data-page="library">Biblioteca</button><button data-page="contacts">Contatos</button><button data-page="crm">CRM</button><button data-page="labels">Etiquetas</button><button data-page="quickReplies">Respostas</button><button data-page="agenda">Agenda</button><button data-page="settings">Configurações</button><button data-page="migration">Importar R17</button><button data-page="integration">WhatsApp oficial</button>
  </nav>
  <section class="view" id="summary">
   <div class="stats">
@@ -76,19 +76,36 @@
  <section class="view" id="agenda" hidden><div class="panel section"><h2>Agenda</h2><p class="muted">Planejamento de mensagens. Nada será executado com os dispositivos desligados nesta etapa.</p><div id="cloud-list-agenda"></div></div></section>
  <section class="view" id="settings" hidden><div class="panel section"><h2>Configurações</h2><p class="muted">Preferências pessoais do espaço de trabalho Cloud.</p><div id="cloud-list-settings"></div></div></section>
  <section class="view" id="migration" hidden>
-  <div class="panel section"><h2>Importar dados da ZVM Desktop</h2><p class="muted">Selecione um backup <strong>JSON</strong> exportado da ZVM. Primeiro analisaremos os dados, sem substituir seus rascunhos. Só depois da confirmação faremos a gravação.</p>
-   <label for="backupFile">Backup JSON da extensão</label><input id="backupFile" type="file" accept=".json,application/json">
+  <div class="panel section"><h2>Importar dados da ZVM Desktop</h2><p class="muted">Selecione um backup <strong>JSON ou ZIP</strong> da ZVM. O manifesto ZIP é extraído neste navegador, sem enviar o arquivo completo ao servidor. Primeiro analisaremos os dados, sem substituir seus rascunhos. Só depois da confirmação faremos a gravação.</p>
+   <label for="backupFile">Backup JSON ou ZIP da extensão</label><input id="backupFile" type="file" accept=".json,.zip,application/json,application/zip">
    <button id="inspectBackup" type="button" class="primary">Verificar compatibilidade</button>
    <div id="backupReview" aria-live="polite"></div>
-   <p class="tiny">Esta versão não aceita ZIP, .extbackup, dados de mídia locais, sessões, senhas ou licenças. Não oferecemos restauração silenciosa; os itens não suportados são informados na prévia.</p>
+   <p class="tiny">O ZIP é analisado localmente: apenas dados JSON autorizados são enviados. Arquivos de mídia dentro do ZIP não serão importados automaticamente. Formato .extbackup criptografado exige recuperação na extensão. Sessões, senhas e licenças não são importadas. Não oferecemos restauração silenciosa; os itens não suportados são informados na prévia.</p>
   </div>
  </section>
 <section class="view" id="flows" hidden><div class="panel section"><h2>Fluxos</h2><p class="muted">Crie e organize definições de Fluxos. Execução real desativada.</p><div id="cloud-list-flows"></div></div></section>
  <section class="view" id="funnels" hidden><div class="panel section"><h2>Funis</h2><p class="muted">Planeje Funis e suas etapas. Agendamentos reais desativados.</p><div id="cloud-list-funnels"></div></div></section>
- <section class="view" id="library" hidden><div class="panel section"><h2>Biblioteca</h2><p class="muted">Mensagens reutilizáveis e itens de conteúdo. Mídias locais exigem migração específica.</p><div id="cloud-list-library"></div></div></section>
+ <section class="view" id="library" hidden><div class="panel section"><h2>Biblioteca</h2><p class="muted">Mensagens reutilizáveis e itens de conteúdo. Mídias locais exigem migração específica.</p><div id="cloud-list-library"></div><div class="cloud-media-section" id="cloud-media-library">
+ <h3>Cofre de anexos da Cloud</h3>
+ <p class="muted">Envie um arquivo pequeno para associá-lo a um item da Biblioteca. O conteúdo fica privado na sua conta; não é encaminhado ao WhatsApp.</p>
+ <label for="cloudMediaFile">Selecionar anexo (até 1 MB por arquivo)</label>
+ <input type="file" id="cloudMediaFile" accept=".png,.jpg,.jpeg,.webp,.pdf,.mp3,.ogg,.mp4,image/png,image/jpeg,image/webp,application/pdf,audio/mpeg,audio/ogg,video/mp4">
+ <div class="workspace-actions"><button type="button" class="primary" id="cloudMediaUpload">Guardar anexo na Cloud</button><button type="button" class="secondary" id="cloudMediaRefresh">Atualizar cofre</button></div>
+ <p id="cloudMediaStatus" aria-live="polite"></p><div id="cloudMediaItems"></div>
+ <p class="tiny">Limite temporário deste piloto: 6 MB por conta e até 24 arquivos. ZIP, SVG, HTML, executáveis e anexos acima do limite são bloqueados.</p>
+ </div></div></section>
+ <section class="view" id="integration" hidden>
+  <div class="panel section"><h2>Integração oficial com WhatsApp Business</h2>
+   <p class="muted">A ZVM Cloud não executa o WhatsApp Web no servidor. Para mensagens reais, usa a Plataforma Oficial do WhatsApp Business, com conta autorizada, webhooks e regras de consentimento.</p>
+   <div class="notice"><span><b>Envios continuam desligados.</b> É necessário autorizar um número empresarial na Meta, configurar token e webhook, validar destinatários com opt-in e homologar os modelos de mensagem.</span></div>
+   <p id="cloudMetaDiagnostic" class="result" aria-live="polite">Verificando integração...</p>
+   <button id="cloudMetaRefresh" type="button" class="secondary">Verificar conexão oficial</button>
+   <p class="tiny">Documentação: <a href="https://developers.facebook.com/docs/whatsapp/cloud-api/" target="_blank" rel="noopener noreferrer">Meta WhatsApp Cloud API</a>. Nenhuma credencial deve ser digitada no navegador ou compartilhada no chat.</p>
+  </div>
+ </section>
  <footer><a href="/cliente">Minha conta ZVM</a> · <a href="/cliente/logout">Sair do site</a> · ZVM Cloud DEV sem envios reais</footer>
 </section>
 </main>
-<script defer src="app.js"></script><script defer src="workspace.js"></script>
+<script defer src="app.js"></script><script defer src="backup-zip.js"></script><script defer src="workspace.js"></script>
 </body>
 </html>
