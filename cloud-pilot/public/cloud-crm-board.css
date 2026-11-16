@@ -1,0 +1,40 @@
+/* ZVM Cloud R21 CRM. Aligned with extension R17 shell; responsive, no global overrides. */
+#cloudCrmBoard{margin-top:24px;border-top:1px solid #303a32;padding-top:24px;min-width:0}
+#cloudCrmBoard .cloud-crm-title{font-size:18px;margin:0 0 6px;font-weight:780;letter-spacing:-.02em}
+#cloudCrmBoard>.muted{font-size:13px;margin:0 0 18px}
+#cloudCrmBoard .cloud-crm-status{color:#83dc9f;font-size:12px;min-height:18px;margin:8px 0}
+#cloudCrmBoard .cloud-crm-status.error{color:#ffb1ad}
+#cloudCrmBoard .cloud-crm-toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:12px 0}
+#cloudCrmBoard .cloud-crm-toolbar select{flex:1;min-width:170px;max-width:380px}
+#cloudCrmBoard .cloud-crm-inline{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0}
+#cloudCrmBoard .cloud-crm-inline input{flex:1;min-width:155px;width:auto;max-width:340px}
+#cloudCrmBoard .cloud-crm-board{display:flex;gap:14px;overflow-x:auto;overflow-y:hidden;min-width:0;padding:8px 2px 20px;scrollbar-width:thin;scrollbar-color:#376547 #171917;scroll-snap-type:x proximity}
+#cloudCrmBoard .cloud-crm-board:focus-visible{outline:2px solid #36db7a;outline-offset:3px}
+#cloudCrmBoard .cloud-crm-column{flex:0 0 288px;min-width:0;max-width:320px;padding:14px;background:#151a16;border:1px solid #2b352d;border-radius:13px;scroll-snap-align:start;align-self:stretch}
+#cloudCrmBoard .cloud-crm-column-head{display:flex;align-items:center;gap:8px;justify-content:space-between;border-bottom:1px solid #283a2f;padding-bottom:12px}
+#cloudCrmBoard .cloud-crm-column-head h4{font-size:14px;line-height:1.25;margin:0;overflow-wrap:anywhere}
+#cloudCrmBoard .cloud-crm-count{font-size:12px;font-variant-numeric:tabular-nums;padding:2px 9px;border:1px solid #2c6040;border-radius:30px;background:#183120;color:#8af1b2}
+#cloudCrmBoard .cloud-crm-column-tools{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}
+#cloudCrmBoard .cloud-crm-column-tools button{font-size:11px;padding:7px 9px;min-height:32px}
+#cloudCrmBoard .cloud-crm-cards{display:flex;flex-direction:column;gap:10px;min-height:80px}
+#cloudCrmBoard .cloud-crm-card{display:flex;flex-direction:column;gap:5px;padding:12px;background:#202622;border:1px solid #3b4a40;border-radius:10px}
+#cloudCrmBoard .cloud-crm-card strong{font-size:13px;overflow-wrap:anywhere}
+#cloudCrmBoard .cloud-crm-card small{font-size:11px;color:#a9c1b0;overflow-wrap:anywhere}
+#cloudCrmBoard .cloud-crm-card-notes{font-size:11px;color:#b3c2b6;margin:3px 0;overflow-wrap:anywhere}
+#cloudCrmBoard .cloud-crm-card-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
+#cloudCrmBoard .cloud-crm-card-actions select{min-width:100px;flex:1;font-size:11px;padding:7px}
+#cloudCrmBoard .cloud-crm-card-actions button{font-size:11px;min-height:32px;padding:6px 8px}
+#cloudCrmBoard .cloud-crm-empty{color:#adbaae;font-size:12px;padding:15px 8px;background:#1c221d;border:1px dashed #354638;border-radius:9px}
+#cloudCrmBoard .cloud-crm-assign{display:flex;flex-direction:column;gap:8px;padding-top:13px;margin-top:14px;border-top:1px solid #304033}
+#cloudCrmBoard .cloud-crm-assign select{width:100%;font-size:12px}
+#cloudCrmBoard .cloud-crm-assign button{min-height:36px;font-size:12px}
+#cloudCrmBoard .cloud-crm-assign small{font-size:11px;color:#a7b3aa}
+#cloudCrmBoard button:focus-visible,#cloudCrmBoard select:focus-visible,#cloudCrmBoard input:focus-visible{outline:2px solid #00da61;outline-offset:2px}
+@media(max-width:720px){
+ #cloudCrmBoard{padding-top:20px}
+ #cloudCrmBoard .cloud-crm-column{flex-basis:min(82vw,300px)}
+ #cloudCrmBoard .cloud-crm-board{margin-right:-12px}
+ #cloudCrmBoard .cloud-crm-toolbar>*{flex-basis:100%}
+ #cloudCrmBoard .cloud-crm-toolbar select{max-width:none}
+}
+@media(prefers-reduced-motion:reduce){#cloudCrmBoard .cloud-crm-board{scroll-behavior:auto}}
