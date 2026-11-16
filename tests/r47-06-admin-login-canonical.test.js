@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { checkAdminLoginCredentials } = require('../src/admin-login-credentials');
 const source = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
 assert(source.includes('<form method="POST" action="${R_ADMIN}">'), 'Admin form must submit to canonical panel root');
 const begin = "  // The canonical Admin login lives on the panel root.";
@@ -20,6 +21,8 @@ const sessions = {}, alerts=[], rateLimitMap=new Map();
 let issued=0;
 const deps = {
   p:'', R_ADMIN:panel, crypto, Buffer, ADMIN_USER, _adminPassSalt:salt, _adminPassHash:passHash,
+  checkAdminLoginCredentials,
+  canUseAdminLoginCsrfFallback:()=>false,
   TOTP_SECRET:'synthetic-totp-secret', SESSION_ABSOLUTE_LIMIT_MS:86400000,
   sessions, rateLimitMap,
   checkRateLimit:(_ip,_type)=>true, getRateLimitWait:()=>1,
@@ -31,6 +34,7 @@ const deps = {
   renderAdminLogin:message=>'ADMIN_LOGIN:'+message,
   sendAuthHtml:(res,html,status=200)=>{res.result={status,html};},
   sendHtml:(res,html,status=200)=>{res.result={status,html};},
+  sendAdminLogin:(res,error='',status=200)=>{res.result={status,html:'ADMIN_LOGIN:'+error};},
   addSecurityAlert:(type,detail)=>alerts.push({type,detail}),
 };
 async function request(pathname, method='POST', values={}, safeOrigin=true) {
