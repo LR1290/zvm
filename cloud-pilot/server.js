@@ -215,27 +215,18 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
    }
    if(req.method==='POST'&&pathname==='/api/media'){
     let payload;try{payload=await readJson(req,1500000);}catch{return json(res,413,{error:'media_payload_too_large'});}
-    let media;
-    try{media=Media.decode(payload);}catch(error){return json(res,422,{error:error.code||'invalid_media'});}
+    let item;
+    try{item=Media.decode(payload);}catch(error){return json(res,422,{error:error.code||'invalid_media'});}
+    if(!Number.isSafeInteger(payload.revision)||payload.revision<0)
+     return json(res,400,{error:'invalid_revision'});
+    let result;
+    try{result=await store.addLegacyMedia(user.email,item,payload.revision);}
+    catch(error){const mapped=largeError(error);return json(res,mapped.status,{error:mapped.code});}
+    if(result.conflict)return json(res,409,{error:result.code||'media_revision_conflict'});
     const current=await store.readMedia(user.email);
     const large=store.large?await store.large.list(user.email):[];
-    const collision=large.find(x=>x.id===media.id);
-    if(collision){
-     if(collision.sha256!==media.sha256||collision.mime!==media.mime)return json(res,409,{error:'media_id_collision'});
-     return json(res,200,{ok:true,duplicate:true,mediaId:media.id,...Large.combined(current,large)});
-    }
-    if(Large.combined(current,large).usedBytes+media.size>Large.MAX_ACCOUNT)
-     return json(res,409,{error:'media_storage_quota'});
-    if(!current.items.some(x=>x.id===media.id)&&current.items.length+large.length>=Large.MAX_ITEMS)
-     return json(res,409,{error:'media_item_quota'});
-    let updated;try{updated=Media.add(current,media,payload.revision);}
-    catch(error){return json(res,error.code==='media_revision_conflict'?409:422,{error:error.code||'media_rejected'});}
-    if(updated.duplicate)return json(res,200,{ok:true,duplicate:true,mediaId:media.id,...Large.combined(current,large)});
-    let result;
-    try{result=await store.writeMedia(user.email,current.revision,updated.next.items);}
-    catch(error){const mapped=largeError(error);return json(res,mapped.status,{error:mapped.code});}
-    if(result.conflict)return json(res,409,{error:'media_revision_conflict'});
-    return json(res,200,{ok:true,duplicate:false,mediaId:media.id,...Large.combined({...updated.next,revision:result.revision},large)});
+    return json(res,200,{ok:true,duplicate:result.duplicate===true,mediaId:item.id,
+     ...Large.combined(current,large),sending:false});
    }
    const mediaPath=/^\/api\/media\/(m_[a-f0-9]{40})$/.exec(pathname);
    if(mediaPath){
