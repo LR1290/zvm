@@ -170,7 +170,7 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
        if(existing.sha256!==spec.sha256||existing.mime!==spec.mime)return json(res,409,{error:'media_id_collision'});
        return json(res,200,{ok:true,duplicate:true,file:Large.publicFile(existing),upload:null});
       }
-      payload=await store.large.begin(user.email,spec,Media.output(legacy).usedBytes);
+      payload=await store.large.begin(user.email,spec,Media.output(legacy).usedBytes,legacy.items.length);
      }catch(error){const err=largeError(error);return json(res,err.status,{error:err.code});}
      return json(res,200,{ok:true,...payload,sending:false});
     }
@@ -215,6 +215,8 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
     }
     if(Large.combined(current,large).usedBytes+media.size>Large.MAX_ACCOUNT)
      return json(res,409,{error:'media_storage_quota'});
+    if(!current.items.some(x=>x.id===media.id)&&current.items.length+large.length>=Large.MAX_ITEMS)
+     return json(res,409,{error:'media_item_quota'});
     let updated;try{updated=Media.add(current,media,payload.revision);}
     catch(error){return json(res,error.code==='media_revision_conflict'?409:422,{error:error.code||'media_rejected'});}
     if(updated.duplicate)return json(res,200,{ok:true,duplicate:true,mediaId:media.id,...Large.combined(current,large)});
