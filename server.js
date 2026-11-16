@@ -3289,16 +3289,25 @@ function applyRequestContext(req, res) {
 // respeitam SameSite. NÃO aplicar ao webhook externo da Cakto
 // nem a APIs de extensão — esses são legitimamente cross-origin.
 function requireSameOriginPost(req) {
-  const site = String(req.headers['sec-fetch-site'] || '').toLowerCase();
-  if (site) return site === 'same-origin' || site === 'none';
-  const hostOf = (h) => { try { return new URL(h).host; } catch { return ''; } };
-  const expectedHost = req.headers.host || '';
-  if (!expectedHost) return false;
-  const origin = req.headers.origin;
-  if (origin) return hostOf(origin) === expectedHost;
-  const referer = req.headers.referer;
-  if (referer) return hostOf(referer) === expectedHost;
-  return false;
+  const headers = req?.headers || {};
+  const site = String(headers['sec-fetch-site'] || '').trim().toLowerCase();
+  // Fetch Metadata cannot override a contradictory Origin or Referer.
+  // External webhooks and extension routes do not use this cookie guard.
+  if (site && site !== 'same-origin' && site !== 'none') return false;
+  const host = String(headers.host || '').trim().toLowerCase();
+  if (!host || /[\\/\s@]/.test(host)) return false;
+  const sameOriginUrl = value => {
+    try {
+      const parsed = new URL(String(value));
+      const isLoopback = /^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(host);
+      return parsed.host.toLowerCase() === host &&
+        (parsed.protocol === 'https:' || (isLoopback && parsed.protocol === 'http:')) &&
+        !parsed.username && !parsed.password;
+    } catch { return false; }
+  };
+  if (headers.origin) return sameOriginUrl(headers.origin);
+  if (headers.referer) return sameOriginUrl(headers.referer);
+  return site === 'same-origin' || site === 'none';
 }
 
 function isAnalyticsSession(req) {
