@@ -20,7 +20,7 @@
  function u16(v,o){return v.getUint16(o,true);}
  function u32(v,o){return v.getUint32(o,true);}
  function safePath(name){
-  if(!name||name.length>320||name.includes('\\')||name.startsWith('/')||/^[A-Za-z]:/.test(name))return false;
+  if(!name||name.length>320||/[\x00-\x1f\x7f]/.test(name)||name.includes('\\')||name.startsWith('/')||/^[A-Za-z]:/.test(name))return false;
   const clean=name.endsWith('/')?name.slice(0,-1):name;
   return clean.split('/').every(part=>part.length>0&&part!=='.'&&part!=='..');
  }
@@ -52,6 +52,7 @@
   if(name!==item.name)throw invalid('zip_local_name_mismatch');
   const dataStart=end+x;
   if(dataStart+item.packed>file.size)throw invalid('zip_truncated');
+  if(Number.isSafeInteger(item.centralOffset)&&dataStart+item.packed>item.centralOffset)throw invalid('zip_entry_overlaps_directory');
   return file.slice(dataStart,dataStart+item.packed);
  }
  async function entryBytes(file,entry,limit){
@@ -196,6 +197,8 @@
   const entries=[];const unique=new Set();let cursor=0;
   for(let i=0;i<count;i++){
    const entry=metaEntry(file,central,cursor,central.byteLength);
+   if(entry.offset>=centralOffset)throw invalid('zip_local_overlaps_directory');
+   entry.centralOffset=centralOffset;
    const lower=entry.name.toLowerCase();
    if(unique.has(lower))throw invalid('zip_duplicate_names');unique.add(lower);
    entries.push(entry);cursor=entry.next;
@@ -214,7 +217,7 @@
    mediaEntries:entries.filter(e=>!e.name.endsWith('/')&&e!==selected[0]).length,
    totalUncompressed:entries.reduce((n,e)=>n+e.size,0),assets,
    _entries:entries.map(e=>({name:e.name,flags:e.flags,method:e.method,size:e.size,
-    packed:e.packed,offset:e.offset,crc:e.crc}))};
+    packed:e.packed,offset:e.offset,crc:e.crc,centralOffset:e.centralOffset}))};
  }
  return Object.freeze({inspect,readAsset,safePath});
 });
