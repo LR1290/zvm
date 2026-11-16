@@ -2,7 +2,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const root=path.join(__dirname,'..'),read=name=>fs.readFileSync(path.join(root,name),'utf8');
 const html=read('public/index.html'),ui=read('public/workspace.js'),css=read('public/cloud-ui.css');
-const server=read('server.js'),store=read('store.js'),large=read('large-media-store.js');
+const server=read('server.js'),store=read('store.js'),large=read('large-media-store.js'),downloads=read('verified-media-download.js');
 
 test('R24 UI: honest file quota, progress, resume and cancel controls',()=>{
  for(const id of ['cloudMediaFile','cloudMediaUpload','cloudMediaRefresh','cloudMediaCancel',
@@ -43,6 +43,13 @@ test('R24 server: quota, auth, atomic finalization and private media download',(
  assert.match(server,/validateLargeDownload/);
  assert.match(server,/checkLibraryRecords\(records,\[\.\.\.vault\.items/);
  assert.match(server,/checkLibraryRecords\(modules\.library,\[\.\.\.vault\.items/);
+ assert.match(server,/Downloads\.verifiedSnapshot|Downloads\.createDownloadGate/);
+ assert.match(server,/streamLargeDownload\(store,user\.email,file,res,req\.method,downloadGate\)/);
+ assert.doesNotMatch(server,/validateLargeDownload\(/);
+ assert.match(downloads,/Buffer\.concat\(chunks,total\)/);
+ assert.match(downloads,/Large\.isSupportedMime\(file\.mime\)/);
+ assert.match(downloads,/maxConcurrent=2,maxPerAccount=1/);
+ assert.match(downloads,/download_aborted/);
  assert.match(large,/session\.withTransaction/);
  assert.match(large,/upload_finalizing/);
  assert.match(large,/expiresAt/);
