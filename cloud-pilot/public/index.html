@@ -121,11 +121,11 @@
   </div>
  </section>
  <section class="view" id="migration" hidden>
-  <div class="panel section"><h2>Importar dados da ZVM Desktop</h2><p class="muted">Selecione um backup <strong>JSON ou ZIP</strong> da ZVM. O manifesto ZIP é extraído neste navegador, sem enviar o arquivo completo ao servidor. Primeiro analisaremos os dados, sem substituir seus rascunhos. Só depois da confirmação faremos a gravação.</p>
+  <div class="panel section"><h2>Importar backup da extensão ZVM</h2><p class="muted">Selecione um backup <strong>JSON ou ZIP</strong>. O arquivo ZIP é examinado localmente, sem enviar o pacote inteiro ao servidor. A prévia mostra quais categorias e mídias podem ser restauradas. Primeiro você confirma os dados; depois, numa ação separada, autoriza as mídias compatíveis.</p>
    <label for="backupFile">Backup JSON ou ZIP da extensão</label><input id="backupFile" type="file" accept=".json,.zip,application/json,application/zip">
    <button id="inspectBackup" type="button" class="primary">Verificar compatibilidade</button>
    <div id="backupReview" aria-live="polite"></div>
-   <p class="tiny">O ZIP é analisado localmente: apenas dados JSON autorizados são enviados. Arquivos de mídia dentro do ZIP não serão importados automaticamente. Formato .extbackup criptografado exige recuperação na extensão. Sessões, senhas e licenças não são importadas. Não oferecemos restauração silenciosa; os itens não suportados são informados na prévia.</p>
+   <p class="tiny">Restauração seletiva, sem envio ao WhatsApp. Arquivos ZIP de até aproximadamente 2,1 GB podem ter seu índice examinado sem transferência integral; cada mídia restaurada continua limitada a 32 MB, 128 MB por conta e aos formatos autorizados. Arquivos maiores ou sem associação inequívoca permanecem pendentes. Formato .extbackup criptografado deve ser recuperado na extensão. Sessões, senhas e licenças nunca são importadas.</p>
   </div>
  </section>
 <section class="view" id="flows" hidden><div class="panel section"><h2>Fluxos</h2><p class="muted">Crie e organize definições de Fluxos. Execução real desativada.</p><div id="cloud-list-flows"></div></div></section>
