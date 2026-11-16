@@ -97,6 +97,25 @@ function createMemoryStore(){
   async cancelMediaUpload(email,uploadId){
    return withFence(email,()=>large.cancel(email,uploadId));
   },
+  async addLegacyMedia(email,item,revision){
+   return withFence(email,async()=>{
+    const id=workspaceId(email),current=media.get(id)||{revision:0,items:[]};
+    if(current.revision!==revision)return {conflict:true,code:'media_revision_conflict'};
+    const largeItem=await large.get(email,item.id);
+    if(largeItem){
+     if(largeItem.sha256!==item.sha256||largeItem.mime!==item.mime||largeItem.size!==item.size)
+      Large.fail('media_id_collision');
+     return {conflict:false,duplicate:true,revision};
+    }
+    const updated=Media.add(current,item,revision);
+    if(updated.duplicate)return {conflict:false,duplicate:true,revision};
+    const pending=await large.status(email);
+    if(pending&&pending.sha256===item.sha256)Large.fail('upload_already_active');
+    Quota.enforce(updated.next.items,await large.list(email),pending);
+    media.set(id,{revision:revision+1,items:updated.next.items.map(x=>({...x,bytes:Buffer.from(x.bytes)}))});
+    return {conflict:false,duplicate:false,revision:revision+1};
+   });
+  },
   async readMedia(email){
    const doc=media.get(workspaceId(email));
    if(!doc)return {revision:0,items:[]};
@@ -261,6 +280,33 @@ async function createMongoStore(uri,{driver=null}={}){
      {_id:owner,revision:newRevision,items:remaining},{session});
     if(saved.matchedCount!==1)return {conflict:true,code:'media_revision_conflict'};
     return {conflict:false,large:false,revision:newRevision};
+   });
+  },
+  async addLegacyMedia(email,item,revision){
+   return withMediaFence(email,async session=>{
+    const id=workspaceId(email),owner=Large.ownerId(email);
+    const previous=await media.findOne({_id:id},{session});
+    const current=previous||{revision:0,items:[]};
+    if(current.revision!==revision)return {conflict:true,code:'media_revision_conflict'};
+    const exists=await largeFiles.findOne({_id:owner+':'+item.id,owner,status:'ready'},{session});
+    if(exists){
+     if(exists.sha256!==item.sha256||exists.mime!==item.mime||exists.size!==item.size)
+      Large.fail('media_id_collision');
+     return {conflict:false,duplicate:true,revision};
+    }
+    const updated=Media.add(current,item,revision);
+    if(updated.duplicate)return {conflict:false,duplicate:true,revision};
+    const active=await largeUploads.findOne({owner},{session});
+    const pending=active&&new Date(active.expiresAt).getTime()>Date.now()?active:null;
+    if(pending&&pending.sha256===item.sha256)Large.fail('upload_already_active');
+    const ready=await largeFiles.find({owner,status:'ready'},{session}).toArray();
+    Quota.enforce(updated.next.items,ready,pending);
+    const doc={_id:id,revision:revision+1,items:updated.next.items};
+    if(previous){
+     const saved=await media.replaceOne({_id:id,revision},doc,{session});
+     if(saved.matchedCount!==1)return {conflict:true,code:'media_revision_conflict'};
+    }else await media.insertOne(doc,{session});
+    return {conflict:false,duplicate:false,revision:revision+1};
    });
   },
   async readMedia(email){
