@@ -38,3 +38,14 @@ a:hover{color:#c4ffe8}
  .workspace-actions button{flex:1}
  .tabs{scroll-padding-inline:10px}
 }
+
+/* Private Library vault: small touch-first media cards */
+.cloud-media-section{margin-top:26px;padding:20px;border:1px solid #35645c;border-radius:14px;background:#0b1d1c}
+.cloud-media-section h3{margin:0 0 8px;font-size:18px}
+.cloud-media-section .workspace-item{margin:10px 0}
+.cloud-media-section .workspace-actions{margin:12px 0}
+#cloudMediaFile{display:block;max-width:100%;font-size:13px}
+#cloudMediaStatus{min-height:22px;color:#9fefca;overflow-wrap:anywhere}
+#cloudMediaStatus.error{color:#ffb8ad}
+.workspace-media-select{width:100%;background:#0c1a1e;color:var(--text);border:1px solid #36565c;border-radius:10px;padding:12px;min-height:44px}
+@media(max-width:600px){.cloud-media-section{padding:15px 12px}.cloud-media-section .workspace-actions button{width:100%}}
