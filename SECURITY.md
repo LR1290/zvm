@@ -40,19 +40,28 @@ A antiga aplicação `ia/` e as rotas `/WSM/ia*` também foram removidas.
 
 ## Meta / WhatsApp Business Platform
 
-A build de recuperação 2026-09-02 mantém esta seção como política para a futura etapa Meta; o `server.js` atual não expõe o subsistema Meta. Quando ele for reintroduzido em build dedicada:
+O `server.js` atual já contém o subsistema Meta e recebe `/meta/webhook`. O webhook exige assinatura HMAC-SHA256; a autorização embedded signup requer validações próprias. Assim, as exigências abaixo são controles ativos a preservar, não um recurso meramente futuro:
 
-- App Secret e access tokens somente no backend;
-- tokens persistidos cifrados;
-- webhook validado por assinatura antes do processamento;
-- WABA e Phone Number ID validados server-side;
-- desconexão/revogação deve invalidar o vínculo local;
-- nunca registrar tokens em logs.
+- App Secret e access tokens somente no backend e nunca impressos nos logs;
+- tokens persistidos cifrados e protegidos por autorização e escopo de conta;
+- webhook validado por assinatura **antes** de processar o corpo;
+- WABA e Phone Number ID validados no servidor;
+- desconexão ou revogação deve invalidar o vínculo local;
+- testes de regressão para assinatura, replay e autorização por conta antes de alterações.
 
 ## Docker
 
 O container padrão roda como usuário não-root, sem Linux capabilities, com `no-new-privileges` e filesystem somente leitura. Não execute o serviço como root sem necessidade documentada.
 ## Extension authentication rate limiting
 
-Extension key authentication uses isolated rate-limit buckets for legacy auth, V4 key sessions, and V3 key activation. Each surface keeps the same 20 requests/minute and 5-minute block policy, but activity on one surface cannot pre-block a user's first request on another. Obsolete persisted `ext_key` blocks from the shared-bucket implementation are ignored during boot migration. Rate-limited extension responses include `Retry-After` and `retryAfterSeconds`.
+Extension key authentication uses isolated rate-limit buckets for legacy auth, V4 key sessions, and V3 key activation. Each surface keeps the independent, route-specific policies defined in RL_CONFIG, not one shared bucket, but activity on one surface cannot pre-block a user's first request on another. Obsolete persisted `ext_key` blocks from the shared-bucket implementation are ignored during boot migration. Rate-limited extension responses include `Retry-After` and `retryAfterSeconds`.
 
+## CSP legada e auditoria de CI (16/11/2026)
+
+- Páginas públicas e login usam CSP sem JavaScript inline.
+- Admin e Analytics migraram handlers estáticos e botões dinâmicos para JavaScript externo com ação declarativa e `script-src 'self'`; estilos inline ainda precisam de migração visual.
+- Demais integrações com HTML legado permanecem em migração. Não remover a compatibilidade sem comparar a renderização e os testes funcionais.
+- O `npm run check` removeu execuções duplicadas; `npm run check:security` executa regressões de segurança isoladas.
+- **GitHub Actions:** em 16/11/2026 os jobs falham antes do primeiro step (0 steps nos retornos da API), inclusive em rotas distintas; o problema de runner/permissões/faturamento requer diagnóstico no GitHub. Não divulgar que o CI passou até existir um run completo verde.
+- `npm audit --omit=dev --audit-level=high` permanece obrigatório; o status CVE não é 'limpo' enquanto a auditoria real não tiver terminado.
+- O contêiner Docker usa cópias explícitas de arquivos de execução; arquivos `zvm.env`, backup e segredos não fazem parte da imagem.

@@ -5,15 +5,20 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN if [ -f package-lock.json ]; then \
-      npm ci --omit=dev --ignore-scripts --no-audit --no-fund; \
-    else \
-      npm install --omit=dev --ignore-scripts --no-audit --no-fund; \
-    fi \
+# Immutable lockfile: no dependency drift or installer lifecycle execution.
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
     && npm cache clean --force
 
-COPY --chown=node:node server.js mailer.js zvm-official-builds.json zvm-build-registry-v2.json ./
+# Previously the legacy Docker image copied only server.js and mailer.js,
+# leaving required src/, client-ip-policy.js and static assets absent at runtime.
+# Copy the explicit runtime allowlist, never .env, local backups, tests or .git.
+COPY --chown=node:node server.js mailer.js build-authority.js runtime-config.js \
+  dev-build-signing.js extension-origin-policy.js client-ip-policy.js \
+  legacy-v3-shield.js zvm-official-builds.json zvm-build-registry-v2.json ./
+COPY --chown=node:node src ./src
+COPY --chown=node:node assets ./assets
+COPY --chown=node:node cloud-pilot ./cloud-pilot
 COPY --chown=node:node security ./security
 
 USER node

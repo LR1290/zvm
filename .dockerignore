@@ -1,14 +1,39 @@
-\.git
+# Security boundary: development and private data are never sent to Docker.
+.git
 .github
 .env
 .env.*
-!.env.example
+zvm.env
+zvm.env.*
+**/.env
+**/.env.*
+**/zvm.env
 node_modules
+**/node_modules
 *.log
 *.zip
 *.bak
 *.tmp
 *.orig
+*.pem
+*.p12
+*.pfx
+*.key
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.sql
+*.secret
+*.secrets
 RELEASE_SHA256SUMS.txt
 
+# Exclude non-runtime sources. Runtime code is copied explicitly in Dockerfile.
 release
+release-assets
+audits
+docs
+test
+tests
+tools
+*.md
