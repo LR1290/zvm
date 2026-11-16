@@ -4,7 +4,7 @@
 (()=>{
  const mount=document.getElementById('cloudFlowStudio');if(!mount)return;
  const base=new URL(document.currentScript.src).pathname.replace(/\/cloud-flow-studio\.js$/,'');
- let flows=[],revision=0,selected='',selectedNode='',locked=true,busy=false,notice='',bad=false,search='';
+ let flows=[],revision=0,selected='',selectedNode='',locked=true,busy=false,notice='',bad=false,search='',epoch=0;
  const names=window.ZVMCloudFlowCore.TYPES;
  const editable=new Set(['start','sendText','end']);
  const el=(tag,cls='',value=null)=>{
@@ -47,7 +47,9 @@
   flow_connection_readonly:'Esta etapa possui saídas avançadas. Edite essas conexões na extensão.',
   flow_node_missing:'A etapa não foi encontrada. Atualize o editor.'};
  async function reload(keep=true){
+  const ticket=epoch;
   const data=await api('/api/workspace/flows');
+  if(locked||ticket!==epoch)return;
   flows=Array.isArray(data.records)?data.records:[];
   revision=data.revision;
   if(!keep||!flows.some(x=>x.id===selected)){selected=flows[0]?.id||'';selectedNode='';}
@@ -56,12 +58,14 @@
  }
  async function act(action,extra={}){
   if(locked||busy)return;
+  const ticket=epoch;
   busy=true;render();
   try{
    const response=await api('/api/workspace/flows/graph',{
     method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({revision,flowId:selected,action,...extra})
    });
+   if(locked||ticket!==epoch)return;
    revision=response.revision;
    const updated=response.flow;
    if(action==='create')flows.push(updated);
@@ -72,10 +76,11 @@
    notice='Alterações salvas na sua Cloud. Nenhum fluxo foi executado.';bad=false;
    window.dispatchEvent(new CustomEvent('zvm-cloud-flow-changed',{detail:{flowId:selected}}));
   }catch(error){
+   if(locked||ticket!==epoch)return;
    const reason=words[error.message]||('Alteração recusada: '+error.message);
    notice=reason;bad=true;
    if(error.status===409)await reload(true).catch(()=>{});
-  }finally{busy=false;render();}
+  }finally{busy=false;if(!locked&&ticket===epoch)render();}
  }
  function svgLine(layer,x1,y1,x2,y2,advanced=false){
   const p=document.createElementNS('http://www.w3.org/2000/svg','path');
@@ -246,10 +251,22 @@
   }
  }
  async function ready(){
-  locked=false;try{await reload(false);notice='Fluxos carregados. Nenhuma automação é executada na Cloud.';bad=false;render();}
-  catch{notice='Não foi possível carregar os Fluxos. Confira a sessão do Portal.';bad=true;render();}
+  const ticket=++epoch;
+  locked=false;
+  try{
+   await reload(false);
+   if(!locked&&ticket===epoch){
+    notice='Fluxos carregados. Nenhuma automação é executada na Cloud.';bad=false;render();
+   }
+  }catch{
+   if(!locked&&ticket===epoch){
+    notice='Não foi possível carregar os Fluxos. Confira a sessão do Portal.';bad=true;render();
+   }
+  }
  }
- function lock(){locked=true;flows=[];revision=0;selected='';selectedNode='';search='';notice='';render();}
+ function lock(){
+  epoch++;locked=true;flows=[];revision=0;selected='';selectedNode='';search='';notice='';render();
+ }
  window.addEventListener('zvm-cloud-ready',ready);
  window.addEventListener('zvm-cloud-locked',lock);
  render();
