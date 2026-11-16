@@ -62,7 +62,7 @@ assert(Object.isFrozen(dispatcher),'dispatch table is fixed');
 
 const secStart=source.indexOf('const _CSP_LEGACY_HTML = '),secEnd=source.indexOf('const _SEC_HEADERS =',secStart);
 assert(secStart>0&&secEnd>secStart);
-const csp=new Function(source.slice(secStart,secEnd)+'return {_CSP_LEGACY_HTML,_CSP_NO_INLINE_RESPONSE};')();
+const csp=new Function(source.slice(secStart,secEnd)+'return {_CSP_LEGACY_HTML,_CSP_NO_INLINE_RESPONSE,_CSP_PRIVILEGED_SCRIPT_STRICT};')();
 assert(csp._CSP_LEGACY_HTML.includes("'unsafe-inline'"));
 assert(!csp._CSP_NO_INLINE_RESPONSE.includes("'unsafe-inline'"));
 const sh=source.indexOf('function sendHtml('),se=source.indexOf('function sendAuthHtml(',sh);
@@ -71,6 +71,7 @@ const deps={
  applyOwnerSiteTheme:x=>x,Buffer,
  _SEC_HEADERS:{'Content-Security-Policy':csp._CSP_NO_INLINE_RESPONSE},
  _CSP_LEGACY_HTML:csp._CSP_LEGACY_HTML,
+ _CSP_PRIVILEGED_SCRIPT_STRICT:csp._CSP_PRIVILEGED_SCRIPT_STRICT,
  _CSP_AUTH_STRICT:"default-src 'self'; script-src 'self'; style-src 'self'",
  R_ADMIN:'/qa-admin',R_ANALYTICS:'/qa-analytics',
  _appendVary(){},_compressedSend(){throw Error('unexpected compression')}

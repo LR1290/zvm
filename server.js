@@ -5371,7 +5371,7 @@ function _compressedSend(res, buf, status, acceptEncoding = '') {
 // CSP exceptions are scoped to legacy HTML only until event handlers have been migrated.
 const _CSP_LEGACY_HTML = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: https://pps.whatsapp.net https://i.ytimg.com; connect-src 'self'; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; media-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests";
 const _CSP_NO_INLINE_RESPONSE = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests";
-const _CSP_ADMIN_SCRIPT_STRICT = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests";
+const _CSP_PRIVILEGED_SCRIPT_STRICT = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests";
 const _SEC_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
@@ -5853,7 +5853,7 @@ function sendHtml(res, html, status = 200) {
   const isAdminPage = currentPath === R_ADMIN || currentPath.startsWith(R_ADMIN+'/');
   const isAnalyticsPage = currentPath === R_ANALYTICS || currentPath.startsWith(R_ANALYTICS+'/');
   res.setHeader('Content-Security-Policy',
-    (isAdminPage || isAnalyticsPage) ? _CSP_ADMIN_SCRIPT_STRICT : _CSP_LEGACY_HTML);
+    (isAdminPage || isAnalyticsPage) ? _CSP_PRIVILEGED_SCRIPT_STRICT : _CSP_LEGACY_HTML);
   // Inline CSS migration is separate; report-only strict styles preserve visibility.
   if (isAdminPage || isAnalyticsPage) {
     res.setHeader('Content-Security-Policy-Report-Only', _CSP_AUTH_STRICT);

@@ -33,13 +33,13 @@ assert(js.includes('const _zvmAdminPageActions=Object.freeze('),'static handler 
 assert(js.includes("document.addEventListener('keydown'")||js.includes("for(const type of ['click','change','input','keydown'])"));
 assert(!js.includes('onclick="removePhone(this)"'));
 assert(!js.includes('onclick="loadUsers(true)"'));
-assert(src.includes('const _CSP_ADMIN_SCRIPT_STRICT = '));
-const csp=src.match(/const _CSP_ADMIN_SCRIPT_STRICT = "([^"]+)"/);
+assert(src.includes('const _CSP_PRIVILEGED_SCRIPT_STRICT = '));
+const csp=src.match(/const _CSP_PRIVILEGED_SCRIPT_STRICT = "([^"]+)"/);
 assert(csp&&csp[1].includes("script-src 'self'; style-src"));
 assert(!csp[1].includes("script-src 'self' 'unsafe-inline'"));
 assert(csp[1].includes("style-src 'self' 'unsafe-inline'"),
  'inline CSS remains intentionally compatible pending separate migration');
-assert(src.includes("(isAdminPage || isAnalyticsPage) ? _CSP_ADMIN_SCRIPT_STRICT : _CSP_LEGACY_HTML"));
+assert(src.includes("(isAdminPage || isAnalyticsPage) ? _CSP_PRIVILEGED_SCRIPT_STRICT : _CSP_LEGACY_HTML"));
 const docker=fs.readFileSync(path.join(root,'Dockerfile'),'utf8');
 for(const part of ['client-ip-policy.js','legacy-v3-shield.js','COPY --chown=node:node src ./src','COPY --chown=node:node assets ./assets','COPY --chown=node:node cloud-pilot ./cloud-pilot','COPY --chown=node:node security ./security'])
  assert(docker.includes(part),'Docker runtime missing '+part);
