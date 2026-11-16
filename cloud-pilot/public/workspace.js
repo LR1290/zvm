@@ -302,7 +302,11 @@
   const target=byId('cloudMediaItems');if(!target)return;
   target.replaceChildren();
   const used=Number(mediaSnapshot.usedBytes||0),max=Number(mediaSnapshot.quotaBytes||0);
-  target.append(tag('p','Espaço utilizado: '+(used/1048576).toFixed(2)+' de '+(max/1048576).toFixed(0)+' MB · '+(mediaSnapshot.items?.length||0)+' arquivo(s)','muted'));
+  const reserved=Number(mediaSnapshot.reservedBytes||0);
+  const available=Number(mediaSnapshot.availableBytes??Math.max(0,max-used-reserved));
+  target.append(tag('p','Espaço utilizado: '+(used/1048576).toFixed(2)+' MB · Reservado em transferência: '+
+   (reserved/1048576).toFixed(2)+' MB · Livre: '+(available/1048576).toFixed(2)+
+   ' MB de '+(max/1048576).toFixed(0)+' MB · '+(mediaSnapshot.items?.length||0)+' arquivo(s)','muted'));
   for(const item of mediaSnapshot.items||[]){
    const row=tag('div','','workspace-item');
    const info=tag('div','','workspace-item-info');
