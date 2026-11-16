@@ -251,3 +251,31 @@ test('R26 Mongo: transaction abort rolls back deletion without dropping an asset
   assert.equal((await store.readMedia(email)).items.length,0);
  }finally{await store.close();}
 });
+
+test('R26 memory: unlink then delete is allowed and revision stays consistent',async()=>{
+ const store=createMemoryStore(),id=await prepareLegacy(store);
+ const created=await store.writeWorkspace(email,0,library(id));
+ assert.equal(created.conflict,false);
+ const blocked=await store.removeMediaIfUnlinked(email,id,1);
+ assert.equal(blocked.code,'media_still_linked_to_library');
+ const unlinked=await store.writeWorkspace(email,1,{library:[]});
+ assert.equal(unlinked.revision,2);
+ const deleted=await store.removeMediaIfUnlinked(email,id,1);
+ assert.equal(deleted.conflict,false);
+ assert.equal(deleted.revision,2);
+ assert.equal((await store.readMedia(email)).items.length,0);
+});
+test('R26 Mongo: unlink and legacy deletion share a transaction fence',async()=>{
+ const {store,client}=await mongo();
+ try{
+  const id=await prepareLegacy(store);
+  await store.writeWorkspace(email,0,library(id));
+  assert.equal((await store.removeMediaIfUnlinked(email,id,1)).code,'media_still_linked_to_library');
+  await store.writeWorkspace(email,1,{library:[]});
+  const deleted=await store.removeMediaIfUnlinked(email,id,1);
+  assert.equal(deleted.conflict,false);
+  assert.equal((await store.readWorkspace(email)).modules.library.length,0);
+  assert.equal((await store.readMedia(email)).items.length,0);
+  assert.equal(client.stats.transactions,client.stats.closedSessions);
+ }finally{await store.close();}
+});
