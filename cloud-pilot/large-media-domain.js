@@ -51,7 +51,7 @@ function publicFile(file){
 }
 function publicUpload(u){
  if(!u)return null;
- return {uploadId:u.id,name:u.name,mime:u.mime,size:u.size,sha256:u.sha256,
+ return {uploadId:u.uploadId||u._id||u.id,name:u.name,mime:u.mime,size:u.size,sha256:u.sha256,
   receivedBytes:u.receivedBytes||0,nextIndex:u.nextIndex||0,totalChunks:u.chunks,chunkBytes:CHUNK_BYTES,expiresAt:u.expiresAt};
 }
 function combined(legacy,large){
