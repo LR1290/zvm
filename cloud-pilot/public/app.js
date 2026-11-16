@@ -11,6 +11,7 @@
  const body=(method,data)=>({method,headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
  function screen(section){
   ['login','devGate','unavailable','app'].forEach(id=>el(id).hidden=id!==section);
+  if(section!=='app')window.dispatchEvent(new Event('zvm-cloud-locked'));
  }
  function tab(name){
   document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));
@@ -25,6 +26,7 @@
    if(!status.devAuthorized){screen('devGate');return;}
    screen('app');
    tab('summary');
+   window.dispatchEvent(new Event('zvm-cloud-ready'));
    try{
     await call('/api/overview');
     const draft=await call('/api/draft');
