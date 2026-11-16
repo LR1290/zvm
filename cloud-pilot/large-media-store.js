@@ -82,7 +82,7 @@ function createMemoryLargeMediaStore(){
   return true;
  }
  async function cancel(email,id){
-  const s=pending(email);if(!s||s.id!==id)D.fail('upload_not_found');
+  const s=pending(email);if(!s||s.uploadId!==id)D.fail('upload_not_found');
   sessions.delete(owner(email));return true;
  }
  return {begin,status,append,finish,list,get,chunks,remove,cancel,async close(){}};
