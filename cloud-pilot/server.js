@@ -368,6 +368,10 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
      return json(res,200,{module:name,revision:current.revision,records:current.modules[name]||[],updatedAt:current.updatedAt,sending:false});
     }
     if(req.method==='PUT'){
+     // The old generic writer could replace R17 graphs without validating
+     // startNodeId, links or protected advanced-node fields.
+     // Backups still use the separate preview/commit pipeline.
+     if(name==='flows')return json(res,405,{error:'use_flow_graph_editor'});
      let payload;try{payload=await readJson(req,950000);}catch{return json(res,400,{error:'invalid_payload'});}
      if(!Number.isSafeInteger(payload.revision)||payload.revision<0)return json(res,400,{error:'invalid_revision'});
      let records;
