@@ -2,13 +2,16 @@
 // Cloud pilot data only. Never access the ZVM Desktop/license database with this connection.
 const DATABASE='zvm_cloud_pilot';
 const crypto=require('node:crypto');
+const {createMemoryLargeMediaStore,createMongoLargeMediaStore}=require('./large-media-store');
 const workspaceId=email=>crypto.createHash('sha256').update('zvm-cloud-workspace-v1:'+email).digest('hex');
 // Account grant identifiers are canonical across Portal logins; no raw email in _id.
 const accountGrantId=email=>workspaceId(String(email||'').trim().toLowerCase());
 const copy=x=>x==null?null:JSON.parse(JSON.stringify(x));
 function createMemoryStore(){
  const accountGrants=new Map(),drafts=new Map(),workspaces=new Map(),media=new Map(),metaEvents=new Map();
+ const large=createMemoryLargeMediaStore();
  return {
+  large,
   async grantAccount(email,keyHash){
    const id=accountGrantId(email),now=new Date().toISOString();
    const previous=accountGrants.get(id);
@@ -54,9 +57,11 @@ async function createMongoStore(uri){
  const client=new MongoClient(uri,{appName:'zvm-cloud-pilot',maxPoolSize:5,minPoolSize:0,serverSelectionTimeoutMS:10000});
  await client.connect();
  const db=client.db(DATABASE),accountGrants=db.collection('cloud_dev_account_grants'),drafts=db.collection('drafts'),workspaces=db.collection('cloud_workspaces'),media=db.collection('cloud_media'),metaEvents=db.collection('cloud_meta_events');
+ const large=await createMongoLargeMediaStore(db);
  try{await metaEvents.createIndex({createdAt:1},{expireAfterSeconds:7*24*3600});}
  catch(error){await client.close();throw error;}
  return {
+  large,
   async grantAccount(email,keyHash){
    const now=new Date();
    await accountGrants.updateOne({_id:accountGrantId(email)},{
