@@ -215,7 +215,7 @@
   if(depth>12||++counter.nodes>10000)throw Error('O arquivo é complexo demais para este importador.');
   if(value===null||typeof value==='boolean'||typeof value==='number')return value;
   if(typeof value==='string'){
-   if(/^(?:data:(?:image|audio|video|application)\/|blob:|extapp-media:)/i.test(value))return '[MÍDIA_LOCAL_NÃO_IMPORTADA]';
+   if(/^(?:data:|blob:|extapp-media:|extapp-item:)/i.test(value))return '[MÍDIA_LOCAL_NÃO_IMPORTADA]';
    return value.slice(0,50000);
   }
   if(Array.isArray(value)){
@@ -256,7 +256,7 @@
     try{
      for(let n=0;n<3&&typeof content==='string';n++)content=JSON.parse(content);
      if(typeof content?.data==='string'&&content.data.length<=16000&&
-        !/^(?:data:|blob:|extapp-media:)/i.test(content.data)){
+        !/^(?:data:|blob:|extapp-media:|extapp-item:)/i.test(content.data)){
       safe[id]={data:content.data};
      }
     }catch{}
