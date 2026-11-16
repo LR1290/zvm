@@ -93,6 +93,38 @@
   if(mime==='video/mp4')return bytes.length>=12&&char(4,4)==='ftyp';
   return false;
  }
+ function sourceTokens(value,budget){
+  const seen=new Set();
+  function walk(input,depth){
+   if(++budget.nodes>100000||depth>16)throw invalid('zip_asset_source_too_complex');
+   if(typeof input==='string'){
+    const value=input.trim(),match=REF.exec(value);
+    if(match){seen.add(match[1]);return;}
+    // R17 can embed physical media tokens in serialized sidecar JSON:
+    // backup.assets[itemId] = JSON.stringify({data:"extapp-zip-asset:asset-1"}).
+    if(value.length>262144||!((value[0]==='{'&&value[value.length-1]==='}')||
+      (value[0]==='['&&value[value.length-1]===']')))return;
+    try{walk(JSON.parse(value),depth+1);}catch(error){
+     if(error?.code==='zip_asset_source_too_complex')throw error;
+    }
+    return;
+   }
+   if(!input||typeof input!=='object')return;
+   if(Array.isArray(input)){
+    if(input.length>5000)throw invalid('zip_asset_source_too_complex');
+    for(const part of input)walk(part,depth+1);
+    return;
+   }
+   const fields=Object.entries(input);
+   if(fields.length>5000)throw invalid('zip_asset_source_too_complex');
+   for(const [key,part] of fields){
+    if(key==='__proto__'||key==='prototype'||key==='constructor')throw invalid('zip_asset_source_invalid');
+    walk(part,depth+1);
+   }
+  }
+  walk(value,0);
+  return [...seen];
+ }
  function manifestAssets(backup,entries,selected){
   const declared=backup.binaryAssets;
   if(declared===undefined||declared===null){
@@ -102,14 +134,13 @@
   if(!Array.isArray(declared)||declared.length>MAX_ENTRIES)throw invalid('zip_asset_manifest_invalid');
   const byPath=new Map(entries.map(e=>[e.name,e]));
   const assets=backup.assets&&typeof backup.assets==='object'&&!Array.isArray(backup.assets)?backup.assets:{};
-  const tokenOwners=new Map();
+  const tokenOwners=new Map(),budget={nodes:0};
   for(const [sourceId,value] of Object.entries(assets)){
    if(['__proto__','prototype','constructor'].includes(sourceId))throw invalid('zip_asset_source_invalid');
-   if(typeof value!=='string')continue;
-   const match=REF.exec(value);
-   if(!match)continue;
-   const owners=tokenOwners.get(match[1])||[];
-   owners.push(sourceId);tokenOwners.set(match[1],owners);
+   for(const token of sourceTokens(value,budget)){
+    const owners=tokenOwners.get(token)||[];
+    owners.push(sourceId);tokenOwners.set(token,owners);
+   }
   }
   const tokens=new Set(),paths=new Set(),out=[];
   for(const meta of declared){
