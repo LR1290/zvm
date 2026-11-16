@@ -273,7 +273,7 @@
  const hex=bytes=>Array.from(new Uint8Array(bytes),x=>x.toString(16).padStart(2,'0')).join('');
  const sha=async data=>hex(await crypto.subtle.digest('SHA-256',data));
  const knownMime=file=>{
-  if(file.type)return file.type.toLowerCase();
+  if(file.type)return file.type.toLowerCase().split(';')[0].trim();
   const ext=String(file.name).split('.').pop().toLowerCase();
   return ({png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',
    pdf:'application/pdf',mp3:'audio/mpeg',ogg:'audio/ogg',mp4:'video/mp4'})[ext]||'';
