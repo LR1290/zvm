@@ -320,12 +320,26 @@
  async function downloadMedia(item){
   try{
    const response=await fetch(base+'/api/media/'+item.id,{credentials:'same-origin',cache:'no-store'});
-   if(!response.ok)throw Error('Erro ao baixar anexo');
+   if(!response.ok){
+    if(response.status===429)throw Error('download_busy');
+    if(response.status===503)throw Error('large_media_integrity_failed');
+    if(response.status===404)throw Error('media_not_found');
+    throw Error('download_unavailable');
+   }
    const blob=await response.blob();
    const href=URL.createObjectURL(blob);
    const a=document.createElement('a');a.href=href;a.download=item.name;a.click();
    setTimeout(()=>URL.revokeObjectURL(href),30000);
-  }catch{mediaStatus('O servidor não confirmou a transferência do anexo.',true);}
+  }catch(error){
+   const detail=error.message==='download_busy'?
+    'Há outro download em andamento nesta conta. Tente novamente quando ele terminar.':
+    error.message==='large_media_integrity_failed'?
+    'A verificação de integridade do arquivo falhou. O servidor bloqueou o download; nenhum anexo incompleto foi entregue.':
+    error.message==='media_not_found'?
+    'O anexo não está mais disponível no Cofre. Atualize a Biblioteca e revise o vínculo.':
+    'O servidor não confirmou a transferência do anexo.';
+   mediaStatus(detail,true);
+  }
  }
  async function uploadMedia(overrideFile=null,{throwOnError=false}={}){
   if(!enabled||mediaBusy)throw Error('upload_busy');
