@@ -55,6 +55,30 @@ test('R25: source R17 binaryAssets token resolves to a single safe verified medi
  assert.equal(blob.type,'image/png');
  assert.deepEqual(Buffer.from(await blob.arrayBuffer()),png);
 });
+test('R25: exact R17 sidecar format with serialized nested data token is restorable',async()=>{
+ const model=manifest({assets:{
+  'image-original-id':JSON.stringify({data:'extapp-zip-asset:asset-1',
+   properties:{mediaKind:'image',description:'Legenda preservada'}})
+ }});
+ const file=archive(model),plan=await ZIP.inspect(file);
+ assert.equal(plan.assets[0].eligible,true);
+ assert.equal(plan.assets[0].sourceId,'image-original-id');
+ const restored=await ZIP.readAsset(file,plan,'asset-1');
+ assert.deepEqual(Buffer.from(await restored.arrayBuffer()),png);
+});
+test('R25: malformed and ambiguous R17 sidecars fail closed without guessing owners',async()=>{
+ const nested=manifest({assets:{
+  'image-original-id':JSON.stringify({data:{file:'extapp-zip-asset:asset-1'}}),
+  'image-second-id':{data:'extapp-zip-asset:asset-1'}
+ }});
+ await assert.rejects(()=>ZIP.inspect(archive(nested)),/zip_asset_ambiguous_owner/);
+ const invalid=manifest({assets:{'image-original-id':'{invalid-json:extapp-zip-asset:asset-1'}});
+ const p=await ZIP.inspect(archive(invalid));
+ assert.equal(p.assets[0].eligible,false);assert.equal(p.assets[0].reason,'unlinked_source');
+ let deep={data:'extapp-zip-asset:asset-1'};
+ for(let i=0;i<20;i++)deep={part:deep};
+ await assert.rejects(()=>ZIP.inspect(archive(manifest({assets:{'image-original-id':deep}}))),/zip_asset_source_too_complex/);
+});
 test('R25: rejects mismatched manifest, path traversal, orphan ZIP entries and duplicate tokens',async()=>{
  await assert.rejects(()=>ZIP.inspect(archive(manifest({binaryAssets:[]}))),/zip_unexpected_asset/);
  await assert.rejects(()=>ZIP.inspect(archive(manifest({binaryAssets:[{id,path:assetPath,mimeType:'image/png',sizeBytes:123}]}))),/zip_asset_entry_mismatch/);
