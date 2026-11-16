@@ -1,6 +1,6 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),crypto=require('node:crypto');
-const {changeCrmBoard,MAX_COLUMNS}=require('../crm-board-domain');
+const {changeCrmBoard,checkCrmLinks,MAX_COLUMNS}=require('../crm-board-domain');
 const {createServer}=require('../server');
 const {createMemoryStore}=require('../store');
 
@@ -73,6 +73,12 @@ test('R21 CRM: column count limit is enforced',()=>{
  const rows=[{id:'crm1',name:'Grande',columns:Array.from({length:MAX_COLUMNS},(_,i)=>({title:'Etapa '+i,items:[]}))}];
  assert.throws(()=>changeCrmBoard(rows,[],action('add-column',{title:'Extra'})),/crm_column_limit/);
 });
+test('R21 CRM: cannot delete a Cloud contact referenced by a card',()=>{
+ const rows=changeCrmBoard(fixture(),[contact],action('add-contact',{columnIndex:1,contactId:contact.id})).records;
+ assert.throws(()=>checkCrmLinks(rows,[]),/crm_contact_in_use/);
+ assert.doesNotThrow(()=>checkCrmLinks(rows,[contact]));
+ assert.doesNotThrow(()=>checkCrmLinks(fixture(),[])); // legacy snapshots need not have Cloud contactId
+});
 function harness(){
  const store=createMemoryStore(),key='zv-test-dev',hash=crypto.createHash('sha256').update(key).digest('hex');
  const ids={a:crypto.createHash('sha256').update('a').digest('hex'),b:crypto.createHash('sha256').update('b').digest('hex')};
@@ -108,6 +114,7 @@ test('R21 CRM HTTP: DEV gate, CAS, cross-tenant isolation and no sending',async(
   assert.equal((await call('a','/api/crm/board','POST',action('add-contact',{revision:3,columnIndex:0,contactId:'other'}))).status,422);
   assert.equal((await call('a','/api/crm/board','POST',action('add-contact',{revision:3,columnIndex:0,contactId:contact.id}))).status,200);
   assert.equal((await call('a','/api/crm/board','POST',action('add-column',{revision:4,title:'Invasão'}),'https://evil.example')).status,403);
+  assert.equal((await call('a','/api/workspace/contacts','PUT',{revision:4,records:[]})).status,422);
   assert.equal((await call('b','/api/workspace/crm')).body.records.length,0);
   assert.equal((await call('b','/api/crm/board','POST',action('add-column',{revision:0,title:'Espião'}))).status,422);
   assert.equal((await call('a','/api/workspace/crm')).body.records[0].columns[0].items.length,1);
