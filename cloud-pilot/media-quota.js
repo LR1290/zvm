@@ -30,12 +30,4 @@ function enforce(legacy=[],chunked=[],pending=null){
  if(q.usedBytes+q.reservedBytes>Large.MAX_ACCOUNT)fail('media_storage_quota');
  return q;
 }
-function uniqueNewFile(legacy=[],chunked=[],file){
- if(!file||typeof file.id!=='string')fail('invalid_media');
- const existing=[...legacy,...chunked].find(row=>row.id===file.id);
- if(!existing)return false;
- if(existing.sha256!==file.sha256||existing.mime!==file.mime||existing.size!==file.size)
-  fail('media_id_collision');
- return true;
-}
-module.exports={budget,enforce,uniqueNewFile};
+module.exports={budget,enforce};
