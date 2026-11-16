@@ -1,0 +1,171 @@
+/* ZVM Cloud R20 — layout visual alinhado à fonte da extensão R17.
+   Mantém o acesso DEV do Portal e não habilita WhatsApp/Web automation. */
+body.cloud-workspace{
+ --bg:#0a0b0a;--panel:#101211;--line:#232623;--text:#e8eae8;
+ --muted:#9ba39e;--green:#00c85a;color-scheme:dark;
+ background:#0a0b0a;color:var(--text);
+}
+body.cloud-workspace>header{
+ position:sticky;top:0;z-index:35;width:100%;max-width:none;min-height:72px;
+ padding:0 clamp(16px,2.2vw,36px);background:#101211;
+ border-bottom:1px solid #232623;box-shadow:0 4px 20px #0004;
+}
+body.cloud-workspace>main{max-width:none;width:100%;padding:0}
+body.cloud-workspace .brand strong{font-size:17px;line-height:1.2;letter-spacing:-.02em}
+body.cloud-workspace .brand small{letter-spacing:.11em;font-size:10px}
+body.cloud-workspace .logo{
+ background:#151c17;color:transparent;background-image:url('/assets/zvm-brand.167357885820.png');
+ background-size:contain;background-repeat:no-repeat;background-position:center;border-radius:10px;
+ border:1px solid #2b3d31;
+}
+.cloud-command-button{
+ display:none;align-items:center;justify-content:flex-start;gap:10px;
+ width:min(390px,36vw);padding:10px 14px;min-height:40px;
+ background:#171917;color:#9ba39e;border:1px solid #323632;border-radius:11px;text-align:left;
+}
+.cloud-command-button svg{width:17px;height:17px;flex-shrink:0}
+.cloud-command-button span{flex:1;text-overflow:ellipsis;overflow:hidden;white-space:nowrap}
+.cloud-command-button kbd{font-size:11px;padding:3px 7px;border:1px solid #323632;border-radius:5px;font-family:inherit}
+body.cloud-workspace .cloud-command-button{display:flex}
+.cloud-command-button:hover{background:#1e211e;border-color:#415648}
+body.cloud-workspace .chip{font-weight:750;letter-spacing:.1em;color:#a7e9bd;border:1px solid #35513d;background:#12271a}
+body.cloud-workspace #app{
+ display:grid;grid-template-columns:244px minmax(0,1fr);
+ grid-template-areas:'navigation heading' 'navigation notice' 'navigation content' 'navigation footer';
+ column-gap:clamp(20px,2.2vw,40px);row-gap:0;align-items:start;
+ min-height:calc(100vh - 72px);
+}
+body.cloud-workspace #app>.tabs{
+ grid-area:navigation;display:flex;flex-direction:column;align-items:stretch;gap:3px;
+ position:sticky;top:72px;height:calc(100vh - 72px);
+ margin:0;padding:24px 13px 28px 16px;overflow-y:auto;overflow-x:hidden;
+ background:#101211;border-right:1px solid #232623;scrollbar-width:thin;
+}
+body.cloud-workspace #app>.tabs .cloud-nav-group{
+ display:block;font-size:10px;font-weight:800;letter-spacing:.16em;
+ margin:20px 12px 8px;color:#69766d;user-select:none;
+}
+body.cloud-workspace #app>.tabs .cloud-nav-group:first-child{margin-top:2px}
+body.cloud-workspace #app>.tabs button{
+ width:100%;display:flex;align-items:center;gap:12px;
+ min-height:43px;text-align:left;padding:10px 12px;border-radius:10px;
+ font-size:13px;font-weight:650;background:transparent;border:1px solid transparent;
+ color:#a6b0a8;transition:background .16s ease,border-color .16s ease,color .16s ease;
+}
+body.cloud-workspace #app>.tabs button:hover{background:#1e211e;color:#ecf8f0}
+body.cloud-workspace #app>.tabs button.active,
+body.cloud-workspace #app>.tabs button[aria-current="page"]{
+ background:#122e1d;color:#d1f7dd;border-color:#2b5637;
+}
+.cloud-nav-icon{width:19px;height:19px;flex-shrink:0}
+body.cloud-workspace .heading{grid-area:heading;margin:30px 0 19px;padding-right:clamp(16px,2vw,36px)}
+body.cloud-workspace .heading h1{font-size:clamp(24px,2.5vw,32px);font-weight:750;letter-spacing:-.035em}
+body.cloud-workspace .heading .muted{font-size:13px}
+body.cloud-workspace .heading .eyebrow{letter-spacing:.12em;color:#68c58b}
+body.cloud-workspace .notice{
+ grid-area:notice;align-items:center;display:flex;gap:10px;
+ background:#13231a;border:1px solid #304536;color:#bfcac3;
+ border-radius:12px;padding:12px 16px;margin:0 clamp(16px,2vw,36px) 21px 0;font-size:12px;
+}
+body.cloud-workspace .notice strong{color:#f1f6f3}
+body.cloud-workspace #app>.view:not([hidden]){
+ grid-area:content;display:block;min-width:0;min-height:300px;
+ padding:0 clamp(16px,2vw,36px) 30px 0;
+}
+body.cloud-workspace #app>footer{
+ grid-area:footer;margin-top:10px;border-top:1px solid #232623;
+ padding:20px clamp(16px,2vw,36px) 30px 0;
+}
+body.cloud-workspace .panel{background:#101211;border-color:#232623;border-radius:14px;box-shadow:0 4px 18px #0002}
+body.cloud-workspace .section{padding:clamp(16px,2.1vw,28px)}
+body.cloud-workspace .stat{padding:18px 20px}
+body.cloud-workspace .stat strong{font-size:29px;font-weight:800;letter-spacing:-.03em}
+body.cloud-workspace .stat small{font-weight:700;font-size:12px}
+body.cloud-workspace .stat span{font-size:11px}
+body.cloud-workspace .workspace-item{
+ background:#171917;border-color:#2b302b;border-radius:12px;
+ transition:border-color .16s ease,transform .16s ease;
+}
+body.cloud-workspace .workspace-item:hover{border-color:#41604a;transform:translateY(-1px)}
+body.cloud-workspace .workspace-item-info strong{font-size:14px}
+body.cloud-workspace .workspace-item-info small{font-size:12px}
+body.cloud-workspace .workspace-editor{background:#141814;border-color:#314d38}
+body.cloud-workspace input,body.cloud-workspace textarea,
+body.cloud-workspace select{background:#171917;color:#e8eae8;border-color:#323632}
+body.cloud-workspace .primary{background:#00c85a;color:#04150b}
+body.cloud-workspace .primary:hover{background:#13d46c}
+body.cloud-workspace .secondary{background:#1e211e;color:#dce6df;border-color:#323632}
+body.cloud-workspace .secondary:hover{background:#2a302a}
+body.cloud-workspace .workspace-audience{background:#141e16;border-color:#304d38}
+body.cloud-workspace .cloud-media-section{background:#151b17;border-color:#2a4532}
+body.cloud-workspace a{color:#8edbad}
+.cloud-module-title{margin:27px 0 11px;font-size:15px;font-weight:800;letter-spacing:-.01em}
+.cloud-launch-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,270px),1fr));gap:12px}
+.cloud-launch-card{
+ display:flex;align-items:center;gap:12px;min-width:0;
+ background:#121713;border:1px solid #2a302b;border-radius:13px;padding:16px;text-align:left;color:#e8eae8;
+ transition:background .17s ease,border-color .17s ease;
+}
+.cloud-launch-card:hover{background:#18241b;border-color:#347045}
+.cloud-launch-card .cloud-nav-icon{width:23px;height:23px;color:#75cb94}
+.cloud-launch-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:5px}
+.cloud-launch-copy strong{font-size:14px}
+.cloud-launch-copy small{font-size:11px;color:#9ba39e;line-height:1.4}
+.cloud-launch-count{border:1px solid #2e4d38;background:#142319;border-radius:8px;color:#aadabc;font-size:13px;font-weight:750;padding:5px 8px}
+.cloud-command-dialog[hidden]{display:none}
+.cloud-command-dialog{
+ position:fixed;inset:0;z-index:90;background:#000b;display:flex;align-items:flex-start;
+ justify-content:center;padding:clamp(30px,13vh,130px) 16px 16px;
+}
+.cloud-command-box{
+ width:min(580px,100%);max-height:75vh;display:flex;flex-direction:column;overflow:hidden;
+ background:#151815;border:1px solid #3b4940;border-radius:18px;box-shadow:0 30px 90px #0009;
+}
+.cloud-command-top{display:flex;align-items:center;gap:8px;padding:15px;border-bottom:1px solid #2b342d}
+.cloud-command-top input{flex:1;width:auto;border:0;background:transparent;box-shadow:none;outline:none;padding:8px}
+.cloud-command-top button{background:#242c25;color:#b9c5bd;border:1px solid #344237;padding:6px 10px;min-height:32px}
+.cloud-command-results{overflow-y:auto;padding:8px;display:grid;gap:2px}
+.cloud-command-result{display:flex;align-items:center;gap:11px;width:100%;min-height:55px;padding:9px 13px;background:transparent;color:#e8eae8;border:1px solid transparent;text-align:left}
+.cloud-command-result:hover,.cloud-command-result:focus-visible{background:#1f3324;border-color:#31543b}
+.cloud-command-result span{display:flex;flex-direction:column;gap:2px}
+.cloud-command-result strong{font-size:13px}
+.cloud-command-result small{font-size:11px;color:#aab6ad}
+.cloud-command-open{overflow:hidden}
+@media(max-width:900px){
+ body.cloud-workspace>header{padding:0 16px;min-height:68px}
+ body.cloud-workspace #app{display:block;min-height:calc(100vh - 68px)}
+ body.cloud-workspace #app>.heading{margin:21px 16px 13px;padding:0}
+ body.cloud-workspace #app>.tabs{
+  position:sticky;top:68px;z-index:15;display:flex;flex-direction:row;
+  height:auto;min-height:56px;gap:7px;overflow-x:auto;overflow-y:hidden;
+  scrollbar-width:none;padding:9px 16px 10px;border:0;border-bottom:1px solid #2a302b;
+  scroll-padding-inline:16px;
+ }
+ body.cloud-workspace #app>.tabs::-webkit-scrollbar{display:none}
+ body.cloud-workspace #app>.tabs .cloud-nav-group{display:none}
+ body.cloud-workspace #app>.tabs button{
+  flex:0 0 auto;width:auto;min-height:40px;padding:8px 11px;gap:7px;white-space:nowrap;
+ }
+ body.cloud-workspace #app>.tabs .cloud-nav-icon{width:16px;height:16px}
+ body.cloud-workspace .notice{margin:0 16px 17px}
+ body.cloud-workspace #app>.view:not([hidden]){padding:0 16px 24px}
+ body.cloud-workspace #app>footer{padding:20px 16px 30px}
+ body.cloud-workspace .cloud-command-button{width:40px;justify-content:center;padding:8px}
+ body.cloud-workspace .cloud-command-button span,body.cloud-workspace .cloud-command-button kbd{display:none}
+}
+@media(max-width:560px){
+ body.cloud-workspace .brand strong{font-size:15px}
+ body.cloud-workspace .brand small{font-size:9px}
+ body.cloud-workspace .brand .logo{width:37px;height:37px}
+ body.cloud-workspace .heading h1{font-size:25px}
+ body.cloud-workspace .heading .secondary{font-size:11px;padding:8px;min-height:37px}
+ body.cloud-workspace .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+ body.cloud-workspace .stats .stat:last-child{grid-column:1/-1}
+ .cloud-launch-grid{grid-template-columns:1fr}
+ body.cloud-workspace .workspace-items{grid-template-columns:1fr}
+}
+@media(prefers-reduced-motion:reduce){
+ body.cloud-workspace .workspace-item,
+ body.cloud-workspace #app>.tabs button,.cloud-launch-card{transition:none}
+ body.cloud-workspace .workspace-item:hover{transform:none}
+}
