@@ -5,6 +5,7 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path');
 const {createMongoStore}=require('./store');
 const {MODULES,moduleCheck,checkAudience,planLegacy,mergeModules,checkWhole}=require('./workspace-domain');
 const Media=require('./media-domain');
+const Meta=require('./meta-webhook');
 const ASSETS={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','application/javascript; charset=utf-8'],'/styles.css':['styles.css','text/css; charset=utf-8'],'/workspace.js':['workspace.js','application/javascript; charset=utf-8'],'/backup-zip.js':['backup-zip.js','application/javascript; charset=utf-8']};
 const MAX_TRIES=8, WINDOW_MS=15*60*1000;
 function json(res,status,body){
@@ -69,6 +70,7 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
      res.end(req.method==='HEAD'?undefined:data);
     });
    }
+   if(pathname==='/meta/webhook')return Meta.handleWebhook(req,res,{store});
    if(!pathname.startsWith('/api/'))return json(res,404,{error:'not_found'});
    if(['POST','PUT','PATCH','DELETE'].includes(req.method)&&!originAllowed(req))return json(res,403,{error:'origin_denied'});
    const user=await portal(req);
@@ -154,6 +156,10 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
      if(result.conflict)return json(res,409,{error:'media_revision_conflict'});
      return json(res,200,{ok:true,revision:result.revision,...Media.output({...next,revision:result.revision})});
     }
+   }
+   if(req.method==='GET'&&pathname==='/api/meta/status'){
+    const status=Meta.readiness(process.env,store);
+    return json(res,200,{provider:'whatsapp_business_platform',webhookReady:status.configured&&status.ownerEmail===user.email,sending:false,transportEnabled:false,credentialsConfiguredForUser:status.configured&&status.ownerEmail===user.email});
    }
    if(req.method==='GET'&&pathname==='/api/workspace'){
     const current=await store.readWorkspace(user.email);
