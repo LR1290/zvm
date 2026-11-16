@@ -35,7 +35,9 @@ test('R24 server: quota, auth, atomic finalization and private media download',(
  assert.match(server,/store\.large\.append\(user\.email/);
  assert.match(server,/store\.large\.finish\(user\.email/);
  assert.match(server,/store\.large\.cancel\(user\.email/);
- assert.match(server,/store\.large\.remove\(user\.email/);
+ assert.match(server,/store\.removeMediaIfUnlinked\(user\.email/);
+ assert.match(store,/withMediaFence/);
+ assert.match(store,/mediaFences\.updateOne/);
  assert.match(server,/validateLargeDownload/);
  assert.match(server,/checkLibraryRecords\(records,\[\.\.\.vault\.items/);
  assert.match(server,/checkLibraryRecords\(modules\.library,\[\.\.\.vault\.items/);
