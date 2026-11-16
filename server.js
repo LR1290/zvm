@@ -7046,7 +7046,7 @@ ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_AUTH}${_CSS_PRIVILEGED_AUTH}${_CSS_SYSTEM
     <div class="auth-form-brand">${renderStandaloneBrand('auth')}</div>
     <h2>Entrar no painel</h2><p class="auth-form-hint">Acesso administrativo ZVM.</p><div class="auth-secure-chip">Sessão administrativa protegida</div>
     ${error ? `<div class="auth-alert err" role="alert">${escHtml(error)}</div>` : ''}
-    <form method="POST" action="${R_ADMIN}/login">
+    <form method="POST" action="${R_ADMIN}">
       <div class="auth-field"><label for="admin-user">Usuário</label><input id="admin-user" type="text" name="user" autocomplete="username" required></div>
       <div class="auth-field"><label for="admin-pass">Senha</label><input id="admin-pass" type="password" name="pass" autocomplete="current-password" required></div>
       ${TOTP_SECRET ? `<div class="auth-field"><label for="admin-totp">Código 2FA</label><input id="admin-totp" type="text" name="totp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" autocomplete="one-time-code" class="zvm-privileged-totp-admin"></div>` : ''}
@@ -9870,7 +9870,13 @@ async function handleRequest(req, res) {
     return;
   }
 
-  if (p === R_ADMIN+'/login' && req.method === 'POST') {
+  // The canonical Admin login lives on the panel root. Old /login links are
+  // intentionally redirected; legacy POST /login remains accepted for open tabs.
+  if (p === R_ADMIN+'/login' && (req.method === 'GET' || req.method === 'HEAD')) {
+    res.writeHead(302, { Location: R_ADMIN, 'Cache-Control': 'no-store' }); res.end(); return;
+  }
+
+  if ((p === R_ADMIN || p === R_ADMIN+'/login') && req.method === 'POST') {
     if (!requireSameOriginPost(req)) { sendHtml(res, 'Forbidden', 403); return; }
     if (!checkRateLimit(ip, 'login')) {
       const mins = getRateLimitWait(ip, 'login');
