@@ -45,6 +45,22 @@ test('R23: R17 nine Biblioteca stores survive in one merged Library (no silent o
  assert.match(plan.warnings.join(' '),/restauração manual da mídia/);
  assert.deepEqual(planLegacy(backup()).modules.library,plan.modules.library,'import must be deterministic');
 });
+test('R23: plain signature arrays and removed local-media markers never become ready content',()=>{
+ const p=planLegacy({data:{
+  'EXTUI:signaturesStore':JSON.stringify([{id:'s1',name:'Assinatura simples',text:'Equipe ZVM'}]),
+  'EXTUI:textMessageStore':state('textMessageList',[
+   {id:'m1',name:'Mídia removida',text:'[MÍDIA_LOCAL_NÃO_IMPORTADA]'},
+   {id:'m2',name:'Referência da extensão',text:'extapp-item:media-vault-42'},
+   {id:'m3',name:'Mensagem real',text:'Olá'}
+  ])
+ }});
+ assert.equal(p.counts.library,4);
+ assert.equal(p.modules.library.find(x=>x.id==='s1').contentStatus,'ready');
+ assert.equal(p.modules.library.find(x=>x.id==='m1').contentStatus,'missing_source');
+ assert.equal(p.modules.library.find(x=>x.id==='m2').contentStatus,'missing_source');
+ assert.equal(p.modules.library.find(x=>x.id==='m3').contentStatus,'ready');
+ assert.equal(p.modules.library.find(x=>x.id==='m2').text,'');
+});
 test('R23: private Library media MIME and content-status integrity',()=>{
  assert.equal(Object.keys(KINDS).length,11);
  const png={id:'m_'+'a'.repeat(40),mime:'image/png'};
