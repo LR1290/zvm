@@ -3,13 +3,22 @@
 const DATABASE='zvm_cloud_pilot';
 const crypto=require('node:crypto');
 const {createMemoryLargeMediaStore,createMongoLargeMediaStore}=require('./large-media-store');
+const {checkLibraryRecords}=require('./library-domain');
+const Large=require('./large-media-domain');
 const workspaceId=email=>crypto.createHash('sha256').update('zvm-cloud-workspace-v1:'+email).digest('hex');
 // Account grant identifiers are canonical across Portal logins; no raw email in _id.
 const accountGrantId=email=>workspaceId(String(email||'').trim().toLowerCase());
 const copy=x=>x==null?null:JSON.parse(JSON.stringify(x));
 function createMemoryStore(){
  const accountGrants=new Map(),drafts=new Map(),workspaces=new Map(),media=new Map(),metaEvents=new Map();
- const large=createMemoryLargeMediaStore();
+ const large=createMemoryLargeMediaStore(),locks=new Map();
+ async function withFence(email,action){
+  const key=workspaceId(email),previous=locks.get(key)||Promise.resolve();
+  let unlock;const next=new Promise(resolve=>{unlock=resolve;});
+  locks.set(key,next);await previous;
+  try{return await action();}
+  finally{if(locks.get(key)===next)locks.delete(key);unlock();}
+ }
  return {
   large,
   async grantAccount(email,keyHash){
@@ -26,10 +35,35 @@ function createMemoryStore(){
    return copy(workspaces.get(workspaceId(email))||{revision:0,modules:{},updatedAt:null});
   },
   async writeWorkspace(email,revision,modules){
-   const id=workspaceId(email),current=workspaces.get(id)||{revision:0};
-   if(current.revision!==revision)return {conflict:true,currentRevision:current.revision};
-   const next={revision:revision+1,modules:copy(modules),updatedAt:new Date().toISOString()};
-   workspaces.set(id,next);return {conflict:false,...copy(next)};
+   return withFence(email,async()=>{
+    const id=workspaceId(email),current=workspaces.get(id)||{revision:0};
+    if(current.revision!==revision)return {conflict:true,currentRevision:current.revision};
+    if(Array.isArray(modules.library)){
+     const legacy=media.get(id)?.items||[],newFiles=await large.list(email);
+     checkLibraryRecords(modules.library,[...legacy,...newFiles]);
+    }
+    const next={revision:revision+1,modules:copy(modules),updatedAt:new Date().toISOString()};
+    workspaces.set(id,next);return {conflict:false,...copy(next)};
+   });
+  },
+  async removeMediaIfUnlinked(email,id,revision){
+   return withFence(email,async()=>{
+    const owner=workspaceId(email);
+    const vault=media.get(owner)||{revision:0,items:[]};
+    if(!Number.isSafeInteger(revision)||revision!==vault.revision)
+     return {conflict:true,code:'media_revision_conflict'};
+    if((workspaces.get(owner)?.modules?.library||[]).some(item=>item.mediaId===id))
+     return {conflict:true,code:'media_still_linked_to_library'};
+    const largeFile=await large.get(email,id);
+    if(largeFile){
+     await large.remove(email,id);
+     return {conflict:false,large:true,revision:vault.revision};
+    }
+    const index=vault.items.findIndex(x=>x.id===id);
+    if(index===-1)return {conflict:true,code:'media_not_found'};
+    media.set(owner,{revision:vault.revision+1,items:vault.items.filter(x=>x.id!==id)});
+    return {conflict:false,large:false,revision:vault.revision+1};
+   });
   },
   async readMedia(email){
    const doc=media.get(workspaceId(email));
