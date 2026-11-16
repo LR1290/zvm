@@ -39,7 +39,8 @@ test('R20: overview counts are generated from authorized workspace API, not fabr
  assert.match(work,/snapshot\.counts\|\|\{\}/);
  assert.match(work,/className='workspace-filter'/);
  assert.match(work,/module==='crm'/);
- assert.doesNotMatch(ui,/api\/send|sendMessage|wppconnect|localStorage/i);
+ assert.doesNotMatch(ui,/api\/send|sendMessage|wppconnect/i);
+ assert.match(ui,/zvm-cloud-sidebar-collapsed/); // Persist only the non-sensitive layout preference.
  assert.match(server,/sending:false/);
  assert.match(html,/Envios e agendamentos automáticos estão desativados/);
 });
