@@ -10279,7 +10279,8 @@ async function handleRequest(req, res) {
     }
     const savedRenew = renewal.record;
     if (!renewal.replayed) {
-      await addLog({ keyCode: codeRenew, label: savedRenew.label, phone: '-', ip, wppVersion: '-', action: 'renewed' });
+      await addLog({ keyCode: codeRenew, label: savedRenew.label, phone: '-', ip, wppVersion: '-',
+        action: direction === 'remove' ? 'time_removed' : 'renewed' });
       addAdminAuditLog({ actor: 'admin', action: direction === 'remove' ? 'key_time_removed' : 'key_renewed',
         keyCode: codeRenew, label: savedRenew.label,
         detail: `${direction === 'remove' ? '-' : '+'}${days}d${hours}h${mins}m` }).catch(()=>{});
