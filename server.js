@@ -3067,30 +3067,29 @@ function buildKeysHtml(snapshot = keys) {
     const suspectBadge = isSuspect ? `<span title="${recentIpCount} IPs nas últimas 24h" style="color:#ff4757;font-size:13px;margin-left:4px">⚠ SUSPEITA</span>` : '';
     const deferredAttr = (!k.expiresAt && k.expireDuration) ? '1' : '0';
     const dispStatus = getKeyDisplayStatus(k);
-    return `<tr data-code="${escHtml(code)}" data-expires-at="${escHtml(k.expiresAt||'')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(String(k.label||'').toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-created="${k.createdAt||''}" data-lastused="${escHtml(k.lastUsed||'')}" data-suspect="${isSuspect?'1':''}" data-plan="${escHtml((k.planId||k.plan_id||'pro').toLowerCase())}"` + rowStyle + `>
-  <td><span style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="key-cb" style="cursor:pointer;width:13px;height:13px;flex-shrink:0"><span class="kc" title="Clique para copiar" style="cursor:pointer">${escHtml(code)}</span></span></td>
-  <td>${escHtml(k.label)}${suspectBadge}</td>
-  <td>${renderKeyStatusBadge(k)}</td>
-  <td>${formatValidityCell(k)}</td>
-  <td><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
-  <td>${escHtml(k.lastPhone||'-')}</td>
-  <td title="${uniqueIps} IPs únicos">${escHtml(k.lastIp||'-')} ${uniqueIps>1?`<span style="color:var(--muted);font-size:13px">(+${uniqueIps-1})</span>`:''}</td>
-  <td>${fmtShortDate(k.lastUsed||null)}</td>
-  <td>${fmtShortDate(k.createdAt||null)}</td>
-  <td>${renderTrackingChips(k)}</td>
-  <td class="note-cell" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${escHtml(k.note||'')||'<span style="color:var(--muted)">—</span>'}</span></td>
-  <td><div class="acts">
-    <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
-    <button class="bs bg" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">+ Tempo</button>
+    return `<tr class="key-record" data-code="${escHtml(code)}" data-expires-at="${escHtml(k.expiresAt||'')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(String(k.label||'').toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-phones-count="${(k.phones||[]).length}" data-created="${k.createdAt||''}" data-lastused="${escHtml(k.lastUsed||'')}" data-suspect="${isSuspect?'1':''}" data-plan="${escHtml((k.planId||k.plan_id||'pro').toLowerCase())}"` + rowStyle + `>
+  <td data-field="Chave"><span style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="key-cb" style="cursor:pointer;width:13px;height:13px;flex-shrink:0"><span class="kc" title="Clique para copiar" style="cursor:pointer">${escHtml(code)}</span><button type="button" class="key-mobile-details" aria-expanded="false" onclick="toggleKeyDetails(this)">Detalhes</button></span></td>
+  <td data-field="Cliente">${escHtml(k.label)}${suspectBadge}</td>
+  <td data-field="Status">${renderKeyStatusBadge(k)}</td>
+  <td data-field="Validade">${formatValidityCell(k)}</td>
+  <td data-field="Usos"><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
+  <td data-field="Telefone">${escHtml(k.lastPhone||'-')}</td>
+  <td data-field="Último IP" class="key-extra-data" title="${uniqueIps} IPs únicos">${escHtml(k.lastIp||'-')} ${uniqueIps>1?`<span style="color:var(--muted);font-size:13px">(+${uniqueIps-1})</span>`:''}</td>
+  <td data-field="Último acesso" class="key-extra-data">${fmtShortDate(k.lastUsed||null)}</td>
+  <td data-field="Criada em" class="key-extra-data">${fmtShortDate(k.createdAt||null)}</td>
+  <td data-field="Origem" class="key-extra-data">${renderTrackingChips(k)}</td>
+  <td data-field="Nota" class="note-cell key-extra-data" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${escHtml(k.note||'')||'<span style="color:var(--muted)">—</span>'}</span></td>
+  <td data-field="Ações" class="key-actions-cell"><div class="acts">
+    <button class="bs bg" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">Tempo</button>
     <button class="bs bg" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${Number.isFinite(k.maxUses)?k.maxUses:MAX_USES})">Usos</button>
-    <button class="bs bg" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">Renomear</button>
-    ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Números</button>`:''}
-    <label class="bs ${k.devAccess===true?'bg':'bw'}" title="Acesso DEV: autoriza esta licença a usar builds DEV assinadas" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;user-select:none">
-      <input type="checkbox" class="dev-access-switch" ${k.devAccess===true?'checked':''} onchange="toggleDevAccess('${escHtml(code)}',this.checked,this)" style="accent-color:var(--g);width:13px;height:13px;margin:0"> Acesso DEV
-    </label>
-    <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
-    ${isSuspect?`<button class="bs bsusp" onclick="clearSuspect('${escHtml(code)}')">🕵️ Suspeita</button>`:''}
-  </div></td>
+    <details class="key-actions-more"><summary class="bs bw" title="Outras ações">Mais</summary><div class="key-actions-extra">
+      <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
+      <button class="bs bg" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">Renomear</button>
+      ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Números</button>`:''}
+      <label class="bs ${k.devAccess===true?'bg':'bw'}" title="Acesso DEV: autoriza builds DEV assinadas" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" class="dev-access-switch" ${k.devAccess===true?'checked':''} onchange="toggleDevAccess('${escHtml(code)}',this.checked,this)" style="accent-color:var(--g);width:13px;height:13px;margin:0"> Acesso DEV</label>
+      <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
+      ${isSuspect?`<button class="bs bsusp" onclick="clearSuspect('${escHtml(code)}')">🕵️ Suspeita</button>`:''}
+    </div></details></div></td>
 </tr>`;
   }).join('');
 }
@@ -5541,6 +5540,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     compressible: true,
   }),
 
+  '/assets/zvm-admin-dashboard.5c649db2edf7.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.5c649db2edf7.css'),
+    sha256: '5c649db2edf7202864b1a9f9afd96f35a4d9fd609f8b31bc002d10b9dbe9ef94',
+    compressible: true,
+  }),
   '/assets/zvm-admin-dashboard.c06071e4d73f.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.c06071e4d73f.css'),
@@ -5641,6 +5646,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     type: 'text/javascript; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.91efd97cea20.js'),
     sha256: '91efd97cea203bf0d151777c286979cd8eb6d12199cb4fc58310726ae1310922',
+    compressible: true,
+  }),
+  '/assets/zvm-admin-dashboard.db80ba5884d9.js': Object.freeze({
+    type: 'text/javascript; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.db80ba5884d9.js'),
+    sha256: 'db80ba5884d997b646b13a0e742422ccddb803e5c15771b8d0e5b399994371a2',
     compressible: true,
   }),
   '/assets/zvm-admin-dashboard.ba75b250f87b.js': Object.freeze({
@@ -6641,6 +6652,22 @@ function normalizeAdminCreateLabel(value) {
   return { ok: true, label: label || 'Cliente' };
 }
 
+// R47.07: absolute validity changes, separate from the idempotent /renew endpoint.
+function parseAdminValidityChange(body,nowMs=Date.now()){
+  if(!body||typeof body!=='object'||Array.isArray(body))return {ok:false,error:'invalid_validity_mode'};
+  if(body.mode==='never'){
+    if(body.expiresAt!==undefined)return {ok:false,error:'invalid_validity_mode'};
+    return {ok:true,mode:'never',expiresAt:null};
+  }
+  if(body.mode!=='date'||typeof body.expiresAt!=='string')return {ok:false,error:'invalid_validity_mode'};
+  const raw=body.expiresAt;
+  if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(raw))return {ok:false,error:'invalid_validity_date'};
+  const timestamp=Date.parse(raw);
+  if(!Number.isFinite(timestamp)||new Date(timestamp).toISOString()!==raw||
+     timestamp<nowMs+60000||timestamp>Date.parse('2100-01-01T00:00:00.000Z'))return {ok:false,error:'invalid_validity_date'};
+  return {ok:true,mode:'date',expiresAt:raw};
+}
+
 function parseAdminBatchDeleteCodes(body) {
   const rawCodes = Array.isArray(body?.codes) ? body.codes : [];
   if (!rawCodes.length) return { ok: false, error: 'nenhum código enviado', codes: [] };
@@ -6683,7 +6710,7 @@ function renderAdminDashboard(opts = {}) {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Administração</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="/assets/zvm-admin-dashboard.c06071e4d73f.css">
+<link rel="stylesheet" href="/assets/zvm-admin-dashboard.5c649db2edf7.css">
 <link rel="stylesheet" href="/assets/zvm-r46-system.aa366d924866.css">
 <link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css">
 <link rel="stylesheet" href="/assets/zvm-console-design.44762cb103f8.css">
@@ -6796,7 +6823,7 @@ function renderAdminDashboard(opts = {}) {
     </div>
     <div class="filter-count" id="keys-filter-count"></div>
     <div class="ov">
-      <table style="min-width:1100px">
+      <table class="keys-table" aria-label="Licenças ZVM">
         <colgroup>
           <col style="width:11%">
           <col style="width:8%">
@@ -6965,15 +6992,19 @@ function renderAdminDashboard(opts = {}) {
 <div class="modal-bg" id="renewModal"><div class="modal">
   <h3>⏱ Adicionar Tempo — <span id="renewKeyLabel" style="color:var(--g)"></span></h3>
   <input type="hidden" id="renewKeyCode">
-  <div style="display:flex;gap:10px;margin-bottom:12px">
-    <div style="flex:1;text-align:center"><div class="modal-lbl">Dias</div><input type="number" id="renewDays" placeholder="0" min="0" style="width:100%;padding:7px;text-align:center"></div>
-    <div style="flex:1;text-align:center"><div class="modal-lbl">Horas</div><input type="number" id="renewHours" placeholder="0" min="0" style="width:100%;padding:7px;text-align:center"></div>
-    <div style="flex:1;text-align:center"><div class="modal-lbl">Min</div><input type="number" id="renewMins" placeholder="0" min="0" style="width:100%;padding:7px;text-align:center"></div>
+  <label for="renewMode" class="modal-lbl">O que deseja fazer?</label>
+  <select id="renewMode" class="key-validity-mode" onchange="applyRenewMode()"><option value="add">Adicionar tempo</option><option value="date">Definir data de expiração</option><option value="never">Sem expiração (ilimitado)</option></select>
+  <div id="renewDurationFields" class="key-validity-duration" style="display:flex;gap:10px;margin-bottom:12px">
+    <div style="flex:1;text-align:center"><label for="renewDays" class="modal-lbl">Dias</label><input type="number" id="renewDays" placeholder="0" min="0" style="width:100%;padding:7px;text-align:center"></div>
+    <div style="flex:1;text-align:center"><label for="renewHours" class="modal-lbl">Horas</label><input type="number" id="renewHours" placeholder="0" min="0" style="width:100%;padding:7px;text-align:center"></div>
+    <div style="flex:1;text-align:center"><label for="renewMins" class="modal-lbl">Min</label><input type="number" id="renewMins" placeholder="0" min="0" style="width:100%;padding:7px;text-align:center"></div>
   </div>
+  <div id="renewExactFields" class="key-validity-exact" hidden><label for="renewExactDate" class="modal-lbl">Expira em (data e hora locais)</label><input type="datetime-local" id="renewExactDate"><small class="key-modal-help">Permite reduzir a validade. Escolha uma data futura.</small></div>
+  <p id="renewNeverInfo" class="key-validity-never key-modal-help" hidden>Remove a expiração e o prazo de primeiro uso. As outras restrições permanecem.</p>
   <div style="font-size:12px;color:var(--tx3);margin-bottom:12px" id="renewCurrentExpiry"></div>
   <div class="modal-actions">
     <button class="btn modal-cancel" onclick="closeRenew()">Cancelar</button>
-    <button class="btn bp" onclick="saveRenew()">Adicionar Tempo</button>
+    <button class="btn bp" id="renewSaveButton" onclick="saveRenew()">Adicionar Tempo</button>
   </div>
 </div></div>
 
@@ -6981,9 +7012,10 @@ function renderAdminDashboard(opts = {}) {
   <h3>👥 Limite de Dispositivos — <span id="editUsesLabel" style="color:var(--g)"></span></h3>
   <input type="hidden" id="editUsesCode">
   <div style="margin-bottom:14px">
-    <div class="modal-lbl">Máx. números simultâneos</div>
-    <input type="number" id="editUsesValue" min="-1" style="width:100%;padding:9px;font-size:15px;text-align:center;margin-top:6px">
-    <div style="font-size:12px;color:var(--tx3);margin-top:8px">Use <strong style="color:var(--g)">-1</strong> para ilimitado</div>
+    <label for="editUsesValue" class="modal-lbl">Máx. números simultâneos</label>
+    <input type="number" id="editUsesValue" min="1" max="10000" step="1" style="width:100%;padding:9px;font-size:15px;text-align:center;margin-top:6px">
+    <label class="key-option-row" for="editUsesUnlimited"><input type="checkbox" id="editUsesUnlimited" onchange="applyUsesUnlimited()"> Sem limite de dispositivos (∞)</label>
+    <small id="editUsesLinked" class="key-modal-help">Os números já vinculados permanecem registrados.</small>
   </div>
   <div class="modal-actions">
     <button class="btn modal-cancel" onclick="closeEditUses()">Cancelar</button>
@@ -7026,7 +7058,7 @@ function renderAdminDashboard(opts = {}) {
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <template id="zvm-admin-users-data">${initialPortalUsersJson}</template>
-<script src="/assets/zvm-admin-dashboard.ba75b250f87b.js" defer></script>
+<script src="/assets/zvm-admin-dashboard.db80ba5884d9.js" defer></script>
 </body></html>`;
 }
 
@@ -10218,17 +10250,52 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true, expiresAt: savedRenew.expiresAt, replayed: renewal.replayed }); return;
   }
 
+  const codeValidity = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/validity$`));
+  if (codeValidity && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res,{error:'unauthorized'},401); return; }
+    const change = parseAdminValidityChange(await parseBody(req));
+    if (!change.ok) {sendJson(res,{ok:false,error:change.error},400);return;}
+    let saved;
+    try {
+      saved = await mutateAdminKeyRecordStrict(codeValidity,draft=>{
+        draft.expiresAt=change.expiresAt;
+        draft.expireDuration=null;
+        draft.warnEmailSent=false;
+      });
+    } catch(error) {sendAdminKeyPersistFailure(res,error,'edit validity');return;}
+    if(!saved){sendJson(res,{ok:false,error:'not_found'},404);return;}
+    addAdminAuditLog({actor:'admin',action:'key_validity_changed',keyCode:codeValidity,label:saved.label,
+      detail:change.mode==='never'?'Sem expiração':'Validade definida explicitamente'}).catch(()=>{});
+    sendJson(res,{ok:true,expiresAt:saved.expiresAt||null,mode:change.mode});return;
+  }
+
   const codeMaxUses = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/max-uses$`));
   if (codeMaxUses && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const kMu = await adminGetKey(codeMaxUses);
     if (!kMu) { sendJson(res, { error: 'not found' }, 404); return; }
     const body = await parseBody(req);
-    const maxUses = parseInt(body.maxUses);
-    if (isNaN(maxUses) || maxUses < -1) { sendJson(res, { error: 'invalid' }, 400); return; }
+    const rawMaxUses = body.maxUses;
+    const maxUses = typeof rawMaxUses === 'number' ? rawMaxUses :
+      (typeof rawMaxUses === 'string' && /^-?\d{1,5}$/.test(rawMaxUses) ? Number(rawMaxUses) : NaN);
+    if (!Number.isSafeInteger(maxUses) || !(maxUses===-1 || (maxUses>=1 && maxUses<=10000))) {
+      sendJson(res,{ok:false,error:'invalid_max_uses'},400);return;
+    }
     let savedMu;
-    try { savedMu = await mutateAdminKeyRecordStrict(codeMaxUses, draft => { draft.maxUses = maxUses; }); }
-    catch (e) { sendAdminKeyPersistFailure(res, e, 'max-uses'); return; }
+    try {
+      savedMu = await mutateAdminKeyRecordStrict(codeMaxUses,draft=>{
+        const linked=Array.isArray(draft.phones)?draft.phones.length:0;
+        if(maxUses!==-1&&linked>maxUses)throw Object.assign(new Error('max_uses_below_linked_devices'),
+          {code:'max_uses_below_linked_devices',linkedCount:linked});
+        draft.maxUses=maxUses;
+      });
+    } catch(e) {
+      if(e?.code==='max_uses_below_linked_devices'){
+        sendJson(res,{ok:false,error:'max_uses_below_linked_devices',linkedCount:e.linkedCount},422);return;
+      }
+      sendAdminKeyPersistFailure(res,e,'max-uses');return;
+    }
+    if(!savedMu){sendJson(res,{ok:false,error:'not_found'},404);return;}
     addAdminAuditLog({ actor: 'admin', action: 'key_maxuses', keyCode: codeMaxUses, label: savedMu.label, detail: `maxUses=${maxUses}` }).catch(()=>{});
     sendJson(res, { ok: true, maxUses }); return;
   }
@@ -11602,6 +11669,7 @@ module.exports.__test = Object.freeze({
   renderAdminDashboard,
   renderAdminLogin,
   normalizeAdminCreateLabel,
+  parseAdminValidityChange,
   parseAdminBatchDeleteCodes,
   renderAnalyticsLogin,
   renderAnalyticsDashboard,
