@@ -10,6 +10,7 @@ const DIGEST=/^[a-f0-9]{64}$/,UPLOAD=/^[a-f0-9]{32}$/,FILE_ID=/^m_[a-f0-9]{40}$/
 function fail(code){const e=new Error(code);e.code=code;throw e;}
 function sha(data){return crypto.createHash('sha256').update(data).digest('hex');}
 function ownerId(email){return sha('zvm-cloud-large-media-v1:'+String(email||'').trim().toLowerCase());}
+function isSupportedMime(mime){return MIME_TYPES.has(mime);}
 function specOf(input){
  if(!input||typeof input!=='object'||Array.isArray(input))fail('invalid_upload');
  const name=String(input.name||'').trim();
@@ -62,5 +63,5 @@ function combined(legacy,large){
   items:[...native.items,...chunks.map(publicFile)],chunkUploadSupported:true,chunkBytes:CHUNK_BYTES,
   note:'Até 32 MB por arquivo e 128 MB por conta nesta fase de QA; backup de 1 GB ainda não suportado.'};
 }
-module.exports={CHUNK_BYTES,MAX_FILE,MAX_ACCOUNT,MAX_ITEMS,TTL_MS,DIGEST,UPLOAD,FILE_ID,
+module.exports={CHUNK_BYTES,MAX_FILE,MAX_ACCOUNT,MAX_ITEMS,TTL_MS,DIGEST,UPLOAD,FILE_ID,isSupportedMime,
  specOf,expectedSize,validateChunk,validateWhole,publicFile,publicUpload,combined,ownerId,sha,fail};
