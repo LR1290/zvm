@@ -31,11 +31,13 @@ async function verifiedSnapshot(store,email,file,{cancelled=()=>false,signal=nul
     !Large.isSupportedMime(file.mime))
   reject('large_media_metadata_invalid');
  if(!store?.large||typeof store.large.chunks!=='function')reject('large_media_storage_unavailable');
+ const aborted=()=>cancelled()||signal?.aborted===true;
+ if(aborted())reject('download_aborted');
  const chunks=[],digest=crypto.createHash('sha256');
  const expectedChunks=Math.ceil(file.size/Large.CHUNK_BYTES);
  let count=0,total=0,first=null;
  for await(const source of store.large.chunks(email,file.id,{signal})){
-  if(cancelled())reject('download_aborted');
+  if(aborted())reject('download_aborted');
   if(count>=expectedChunks)reject('large_media_corrupt_chunk');
   const part=Buffer.isBuffer(source)?source:Buffer.from(source);
   const expected=Math.min(Large.CHUNK_BYTES,file.size-total);
@@ -44,7 +46,7 @@ async function verifiedSnapshot(store,email,file,{cancelled=()=>false,signal=nul
   if(!first)first=copy.subarray(0,32);
   total+=copy.length;count++;digest.update(copy);chunks.push(copy);
  }
- if(cancelled())reject('download_aborted');
+ if(aborted())reject('download_aborted');
  if(count!==expectedChunks||total!==file.size||digest.digest('hex')!==file.sha256||
     !Media.mimeDetected(first,file.mime))reject('large_media_integrity_failed');
  // Snapshot becomes independent from Mongo cursor/pages and future deletions.
