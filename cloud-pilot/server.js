@@ -6,6 +6,7 @@ const {createMongoStore}=require('./store');
 const {MODULES,moduleCheck,checkAudience,planLegacy,mergeModules,checkWhole}=require('./workspace-domain');
 const {changeCrmBoard,checkCrmLinks}=require('./crm-board-domain');
 const Media=require('./media-domain');
+const {checkLibraryRecords}=require('./library-domain');
 const Meta=require('./meta-webhook');
 const ASSETS={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','application/javascript; charset=utf-8'],'/styles.css':['styles.css','text/css; charset=utf-8'],'/workspace.js':['workspace.js','application/javascript; charset=utf-8'],'/backup-zip.js':['backup-zip.js','application/javascript; charset=utf-8'],'/cloud-ui.js':['cloud-ui.js','application/javascript; charset=utf-8'],'/cloud-ui.css':['cloud-ui.css','text/css; charset=utf-8'],'/cloud-crm-board.js':['cloud-crm-board.js','application/javascript; charset=utf-8'],'/cloud-crm-board.css':['cloud-crm-board.css','text/css; charset=utf-8']};
 const MAX_TRIES=8, WINDOW_MS=15*60*1000;
@@ -215,12 +216,8 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
      const current=await store.readWorkspace(user.email);
      if(current.revision!==payload.revision)return json(res,409,{error:'workspace_conflict',revision:current.revision});
      if(name==='library'){
-      const vault=await store.readMedia(user.email);
-      const mediaIds=new Set(vault.items.map(x=>x.id));
-      for(const record of records){
-       if(record.mediaId&&!mediaIds.has(record.mediaId))return json(res,422,{error:'unknown_library_media'});
-       if(record.contentStatus==='ready'&&!record.text&&!record.mediaId)return json(res,422,{error:'library_source_required'});
-      }
+      try{checkLibraryRecords(records,(await store.readMedia(user.email)).items);}
+      catch(error){return json(res,422,{error:error.code||'invalid_library'});}
      }
      const modules={...current.modules,[name]:records};
      try{checkWhole(modules);checkCrmLinks(modules.crm||[],modules.contacts||[]);for(const audienceModule of ['campaigns','flows','funnels'])checkAudience(audienceModule,modules[audienceModule]||[],modules.contacts||[]);}
@@ -244,7 +241,11 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
     if(!Number.isSafeInteger(input.revision)||input.revision<0||input.revision!==current.revision)return json(res,409,{error:'workspace_conflict',revision:current.revision});
     if(typeof input.digest!=='string'||input.digest!==plan.digest)return json(res,409,{error:'backup_changed_since_preview'});
     let modules;
-    try{modules=mergeModules(current.modules,plan.modules,mode);checkWhole(modules);checkCrmLinks(modules.crm||[],modules.contacts||[]);}
+    try{
+     modules=mergeModules(current.modules,plan.modules,mode);checkWhole(modules);
+     checkCrmLinks(modules.crm||[],modules.contacts||[]);
+     if(Array.isArray(modules.library))checkLibraryRecords(modules.library,(await store.readMedia(user.email)).items);
+    }
     catch(error){return json(res,422,{error:error.code||'import_failed'});}
     const committed=await store.writeWorkspace(user.email,current.revision,modules);
     if(committed.conflict)return json(res,409,{error:'workspace_conflict'});
