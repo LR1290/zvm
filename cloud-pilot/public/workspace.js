@@ -15,6 +15,18 @@
   settings:{title:'Configurações',fields:[['name','Preferência'],['value','Valor']]}
  });
  const cache=new Map(),uiMsg=new Map();
+ const EMPTY=Object.freeze({
+  contacts:'Sua lista está vazia. Cadastre contatos com número válido ou importe os contatos do CRM.',
+  crm:'Nenhum pipeline encontrado. Crie o seu CRM ou importe as etapas existentes da extensão.',
+  labels:'Nenhuma etiqueta cadastrada. Organize seu atendimento com marcadores.',
+  library:'Nenhum conteúdo na Biblioteca. Salve uma mensagem ou importe os itens da extensão.',
+  quickReplies:'Nenhuma resposta rápida. Cadastre mensagens que você reutiliza no atendimento.',
+  flows:'Nenhum fluxo carregado. Importe suas definições ou crie um novo fluxo.',
+  funnels:'Nenhum funil carregado. Importe suas etapas ou crie um novo funil.',
+  campaigns:'Nenhuma campanha. Crie um Disparo com seleção explícita de destinatários.',
+  agenda:'Nenhum planejamento salvo na Agenda.',
+  settings:'Nenhuma preferência Cloud cadastrada.'
+ });
  let importPlan=null,enabled=false,mediaSnapshot={revision:0,items:[]};
  const byId=id=>document.getElementById(id);
  function tag(name,text,className=''){
@@ -40,7 +52,7 @@
   if(name==='library')return record.contentStatus==='missing_source'?'Conteúdo original ausente; revise antes de usar':(record.kind||'message')+' · '+String(record.text||'').slice(0,90);
   if(name==='crm')return (record.columns?.length||0)+' etapas no CRM';
   if(name==='campaigns')return 'Destinatários escolhidos: '+(record.recipientIds?.length||0)+' · SEM ENVIO';
-  if(name==='flows'||name==='funnels')return 'Definição em rascunho · '+(record.recipientIds?.length||0)+' destinatário(s) selecionado(s) · Sem execução';
+  if(name==='flows'||name==='funnels')return (Array.isArray(record.nodes)?record.nodes.length:Array.isArray(record.steps)?record.steps.length:0)+' etapas/nós · '+(record.recipientIds?.length||0)+' destinatário(s) revisados · Sem execução';
   if(name==='quickReplies')return String(record.text||'Sequência importada').slice(0,100);
   if(name==='agenda')return String(record.when||'Sem horário')+' · Não agendado no servidor';
   return String(record.description||record.notes||record.value||'Rascunho de trabalho').slice(0,120);
@@ -57,23 +69,51 @@
   const tools=tag('div','','workspace-actions');
   tools.append(btn('+ Novo '+MODULES[module].title,()=>editor(module,null),'primary'));
   tools.append(btn('Atualizar',()=>load(module)));
+  let search=null;
+  if(records.length){
+   search=document.createElement('input');
+   search.type='search';search.className='workspace-filter';
+   search.setAttribute('aria-label','Buscar '+MODULES[module].title.toLowerCase());
+   search.placeholder='Buscar nesta seção...';
+   tools.append(search);
+  }
   mount.append(tools);
   if(!records.length){
-   mount.append(tag('p','Nenhum item cadastrado. Crie um rascunho ou importe um backup compatível.', 'muted'));
+   mount.append(tag('p',EMPTY[module]||'Nenhum item cadastrado.', 'muted'));
    return;
   }
   const list=tag('div','','workspace-items');
   for(const record of records){
    const row=tag('article','','workspace-item');
+   row.dataset.filter=(String(record.name||'')+' '+summary(module,record)+' '+String(record.phone||'')).toLocaleLowerCase('pt-BR');
    const info=tag('div','','workspace-item-info');
    info.append(tag('strong',record.name||'Sem título'));
    info.append(tag('small',summary(module,record)));
+   if(module==='crm'&&Array.isArray(record.columns)&&record.columns.length){
+    const pipeline=tag('div','','cloud-crm-preview');
+    for(const col of record.columns.slice(0,12)){
+     const count=Array.isArray(col.items)?col.items.length:0;
+     const step=tag('span',(col.title||col.name||'Etapa')+' · '+count,'cloud-crm-step');
+     pipeline.append(step);
+    }
+    info.append(pipeline);
+   }
    const actions=tag('div','','workspace-item-actions');
    actions.append(btn('Editar',()=>editor(module,record)));
    actions.append(btn('Excluir',()=>remove(module,record),'secondary'));
    row.append(info,actions);list.append(row);
   }
   mount.append(list);
+  if(search){
+   const empty=tag('p','Nenhum registro corresponde à busca.','muted');empty.hidden=true;
+   mount.append(empty);
+   search.addEventListener('input',()=>{
+    const q=search.value.trim().toLocaleLowerCase('pt-BR');
+    let shown=0;
+    for(const row of list.children){row.hidden=!!q&&!row.dataset.filter.includes(q);if(!row.hidden)shown++;}
+    empty.hidden=shown>0;
+   });
+  }
  }
  async function loadAll(){
   const snapshot=await api('/api/workspace');
@@ -81,6 +121,7 @@
    cache.set(name,{module:name,revision:snapshot.revision,records:snapshot.data?.[name]||[]});
    render(name);
   }
+  window.dispatchEvent(new CustomEvent('zvm-cloud-data',{detail:{counts:snapshot.counts||{},revision:snapshot.revision}}));
  }
  async function load(module){
   const mount=byId('cloud-list-'+module);
