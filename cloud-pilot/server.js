@@ -1,11 +1,13 @@
 'use strict';
 // Cloud demo controller: reuse real ZVM portal accounts, require a DEV-enabled license.
 // No message dispatch, scheduling, WhatsApp webhook or public registration exists here.
-const http=require('node:http'),fs=require('node:fs'),path=require('node:path');
+const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+const {once}=require('node:events');
 const {createMongoStore}=require('./store');
 const {MODULES,moduleCheck,checkAudience,planLegacy,mergeModules,checkWhole}=require('./workspace-domain');
 const {changeCrmBoard,checkCrmLinks}=require('./crm-board-domain');
 const Media=require('./media-domain');
+const Large=require('./large-media-domain');
 const {checkLibraryRecords}=require('./library-domain');
 const Meta=require('./meta-webhook');
 const ASSETS={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','application/javascript; charset=utf-8'],'/styles.css':['styles.css','text/css; charset=utf-8'],'/workspace.js':['workspace.js','application/javascript; charset=utf-8'],'/backup-zip.js':['backup-zip.js','application/javascript; charset=utf-8'],'/cloud-ui.js':['cloud-ui.js','application/javascript; charset=utf-8'],'/cloud-ui.css':['cloud-ui.css','text/css; charset=utf-8'],'/cloud-crm-board.js':['cloud-crm-board.js','application/javascript; charset=utf-8'],'/cloud-crm-board.css':['cloud-crm-board.css','text/css; charset=utf-8'],'/cloud-library.js':['cloud-library.js','application/javascript; charset=utf-8'],'/cloud-library.css':['cloud-library.css','text/css; charset=utf-8']};
@@ -29,6 +31,47 @@ async function readJson(req,maxBytes=8192){
   text+=part.toString('utf8');
  }
  return JSON.parse(text||'{}');
+}
+async function readBinary(req,maxBytes=Large.CHUNK_BYTES){
+ if(String(req.headers['content-type']||'').toLowerCase()!=='application/octet-stream')throw Error('invalid_content_type');
+ const parts=[];let total=0;
+ for await(const part of req){
+  const bytes=Buffer.isBuffer(part)?part:Buffer.from(part);
+  total+=bytes.length;if(total>maxBytes)throw Error('chunk_too_large');
+  parts.push(bytes);
+ }
+ return Buffer.concat(parts,total);
+}
+function largeError(error){
+ const code=error?.code||'invalid_large_upload';
+ const status=code==='large_media_limit'||code==='chunk_too_large'?413:
+  /^(upload_already_active|media_id_collision|chunk_conflict|chunk_out_of_order|upload_incomplete|media_storage_quota|media_item_quota)$/.test(code)?409:
+  code==='upload_not_found'||code==='media_not_found'?404:422;
+ return {code,status};
+}
+async function validateLargeDownload(store,email,file){
+ const digest=crypto.createHash('sha256');
+ let length=0,count=0,first=null;
+ for await(const bytes of store.large.chunks(email,file.id)){
+  const expected=Large.expectedSize({size:file.size,chunks:Math.ceil(file.size/Large.CHUNK_BYTES)},count);
+  if(bytes.length!==expected)throw Error('large_media_corrupt_chunk');
+  if(!first)first=bytes.subarray(0,32);
+  length+=bytes.length;digest.update(bytes);count++;
+ }
+ if(length!==file.size||count!==Math.ceil(file.size/Large.CHUNK_BYTES)||
+    digest.digest('hex')!==file.sha256||!Media.mimeDetected(first,file.mime))throw Error('large_media_integrity_failed');
+}
+async function streamLargeDownload(store,email,file,res,method){
+ await validateLargeDownload(store,email,file);
+ res.writeHead(200,{'Content-Type':file.mime,'Content-Length':file.size,
+  'Content-Disposition':file.mime.startsWith('image/')?'inline; filename="zvm-cloud-anexo"':'attachment; filename="zvm-cloud-anexo"',
+  'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',
+  'X-Download-Options':'noopen','Cross-Origin-Resource-Policy':'same-origin'});
+ if(method==='HEAD'){res.end();return;}
+ for await(const bytes of store.large.chunks(email,file.id)){
+  if(!res.write(bytes))await once(res,'drain');
+ }
+ res.end();
 }
 function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
  // No alternate password database and no fallback identity from caller-supplied email.
