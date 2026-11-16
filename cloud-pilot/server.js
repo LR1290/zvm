@@ -45,7 +45,7 @@ async function readBinary(req,maxBytes=Large.CHUNK_BYTES){
 function largeError(error){
  const code=error?.code||'invalid_large_upload';
  const status=code==='large_media_limit'||code==='chunk_too_large'?413:
-  /^(upload_already_active|media_id_collision|chunk_conflict|chunk_out_of_order|upload_incomplete|media_storage_quota|media_item_quota)$/.test(code)?409:
+  /^(upload_already_active|media_id_collision|chunk_conflict|chunk_out_of_order|upload_incomplete|upload_finalizing|upload_in_progress|media_storage_quota|media_item_quota)$/.test(code)?409:
   code==='upload_not_found'||code==='media_not_found'?404:422;
  return {code,status};
 }
