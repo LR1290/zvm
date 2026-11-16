@@ -5,6 +5,8 @@ const crypto=require('node:crypto');
 const {createMemoryLargeMediaStore,createMongoLargeMediaStore}=require('./large-media-store');
 const {checkLibraryRecords}=require('./library-domain');
 const Large=require('./large-media-domain');
+const Media=require('./media-domain');
+const Quota=require('./media-quota');
 const workspaceId=email=>crypto.createHash('sha256').update('zvm-cloud-workspace-v1:'+email).digest('hex');
 // Account grant identifiers are canonical across Portal logins; no raw email in _id.
 const accountGrantId=email=>workspaceId(String(email||'').trim().toLowerCase());
@@ -65,16 +67,55 @@ function createMemoryStore(){
     return {conflict:false,large:false,revision:vault.revision+1};
    });
   },
+  async beginMediaUpload(email,input){
+   return withFence(email,async()=>{
+    const spec=Large.specOf(input),id=workspaceId(email);
+    const legacy=media.get(id)?.items||[],largeRows=await large.list(email);
+    const existing=legacy.find(x=>x.id===spec.id);
+    if(existing){
+     if(existing.sha256!==spec.sha256||existing.size!==spec.size||existing.mime!==spec.mime)
+      Large.fail('media_id_collision');
+     return {duplicate:true,file:{id:existing.id,name:existing.name,mime:existing.mime,
+      sha256:existing.sha256,size:existing.size,uploadedAt:existing.uploadedAt},upload:null};
+    }
+    const pending=await large.status(email);
+    if(!pending&& !largeRows.some(x=>x.id===spec.id))
+     Quota.enforce(legacy,largeRows,[spec][0]);
+    return large.begin(email,spec,Quota.budget(legacy).usedBytes,legacy.length);
+   });
+  },
+  async completeMediaUpload(email,uploadId){
+   return withFence(email,async()=>{
+    const pending=await large.status(email);
+    if(pending&&pending.uploadId===uploadId){
+     const legacy=media.get(workspaceId(email))?.items||[];
+     Quota.enforce(legacy,await large.list(email),pending);
+    }
+    return large.finish(email,uploadId);
+   });
+  },
+  async cancelMediaUpload(email,uploadId){
+   return withFence(email,()=>large.cancel(email,uploadId));
+  },
   async readMedia(email){
    const doc=media.get(workspaceId(email));
    if(!doc)return {revision:0,items:[]};
    return {revision:doc.revision,items:doc.items.map(item=>({...item,bytes:Buffer.from(item.bytes)}))};
   },
   async writeMedia(email,revision,items){
-   const id=workspaceId(email),doc=media.get(id)||{revision:0};
-   if(doc.revision!==revision)return {conflict:true};
-   media.set(id,{revision:revision+1,items:items.map(item=>({...item,bytes:Buffer.from(item.bytes)}))});
-   return {conflict:false,revision:revision+1};
+   return withFence(email,async()=>{
+    const id=workspaceId(email),doc=media.get(id)||{revision:0};
+    if(doc.revision!==revision)return {conflict:true};
+    const largeRows=await large.list(email),pending=await large.status(email);
+    if(items.length>Media.MAX_ITEMS||Quota.budget(items).usedBytes>Media.MAX_USER)
+     Quota.enforce(items,[],{size:Large.MAX_ACCOUNT});
+    Quota.enforce(items,largeRows,pending);
+    for(const item of items){
+     if(largeRows.some(x=>x.id===item.id))Large.fail('media_id_collision');
+    }
+    media.set(id,{revision:revision+1,items:items.map(item=>({...item,bytes:Buffer.from(item.bytes)}))});
+    return {conflict:false,revision:revision+1};
+   });
   },
   async recordMetaEvent(email,digest,summary){
    const id=crypto.createHash('sha256').update(email+'|'+digest).digest('hex');
