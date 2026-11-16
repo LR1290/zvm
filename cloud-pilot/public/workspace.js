@@ -413,12 +413,76 @@
    await loadMedia();mediaStatus('Arquivo excluído do cofre Cloud.');
   }catch(error){mediaStatus(error.message==='media_still_linked_to_library'?'Desvincule o anexo da Biblioteca antes de excluir.':'Exclusão não confirmada: '+error.message,true);}
  }
+ const RESTORABLE_LIBRARY_KINDS=new Set(['audio','image','video','media','sticker','document']);
+ async function restoreZipAssets(file,extracted,view){
+  if(!enabled||!extracted||!Array.isArray(extracted.assets))return;
+  const candidates=extracted.assets.filter(x=>x.eligible&&x.sourceId);
+  if(!candidates.length){message(view,'Não há mídias vinculadas e compatíveis de até 32 MB neste ZIP.',true);return;}
+  if(!confirm('Restaurar até '+candidates.length+' mídias compatíveis? Cada arquivo será validado e enviado individualmente. O processo pode parar na cota de 128 MB e não ativa envios ao WhatsApp.'))return;
+  const buttons=[...view.querySelectorAll('button')];buttons.forEach(x=>x.disabled=true);
+  const progress=tag('p','','workspace-status');
+  progress.setAttribute('aria-live','polite');view.append(progress);
+  const report={linked:0,already:0,unmapped:0,blocked:0,failed:0,orphans:0};
+  try{
+   for(const asset of candidates.slice(0,60)){
+    if(!enabled)throw Error('site_login_required');
+    progress.textContent='Restaurando '+(report.linked+report.already+report.unmapped+report.blocked+report.failed+report.orphans+1)+' de '+Math.min(candidates.length,60)+': '+asset.name;
+    const current=await api('/api/workspace/library');
+    const linked=(current.records||[]).filter(row=>
+     RESTORABLE_LIBRARY_KINDS.has(row.kind)&&String(row.sourceId||row.id)===asset.sourceId);
+    if(linked.length!==1){report.unmapped++;continue;}
+    const record=linked[0];
+    if(record.mediaId&&record.contentStatus==='ready'){report.already++;continue;}
+    if(record.mediaId){report.blocked++;continue;}
+    let saved;
+    try{
+     const blob=await window.ZVMCloudZip.readAsset(file,extracted,asset.id);
+     const media=new File([blob],asset.name,{type:asset.mime});
+     saved=await uploadMedia(media,{throwOnError:true});
+     if(!saved||!/^m_[a-f0-9]{40}$/.test(saved.mediaId))throw Error('upload_not_verified');
+    }catch(error){
+     report.failed++;
+     progress.textContent='Mídia '+asset.name+' não restaurada: '+error.message;
+     if(['media_storage_quota','upload_already_active','upload_cancelled','site_login_required'].includes(error.message))break;
+     continue;
+    }
+    // Do not trust a stale preview after a lengthy upload. CAS and account checks
+    // are repeated immediately before changing the Library record.
+    try{
+     const latest=await api('/api/workspace/library');
+     const same=(latest.records||[]).filter(row=>row.id===record.id&&
+      String(row.sourceId||row.id)===asset.sourceId&&RESTORABLE_LIBRARY_KINDS.has(row.kind));
+     if(same.length!==1||same[0].mediaId){report.orphans++;continue;}
+     const records=latest.records.map(row=>row.id===record.id?
+      {...row,mediaId:saved.mediaId,contentStatus:'ready'}:row);
+     await api('/api/workspace/library',mutation('PUT',{revision:latest.revision,records}));
+     report.linked++;
+    }catch(error){
+     // The asset remains safely in the private vault for manual recovery;
+     // never delete an asset automatically after an ambiguous network/CAS failure.
+     report.orphans++;
+     progress.textContent='Mídia armazenada, mas vínculo não confirmado ('+error.message+').';
+    }
+   }
+   await loadAll().catch(()=>{});
+   await loadMedia().catch(()=>{});
+   progress.textContent='Restauração seletiva concluída: '+report.linked+' vinculados, '+report.already+
+    ' já existentes, '+report.unmapped+' sem vínculo inequívoco, '+report.blocked+
+    ' com vínculo anterior, '+report.failed+' não enviados, '+report.orphans+
+    ' salvos no Cofre sem vínculo confirmado.'+
+    (candidates.length>60?' Limite de 60 itens por execução; itens restantes não processados.':'');
+   progress.classList.toggle('error',report.failed>0||report.orphans>0);
+  }catch(error){
+   progress.textContent='Restauração interrompida: '+error.message+'. Arquivos confirmados anteriormente permanecem na conta.';
+   progress.classList.add('error');
+  }finally{buttons.forEach(x=>x.disabled=false);}
+ }
  async function inspectBackup(){
   const file=byId('backupFile').files?.[0],root=byId('backupReview');
   root.replaceChildren();importPlan=null;
   const zip=!!file&&/\.zip$/i.test(file.name);
   if(!file||(!zip&&!/\.json$/i.test(file.name))){message(root,'Use JSON ou ZIP. Backups .extbackup criptografados devem ser abertos na extensão original.',true);return;}
-  if(file.size>(zip?512*1024*1024:20*1024*1024)){message(root,'Arquivo acima do limite seguro deste importador.',true);return;}
+  if(file.size>(zip?2200*1024*1024:20*1024*1024)){message(root,'Arquivo acima do limite seguro deste importador.',true);return;}
   try{
    const extracted=zip?await window.ZVMCloudZip.inspect(file):null;
    const backup=prepareBackup(extracted?extracted.backup:JSON.parse(await file.text()));
@@ -429,7 +493,15 @@
    card.append(tag('h3','Prévia — nada foi importado ainda'));
    if(extracted){
     card.append(tag('p','ZIP verificado: '+extracted.entries+' entradas; manifesto '+extracted.manifest+'.','muted'));
-    if(extracted.mediaEntries)card.append(tag('small','⚠ '+extracted.mediaEntries+' entradas adicionais do ZIP não serão enviadas nem restauradas. Mídias devem ser importadas separadamente no Cofre da Biblioteca.'));
+    if(extracted.mediaEntries){
+     const eligible=(extracted.assets||[]).filter(x=>x.eligible).length;
+     const unsupported=(extracted.assets||[]).filter(x=>!x.eligible).length;
+     card.append(tag('small','ZIP R17: '+extracted.mediaEntries+' entradas de mídia; '+eligible+
+      ' elegíveis à restauração seletiva de até 32 MB, '+unsupported+
+      ' sem vínculo suportado ou acima do limite. Nenhum arquivo será enviado antes da confirmação.'));
+     if(extracted.mediaEntries!==extracted.assets.length)
+      card.append(tag('small','O manifesto não descreve todos os arquivos. As mídias não identificadas não serão importadas.','error'));
+    }
    }
    card.append(tag('p','Formato: '+plan.sourceFormat+' · '+Object.entries(plan.counts).map(([m,n])=>m+': '+n).join(' · ')));
    for(const warning of plan.warnings.slice(0,20))card.append(tag('small','⚠ '+warning));
@@ -439,20 +511,32 @@
     const option=document.createElement('option');option.value=value;option.textContent=label;mode.append(option);
    }
    card.append(tag('label','Modo de importação'),mode);
-   card.append(btn('Confirmar importação',async()=>{
+   const confirmImport=btn('Confirmar importação de dados',async()=>{
     if(!importPlan)return;
-    if(!confirm('Confirmar a gravação dos dados compatíveis? Mídias locais NÃO serão restauradas.'))return;
+    if(!confirm('Confirmar a gravação das categorias compatíveis? Nenhuma mídia será transferida sem aprovação adicional.'))return;
+    confirmImport.disabled=true;
     try{
      const result=await api('/api/import/commit',mutation('POST',{
       backup:importPlan.backup,digest:importPlan.digest,revision:importPlan.revision,mode:mode.value
      }));
      importPlan=null;
-     card.replaceChildren(tag('p','Importação confirmada na revisão '+result.revision+'.'+
-      ' Nenhuma mensagem foi enviada.','workspace-status'));
+     card.replaceChildren(tag('p','Dados importados na revisão '+result.revision+
+      '. Mídias do ZIP ainda precisam de restauração seletiva. Nenhuma mensagem foi enviada.','workspace-status'));
      cache.clear();
      await loadAll();
-    }catch(error){message(card,error.message==='workspace_conflict'?'Os dados mudaram desde a prévia. Faça uma nova análise.':'Importação bloqueada: '+error.message,true);}
-   },'primary'));
+     const eligible=extracted?.assets?.filter(x=>x.eligible&&x.sourceId)||[];
+     if(eligible.length){
+      card.append(tag('p','Há '+eligible.length+' mídias com referência original identificada. A restauração é separada, com confirmação e limites por conta.','muted'));
+      card.append(btn('Restaurar mídias compatíveis do ZIP',()=>restoreZipAssets(file,extracted,card),'primary'));
+     }else if(extracted?.mediaEntries){
+      card.append(tag('p','As mídias deste ZIP não podem ser vinculadas automaticamente. Use o Cofre e selecione os arquivos originais manualmente.','muted'));
+     }
+    }catch(error){
+     message(card,error.message==='workspace_conflict'?'Os dados mudaram desde a prévia. Faça uma nova análise.':'Importação bloqueada: '+error.message,true);
+     confirmImport.disabled=false;
+    }
+   },'primary');
+   card.append(confirmImport);
    root.append(card);
   }catch(error){message(root,'Arquivo inválido ou incompatível: '+error.message,true);}
  }
