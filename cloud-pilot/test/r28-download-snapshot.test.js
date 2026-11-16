@@ -155,3 +155,38 @@ test('R28: HTTP concurrency gives retryable 429 and releases lease after full re
   assert.deepEqual(Buffer.from(await another.arrayBuffer()),f.data);
  }finally{await f.close();}
 });
+
+test('R28: Mongo cursor is actively closed when the browser aborts',async()=>{
+ const {createMongoLargeMediaStore}=require('../large-media-store');
+ const {FakeClient}=require('./helpers/fake-mongo');
+ FakeClient.shared=null;
+ const client=new FakeClient();
+ const db=client.db('zvm_cloud_pilot');
+ const owner=Large.ownerId(OWNER);
+ const data=image(),sha=Large.sha(data),id='m_'+sha.slice(0,40);
+ await db.collection('cloud_large_media_files').insertOne({
+  _id:owner+':'+id,owner,id,status:'ready',uploadId:'f'.repeat(32),
+  name:'foto.png',mime:'image/png',size:data.length,sha256:sha
+ });
+ const parts=chunks(data);
+ let release,closed=0;
+ const waiting=new Promise(resolve=>{release=resolve;});
+ const collection=db.collection('cloud_large_media_chunks');
+ collection.find=()=>({sort:()=>({
+  async *[Symbol.asyncIterator](){
+   yield {index:0,bytes:parts[0]};
+   await waiting;
+   yield {index:1,bytes:parts[1]};
+  },
+  async close(){closed++;release();}
+ })});
+ const large=await createMongoLargeMediaStore(db,client);
+ const aborter=new AbortController();
+ const cursor=large.chunks(OWNER,id,{signal:aborter.signal});
+ const first=await cursor.next();
+ assert.equal(first.done,false);
+ const next=cursor.next();
+ aborter.abort();
+ await assert.rejects(next,/download_aborted/);
+ assert(closed>=1,'Mongo cursor must be closed on abort');
+});
