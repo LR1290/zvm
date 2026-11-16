@@ -4,7 +4,7 @@
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path');
 const {createMongoStore}=require('./store');
 const {MODULES,moduleCheck,checkAudience,planLegacy,mergeModules,checkWhole}=require('./workspace-domain');
-const {changeCrmBoard}=require('./crm-board-domain');
+const {changeCrmBoard,checkCrmLinks}=require('./crm-board-domain');
 const Media=require('./media-domain');
 const Meta=require('./meta-webhook');
 const ASSETS={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','application/javascript; charset=utf-8'],'/styles.css':['styles.css','text/css; charset=utf-8'],'/workspace.js':['workspace.js','application/javascript; charset=utf-8'],'/backup-zip.js':['backup-zip.js','application/javascript; charset=utf-8'],'/cloud-ui.js':['cloud-ui.js','application/javascript; charset=utf-8'],'/cloud-ui.css':['cloud-ui.css','text/css; charset=utf-8'],'/cloud-crm-board.js':['cloud-crm-board.js','application/javascript; charset=utf-8'],'/cloud-crm-board.css':['cloud-crm-board.css','text/css; charset=utf-8']};
@@ -175,7 +175,7 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
     try{
      result=changeCrmBoard(current.modules.crm||[],current.modules.contacts||[],payload);
      modules={...current.modules,crm:moduleCheck('crm',result.records)};
-     checkWhole(modules);
+     checkWhole(modules);checkCrmLinks(modules.crm||[],modules.contacts||[]);
     }catch(error){return json(res,422,{error:error.code||'crm_board_invalid'});}
     const saved=await store.writeWorkspace(user.email,current.revision,modules);
     if(saved.conflict)return json(res,409,{error:'workspace_conflict'});
@@ -217,7 +217,7 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
       }
      }
      const modules={...current.modules,[name]:records};
-     try{checkWhole(modules);for(const audienceModule of ['campaigns','flows','funnels'])checkAudience(audienceModule,modules[audienceModule]||[],modules.contacts||[]);}
+     try{checkWhole(modules);checkCrmLinks(modules.crm||[],modules.contacts||[]);for(const audienceModule of ['campaigns','flows','funnels'])checkAudience(audienceModule,modules[audienceModule]||[],modules.contacts||[]);}
      catch(error){return json(res,422,{error:error.code||'workspace_invalid'});}
      const saved=await store.writeWorkspace(user.email,current.revision,modules);
      if(saved.conflict)return json(res,409,{error:'workspace_conflict'});
@@ -238,7 +238,7 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
     if(!Number.isSafeInteger(input.revision)||input.revision<0||input.revision!==current.revision)return json(res,409,{error:'workspace_conflict',revision:current.revision});
     if(typeof input.digest!=='string'||input.digest!==plan.digest)return json(res,409,{error:'backup_changed_since_preview'});
     let modules;
-    try{modules=mergeModules(current.modules,plan.modules,mode);checkWhole(modules);}
+    try{modules=mergeModules(current.modules,plan.modules,mode);checkWhole(modules);checkCrmLinks(modules.crm||[],modules.contacts||[]);}
     catch(error){return json(res,422,{error:error.code||'import_failed'});}
     const committed=await store.writeWorkspace(user.email,current.revision,modules);
     if(committed.conflict)return json(res,409,{error:'workspace_conflict'});
