@@ -6,7 +6,7 @@
   contacts:{title:'Contatos',fields:[['name','Nome'],['phone','Telefone'],['notes','Observações']]},
   crm:{title:'CRM',fields:[['name','Nome do pipeline'],['notes','Descrição']]},
   labels:{title:'Etiquetas',fields:[['name','Nome'],['color','Cor hexadecimal']]},
-  library:{title:'Biblioteca',fields:[['name','Nome do item'],['text','Texto'],['kind','Tipo (message, audio, image etc.)']]},
+  library:{title:'Biblioteca',fields:[]},
   quickReplies:{title:'Respostas rápidas',fields:[['name','Nome'],['text','Resposta de exemplo']]},
   flows:{title:'Fluxos',fields:[['name','Nome do fluxo'],['description','Objetivo'],['text','Primeira mensagem (rascunho)']]},
   funnels:{title:'Funis',fields:[['name','Nome do funil'],['description','Objetivo'],['text','Primeira mensagem (rascunho)']]},
@@ -19,7 +19,6 @@
   contacts:'Sua lista está vazia. Cadastre contatos com número válido ou importe os contatos do CRM.',
   crm:'Nenhum pipeline encontrado. Crie o seu CRM ou importe as etapas existentes da extensão.',
   labels:'Nenhuma etiqueta cadastrada. Organize seu atendimento com marcadores.',
-  library:'Nenhum conteúdo na Biblioteca. Salve uma mensagem ou importe os itens da extensão.',
   quickReplies:'Nenhuma resposta rápida. Cadastre mensagens que você reutiliza no atendimento.',
   flows:'Nenhum fluxo carregado. Importe suas definições ou crie um novo fluxo.',
   funnels:'Nenhum funil carregado. Importe suas etapas ou crie um novo funil.',
@@ -49,7 +48,6 @@
  }
  function summary(name,record){
   if(name==='contacts')return 'Telefone: '+(record.phone||'não definido');
-  if(name==='library')return record.contentStatus==='missing_source'?'Conteúdo original ausente; revise antes de usar':(record.kind||'message')+' · '+String(record.text||'').slice(0,90);
   if(name==='crm')return (record.columns?.length||0)+' etapas no CRM';
   if(name==='campaigns')return 'Destinatários escolhidos: '+(record.recipientIds?.length||0)+' · SEM ENVIO';
   if(name==='flows'||name==='funnels')return (Array.isArray(record.nodes)?record.nodes.length:Array.isArray(record.steps)?record.steps.length:0)+' etapas/nós · '+(record.recipientIds?.length||0)+' destinatário(s) revisados · Sem execução';
@@ -121,7 +119,7 @@
    cache.set(name,{module:name,revision:snapshot.revision,records:snapshot.data?.[name]||[]});
    render(name);
   }
-  window.dispatchEvent(new CustomEvent('zvm-cloud-data',{detail:{counts:snapshot.counts||{},revision:snapshot.revision,crm:snapshot.data?.crm||[],contacts:snapshot.data?.contacts||[]}}));
+  window.dispatchEvent(new CustomEvent('zvm-cloud-data',{detail:{counts:snapshot.counts||{},revision:snapshot.revision,crm:snapshot.data?.crm||[],contacts:snapshot.data?.contacts||[],library:snapshot.data?.library||[]}}));
  }
  async function load(module){
   const mount=byId('cloud-list-'+module);
@@ -164,7 +162,7 @@
   form.append(tag('h3',record?'Editar '+MODULES[module].title:'Novo item · '+MODULES[module].title));
   for(const [name,label] of MODULES[module].fields)form.append(field(name,label,record?.[name]??''));
   if(['campaigns','flows','funnels'].includes(module))form.append(audienceArea(form,record));
-  if(module==='library')form.append(mediaPicker(record));
+  /* Biblioteca usa editor próprio Cloud Library Studio. */
   const actions=tag('div','','workspace-actions');
   const save=document.createElement('button');save.type='submit';save.className='primary';save.textContent='Salvar na Cloud';
   actions.append(save,btn('Cancelar',()=>form.remove()));
@@ -177,11 +175,7 @@
     draft.id=record?.id||('cloud_'+crypto.randomUUID());
     for(const [name] of MODULES[module].fields)draft[name]=String(form.elements[name]?.value||'').trim();
     if(!draft.name)throw Error('Preencha o nome do item.');
-    if(module==='library'){
-     const selected=form.elements.mediaId?.value||'';
-     if(selected)draft.mediaId=selected;else delete draft.mediaId;
-     draft.contentStatus=(draft.text||draft.mediaId)?'ready':'missing_source';
-    }
+    
     if(['campaigns','flows','funnels'].includes(module)){
      draft.recipientIds=[...form.querySelectorAll('input[name=recipientId]:checked')].map(x=>x.value);
      if(!draft.recipientIds.length&&!confirm('Salvar sem destinatários? O item ficará somente como rascunho.'))return;
@@ -272,28 +266,13 @@
   return {format:String(raw.format||'R17_STORAGE_DUMP').slice(0,80),data:safe};
  }
 
- function mediaPicker(record){
-  const wrap=tag('div','','workspace-field');
-  wrap.append(tag('label','Anexo do Cofre (opcional)'));
-  const select=document.createElement('select');select.name='mediaId';select.className='workspace-media-select';
-  const none=document.createElement('option');none.value='';none.textContent='Nenhum anexo';select.append(none);
-  for(const item of mediaSnapshot.items||[]){
-   const option=document.createElement('option');option.value=item.id;option.textContent=item.name+' ('+Math.ceil(item.size/1024)+' KB)';
-   option.selected=item.id===record?.mediaId;select.append(option);
-  }
-  if(record?.mediaId&&!mediaSnapshot.items?.some(x=>x.id===record.mediaId)){
-   const missing=document.createElement('option');missing.value='';missing.textContent='Anexo anterior não disponível';select.append(missing);select.value='';
-  }
-  wrap.append(select);
-  return wrap;
- }
  function mediaStatus(text,isError=false){
   const element=byId('cloudMediaStatus');if(!element)return;
   element.textContent=text;element.classList.toggle('error',isError);
  }
  async function loadMedia(){
   if(!enabled)return;
-  try{mediaSnapshot=await api('/api/media');renderMedia();}
+  try{mediaSnapshot=await api('/api/media');renderMedia();window.dispatchEvent(new CustomEvent('zvm-cloud-media-data',{detail:{items:mediaSnapshot.items||[]}}));}
   catch(error){mediaStatus('Falha ao consultar o cofre; o conteúdo antigo permanece no servidor.',true);}
  }
  function renderMedia(){
