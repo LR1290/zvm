@@ -5371,6 +5371,7 @@ function _compressedSend(res, buf, status, acceptEncoding = '') {
 // CSP exceptions are scoped to legacy HTML only until event handlers have been migrated.
 const _CSP_LEGACY_HTML = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: https://pps.whatsapp.net https://i.ytimg.com; connect-src 'self'; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; media-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests";
 const _CSP_NO_INLINE_RESPONSE = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests";
+const _CSP_ADMIN_SCRIPT_STRICT = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests";
 const _SEC_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
@@ -5680,6 +5681,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '91efd97cea203bf0d151777c286979cd8eb6d12199cb4fc58310726ae1310922',
     compressible: true,
   }),
+  '/assets/zvm-admin-dashboard.f687617ee4b9.js': Object.freeze({
+    type: 'text/javascript; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.f687617ee4b9.js'),
+    sha256: 'f687617ee4b9640aa0b36cd31f249860e9c0989bccf9c4e75cbb4aabec13c326',
+    compressible: true,
+  }),
   '/assets/zvm-admin-dashboard.ba37f88fcfe6.js': Object.freeze({
     type: 'text/javascript; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.ba37f88fcfe6.js'),
@@ -5842,11 +5849,12 @@ function sendHtml(res, html, status = 200) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Connection', 'keep-alive');
   Object.entries(_SEC_HEADERS).forEach(([k,v]) => res.setHeader(k, v));
-  res.setHeader('Content-Security-Policy', _CSP_LEGACY_HTML);
-  // Progressive CSP migration: violations visible in DevTools, no production UI breakage.
   const currentPath = new URL(String(res.req?.url || '/'), 'https://zvm.invalid').pathname;
-  if (currentPath === R_ADMIN || currentPath.startsWith(R_ADMIN+'/') ||
-      currentPath === R_ANALYTICS || currentPath.startsWith(R_ANALYTICS+'/')) {
+  const isAdminPage = currentPath === R_ADMIN || currentPath.startsWith(R_ADMIN+'/');
+  res.setHeader('Content-Security-Policy', isAdminPage ? _CSP_ADMIN_SCRIPT_STRICT : _CSP_LEGACY_HTML);
+  // CSS style attributes remain in the Admin pending visual migration.
+  // Report-only strict CSS preserves telemetry without disabling current layouts.
+  if (isAdminPage || currentPath === R_ANALYTICS || currentPath.startsWith(R_ANALYTICS+'/')) {
     res.setHeader('Content-Security-Policy-Report-Only', _CSP_AUTH_STRICT);
   }
   const accept = String(res.req?.headers?.['accept-encoding'] || '');
@@ -6778,20 +6786,20 @@ function renderAdminDashboard(opts = {}) {
   <div class="hright">
     <span class="hdr-meta" id="last-refresh" role="status" aria-live="polite">—</span>
     <span class="hdr-meta" id="hdr-users-count" title="Usuários no Portal" style="display:none;background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd);border-radius:var(--r-sm);padding:2px 8px;font-weight:700">👥 <span id="hdr-users-num">0</span></span>
-    <button type="button" id="hdr-suspect-badge" title="Filtrar chaves suspeitas" style="background:#ff475718;color:#ff4757;border:1px solid #ff475730;border-radius:var(--r-sm);padding:2px 8px;font:inherit;font-weight:700;font-size:11px;min-height:32px;cursor:pointer" onclick="document.getElementById('filter-status').value='suspect';switchTab('keys');filterKeys()">⚠ <span id="hdr-suspect-num">0</span> suspeita(s)</button>
+    <button type="button" id="hdr-suspect-badge" title="Filtrar chaves suspeitas" style="background:#ff475718;color:#ff4757;border:1px solid #ff475730;border-radius:var(--r-sm);padding:2px 8px;font:inherit;font-weight:700;font-size:11px;min-height:32px;cursor:pointer" data-zvm-handler-click="h0">⚠ <span id="hdr-suspect-num">0</span> suspeita(s)</button>
     <span id="hdr-session-warn" style="display:none;background:#f0b42912;color:var(--orange);border:1px solid var(--org-brd);border-radius:var(--r-sm);padding:2px 8px;font-size:11px">⏱ Sessão expira em <span id="hdr-session-min">—</span> min</span>
-    <button class="btn bw" onclick="doRefresh(true)">↻ Atualizar</button>
+    <button class="btn bw" data-zvm-handler-click="h1">↻ Atualizar</button>
     ${renderZvmActionHub('admin')}
   </div>
 </header>
 <div class="admin-wrap">
 <nav class="rsidebar" id="rsidebar" aria-label="Navegação administrativa">
   <div class="rsb-title">Menu</div>
-  <button class="rtab active" data-tab="keys" onclick="switchTab('keys')"><span class="rtab-icon">🔑</span><span class="rtab-label">Chaves</span></button>
-  <button class="rtab" data-tab="logs" onclick="switchTab('logs')"><span class="rtab-icon">📋</span><span class="rtab-label">Logs</span></button>
-  <button class="rtab" data-tab="audit" onclick="switchTab('audit')"><span class="rtab-icon">🛡</span><span class="rtab-label">Auditoria</span></button>
-  <button class="rtab" data-tab="users" onclick="switchTab('users')"><span class="rtab-icon">👥</span><span class="rtab-label">Usuários</span></button>
-  <button class="rtab" data-tab="security" onclick="switchTab('security')"><span class="rtab-icon">🔒</span><span class="rtab-label">Segurança</span></button>
+  <button class="rtab active" data-tab="keys" data-zvm-handler-click="h2"><span class="rtab-icon">🔑</span><span class="rtab-label">Chaves</span></button>
+  <button class="rtab" data-tab="logs" data-zvm-handler-click="h3"><span class="rtab-icon">📋</span><span class="rtab-label">Logs</span></button>
+  <button class="rtab" data-tab="audit" data-zvm-handler-click="h4"><span class="rtab-icon">🛡</span><span class="rtab-label">Auditoria</span></button>
+  <button class="rtab" data-tab="users" data-zvm-handler-click="h5"><span class="rtab-icon">👥</span><span class="rtab-label">Usuários</span></button>
+  <button class="rtab" data-tab="security" data-zvm-handler-click="h6"><span class="rtab-icon">🔒</span><span class="rtab-label">Segurança</span></button>
 </nav>
 <main class="admin-content" id="zvm-admin-main" tabindex="-1">
 
@@ -6801,10 +6809,10 @@ function renderAdminDashboard(opts = {}) {
       <h1 id="admin-overview-title">Visão geral da operação</h1>
       <p>Chaves, clientes e auditoria em um único espaço, com a identidade do portal ZVM.</p>
       <div class="admin-overview-actions">
-        <button type="button" class="primary" onclick="switchTab('keys')">Gerenciar licenças</button>
-        <button type="button" onclick="switchTab('users')">Ver clientes</button>
-        <button type="button" onclick="switchTab('security')">Segurança</button>
-        <button type="button" onclick="switchTab('audit')">Auditoria</button>
+        <button type="button" class="primary" data-zvm-handler-click="h2">Gerenciar licenças</button>
+        <button type="button" data-zvm-handler-click="h5">Ver clientes</button>
+        <button type="button" data-zvm-handler-click="h6">Segurança</button>
+        <button type="button" data-zvm-handler-click="h4">Auditoria</button>
       </div>
     </div>
     <aside class="zvm-overview-help" aria-label="Orientações operacionais">
@@ -6823,12 +6831,12 @@ function renderAdminDashboard(opts = {}) {
 
   <div class="stats">
     <div class="sc"><div class="sc-icon">🔑</div><div class="n" id="s-total">${stats.totalKeys}</div><div class="l">Total</div></div>
-    <div class="sc" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" style="cursor:pointer" onclick="document.getElementById('filter-status').value='ativo';filterKeys()" title="Filtrar ativas"><div class="sc-icon">✅</div><div class="n" id="s-active">${stats.activeKeys}</div><div class="l">Ativas</div></div>
-    <div class="sc" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" style="cursor:pointer" onclick="document.getElementById('filter-status').value='bloqueado';filterKeys()" title="Filtrar bloqueadas"><div class="sc-icon">🔒</div><div class="n" id="s-blocked">${stats.blockedKeys}</div><div class="l">Bloqueadas</div></div>
-    <div class="sc" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" style="cursor:pointer" onclick="document.getElementById('filter-status').value='aguardando';filterKeys()" title="Filtrar aguardando 1º uso"><div class="sc-icon">⏱</div><div class="n" id="s-deferred">${stats.deferredKeys}</div><div class="l">Aguardando 1º uso</div></div>
-    <div class="sc${expiredCount>0?' expired-card':''}" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" style="cursor:pointer" onclick="document.getElementById('filter-status').value='expirada';filterKeys()" title="Filtrar expiradas"><div class="sc-icon">⛔</div><div class="n" id="s-expired">${expiredCount}</div><div class="l">Expiradas</div></div>
-    <div class="sc${expiringSoon>0?' warn-card':''}" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" style="cursor:pointer" onclick="document.getElementById('filter-status').value='expirando';filterKeys()" title="Filtrar expirando em breve"><div class="sc-icon">⏰</div><div class="n" id="s-warn">${expiringSoon}</div><div class="l">Expirando (${EXPIRY_WARN_HOURS}h)</div></div>
-    <div class="sc" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" style="cursor:pointer" onclick="document.getElementById('filter-status').value='suspect';filterKeys()" title="Filtrar suspeitas"><div class="sc-icon">⚠️</div><div class="n" id="s-suspect" style="${stats.suspectKeys>0?'color:var(--red)':''}">${stats.suspectKeys}</div><div class="l">Suspeitas</div></div>
+    <div class="sc" role="button" tabindex="0" data-zvm-handler-keydown="h7" style="cursor:pointer" data-zvm-handler-click="h8" title="Filtrar ativas"><div class="sc-icon">✅</div><div class="n" id="s-active">${stats.activeKeys}</div><div class="l">Ativas</div></div>
+    <div class="sc" role="button" tabindex="0" data-zvm-handler-keydown="h7" style="cursor:pointer" data-zvm-handler-click="h9" title="Filtrar bloqueadas"><div class="sc-icon">🔒</div><div class="n" id="s-blocked">${stats.blockedKeys}</div><div class="l">Bloqueadas</div></div>
+    <div class="sc" role="button" tabindex="0" data-zvm-handler-keydown="h7" style="cursor:pointer" data-zvm-handler-click="ha" title="Filtrar aguardando 1º uso"><div class="sc-icon">⏱</div><div class="n" id="s-deferred">${stats.deferredKeys}</div><div class="l">Aguardando 1º uso</div></div>
+    <div class="sc${expiredCount>0?' expired-card':''}" role="button" tabindex="0" data-zvm-handler-keydown="h7" style="cursor:pointer" data-zvm-handler-click="hb" title="Filtrar expiradas"><div class="sc-icon">⛔</div><div class="n" id="s-expired">${expiredCount}</div><div class="l">Expiradas</div></div>
+    <div class="sc${expiringSoon>0?' warn-card':''}" role="button" tabindex="0" data-zvm-handler-keydown="h7" style="cursor:pointer" data-zvm-handler-click="hc" title="Filtrar expirando em breve"><div class="sc-icon">⏰</div><div class="n" id="s-warn">${expiringSoon}</div><div class="l">Expirando (${EXPIRY_WARN_HOURS}h)</div></div>
+    <div class="sc" role="button" tabindex="0" data-zvm-handler-keydown="h7" style="cursor:pointer" data-zvm-handler-click="hd" title="Filtrar suspeitas"><div class="sc-icon">⚠️</div><div class="n" id="s-suspect" style="${stats.suspectKeys>0?'color:var(--red)':''}">${stats.suspectKeys}</div><div class="l">Suspeitas</div></div>
     <div class="sc"><div class="sc-icon">📋</div><div class="n" id="s-logs">${stats.totalLogs}</div><div class="l">Logs</div></div>
   </div>
 
@@ -6851,13 +6859,13 @@ function renderAdminDashboard(opts = {}) {
         <div class="fi-col"><span class="fi-lbl">Usos</span><input type="number" id="nuses" class="fi-num" placeholder="3" min="-1" style="width:56px"></div>
         <div class="fi-col" style="justify-content:flex-end;padding-bottom:1px"><label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--tx2);white-space:nowrap;cursor:pointer"><input type="checkbox" id="ndeferred" style="accent-color:var(--g);width:13px;height:13px">⏱ Ativar ao 1º uso</label></div>
         <input type="number" id="batch-qty" min="1" max="50" value="1" style="width:58px;padding:6px 8px;border:1px solid var(--brd);border-radius:6px;background:var(--bg);color:var(--tx);font-size:13px" title="Quantidade de chaves a gerar">
-<button class="btn bp" id="admin-generate-key-btn" onclick="generateKey()">+ Gerar Chave(s)</button>
+<button class="btn bp" id="admin-generate-key-btn" data-zvm-handler-click="he">+ Gerar Chave(s)</button>
       </div>
     </div>
     <div id="admin-create-status" role="status" aria-live="polite" hidden style="display:none;padding:10px 14px;border:1px solid var(--org-brd);border-radius:10px;background:#f0b42912;color:var(--orange);font-size:13px;margin:10px 0"></div>
     <div class="search-bar">
-      <input type="text" id="search-input" placeholder="Buscar por nome, chave, telefone ou IP…" oninput="filterKeys()" autocomplete="off" spellcheck="false">
-      <select id="filter-status" onchange="filterKeys()">
+      <input type="text" id="search-input" placeholder="Buscar por nome, chave, telefone ou IP…" data-zvm-handler-input="hf" autocomplete="off" spellcheck="false">
+      <select id="filter-status" data-zvm-handler-change="hg">
         <option value="">Todos os status</option>
         <option value="ativo">Ativas</option>
         <option value="expirando">Expirando</option>
@@ -6866,13 +6874,13 @@ function renderAdminDashboard(opts = {}) {
         <option value="aguardando">Aguardando 1º uso</option>
         <option value="suspect">⚠ Suspeitas</option>
       </select>
-      <select id="filter-plan" onchange="filterKeys()" style="min-width:120px">
+      <select id="filter-plan" data-zvm-handler-change="hg" style="min-width:120px">
         <option value="">Todos os planos</option>
         <option value="pro">Pro</option>
         <option value="basic">Básico</option>
         <option value="free">Free</option>
       </select>
-      <button class="btn br" id="btn-delete-batch" style="display:none" onclick="deleteBatchKeys()">🗑 Excluir Selecionadas (<span id="batch-count">0</span>)</button>
+      <button class="btn br" id="btn-delete-batch" style="display:none" data-zvm-handler-click="hh">🗑 Excluir Selecionadas (<span id="batch-count">0</span>)</button>
     </div>
     <div class="filter-count" id="keys-filter-count"></div>
     <div class="ov">
@@ -6892,15 +6900,15 @@ function renderAdminDashboard(opts = {}) {
           <col style="width:16%">
         </colgroup>
         <thead><tr>
-          <th onclick="sortKeys('code')"><span style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="master-cb" onchange="toggleAllCheckboxes(this.checked)" style="cursor:pointer;width:13px;height:13px;flex-shrink:0">CHAVE</span></th>
-          <th onclick="sortKeys('label')" id="th-label">Cliente</th>
-          <th onclick="sortKeys('status')" id="th-status">Status</th>
-          <th onclick="sortKeys('validity')" id="th-validity">Validade</th>
-          <th onclick="sortKeys('uses')" id="th-uses">Usos</th>
-          <th onclick="sortKeys('phone')" id="th-phone">Telefone</th>
+          <th data-zvm-handler-click="hi"><span style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="master-cb" data-zvm-handler-change="hj" style="cursor:pointer;width:13px;height:13px;flex-shrink:0">CHAVE</span></th>
+          <th data-zvm-handler-click="hk" id="th-label">Cliente</th>
+          <th data-zvm-handler-click="hl" id="th-status">Status</th>
+          <th data-zvm-handler-click="hm" id="th-validity">Validade</th>
+          <th data-zvm-handler-click="hn" id="th-uses">Usos</th>
+          <th data-zvm-handler-click="ho" id="th-phone">Telefone</th>
           <th>Último IP</th>
-          <th onclick="sortKeys('lastused')" id="th-lastused">Último Acesso</th>
-          <th onclick="sortKeys('created')" id="th-created">Criado em</th>
+          <th data-zvm-handler-click="hp" id="th-lastused">Último Acesso</th>
+          <th data-zvm-handler-click="hq" id="th-created">Criado em</th>
           <th>Origem</th>
           <th>Nota</th>
           <th style="cursor:default">Ações</th>
@@ -6917,11 +6925,11 @@ function renderAdminDashboard(opts = {}) {
     <div class="sh">
       <div class="st"><span class="st-accent">📋</span> Log de Acessos <span style="font-size:11px;color:var(--tx3);font-weight:400;margin-left:4px">retenção ${LOG_RETENTION_DAYS}d (LGPD)</span></div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <input type="date" id="logDate" style="padding:5px 8px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;transition:border-color .18s" onchange="filterLog()">
-        <input type="text" id="logSearch" placeholder="Filtrar por chave ou IP…" style="padding:5px 8px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;width:170px;transition:border-color .18s" oninput="filterLog()">
-        <button class="btn bw" onclick="clearFilters()">✕ Limpar</button>
-        <button class="btn bw" onclick="doRefresh()">↻ Atualizar</button>
-        <button class="btn br" onclick="clearLog()">🗑 Limpar Log</button>
+        <input type="date" id="logDate" style="padding:5px 8px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;transition:border-color .18s" data-zvm-handler-change="hr">
+        <input type="text" id="logSearch" placeholder="Filtrar por chave ou IP…" style="padding:5px 8px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;width:170px;transition:border-color .18s" data-zvm-handler-input="hs">
+        <button class="btn bw" data-zvm-handler-click="ht">✕ Limpar</button>
+        <button class="btn bw" data-zvm-handler-click="hu">↻ Atualizar</button>
+        <button class="btn br" data-zvm-handler-click="hv">🗑 Limpar Log</button>
       </div>
     </div>
     <div class="ov">
@@ -6941,7 +6949,7 @@ function renderAdminDashboard(opts = {}) {
         <div class="st"><span class="st-accent">🛡</span> Auditoria de Segurança</div>
         <div style="font-size:11px;color:var(--tx3);margin-top:2px">Config hardening · fuzzing NoSQL · headers · TLS · telemetria · CORS/leakage · cookies · batch guard</div>
       </div>
-      <button class="btn bw" id="pentest-btn" onclick="runPentest()">▶ Executar Varredura</button>
+      <button class="btn bw" id="pentest-btn" data-zvm-handler-click="hw">▶ Executar Varredura</button>
     </div>
     <div class="ov" style="max-height:none;overflow-y:visible">
       <table>
@@ -6965,7 +6973,7 @@ function renderAdminDashboard(opts = {}) {
       </div>
       <div style="display:flex;gap:8px">
         <a href="${R_ADMIN}/api/audit-logs/csv" class="btn bw" style="font-size:11px;padding:4px 10px;text-decoration:none" download>⬇ Exportar Auditoria CSV</a>
-        <button class="btn br" style="font-size:11px;padding:4px 10px" onclick="clearSecurityAlerts()">🗑 Limpar Logs</button>
+        <button class="btn br" style="font-size:11px;padding:4px 10px" data-zvm-handler-click="hx">🗑 Limpar Logs</button>
       </div>
     </div>
     <div class="ov">
@@ -6993,8 +7001,8 @@ function renderAdminDashboard(opts = {}) {
         <div style="font-size:11px;color:var(--tx3);margin-top:2px">IPs bloqueados permanentemente em todas as requisições</div>
       </div>
       <div style="display:flex;gap:6px;align-items:center">
-        <input type="text" id="ip-bl-input" placeholder="Ex: 1.2.3.4" style="padding:5px 9px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;width:155px" onkeydown="if(event.key==='Enter')addToBlacklist()">
-        <button class="btn bp" style="font-size:12px;padding:5px 12px" onclick="addToBlacklist()">+ Bloquear IP</button>
+        <input type="text" id="ip-bl-input" placeholder="Ex: 1.2.3.4" style="padding:5px 9px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;width:155px" data-zvm-handler-keydown="hy">
+        <button class="btn bp" style="font-size:12px;padding:5px 12px" data-zvm-handler-click="hz">+ Bloquear IP</button>
       </div>
     </div>
     <div class="ov">
@@ -7016,8 +7024,8 @@ function renderAdminDashboard(opts = {}) {
         <div style="font-size:11px;color:var(--tx3);margin-top:2px">Todos os usuários registrados no Portal do Cliente</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
-        <input type="text" id="users-search" placeholder="Buscar por nome, e-mail ou chave…" style="padding:5px 10px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;width:220px" oninput="filterUsers()">
-        <button class="btn bw" onclick="loadUsers(true)">↻ Atualizar</button>
+        <input type="text" id="users-search" placeholder="Buscar por nome, e-mail ou chave…" style="padding:5px 10px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;width:220px" data-zvm-handler-input="h10">
+        <button class="btn bw" data-zvm-handler-click="h11">↻ Atualizar</button>
       </div>
     </div>
     <div class="ov">
@@ -7046,7 +7054,7 @@ function renderAdminDashboard(opts = {}) {
   <h3>Gerenciar validade · <span id="renewKeyLabel" style="color:var(--g)"></span></h3>
   <input type="hidden" id="renewKeyCode">
   <label for="renewMode" class="modal-lbl">O que deseja fazer?</label>
-  <select id="renewMode" class="key-validity-mode" onchange="applyRenewMode()"><option value="add">Adicionar tempo</option><option value="remove">Remover tempo</option><option value="date">Definir data de expiração</option><option value="never">Sem expiração (ilimitado)</option></select>
+  <select id="renewMode" class="key-validity-mode" data-zvm-handler-change="h12"><option value="add">Adicionar tempo</option><option value="remove">Remover tempo</option><option value="date">Definir data de expiração</option><option value="never">Sem expiração (ilimitado)</option></select>
   <div id="renewDurationFields" class="key-validity-duration" style="display:flex;gap:10px;margin-bottom:12px">
     <div style="flex:1;text-align:center"><label for="renewDays" class="modal-lbl">Dias</label><input type="number" id="renewDays" placeholder="0" style="width:100%;padding:7px;text-align:center"></div>
     <div style="flex:1;text-align:center"><label for="renewHours" class="modal-lbl">Horas</label><input type="number" id="renewHours" placeholder="0" style="width:100%;padding:7px;text-align:center"></div>
@@ -7057,8 +7065,8 @@ function renderAdminDashboard(opts = {}) {
   <div id="renewPreview" class="key-renew-preview" role="status" aria-live="polite">Informe um período para calcular a nova validade.</div>
   <div style="font-size:12px;color:var(--tx3);margin-bottom:12px" id="renewCurrentExpiry"></div>
   <div class="modal-actions">
-    <button class="btn modal-cancel" onclick="closeRenew()">Cancelar</button>
-    <button class="btn bp" id="renewSaveButton" onclick="saveRenew()">Adicionar Tempo</button>
+    <button class="btn modal-cancel" data-zvm-handler-click="h13">Cancelar</button>
+    <button class="btn bp" id="renewSaveButton" data-zvm-handler-click="h14">Adicionar Tempo</button>
   </div>
 </div></div>
 
@@ -7068,12 +7076,12 @@ function renderAdminDashboard(opts = {}) {
   <div style="margin-bottom:14px">
     <label for="editUsesValue" class="modal-lbl">Máx. números simultâneos</label>
     <input type="number" id="editUsesValue" min="1" max="10000" step="1" style="width:100%;padding:9px;font-size:15px;text-align:center;margin-top:6px">
-    <label class="key-option-row" for="editUsesUnlimited"><input type="checkbox" id="editUsesUnlimited" onchange="applyUsesUnlimited()"> Sem limite de dispositivos (∞)</label>
+    <label class="key-option-row" for="editUsesUnlimited"><input type="checkbox" id="editUsesUnlimited" data-zvm-handler-change="h15"> Sem limite de dispositivos (∞)</label>
     <small id="editUsesLinked" class="key-modal-help">Os números já vinculados permanecem registrados.</small>
   </div>
   <div class="modal-actions">
-    <button class="btn modal-cancel" onclick="closeEditUses()">Cancelar</button>
-    <button class="btn bp" onclick="saveEditUses()">Salvar</button>
+    <button class="btn modal-cancel" data-zvm-handler-click="h16">Cancelar</button>
+    <button class="btn bp" data-zvm-handler-click="h17">Salvar</button>
   </div>
 </div></div>
 
@@ -7085,8 +7093,8 @@ function renderAdminDashboard(opts = {}) {
     <input type="text" id="renameValue" maxlength="60" style="width:100%;padding:8px 10px;margin-top:6px">
   </div>
   <div class="modal-actions">
-    <button class="btn modal-cancel" onclick="closeRename()">Cancelar</button>
-    <button class="btn bp" onclick="saveRename()">Salvar</button>
+    <button class="btn modal-cancel" data-zvm-handler-click="h18">Cancelar</button>
+    <button class="btn bp" data-zvm-handler-click="h19">Salvar</button>
   </div>
 </div></div>
 
@@ -7094,8 +7102,8 @@ function renderAdminDashboard(opts = {}) {
   <h3>📱 Números — <span id="phonesLabel" style="color:var(--g)"></span></h3>
   <div id="phonesList" style="margin-bottom:14px;max-height:220px;overflow-y:auto;min-height:40px"></div>
   <div class="modal-actions">
-    <button class="btn modal-cancel" onclick="closePhones()">Fechar</button>
-    <button class="btn bd" id="removeAllBtn" onclick="removeAllPhones()">Remover Todos</button>
+    <button class="btn modal-cancel" data-zvm-handler-click="h1a">Fechar</button>
+    <button class="btn bd" id="removeAllBtn" data-zvm-handler-click="h1b">Remover Todos</button>
   </div>
 </div></div>
 
@@ -7104,15 +7112,15 @@ function renderAdminDashboard(opts = {}) {
   <input type="hidden" id="noteKeyCode">
   <textarea id="noteText" placeholder="Ex: Pagou até março, trial, VIP…"></textarea>
   <div class="modal-actions">
-    <button class="btn modal-cancel" onclick="closeNote()">Cancelar</button>
-    <button class="btn bp" onclick="saveNote()">Salvar Nota</button>
+    <button class="btn modal-cancel" data-zvm-handler-click="h1c">Cancelar</button>
+    <button class="btn bp" data-zvm-handler-click="h1d">Salvar Nota</button>
   </div>
 </div></div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <template id="zvm-admin-users-data">${initialPortalUsersJson}</template>
-<script src="/assets/zvm-admin-dashboard.ba37f88fcfe6.js" defer></script>
+<script src="/assets/zvm-admin-dashboard.f687617ee4b9.js" defer></script>
 </body></html>`;
 }
 
@@ -7179,7 +7187,7 @@ const ZVM_CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/zvm-autom
 function renderZvmActionHub(surface='client') {
   const title = surface==='admin' ? 'Ações do painel' : 'Mais ações';
   const content = surface==='admin'
-    ? '<button type="button" onclick="exportCSV()">Exportar CSV</button><a href="'+R_ADMIN+'/logout">Sair do Admin</a>'
+    ? '<button type="button" data-zvm-handler-click="hExportCsv">Exportar CSV</button><a href="'+R_ADMIN+'/logout">Sair do Admin</a>'
     : '<a href="'+R_ANALYTICS+'/export/csv">Exportar CSV</a><button type="button" onclick="purgeOpen()">Limpar dados</button><a href="'+R_ANALYTICS+'/logout">Sair do Analytics</a>';
   return `<details class="zvm-action-hub"><summary>${title}<span aria-hidden="true">⌄</span></summary><div class="zvm-action-hub-menu">${content}</div></details>`;
 }
