@@ -152,7 +152,7 @@ function update(flows,payload){
   }else if(action==='delete'){
    if(!['sendText','end'].includes(node.type))fail('flow_node_type_readonly');
    if(nodes.some(other=>other?.id!==node.id&&targets(other).includes(node.id)))fail('flow_node_has_incoming');
-   if(array(copyFlow.nodeGroups).some(g=>array(g?.memberNodeIds).includes(node.id)))fail('flow_node_grouped');
+   if([...array(copyFlow.nodeGroups),...array(copyFlow.groups)].some(g=>array(g?.memberNodeIds).includes(node.id)))fail('flow_node_grouped');
    nodes.splice(nodes.indexOf(node),1);
   }
  }
