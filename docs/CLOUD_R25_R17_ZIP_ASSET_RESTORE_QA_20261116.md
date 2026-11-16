@@ -33,6 +33,11 @@ A versão original permite arquivos maiores do que o cofre Cloud de QA; **não e
 - 13/13 verificações conjuntas de sintaxe/integração DOM/rotas e separação dos módulos.
 - Arquivos de teste Node adicionados ao `npm run check`: `r25-r17-zip-assets.test.js` e `r25-asset-links.test.js`. Esses testes versionados **ainda dependem do runner Node real**; o GitHub Actions seguiu sem alocar runner nos jobs anteriores.
 
+## Fortalecimento final do leitor ZIP
+- Rejeitados caminhos ZIP com caracteres de controle e offsets locais forjados apontando para o diretório central; a leitura da mídia também verifica que seu conteúdo compactado não invade o diretório.
+- Novos casos Node adicionados para o formato de item serializado em JSON, duplicação/ambiguidade de origem, profundidade excessiva, caminhos malformados e offsets ZIP adulterados.
+- A leitura R25 não altera os assets originais; só cria novos objetos no Cofre depois do consentimento explícito.
+
 ## Bloqueadores de liberação e auditoria profissional
 1. Executar a suíte Node completa e o browser Chromium/Opera real, incluindo arquivo ZIP com data descriptor de R17, mudança de conta, interrupção de rede e falha na conclusão.
 2. Homologar transações e limites no MongoDB **real** (não apenas FakeCollection). Confirmar custo projetado de armazenamento, egress e quotas; avaliar S3/object storage para mídia acima de 32 MiB.
