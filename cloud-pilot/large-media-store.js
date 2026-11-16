@@ -32,7 +32,7 @@ function createMemoryLargeMediaStore(){
   const used=[...records.values()].reduce((n,x)=>n+x.size,0);
   if(used+spec.size+Math.max(0,legacyBytes)>D.MAX_ACCOUNT)D.fail('media_storage_quota');
   const id=crypto.randomBytes(16).toString('hex');
-  const session={...spec,id,owner:owner(email),nextIndex:0,receivedBytes:0,
+  const session={...spec,uploadId:id,owner:owner(email),nextIndex:0,receivedBytes:0,
    expiresAt:new Date(Date.now()+D.TTL_MS).toISOString(),parts:[]};
   sessions.set(owner(email),session);
   return {duplicate:false,resumed:false,upload:D.publicUpload(session)};
@@ -40,7 +40,7 @@ function createMemoryLargeMediaStore(){
  async function status(email){return D.publicUpload(pending(email));}
  async function append(email,id,index,bytes,hash){
   const s=pending(email);
-  if(!s||s.id!==id)D.fail('upload_not_found');
+  if(!s||s.uploadId!==id)D.fail('upload_not_found');
   D.validateChunk(s,index,bytes,hash);
   if(index>s.nextIndex)D.fail('chunk_out_of_order');
   if(index<s.nextIndex){
@@ -53,23 +53,20 @@ function createMemoryLargeMediaStore(){
  }
  async function finish(email,id){
   const s=pending(email);
-  if(!s||s.id!==id)D.fail('upload_not_found');
+  if(!s||s.uploadId!==id)D.fail('upload_not_found');
   if(s.nextIndex!==s.chunks||s.receivedBytes!==s.size)D.fail('upload_incomplete');
   D.validateWhole(s,s.parts);
   const records=owned(email);
   const previous=records.get(s.id);
-  const duplicate=records.has(s.id);
+  const duplicate=!!previous;
   if(previous&&!compatible(previous,s))D.fail('media_id_collision');
   if(!duplicate){
-   const record={id:s.id.slice(0,0)+s.id}; // overwritten below; avoids mutating upload id
-   record.id='m_'+s.sha256.slice(0,40);
-   record.name=s.name;record.mime=s.mime;record.size=s.size;record.sha256=s.sha256;
-   record.uploadedAt=new Date().toISOString();record.uploadId=s.id;
-   record.parts=s.parts.map(x=>Buffer.from(x));
+   const record={id:s.id,name:s.name,mime:s.mime,size:s.size,sha256:s.sha256,
+    uploadedAt:new Date().toISOString(),uploadId:s.uploadId,parts:s.parts.map(x=>Buffer.from(x))};
    records.set(record.id,record);
   }
   sessions.delete(owner(email));
-  return {duplicate,file:D.publicFile(records.get('m_'+s.sha256.slice(0,40)))};
+  return {duplicate,file:D.publicFile(records.get(s.id))};
  }
  async function list(email){return [...owned(email).values()].map(D.publicFile);}
  async function get(email,id){return owned(email).get(id)||null;}
