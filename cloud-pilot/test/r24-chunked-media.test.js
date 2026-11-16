@@ -67,6 +67,10 @@ test('R24: authenticated upload, resume, per-chunk SHA, finalize, download and L
   r=await call('/api/media/uploads/'+id+'/complete',{method:'POST'});
   assert.equal(r.status,200);const mediaId=r.data.mediaId;
   assert.equal(mediaId,'m_'+meta.sha256.slice(0,40));
+  // A lost HTTP response after commit must be safe to retry.
+  const retry=await call('/api/media/uploads/'+id+'/complete',{method:'POST'});
+  assert.equal(retry.status,200);assert.equal(retry.data.duplicate,true);
+  assert.equal(retry.data.mediaId,mediaId);
   assert.equal(r.data.items[0].storage,'chunked');
   assert.equal((await call('/api/media/uploads')).data.upload,null);
   r=await call('/api/media/'+mediaId);
