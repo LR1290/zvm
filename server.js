@@ -1,7 +1,7 @@
 const ZVM_BUILD_ID = '2026-10-08-r46-16-cakto-queue-recovery';
 const { resolveClientIp } = require('./client-ip-policy');
 const { createLandingRenderer } = require('./src/web/public/landing/render');
-const { renderOwnerSalesLanding } = require('./src/web/public/landing/owner');
+const { renderOwnerSalesLanding, OWNER_TOP_BRAND_SRC } = require('./src/web/public/landing/owner');
 const { renderPublicFooter } = require('./src/web/public/footer');
 const { TERMS, renderTermsDocument } = require('./src/web/public/terms');
 const { SUPPORT_URL: ZVM_SUPPORT_URL } = require('./src/support-contact');
@@ -6377,7 +6377,7 @@ function renderClientPortalRail(active='overview'){
   const links=items.map(([id,label,href])=>`<a href="${href}" class="${active===id?'active':''}"${active===id?' aria-current="page"':''}><span class="client-nav-icon">${portalUiIcon(id)}</span><span>${label}</span></a>`).join('');
   return `<aside class="client-rail" aria-label="Navegação da conta">
     <div class="client-rail-brand">
-      <div class="client-rail-logo">${renderStandaloneBrand('compact')}</div>
+      <div class="client-rail-logo owner-panel-rail-brand">${renderCanonicalOwnerBrand()}</div>
       <div class="client-rail-brand-copy"><div class="client-rail-brand-caption">Portal do Cliente</div><strong>Conta premium</strong></div>
     </div>
     <nav class="client-nav">${links}<a href="${ZVM_SUPPORT_URL}" target="_blank" rel="noopener noreferrer"><span class="client-nav-icon">${portalUiIcon('support')}</span><span>Suporte</span></a></nav>
@@ -7097,6 +7097,11 @@ function renderZvmActionHub(surface='client') {
     : '<a href="'+R_ANALYTICS+'/export/csv">Exportar CSV</a><button type="button" onclick="purgeOpen()">Limpar dados</button><a href="'+R_ANALYTICS+'/logout">Sair do Analytics</a>';
   return `<details class="zvm-action-hub"><summary>${title}<span aria-hidden="true">⌄</span></summary><div class="zvm-action-hub-menu">${content}</div></details>`;
 }
+function renderCanonicalOwnerBrand() {
+  // Same visual source as the sales-page header; no cloned assets or logo variants.
+  return '<img class="owner-panel-brand-img" src="' + OWNER_TOP_BRAND_SRC +
+    '" alt="ZVM Automações" loading="eager" decoding="async">';
+}
 function renderStandaloneBrand(variant = 'nav') {
   const safeVariant = ['nav','auth','dash','compact'].includes(variant) ? variant : 'nav';
   return `<span class="zvm-brand-logo zvm-brand-${safeVariant}" role="img" aria-label="ZVM"><img data-zvm-mark="1" src="${ZVM_BRAND_ICON_ASSET}" alt="" aria-hidden="true" loading="eager" decoding="async"><span class="zvm-brand-wordmark">ZVM</span></span>`;
@@ -7125,7 +7130,7 @@ function _sharedNav(options = '', legacyPortalUser = null) {
         <span class="nav-account-name">${escHtml(portalUser.name||portalUser.email||'Minha Conta')}</span>
       </a>` : ``;
     return `<nav class="znav">
-    <a href="/" class="znav-brand">⚡ ZVM</a>
+    <a href="/" class="znav-brand owner-panel-brand">${renderCanonicalOwnerBrand()}</a>
     <div class="znav-links">${linksHtml}${accountHtml}</div>
   </nav>`;
   }
@@ -7169,10 +7174,11 @@ function _sharedNav(options = '', legacyPortalUser = null) {
       <span class="nav-account-avatar">${escHtml((portalUser.name||'?')[0].toUpperCase())}</span>
       <span class="nav-account-name">${escHtml(portalUser.name||portalUser.email||'Minha Conta')}</span>
     </a>` : `<a href="/cliente" class="nav-login">Entrar</a><a href="/cliente/registro" class="nav-cta">Cadastrar</a>`;
+  const installAction = `<a href="${ZVM_CHROME_STORE_URL}" class="owner-nav-install" target="_blank" rel="noopener noreferrer">Instalar grátis</a>`;
   return `<a class="skip-link" href="#main-content">Pular para o conteúdo</a><nav class="znav standalone-nav" aria-label="Navegação principal">
-  <a href="/" class="znav-brand"${activePath === '/' ? ' aria-current="page"' : ''}>${renderStandaloneBrand('nav')}</a>
+  <a href="/" class="znav-brand owner-panel-brand"${activePath === '/' ? ' aria-current="page"' : ''}>${renderCanonicalOwnerBrand()}</a>
   <button class="nav-menu-toggle" type="button" aria-expanded="false" aria-controls="zvm-nav-links" aria-label="Abrir menu"><span></span><span></span><span></span></button>
-  <div class="znav-links" id="zvm-nav-links"><div class="znav-main-links">${mainLinksHtml}</div><div class="znav-action-links">${accountHtml}</div></div>
+  <div class="znav-links" id="zvm-nav-links"><div class="znav-main-links">${mainLinksHtml}</div><div class="znav-action-links">${installAction}${accountHtml}</div></div>
 </nav><script src="/assets/zvm-nav.d7d7bba83d44.js" defer></script>`;
 }
 
