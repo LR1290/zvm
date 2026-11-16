@@ -17,7 +17,15 @@ const MODULES=Object.freeze({
 const LEGACY=Object.freeze([
  ['EXTUI:CrmStore','crm','crmList'],
  ['EXTUI:labelStore','labels','labelList'],
- ['EXTUI:textMessageStore','library','textMessageList'],
+ ['EXTUI:textMessageStore','library','textMessageList','message'],
+ ['EXTUI:audioStore','library','audioList','audio'],
+ ['EXTUI:mediaStore','library','mediaList','media'],
+ ['EXTUI:stickerStore','library','stickerList','sticker'],
+ ['EXTUI:documentStore','library','documentList','document'],
+ ['EXTUI:pixStore','library','pixList','pix'],
+ ['EXTUI:interactiveListStore','library','interactiveListList','interactive-list'],
+ ['EXTUI:contactCardStore','library','contactList','contact'],
+ ['EXTUI:signaturesStore','library','list','signature'],
  ['EXTUI:extappQuickResponseStore','quickReplies','items'],
  ['EXTUI:extappFlowStore','flows','flowList'],
  ['EXTUI:extappFunnelStore','funnels','funnelList'],
@@ -112,7 +120,7 @@ function planLegacy(source){
  for(const key of Object.keys(data)){
   if(!allowed.has(key)&&key.startsWith('EXTUI:')&&!/(?:Secret|Auth|Token|License|deviceId|Key)/i.test(key))skipped.push(key);
  }
- for(const [key,module,field] of LEGACY){
+ for(const [key,module,field,libraryKind] of LEGACY){
   if(!Object.prototype.hasOwnProperty.call(data,key))continue;
   let list;
   try{list=extractList(data,key,field);}catch(e){throw error('legacy_'+module+'_invalid');}
@@ -123,16 +131,50 @@ function planLegacy(source){
    if(!isObject(row))throw error('legacy_row_invalid');
    const name=String(row.name||row.title||row.label||'').slice(0,120);
    if(module==='library'){
-    let contentText='';
-    if(row.id&&Object.prototype.hasOwnProperty.call(data,String(row.id))){
-     const content=unwrap(data[String(row.id)]);
-     if(typeof content.data==='string'&&!MEDIA_REF.test(content.data))contentText=content.data.slice(0,16000);
-     else if(content.properties&&typeof content.properties.mensagem==='string')contentText=content.properties.mensagem.slice(0,16000);
+    // The extension stores each library kind in a separate independent store.
+    // Never overwrite a previously processed kind with the next category.
+    const kind=libraryKind==='media'?
+      (/video/i.test(String(row.kind||row.type||row.mime||row.mimeType||''))?'video':
+       /image/i.test(String(row.kind||row.type||row.mime||row.mimeType||''))?'image':'media'):
+      libraryKind||'message';
+    const id=String(row.id||'').trim();
+    const source=Object.prototype.hasOwnProperty.call(data,id)?data[id]:null;
+    let content=null;
+    if(source!==null){
+     try{content=unwrap(source);}catch{
+      warnings.push('Biblioteca: conteúdo auxiliar de "'+name+'" está ilegível; original não será marcado como disponível.');
+     }
     }
-    if(!contentText){
-     warnings.push('Biblioteca: item "'+name+'" precisa de restauração do conteúdo original; não será marcado como utilizável.');
+    const safeText=value=>typeof value==='string'&&!MEDIA_REF.test(value)?value.slice(0,16000):'';
+    const dataText=content&&typeof content.data==='string'?safeText(content.data):'';
+    const propText=content?.properties?.mensagem||content?.properties?.message;
+    const ownText=row.text||row.message||row.mensagem||row.properties?.mensagem||'';
+    const contentText=dataText||safeText(propText)||safeText(ownText);
+    const needsMedia=['audio','media','image','video','sticker','document'].includes(kind);
+    const structured=['pix','interactive-list','contact'].includes(kind);
+    const payload={};
+    if(structured){
+     for(const part of ['properties','items','rows','buttons','description']){
+      const value=content?.[part]??row[part];
+      if(value===undefined)continue;
+      try{payload[part]=cloneSafe(value);}catch(e){
+       if(e.code==='binary_reference_not_importable'||e.code==='unsafe_or_secret_field'){
+        warnings.push('Biblioteca: campo de "'+name+'" não foi importado por segurança; revise os dados antes de usar.');
+       }else throw e;
+      }
+     }
     }
-    records.push({id:String(row.id||'')||undefined,name,kind:'message',text:contentText,contentStatus:contentText?'ready':'missing_source'});
+    const ready=!needsMedia&&!structured&&!!contentText;
+    if(!ready){
+     warnings.push('Biblioteca: "'+name+'" ('+kind+') requer '+(needsMedia?'restauração manual da mídia original':'revisão do conteúdo original')+'; não será marcado como pronto.');
+    }
+    records.push({
+     id:id||undefined,name,kind,text:contentText,originStore:key,
+     favorite:row.favorite===true||row.isFavorite===true,
+     showInQuickMenu:row.showInQuickMenu!==false,
+     ...(Object.keys(payload).length?{payload}:{}),
+     contentStatus:ready?'ready':structured&&Object.keys(payload).length?'needs_review':'missing_source'
+    });
    }else if(module==='crm'){
     // Preserve native columns and memberships as a draft. No WhatsApp actions are run.
     records.push({id:String(row.id||'')||undefined,name,columns:cloneSafe(row.columns||[]),source:'R17'});
@@ -158,8 +200,26 @@ function planLegacy(source){
     records.push(sanitized);
    }
   }
-  modules[module]=moduleCheck(module,records);
-  counts[module]=records.length;
+  if(module==='library'){
+   const combined=[...(modules.library||[])];
+   const ids=new Set(combined.map(x=>x.id));
+   for(const record of records){
+    const oldId=record.id;
+    if(oldId&&ids.has(oldId)){
+     // Native IDs are retained unless two independent stores reused one ID.
+     record.sourceId=oldId;
+     record.id='r17_'+crypto.createHash('sha256').update(key+'\\0'+oldId).digest('hex').slice(0,20);
+     warnings.push('Biblioteca: ID repetido em categorias diferentes para "'+record.name+'"; origem preservada no item importado.');
+    }
+    if(record.id)ids.add(record.id);
+    combined.push(record);
+   }
+   modules.library=moduleCheck('library',combined);
+   counts.library=modules.library.length;
+  }else{
+   modules[module]=moduleCheck(module,records);
+   counts[module]=records.length;
+  }
  }
  // Contact records can be derived from CRM memberships, without inventing remote IDs.
  if(Array.isArray(modules.crm)){
