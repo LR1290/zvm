@@ -7,10 +7,11 @@ const records=[{id:'cloud-image-id',sourceId:'image-native-id',name:'Foto',
 const resolve=(a=asset,rows=records,assets=[asset])=>Links.resolve(a,rows,assets);
 test('R25: unique R17 native asset with same account metadata is eligible for linking',()=>{
  assert.deepEqual(resolve(),{status:'ready',recordId:'cloud-image-id'});
- assert.equal(resolve({...asset,mime:'video/mp4'}).status,'media_kind_mismatch');
+ assert.equal(resolve({...asset,mime:'video/mp4'},records,[{...asset,mime:'video/mp4'}]).status,'media_kind_mismatch');
  assert.equal(resolve({...asset,eligible:false}).status,'asset_not_eligible');
  assert.equal(resolve({...asset,sourceId:''}).status,'asset_not_eligible');
- assert.equal(resolve({...asset,sourceId:'missing'}).status,'library_item_not_found');
+ assert.equal(resolve({...asset,sourceId:'missing'}).status,'asset_not_declared');
+ assert.equal(resolve({...asset,sourceId:'missing'},records,[{...asset,sourceId:'missing'}]).status,'library_item_not_found');
 });
 test('R25: fail-closed for duplicate ZIP token claims and ambiguous Library IDs',()=>{
  const twoAssets=[asset,{...asset,id:'asset-2'}];
