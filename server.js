@@ -3096,14 +3096,14 @@ function buildKeysHtml(snapshot = keys) {
   <td data-field="Ações" class="key-actions-cell"><div class="acts">
     <button class="bs bg" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">Tempo</button>
     <button class="bs bg" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${Number.isFinite(k.maxUses)?k.maxUses:MAX_USES})">Usos</button>
-    <details class="key-actions-more"><summary class="bs bw" title="Outras ações">Mais</summary><div class="key-actions-extra">
+    <button type="button" class="bs bw key-more-trigger" aria-controls="zvm-actions-${escHtml(code)}" aria-expanded="false" aria-label="Mais ações da licença" onclick="this.nextElementSibling.hidden=false;toggleKeyActionMenu(this)">•••</button><div id="zvm-actions-${escHtml(code)}" class="key-actions-popover" popover="auto" hidden>
       <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
       <button class="bs bg" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">Renomear</button>
       ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Números</button>`:''}
       <label class="bs ${k.devAccess===true?'bg':'bw'}" title="Acesso DEV: autoriza builds DEV assinadas" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" class="dev-access-switch" ${k.devAccess===true?'checked':''} onchange="toggleDevAccess('${escHtml(code)}',this.checked,this)" style="accent-color:var(--g);width:13px;height:13px;margin:0"> Acesso DEV</label>
       <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
       ${isSuspect?`<button class="bs bsusp" onclick="clearSuspect('${escHtml(code)}')">🕵️ Suspeita</button>`:''}
-    </div></details></div></td>
+    </div></div></td>
 </tr>`;
   }).join('');
 }
@@ -5554,6 +5554,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     compressible: true,
   }),
 
+  '/assets/zvm-admin-dashboard.cd85ea19cc73.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.cd85ea19cc73.css'),
+    sha256: 'cd85ea19cc732fd85c921d00d0bee6f0939940b5c000b67c6e53e3075d66a0bc',
+    compressible: true,
+  }),
   '/assets/zvm-admin-dashboard.5c649db2edf7.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.5c649db2edf7.css'),
@@ -5660,6 +5666,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     type: 'text/javascript; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.91efd97cea20.js'),
     sha256: '91efd97cea203bf0d151777c286979cd8eb6d12199cb4fc58310726ae1310922',
+    compressible: true,
+  }),
+  '/assets/zvm-admin-dashboard.bc01cf565fa7.js': Object.freeze({
+    type: 'text/javascript; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.bc01cf565fa7.js'),
+    sha256: 'bc01cf565fa774b67cf39ae88a5eb013e114ac08ab73cd5735feb8076811c913',
     compressible: true,
   }),
   '/assets/zvm-admin-dashboard.db80ba5884d9.js': Object.freeze({
@@ -6728,6 +6740,8 @@ function renderAdminDashboard(opts = {}) {
 <link rel="stylesheet" href="/assets/zvm-r46-system.aa366d924866.css">
 <link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css">
 <link rel="stylesheet" href="/assets/zvm-console-design.44762cb103f8.css">
+<link rel="stylesheet" href="/assets/zvm-owner-site.42d17a62234b.css">
+<link rel="stylesheet" href="/assets/zvm-admin-dashboard.cd85ea19cc73.css">
 </head>
 <body class="zvm-admin-r6">
 <a class="zvm-skip-link" href="#zvm-admin-main">Ir para o conteúdo</a>
@@ -6758,9 +6772,9 @@ function renderAdminDashboard(opts = {}) {
 
   <section class="admin-overview" aria-labelledby="admin-overview-title">
     <div class="zvm-overview-main">
-      <span class="admin-overview-kicker">ZVM · Centro de operações</span>
-      <h1 id="admin-overview-title">Toda a sua operação, sob controle.</h1>
-      <p>Licenças, clientes e segurança em uma visão clara. Use os indicadores para localizar o que exige atenção sem sair do painel.</p>
+      <span class="admin-overview-kicker">ZVM · Administração</span>
+      <h1 id="admin-overview-title">Visão geral da operação</h1>
+      <p>Chaves, clientes e auditoria em um único espaço, com a identidade do portal ZVM.</p>
       <div class="admin-overview-actions">
         <button type="button" class="primary" onclick="switchTab('keys')">Gerenciar licenças</button>
         <button type="button" onclick="switchTab('users')">Ver clientes</button>
@@ -7004,17 +7018,18 @@ function renderAdminDashboard(opts = {}) {
 
 <!-- ── Modals ── -->
 <div class="modal-bg" id="renewModal"><div class="modal">
-  <h3>⏱ Adicionar Tempo — <span id="renewKeyLabel" style="color:var(--g)"></span></h3>
+  <h3>Gerenciar validade · <span id="renewKeyLabel" style="color:var(--g)"></span></h3>
   <input type="hidden" id="renewKeyCode">
   <label for="renewMode" class="modal-lbl">O que deseja fazer?</label>
-  <select id="renewMode" class="key-validity-mode" onchange="applyRenewMode()"><option value="add">Adicionar tempo</option><option value="date">Definir data de expiração</option><option value="never">Sem expiração (ilimitado)</option></select>
+  <select id="renewMode" class="key-validity-mode" onchange="applyRenewMode()"><option value="add">Adicionar tempo</option><option value="remove">Remover tempo</option><option value="date">Definir data de expiração</option><option value="never">Sem expiração (ilimitado)</option></select>
   <div id="renewDurationFields" class="key-validity-duration" style="display:flex;gap:10px;margin-bottom:12px">
-    <div style="flex:1;text-align:center"><label for="renewDays" class="modal-lbl">Dias</label><input type="number" id="renewDays" placeholder="0" min="0" style="width:100%;padding:7px;text-align:center"></div>
-    <div style="flex:1;text-align:center"><label for="renewHours" class="modal-lbl">Horas</label><input type="number" id="renewHours" placeholder="0" min="0" style="width:100%;padding:7px;text-align:center"></div>
-    <div style="flex:1;text-align:center"><label for="renewMins" class="modal-lbl">Min</label><input type="number" id="renewMins" placeholder="0" min="0" style="width:100%;padding:7px;text-align:center"></div>
+    <div style="flex:1;text-align:center"><label for="renewDays" class="modal-lbl">Dias</label><input type="number" id="renewDays" placeholder="0" style="width:100%;padding:7px;text-align:center"></div>
+    <div style="flex:1;text-align:center"><label for="renewHours" class="modal-lbl">Horas</label><input type="number" id="renewHours" placeholder="0" style="width:100%;padding:7px;text-align:center"></div>
+    <div style="flex:1;text-align:center"><label for="renewMins" class="modal-lbl">Min</label><input type="number" id="renewMins" placeholder="0" style="width:100%;padding:7px;text-align:center"></div>
   </div>
   <div id="renewExactFields" class="key-validity-exact" hidden><label for="renewExactDate" class="modal-lbl">Expira em (data e hora locais)</label><input type="datetime-local" id="renewExactDate"><small class="key-modal-help">Permite reduzir a validade. Escolha uma data futura.</small></div>
   <p id="renewNeverInfo" class="key-validity-never key-modal-help" hidden>Remove a expiração e o prazo de primeiro uso. As outras restrições permanecem.</p>
+  <div id="renewPreview" class="key-renew-preview" role="status" aria-live="polite">Informe um período para calcular a nova validade.</div>
   <div style="font-size:12px;color:var(--tx3);margin-bottom:12px" id="renewCurrentExpiry"></div>
   <div class="modal-actions">
     <button class="btn modal-cancel" onclick="closeRenew()">Cancelar</button>
@@ -7072,7 +7087,7 @@ function renderAdminDashboard(opts = {}) {
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <template id="zvm-admin-users-data">${initialPortalUsersJson}</template>
-<script src="/assets/zvm-admin-dashboard.db80ba5884d9.js" defer></script>
+<script src="/assets/zvm-admin-dashboard.bc01cf565fa7.js" defer></script>
 </body></html>`;
 }
 
