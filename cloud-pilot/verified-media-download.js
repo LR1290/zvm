@@ -25,7 +25,7 @@ function createDownloadGate({maxConcurrent=2,maxPerAccount=1}={}){
  }
  return Object.freeze({acquire,stats:()=>({active,maxConcurrent,activeAccounts:owners.size})});
 }
-async function verifiedSnapshot(store,email,file,{cancelled=()=>false}={}){
+async function verifiedSnapshot(store,email,file,{cancelled=()=>false,signal=null}={}){
  if(!file||!Large.FILE_ID.test(file.id)||!Large.DIGEST.test(file.sha256)||
     !Number.isSafeInteger(file.size)||file.size<=0||file.size>Large.MAX_FILE||
     !Large.isSupportedMime(file.mime))
@@ -34,7 +34,7 @@ async function verifiedSnapshot(store,email,file,{cancelled=()=>false}={}){
  const chunks=[],digest=crypto.createHash('sha256');
  const expectedChunks=Math.ceil(file.size/Large.CHUNK_BYTES);
  let count=0,total=0,first=null;
- for await(const source of store.large.chunks(email,file.id)){
+ for await(const source of store.large.chunks(email,file.id,{signal})){
   if(cancelled())reject('download_aborted');
   if(count>=expectedChunks)reject('large_media_corrupt_chunk');
   const part=Buffer.isBuffer(source)?source:Buffer.from(source);
