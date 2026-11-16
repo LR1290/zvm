@@ -185,39 +185,54 @@ async function createMongoLargeMediaStore(db,client){
  }
  async function finish(email,id){
   const owner=owned(email),s=await upload(email,id);
-  if(!s)D.fail('upload_not_found');
+  if(!s||!['pending','finalizing'].includes(s.status))D.fail('upload_not_found');
   if(s.nextIndex!==s.chunks||s.receivedBytes!==s.size)D.fail('upload_incomplete');
-  const hash=crypto.createHash('sha256'),first=[],seen=new Set();
-  let received=0,count=0;
-  for await(const part of chunks.find({owner,uploadId:id}).sort({index:1})){
-   if(part.index!==count||seen.has(part.index))D.fail('large_media_corrupt_chunk');
-   const bytes=mongoBytes(part.bytes);
-   D.validateChunk(s,count,bytes,part.sha256);
-   if(count===0)first.push(bytes.subarray(0,32));
-   received+=bytes.length;hash.update(bytes);seen.add(count);count++;
+  // A claimed session cannot receive new chunks while final integrity is checked.
+  if(s.status==='pending'){
+   const claimed=await uploads.updateOne({_id:id,owner,status:'pending',nextIndex:s.chunks},{$set:{status:'finalizing'}});
+   if(claimed.matchedCount!==1)D.fail('upload_in_progress');
   }
-  if(count!==s.chunks||received!==s.size||hash.digest('hex')!==s.sha256)D.fail('large_media_digest_mismatch');
-  if(!Media.mimeDetected(first[0],s.mime))D.fail('media_signature_invalid');
+  let verified=false;
+  try{
+   const hash=crypto.createHash('sha256');
+   let first=null,received=0,count=0;
+   for await(const part of chunks.find({owner,uploadId:id}).sort({index:1})){
+    if(part.index!==count)D.fail('large_media_corrupt_chunk');
+    const bytes=mongoBytes(part.bytes);
+    D.validateChunk(s,count,bytes,part.sha256);
+    if(!first)first=bytes.subarray(0,32);
+    received+=bytes.length;hash.update(bytes);count++;
+   }
+   if(count!==s.chunks||received!==s.size||hash.digest('hex')!==s.sha256)D.fail('large_media_digest_mismatch');
+   if(!Media.mimeDetected(first,s.mime))D.fail('media_signature_invalid');
+   verified=true;
+  }finally{
+   if(!verified)await uploads.updateOne({_id:id,owner,status:'finalizing'},{$set:{status:'pending'}});
+  }
   const key=fileKey(owner,s.id),prior=await fileOf(email,s.id);
   if(prior){
    if(!compatible(prior,s))D.fail('media_id_collision');
-   await uploads.deleteOne({_id:id,owner});
-   await chunks.deleteMany({owner,uploadId:id});
+   const session=client.startSession();
+   try{
+    await session.withTransaction(async()=>{
+     await chunks.deleteMany({owner,uploadId:id},{session});
+     await uploads.deleteOne({_id:id,owner,status:'finalizing'},{session});
+    });
+   }finally{await session.endSession();}
    return {duplicate:true,file:D.publicFile(prior)};
   }
-  const doc={_id:key,owner,id:s.id,name:s.name,mime:s.mime,size:s.size,sha256:s.sha256,
-   uploadId:id,uploadedAt:new Date().toISOString(),status:'staging'};
-  try{await files.insertOne(doc);}
-  catch(e){
-   if(e?.code!==11000)throw e;
-   const existing=await files.findOne({_id:key,owner});
-   if(!existing||existing.uploadId!==id||!compatible(existing,s))D.fail('media_id_collision');
-  }
-  // File is invisible while staging. Incomplete parts retain their TTL.
-  // Unset expiration *before* READY so a crash never publishes soon-to-expire chunks.
-  await chunks.updateMany({owner,uploadId:id},{$unset:{expiresAt:''}});
-  await files.updateOne({_id:key,owner,status:'staging',uploadId:id},{$set:{status:'ready'}});
-  await uploads.deleteOne({_id:id,owner});
+  const doc={_id:key,owner,id:s.id,name:s.name,mime:s.mime,size:s.size,
+   sha256:s.sha256,uploadId:id,uploadedAt:new Date().toISOString(),status:'ready'};
+  // Commit metadata, lifetime extension and temporary-session cleanup atomically.
+  // If the process dies, the transaction rolls back and a retry can finish.
+  const session=client.startSession();
+  try{
+   await session.withTransaction(async()=>{
+    await files.insertOne(doc,{session});
+    await chunks.updateMany({owner,uploadId:id},{$unset:{expiresAt:''}},{session});
+    await uploads.deleteOne({_id:id,owner,status:'finalizing'},{session});
+   });
+  }finally{await session.endSession();}
   return {duplicate:false,file:D.publicFile(doc)};
  }
  async function get(email,id){return fileOf(email,id);}
