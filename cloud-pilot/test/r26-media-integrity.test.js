@@ -144,7 +144,12 @@ class FakeCollection{
 }
 class FakeClient {
  static last=null;
- constructor(){this.collections=new Map();this.stats={transactions:0,closedSessions:0};this.lock=Promise.resolve();FakeClient.last=this;}
+ static shared=null;
+ constructor(){
+  this.state=FakeClient.shared||{collections:new Map(),stats:{transactions:0,closedSessions:0},lock:Promise.resolve(),failNext:false};
+  this.collections=this.state.collections;this.stats=this.state.stats;
+  FakeClient.last=this;
+ }
  async connect(){return this;}
  db(){return{collection:name=>{
   if(!this.collections.has(name))this.collections.set(name,new FakeCollection(name));
@@ -152,14 +157,19 @@ class FakeClient {
  }};}
  startSession(){
   return {withTransaction:async operation=>{
-   const previous=this.lock;let release;
-   this.lock=new Promise(resolve=>{release=resolve;});
+   const previous=this.state.lock;let release;
+   this.state.lock=new Promise(resolve=>{release=resolve;});
    await previous;
    this.stats.transactions++;
    const before=new Map([...this.collections].map(([name,col])=>
     [name,new Map([...col.rows].map(([key,item])=>[key,structuredClone(item)]))]));
-   try{await operation();}
-   catch(error){
+   try{
+    await operation();
+    if(this.state.failNext){
+     this.state.failNext=false;
+     throw Error('simulated_transaction_abort');
+    }
+   }catch(error){
     for(const [name,rows] of before)this.collections.get(name).rows=rows;
     throw error;
    }finally{release();}
@@ -167,7 +177,8 @@ class FakeClient {
  }
  async close(){}
 }
-async function mongo(){
+async function mongo(shared=null){
+ FakeClient.shared=shared;
  const store=await createMongoStore('mongodb://127.0.0.1:27017',
   {driver:{MongoClient:FakeClient}});
  return {store,client:FakeClient.last};
@@ -208,5 +219,35 @@ test('R26 Mongo: unrelated accounts cannot borrow each others media IDs',async()
   const r=await store.removeMediaIfUnlinked(other,id,0);
   assert.equal(r.code,'media_not_found');
   assert.equal((await store.readMedia(email)).items.length,1);
+ }finally{await store.close();}
+});
+
+test('R26 Mongo: separate Node service instances share the integrity fence',async()=>{
+ const first=await mongo(),second=await mongo(first.client.state);
+ try{
+  const id=await prepareLegacy(first.store);
+  const results=await Promise.allSettled([
+   first.store.writeWorkspace(email,0,library(id)),
+   second.store.removeMediaIfUnlinked(email,id,1)
+  ]);
+  const successes=results.filter(r=>r.status==='fulfilled'&&!r.value.conflict);
+  assert.equal(successes.length,1);
+  const snapshot=await first.store.readWorkspace(email);
+  const present=(await second.store.readMedia(email)).items.some(item=>item.id===id);
+  assert.equal((snapshot.modules.library||[]).some(item=>item.mediaId===id),present);
+  assert.equal(first.client.stats.transactions,first.client.stats.closedSessions);
+ }finally{await Promise.all([first.store.close(),second.store.close()]);}
+});
+test('R26 Mongo: transaction abort rolls back deletion without dropping an asset',async()=>{
+ const {store,client}=await mongo();
+ try{
+  const id=await prepareLegacy(store);
+  client.state.failNext=true;
+  await assert.rejects(()=>store.removeMediaIfUnlinked(email,id,1),/simulated_transaction_abort/);
+  assert.equal((await store.readMedia(email)).items.length,1);
+  assert.equal((await store.readWorkspace(email)).revision,0);
+  const outcome=await store.removeMediaIfUnlinked(email,id,1);
+  assert.equal(outcome.conflict,false);
+  assert.equal((await store.readMedia(email)).items.length,0);
  }finally{await store.close();}
 });
