@@ -57,8 +57,11 @@ async function createMongoStore(uri){
  const client=new MongoClient(uri,{appName:'zvm-cloud-pilot',maxPoolSize:5,minPoolSize:0,serverSelectionTimeoutMS:10000});
  await client.connect();
  const db=client.db(DATABASE),accountGrants=db.collection('cloud_dev_account_grants'),drafts=db.collection('drafts'),workspaces=db.collection('cloud_workspaces'),media=db.collection('cloud_media'),metaEvents=db.collection('cloud_meta_events');
- const large=await createMongoLargeMediaStore(db,client);
- try{await metaEvents.createIndex({createdAt:1},{expireAfterSeconds:7*24*3600});}
+ let large;
+ try{
+  large=await createMongoLargeMediaStore(db,client);
+  await metaEvents.createIndex({createdAt:1},{expireAfterSeconds:7*24*3600});
+ }
  catch(error){await client.close();throw error;}
  return {
   large,
