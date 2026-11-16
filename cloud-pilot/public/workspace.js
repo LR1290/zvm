@@ -348,6 +348,10 @@
    }
    const upload=started.upload;
    if(!upload||!upload.uploadId||!Number.isSafeInteger(upload.nextIndex))throw Error('upload_session_invalid');
+   if(mediaCancelling||mediaAbort.signal.aborted){
+    await api('/api/media/uploads/'+upload.uploadId,{method:'DELETE'}).catch(()=>{});
+    throw Error('upload_cancelled');
+   }
    pendingMediaUpload=upload;updatePending();
    for(let i=upload.nextIndex;i<upload.totalChunks;i++){
     if(mediaCancelling)throw Error('upload_cancelled');
@@ -378,16 +382,19 @@
     'Transferência não concluída: '+error.message+'. Selecione novamente o mesmo arquivo para retomar.',true);
    await loadMedia().catch(()=>{});
   }finally{
-   mediaBusy=false;mediaAbort=null;button.disabled=false;updatePending();
+   mediaBusy=false;mediaAbort=null;mediaCancelling=false;button.disabled=false;updatePending();
    if(byId('cloudMediaProgress')&&!pendingMediaUpload)byId('cloudMediaProgress').hidden=true;
   }
  }
  async function cancelMediaUpload(){
   if(mediaCancelling)return;
   const id=pendingMediaUpload?.uploadId;
-  if(!id)return;
   mediaCancelling=true;
   if(mediaAbort)mediaAbort.abort();
+  if(!id){
+   mediaStatus('Transferência cancelada antes de iniciar. Nenhum arquivo foi armazenado.');
+   updatePending();return;
+  }
   try{
    await api('/api/media/uploads/'+id,{method:'DELETE'});
    pendingMediaUpload=null;
@@ -395,7 +402,7 @@
    await loadMedia();
   }catch{
    mediaStatus('Não foi possível confirmar o cancelamento. Atualize o cofre e tente novamente.',true);
-  }finally{mediaCancelling=false;updatePending();}
+  }finally{if(!mediaBusy)mediaCancelling=false;updatePending();}
  }
  async function deleteMedia(item){
   if(!confirm('Excluir este anexo do seu cofre Cloud? Itens da Biblioteca vinculados precisam ser desvinculados antes.'))return;
