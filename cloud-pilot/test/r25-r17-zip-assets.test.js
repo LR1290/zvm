@@ -96,8 +96,8 @@ test('R25: ZIP import frontend uses one verified uploader and CAS for account-sp
  const ui=fs.readFileSync(path.join(__dirname,'../public/workspace.js'),'utf8');
  assert.match(ui,/window\.ZVMCloudZip\.readAsset\(file,extracted,asset\.id\)/);
  assert.match(ui,/uploadMedia\(media,\{throwOnError:true\}\)/);
- assert.match(ui,/ZVMCloudBackupLinks\\.resolve/);
- assert.match(ui,/freshMapping\\.status!=='ready'/);
+ assert.match(ui,/ZVMCloudBackupLinks\.resolve/);
+ assert.match(ui,/freshMapping\.status!=='ready'/);
  assert.match(ui,/revision:latest\.revision,records/);
  assert.match(ui,/sem vínculo confirmado/);
  assert.match(ui,/Mídias do ZIP ainda precisam de restauração seletiva/);
