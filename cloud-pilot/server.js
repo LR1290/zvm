@@ -8,6 +8,7 @@ const {MODULES,moduleCheck,checkAudience,planLegacy,mergeModules,checkWhole}=req
 const {changeCrmBoard,checkCrmLinks}=require('./crm-board-domain');
 const Media=require('./media-domain');
 const Large=require('./large-media-domain');
+const Quota=require('./media-quota');
 const {checkLibraryRecords}=require('./library-domain');
 const Meta=require('./meta-webhook');
 const ASSETS={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','application/javascript; charset=utf-8'],'/styles.css':['styles.css','text/css; charset=utf-8'],'/workspace.js':['workspace.js','application/javascript; charset=utf-8'],'/backup-zip.js':['backup-zip.js','application/javascript; charset=utf-8'],'/cloud-ui.js':['cloud-ui.js','application/javascript; charset=utf-8'],'/cloud-ui.css':['cloud-ui.css','text/css; charset=utf-8'],'/cloud-crm-board.js':['cloud-crm-board.js','application/javascript; charset=utf-8'],'/cloud-crm-board.css':['cloud-crm-board.css','text/css; charset=utf-8'],'/cloud-library.js':['cloud-library.js','application/javascript; charset=utf-8'],'/cloud-library.css':['cloud-library.css','text/css; charset=utf-8'],'/backup-asset-links.js':['backup-asset-links.js','application/javascript; charset=utf-8']};
@@ -205,7 +206,12 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
    // Media objects are never served from public static paths.
    if(req.method==='GET'&&pathname==='/api/media'){
     const vault=await store.readMedia(user.email);
-    return json(res,200,{...Large.combined(vault,store.large?await store.large.list(user.email):[]),sending:false});
+    const large=store.large?await store.large.list(user.email):[];
+    const pending=store.large?await store.large.status(user.email):null;
+    const quota=Quota.budget(vault.items,large,pending);
+    return json(res,200,{...Large.combined(vault,large),
+     reservedBytes:quota.reservedBytes,reservedItems:quota.reservedItems,
+     availableBytes:quota.availableBytes,availableItems:quota.availableItems,sending:false});
    }
    if(req.method==='POST'&&pathname==='/api/media'){
     let payload;try{payload=await readJson(req,1500000);}catch{return json(res,413,{error:'media_payload_too_large'});}
