@@ -43,9 +43,13 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
  }
  async function activated(user){
   if(!user||!store||typeof verifyDevKey!=='function')return false;
-  const grant=await store.getGrant(user.sessionId);
-  if(!grant||grant.email!==user.email||!(new Date(grant.expiresAt).getTime()>Date.now()))return false;
-  // Re-check the authoritative, current DEV status on every privileged request.
+  // DEV trust belongs to the authenticated Portal ACCOUNT, never to a browser
+  // session or 8-hour TTL. Do not migrate legacy per-session grants implicitly:
+  // explicit revocation must not be resurrected by another old session.
+  const grant=await store.getAccountGrant(user.email);
+  if(!grant||typeof grant.keyHash!=='string'||!/^[a-f0-9]{64}$/.test(grant.keyHash))return false;
+  // Each privileged request checks the CURRENT authoritative license. Revoked,
+  // unlinked, replaced or no-longer-DEV keys stop working immediately.
   return (await verifyDevKey(user.email,null,grant.keyHash))===true;
  }
  return async function handleCloudRequest(req,res){
@@ -77,28 +81,30 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
    const user=await portal(req);
    if(req.method==='GET'&&pathname==='/api/session'){
     const devAuthorized=await activated(user);
-    return json(res,200,{loggedIn:!!user,email:user?.email||null,devAuthorized,devRequired:!!user&&!devAuthorized,persistence:!!store,sending:false,mode:'dev-pilot'});
+    return json(res,200,{loggedIn:!!user,email:user?.email||null,devAuthorized,devRequired:!!user&&!devAuthorized,persistence:!!store,rememberedForAccount:devAuthorized,sending:false,mode:'dev-pilot'});
    }
    if(pathname==='/api/login'||pathname==='/api/admin/guest')return json(res,404,{error:'not_found'});
    if(!user)return json(res,401,{error:'site_login_required'});
    if(!store||typeof verifyDevKey!=='function')return json(res,503,{error:'cloud_unavailable'});
    if(req.method==='POST'&&pathname==='/api/dev/activate'){
-    const prev=failures.get(user.sessionId)||{count:0,until:0};
+    const prev=failures.get(user.email)||{count:0,until:0};
     if(prev.until<=Date.now()){prev.count=0;prev.until=Date.now()+WINDOW_MS;}
-    prev.count++;failures.set(user.sessionId,prev);
+    prev.count++;failures.set(user.email,prev);
     if(prev.count>MAX_TRIES)return json(res,429,{error:'try_again_later'});
     let data;try{data=await readJson(req);}catch{return json(res,400,{error:'invalid_request'});}
     const code=typeof data.key==='string'?data.key.trim().toLowerCase():'';
     if(!/^[a-z0-9_-]{1,64}$/.test(code))return json(res,400,{error:'invalid_key'});
     const result=await verifyDevKey(user.email,code,null);
     if(!result||typeof result.keyHash!=='string'||!/^[a-f0-9]{64}$/.test(result.keyHash))return json(res,403,{error:'dev_key_not_authorized'});
-    await store.grant(user.sessionId,user.email,result.keyHash,Math.min(user.expiresAt,Date.now()+8*60*60*1000));
-    failures.delete(user.sessionId);
-    return json(res,200,{ok:true,devAuthorized:true});
+    await store.grantAccount(user.email,result.keyHash);
+    failures.delete(user.email);
+    return json(res,200,{ok:true,devAuthorized:true,rememberedForAccount:true});
    }
    if(req.method==='POST'&&pathname==='/api/dev/leave'){
-    await store.revokeGrant(user.sessionId);
-    return json(res,200,{ok:true});
+    // Explicit unlink is account-wide, not just a sign-out from this session.
+    await store.revokeAccountGrant(user.email);
+    failures.delete(user.email);
+    return json(res,200,{ok:true,devAuthorized:false,rememberedForAccount:false});
    }
    if(!await activated(user))return json(res,403,{error:'dev_key_required'});
    if(req.method==='GET'&&pathname==='/api/overview'){
