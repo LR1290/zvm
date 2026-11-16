@@ -43,9 +43,11 @@ class Element{
   for(const handler of this.listeners.get(name)||[])handler({preventDefault(){},...options});
  }
 }
-async function boot(){
+async function boot({delayLoad=false}={}){
  const root=new Element('div'),eventHandlers=new Map(),fetchCalls=[];
  let flows=[],revision=0;
+ let releasePending=null;
+ const pending=delayLoad?new Promise(resolve=>{releasePending=resolve;}):null;
  const document={
   currentScript:{src:'https://zvm.onrender.com/dev/cloud/cloud-flow-studio.js'},
   getElementById:id=>id==='cloudFlowStudio'?root:null,
@@ -60,9 +62,10 @@ async function boot(){
  async function fetchMock(uri,options={}){
   const route=new URL(uri,'https://zvm.onrender.com').pathname.replace('/dev/cloud','');
   fetchCalls.push({route,method:options.method||'GET'});
-  if(route==='/api/workspace/flows')return {
-   ok:true,status:200,json:async()=>({records:flows,revision})
-  };
+  if(route==='/api/workspace/flows'){
+   if(pending)await pending;
+   return{ok:true,status:200,json:async()=>({records:flows,revision})};
+  }
   if(route==='/api/workspace/flows/graph'){
    const payload=JSON.parse(options.body||'{}');
    if(payload.revision!==revision)return{
@@ -82,7 +85,7 @@ async function boot(){
  });
  async function settled(){await new Promise(resolve=>setImmediate(resolve));}
  window.dispatchEvent({type:'zvm-cloud-ready'});await settled();
- return {root,window,settled,fetchCalls,get flows(){return flows;},get revision(){return revision;}};
+ return {root,window,settled,fetchCalls,releaseLoad:()=>releasePending?.(),get flows(){return flows;},get revision(){return revision;}};
 }
 test('R29: browserlike DOM builds actual Flow board and persists create/add/text/link actions',async()=>{
  const app=await boot();
@@ -117,4 +120,14 @@ test('R29: editor clears private graph when session is locked',async()=>{
  const app=await boot();app.window.dispatchEvent({type:'zvm-cloud-locked'});
  assert.equal(app.root.all('zvm-flow-node').length,0);
  assert.equal(app.root.textContent.includes('Meu fluxo'),false);
+});
+
+test('R29: delayed responses never resurrect Flow drafts after logout',async()=>{
+ const app=await boot({delayLoad:true});
+ app.window.dispatchEvent({type:'zvm-cloud-locked'});
+ app.releaseLoad();
+ await app.settled();
+ assert.equal(app.root.all('zvm-flow-node').length,0);
+ assert.equal(app.root.querySelector('.zvm-flow-list').children.length,1);
+ assert.equal(app.root.textContent.includes('Fluxos carregados'),false);
 });
