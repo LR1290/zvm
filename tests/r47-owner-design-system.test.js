@@ -8,13 +8,13 @@ const root = path.join(__dirname, '..');
 const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 const server = read('server.js');
 const owner = read('src/web/public/landing/owner-template.html');
-const themePath = 'assets/zvm-owner-site.ddd1b37eb938.css';
+const themePath = 'assets/zvm-owner-site.42d17a62234b.css';
 const theme = read(themePath);
 const ownerCssPath = 'assets/zvm-sales-owner.76ccce3f6669.css';
 const ownerCss = read(ownerCssPath);
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 
-assert.equal(hash(theme), 'ddd1b37eb9389e319ae91777abd20b19efeb5024b7629a1fbdd2215fe04abb5c');
+assert.equal(hash(theme), '42d17a62234b677c088e216baa0565ec3edc192f3345ac74661034405b1e2da8');
 assert.equal(hash(ownerCss), '76ccce3f666924644952fd3cce80e6bf881768526e360bdb76798a1da10eac5d');
 for (const [file, digest] of [
   [themePath, hash(theme)],
@@ -84,6 +84,19 @@ for (const [fn, next] of [
   assert(chunk.indexOf('html = applyOwnerSiteTheme(html);') < chunk.indexOf("Buffer.from(html, 'utf8')"), fn+' adapter too late');
 }
 assert(server.includes('salesPaused: ZVM_SALES_PAUSED'));
+assert(server.includes("renderOwnerSalesLanding, OWNER_TOP_BRAND_SRC"), 'canonical owner header asset reused');
+assert(server.includes('function renderCanonicalOwnerBrand()'), 'shared top brand renderer');
+assert(server.includes('class="znav-brand owner-panel-brand"'), 'public pages reuse owner header logo');
+assert(server.includes('class="owner-nav-install"'), 'shared top install button');
+assert(server.includes('class="client-rail-logo owner-panel-rail-brand"'), 'client rail reuses logo');
+assert(server.includes('/assets/zvm-owner-site.42d17a62234b.css'), 'latest stylesheet');
+assert(theme.includes('.owner-panel-brand-img'), 'top logo styled');
+assert(theme.includes('.owner-nav-install'), 'install button styled');
+assert(theme.includes('.znav-links.is-open'), 'mobile nav remains working');
+assert(theme.includes('.owner-panel-rail-brand'), 'client rail logo styled');
+assert(theme.includes('max-width:1150px'), 'menu access at laptop widths');
+assert(!fs.existsSync(path.join(root, 'assets/zvm-owner-site.ddd1b37eb938.css')),
+  'superseded shared stylesheet must be retired');
 assert(server.includes("if (p === '/cliente' || p === '/cliente/')"));
 assert(server.includes('if (await serveZVMCloud(req, res, p)) return;'), 'Cloud mount must remain active');
 console.log('ZVM owner visual system: SHA-256, CSS, portal, auth, legal, admin, menu and Cloud isolation passed.');
