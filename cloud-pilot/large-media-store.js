@@ -258,6 +258,7 @@ async function createMongoLargeMediaStore(db,client){
  async function cancel(email,id){
   const owner=owned(email),s=await upload(email,id);
   if(!s)D.fail('upload_not_found');
+  if(s.status==='finalizing')D.fail('upload_finalizing');
   const session=client.startSession();
   try{
    await session.withTransaction(async()=>{
