@@ -105,7 +105,7 @@
     if(value.length>262144||!((value[0]==='{'&&value[value.length-1]==='}')||
       (value[0]==='['&&value[value.length-1]===']')))return;
     try{walk(JSON.parse(value),depth+1);}catch(error){
-     if(error?.code==='zip_asset_source_too_complex')throw error;
+     if(error?.code&&String(error.code).startsWith('zip_asset_'))throw error;
     }
     return;
    }
