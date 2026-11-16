@@ -73,6 +73,9 @@
  }
  function card(cardValue,colIndex,itemIndex,columns){
   const e=node('article',null,'cloud-crm-card');
+  if(!cardValue||typeof cardValue!=='object'||Array.isArray(cardValue)){
+   e.append(node('p','Cartão importado inválido; preserve o backup e revise este CRM.','cloud-crm-empty'));return e;
+  }
   const contact=state.contacts.find(c=>c.id===cardValue.contactId);
   const name=contact?.name||cardValue.contact?.name||cardValue.contact?.pushname||cardValue.name||'Contato importado';
   const phone=contact?.phone||cardValue.contact?.phoneNumber||cardValue.contact?.phone||cardValue.phone||'Telefone não encontrado';
@@ -95,6 +98,9 @@
  }
  function column(col,i,columns){
   const wrap=node('section',null,'cloud-crm-column');
+  if(!col||typeof col!=='object'||Array.isArray(col)||!Array.isArray(col.items)){
+   wrap.append(node('p','Etapa legada com dados incompatíveis. Nada será alterado.','cloud-crm-empty'));return wrap;
+  }
   const head=node('div',null,'cloud-crm-column-head');
   head.append(node('h4',col.title||col.name||'Etapa '+(i+1)));
   const items=Array.isArray(col.items)?col.items:[];
@@ -140,15 +146,15 @@
    root.append(node('p','Crie um pipeline no formulário acima ou importe o CRM da extensão para abrir o quadro.','cloud-crm-empty'));
    return;
   }
-  if(!state.crm.some(p=>p.id===selected))selected=state.crm[0].id;
+  if(!state.crm.some(p=>p?.id===selected))selected=state.crm[0]?.id||'';
   const toolbar=node('div',null,'cloud-crm-toolbar');
   const picker=node('select');picker.setAttribute('aria-label','Selecionar pipeline CRM');
   for(const pipeline of state.crm){const opt=node('option',pipeline.name);opt.value=pipeline.id;opt.selected=pipeline.id===selected;picker.append(opt);}
   picker.addEventListener('change',()=>{selected=picker.value;render();});
   toolbar.append(picker,button('Atualizar quadro',()=>reload().catch(()=>status('Falha ao consultar o CRM.',true))));
   root.append(toolbar);
-  const pipeline=state.crm.find(p=>p.id===selected);
-  if(!Array.isArray(pipeline.columns)){
+  const pipeline=state.crm.find(p=>p?.id===selected);
+  if(!pipeline||!Array.isArray(pipeline.columns)){
    root.append(node('p','O formato deste CRM importado exige revisão. Nenhum dado foi alterado.','cloud-crm-empty'));return;
   }
   const addForm=form('Criar etapa','Nome da nova etapa',title=>act({action:'add-column',title}));
