@@ -157,6 +157,45 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
    if(req.method==='POST'&&pathname==='/api/ping'){
     pingCount++;return json(res,200,{ok:true,at:new Date().toISOString(),number:pingCount});
    }
+   // R24 resumable file chunks. Security gates above apply to every operation.
+   if(store.large&&pathname==='/api/media/uploads'){
+    if(req.method==='GET')return json(res,200,{upload:await store.large.status(user.email),sending:false});
+    if(req.method==='POST'){
+     let body;try{body=await readJson(req,2000);}catch{return json(res,400,{error:'invalid_upload'});}
+     let payload;
+     try{
+      const spec=Large.specOf(body),legacy=await store.readMedia(user.email);
+      const existing=legacy.items.find(item=>item.id===spec.id);
+      if(existing){
+       if(existing.sha256!==spec.sha256||existing.mime!==spec.mime)return json(res,409,{error:'media_id_collision'});
+       return json(res,200,{ok:true,duplicate:true,file:Large.publicFile(existing),upload:null});
+      }
+      payload=await store.large.begin(user.email,spec,Media.output(legacy).usedBytes);
+     }catch(error){const err=largeError(error);return json(res,err.status,{error:err.code});}
+     return json(res,200,{ok:true,...payload,sending:false});
+    }
+   }
+   const uploadPart=/^\/api\/media\/uploads\/([a-f0-9]{32})\/(\d{1,3})$/.exec(pathname);
+   if(store.large&&uploadPart&&req.method==='PUT'){
+    let bytes;try{bytes=await readBinary(req);}catch{return json(res,413,{error:'chunk_payload_invalid'});}
+    try{
+     const progress=await store.large.append(user.email,uploadPart[1],Number(uploadPart[2]),bytes,String(req.headers['x-chunk-sha256']||''));
+     return json(res,200,{ok:true,upload:progress,sending:false});
+    }catch(error){const err=largeError(error);return json(res,err.status,{error:err.code});}
+   }
+   const uploadEnd=/^\/api\/media\/uploads\/([a-f0-9]{32})\/complete$/.exec(pathname);
+   if(store.large&&uploadEnd&&req.method==='POST'){
+    try{
+     const done=await store.large.finish(user.email,uploadEnd[1]);
+     const vault=await store.readMedia(user.email),large=await store.large.list(user.email);
+     return json(res,200,{ok:true,duplicate:done.duplicate,mediaId:done.file.id,...Large.combined(vault,large),sending:false});
+    }catch(error){const err=largeError(error);return json(res,err.status,{error:err.code});}
+   }
+   const uploadCancel=/^\/api\/media\/uploads\/([a-f0-9]{32})$/.exec(pathname);
+   if(store.large&&uploadCancel&&req.method==='DELETE'){
+    try{await store.large.cancel(user.email,uploadCancel[1]);return json(res,200,{ok:true,sending:false});}
+    catch(error){const err=largeError(error);return json(res,err.status,{error:err.code});}
+   }
    // Private media vault: bounded binary storage, signature verification, tenant scope.
    // Media objects are never served from public static paths.
    if(req.method==='GET'&&pathname==='/api/media'){
