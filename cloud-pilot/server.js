@@ -3,7 +3,7 @@
 // No message dispatch, scheduling, WhatsApp webhook or public registration exists here.
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path');
 const {createMongoStore}=require('./store');
-const {MODULES,moduleCheck,planLegacy,mergeModules,checkWhole}=require('./workspace-domain');
+const {MODULES,moduleCheck,checkAudience,planLegacy,mergeModules,checkWhole}=require('./workspace-domain');
 const ASSETS={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','application/javascript; charset=utf-8'],'/styles.css':['styles.css','text/css; charset=utf-8'],'/workspace.js':['workspace.js','application/javascript; charset=utf-8']};
 const MAX_TRIES=8, WINDOW_MS=15*60*1000;
 function json(res,status,body){
@@ -130,7 +130,8 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
      const current=await store.readWorkspace(user.email);
      if(current.revision!==payload.revision)return json(res,409,{error:'workspace_conflict',revision:current.revision});
      const modules={...current.modules,[name]:records};
-     try{checkWhole(modules);}catch(error){return json(res,422,{error:error.code||'workspace_invalid'});}
+     try{checkWhole(modules);for(const audienceModule of ['campaigns','flows','funnels'])checkAudience(audienceModule,modules[audienceModule]||[],modules.contacts||[]);}
+     catch(error){return json(res,422,{error:error.code||'workspace_invalid'});}
      const saved=await store.writeWorkspace(user.email,current.revision,modules);
      if(saved.conflict)return json(res,409,{error:'workspace_conflict'});
      return json(res,200,{ok:true,module:name,revision:saved.revision,updatedAt:saved.updatedAt,count:records.length});
