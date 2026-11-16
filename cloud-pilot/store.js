@@ -6,7 +6,7 @@ const workspaceId=email=>crypto.createHash('sha256').update('zvm-cloud-workspace
 const copy=x=>x==null?null:JSON.parse(JSON.stringify(x));
 const expMs=v=>new Date(v).getTime();
 function createMemoryStore(){
- const grants=new Map(),drafts=new Map(),workspaces=new Map();
+ const grants=new Map(),drafts=new Map(),workspaces=new Map(),media=new Map();
  return {
   async grant(sessionId,email,keyHash,expiresAt){grants.set(sessionId,{email,keyHash,expiresAt:new Date(expiresAt).toISOString()});},
   async getGrant(sessionId){const g=grants.get(sessionId);if(!g||!(expMs(g.expiresAt)>Date.now())){grants.delete(sessionId);return null;}return copy(g);},
@@ -23,6 +23,17 @@ function createMemoryStore(){
    const next={revision:revision+1,modules:copy(modules),updatedAt:new Date().toISOString()};
    workspaces.set(id,next);return {conflict:false,...copy(next)};
   },
+  async readMedia(email){
+   const doc=media.get(workspaceId(email));
+   if(!doc)return {revision:0,items:[]};
+   return {revision:doc.revision,items:doc.items.map(item=>({...item,bytes:Buffer.from(item.bytes)}))};
+  },
+  async writeMedia(email,revision,items){
+   const id=workspaceId(email),doc=media.get(id)||{revision:0};
+   if(doc.revision!==revision)return {conflict:true};
+   media.set(id,{revision:revision+1,items:items.map(item=>({...item,bytes:Buffer.from(item.bytes)}))});
+   return {conflict:false,revision:revision+1};
+  },
   async close(){}
  };
 }
@@ -31,7 +42,7 @@ async function createMongoStore(uri){
  const {MongoClient}=require('mongodb');
  const client=new MongoClient(uri,{appName:'zvm-cloud-pilot',maxPoolSize:5,minPoolSize:0,serverSelectionTimeoutMS:10000});
  await client.connect();
- const db=client.db(DATABASE),grants=db.collection('cloud_dev_grants'),drafts=db.collection('drafts'),workspaces=db.collection('cloud_workspaces');
+ const db=client.db(DATABASE),grants=db.collection('cloud_dev_grants'),drafts=db.collection('drafts'),workspaces=db.collection('cloud_workspaces'),media=db.collection('cloud_media');
  try{await grants.createIndex({expiresAt:1},{expireAfterSeconds:0});}
  catch(error){await client.close();throw error;}
  return {
@@ -64,6 +75,21 @@ async function createMongoStore(uri){
     if(error?.code===11000)return {conflict:true};
     throw error;
    }
+  },
+  async readMedia(email){
+   const doc=await media.findOne({_id:workspaceId(email)});
+   return doc?{revision:doc.revision,items:doc.items||[]}:{revision:0,items:[]};
+  },
+  async writeMedia(email,revision,items){
+   const id=workspaceId(email),doc={_id:id,revision:revision+1,items};
+   try{
+    if(revision===0)await media.insertOne(doc);
+    else{
+     const changed=await media.replaceOne({_id:id,revision},doc);
+     if(changed.matchedCount!==1)return {conflict:true};
+    }
+    return {conflict:false,revision:doc.revision};
+   }catch(error){if(error?.code===11000)return {conflict:true};throw error;}
   },
   async close(){await client.close();}
  };
