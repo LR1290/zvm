@@ -6652,6 +6652,22 @@ function normalizeAdminCreateLabel(value) {
   return { ok: true, label: label || 'Cliente' };
 }
 
+// R47.07: absolute validity changes, separate from the idempotent /renew endpoint.
+function parseAdminValidityChange(body,nowMs=Date.now()){
+  if(!body||typeof body!=='object'||Array.isArray(body))return {ok:false,error:'invalid_validity_mode'};
+  if(body.mode==='never'){
+    if(body.expiresAt!==undefined)return {ok:false,error:'invalid_validity_mode'};
+    return {ok:true,mode:'never',expiresAt:null};
+  }
+  if(body.mode!=='date'||typeof body.expiresAt!=='string')return {ok:false,error:'invalid_validity_mode'};
+  const raw=body.expiresAt;
+  if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(raw))return {ok:false,error:'invalid_validity_date'};
+  const timestamp=Date.parse(raw);
+  if(!Number.isFinite(timestamp)||new Date(timestamp).toISOString()!==raw||
+     timestamp<nowMs+60000||timestamp>Date.parse('2100-01-01T00:00:00.000Z'))return {ok:false,error:'invalid_validity_date'};
+  return {ok:true,mode:'date',expiresAt:raw};
+}
+
 function parseAdminBatchDeleteCodes(body) {
   const rawCodes = Array.isArray(body?.codes) ? body.codes : [];
   if (!rawCodes.length) return { ok: false, error: 'nenhum código enviado', codes: [] };
@@ -10234,17 +10250,52 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true, expiresAt: savedRenew.expiresAt, replayed: renewal.replayed }); return;
   }
 
+  const codeValidity = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/validity$`));
+  if (codeValidity && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res,{error:'unauthorized'},401); return; }
+    const change = parseAdminValidityChange(await parseBody(req));
+    if (!change.ok) {sendJson(res,{ok:false,error:change.error},400);return;}
+    let saved;
+    try {
+      saved = await mutateAdminKeyRecordStrict(codeValidity,draft=>{
+        draft.expiresAt=change.expiresAt;
+        draft.expireDuration=null;
+        draft.warnEmailSent=false;
+      });
+    } catch(error) {sendAdminKeyPersistFailure(res,error,'edit validity');return;}
+    if(!saved){sendJson(res,{ok:false,error:'not_found'},404);return;}
+    addAdminAuditLog({actor:'admin',action:'key_validity_changed',keyCode:codeValidity,label:saved.label,
+      detail:change.mode==='never'?'Sem expiração':'Validade definida explicitamente'}).catch(()=>{});
+    sendJson(res,{ok:true,expiresAt:saved.expiresAt||null,mode:change.mode});return;
+  }
+
   const codeMaxUses = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/max-uses$`));
   if (codeMaxUses && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const kMu = await adminGetKey(codeMaxUses);
     if (!kMu) { sendJson(res, { error: 'not found' }, 404); return; }
     const body = await parseBody(req);
-    const maxUses = parseInt(body.maxUses);
-    if (isNaN(maxUses) || maxUses < -1) { sendJson(res, { error: 'invalid' }, 400); return; }
+    const rawMaxUses = body.maxUses;
+    const maxUses = typeof rawMaxUses === 'number' ? rawMaxUses :
+      (typeof rawMaxUses === 'string' && /^-?\d{1,5}$/.test(rawMaxUses) ? Number(rawMaxUses) : NaN);
+    if (!Number.isSafeInteger(maxUses) || !(maxUses===-1 || (maxUses>=1 && maxUses<=10000))) {
+      sendJson(res,{ok:false,error:'invalid_max_uses'},400);return;
+    }
     let savedMu;
-    try { savedMu = await mutateAdminKeyRecordStrict(codeMaxUses, draft => { draft.maxUses = maxUses; }); }
-    catch (e) { sendAdminKeyPersistFailure(res, e, 'max-uses'); return; }
+    try {
+      savedMu = await mutateAdminKeyRecordStrict(codeMaxUses,draft=>{
+        const linked=Array.isArray(draft.phones)?draft.phones.length:0;
+        if(maxUses!==-1&&linked>maxUses)throw Object.assign(new Error('max_uses_below_linked_devices'),
+          {code:'max_uses_below_linked_devices',linkedCount:linked});
+        draft.maxUses=maxUses;
+      });
+    } catch(e) {
+      if(e?.code==='max_uses_below_linked_devices'){
+        sendJson(res,{ok:false,error:'max_uses_below_linked_devices',linkedCount:e.linkedCount},409);return;
+      }
+      sendAdminKeyPersistFailure(res,e,'max-uses');return;
+    }
+    if(!savedMu){sendJson(res,{ok:false,error:'not_found'},404);return;}
     addAdminAuditLog({ actor: 'admin', action: 'key_maxuses', keyCode: codeMaxUses, label: savedMu.label, detail: `maxUses=${maxUses}` }).catch(()=>{});
     sendJson(res, { ok: true, maxUses }); return;
   }
@@ -11618,6 +11669,7 @@ module.exports.__test = Object.freeze({
   renderAdminDashboard,
   renderAdminLogin,
   normalizeAdminCreateLabel,
+  parseAdminValidityChange,
   parseAdminBatchDeleteCodes,
   renderAnalyticsLogin,
   renderAnalyticsDashboard,
