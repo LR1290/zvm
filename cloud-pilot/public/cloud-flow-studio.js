@@ -84,7 +84,7 @@
    selected=updated.id;
    if(action==='add')selectedNode=updated.nodes[updated.nodes.length-1]?.id||'';
    else if(action==='delete')selectedNode='';
-   notify('Alterações salvas na sua Cloud. Nenhum fluxo foi executado.');
+   notice='Alterações salvas na sua Cloud. Nenhum fluxo foi executado.';bad=false;
    window.dispatchEvent(new CustomEvent('zvm-cloud-flow-changed',{detail:{flowId:selected}}));
   }catch(error){
    const reason=words[error.message]||('Alteração recusada: '+error.message);
@@ -123,7 +123,7 @@
   surface.append(svg);
   for(const node of nodes){
    const p=at.get(node.id);
-   const card=button('','zvm-flow-node',()=>{selectedNode=node.id;render();});
+   const card=button('',()=>{selectedNode=node.id;render();},'zvm-flow-node');
    // Button labels are populated via text nodes, not HTML strings.
    card.textContent='';
    card.style.left=p.x+'px';card.style.top=p.y+'px';
@@ -267,7 +267,7 @@
   }
  }
  async function ready(){
-  locked=false;try{await reload(false);notice='Fluxos carregados. Nenhuma automação é executada na Cloud.';}
+  locked=false;try{await reload(false);notice='Fluxos carregados. Nenhuma automação é executada na Cloud.';bad=false;render();}
   catch{notice='Não foi possível carregar os Fluxos. Confira a sessão do Portal.';bad=true;render();}
  }
  function lock(){locked=true;flows=[];revision=0;selected='';selectedNode='';search='';notice='';render();}
