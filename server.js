@@ -9014,7 +9014,7 @@ async function handleRequest(req, res) {
     const form = await parseFormBody(req);
     if (!verifyPortalCsrf(req, form)) {
       console.warn('[PORTAL-CSRF] rejected token route=' + p + ' request=' + req.zvmRequestId);
-      sendAuthHtml(res, renderStandalonePortalLogin('Formulário expirado ou não validado. Reabra a página e tente novamente.'), 403);
+      sendAuthHtml(res, renderStandalonePortalLogin('Formulário expirado ou não validado. Reabra a página e tente novamente.', safeLocalRedirect((form.get('redir') || '').slice(0, 200))), 403);
       return;
     }
     req.zvmCachedPortalForm = form;
