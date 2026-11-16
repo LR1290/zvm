@@ -86,9 +86,9 @@ for(const path of ['/qa-admin','/qa-analytics','/other']){
  const r=response(path);sendHtml(r,'<html></html>');
  assert.equal(r.status,200);
  assert(r.headers['Content-Security-Policy'].includes("'unsafe-inline'"),'CSS remains compatible');
- if(path==='/qa-admin'){
+ if(path==='/qa-admin'||path==='/qa-analytics'){
    const directives=r.headers['Content-Security-Policy'].split(';').map(x=>x.trim());
-   assert.equal(directives.find(x=>x.startsWith('script-src')),"script-src 'self'",'Admin scripts must not execute inline');
+   assert.equal(directives.find(x=>x.startsWith('script-src')),"script-src 'self'",'Privileged scripts must not execute inline');
  }
  assert.equal(!!r.headers['Content-Security-Policy-Report-Only'],path!=='/other','CSP telemetry scoped to privileged pages');
 }
