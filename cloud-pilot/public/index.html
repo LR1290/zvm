@@ -56,7 +56,7 @@
   <button data-page="campaigns">Campanhas</button>
   <button data-page="flows">Fluxos</button>
   <button data-page="funnels">Funis</button>
-  <button data-page="library">Biblioteca</button><button data-page="contacts">Contatos</button><button data-page="crm">CRM</button><button data-page="labels">Etiquetas</button><button data-page="quickReplies">Respostas</button><button data-page="agenda">Agenda</button><button data-page="settings">Configurações</button><button data-page="migration">Importar R17</button>
+  <button data-page="library">Biblioteca</button><button data-page="contacts">Contatos</button><button data-page="crm">CRM</button><button data-page="labels">Etiquetas</button><button data-page="quickReplies">Respostas</button><button data-page="agenda">Agenda</button><button data-page="settings">Configurações</button><button data-page="migration">Importar R17</button><button data-page="integration">WhatsApp oficial</button>
  </nav>
  <section class="view" id="summary">
   <div class="stats">
@@ -94,6 +94,15 @@
  <p id="cloudMediaStatus" aria-live="polite"></p><div id="cloudMediaItems"></div>
  <p class="tiny">Limite temporário deste piloto: 6 MB por conta e até 24 arquivos. ZIP, SVG, HTML, executáveis e anexos acima do limite são bloqueados.</p>
  </div></div></section>
+ <section class="view" id="integration" hidden>
+  <div class="panel section"><h2>Integração oficial com WhatsApp Business</h2>
+   <p class="muted">A ZVM Cloud não executa o WhatsApp Web no servidor. Para mensagens reais, usa a Plataforma Oficial do WhatsApp Business, com conta autorizada, webhooks e regras de consentimento.</p>
+   <div class="notice"><span><b>Envios continuam desligados.</b> É necessário autorizar um número empresarial na Meta, configurar token e webhook, validar destinatários com opt-in e homologar os modelos de mensagem.</span></div>
+   <p id="cloudMetaDiagnostic" class="result" aria-live="polite">Verificando integração...</p>
+   <button id="cloudMetaRefresh" type="button" class="secondary">Verificar conexão oficial</button>
+   <p class="tiny">Documentação: <a href="https://developers.facebook.com/docs/whatsapp/cloud-api/" target="_blank" rel="noopener noreferrer">Meta WhatsApp Cloud API</a>. Nenhuma credencial deve ser digitada no navegador ou compartilhada no chat.</p>
+  </div>
+ </section>
  <footer><a href="/cliente">Minha conta ZVM</a> · <a href="/cliente/logout">Sair do site</a> · ZVM Cloud DEV sem envios reais</footer>
 </section>
 </main>
