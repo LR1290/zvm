@@ -132,12 +132,14 @@
  <section class="view" id="funnels" hidden><div class="panel section"><h2>Funis</h2><p class="muted">Planeje Funis e suas etapas. Agendamentos reais desativados.</p><div id="cloud-list-funnels"></div></div></section>
  <section class="view" id="library" hidden><div class="panel section"><h2>Biblioteca</h2><p class="muted">Mensagens reutilizáveis e itens de conteúdo. Mídias locais exigem migração específica.</p><div id="cloudLibraryStudio" aria-label="Biblioteca de conteúdos"></div><div class="cloud-media-section" id="cloud-media-library">
  <h3>Cofre de anexos da Cloud</h3>
- <p class="muted">Envie um arquivo pequeno para associá-lo a um item da Biblioteca. O conteúdo fica privado na sua conta; não é encaminhado ao WhatsApp.</p>
- <label for="cloudMediaFile">Selecionar anexo (até 1 MB por arquivo)</label>
+ <p class="muted">Envie mídia com verificação SHA-256 e transferência em partes, com retomada após interrupções. Os arquivos ficam privados na sua conta; nenhum conteúdo é enviado ao WhatsApp.</p>
+ <label for="cloudMediaFile">Selecionar arquivo (até 32 MB por arquivo nesta fase)</label>
  <input type="file" id="cloudMediaFile" accept=".png,.jpg,.jpeg,.webp,.pdf,.mp3,.ogg,.mp4,image/png,image/jpeg,image/webp,application/pdf,audio/mpeg,audio/ogg,video/mp4">
- <div class="workspace-actions"><button type="button" class="primary" id="cloudMediaUpload">Guardar anexo na Cloud</button><button type="button" class="secondary" id="cloudMediaRefresh">Atualizar cofre</button></div>
+ <div class="workspace-actions"><button type="button" class="primary" id="cloudMediaUpload">Enviar ao Cofre</button><button type="button" class="secondary" id="cloudMediaRefresh">Atualizar cofre</button><button type="button" class="secondary" id="cloudMediaCancel" hidden>Cancelar transferência</button></div>
+  <progress id="cloudMediaProgress" max="100" value="0" hidden aria-label="Progresso de envio ao cofre"></progress>
+  <p id="cloudMediaResumeInfo" class="muted" aria-live="polite"></p>
  <p id="cloudMediaStatus" aria-live="polite"></p><div id="cloudMediaItems"></div>
- <p class="tiny">Limite temporário deste piloto: 6 MB por conta e até 24 arquivos. ZIP, SVG, HTML, executáveis e anexos acima do limite são bloqueados.</p>
+ <p class="tiny">Limite temporário de QA: 32 MB por arquivo, 128 MB por conta e 60 itens. Transferências incompletas expiram após 24 horas. ZIPs de 1 GB ainda exigem o módulo de backup escalável. SVG, HTML e executáveis permanecem bloqueados.</p>
  </div></div></section>
  <section class="view" id="integration" hidden>
   <div class="panel section"><h2>Integração oficial com WhatsApp Business</h2>
