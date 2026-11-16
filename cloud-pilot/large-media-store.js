@@ -59,7 +59,11 @@ function createMemoryLargeMediaStore(){
  }
  async function finish(email,id){
   const s=pending(email);
-  if(!s||s.uploadId!==id)D.fail('upload_not_found');
+  if(!s||s.uploadId!==id){
+   const completed=[...owned(email).values()].find(file=>file.uploadId===id);
+   if(completed)return {duplicate:true,file:D.publicFile(completed)};
+   D.fail('upload_not_found');
+  }
   if(s.nextIndex!==s.chunks||s.receivedBytes!==s.size)D.fail('upload_incomplete');
   D.validateWhole(s,s.parts);
   const records=owned(email);
@@ -185,7 +189,12 @@ async function createMongoLargeMediaStore(db,client){
  }
  async function finish(email,id){
   const owner=owned(email),s=await upload(email,id);
-  if(!s||!['pending','finalizing'].includes(s.status))D.fail('upload_not_found');
+  if(!s){
+   const committed=await files.findOne({owner,uploadId:id,status:'ready'});
+   if(committed)return {duplicate:true,file:D.publicFile(committed)};
+   D.fail('upload_not_found');
+  }
+  if(!['pending','finalizing'].includes(s.status))D.fail('upload_not_found');
   if(s.nextIndex!==s.chunks||s.receivedBytes!==s.size)D.fail('upload_incomplete');
   // A claimed session cannot receive new chunks while final integrity is checked.
   if(s.status==='pending'){
