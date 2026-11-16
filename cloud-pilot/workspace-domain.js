@@ -152,7 +152,7 @@ function planLegacy(source){
       warnings.push('Biblioteca: conteúdo auxiliar de "'+name+'" está ilegível; original não será marcado como disponível.');
      }
     }
-    const safeText=value=>typeof value==='string'&&!MEDIA_REF.test(value)?value.slice(0,16000):'';
+    const safeText=value=>typeof value==='string'&&!/^(?:data:|blob:|extapp-media:|extapp-item:|\[MÍDIA_LOCAL_NÃO_IMPORTADA\]$)/i.test(value.trim())?value.slice(0,16000):'';
     const dataText=content&&typeof content.data==='string'?safeText(content.data):'';
     const propText=content?.properties?.mensagem||content?.properties?.message;
     const ownText=row.text||row.message||row.mensagem||row.properties?.mensagem||'';
