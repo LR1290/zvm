@@ -129,7 +129,7 @@
    card.style.left=p.x+'px';card.style.top=p.y+'px';
    card.classList.toggle('is-selected',node.id===selectedNode);
    card.classList.toggle('is-advanced',!editable.has(node.type));
-   card.setAttribute('aria-label',(names[node.type]||node.type)+' · '+(node.data?.label||node.data?.text||node.id).slice(0,70));
+   card.setAttribute('aria-label',(names[node.type]||node.type)+' · '+String(node.data?.label||node.data?.text||node.id).slice(0,70));
    card.append(el('small','zvm-flow-node-type',names[node.type]||'Etapa avançada'),
     el('strong','',node.type==='sendText'?String(node.data?.text||'Mensagem vazia').slice(0,75):
      String(node.data?.label||node.id).slice(0,65)));
@@ -273,6 +273,5 @@
  function lock(){locked=true;flows=[];revision=0;selected='';selectedNode='';search='';notice='';render();}
  window.addEventListener('zvm-cloud-ready',ready);
  window.addEventListener('zvm-cloud-locked',lock);
- window.addEventListener('zvm-cloud-flow-changed',()=>{if(!locked)reload(true).catch(()=>{});});
  render();
 })();
