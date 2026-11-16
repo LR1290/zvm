@@ -5,7 +5,7 @@
  const root=document.getElementById('cloudCrmBoard');
  if(!root)return;
  const base=new URL(document.currentScript.src).pathname.replace(/\/cloud-crm-board\.js$/,'');
- let state={revision:0,crm:[],contacts:[]},selected='',busy=false;
+ let state={revision:0,crm:[],contacts:[]},selected='',busy=false,lastStatus='',lastStatusError=false;
  const node=(tag,text,cls)=>{
   const e=document.createElement(tag);
   if(text!==undefined&&text!==null)e.textContent=String(text);
@@ -19,7 +19,8 @@
  function status(text,isError=false){
   let el=root.querySelector('.cloud-crm-status');
   if(!el){el=node('p','','cloud-crm-status');el.setAttribute('role','status');el.setAttribute('aria-live','polite');root.prepend(el);}
-  el.textContent=text||'';el.classList.toggle('error',isError);
+  lastStatus=text||'';lastStatusError=!!isError;
+  el.textContent=lastStatus;el.classList.toggle('error',lastStatusError);
  }
  async function api(route,opts={}){
   const response=await fetch(base+route,{credentials:'same-origin',cache:'no-store',...opts});
@@ -134,7 +135,7 @@
   root.replaceChildren();
   const title=node('h3','Quadro de etapas · CRM','cloud-crm-title');root.append(title);
   const explain=node('p','Cartões e colunas reais do workspace. Alterações não executam mensagens ou fluxos.','muted');root.append(explain);
-  const feedback=node('p','','cloud-crm-status');feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');root.append(feedback);
+  const feedback=node('p',lastStatus,'cloud-crm-status');feedback.classList.toggle('error',lastStatusError);feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');root.append(feedback);
   if(!state.crm.length){
    root.append(node('p','Crie um pipeline no formulário acima ou importe o CRM da extensão para abrir o quadro.','cloud-crm-empty'));
    return;
@@ -166,6 +167,6 @@
   busy=false;render();
  });
  window.addEventListener('zvm-cloud-locked',()=>{
-  state={revision:0,crm:[],contacts:[]};selected='';busy=false;root.replaceChildren();
+  state={revision:0,crm:[],contacts:[]};selected='';busy=false;lastStatus='';lastStatusError=false;root.replaceChildren();
  });
 })();
