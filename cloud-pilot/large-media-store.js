@@ -5,6 +5,8 @@
 const crypto=require('node:crypto');
 const Media=require('./media-domain');
 const D=require('./large-media-domain');
+const Quota=require('./media-quota');
+const workspaceOwner=email=>crypto.createHash('sha256').update('zvm-cloud-workspace-v1:'+String(email||'').trim().toLowerCase()).digest('hex');
 const PART_TTL_MS=3*D.TTL_MS;
 function mongoBytes(value){
  if(Buffer.isBuffer(value))return value;
@@ -102,6 +104,8 @@ async function createMongoLargeMediaStore(db,client){
  const uploads=db.collection('cloud_large_media_uploads');
  const chunks=db.collection('cloud_large_media_chunks');
  const files=db.collection('cloud_large_media_files');
+ const media=db.collection('cloud_media');
+ const mediaFences=db.collection('cloud_media_integrity_fences');
  await Promise.all([
   uploads.createIndex({owner:1},{unique:true}),
   uploads.createIndex({expiresAt:1},{expireAfterSeconds:0}),
@@ -220,31 +224,46 @@ async function createMongoLargeMediaStore(db,client){
   }finally{
    if(!verified)await uploads.updateOne({_id:id,owner,status:'finalizing'},{$set:{status:'pending'}});
   }
-  const key=fileKey(owner,s.id),prior=await fileOf(email,s.id);
-  if(prior){
-   if(!compatible(prior,s))D.fail('media_id_collision');
-   const session=client.startSession();
-   try{
-    await session.withTransaction(async()=>{
-     await chunks.deleteMany({owner,uploadId:id},{session});
-     await uploads.deleteOne({_id:id,owner,status:'finalizing'},{session});
-    });
-   }finally{await session.endSession();}
-   return {duplicate:true,file:D.publicFile(prior)};
-  }
-  const doc={_id:key,owner,id:s.id,name:s.name,mime:s.mime,size:s.size,
-   sha256:s.sha256,uploadId:id,uploadedAt:new Date().toISOString(),status:'ready'};
-  // Commit metadata, lifetime extension and temporary-session cleanup atomically.
-  // If the process dies, the transaction rolls back and a retry can finish.
+  const key=fileKey(owner,s.id);
   const session=client.startSession();
+  let result;
   try{
    await session.withTransaction(async()=>{
+    // Same fence as workspace writes, small uploads and file deletion.
+    await mediaFences.updateOne({_id:workspaceOwner(email)},
+     {$inc:{generation:1},$set:{updatedAt:new Date()}},{upsert:true,session});
+    const stillPending=await uploads.findOne({_id:id,owner,status:'finalizing'},{session});
+    if(!stillPending||new Date(stillPending.expiresAt).getTime()<=Date.now())
+     D.fail('upload_not_found');
+    const legacy=(await media.findOne({_id:workspaceOwner(email)},{session}))?.items||[];
+    const ready=await files.find({owner,status:'ready'},{session}).toArray();
+    const prior=ready.find(item=>item.id===s.id);
+    if(prior){
+     if(!compatible(prior,s))D.fail('media_id_collision');
+     await chunks.deleteMany({owner,uploadId:id},{session});
+     await uploads.deleteOne({_id:id,owner,status:'finalizing'},{session});
+     result={duplicate:true,file:D.publicFile(prior)};
+     return;
+    }
+    if(legacy.some(item=>item.id===s.id))D.fail('media_id_collision');
+    // Reservation becomes a real file here. Re-check against the latest
+    // committed state after reading the account fence in this transaction.
+    Quota.enforce(legacy,ready,s);
+    const doc={_id:key,owner,id:s.id,name:s.name,mime:s.mime,size:s.size,
+     sha256:s.sha256,uploadId:id,uploadedAt:new Date().toISOString(),status:'ready'};
     await files.insertOne(doc,{session});
     await chunks.updateMany({owner,uploadId:id},{$unset:{expiresAt:''}},{session});
     await uploads.deleteOne({_id:id,owner,status:'finalizing'},{session});
-   });
+    result={duplicate:false,file:D.publicFile(doc)};
+   },{readConcern:{level:'snapshot'},writeConcern:{w:'majority'}});
+  }catch(error){
+   // Over-quota finalization must remain cancelable; never strand the client
+   // in a finalizing state just because another operation consumed capacity.
+   if(['media_storage_quota','media_item_quota','media_id_collision'].includes(error?.code))
+    await uploads.updateOne({_id:id,owner,status:'finalizing'},{$set:{status:'pending'}});
+   throw error;
   }finally{await session.endSession();}
-  return {duplicate:false,file:D.publicFile(doc)};
+  return result;
  }
  async function get(email,id){return fileOf(email,id);}
  async function* readChunks(email,id){
