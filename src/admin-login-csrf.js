@@ -20,8 +20,21 @@ function canUseAdminLoginCsrfFallback(req) {
   if (site && site !== 'same-origin' && site !== 'same-site' && site !== 'none') return false;
   // Never use a form token to override a known contradictory Origin/Referer.
   const origin = String(headers.origin || '').trim();
-  if (origin && origin !== 'null') return false;
-  if (String(headers.referer || '').trim()) return false;
+  const referer = String(headers.referer || '').trim();
+  const host = String(headers.host || '').trim().toLowerCase();
+  const sameOrigin = value => {
+    try {
+      const url = new URL(value);
+      const loopback = /^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(host);
+      return url.host.toLowerCase() === host &&
+        (url.protocol === 'https:' || (loopback && url.protocol === 'http:')) &&
+        !url.username && !url.password;
+    } catch { return false; }
+  };
+  // Some browsers report same-site even for same-origin form submission.
+  // A supplied Origin or Referer must still match the exact host and scheme.
+  if (origin && origin !== 'null' && !sameOrigin(origin)) return false;
+  if (referer && !sameOrigin(referer)) return false;
   return true;
 }
 
