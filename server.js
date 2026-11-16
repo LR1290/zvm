@@ -1,5 +1,6 @@
 const ZVM_BUILD_ID = '2026-10-08-r46-16-cakto-queue-recovery';
 const { resolveClientIp } = require('./client-ip-policy');
+const { createAdminLoginCsrf, canUseAdminLoginCsrfFallback, verifyAdminLoginCsrf } = require('./src/admin-login-csrf');
 const { createLandingRenderer } = require('./src/web/public/landing/render');
 const { renderOwnerSalesLanding, OWNER_TOP_BRAND_SRC } = require('./src/web/public/landing/owner');
 const { renderPublicFooter } = require('./src/web/public/footer');
@@ -7125,7 +7126,7 @@ function renderAdminDashboard(opts = {}) {
 </body></html>`;
 }
 
-function renderAdminLogin(error = '') {
+function renderAdminLogin(error = '', adminLoginCsrf = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM Admin</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
@@ -7142,6 +7143,7 @@ ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_AUTH}${_CSS_PRIVILEGED_AUTH}${_CSS_SYSTEM
     <h2>Entrar no painel</h2><p class="auth-form-hint">Acesso administrativo ZVM.</p><div class="auth-secure-chip">Sessão administrativa protegida</div>
     ${error ? `<div class="auth-alert err" role="alert">${escHtml(error)}</div>` : ''}
     <form method="POST" action="${R_ADMIN}">
+      <input type="hidden" name="admin_login_csrf" value="${adminLoginCsrf}">
       <div class="auth-field"><label for="admin-user">Usuário</label><input id="admin-user" type="text" name="user" autocomplete="username" required></div>
       <div class="auth-field"><label for="admin-pass">Senha</label><input id="admin-pass" type="password" name="pass" autocomplete="current-password" required></div>
       ${TOTP_SECRET ? `<div class="auth-field"><label for="admin-totp">Código 2FA</label><input id="admin-totp" type="text" name="totp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" autocomplete="one-time-code" class="zvm-privileged-totp-admin"></div>` : ''}
@@ -7152,6 +7154,10 @@ ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_AUTH}${_CSS_PRIVILEGED_AUTH}${_CSS_SYSTEM
 </main>${_SCRIPT_PWD_TOGGLE}</body></html>`;
 }
 
+function sendAdminLogin(res, error = '', status = 200) {
+  const token = createAdminLoginCsrf(res, R_ADMIN);
+  sendAuthHtml(res, renderAdminLogin(error, token), status);
+}
 
 // ──────────── SHARED PAGE HELPERS ───────────────────────────────
 const _FAV = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2308080f'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E";
@@ -9972,12 +9978,28 @@ async function handleRequest(req, res) {
   }
 
   if ((p === R_ADMIN || p === R_ADMIN+'/login') && req.method === 'POST') {
-    if (!requireSameOriginPost(req)) { sendHtml(res, 'Forbidden', 403); return; }
+    const originVerified = requireSameOriginPost(req);
+    // Never override a known conflicting Origin/Referer or cross-site navigation.
+    if (!originVerified && !canUseAdminLoginCsrfFallback(req)) {
+      console.warn('[ADMIN-LOGIN-CSRF] blocked origin metadata request=' + req.zvmRequestId);
+      sendHtml(res, 'Forbidden', 403); return;
+    }
+    const form = await parseFormBody(req);
+    // Some mobile/privacy browsers omit Fetch Metadata, Origin and Referer.
+    // Accept only a secure, path-scoped, unpredictable token also present in
+    // the HttpOnly SameSite cookie issued with the admin login form.
+    if (!originVerified && (
+      form.getAll('admin_login_csrf').length !== 1 ||
+      !verifyAdminLoginCsrf(req, form.get('admin_login_csrf'))
+    )) {
+      console.warn('[ADMIN-LOGIN-CSRF] invalid or absent form token request=' + req.zvmRequestId);
+      sendAdminLogin(res, 'Não foi possível validar o formulário. Atualize a página e tente novamente.', 403);
+      return;
+    }
     if (!checkRateLimit(ip, 'login')) {
       const mins = getRateLimitWait(ip, 'login');
-      sendAuthHtml(res, renderAdminLogin(`⏳ Muitas tentativas. Aguarde ${mins} minuto(s).`), 429); return;
+      sendAdminLogin(res, `⏳ Muitas tentativas. Aguarde ${mins} minuto(s).`, 429); return;
     }
-    const form   = await parseFormBody(req);
     const _u  = Buffer.from(form.get('user') || '');
     const _au = Buffer.from(ADMIN_USER || '');
     let credOk = false;
@@ -10001,7 +10023,7 @@ async function handleRequest(req, res) {
     } else {
       const msg = credOk && !totpOk ? 'Código 2FA inválido ou expirado' : 'Usuário ou senha incorretos';
       addSecurityAlert('BRUTE_FORCE', `Admin login falhou — ${credOk?'2FA inválido':'credencial errada'} · user="${String(form.get('user')||'').slice(0,20)}"`, ip);
-      sendAuthHtml(res, renderAdminLogin(msg));
+      sendAdminLogin(res, msg);
     }
     return;
   }
@@ -10012,7 +10034,7 @@ async function handleRequest(req, res) {
   }
 
   if (p === R_ADMIN || p === R_ADMIN+'/') {
-    if (!isAdminSession(req)) { sendAuthHtml(res, renderAdminLogin()); return; }
+    if (!isAdminSession(req)) { sendAdminLogin(res); return; }
     const portalUsersResult = await loadAdminPortalUsers({ limit: 1000 });
     const portalUsers = portalUsersResult.users || [];
     let keysSnapshot;
