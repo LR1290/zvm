@@ -45,7 +45,7 @@ async function readBinary(req,maxBytes=Large.CHUNK_BYTES){
 function largeError(error){
  const code=error?.code||'invalid_large_upload';
  const status=code==='large_media_limit'||code==='chunk_too_large'?413:
-  /^(upload_already_active|media_id_collision|chunk_conflict|chunk_out_of_order|upload_incomplete|upload_finalizing|upload_in_progress|media_storage_quota|media_item_quota)$/.test(code)?409:
+  /^(upload_already_active|media_id_collision|chunk_conflict|chunk_out_of_order|upload_incomplete|upload_finalizing|upload_in_progress|media_quota_conflict|media_storage_quota|media_item_quota)$/.test(code)?409:
   code==='upload_not_found'||code==='media_not_found'?404:422;
  return {code,status};
 }
@@ -181,7 +181,7 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
        if(existing.sha256!==spec.sha256||existing.mime!==spec.mime)return json(res,409,{error:'media_id_collision'});
        return json(res,200,{ok:true,duplicate:true,file:Large.publicFile(existing),upload:null});
       }
-      payload=await store.large.begin(user.email,spec,Media.output(legacy).usedBytes,legacy.items.length);
+      payload=await store.beginMediaUpload(user.email,spec);
      }catch(error){const err=largeError(error);return json(res,err.status,{error:err.code});}
      return json(res,200,{ok:true,...payload,sending:false});
     }
@@ -197,14 +197,14 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
    const uploadEnd=/^\/api\/media\/uploads\/([a-f0-9]{32})\/complete$/.exec(pathname);
    if(store.large&&uploadEnd&&req.method==='POST'){
     try{
-     const done=await store.large.finish(user.email,uploadEnd[1]);
+     const done=await store.completeMediaUpload(user.email,uploadEnd[1]);
      const vault=await store.readMedia(user.email),large=await store.large.list(user.email);
      return json(res,200,{ok:true,duplicate:done.duplicate,mediaId:done.file.id,...Large.combined(vault,large),sending:false});
     }catch(error){const err=largeError(error);return json(res,err.status,{error:err.code});}
    }
    const uploadCancel=/^\/api\/media\/uploads\/([a-f0-9]{32})$/.exec(pathname);
    if(store.large&&uploadCancel&&req.method==='DELETE'){
-    try{await store.large.cancel(user.email,uploadCancel[1]);return json(res,200,{ok:true,sending:false});}
+    try{await store.cancelMediaUpload(user.email,uploadCancel[1]);return json(res,200,{ok:true,sending:false});}
     catch(error){const err=largeError(error);return json(res,err.status,{error:err.code});}
    }
    // Private media vault: bounded binary storage, signature verification, tenant scope.
@@ -231,7 +231,9 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
     let updated;try{updated=Media.add(current,media,payload.revision);}
     catch(error){return json(res,error.code==='media_revision_conflict'?409:422,{error:error.code||'media_rejected'});}
     if(updated.duplicate)return json(res,200,{ok:true,duplicate:true,mediaId:media.id,...Large.combined(current,large)});
-    const result=await store.writeMedia(user.email,current.revision,updated.next.items);
+    let result;
+    try{result=await store.writeMedia(user.email,current.revision,updated.next.items);}
+    catch(error){const mapped=largeError(error);return json(res,mapped.status,{error:mapped.code});}
     if(result.conflict)return json(res,409,{error:'media_revision_conflict'});
     return json(res,200,{ok:true,duplicate:false,mediaId:media.id,...Large.combined({...updated.next,revision:result.revision},large)});
    }
