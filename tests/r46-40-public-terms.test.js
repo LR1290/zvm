@@ -44,7 +44,9 @@ const screenshots=[];
    assert.match(r.headers.get('content-security-policy')||'',/script-src 'self'/);
    assert.equal(r.headers.get('referrer-policy'),'no-referrer');
    assert.match(common[route],/href="\/termos"/);
-   assert.equal((common[route].match(/class="r466-footer"/g)||[]).length,1);
+   // Current owner landing uses a semantic footer; legal routes use the shared R46 footer.
+   assert.equal((common[route].match(/<footer\b/g)||[]).length,1,'one footer on '+route);
+   if(route!=='/')assert.equal((common[route].match(/class="r466-footer"/g)||[]).length,1,'shared legal footer on '+route);
   }
   const css=await get('/assets/zvm-terms.f1c470efdbbb.css');
   assert.equal(css.status,200,'terms CSS is registered in canonical asset allowlist');
