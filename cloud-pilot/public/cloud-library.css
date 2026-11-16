@@ -1,0 +1,93 @@
+/* R23 — Biblioteca Studio (ZVM extension R17 category parity).
+   Kept separate from generic workspace CSS. */
+.cloud-library-toolbar,.cloud-lib-controls,.cloud-lib-card-top,.cloud-lib-card-actions,
+.cloud-lib-editor-head,.cloud-lib-editor-actions{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.cloud-library-toolbar{padding:4px 0 17px}
+.cloud-library-toolbar-title{display:flex;flex-direction:column;gap:3px}
+.cloud-library-toolbar-title strong{font-size:18px;letter-spacing:-.02em;color:#eaf8ee}
+.cloud-library-toolbar-title small{font-size:12px;color:#91ae9a}
+.cloud-library-toolbar .primary{min-width:130px}
+.cloud-lib-types{display:flex;gap:7px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;
+ padding:2px 1px 15px;scroll-padding:16px;overscroll-behavior-inline:contain}
+.cloud-lib-filter,.cloud-lib-fav-filter{flex:0 0 auto;border:1px solid #2c3b30;
+ background:#171c18;color:#a5baa9;padding:9px 13px;border-radius:9px;min-height:38px;font-size:12px}
+.cloud-lib-filter:hover,.cloud-lib-fav-filter:hover{border-color:#347b4c;color:#d1efda}
+.cloud-lib-filter.selected,.cloud-lib-fav-filter.selected{border-color:#347a48;color:#ceffdf;background:#153421}
+.cloud-lib-controls{margin:4px 0 14px}
+.cloud-lib-controls input[type=search]{max-width:560px;min-width:0;flex:1;background:#151b17;
+ border:1px solid #304236;color:#f2fff6;min-height:42px;font-size:13px}
+.cloud-library-feedback{min-height:18px;font-size:12px;color:#a4d7b1;margin:8px 0}
+.cloud-library-feedback.error{color:#ffc4ae}
+.cloud-lib-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px;align-items:stretch}
+.cloud-lib-card{display:flex;flex-direction:column;gap:10px;min-width:0;
+ padding:17px;border-radius:13px;background:#151b17;border:1px solid #2d3930;
+ transition:border-color .16s ease,background .16s ease,transform .16s ease}
+.cloud-lib-card:hover{background:#1b241d;border-color:#39784b;transform:translateY(-1px)}
+.cloud-lib-card-top{min-height:23px;justify-content:space-between}
+.cloud-lib-kind{font-size:11px;font-weight:750;letter-spacing:.035em;border-radius:7px;
+ padding:5px 9px;color:#b8ecc7;background:#1c3625;border:1px solid #2e5439}
+.cloud-lib-star{font-size:21px;line-height:1;color:#647d6c;background:transparent;border:0;
+ min-height:31px;padding:1px 7px;border-radius:7px}
+.cloud-lib-star:hover,.cloud-lib-star.is-fav{color:#ffd449;background:#353018}
+.cloud-lib-card h3{font-size:15px;font-weight:760;letter-spacing:-.01em;margin:0;overflow-wrap:anywhere}
+.cloud-lib-item-copy{font-size:13px;color:#b5c5ba;white-space:pre-wrap;overflow-wrap:anywhere;
+ display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;margin:0}
+.cloud-lib-file-preview{border:1px solid #2a4a34;background:#102018;
+ border-radius:8px;color:#b2e9c4;overflow-wrap:anywhere;font-size:12px;padding:9px 11px}
+.cloud-lib-card-image{max-width:100%;height:140px;object-fit:contain;background:#0c140e;
+ border-radius:9px;border:1px solid #254331}
+.cloud-lib-item-status{font-size:11px;color:#94d2a6;margin-top:auto}
+.cloud-lib-item-status.needs-review{color:#f1cc91}
+.cloud-lib-card-actions{justify-content:flex-start;gap:8px;flex-wrap:wrap;padding-top:11px;
+ border-top:1px solid #29352c;margin-top:5px}
+.cloud-lib-card-actions button{font-size:12px;min-height:34px;padding:7px 11px;border-radius:8px}
+.cloud-lib-danger{border:1px solid #583737;background:#291a1a;color:#ffb9ae}
+.cloud-lib-danger:hover{background:#422323}
+.cloud-lib-empty{grid-column:1/-1;padding:36px 20px;text-align:center;background:#131a15;
+ border:1px dashed #31533a;border-radius:12px}
+.cloud-lib-empty strong{color:#e5f9e8}
+.cloud-lib-empty p{font-size:13px;color:#93ab9b;max-width:420px;margin:8px auto}
+.cloud-library-editor{margin:14px 0 20px;border-radius:14px;background:#161f18;
+ border:1px solid #3b6547;box-shadow:0 14px 40px #0005;padding:clamp(15px,2.3vw,25px)}
+.cloud-lib-editor-head{border-bottom:1px solid #2b4433;padding-bottom:14px;margin-bottom:18px}
+.cloud-lib-editor-head strong{font-size:16px}
+.cloud-lib-editor-head button{min-height:32px;padding:7px 10px;font-size:12px}
+.cloud-lib-editor-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:18px}
+.cloud-lib-editor-fields{display:grid;gap:11px}
+.cloud-lib-field{min-width:0}
+.cloud-lib-field label{display:block;margin:0 0 6px;font-size:12px;color:#b7d6c0}
+.cloud-lib-field input,.cloud-lib-field select,.cloud-lib-field textarea{
+ background:#0f1811;border:1px solid #324e39;color:#e8f7eb;width:100%;
+ border-radius:9px;min-height:43px;padding:11px;font-size:13px}
+.cloud-lib-field textarea{min-height:135px;resize:vertical;font-size:14px;line-height:1.6}
+.cloud-lib-live-preview{display:flex;flex-direction:column;gap:10px;margin-top:-4px;padding:15px;
+ border-radius:12px;background:#111a13;border:1px solid #2d4433}
+.cloud-lib-live-preview>strong{font-size:12px;color:#91bda0}
+.cloud-lib-preview-kind{font-size:10px;color:#8cb99a;text-transform:uppercase;letter-spacing:.11em;font-weight:800;margin-bottom:7px}
+.cloud-lib-bubble{display:flex;flex-direction:column;gap:9px;max-width:620px;width:100%;
+ border-radius:13px 13px 5px 13px;background:#1c3a27;border:1px solid #31553b;
+ padding:14px 15px;min-height:62px}
+.cloud-lib-bubble-text{margin:0;font-size:13px;line-height:1.65;color:#f2fff4;white-space:pre-wrap;overflow-wrap:anywhere}
+.cloud-lib-placeholder{font-size:12px;color:#91a898;margin:0}
+.cloud-lib-warning{color:#f4c48b;font-size:11px}
+.cloud-lib-image-preview{max-width:270px;max-height:250px;object-fit:contain;border-radius:8px}
+.cloud-lib-media-wrap{padding-top:5px}
+.cloud-lib-media-wrap[hidden]{display:none}
+.cloud-lib-editor-options{display:flex;flex-wrap:wrap;gap:20px;padding:10px 0 4px}
+.cloud-lib-check{display:flex;align-items:center;gap:8px;font-size:12px;
+ font-weight:550;margin:0;color:#bfd9c5}
+.cloud-lib-check input[type=checkbox]{width:18px;height:18px;accent-color:#00c85a;margin:0}
+.cloud-lib-editor-actions{justify-content:flex-end;flex-wrap:wrap;padding-top:16px;
+ border-top:1px solid #2e4634;margin-top:9px}
+.cloud-lib-editor-actions button{min-width:130px}
+@media(max-width:850px){.cloud-lib-grid{grid-template-columns:1fr}}
+@media(max-width:560px){
+ .cloud-library-toolbar{flex-wrap:wrap}
+ .cloud-library-toolbar .primary{min-width:0}
+ .cloud-lib-controls{align-items:stretch;flex-direction:column}
+ .cloud-lib-controls input[type=search]{max-width:none;width:100%;flex:unset}
+ .cloud-lib-fav-filter{align-self:flex-start}
+ .cloud-lib-card-actions button{flex:1}
+ .cloud-lib-editor-options{gap:14px}
+}
+@media(prefers-reduced-motion:reduce){.cloud-lib-card{transition:none}.cloud-lib-card:hover{transform:none}}
