@@ -5687,12 +5687,6 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: 'f687617ee4b9640aa0b36cd31f249860e9c0989bccf9c4e75cbb4aabec13c326',
     compressible: true,
   }),
-  '/assets/zvm-admin-dashboard.ba37f88fcfe6.js': Object.freeze({
-    type: 'text/javascript; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.ba37f88fcfe6.js'),
-    sha256: 'ba37f88fcfe65282448f126cff56e3600162e37ca6c8b7d935aa0b8430766bf1',
-    compressible: true,
-  }),
   '/assets/zvm-admin-dashboard.bc01cf565fa7.js': Object.freeze({
     type: 'text/javascript; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.bc01cf565fa7.js'),
