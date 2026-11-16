@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="cloud-ui.css">
 <link rel="stylesheet" href="cloud-crm-board.css">
+<link rel="stylesheet" href="cloud-library.css">
 </head>
 <body>
 <header>
@@ -129,7 +130,7 @@
  </section>
 <section class="view" id="flows" hidden><div class="panel section"><h2>Fluxos</h2><p class="muted">Crie e organize definições de Fluxos. Execução real desativada.</p><div id="cloud-list-flows"></div></div></section>
  <section class="view" id="funnels" hidden><div class="panel section"><h2>Funis</h2><p class="muted">Planeje Funis e suas etapas. Agendamentos reais desativados.</p><div id="cloud-list-funnels"></div></div></section>
- <section class="view" id="library" hidden><div class="panel section"><h2>Biblioteca</h2><p class="muted">Mensagens reutilizáveis e itens de conteúdo. Mídias locais exigem migração específica.</p><div id="cloud-list-library"></div><div class="cloud-media-section" id="cloud-media-library">
+ <section class="view" id="library" hidden><div class="panel section"><h2>Biblioteca</h2><p class="muted">Mensagens reutilizáveis e itens de conteúdo. Mídias locais exigem migração específica.</p><div id="cloudLibraryStudio" aria-label="Biblioteca de conteúdos"></div><div class="cloud-media-section" id="cloud-media-library">
  <h3>Cofre de anexos da Cloud</h3>
  <p class="muted">Envie um arquivo pequeno para associá-lo a um item da Biblioteca. O conteúdo fica privado na sua conta; não é encaminhado ao WhatsApp.</p>
  <label for="cloudMediaFile">Selecionar anexo (até 1 MB por arquivo)</label>
@@ -156,6 +157,6 @@
   <div class="cloud-command-results" id="cloudCommandResults" aria-label="Resultados de navegação"></div>
  </div>
 </div>
-<script defer src="app.js"></script><script defer src="backup-zip.js"></script><script defer src="workspace.js"></script><script defer src="cloud-ui.js"></script><script defer src="cloud-crm-board.js"></script>
+<script defer src="app.js"></script><script defer src="backup-zip.js"></script><script defer src="workspace.js"></script><script defer src="cloud-ui.js"></script><script defer src="cloud-crm-board.js"></script><script defer src="cloud-library.js"></script>
 </body>
 </html>
