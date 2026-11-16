@@ -22,7 +22,7 @@ assert(css.includes('.key-actions-popover:popover-open'));
 assert(css.includes('.keys-table .key-actions-cell .acts'));
 assert(css.includes('@media(max-width:750px)'));
 assert(css.includes('.keys-table tbody tr.key-record.key-expanded'));
-assert(!css.slice(css.indexOf('/* R47.08')).split('\n').some(line=>line.includes('!important')&&!line.trim().startsWith('*')),'no CSS !important rules in new layer');
+assert(!css.slice(css.indexOf('/* R47.08')).replace(/\/\*[\s\S]*?\*\//g,'').includes('!important'),'no CSS !important rules in new layer');
 
 const inputs={renewDays:'-300',renewHours:'0',renewMins:'0',renewMode:'add'};
 const mockDocument={getElementById(id){return {value:inputs[id]||''}}};
