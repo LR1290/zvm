@@ -175,13 +175,7 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
      let body;try{body=await readJson(req,2000);}catch{return json(res,400,{error:'invalid_upload'});}
      let payload;
      try{
-      const spec=Large.specOf(body),legacy=await store.readMedia(user.email);
-      const existing=legacy.items.find(item=>item.id===spec.id);
-      if(existing){
-       if(existing.sha256!==spec.sha256||existing.mime!==spec.mime)return json(res,409,{error:'media_id_collision'});
-       return json(res,200,{ok:true,duplicate:true,file:Large.publicFile(existing),upload:null});
-      }
-      payload=await store.beginMediaUpload(user.email,spec);
+      payload=await store.beginMediaUpload(user.email,body);
      }catch(error){const err=largeError(error);return json(res,err.status,{error:err.code});}
      return json(res,200,{ok:true,...payload,sending:false});
     }
