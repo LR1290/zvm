@@ -163,14 +163,75 @@
    await loadAll();message(mount,'Item excluído somente da Cloud.');
   }catch(error){message(mount,error.message==='workspace_conflict'?'Dados atualizados em outra sessão. Atualize e revise.':'Não foi possível excluir.',true);}
  }
+ // Never POST whole ZVM Desktop backups: filter sensitive storage locally first.
+ const IMPORT_KEYS=Object.freeze([
+  'EXTUI:CrmStore','EXTUI:labelStore','EXTUI:textMessageStore',
+  'EXTUI:extappQuickResponseStore','EXTUI:extappFlowStore',
+  'EXTUI:extappFunnelStore','EXTUI:extappScheduleStore','EXTUI:disparosJourneys'
+ ]);
+ function scrubBackupValue(value,depth=0,counter={nodes:0}){
+  if(depth>12||++counter.nodes>10000)throw Error('O arquivo é complexo demais para este importador.');
+  if(value===null||typeof value==='boolean'||typeof value==='number')return value;
+  if(typeof value==='string'){
+   if(/^(?:data:(?:image|audio|video|application)\/|blob:|extapp-media:)/i.test(value))return '[MÍDIA_LOCAL_NÃO_IMPORTADA]';
+   return value.slice(0,50000);
+  }
+  if(Array.isArray(value)){
+   if(value.length>1500)throw Error('O arquivo contém listas maiores que o limite seguro.');
+   return value.map(v=>scrubBackupValue(v,depth+1,counter));
+  }
+  if(!value||typeof value!=='object')return null;
+  const result={};
+  for(const [key,item] of Object.entries(value)){
+   if(key==='__proto__'||key==='prototype'||key==='constructor')continue;
+   if(/password|passwd|token|secret|cookie|authkey|apikey|privatekey|license|credential|session|webhook/i.test(key))continue;
+   result[key]=scrubBackupValue(item,depth+1,counter);
+  }
+  return result;
+ }
+ function prepareBackup(raw){
+  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw Error('Backup JSON inválido.');
+  const data=raw.data&&typeof raw.data==='object'&&!Array.isArray(raw.data)?raw.data:raw;
+  const safe={};
+  for(const key of IMPORT_KEYS){
+   if(!Object.prototype.hasOwnProperty.call(data,key))continue;
+   let value=data[key];
+   if(typeof value==='string'){
+    let parsed;try{parsed=JSON.parse(value);}catch{throw Error('Dados corrompidos em '+key);}
+    value=JSON.stringify(scrubBackupValue(parsed));
+   }else value=scrubBackupValue(value);
+   safe[key]=value;
+  }
+  // R17 text content is stored separately under each message ID.
+  if(Object.prototype.hasOwnProperty.call(safe,'EXTUI:textMessageStore')){
+   let state=safe['EXTUI:textMessageStore'];
+   for(let n=0;n<3&&typeof state==='string';n++){try{state=JSON.parse(state);}catch{state=null;break;}}
+   const list=(state?.state||state)?.textMessageList||[];
+   for(const item of Array.isArray(list)?list:[]){
+    const id=String(item?.id||'');
+    if(!id||id.length>100||!Object.prototype.hasOwnProperty.call(data,id))continue;
+    let content=data[id];
+    try{
+     for(let n=0;n<3&&typeof content==='string';n++)content=JSON.parse(content);
+     if(typeof content?.data==='string'&&content.data.length<=16000&&
+        !/^(?:data:|blob:|extapp-media:)/i.test(content.data)){
+      safe[id]={data:content.data};
+     }
+    }catch{}
+   }
+  }
+  if(!Object.keys(safe).length)throw Error('O backup não contém categorias compatíveis para este piloto.');
+  return {format:String(raw.format||'R17_STORAGE_DUMP').slice(0,80),data:safe};
+ }
  async function inspectBackup(){
   const file=byId('backupFile').files?.[0],root=byId('backupReview');
   root.replaceChildren();importPlan=null;
   if(!file||!file.name.toLowerCase().endsWith('.json')){message(root,'Selecione um arquivo JSON da ZVM Desktop.',true);return;}
-  if(file.size>2000000){message(root,'O JSON ultrapassa o limite seguro do piloto (2 MB). Não foi importado.',true);return;}
+  if(file.size>20000000){message(root,'O JSON ultrapassa o limite seguro de leitura (20 MB). Exporte somente as categorias necessárias.',true);return;}
   try{
    const text=await file.text();
-   const backup=JSON.parse(text);
+   const backup=prepareBackup(JSON.parse(text));
+   if(new Blob([JSON.stringify(backup)]).size>2000000)throw Error('As categorias compatíveis excedem 2 MB; divida a migração.');
    const plan=await api('/api/import/preview',mutation('POST',{backup}));
    importPlan={backup,...plan};
    const card=tag('div','','workspace-import-review');
