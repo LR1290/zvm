@@ -15,7 +15,7 @@
   settings:{title:'Configurações',fields:[['name','Preferência'],['value','Valor']]}
  });
  const cache=new Map(),uiMsg=new Map();
- let importPlan=null,enabled=false;
+ let importPlan=null,enabled=false,mediaSnapshot={revision:0,items:[]};
  const byId=id=>document.getElementById(id);
  function tag(name,text,className=''){
   const node=document.createElement(name);node.textContent=String(text??'');if(className)node.className=className;return node;
@@ -123,6 +123,7 @@
   form.append(tag('h3',record?'Editar '+MODULES[module].title:'Novo item · '+MODULES[module].title));
   for(const [name,label] of MODULES[module].fields)form.append(field(name,label,record?.[name]??''));
   if(['campaigns','flows','funnels'].includes(module))form.append(audienceArea(form,record));
+  if(module==='library')form.append(mediaPicker(record));
   const actions=tag('div','','workspace-actions');
   const save=document.createElement('button');save.type='submit';save.className='primary';save.textContent='Salvar na Cloud';
   actions.append(save,btn('Cancelar',()=>form.remove()));
@@ -135,7 +136,11 @@
     draft.id=record?.id||('cloud_'+crypto.randomUUID());
     for(const [name] of MODULES[module].fields)draft[name]=String(form.elements[name]?.value||'').trim();
     if(!draft.name)throw Error('Preencha o nome do item.');
-    if(module==='library'&&draft.text)draft.contentStatus='ready';
+    if(module==='library'){
+     const selected=form.elements.mediaId?.value||'';
+     if(selected)draft.mediaId=selected;else delete draft.mediaId;
+     draft.contentStatus=(draft.text||draft.mediaId)?'ready':'missing_source';
+    }
     if(['campaigns','flows','funnels'].includes(module)){
      draft.recipientIds=[...form.querySelectorAll('input[name=recipientId]:checked')].map(x=>x.value);
      if(!draft.recipientIds.length&&!confirm('Salvar sem destinatários? O item ficará somente como rascunho.'))return;
@@ -223,19 +228,99 @@
   if(!Object.keys(safe).length)throw Error('O backup não contém categorias compatíveis para este piloto.');
   return {format:String(raw.format||'R17_STORAGE_DUMP').slice(0,80),data:safe};
  }
+
+ function mediaPicker(record){
+  const wrap=tag('div','','workspace-field');
+  wrap.append(tag('label','Anexo do Cofre (opcional)'));
+  const select=document.createElement('select');select.name='mediaId';select.className='workspace-media-select';
+  const none=document.createElement('option');none.value='';none.textContent='Nenhum anexo';select.append(none);
+  for(const item of mediaSnapshot.items||[]){
+   const option=document.createElement('option');option.value=item.id;option.textContent=item.name+' ('+Math.ceil(item.size/1024)+' KB)';
+   option.selected=item.id===record?.mediaId;select.append(option);
+  }
+  if(record?.mediaId&&!mediaSnapshot.items?.some(x=>x.id===record.mediaId)){
+   const missing=document.createElement('option');missing.value='';missing.textContent='Anexo anterior não disponível';select.append(missing);select.value='';
+  }
+  wrap.append(select);
+  return wrap;
+ }
+ function mediaStatus(text,isError=false){
+  const element=byId('cloudMediaStatus');if(!element)return;
+  element.textContent=text;element.classList.toggle('error',isError);
+ }
+ async function loadMedia(){
+  if(!enabled)return;
+  try{mediaSnapshot=await api('/api/media');renderMedia();}
+  catch(error){mediaStatus('Falha ao consultar o cofre; o conteúdo antigo permanece no servidor.',true);}
+ }
+ function renderMedia(){
+  const target=byId('cloudMediaItems');if(!target)return;
+  target.replaceChildren();
+  const used=Number(mediaSnapshot.usedBytes||0),max=Number(mediaSnapshot.quotaBytes||0);
+  target.append(tag('p','Espaço utilizado: '+(used/1024/1024).toFixed(2)+' de '+(max/1024/1024).toFixed(0)+' MB · '+(mediaSnapshot.items?.length||0)+' arquivo(s)','muted'));
+  for(const item of mediaSnapshot.items||[]){
+   const row=tag('div','','workspace-item');
+   const info=tag('div','','workspace-item-info');
+   info.append(tag('strong',item.name),tag('small',item.mime+' · '+Math.ceil(item.size/1024)+' KB · SHA-256 verificado'));
+   const actions=tag('div','','workspace-item-actions');
+   actions.append(btn('Baixar',()=>downloadMedia(item)));
+   actions.append(btn('Excluir',()=>deleteMedia(item)));
+   row.append(info,actions);target.append(row);
+  }
+ }
+ async function downloadMedia(item){
+  try{
+   const response=await fetch(base+'/api/media/'+item.id,{credentials:'same-origin',cache:'no-store'});
+   if(!response.ok)throw Error('Erro ao baixar anexo');
+   const blob=await response.blob();
+   const href=URL.createObjectURL(blob);
+   const a=document.createElement('a');a.href=href;a.download=item.name;a.click();
+   setTimeout(()=>URL.revokeObjectURL(href),30000);
+  }catch{mediaStatus('O servidor não confirmou a transferência do anexo.',true);}
+ }
+ async function uploadMedia(){
+  if(!enabled)return;
+  const input=byId('cloudMediaFile'),file=input?.files?.[0];
+  if(!file){mediaStatus('Selecione um arquivo para guardar.',true);return;}
+  if(!file.size||file.size>1024*1024){mediaStatus('Este piloto aceita arquivos entre 1 byte e 1 MB.',true);return;}
+  const button=byId('cloudMediaUpload');button.disabled=true;
+  try{
+   const bytes=new Uint8Array(await file.arrayBuffer());
+   const hash=new Uint8Array(await crypto.subtle.digest('SHA-256',bytes));
+   const sha256=Array.from(hash,x=>x.toString(16).padStart(2,'0')).join('');
+   let binary='';for(let pos=0;pos<bytes.length;pos+=16384)binary+=String.fromCharCode(...bytes.subarray(pos,pos+16384));
+   const out=await api('/api/media',mutation('POST',{revision:mediaSnapshot.revision,name:file.name,mime:file.type,sha256,base64:btoa(binary)}));
+   mediaStatus(out.duplicate?'Arquivo já estava no cofre.':'Anexo verificado e guardado na sua conta. Nada foi enviado ao WhatsApp.');
+   input.value='';await loadMedia();
+  }catch(error){
+   mediaStatus(error.message==='media_revision_conflict'?'O cofre mudou em outra sessão. Atualize e tente novamente.':'Anexo recusado: '+error.message,true);
+  }finally{button.disabled=false;}
+ }
+ async function deleteMedia(item){
+  if(!confirm('Excluir este anexo do seu cofre Cloud? Itens da Biblioteca vinculados precisam ser desvinculados antes.'))return;
+  try{
+   await api('/api/media/'+item.id,mutation('DELETE',{revision:mediaSnapshot.revision}));
+   await loadMedia();mediaStatus('Arquivo excluído do cofre Cloud.');
+  }catch(error){mediaStatus(error.message==='media_still_linked_to_library'?'Desvincule o anexo da Biblioteca antes de excluir.':'Exclusão não confirmada: '+error.message,true);}
+ }
  async function inspectBackup(){
   const file=byId('backupFile').files?.[0],root=byId('backupReview');
   root.replaceChildren();importPlan=null;
-  if(!file||!file.name.toLowerCase().endsWith('.json')){message(root,'Selecione um arquivo JSON da ZVM Desktop.',true);return;}
-  if(file.size>20000000){message(root,'O JSON ultrapassa o limite seguro de leitura (20 MB). Exporte somente as categorias necessárias.',true);return;}
+  const zip=!!file&&/\.zip$/i.test(file.name);
+  if(!file||(!zip&&!/\.json$/i.test(file.name))){message(root,'Use JSON ou ZIP. Backups .extbackup criptografados devem ser abertos na extensão original.',true);return;}
+  if(file.size>(zip?512*1024*1024:20*1024*1024)){message(root,'Arquivo acima do limite seguro deste importador.',true);return;}
   try{
-   const text=await file.text();
-   const backup=prepareBackup(JSON.parse(text));
+   const extracted=zip?await window.ZVMCloudZip.inspect(file):null;
+   const backup=prepareBackup(extracted?extracted.backup:JSON.parse(await file.text()));
    if(new Blob([JSON.stringify(backup)]).size>2000000)throw Error('As categorias compatíveis excedem 2 MB; divida a migração.');
    const plan=await api('/api/import/preview',mutation('POST',{backup}));
    importPlan={backup,...plan};
    const card=tag('div','','workspace-import-review');
    card.append(tag('h3','Prévia — nada foi importado ainda'));
+   if(extracted){
+    card.append(tag('p','ZIP verificado: '+extracted.entries+' entradas; manifesto '+extracted.manifest+'.','muted'));
+    if(extracted.mediaEntries)card.append(tag('small','⚠ '+extracted.mediaEntries+' entradas adicionais do ZIP não serão enviadas nem restauradas. Mídias devem ser importadas separadamente no Cofre da Biblioteca.'));
+   }
    card.append(tag('p','Formato: '+plan.sourceFormat+' · '+Object.entries(plan.counts).map(([m,n])=>m+': '+n).join(' · ')));
    for(const warning of plan.warnings.slice(0,20))card.append(tag('small','⚠ '+warning));
    if(plan.skipped.length)card.append(tag('p','Categorias não transferidas: '+plan.skipped.slice(0,12).join(', '),'muted'));
@@ -271,19 +356,32 @@
    setTimeout(()=>URL.revokeObjectURL(link.href),30000);
   }catch{alert('Não foi possível exportar os rascunhos Cloud.');}
  }
+ async function checkMeta(){
+  const diag=byId('cloudMetaDiagnostic');if(!diag||!enabled)return;
+  diag.textContent='Consultando configuração oficial...';
+  try{
+   const r=await api('/api/meta/status');
+   diag.textContent=r.webhookReady?
+     'Webhook da Meta configurado e limitado à conta autorizada. Envio de mensagens ainda exige homologação e permanece desativado.':
+     'A integração com a Meta ainda não possui credenciais e número empresarial homologados. Envios desligados; não há cobrança de mensagens pela Cloud.';
+  }catch{diag.textContent='Não foi possível verificar a integração; nenhum envio está habilitado.';}
+ }
  function init(){
   const btnBackup=byId('inspectBackup');btnBackup?.addEventListener('click',inspectBackup);
+  byId('cloudMediaUpload')?.addEventListener('click',uploadMedia);
+  byId('cloudMediaRefresh')?.addEventListener('click',loadMedia);
+  byId('cloudMetaRefresh')?.addEventListener('click',checkMeta);
   const section=byId('migration')?.querySelector('.section');
   section?.append(btn('Exportar meus rascunhos Cloud',exportData));
  }
  async function ready(){
   enabled=true;
-  try{await loadAll();}catch(error){
+  try{await loadAll();await loadMedia();await checkMeta();}catch(error){
    const mount=byId('cloud-list-contacts');
    if(mount)message(mount,'Não foi possível carregar os espaços de trabalho.',true);
   }
  }
- function locked(){enabled=false;cache.clear();importPlan=null;for(const module of Object.keys(MODULES)){const area=byId('cloud-list-'+module);if(area)area.replaceChildren();}}
+ function locked(){enabled=false;cache.clear();importPlan=null;mediaSnapshot={revision:0,items:[]};byId('cloudMediaItems')?.replaceChildren();for(const module of Object.keys(MODULES)){const area=byId('cloud-list-'+module);if(area)area.replaceChildren();}}
  window.addEventListener('zvm-cloud-ready',ready);
  window.addEventListener('zvm-cloud-locked',locked);
  init();

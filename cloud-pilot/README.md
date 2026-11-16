@@ -41,3 +41,26 @@ A importação de backup JSON da R17 tem análise e confirmação em duas etapas
 O frontend em `cloud-pilot/public/workspace.js` renderiza os módulos somente após a chave DEV e não usa a extensão nem bibliotecas de WhatsApp Web. Não há endpoints de envio, scheduler ativo, execução de nós ou webhooks.
 
 A matriz de compatibilidade e pendências está em `docs/CLOUD_R17_MIGRATION_MATRIX_20261115.md`. Gate de QA: `node --test cloud-pilot/test/pilot.test.js cloud-pilot/test/mount.test.js cloud-pilot/test/workspace.test.js` + `npm run check`, além de homologação mobile visual.
+
+## R18 — backup ZIP + anexos reais no Cofre Cloud
+
+O navegador lê arquivos JSON e ZIP com verificação de CRC32, limites e paths seguros. Somente o manifesto JSON filtrado por categorias é enviado à API. Anexos ZIP não são restaurados silenciosamente; `.extbackup` criptografado deve ser aberto primeiro pela extensão original, sem fornecer senha ao site.
+
+O cofre privado usa MongoDB `cloud_media` separado por conta, com `revision` CAS; aceita 1MB por arquivo, total 6MB por usuário, 24 arquivos e tipos verificados por assinatura (PNG/JPEG/WEBP/PDF/MP3/OGG/MP4). Download exige sessão do Portal + chave DEV ativa. Não habilitar uploads maiores no MongoDB gratuito; antes disso criar armazenamento de objetos com quotas, antifraude, integridade e rollback.
+
+## Meta oficial — preparação sem envios
+
+`GET/POST /dev/cloud/meta/webhook` é a fronteira de entrada de webhooks da WhatsApp Business Platform. Segurança: token verificador, HMAC `X-Hub-Signature-256`, limite de tamanho, identificação do número, deduplicação por hash e registro de metadados sem texto/contatos. TTL de sete dias. Desligado se qualquer configuração não existir. Diagnóstico privado em `GET /dev/cloud/api/meta/status`.
+
+Variáveis de ambiente opcionais no Render (não enviar por chat):
+```
+CLOUD_META_WEBHOOK_ENABLED=1
+CLOUD_META_VERIFY_TOKEN=<token longo escolhido pelo administrador>
+CLOUD_META_APP_SECRET=<segredo real da app Meta>
+CLOUD_META_OWNER_EMAIL=<e-mail autorizado no portal ZVM>
+CLOUD_META_PHONE_NUMBER_ID=<identificador numérico do telefone empresarial>
+```
+
+Mesmo com esses valores, **o envio de mensagens permanece desativado**: não há API de disparo, nem execução de Fluxos/Funis, nem consentimento/templating homologados. A implementação de envio será uma etapa separada após registrar conta e número Meta elegíveis, receber autorização para mensagens reais e verificar custos. Nunca usar WPPConnect no Render como substituto da API oficial nem simular status 'entregue'.
+
+QA: `node --test cloud-pilot/test/backup-media.test.js cloud-pilot/test/media-endpoints.test.js cloud-pilot/test/meta-webhook.test.js` e `npm run check`.
