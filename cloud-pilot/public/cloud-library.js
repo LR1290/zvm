@@ -238,7 +238,7 @@
      error.message==='library_media_kind_mismatch'?'Este arquivo não é compatível com a categoria escolhida.':
      'Alteração não confirmada: '+error.message,true);
    }
-  }finally{busy=false;}
+  }finally{busy=false;if(enabled)render();}
  }
  async function toggleFavorite(item){
   await commit(list=>{const ix=list.findIndex(x=>x.id===item.id);if(ix<0)throw Error('item_removed_in_other_session');list[ix]={...list[ix],favorite:list[ix].favorite!==true};},'Favorito atualizado.');
