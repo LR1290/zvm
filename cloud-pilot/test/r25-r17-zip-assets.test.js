@@ -93,6 +93,17 @@ test('R25: rejects mismatched manifest, path traversal, orphan ZIP entries and d
  }}))),/zip_asset_ambiguous_owner/);
  await assert.rejects(()=>ZIP.inspect(archive(manifest({assets:{one:'extapp-zip-asset:asset-unknown'}}))),/zip_asset_reference_missing/);
 });
+test('R25: reject control characters and forged local-header offsets',async()=>{
+ await assert.rejects(()=>ZIP.inspect(zip([
+  {name:'assets/control\u0000.png',content:png},
+  {name:'backup.json',content:JSON.stringify(manifest())}
+ ])),/zip_unsafe_path/);
+ const bytes=Buffer.from(await archive().arrayBuffer());
+ const central=bytes.indexOf(Buffer.from([0x50,0x4b,0x01,0x02]));
+ assert(central>=0);
+ bytes.writeUInt32LE(bytes.length-10,central+42);
+ await assert.rejects(()=>ZIP.inspect(new Blob([bytes])),/zip_local_overlaps_directory/);
+});
 test('R25: checksum and magic-byte mismatch fail CLOSED before a file is uploaded',async()=>{
  const file=zip([{name:assetPath,content:png,wrongCrc:true},
   {name:'backup.json',content:JSON.stringify(manifest())}]);
