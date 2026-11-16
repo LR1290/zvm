@@ -104,7 +104,14 @@ function unwrap(raw){
 }
 function extractList(data,key,listKey){
  if(!Object.prototype.hasOwnProperty.call(data,key))return null;
- const state=unwrap(data[key]);
+ // R17 SignaturesStore supports an old plain array as well as {list} and
+ // Zustand {state:{list}}. Honor both without rewriting existing entries.
+ let raw=data[key];
+ for(let i=0;i<3&&typeof raw==='string';i++){
+  try{raw=JSON.parse(raw);}catch{throw error('legacy_state_invalid_json');}
+ }
+ if(Array.isArray(raw))return raw;
+ const state=unwrap(raw);
  if(Array.isArray(state[listKey]))return state[listKey];
  if(Array.isArray(state.list))return state.list;
  if(Array.isArray(state.items))return state.items;
