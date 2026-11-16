@@ -2,13 +2,13 @@
 // Cloud demo controller: reuse real ZVM portal accounts, require a DEV-enabled license.
 // No message dispatch, scheduling, WhatsApp webhook or public registration exists here.
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
-const {once}=require('node:events');
 const {createMongoStore}=require('./store');
 const {MODULES,moduleCheck,checkAudience,planLegacy,mergeModules,checkWhole}=require('./workspace-domain');
 const {changeCrmBoard,checkCrmLinks}=require('./crm-board-domain');
 const Media=require('./media-domain');
 const Large=require('./large-media-domain');
 const Quota=require('./media-quota');
+const Downloads=require('./verified-media-download');
 const {checkLibraryRecords}=require('./library-domain');
 const Meta=require('./meta-webhook');
 const ASSETS={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','application/javascript; charset=utf-8'],'/styles.css':['styles.css','text/css; charset=utf-8'],'/workspace.js':['workspace.js','application/javascript; charset=utf-8'],'/backup-zip.js':['backup-zip.js','application/javascript; charset=utf-8'],'/cloud-ui.js':['cloud-ui.js','application/javascript; charset=utf-8'],'/cloud-ui.css':['cloud-ui.css','text/css; charset=utf-8'],'/cloud-crm-board.js':['cloud-crm-board.js','application/javascript; charset=utf-8'],'/cloud-crm-board.css':['cloud-crm-board.css','text/css; charset=utf-8'],'/cloud-library.js':['cloud-library.js','application/javascript; charset=utf-8'],'/cloud-library.css':['cloud-library.css','text/css; charset=utf-8'],'/backup-asset-links.js':['backup-asset-links.js','application/javascript; charset=utf-8']};
@@ -61,33 +61,44 @@ async function commitWorkspace(store,email,revision,modules){
   throw error;
  }
 }
-async function validateLargeDownload(store,email,file){
- const digest=crypto.createHash('sha256');
- let length=0,count=0,first=null;
- for await(const bytes of store.large.chunks(email,file.id)){
-  const expected=Large.expectedSize({size:file.size,chunks:Math.ceil(file.size/Large.CHUNK_BYTES)},count);
-  if(bytes.length!==expected)throw Error('large_media_corrupt_chunk');
-  if(!first)first=bytes.subarray(0,32);
-  length+=bytes.length;digest.update(bytes);count++;
+async function streamLargeDownload(store,email,file,res,method,gate){
+ const release=gate.acquire(email);
+ let released=false;
+ const cleanup=()=>{
+  if(released)return;
+  released=true;
+  release();
+  res.off('finish',cleanup);res.off('close',cleanup);
+ };
+ // Count in-flight responses until the socket is done, not just until end()
+ // schedules a potentially large send into Node's outgoing write buffer.
+ res.once('finish',cleanup);
+ res.once('close',cleanup);
+ try{
+  const bytes=await Downloads.verifiedSnapshot(store,email,file,{
+   cancelled:()=>res.destroyed
+  });
+  if(res.destroyed)return cleanup();
+  res.writeHead(200,{
+   'Content-Type':file.mime,
+   'Content-Length':file.size,
+   'Content-Disposition':file.mime.startsWith('image/')?
+    'inline; filename="zvm-cloud-anexo"':'attachment; filename="zvm-cloud-anexo"',
+   'Cache-Control':'no-store',
+   'X-Content-Type-Options':'nosniff',
+   'X-Download-Options':'noopen',
+   'Cross-Origin-Resource-Policy':'same-origin'
+  });
+  res.end(method==='HEAD'?undefined:bytes);
+ }catch(error){
+  cleanup();
+  throw error;
  }
- if(length!==file.size||count!==Math.ceil(file.size/Large.CHUNK_BYTES)||
-    digest.digest('hex')!==file.sha256||!Media.mimeDetected(first,file.mime))throw Error('large_media_integrity_failed');
-}
-async function streamLargeDownload(store,email,file,res,method){
- await validateLargeDownload(store,email,file);
- res.writeHead(200,{'Content-Type':file.mime,'Content-Length':file.size,
-  'Content-Disposition':file.mime.startsWith('image/')?'inline; filename="zvm-cloud-anexo"':'attachment; filename="zvm-cloud-anexo"',
-  'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',
-  'X-Download-Options':'noopen','Cross-Origin-Resource-Policy':'same-origin'});
- if(method==='HEAD'){res.end();return;}
- for await(const bytes of store.large.chunks(email,file.id)){
-  if(!res.write(bytes))await once(res,'drain');
- }
- res.end();
 }
 function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
  // No alternate password database and no fallback identity from caller-supplied email.
  const failures=new Map();
+ const downloadGate=Downloads.createDownloadGate();
  let pingCount=0;
  async function portal(req){
   if(typeof resolvePortal!=='function')return null;
@@ -236,9 +247,16 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
      if(!media){
       const file=store.large?await store.large.get(user.email,id):null;
       if(!file)return json(res,404,{error:'media_not_found'});
-      try{await streamLargeDownload(store,user.email,file,res,req.method);}
+      try{await streamLargeDownload(store,user.email,file,res,req.method,downloadGate);}
       catch(error){
-       if(!res.headersSent)return json(res,503,{error:'large_media_integrity_failed'});
+       if(error?.code==='download_aborted')return;
+       if(!res.headersSent){
+        if(error?.code==='download_busy'){
+         res.setHeader('Retry-After','2');
+         return json(res,429,{error:'download_busy'});
+        }
+        return json(res,503,{error:'large_media_integrity_failed'});
+       }
        res.destroy(error);
       }
       return;
