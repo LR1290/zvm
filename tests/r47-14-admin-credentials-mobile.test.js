@@ -31,6 +31,12 @@ test('admin password must match byte-for-byte (case, spaces and symbols)', () =>
     assert.equal(check(user, attempt).accepted, false);
   }
 });
+test('password with trailing whitespace is significant, never silently trimmed', () => {
+  const withSpace = password + ' ';
+  const expectedWithSpace = crypto.scryptSync(withSpace, salt, 64, { N: 16384, r: 8, p: 1 });
+  assert.equal(check(user, withSpace, { expectedHash: expectedWithSpace }).accepted, true);
+  assert.equal(check(user, password, { expectedHash: expectedWithSpace }).accepted, false);
+});
 test('incorrect username never authenticates even with correct password', () => {
   const result = check('other', password);
   assert.equal(result.accepted, false);
