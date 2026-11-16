@@ -1,5 +1,6 @@
 const ZVM_BUILD_ID = '2026-10-08-r46-16-cakto-queue-recovery';
 const { resolveClientIp } = require('./client-ip-policy');
+const { checkAdminLoginCredentials } = require('./src/admin-login-credentials');
 const { createAdminLoginCsrf, canUseAdminLoginCsrfFallback, verifyAdminLoginCsrf } = require('./src/admin-login-csrf');
 const { createLandingRenderer } = require('./src/web/public/landing/render');
 const { renderOwnerSalesLanding, OWNER_TOP_BRAND_SRC } = require('./src/web/public/landing/owner');
@@ -7144,7 +7145,7 @@ ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_AUTH}${_CSS_PRIVILEGED_AUTH}${_CSS_SYSTEM
     ${error ? `<div class="auth-alert err" role="alert">${escHtml(error)}</div>` : ''}
     <form method="POST" action="${R_ADMIN}">
       <input type="hidden" name="admin_login_csrf" value="${adminLoginCsrf}">
-      <div class="auth-field"><label for="admin-user">Usuário</label><input id="admin-user" type="text" name="user" autocomplete="username" required></div>
+      <div class="auth-field"><label for="admin-user">Usuário</label><input id="admin-user" type="text" name="user" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="next" required></div>
       <div class="auth-field"><label for="admin-pass">Senha</label><input id="admin-pass" type="password" name="pass" autocomplete="current-password" required></div>
       ${TOTP_SECRET ? `<div class="auth-field"><label for="admin-totp">Código 2FA</label><input id="admin-totp" type="text" name="totp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" autocomplete="one-time-code" class="zvm-privileged-totp-admin"></div>` : ''}
       <button type="submit" class="auth-submit">Entrar</button>
@@ -10000,16 +10001,14 @@ async function handleRequest(req, res) {
       const mins = getRateLimitWait(ip, 'login');
       sendAdminLogin(res, `⏳ Muitas tentativas. Aguarde ${mins} minuto(s).`, 429); return;
     }
-    const _u  = Buffer.from(form.get('user') || '');
-    const _au = Buffer.from(ADMIN_USER || '');
-    let credOk = false;
-    try {
-      // Deriva hash da senha submetida com o mesmo salt do boot — timing-safe
-      const _submittedHash = crypto.scryptSync(form.get('pass') || '', _adminPassSalt, 64, { N: 16384, r: 8, p: 1 });
-      credOk = _u.length === _au.length &&
-        crypto.timingSafeEqual(_u.length ? _u : Buffer.alloc(1), _au.length ? _au : Buffer.alloc(1)) &&
-        crypto.timingSafeEqual(_submittedHash, _adminPassHash);
-    } catch { credOk = false; }
+    // Mobile keyboards may alter identifier capitalization or append spaces.
+    // Normalize only the username. Password and TOTP remain exact and required.
+    const fieldsValid = form.getAll('user').length === 1 && form.getAll('pass').length === 1;
+    const credentialResult = checkAdminLoginCredentials({
+      user: form.get('user'), pass: form.get('pass'),
+      expectedUser: ADMIN_USER, expectedHash: _adminPassHash, salt: _adminPassSalt,
+    });
+    const credOk = fieldsValid && credentialResult.accepted;
     const totpOk = verifyTOTP(TOTP_SECRET, (form.get('totp') || '').trim());
     if (credOk && totpOk) {
       rateLimitMap.delete(ip + ':login'); // limpa contador após login bem-sucedido
@@ -10022,7 +10021,14 @@ async function handleRequest(req, res) {
       res.writeHead(302, { Location: R_ADMIN }); res.end();
     } else {
       const msg = credOk && !totpOk ? 'Código 2FA inválido ou expirado' : 'Usuário ou senha incorretos';
-      addSecurityAlert('BRUTE_FORCE', `Admin login falhou — ${credOk?'2FA inválido':'credencial errada'} · user="${String(form.get('user')||'').slice(0,20)}"`, ip);
+      // Internal diagnostics only. Never log a username, password, TOTP, cookie or token.
+      console.warn('[ADMIN-AUTH] rejected request=' + (req.zvmRequestId || 'n/a') +
+        ' fieldsValid=' + (fieldsValid ? '1' : '0') +
+        ' userMatch=' + (credentialResult.userMatches ? '1' : '0') +
+        ' passMatch=' + (credentialResult.passMatches ? '1' : '0') +
+        ' derivationFailed=' + (credentialResult.derivationFailed ? '1' : '0') +
+        ' totpGate=' + (credOk ? 'invalid' : 'not_evaluated'));
+      addSecurityAlert('BRUTE_FORCE', 'Admin login falhou — ' + (credOk ? '2FA inválido' : 'credencial inválida'), ip);
       sendAdminLogin(res, msg);
     }
     return;
