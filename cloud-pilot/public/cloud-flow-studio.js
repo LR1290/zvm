@@ -5,13 +5,7 @@
  const mount=document.getElementById('cloudFlowStudio');if(!mount)return;
  const base=new URL(document.currentScript.src).pathname.replace(/\/cloud-flow-studio\.js$/,'');
  let flows=[],revision=0,selected='',selectedNode='',locked=true,busy=false,notice='',bad=false,search='';
- const names={start:'Início',sendText:'Mensagem',end:'Fim',endHuman:'Transferir para humano',
-  sendAudio:'Áudio',sendImage:'Imagem',sendVideo:'Vídeo',sendSticker:'Figurinha',
-  sendDocument:'Documento',sendQuickResponse:'Resposta rápida',sendPix:'PIX',
-  sendList:'Lista',sendContact:'Contato',sendSignature:'Assinatura',sendMedia:'Mídia',
-  delay:'Aguardar',intervalo:'Intervalo',userInput:'Esperar resposta',
-  condition:'Condição',randomizer:'Aleatorizar',moveToColumn:'Mover no CRM',
-  aiGenerate:'IA de escrita',aiAgent:'Agente IA'};
+ const names=window.ZVMCloudFlowCore.TYPES;
  const editable=new Set(['start','sendText','end']);
  const el=(tag,cls='',value=null)=>{
   const x=document.createElement(tag);if(cls)x.className=cls;
