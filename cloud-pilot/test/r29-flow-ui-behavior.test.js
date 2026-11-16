@@ -43,9 +43,9 @@ class Element{
   for(const handler of this.listeners.get(name)||[])handler({preventDefault(){},...options});
  }
 }
-async function boot({delayLoad=false}={}){
+async function boot({delayLoad=false,seedFlows=[]}={}){
  const root=new Element('div'),eventHandlers=new Map(),fetchCalls=[];
- let flows=[],revision=0;
+ let flows=seedFlows,revision=0;
  let releasePending=null;
  const pending=delayLoad?new Promise(resolve=>{releasePending=resolve;}):null;
  const document={
@@ -130,4 +130,15 @@ test('R29: delayed responses never resurrect Flow drafts after logout',async()=>
  assert.equal(app.root.all('zvm-flow-node').length,0);
  assert.equal(app.root.querySelector('.zvm-flow-list').children.length,1);
  assert.equal(app.root.textContent.includes('Fluxos carregados'),false);
+});
+
+test('R29: malformed legacy Flow is diagnosed instead of crashing visual editor',async()=>{
+ const app=await boot({seedFlows:[{id:'legacy-flow',name:'Importação antiga',
+  nodes:{unexpected:true},startNodeId:'unknown',trigger:{type:'advanced'}}]});
+ assert(app.root.querySelector('.zvm-flow-warning'),'legacy warning must be visible');
+ const buttons=app.root.querySelector('.zvm-flow-node-actions');
+ assert(buttons.children.every(button=>button.disabled));
+ assert.equal(app.root.all('zvm-flow-node').length,0);
+ assert(app.root.textContent.includes('Início não encontrado')||
+  app.root.textContent.includes('Início ausente'));
 });
