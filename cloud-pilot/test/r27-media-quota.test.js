@@ -131,6 +131,25 @@ test('R27 Mongo: simulated transaction abort leaves no phantom reservation',asyn
   assert(result.upload.uploadId);
  }finally{await store.close();}
 });
+test('R27 Mongo: expired reservations release their temporary chunks and quota',async()=>{
+ const {store,client}=await mongo();
+ try{
+  const bytes=png(300000),sha256=Large.sha(bytes);
+  const begin=await store.beginMediaUpload(ACCOUNT,{name:'expired.png',mime:'image/png',size:bytes.length,sha256});
+  const id=begin.upload.uploadId;
+  const first=bytes.subarray(0,Large.CHUNK_BYTES);
+  await store.large.append(ACCOUNT,id,0,first,Large.sha(first));
+  assert.equal(client.collections.get('cloud_large_media_chunks').rows.size,1);
+  const owner=Large.ownerId(ACCOUNT);
+  await client.collections.get('cloud_large_media_uploads').updateOne({_id:id,owner},
+   {$set:{expiresAt:new Date(Date.now()-10000)}});
+  assert.equal(await store.large.status(ACCOUNT),null);
+  assert.equal(client.collections.get('cloud_large_media_chunks').rows.size,0);
+  assert.equal(client.collections.get('cloud_large_media_uploads').rows.size,0);
+  const next=await store.beginMediaUpload(ACCOUNT,spec(204800,'d'));
+  assert(next.upload.uploadId&&next.upload.uploadId!==id);
+ }finally{await store.close();}
+});
 test('R27 memory: serialised reservations and legacy uploads avoid duplicate capacity',async()=>{
  const store=createMemoryStore(),item=small(4096);
  try{
