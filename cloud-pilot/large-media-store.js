@@ -265,6 +265,8 @@ async function createMongoLargeMediaStore(db,client){
    // in a finalizing state just because another operation consumed capacity.
    if(['media_storage_quota','media_item_quota','media_id_collision'].includes(error?.code))
     await uploads.updateOne({_id:id,owner,status:'finalizing'},{$set:{status:'pending'}});
+   if(error?.code===11000||error?.code===112||
+      error?.hasErrorLabel?.('TransientTransactionError'))D.fail('media_quota_conflict');
    throw error;
   }finally{await session.endSession();}
   return result;
