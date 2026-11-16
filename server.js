@@ -747,7 +747,7 @@ async function readAdminKeySnapshot(code, deps = {}) {
 async function renewAdminKeyAtomicStrict(code, totalMinutes, deps = {}) {
   const keyCode = String(code || '');
   if (!/^[a-z0-9_-]{1,64}$/i.test(keyCode)) throw new Error('invalid_key_code');
-  if (!Number.isSafeInteger(totalMinutes) || totalMinutes <= 0 || totalMinutes > 5256000) {
+  if (!Number.isSafeInteger(totalMinutes) || totalMinutes === 0 || Math.abs(totalMinutes) > 5256000) {
     throw new Error('invalid_renewal_duration');
   }
   const operationId = deps.operationId == null ? '' : String(deps.operationId);
@@ -756,20 +756,34 @@ async function renewAdminKeyAtomicStrict(code, totalMinutes, deps = {}) {
   }
   const db = deps.db || await getMongoDb();
   const field = `data.${keyCode}`;
+  const removing = totalMinutes < 0;
+  const rawExpiry = { $convert: {
+    input: '$' + field + '.expiresAt', to: 'date', onError: null, onNull: null
+  } };
   const expiryValue = { $convert: {
     input: '$' + field + '.expiresAt', to: 'date', onError: '$' + '$NOW', onNull: '$' + '$NOW'
   } };
   const expiryDate = { $dateAdd: {
-    startDate: { $max: ['$' + '$NOW', expiryValue] }, unit: 'millisecond',
-    amount: totalMinutes * 60000
+    startDate: removing ? rawExpiry : { $max: ['$' + '$NOW', expiryValue] },
+    unit: 'millisecond', amount: totalMinutes * 60000
   } };
   const update = { [`${field}.expiresAt`]: {
     $dateToString: { format: '%Y-%m-%dT%H:%M:%S.%LZ', date: expiryDate, timezone: 'UTC' }
-  }, [`${field}.active`]: true, [`${field}.expireDuration`]: null,
+  }, [`${field}.expireDuration`]: null,
   [`${field}.warnEmailSent`]: false, updatedAt: '$' + '$NOW' };
+  // Removing time never reactivates an administratively blocked license.
+  if (!removing) update[`${field}.active`] = true;
   if (operationId) update[`${field}.lastAdminRenewalOperationId`] = operationId;
   const filter = { _id: 'keys', [field]: { $type: 'object' } };
   if (operationId) filter[`${field}.lastAdminRenewalOperationId`] = { $ne: operationId };
+  if (removing) {
+    // MongoDB evaluates the existing expiry + clock in one atomic write.
+    // No expiry, expired, or insufficient remaining time => no mutation.
+    filter.$expr = { $gt: [rawExpiry, { $dateAdd: {
+      startDate: '$' + '$NOW', unit: 'millisecond',
+      amount: Math.abs(totalMinutes) * 60000 + 60000
+    } }] };
+  }
   let changed;
   try {
     changed = await db.collection('store').findOneAndUpdate(filter, [{ $set: update }],
@@ -10227,10 +10241,13 @@ async function handleRequest(req, res) {
     const body = await parseBody(req);
     const days=Number(body.days ?? 0), hours=Number(body.hours ?? 0), mins=Number(body.mins ?? 0);
     const validParts = [days, hours, mins].every(n => Number.isSafeInteger(n) && n >= 0);
-    const totalMinutes = days * 1440 + hours * 60 + mins;
-    if (!validParts || !Number.isSafeInteger(totalMinutes) || totalMinutes <= 0 || totalMinutes > 5256000) {
+    const direction = body.direction === undefined ? 'add' : body.direction;
+    const durationMinutes = days * 1440 + hours * 60 + mins;
+    if (!validParts || !['add','remove'].includes(direction) ||
+        !Number.isSafeInteger(durationMinutes) || durationMinutes <= 0 || durationMinutes > 5256000) {
       sendJson(res, { error: 'invalid_renewal_duration' }, 400); return;
     }
+    const totalMinutes = direction === 'remove' ? -durationMinutes : durationMinutes;
     const operationId = body.operationId == null ? '' : String(body.operationId);
     let renewal;
     try {
@@ -10241,13 +10258,19 @@ async function handleRequest(req, res) {
       }
       sendAdminKeyPersistFailure(res, e, 'renew key'); return;
     }
-    if (!renewal) { sendJson(res, { error:'not found' }, 404); return; }
+    if (!renewal) {
+      sendJson(res, { ok:false, error:direction === 'remove' ?
+        'cannot_remove_time' : 'not_found' }, direction === 'remove' ? 422 : 404); return;
+    }
     const savedRenew = renewal.record;
     if (!renewal.replayed) {
       await addLog({ keyCode: codeRenew, label: savedRenew.label, phone: '-', ip, wppVersion: '-', action: 'renewed' });
-      addAdminAuditLog({ actor: 'admin', action: 'key_renewed', keyCode: codeRenew, label: savedRenew.label, detail: `+${days}d${hours}h${mins}m` }).catch(()=>{});
+      addAdminAuditLog({ actor: 'admin', action: direction === 'remove' ? 'key_time_removed' : 'key_renewed',
+        keyCode: codeRenew, label: savedRenew.label,
+        detail: `${direction === 'remove' ? '-' : '+'}${days}d${hours}h${mins}m` }).catch(()=>{});
     }
-    sendJson(res, { ok: true, expiresAt: savedRenew.expiresAt, replayed: renewal.replayed }); return;
+    sendJson(res, { ok: true, expiresAt: savedRenew.expiresAt, replayed: renewal.replayed,
+      direction }); return;
   }
 
   const codeValidity = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/validity$`));
