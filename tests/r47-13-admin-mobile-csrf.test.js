@@ -26,6 +26,8 @@ test('mobile privacy mode without metadata: matching cookie and form token accep
   assert.equal(verifyAdminLoginCsrf(req({cookie}),token),true);
   assert.equal(verifyAdminLoginCsrf(req({cookie,'sec-fetch-site':'none'}),token),true);
   assert.equal(verifyAdminLoginCsrf(req({cookie,'sec-fetch-site':'same-site'}),token),true);
+  assert.equal(verifyAdminLoginCsrf(req({cookie,host:'zvm.onrender.com',origin:'https://zvm.onrender.com','sec-fetch-site':'same-site'}),token),true);
+  assert.equal(verifyAdminLoginCsrf(req({cookie,host:'zvm.onrender.com',referer:'https://zvm.onrender.com/abc','sec-fetch-site':'same-site'}),token),true);
   assert.equal(verifyAdminLoginCsrf(req({cookie,origin:'null'}),token),true);
 });
 test('CSRF fallback refuses absent, malformed, replayed without matching cookie or duplicated token', () => {
