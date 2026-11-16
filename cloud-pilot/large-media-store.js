@@ -245,18 +245,26 @@ async function createMongoLargeMediaStore(db,client){
  async function remove(email,id){
   const owner=owned(email),key=fileKey(owner,id),row=await fileOf(email,id);
   if(!row)D.fail('media_not_found');
-  // Fail closed while deleting; a crashed partial delete is not served as complete.
-  const changed=await files.updateOne({_id:key,status:'ready',owner},{$set:{status:'deleting'}});
-  if(changed.matchedCount!==1)D.fail('media_not_found');
-  await chunks.deleteMany({owner,uploadId:row.uploadId});
-  await files.deleteOne({_id:key,owner,status:'deleting'});
+  const session=client.startSession();
+  try{
+   await session.withTransaction(async()=>{
+    const deleted=await files.deleteOne({_id:key,owner,status:'ready'},{session});
+    if(deleted.deletedCount!==1)D.fail('media_not_found');
+    await chunks.deleteMany({owner,uploadId:row.uploadId},{session});
+   });
+  }finally{await session.endSession();}
   return true;
  }
  async function cancel(email,id){
   const owner=owned(email),s=await upload(email,id);
   if(!s)D.fail('upload_not_found');
-  await uploads.deleteOne({_id:id,owner});
-  await chunks.deleteMany({owner,uploadId:id});
+  const session=client.startSession();
+  try{
+   await session.withTransaction(async()=>{
+    await uploads.deleteOne({_id:id,owner},{session});
+    await chunks.deleteMany({owner,uploadId:id},{session});
+   });
+  }finally{await session.endSession();}
   return true;
  }
  return {begin,status,append,finish,list,get,chunks:readChunks,remove,cancel,async close(){}};
