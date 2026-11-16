@@ -82,7 +82,7 @@ async function post(route,body,auth=true){
  return res.reply;
 }
 (async()=>{
- let before=writes;assert.equal((await post('max-uses',{maxUses:1})).status,409);assert.equal(writes,before);
+ let before=writes;assert.equal((await post('max-uses',{maxUses:1})).status,422);assert.equal(writes,before);
  assert.equal((await post('max-uses',{maxUses:-1})).status,200);assert.equal(state.get('qa').maxUses,-1);
  for(const invalid of [0,2.4,'2bad',10001]){before=writes;assert.equal((await post('max-uses',{maxUses:invalid})).status,400);assert.equal(writes,before)}
  assert.equal((await post('max-uses',{maxUses:2})).status,200);
