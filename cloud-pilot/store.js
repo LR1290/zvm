@@ -80,7 +80,7 @@ function createMemoryStore(){
     }
     const pending=await large.status(email);
     if(!pending&& !largeRows.some(x=>x.id===spec.id))
-     Quota.enforce(legacy,largeRows,[spec][0]);
+     Quota.enforce(legacy,largeRows,spec);
     return large.begin(email,spec,Quota.budget(legacy).usedBytes,legacy.length);
    });
   },
@@ -107,8 +107,8 @@ function createMemoryStore(){
     const id=workspaceId(email),doc=media.get(id)||{revision:0};
     if(doc.revision!==revision)return {conflict:true};
     const largeRows=await large.list(email),pending=await large.status(email);
-    if(items.length>Media.MAX_ITEMS||Quota.budget(items).usedBytes>Media.MAX_USER)
-     Quota.enforce(items,[],{size:Large.MAX_ACCOUNT});
+    if(items.length>Media.MAX_ITEMS)Large.fail('media_item_quota');
+    if(Quota.budget(items).usedBytes>Media.MAX_USER)Large.fail('media_storage_quota');
     Quota.enforce(items,largeRows,pending);
     for(const item of items){
      if(largeRows.some(x=>x.id===item.id))Large.fail('media_id_collision');
