@@ -25,6 +25,7 @@
    if(!status.loggedIn){screen('login');return;}
    if(!status.persistence){screen('unavailable');return;}
    el('accountLabel').textContent=status.email||'';
+   el('cloudSidebarEmail').textContent=status.email||'';
    if(!status.devAuthorized){screen('devGate');return;}
    screen('app');
    tab('summary');
@@ -68,10 +69,16 @@
    }finally{button.disabled=false;}
   });
   el('leaveDev').addEventListener('click',async()=>{
+   if(!window.confirm('Desvincular a chave DEV desta conta? Será necessário digitá-la novamente no próximo acesso.'))return;
+   const button=el('leaveDev');
+   button.disabled=true;
+   el('cloudDevSettingsStatus').textContent='';
    try{
     await call('/api/dev/leave',{method:'POST'});
     await refresh();
-   }catch{el('response').textContent='Não foi possível revogar o acesso. Tente novamente.';}
+   }catch{
+    el('cloudDevSettingsStatus').textContent='Não foi possível desvincular o acesso. Confira a conexão e tente novamente.';
+   }finally{button.disabled=false;}
   });
   el('retry').addEventListener('click',refresh);
   document.querySelectorAll('.tabs button').forEach(button=>button.addEventListener('click',()=>tab(button.dataset.page)));
@@ -81,7 +88,7 @@
     const result=await call('/api/ping',{method:'POST'});
     el('response').textContent='Servidor respondeu às '+new Date(result.at).toLocaleTimeString('pt-BR')+'. Teste nº '+result.number+'. Nenhuma mensagem enviada.';
    }catch(error){
-    el('response').textContent=error.message==='dev_key_required'?'Chave DEV revogada ou expirada. Recarregue a página.':'Servidor indisponível.';
+    el('response').textContent=error.message==='dev_key_required'?'A licença DEV não está mais autorizada. Atualize o painel para verificar o acesso.':'Servidor indisponível.';
    }
   });
   refresh();
