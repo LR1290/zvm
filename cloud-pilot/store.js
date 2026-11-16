@@ -4,13 +4,16 @@ const DATABASE='zvm_cloud_pilot';
 const crypto=require('node:crypto');
 const workspaceId=email=>crypto.createHash('sha256').update('zvm-cloud-workspace-v1:'+email).digest('hex');
 const copy=x=>x==null?null:JSON.parse(JSON.stringify(x));
-const expMs=v=>new Date(v).getTime();
 function createMemoryStore(){
- const grants=new Map(),drafts=new Map(),workspaces=new Map(),media=new Map(),metaEvents=new Map();
+ const accountGrants=new Map(),drafts=new Map(),workspaces=new Map(),media=new Map(),metaEvents=new Map();
  return {
-  async grant(sessionId,email,keyHash,expiresAt){grants.set(sessionId,{email,keyHash,expiresAt:new Date(expiresAt).toISOString()});},
-  async getGrant(sessionId){const g=grants.get(sessionId);if(!g||!(expMs(g.expiresAt)>Date.now())){grants.delete(sessionId);return null;}return copy(g);},
-  async revokeGrant(sessionId){grants.delete(sessionId);},
+  async grantAccount(email,keyHash){
+   const id=workspaceId(email),now=new Date().toISOString();
+   const previous=accountGrants.get(id);
+   accountGrants.set(id,{keyHash,createdAt:previous?.createdAt||now,updatedAt:now});
+  },
+  async getAccountGrant(email){return copy(accountGrants.get(workspaceId(email))||null);},
+  async revokeAccountGrant(email){accountGrants.delete(workspaceId(email));},
   async getDraft(email){return copy(drafts.get(email));},
   async setDraft(email,doc){drafts.set(email,copy(doc));return copy(doc);},
   async clearDraft(email){drafts.delete(email);},
@@ -48,15 +51,20 @@ async function createMongoStore(uri){
  const {MongoClient}=require('mongodb');
  const client=new MongoClient(uri,{appName:'zvm-cloud-pilot',maxPoolSize:5,minPoolSize:0,serverSelectionTimeoutMS:10000});
  await client.connect();
- const db=client.db(DATABASE),grants=db.collection('cloud_dev_grants'),drafts=db.collection('drafts'),workspaces=db.collection('cloud_workspaces'),media=db.collection('cloud_media'),metaEvents=db.collection('cloud_meta_events');
- try{await grants.createIndex({expiresAt:1},{expireAfterSeconds:0});await metaEvents.createIndex({createdAt:1},{expireAfterSeconds:7*24*3600});}
+ const db=client.db(DATABASE),accountGrants=db.collection('cloud_dev_account_grants'),drafts=db.collection('drafts'),workspaces=db.collection('cloud_workspaces'),media=db.collection('cloud_media'),metaEvents=db.collection('cloud_meta_events');
+ try{await metaEvents.createIndex({createdAt:1},{expireAfterSeconds:7*24*3600});}
  catch(error){await client.close();throw error;}
  return {
-  async grant(sessionId,email,keyHash,expiresAt){
-   await grants.replaceOne({_id:sessionId},{_id:sessionId,email,keyHash,expiresAt:new Date(expiresAt)},{upsert:true});
+  async grantAccount(email,keyHash){
+   const now=new Date();
+   await accountGrants.updateOne({_id:workspaceId(email)},{
+    $set:{keyHash,updatedAt:now},$setOnInsert:{createdAt:now}
+   },{upsert:true});
   },
-  async getGrant(sessionId){return grants.findOne({_id:sessionId,expiresAt:{$gt:new Date()}});},
-  async revokeGrant(sessionId){await grants.deleteOne({_id:sessionId});},
+  async getAccountGrant(email){
+   return accountGrants.findOne({_id:workspaceId(email)},{projection:{_id:0,keyHash:1}});
+  },
+  async revokeAccountGrant(email){await accountGrants.deleteOne({_id:workspaceId(email)});},
   async getDraft(email){return drafts.findOne({_id:email});},
   async setDraft(email,doc){
    await drafts.replaceOne({_id:email},{_id:email,...doc},{upsert:true});
