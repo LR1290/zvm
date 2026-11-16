@@ -63,20 +63,25 @@ async function commitWorkspace(store,email,revision,modules){
 }
 async function streamLargeDownload(store,email,file,res,method,gate){
  const release=gate.acquire(email);
+ const aborter=new AbortController();
  let released=false;
+ const onClose=()=>{
+  aborter.abort();
+  cleanup();
+ };
  const cleanup=()=>{
   if(released)return;
   released=true;
   release();
-  res.off('finish',cleanup);res.off('close',cleanup);
+  res.off('finish',cleanup);res.off('close',onClose);
  };
  // Count in-flight responses until the socket is done, not just until end()
  // schedules a potentially large send into Node's outgoing write buffer.
  res.once('finish',cleanup);
- res.once('close',cleanup);
+ res.once('close',onClose);
  try{
   const bytes=await Downloads.verifiedSnapshot(store,email,file,{
-   cancelled:()=>res.destroyed
+   signal:aborter.signal,cancelled:()=>res.destroyed||aborter.signal.aborted
   });
   if(res.destroyed)return cleanup();
   res.writeHead(200,{
