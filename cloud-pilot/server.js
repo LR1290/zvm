@@ -5,6 +5,7 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),
 const {createMongoStore}=require('./store');
 const {MODULES,moduleCheck,checkAudience,planLegacy,mergeModules,checkWhole}=require('./workspace-domain');
 const {changeCrmBoard,checkCrmLinks}=require('./crm-board-domain');
+const FlowGraph=require('./flow-graph-domain');
 const Media=require('./media-domain');
 const Large=require('./large-media-domain');
 const Quota=require('./media-quota');
@@ -333,6 +334,30 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
     return json(res,200,{format:'ZVM_CLOUD_V1',version:1,createdAt:new Date().toISOString(),
       note:'Somente rascunhos Cloud. Não contém mídias locais, autenticação ou chaves.',
       revision:data.revision,modules:data.modules});
+   }
+   if(req.method==='POST'&&pathname==='/api/workspace/flows/graph'){
+    let input;
+    try{input=await readJson(req,64000);}
+    catch{return json(res,400,{error:'flow_graph_payload_invalid'});}
+    if(!Number.isSafeInteger(input.revision)||input.revision<0)
+     return json(res,400,{error:'invalid_revision'});
+    const current=await store.readWorkspace(user.email);
+    if(current.revision!==input.revision)
+     return json(res,409,{error:'workspace_conflict',revision:current.revision});
+    let changed,modules;
+    try{
+     changed=FlowGraph.update(current.modules.flows||[],input);
+     modules={...current.modules,flows:moduleCheck('flows',changed.flows)};
+     checkWhole(modules);
+     checkAudience('flows',modules.flows,modules.contacts||[]);
+    }catch(error){return json(res,422,{error:error?.code||'flow_graph_invalid'});}
+    let saved;
+    try{saved=await commitWorkspace(store,user.email,current.revision,modules);}
+    catch{return json(res,503,{error:'workspace_transaction_failed'});}
+    if(saved.conflict)return json(res,409,{error:'workspace_conflict'});
+    if(saved.invalid)return json(res,422,{error:saved.error});
+    return json(res,200,{ok:true,revision:saved.revision,flow:changed.flow,
+     review:changed.review,sending:false});
    }
    const moduleRoute=/^\/api\/workspace\/([a-zA-Z]+)$/.exec(pathname);
    if(moduleRoute){
