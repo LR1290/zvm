@@ -82,5 +82,5 @@ test('Portal/Cloud: recovery on failed Origin is scoped to tokenized form only',
  assert.match(html,/id="cloudLoginForm"/);
  assert.match(html,/name="zvm_portal_csrf"/);
  assert.match(server,/function requireSameOriginPost\(req\)/);
- assert.match(server,/if \(site && site !== 'same-origin' && site !== 'none'\) return false;/);
+ assert.match(server,/if \\(site && !\\['same-origin','same-site','none'\\]\\.includes\\(site\\)\\) return false;/);
 });
