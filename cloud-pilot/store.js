@@ -90,13 +90,38 @@ async function createMongoStore(uri){
  const {MongoClient}=require('mongodb');
  const client=new MongoClient(uri,{appName:'zvm-cloud-pilot',maxPoolSize:5,minPoolSize:0,serverSelectionTimeoutMS:10000});
  await client.connect();
- const db=client.db(DATABASE),accountGrants=db.collection('cloud_dev_account_grants'),drafts=db.collection('drafts'),workspaces=db.collection('cloud_workspaces'),media=db.collection('cloud_media'),metaEvents=db.collection('cloud_meta_events');
+ const db=client.db(DATABASE),accountGrants=db.collection('cloud_dev_account_grants'),
+ drafts=db.collection('drafts'),workspaces=db.collection('cloud_workspaces'),
+ media=db.collection('cloud_media'),metaEvents=db.collection('cloud_meta_events'),
+ mediaFences=db.collection('cloud_media_integrity_fences'),
+ largeFiles=db.collection('cloud_large_media_files'),
+ largeParts=db.collection('cloud_large_media_chunks');
  let large;
  try{
   large=await createMongoLargeMediaStore(db,client);
   await metaEvents.createIndex({createdAt:1},{expireAfterSeconds:7*24*3600});
  }
  catch(error){await client.close();throw error;}
+ // Every mutation of Library references and every media deletion must write
+ // this SAME owner document inside a Mongo transaction. Snapshot write
+ // conflicts force transaction retry rather than allowing an orphan reference.
+ async function withMediaFence(email,operation){
+  const session=client.startSession();
+  try{
+   let result;
+   await session.withTransaction(async()=>{
+    await mediaFences.updateOne({_id:workspaceId(email)},
+     {$inc:{generation:1},$set:{updatedAt:new Date()}},
+     {upsert:true,session});
+    result=await operation(session);
+   },{readConcern:{level:'snapshot'},writeConcern:{w:'majority'}});
+   return result;
+  }catch(error){
+   if(error?.code===11000||error?.code===112||error?.hasErrorLabel?.('TransientTransactionError'))
+    return {conflict:true,code:'workspace_conflict'};
+   throw error;
+  }finally{await session.endSession();}
+ }
  return {
   large,
   async grantAccount(email,keyHash){
@@ -120,19 +145,50 @@ async function createMongoStore(uri){
    return doc?{revision:doc.revision,modules:doc.modules,updatedAt:doc.updatedAt}:{revision:0,modules:{},updatedAt:null};
   },
   async writeWorkspace(email,revision,modules){
-   const id=workspaceId(email),next={_id:id,revision:revision+1,modules,updatedAt:new Date().toISOString()};
-   try {
-    if(revision===0){
-     await workspaces.insertOne(next);
-    } else {
-     const result=await workspaces.replaceOne({_id:id,revision},next);
-     if(result.matchedCount!==1)return {conflict:true};
+   return withMediaFence(email,async session=>{
+    const id=workspaceId(email);
+    const current=await workspaces.findOne({_id:id},{session});
+    if((current?.revision||0)!==revision)return {conflict:true,code:'workspace_conflict'};
+    if(Array.isArray(modules.library)){
+     const legacy=(await media.findOne({_id:id},{session}))?.items||[];
+     const large=await largeFiles.find({owner:Large.ownerId(email),status:'ready'},{session}).toArray();
+     checkLibraryRecords(modules.library,[...legacy,...large]);
+    }
+    const next={_id:id,revision:revision+1,modules,updatedAt:new Date().toISOString()};
+    if(!current){
+     await workspaces.insertOne(next,{session});
+    }else{
+     const result=await workspaces.replaceOne({_id:id,revision},next,{session});
+     if(result.matchedCount!==1)return {conflict:true,code:'workspace_conflict'};
     }
     return {conflict:false,revision:next.revision,updatedAt:next.updatedAt};
-   }catch(error){
-    if(error?.code===11000)return {conflict:true};
-    throw error;
-   }
+   });
+  },
+  async removeMediaIfUnlinked(email,id,revision){
+   return withMediaFence(email,async session=>{
+    const owner=workspaceId(email),largeOwner=Large.ownerId(email);
+    const workspace=await workspaces.findOne({_id:owner},{session});
+    if((workspace?.modules?.library||[]).some(row=>row.mediaId===id))
+     return {conflict:true,code:'media_still_linked_to_library'};
+    const existing=await media.findOne({_id:owner},{session});
+    const version=existing?.revision||0;
+    if(!Number.isSafeInteger(revision)||revision!==version)
+     return {conflict:true,code:'media_revision_conflict'};
+    const file=await largeFiles.findOne({_id:largeOwner+':'+id,owner:largeOwner,status:'ready'},{session});
+    if(file){
+     const removed=await largeFiles.deleteOne({_id:file._id,owner:largeOwner,status:'ready'},{session});
+     if(removed.deletedCount!==1)return {conflict:true,code:'media_not_found'};
+     await largeParts.deleteMany({owner:largeOwner,uploadId:file.uploadId},{session});
+     return {conflict:false,large:true,revision:version};
+    }
+    if(!existing||!(existing.items||[]).some(row=>row.id===id))
+     return {conflict:true,code:'media_not_found'};
+    const remaining=existing.items.filter(row=>row.id!==id),newRevision=version+1;
+    const saved=await media.replaceOne({_id:owner,revision:version},
+     {_id:owner,revision:newRevision,items:remaining},{session});
+    if(saved.matchedCount!==1)return {conflict:true,code:'media_revision_conflict'};
+    return {conflict:false,large:false,revision:newRevision};
+   });
   },
   async readMedia(email){
    const doc=await media.findOne({_id:workspaceId(email)});
