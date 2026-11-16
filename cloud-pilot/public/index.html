@@ -23,11 +23,13 @@
  <p class="eyebrow">SUA CONTA ZVM</p>
  <h1>Entre na ZVM Cloud</h1>
  <p class="muted">Use o mesmo e-mail e senha da sua conta em zvm.onrender.com. Após entrar, será solicitada uma chave com Acesso DEV.</p>
- <form method="POST" action="/cliente/login">
+ <form id="cloudLoginForm" method="POST" action="/cliente/login">
+   <input id="cloudLoginCsrf" type="hidden" name="zvm_portal_csrf" value="">
   <input type="hidden" name="redir" value="/dev/cloud/">
   <label for="email">E-mail da conta ZVM</label><input id="email" name="email" type="email" required autocomplete="username" maxlength="100" placeholder="email@exemplo.com">
   <label for="password">Senha</label><input id="password" name="pass" type="password" required autocomplete="current-password" maxlength="128">
   <button class="primary" type="submit">Entrar com minha conta</button>
+   <p id="cloudLoginError" class="error" role="alert" aria-live="polite"></p>
  </form>
  <p class="tiny">Ainda não tem conta? <a href="/cliente/registro?redir=%2Fdev%2Fcloud%2F">Criar conta ZVM</a></p>
  <p class="tiny">O login e a verificação em duas etapas são realizados pelo Portal do Cliente oficial.</p>

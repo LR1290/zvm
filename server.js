@@ -2,6 +2,7 @@ const ZVM_BUILD_ID = '2026-10-08-r46-16-cakto-queue-recovery';
 const { resolveClientIp } = require('./client-ip-policy');
 const { checkAdminLoginCredentials } = require('./src/admin-login-credentials');
 const { createAdminLoginCsrf, canUseAdminLoginCsrfFallback, verifyAdminLoginCsrf } = require('./src/admin-login-csrf');
+const { issuePortalCsrf, decoratePortalForms, isPortalFormRoute, verifyPortalCsrf } = require('./src/portal-form-csrf');
 const { createLandingRenderer } = require('./src/web/public/landing/render');
 const { renderOwnerSalesLanding, OWNER_TOP_BRAND_SRC } = require('./src/web/public/landing/owner');
 const { renderPublicFooter } = require('./src/web/public/footer');
@@ -3291,11 +3292,15 @@ function applyRequestContext(req, res) {
 // respeitam SameSite. NÃO aplicar ao webhook externo da Cakto
 // nem a APIs de extensão — esses são legitimamente cross-origin.
 function requireSameOriginPost(req) {
+  // Set only after verifying an exact-match, SameSite, HttpOnly portal form token.
+  // Admin, Analytics, Cloud APIs, webhooks and extension APIs cannot set this flag.
+  if (req?.zvmPortalCsrfVerified === true) return true;
   const headers = req?.headers || {};
   const site = String(headers['sec-fetch-site'] || '').trim().toLowerCase();
-  // Fetch Metadata cannot override a contradictory Origin or Referer.
-  // External webhooks and extension routes do not use this cookie guard.
-  if (site && site !== 'same-origin' && site !== 'none') return false;
+  // Browsers may report same-site instead of same-origin. Only accept that
+  // when an explicit Origin/Referer proves the EXACT current origin.
+  // Cross-site metadata always blocks, even if another header claims otherwise.
+  if (site && !['same-origin','same-site','none'].includes(site)) return false;
   const host = String(headers.host || '').trim().toLowerCase();
   if (!host || /[\\/\s@]/.test(host)) return false;
   const sameOriginUrl = value => {
@@ -3307,8 +3312,10 @@ function requireSameOriginPost(req) {
         !parsed.username && !parsed.password;
     } catch { return false; }
   };
-  if (headers.origin) return sameOriginUrl(headers.origin);
-  if (headers.referer) return sameOriginUrl(headers.referer);
+  // A valid Origin does not override a contradictory Referer (or vice versa).
+  if (headers.origin && !sameOriginUrl(headers.origin)) return false;
+  if (headers.referer && !sameOriginUrl(headers.referer)) return false;
+  if (headers.origin || headers.referer) return true;
   return site === 'same-origin' || site === 'none';
 }
 
@@ -5311,6 +5318,8 @@ function parseBody(req) {
 }
 
 function parseFormBody(req) {
+  // Parsed once by the portal fallback; consuming the request twice would erase credentials.
+  if (req.zvmCachedPortalForm) return Promise.resolve(req.zvmCachedPortalForm);
   return new Promise((resolve) => {
     let b = '', size = 0;
     req.on('data', c => {
@@ -5905,7 +5914,9 @@ function sendAuthHtml(res, html, status = 200) {
       setLanguageCookie(res, info.locale, secure);
     }
   }
-  // Auth/conta e Portal atual: sem script/style/handlers inline; CSP fechada em 'self'.
+  // Auth/conta e Portal atual: secure double-submit token on same-origin client POST forms.
+  // The cookie is host-only, HttpOnly, Secure, SameSite=Strict and scoped to /cliente.
+  html = decoratePortalForms(html, res);
   html = applyOwnerSiteTheme(html);
   const buf = Buffer.from(html, 'utf8');
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -8988,6 +8999,30 @@ async function handleRequest(req, res) {
   if (isIpBlacklisted(ip)) {
     res.writeHead(403, { 'Content-Type': 'text/plain', 'Server': 'ZVM' });
     res.end('403 Forbidden');
+    return;
+  }
+
+  // Browser privacy modes may omit Origin/Referer/Fetch Metadata. Accept only
+  // a fresh matching portal cookie+form token, never an arbitrary cross-site POST.
+  if (req.method === 'POST' && isPortalFormRoute(p) && !requireSameOriginPost(req)) {
+    const contentType = String(req.headers['content-type'] || '').toLowerCase();
+    if (!/^application\/x-www-form-urlencoded(?:\s*;|$)/.test(contentType)) {
+      console.warn('[PORTAL-CSRF] rejected format route=' + p + ' request=' + req.zvmRequestId);
+      sendAuthHtml(res, renderStandalonePortalLogin('Não foi possível validar a origem deste formulário. Reabra a página e tente novamente.'), 403);
+      return;
+    }
+    const form = await parseFormBody(req);
+    if (!verifyPortalCsrf(req, form)) {
+      console.warn('[PORTAL-CSRF] rejected token route=' + p + ' request=' + req.zvmRequestId);
+      sendAuthHtml(res, renderStandalonePortalLogin('Formulário expirado ou não validado. Reabra a página e tente novamente.', safeLocalRedirect((form.get('redir') || '').slice(0, 200))), 403);
+      return;
+    }
+    req.zvmCachedPortalForm = form;
+    req.zvmPortalCsrfVerified = true;
+  }
+  if (p === '/cliente/form-token' && req.method === 'GET') {
+    const token = issuePortalCsrf(res);
+    sendJson(res, { ok: true, token });
     return;
   }
 
