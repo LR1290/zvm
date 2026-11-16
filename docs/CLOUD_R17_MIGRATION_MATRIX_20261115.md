@@ -45,3 +45,22 @@ O export da extensão pode envolver envelopes Zustand, manifesto `EXTAPP_BACKUP`
 5. Teste real com contas empresariais autorizadas, consentimento, LGPD, auditoria de custo e rollback antes de permitir uso comercial.
 
 A versão deve ser identificada como **Cloud DEV — workspace de rascunhos e importação parcial compatível R17**. Não anunciar que executa a extensão integral, WhatsApp Web na nuvem, ou automações com celular desligado.
+
+
+## R18 — ZIP + cofre privado de anexos
+
+A ZVM Cloud passa a ler **ZIP localmente**: diretório central validado, entradas com caminho seguro, manifesto único `backup.json` ou único JSON, expansão limitada e CRC32 verificado. Nunca sobe o ZIP completo. Aceita compressão ZIP armazenada/DEFLATE se `DecompressionStream('deflate-raw')` estiver disponível. ZIP multipart, ZIP64, criptografado, links simbólicos, caminhos fora do arquivo, checksums incorretos ou manifesto ambíguo são rejeitados. O ZIP pode incluir mídia, mas **mídias do ZIP ainda não são importadas automaticamente**; a prévia informa quantas entradas adicionais existem.
+
+O **Cofre Cloud** guarda pequenos arquivos diretamente no MongoDB isolado, por conta, com verificação de formato por assinatura, SHA-256, CAS e limite: **1 MB/arquivo, 6 MB/conta e 24 itens**. Aceita somente PNG, JPEG, WEBP, PDF, MP3, OGG e MP4 compatíveis com assinatura. Arquivos são servidos como anexo, com autenticação por sessão e chave DEV revalidada. A Biblioteca permite vincular um ID do cofre e impede uso de ID de outra conta. Arquivos maiores exigirão object storage externo para não comprometer o Atlas. Esta funcionalidade **não significa migração de arquivos OPFS/IDB ou envio de anexos no WhatsApp**.
+
+## R18 — infraestrutura de conexão oficial Meta
+
+O endpoint `/dev/cloud/meta/webhook` implementa handshake de verificação, assinatura `X-Hub-Signature-256`, limite de corpo de 256 KB e vínculo do evento ao número empresarial configurado. Só grava no MongoDB isolado metadados operacionais mínimos, sem corpo de conversa ou telefone do cliente; eventos idempotentes com TTL de sete dias. Continua **desligado** até configurar as variáveis `CLOUD_META_WEBHOOK_ENABLED=1`, `CLOUD_META_VERIFY_TOKEN`, `CLOUD_META_APP_SECRET`, `CLOUD_META_OWNER_EMAIL` e `CLOUD_META_PHONE_NUMBER_ID` pelo Render. Não cadastrar credenciais neste GitHub ou no navegador.
+
+A rota protegida `/dev/cloud/api/meta/status` informa apenas prontidão técnica para o usuário autorizado. **Não existe endpoint de envio**, fila ou Webhook que execute Fluxos/Funis. Para concluir disparos reais, é necessária a conta WhatsApp Business do titular, número aprovado, acesso e credenciais oficiais, opt-in com evidência, templates aprovados e mecanismo financeiro/idempotente de execução. A integração não pode funcionar com um número pessoal WhatsApp Web copiado da extensão.
+
+## Testes R18
+
+`node --test cloud-pilot/test/backup-media.test.js cloud-pilot/test/media-endpoints.test.js cloud-pilot/test/meta-webhook.test.js`
+
+Somados a `npm run check`, testes sintéticos sem mensagens reais, revisão visual no Chromium e checagens de regressão do site. Não publicar se QA falhar.
