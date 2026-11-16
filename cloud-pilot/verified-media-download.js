@@ -28,8 +28,7 @@ function createDownloadGate({maxConcurrent=2,maxPerAccount=1}={}){
 async function verifiedSnapshot(store,email,file,{cancelled=()=>false}={}){
  if(!file||!Large.FILE_ID.test(file.id)||!Large.DIGEST.test(file.sha256)||
     !Number.isSafeInteger(file.size)||file.size<=0||file.size>Large.MAX_FILE||
-    !['image/jpeg','image/png','image/webp',
-     'application/pdf','audio/mpeg','audio/ogg','video/mp4'].includes(file.mime))
+    !Large.isSupportedMime(file.mime))
   reject('large_media_metadata_invalid');
  if(!store?.large||typeof store.large.chunks!=='function')reject('large_media_storage_unavailable');
  const chunks=[],digest=crypto.createHash('sha256');
