@@ -45,8 +45,7 @@ assert(authCss.includes('max-width:580px') && authCss.includes('max-width:660px'
 assert(authCss.includes('justify-content:flex-start'),'auth form column remains spacious');
 assert(authCss.includes('.auth-form-brand{justify-content:center'),'auth brand centered inside form');
 
-// R47 standalone navbar replaces retired /?sec=produto and /?sec=recursos anchors.
-// Keep the real navigation contract: the canonical mainLinks must contain current routes.
+// R47 standalone navbar replaced the obsolete /?sec=produto and /?sec=recursos anchors.
 for(const publicLink of ["['/#recursos', 'Recursos']", "['/#como', 'Como funciona']", "['/planos', 'Planos']", "['/faq', 'FAQ']", "['/privacidade', 'Privacidade']", "['/termos', 'Termos de Serviço']"]) assert(server.includes(publicLink),'shared header link '+publicLink);
 assert(server.includes("publicNav: portalUser => _sharedNav({ activePath: '/', portalUser, showBack: false })"),'landing reuses shared public nav');
 assert(css.includes('zvmWaveDrift60'),'compositor-first wave motion');

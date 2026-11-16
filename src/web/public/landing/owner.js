@@ -5,6 +5,11 @@ const path = require('node:path');
 
 // Owner-approved landing markup. Keep sales authority on the server, never in client JS.
 const template = fs.readFileSync(path.join(__dirname, 'owner-template.html'), 'utf8');
+
+const ownerBrandSourceMatch = template.match(/<a href="\/" aria-label="ZVM Automações"><img src="(data:image\/png;base64,[A-Za-z0-9+/=]+)" alt="ZVM Automações"><\/a>/);
+if (!ownerBrandSourceMatch) throw new Error('ZVM canonical header brand artwork missing');
+const OWNER_TOP_BRAND_SRC = ownerBrandSourceMatch[1];
+
 const PLAN_KEYS = Object.freeze({ SOLO: 'solo', PADRAO: 'padrao', PRO: 'pro' });
 
 function approvedTestimonials(raw, escHtml) {
@@ -70,4 +75,4 @@ function renderOwnerSalesLanding({ plans, salesPaused, escHtml, testimonialsJson
   return html;
 }
 
-module.exports = Object.freeze({ renderOwnerSalesLanding, approvedTestimonials });
+module.exports = Object.freeze({ renderOwnerSalesLanding, approvedTestimonials, OWNER_TOP_BRAND_SRC });
