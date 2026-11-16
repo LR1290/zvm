@@ -149,8 +149,12 @@ function planLegacy(source){
     const dataText=content&&typeof content.data==='string'?safeText(content.data):'';
     const propText=content?.properties?.mensagem||content?.properties?.message;
     const ownText=row.text||row.message||row.mensagem||row.properties?.mensagem||'';
-    const contentText=dataText||safeText(propText)||safeText(ownText);
     const needsMedia=['audio','media','image','video','sticker','document'].includes(kind);
+    // Independent R17 stores may reuse an item ID. A text store's keyed payload
+    // must never be copied into an audio/image/video merely because IDs collide.
+    const contentText=needsMedia?
+      safeText(row.caption||row.text||row.description):
+      dataText||safeText(propText)||safeText(ownText);
     const structured=['pix','interactive-list','contact'].includes(kind);
     const payload={};
     if(structured){
@@ -173,7 +177,7 @@ function planLegacy(source){
      favorite:row.favorite===true||row.isFavorite===true,
      showInQuickMenu:row.showInQuickMenu!==false,
      ...(Object.keys(payload).length?{payload}:{}),
-     contentStatus:ready?'ready':structured&&Object.keys(payload).length?'needs_review':'missing_source'
+     contentStatus:ready?'ready':structured&&(contentText||Object.keys(payload).length)?'needs_review':'missing_source'
     });
    }else if(module==='crm'){
     // Preserve native columns and memberships as a draft. No WhatsApp actions are run.
