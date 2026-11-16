@@ -41,16 +41,7 @@
  const current=()=>flows.find(x=>x?.id===selected)||null;
  const selectedEntry=()=>current()?.nodes?.find(x=>x.id===selectedNode)||null;
  const array=x=>Array.isArray(x)?x:[];
- const outgoing=node=>{
-  const targets=[];
-  for(const id of array(node?.nextNodeIds))if(id)targets.push(id);
-  for(const key of ['nextNodeIdOnExpiration','nextNodeIdOnDifferentAnswer','nextNodeIdOnConditionFalse'])
-   if(node?.[key])targets.push(node[key]);
-  for(const w of array(node?.data?.weights))if(w?.nextNodeId)targets.push(w.nextNodeId);
-  for(const key of ['expected','different','expiration'])
-   for(const id of array(node?.data?.fanout?.[key]))if(id)targets.push(id);
-  return [...new Set(targets)];
- };
+ const outgoing=node=>window.ZVMCloudFlowCore.targets(node);
  function notify(message,error=false){notice=message;bad=error;const box=mount.querySelector('.zvm-flow-status');
   if(box){box.textContent=message;box.classList.toggle('is-error',error);}}
  const words={workspace_conflict:'Os dados da Cloud mudaram em outra aba. Recarreguei o Fluxo; confira antes de repetir a edição.',
@@ -244,16 +235,10 @@
   drawFlowList(list);
  }
  function diagnose(flow){
-  const nodes=array(flow.nodes),byId=new Map(nodes.map(x=>[x.id,x])),issues=[];
-  if(!byId.get(flow.startNodeId)||byId.get(flow.startNodeId)?.type!=='start')
-   issues.push('Início ausente ou incompatível; revise antes de utilizar na extensão.');
-  for(const node of nodes){
-   if(!Object.hasOwn(names,node.type))issues.push('Tipo avançado preservado: '+String(node.type).slice(0,50));
-   for(const id of outgoing(node))if(!byId.has(id))
-    issues.push('Ligação ausente na etapa '+String(node.id).slice(0,10));
-  }
-  if(!issues.length)issues.push('Estrutura consistente no editor. Isso não significa que o motor esteja habilitado.');
-  return issues;
+  const issues=window.ZVMCloudFlowCore.review(flow).issues;
+  if(!issues.length)return ['Estrutura consistente no editor. Isso não significa que o motor esteja habilitado.'];
+  return issues.map(issue=>(issue.severity==='error'?'Erro: ':'Revisar: ')+
+   String(issue.text||issue.code)+(issue.nodeId?' · '+issue.nodeId.slice(0,10):''));
  }
  function drawFlowList(list){
   list.replaceChildren();
