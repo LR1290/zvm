@@ -67,6 +67,11 @@ test('no public login; gate requires authentic portal and current DEV license',a
   r=await request(root,'/api/overview',{cookie:a});assert.equal(r.status,403);
   f.accounts.get('a@example.org').active=true;
   r=await request(root,'/api/overview',{cookie:a});assert.equal(r.status,200);
+  // Replacing the key invalidates the stored fingerprint immediately.
+  f.accounts.get('a@example.org').key='zv-dev-rotated';
+  r=await request(root,'/api/overview',{cookie:a});assert.equal(r.status,403);
+  f.accounts.get('a@example.org').key=DEV;
+  r=await request(root,'/api/overview',{cookie:a});assert.equal(r.status,200);
   r=await request(root,'/api/dev/leave',{method:'POST',cookie:a});assert.equal(r.status,200);
   r=await request(root,'/api/overview',{cookie:a});assert.equal(r.status,403);
  }finally{await new Promise(r=>f.server.close(r));}
@@ -84,9 +89,25 @@ test('separate users, separate portal sessions, per-user cloud drafts',async()=>
   r=await request(root,'/api/draft',{cookie:b});assert.equal((await r.json()).message,'');
   r=await request(root,'/api/draft',{method:'PUT',cookie:b,body:{name:'B',message:'Private for B'}});assert.equal(r.status,200);
   r=await request(root,'/api/draft',{cookie:a});assert.equal((await r.json()).message,'Private for A');
-  // A new login for A cannot inherit the old portal-session DEV grant.
+  // A new Portal session of the SAME ACCOUNT inherits the persistent DEV grant.
   f.sessions.set('a-new-session',{email:'a@example.org',expiresAt:Date.now()+3600000});
+  r=await request(root,'/api/draft',{cookie:f.cookie('a-new-session')});
+  assert.equal(r.status,200);
+  assert.equal((await r.json()).message,'Private for A');
+  r=await request(root,'/api/session',{cookie:f.cookie('a-new-session')});
+  assert.equal((await r.json()).rememberedForAccount,true);
+  // A distinct account cannot reuse A's account grant.
+  f.accounts.get('b@example.org').dev=false;
+  r=await request(root,'/api/draft',{cookie:b});assert.equal(r.status,403);
+  f.accounts.get('b@example.org').dev=true;
+  // Explicit unlink from either session clears the grant for ALL A sessions.
+  r=await request(root,'/api/dev/leave',{method:'POST',cookie:f.cookie('a-new-session')});
+  assert.equal(r.status,200);
+  r=await request(root,'/api/draft',{cookie:a});assert.equal(r.status,403);
   r=await request(root,'/api/draft',{cookie:f.cookie('a-new-session')});assert.equal(r.status,403);
+  // A can relink once with its currently valid license, without touching B.
+  r=await request(root,'/api/dev/activate',{method:'POST',cookie:a,body:{key:DEV}});assert.equal(r.status,200);
+  r=await request(root,'/api/draft',{cookie:f.cookie('a-new-session')});assert.equal(r.status,200);
   // The expired/invalidated original portal session fails closed.
   f.sessions.delete('a-session');
   r=await request(root,'/api/draft',{cookie:a});assert.equal(r.status,401);
