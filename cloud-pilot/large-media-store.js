@@ -6,6 +6,12 @@ const crypto=require('node:crypto');
 const Media=require('./media-domain');
 const D=require('./large-media-domain');
 const PART_TTL_MS=3*D.TTL_MS;
+function mongoBytes(value){
+ if(Buffer.isBuffer(value))return value;
+ if(value&&Buffer.isBuffer(value.buffer))return Buffer.from(value.buffer);
+ if(value instanceof Uint8Array)return Buffer.from(value.buffer,value.byteOffset,value.byteLength);
+ return Buffer.from(value||[]);
+}
 function compatible(a,b){return a?.sha256===b.sha256&&a?.size===b.size&&a?.mime===b.mime;}
 function createMemoryLargeMediaStore(){
  const sessions=new Map(),files=new Map();
@@ -16,7 +22,7 @@ function createMemoryLargeMediaStore(){
   if(s&&new Date(s.expiresAt).getTime()<=Date.now()){sessions.delete(id);return null;}
   return s||null;
  };
- async function begin(email,input,legacyBytes=0){
+ async function begin(email,input,legacyBytes=0,legacyCount=0){
   const spec=D.specOf(input),records=owned(email);
   const match=records.get(spec.id);
   if(match){
@@ -28,7 +34,7 @@ function createMemoryLargeMediaStore(){
    if(!compatible(current,spec)||current.name!==spec.name)D.fail('upload_already_active');
    return {duplicate:false,resumed:true,upload:D.publicUpload(current)};
   }
-  if(records.size>=D.MAX_ITEMS)D.fail('media_item_quota');
+  if(records.size+legacyCount>=D.MAX_ITEMS)D.fail('media_item_quota');
   const used=[...records.values()].reduce((n,x)=>n+x.size,0);
   if(used+spec.size+Math.max(0,legacyBytes)>D.MAX_ACCOUNT)D.fail('media_storage_quota');
   const id=crypto.randomBytes(16).toString('hex');
@@ -87,7 +93,8 @@ function createMemoryLargeMediaStore(){
  }
  return {begin,status,append,finish,list,get,chunks,remove,cancel,async close(){}};
 }
-async function createMongoLargeMediaStore(db){
+async function createMongoLargeMediaStore(db,client){
+ if(!client||typeof client.startSession!=='function')throw Error('cloud_large_media_transactions_required');
  const uploads=db.collection('cloud_large_media_uploads');
  const chunks=db.collection('cloud_large_media_chunks');
  const files=db.collection('cloud_large_media_files');
@@ -116,7 +123,7 @@ async function createMongoLargeMediaStore(db){
   const owner=owned(email),rows=await files.find({owner,status:'ready'}).toArray();
   return rows.map(D.publicFile);
  };
- async function begin(email,input,legacyBytes=0){
+ async function begin(email,input,legacyBytes=0,legacyCount=0){
   const spec=D.specOf(input),owner=owned(email);
   const already=await fileOf(email,spec.id);
   if(already){
@@ -129,7 +136,7 @@ async function createMongoLargeMediaStore(db){
    return {duplicate:false,resumed:true,upload:D.publicUpload(active)};
   }
   const ready=await list(email);
-  if(ready.length>=D.MAX_ITEMS)D.fail('media_item_quota');
+  if(ready.length+legacyCount>=D.MAX_ITEMS)D.fail('media_item_quota');
   const occupied=ready.reduce((n,f)=>n+f.size,0)+Math.max(0,legacyBytes);
   if(occupied+spec.size>D.MAX_ACCOUNT)D.fail('media_storage_quota');
   const id=crypto.randomBytes(16).toString('hex');
@@ -155,7 +162,7 @@ async function createMongoLargeMediaStore(db){
   D.validateChunk(s,index,bytes,hash);
   const key=id+':'+index,part=await chunks.findOne({_id:key,owner});
   if(part){
-   if(part.sha256!==D.sha(bytes)||part.bytes.length!==bytes.length)D.fail('chunk_conflict');
+   if(part.sha256!==D.sha(bytes)||mongoBytes(part.bytes).length!==bytes.length)D.fail('chunk_conflict');
   }else{
    if(index!==s.nextIndex)D.fail('chunk_out_of_order');
    try{await chunks.insertOne({_id:key,owner,uploadId:id,index,bytes,sha256:D.sha(bytes),
@@ -184,7 +191,7 @@ async function createMongoLargeMediaStore(db){
   let received=0,count=0;
   for await(const part of chunks.find({owner,uploadId:id}).sort({index:1})){
    if(part.index!==count||seen.has(part.index))D.fail('large_media_corrupt_chunk');
-   const bytes=Buffer.isBuffer(part.bytes)?part.bytes:Buffer.from(part.bytes.buffer||part.bytes);
+   const bytes=mongoBytes(part.bytes);
    D.validateChunk(s,count,bytes,part.sha256);
    if(count===0)first.push(bytes.subarray(0,32));
    received+=bytes.length;hash.update(bytes);seen.add(count);count++;
@@ -217,7 +224,7 @@ async function createMongoLargeMediaStore(db){
  async function* readChunks(email,id){
   const row=await fileOf(email,id);if(!row)return;
   const owner=owned(email);for await(const part of chunks.find({owner,uploadId:row.uploadId}).sort({index:1})){
-   yield Buffer.isBuffer(part.bytes)?part.bytes:Buffer.from(part.bytes.buffer||part.bytes);
+   yield mongoBytes(part.bytes);
   }
  }
  async function remove(email,id){
