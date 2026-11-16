@@ -53,9 +53,10 @@ async function commitWorkspace(store,email,revision,modules){
  try{return await store.writeWorkspace(email,revision,modules);}
  catch(error){
   const code=error?.code||'workspace_transaction_failed';
-  if(['unknown_library_media','library_media_kind_mismatch','library_media_required',
-   'library_text_required','invalid_library_kind','invalid_library_status',
-   'invalid_library_media'].includes(code))return {invalid:true,error:code};
+  // Domain validation is repeated inside the transaction to close races.
+  // Return actionable 422 errors instead of disguising invalid drafts as 503s.
+  if(code==='unknown_library_media'||code.startsWith('invalid_library')||
+     code.startsWith('library_'))return {invalid:true,error:code};
   throw error;
  }
 }
