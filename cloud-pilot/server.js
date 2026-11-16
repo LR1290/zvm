@@ -3,7 +3,8 @@
 // No message dispatch, scheduling, WhatsApp webhook or public registration exists here.
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path');
 const {createMongoStore}=require('./store');
-const ASSETS={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','application/javascript; charset=utf-8'],'/styles.css':['styles.css','text/css; charset=utf-8']};
+const {MODULES,moduleCheck,checkAudience,planLegacy,mergeModules,checkWhole}=require('./workspace-domain');
+const ASSETS={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','application/javascript; charset=utf-8'],'/styles.css':['styles.css','text/css; charset=utf-8'],'/workspace.js':['workspace.js','application/javascript; charset=utf-8']};
 const MAX_TRIES=8, WINDOW_MS=15*60*1000;
 function json(res,status,body){
  res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});
@@ -15,12 +16,13 @@ function originAllowed(req){
   return origin.host===host&&(origin.protocol==='https:'||(/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host)&&origin.protocol==='http:'));
  }catch{return false;}
 }
-async function readJson(req){
+async function readJson(req,maxBytes=8192){
  if(!String(req.headers['content-type']||'').startsWith('application/json'))throw Error('invalid_content_type');
- let text='';
+ let text='',received=0;
  for await(const part of req){
+  received+=part.length;
+  if(received>maxBytes)throw Error('request_too_large');
   text+=part.toString('utf8');
-  if(text.length>8192)throw Error('request_too_large');
  }
  return JSON.parse(text||'{}');
 }
@@ -100,6 +102,62 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
    }
    if(req.method==='POST'&&pathname==='/api/ping'){
     pingCount++;return json(res,200,{ok:true,at:new Date().toISOString(),number:pingCount});
+   }
+   if(req.method==='GET'&&pathname==='/api/workspace'){
+    const current=await store.readWorkspace(user.email);
+    const counts=Object.fromEntries(Object.keys(MODULES).map(name=>[name,Array.isArray(current.modules[name])?current.modules[name].length:0]));
+    return json(res,200,{revision:current.revision,updatedAt:current.updatedAt,counts,moduleNames:Object.keys(MODULES),data:current.modules,sending:false});
+   }
+   if(req.method==='GET'&&pathname==='/api/workspace/export'){
+    const data=await store.readWorkspace(user.email);
+    return json(res,200,{format:'ZVM_CLOUD_V1',version:1,createdAt:new Date().toISOString(),
+      note:'Somente rascunhos Cloud. Não contém mídias locais, autenticação ou chaves.',
+      revision:data.revision,modules:data.modules});
+   }
+   const moduleRoute=/^\/api\/workspace\/([a-zA-Z]+)$/.exec(pathname);
+   if(moduleRoute){
+    const name=moduleRoute[1];
+    if(!Object.prototype.hasOwnProperty.call(MODULES,name))return json(res,404,{error:'module_unknown'});
+    if(req.method==='GET'){
+     const current=await store.readWorkspace(user.email);
+     return json(res,200,{module:name,revision:current.revision,records:current.modules[name]||[],updatedAt:current.updatedAt,sending:false});
+    }
+    if(req.method==='PUT'){
+     let payload;try{payload=await readJson(req,950000);}catch{return json(res,400,{error:'invalid_payload'});}
+     if(!Number.isSafeInteger(payload.revision)||payload.revision<0)return json(res,400,{error:'invalid_revision'});
+     let records;
+     try{records=moduleCheck(name,payload.records);}catch(error){return json(res,422,{error:error.code||'invalid_module'});}
+     const current=await store.readWorkspace(user.email);
+     if(current.revision!==payload.revision)return json(res,409,{error:'workspace_conflict',revision:current.revision});
+     const modules={...current.modules,[name]:records};
+     try{checkWhole(modules);for(const audienceModule of ['campaigns','flows','funnels'])checkAudience(audienceModule,modules[audienceModule]||[],modules.contacts||[]);}
+     catch(error){return json(res,422,{error:error.code||'workspace_invalid'});}
+     const saved=await store.writeWorkspace(user.email,current.revision,modules);
+     if(saved.conflict)return json(res,409,{error:'workspace_conflict'});
+     return json(res,200,{ok:true,module:name,revision:saved.revision,updatedAt:saved.updatedAt,count:records.length});
+    }
+   }
+   if(req.method==='POST'&&(pathname==='/api/import/preview'||pathname==='/api/import/commit')){
+    let input;try{input=await readJson(req,2200000);}catch{return json(res,413,{error:'invalid_or_oversize_import'});}
+    let plan;
+    try{plan=planLegacy(input.backup);}catch(error){return json(res,422,{error:error.code||'backup_not_supported'});}
+    const current=await store.readWorkspace(user.email);
+    if(pathname==='/api/import/preview'){
+     return json(res,200,{ok:true,digest:plan.digest,counts:plan.counts,warnings:plan.warnings,
+       skipped:plan.skipped,sourceFormat:plan.sourceFormat,revision:current.revision,
+       note:'Nenhum dado importado. Mídias locais e segredos não são transferidos.'});
+    }
+    const mode=input.mode||'merge';
+    if(!Number.isSafeInteger(input.revision)||input.revision<0||input.revision!==current.revision)return json(res,409,{error:'workspace_conflict',revision:current.revision});
+    if(typeof input.digest!=='string'||input.digest!==plan.digest)return json(res,409,{error:'backup_changed_since_preview'});
+    let modules;
+    try{modules=mergeModules(current.modules,plan.modules,mode);checkWhole(modules);}
+    catch(error){return json(res,422,{error:error.code||'import_failed'});}
+    const committed=await store.writeWorkspace(user.email,current.revision,modules);
+    if(committed.conflict)return json(res,409,{error:'workspace_conflict'});
+    console.log('[ZVM-CLOUD] authorized import categories='+Object.keys(plan.counts).join(',')+'; no real sending');
+    return json(res,200,{ok:true,revision:committed.revision,counts:plan.counts,warnings:plan.warnings,
+      sending:false});
    }
    if(pathname==='/api/draft'){
     if(req.method==='GET'){
