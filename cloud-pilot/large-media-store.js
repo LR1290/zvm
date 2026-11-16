@@ -111,45 +111,47 @@ async function createMongoLargeMediaStore(db,client){
  ]);
  const owned=email=>D.ownerId(email);
  const fileKey=(owner,id)=>owner+':'+id;
- const upload=async(email,id=null)=>{
-  const owner=owned(email),s=await uploads.findOne(id?{_id:id,owner}:{owner});
+ const upload=async(email,id=null,session=null)=>{
+  const owner=owned(email),s=await uploads.findOne(id?{_id:id,owner}:{owner},session?{session}:{});
   if(!s)return null;
   if(new Date(s.expiresAt).getTime()>Date.now())return s;
-  await uploads.deleteOne({_id:s._id,owner});
+  await uploads.deleteOne({_id:s._id,owner},session?{session}:{});
   // Parts are kept under the 72-hour TTL until background cleanup.
   return null;
  };
- const fileOf=async(email,id)=>{
+ const fileOf=async(email,id,session=null)=>{
   const owner=owned(email);
-  return files.findOne({_id:fileKey(owner,id),owner,status:'ready'});
+  return files.findOne({_id:fileKey(owner,id),owner,status:'ready'},session?{session}:{});
  };
- const list=async(email)=>{
-  const owner=owned(email),rows=await files.find({owner,status:'ready'}).toArray();
+ const list=async(email,session=null)=>{
+  const owner=owned(email),rows=await files.find({owner,status:'ready'},session?{session}:{}).toArray();
   return rows.map(D.publicFile);
  };
- async function begin(email,input,legacyBytes=0,legacyCount=0){
+ async function begin(email,input,legacyBytes=0,legacyCount=0,options={}){
+  const session=options?.session||null;
   const spec=D.specOf(input),owner=owned(email);
-  const already=await fileOf(email,spec.id);
+  const already=await fileOf(email,spec.id,session);
   if(already){
    if(!compatible(already,spec))D.fail('media_id_collision');
    return {duplicate:true,file:D.publicFile(already),upload:null};
   }
-  const active=await upload(email);
+  const active=await upload(email,null,session);
   if(active){
+   if(active.status!=='pending')D.fail('upload_finalizing');
    if(!compatible(active,spec)||active.name!==spec.name)D.fail('upload_already_active');
    return {duplicate:false,resumed:true,upload:D.publicUpload(active)};
   }
-  const ready=await list(email);
+  const ready=await list(email,session);
   if(ready.length+legacyCount>=D.MAX_ITEMS)D.fail('media_item_quota');
   const occupied=ready.reduce((n,f)=>n+f.size,0)+Math.max(0,legacyBytes);
   if(occupied+spec.size>D.MAX_ACCOUNT)D.fail('media_storage_quota');
   const id=crypto.randomBytes(16).toString('hex');
   const doc={_id:id,owner,status:'pending',...spec,nextIndex:0,receivedBytes:0,
    expiresAt:new Date(Date.now()+D.TTL_MS)};
-  try{await uploads.insertOne(doc);}
+  try{await uploads.insertOne(doc,session?{session}:{});}
   catch(e){
    if(e?.code!==11000)throw e;
-   const other=await upload(email);
+   const other=await upload(email,null,session);
    if(other&&compatible(other,spec)&&other.name===spec.name)
     return {duplicate:false,resumed:true,upload:D.publicUpload({...other,id:other._id})};
    D.fail('upload_already_active');
