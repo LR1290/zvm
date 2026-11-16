@@ -102,7 +102,7 @@
   if(!Array.isArray(declared)||declared.length>MAX_ENTRIES)throw invalid('zip_asset_manifest_invalid');
   const byPath=new Map(entries.map(e=>[e.name,e]));
   const assets=backup.assets&&typeof backup.assets==='object'&&!Array.isArray(backup.assets)?backup.assets:{};
-  const sourceMap=new Map(),tokenOwners=new Map();
+  const tokenOwners=new Map();
   for(const [sourceId,value] of Object.entries(assets)){
    if(['__proto__','prototype','constructor'].includes(sourceId))throw invalid('zip_asset_source_invalid');
    if(typeof value!=='string')continue;
@@ -123,9 +123,10 @@
    if(!entry||entry.name.endsWith('/')||entry.size!==size)throw invalid('zip_asset_entry_mismatch');
    const owners=tokenOwners.get(id)||[];
    if(owners.length>1)throw invalid('zip_asset_ambiguous_owner');
-   out.push({id,path:p,name:String(meta.fileName||p.split('/').pop()).slice(0,120),
-     mime,sizeBytes:size,sourceId:owners[0]||null,
-     eligible:RESTORABLE.has(mime)&&size<=MAX_ASSET,
+   const rawName=String(meta.fileName||p.split('/').pop());
+   const name=rawName.replace(/[/\\\x00-\x1f\x7f]/g,'-').trim().slice(0,120)||'anexo';
+   out.push({id,path:p,name,mime,sizeBytes:size,sourceId:owners[0]||null,
+     eligible:RESTORABLE.has(mime)&&size<=MAX_ASSET&&owners.length===1,
      reason:!RESTORABLE.has(mime)?'unsupported_mime':size>MAX_ASSET?'asset_over_32mb':owners.length===0?'unlinked_source':null});
   }
   // R17's ZIP writer includes exactly the declared binary assets.
