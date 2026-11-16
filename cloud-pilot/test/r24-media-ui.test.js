@@ -31,12 +31,14 @@ test('R24 server: quota, auth, atomic finalization and private media download',(
  assert.match(server,/if\(!await activated\(user\)\)/);
  assert.match(server,/originAllowed\(req\)/);
  assert.match(server,/pathname==='\/api\/media\/uploads'/);
- assert.match(server,/store\.large\.begin\(user\.email/);
+ assert.match(server,/store\.beginMediaUpload\(user\.email/);
  assert.match(server,/store\.large\.append\(user\.email/);
- assert.match(server,/store\.large\.finish\(user\.email/);
- assert.match(server,/store\.large\.cancel\(user\.email/);
+ assert.match(server,/store\.completeMediaUpload\(user\.email/);
+ assert.match(server,/store\.cancelMediaUpload\(user\.email/);
  assert.match(server,/store\.removeMediaIfUnlinked\(user\.email/);
  assert.match(store,/withMediaFence/);
+ assert.match(store,/addLegacyMedia/);
+ assert.match(store,/Quota\.enforce/);
  assert.match(store,/mediaFences\.updateOne/);
  assert.match(server,/validateLargeDownload/);
  assert.match(server,/checkLibraryRecords\(records,\[\.\.\.vault\.items/);
