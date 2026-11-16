@@ -8,6 +8,7 @@
 <title>ZVM Cloud • Acesso DEV</title>
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="cloud-ui.css">
+<link rel="stylesheet" href="cloud-crm-board.css">
 </head>
 <body>
 <header>
@@ -95,7 +96,7 @@
   <div class="panel section cloud-diagnostic"><h2>Diagnóstico da conexão</h2><p class="muted">Verifique o servidor sem acessar o WhatsApp ou enviar mensagens.</p><button class="primary" id="ping">Testar conexão</button><p class="result" id="response" aria-live="polite"></p></div>
  </section>
  <section class="view" id="contacts" hidden><div class="panel section"><h2>Contatos</h2><p class="muted">Organize contatos e selecione destinatários antes de preparar campanhas. Nenhum envio automático.</p><div id="cloud-list-contacts"></div></div></section>
- <section class="view" id="crm" hidden><div class="panel section"><h2>CRM</h2><p class="muted">Pipelines e etapas comerciais. Contatos do backup permanecem associados às colunas originais.</p><div id="cloud-list-crm"></div></div></section>
+ <section class="view" id="crm" hidden><div class="panel section"><h2>CRM</h2><p class="muted">Pipelines e etapas comerciais. Contatos do backup permanecem associados às colunas originais.</p><div id="cloud-list-crm"></div><div id="cloudCrmBoard" aria-label="Quadro CRM"></div></div></section>
  <section class="view" id="labels" hidden><div class="panel section"><h2>Etiquetas</h2><p class="muted">Marcadores para organizar seus contatos e automações.</p><div id="cloud-list-labels"></div></div></section>
  <section class="view" id="quickReplies" hidden><div class="panel section"><h2>Respostas rápidas</h2><p class="muted">Textos e sequências salvos como rascunho, sem conexão com WhatsApp Web.</p><div id="cloud-list-quickReplies"></div></div></section>
  <section class="view" id="campaigns" hidden><div class="panel section"><h2>Disparos</h2><p class="muted">Prepare uma campanha, selecione destinatários e confira nomes e telefones. O botão de envio não está disponível.</p><div id="cloud-list-campaigns"></div></div></section>
@@ -138,6 +139,6 @@
   <div class="cloud-command-results" id="cloudCommandResults" aria-label="Resultados de navegação"></div>
  </div>
 </div>
-<script defer src="app.js"></script><script defer src="backup-zip.js"></script><script defer src="workspace.js"></script><script defer src="cloud-ui.js"></script>
+<script defer src="app.js"></script><script defer src="backup-zip.js"></script><script defer src="workspace.js"></script><script defer src="cloud-ui.js"></script><script defer src="cloud-crm-board.js"></script>
 </body>
 </html>
