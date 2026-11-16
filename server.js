@@ -5609,6 +5609,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: 'e8ce624836b1715d4dd8d4d44c73563e2aa2250f74f0990b9020ff0f0d3b3ef6',
     compressible: true,
   }),
+  '/assets/zvm-analytics-dashboard.d84d25e4fa0c.js': Object.freeze({
+    type: 'text/javascript; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-analytics-dashboard.d84d25e4fa0c.js'),
+    sha256: 'd84d25e4fa0cc3df3456cc8d8eb166fb0bbe13cd0a1b6ca6725be488b8b89328',
+    compressible: true,
+  }),
   '/assets/zvm-analytics-dashboard.95454273c23e.js': Object.freeze({
     type: 'text/javascript; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-analytics-dashboard.95454273c23e.js'),
@@ -5845,10 +5851,11 @@ function sendHtml(res, html, status = 200) {
   Object.entries(_SEC_HEADERS).forEach(([k,v]) => res.setHeader(k, v));
   const currentPath = new URL(String(res.req?.url || '/'), 'https://zvm.invalid').pathname;
   const isAdminPage = currentPath === R_ADMIN || currentPath.startsWith(R_ADMIN+'/');
-  res.setHeader('Content-Security-Policy', isAdminPage ? _CSP_ADMIN_SCRIPT_STRICT : _CSP_LEGACY_HTML);
-  // CSS style attributes remain in the Admin pending visual migration.
-  // Report-only strict CSS preserves telemetry without disabling current layouts.
-  if (isAdminPage || currentPath === R_ANALYTICS || currentPath.startsWith(R_ANALYTICS+'/')) {
+  const isAnalyticsPage = currentPath === R_ANALYTICS || currentPath.startsWith(R_ANALYTICS+'/');
+  res.setHeader('Content-Security-Policy',
+    (isAdminPage || isAnalyticsPage) ? _CSP_ADMIN_SCRIPT_STRICT : _CSP_LEGACY_HTML);
+  // Inline CSS migration is separate; report-only strict styles preserve visibility.
+  if (isAdminPage || isAnalyticsPage) {
     res.setHeader('Content-Security-Policy-Report-Only', _CSP_AUTH_STRICT);
   }
   const accept = String(res.req?.headers?.['accept-encoding'] || '');
@@ -7182,7 +7189,7 @@ function renderZvmActionHub(surface='client') {
   const title = surface==='admin' ? 'Ações do painel' : 'Mais ações';
   const content = surface==='admin'
     ? '<button type="button" data-zvm-handler-click="hExportCsv">Exportar CSV</button><a href="'+R_ADMIN+'/logout">Sair do Admin</a>'
-    : '<a href="'+R_ANALYTICS+'/export/csv">Exportar CSV</a><button type="button" onclick="purgeOpen()">Limpar dados</button><a href="'+R_ANALYTICS+'/logout">Sair do Analytics</a>';
+    : '<a href="'+R_ANALYTICS+'/export/csv">Exportar CSV</a><button type="button" data-zvm-analytics-dynamic="purgeOpen">Limpar dados</button><a href="'+R_ANALYTICS+'/logout">Sair do Analytics</a>';
   return `<details class="zvm-action-hub"><summary>${title}<span aria-hidden="true">⌄</span></summary><div class="zvm-action-hub-menu">${content}</div></details>`;
 }
 function renderCanonicalOwnerBrand() {
@@ -7876,7 +7883,7 @@ async function renderAnalyticsDashboard(fixture = null) {
 <header class="analytics-topbar">
   <div class="analytics-title"><span>ZVM Analytics</span><strong>Visão executiva</strong></div>
   <div class="analytics-actions">
-    <button type="button" class="btn lab-toggle" id="lab-toggle" aria-controls="lab-body" aria-expanded="false" onclick="toggleLab()">◇ Laboratório</button>
+    <button type="button" class="btn lab-toggle" id="lab-toggle" aria-controls="lab-body" aria-expanded="false" data-zvm-analytics-click="a0">◇ Laboratório</button>
     ${renderZvmActionHub('analytics')}
   </div>
 </header>
@@ -7947,7 +7954,7 @@ async function renderAnalyticsDashboard(fixture = null) {
           <div class="lab-field"><label for="lab-phone">Telefone fictício (opcional)</label><input id="lab-phone" type="text" maxlength="20" placeholder="11999990000"></div>
           <div class="lab-field"><label for="lab-method">Método simulado</label><select id="lab-method"><option value="pix">Pix</option><option value="credit_card">Cartão de crédito</option></select></div>
           <input type="checkbox" id="lab-send-email" hidden disabled>
-          <div class="lab-actions"><button class="btn blab" id="lab-btn-sim" onclick="labPreview()">Conferir cenário</button><button class="btn bcancel" onclick="labCancel()">Limpar</button></div>
+          <div class="lab-actions"><button class="btn blab" id="lab-btn-sim" data-zvm-analytics-click="a1">Conferir cenário</button><button class="btn bcancel" data-zvm-analytics-click="a2">Limpar</button></div>
           <div id="lab-result" role="status" aria-live="polite"></div>
         </div>
       </section>
@@ -7981,17 +7988,17 @@ async function renderAnalyticsDashboard(fixture = null) {
       <h2 id="purge-title">Limpar histórico do Analytics</h2>
       <p>Esta ferramenta remove somente registros comerciais exibidos no Analytics. Licenças, clientes e configurações do sistema não serão alterados.</p>
       <label class="purge-opt" data-mode="test">
-        <input type="radio" name="purge-mode" value="test" checked onchange="purgeModeChanged()">
+        <input type="radio" name="purge-mode" value="test" checked data-zvm-analytics-change="a3">
         <span class="purge-opt-title">Apagar somente testes</span>
         <div class="purge-opt-desc">Remove só os registros marcados como teste (testMode:true) — inclui as simulações do Laboratório.</div>
       </label>
       <label class="purge-opt" data-mode="real">
-        <input type="radio" name="purge-mode" value="real" onchange="purgeModeChanged()">
+        <input type="radio" name="purge-mode" value="real" data-zvm-analytics-change="a3">
         <span class="purge-opt-title">Apagar somente registros reais</span>
         <div class="purge-opt-desc">Remove os pagamentos hoje classificados como vendas reais.</div>
       </label>
       <label class="purge-opt" data-mode="all">
-        <input type="radio" name="purge-mode" value="all" onchange="purgeModeChanged()">
+        <input type="radio" name="purge-mode" value="all" data-zvm-analytics-change="a3">
         <span class="purge-opt-title">Zerar todo o histórico comercial</span>
         <div class="purge-opt-desc">Remove testes + reais do Analytics. Não toca licenças, contas nem configurações.</div>
       </label>
@@ -7999,12 +8006,12 @@ async function renderAnalyticsDashboard(fixture = null) {
       <div class="purge-warn" id="purge-warn" style="display:none">Esses registros são classificados atualmente como vendas reais. A exclusão é permanente.</div>
       <div id="purge-confirm-wrap" style="display:none">
         <label class="purge-confirm-label" for="purge-confirm-input">Digite <strong>APAGAR HISTORICO</strong> para liberar o botão:</label>
-        <input type="text" class="purge-confirm-input" id="purge-confirm-input" autocomplete="off" oninput="purgeConfirmInputChanged()">
+        <input type="text" class="purge-confirm-input" id="purge-confirm-input" autocomplete="off" data-zvm-analytics-input="a4">
       </div>
       <div id="purge-result"></div>
       <div class="purge-actions">
-        <button type="button" class="purge-cancel" onclick="purgeCancel()">Cancelar</button>
-        <button type="button" class="purge-exec" id="purge-exec-btn" onclick="purgeExecute()" disabled>Apagar definitivamente</button>
+        <button type="button" class="purge-cancel" data-zvm-analytics-click="a5">Cancelar</button>
+        <button type="button" class="purge-exec" id="purge-exec-btn" data-zvm-analytics-click="a6" disabled>Apagar definitivamente</button>
       </div>
     </div>
   </dialog>
@@ -8065,17 +8072,17 @@ async function renderAnalyticsDashboard(fixture = null) {
     <div class="sh">
       <div class="st">💳 Histórico de Pagamentos</div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <label class="analytics-visually-hidden" for="search">Buscar no historico de pagamentos</label><input type="search" id="search" placeholder="🔍 Cliente, email, produto..." oninput="filterTable()">
+        <label class="analytics-visually-hidden" for="search">Buscar no historico de pagamentos</label><input type="search" id="search" placeholder="🔍 Cliente, email, produto..." data-zvm-analytics-input="a7">
         <div class="period-btns" id="test-filter-btns" role="group" aria-label="Tipo de pagamento">
-          <button type="button" class="pb active" aria-pressed="true" onclick="setTestFilter('all',this)">Todos</button>
-          <button type="button" class="pb" aria-pressed="false" onclick="setTestFilter('real',this)">Reais</button>
-          <button type="button" class="pb" aria-pressed="false" onclick="setTestFilter('test',this)">Testes</button>
+          <button type="button" class="pb active" aria-pressed="true" data-zvm-analytics-click="a8">Todos</button>
+          <button type="button" class="pb" aria-pressed="false" data-zvm-analytics-click="a9">Reais</button>
+          <button type="button" class="pb" aria-pressed="false" data-zvm-analytics-click="aa">Testes</button>
         </div>
         <div class="period-btns" role="group" aria-label="Periodo de pagamentos">
-          <button type="button" class="pb" aria-pressed="false" onclick="setPeriod(7,this)">7d</button>
-          <button type="button" class="pb" aria-pressed="false" onclick="setPeriod(30,this)">30d</button>
-          <button type="button" class="pb" aria-pressed="false" onclick="setPeriod(90,this)">90d</button>
-          <button type="button" class="pb active" aria-pressed="true" onclick="setPeriod(0,this)">Todos</button>
+          <button type="button" class="pb" aria-pressed="false" data-zvm-analytics-click="ab">7d</button>
+          <button type="button" class="pb" aria-pressed="false" data-zvm-analytics-click="ac">30d</button>
+          <button type="button" class="pb" aria-pressed="false" data-zvm-analytics-click="ad">90d</button>
+          <button type="button" class="pb active" aria-pressed="true" data-zvm-analytics-click="ae">Todos</button>
         </div>
       </div>
     </div>
@@ -8095,7 +8102,7 @@ async function renderAnalyticsDashboard(fixture = null) {
 
 
 
-<script src="/assets/zvm-analytics-dashboard.95454273c23e.js" defer></script>
+<script src="/assets/zvm-analytics-dashboard.d84d25e4fa0c.js" defer></script>
 <script src="/assets/zvm-analytics-lab.e6a44a6e8392.js" defer></script>
 </body></html>`;
 }
