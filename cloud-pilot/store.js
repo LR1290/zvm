@@ -3,17 +3,19 @@
 const DATABASE='zvm_cloud_pilot';
 const crypto=require('node:crypto');
 const workspaceId=email=>crypto.createHash('sha256').update('zvm-cloud-workspace-v1:'+email).digest('hex');
+// Account grant identifiers are canonical across Portal logins; no raw email in _id.
+const accountGrantId=email=>workspaceId(String(email||'').trim().toLowerCase());
 const copy=x=>x==null?null:JSON.parse(JSON.stringify(x));
 function createMemoryStore(){
  const accountGrants=new Map(),drafts=new Map(),workspaces=new Map(),media=new Map(),metaEvents=new Map();
  return {
   async grantAccount(email,keyHash){
-   const id=workspaceId(email),now=new Date().toISOString();
+   const id=accountGrantId(email),now=new Date().toISOString();
    const previous=accountGrants.get(id);
    accountGrants.set(id,{keyHash,createdAt:previous?.createdAt||now,updatedAt:now});
   },
-  async getAccountGrant(email){return copy(accountGrants.get(workspaceId(email))||null);},
-  async revokeAccountGrant(email){accountGrants.delete(workspaceId(email));},
+  async getAccountGrant(email){return copy(accountGrants.get(accountGrantId(email))||null);},
+  async revokeAccountGrant(email){accountGrants.delete(accountGrantId(email));},
   async getDraft(email){return copy(drafts.get(email));},
   async setDraft(email,doc){drafts.set(email,copy(doc));return copy(doc);},
   async clearDraft(email){drafts.delete(email);},
@@ -57,14 +59,14 @@ async function createMongoStore(uri){
  return {
   async grantAccount(email,keyHash){
    const now=new Date();
-   await accountGrants.updateOne({_id:workspaceId(email)},{
+   await accountGrants.updateOne({_id:accountGrantId(email)},{
     $set:{keyHash,updatedAt:now},$setOnInsert:{createdAt:now}
    },{upsert:true});
   },
   async getAccountGrant(email){
-   return accountGrants.findOne({_id:workspaceId(email)},{projection:{_id:0,keyHash:1}});
+   return accountGrants.findOne({_id:accountGrantId(email)},{projection:{_id:0,keyHash:1}});
   },
-  async revokeAccountGrant(email){await accountGrants.deleteOne({_id:workspaceId(email)});},
+  async revokeAccountGrant(email){await accountGrants.deleteOne({_id:accountGrantId(email)});},
   async getDraft(email){return drafts.findOne({_id:email});},
   async setDraft(email,doc){
    await drafts.replaceOne({_id:email},{_id:email,...doc},{upsert:true});
