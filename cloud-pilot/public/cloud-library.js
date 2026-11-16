@@ -37,9 +37,11 @@
  const mutation=(body)=>({method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
  const kindOf=item=>TYPE_NAMES[item.kind]?item.kind:'message';
  const nameOf=record=>String(record.name||'Sem título');
- const missing=item=>item.contentStatus==='missing_source'||(MEDIA[kindOf(item)]&&!item.mediaId);
  const bytes=size=>Math.ceil(Number(size||0)/1024)+' KB';
  const linked=item=>assets.find(x=>x.id===item.mediaId)||null;
+ // A record is not operational just because it still holds a deleted media ID.
+ const missing=item=>item.contentStatus==='missing_source'||
+  (MEDIA[kindOf(item)]&&(!item.mediaId||!linked(item)));
  function notify(text,isError=false){notice=text;noticeBad=isError;const target=mount.querySelector('.cloud-library-feedback');if(target){target.textContent=text;target.classList.toggle('error',isError);}}
  function addField(parent,label,element){
   const wrapper=make('div','','cloud-lib-field');
