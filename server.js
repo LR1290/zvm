@@ -747,7 +747,7 @@ async function readAdminKeySnapshot(code, deps = {}) {
 async function renewAdminKeyAtomicStrict(code, totalMinutes, deps = {}) {
   const keyCode = String(code || '');
   if (!/^[a-z0-9_-]{1,64}$/i.test(keyCode)) throw new Error('invalid_key_code');
-  if (!Number.isSafeInteger(totalMinutes) || totalMinutes <= 0 || totalMinutes > 5256000) {
+  if (!Number.isSafeInteger(totalMinutes) || totalMinutes === 0 || Math.abs(totalMinutes) > 5256000) {
     throw new Error('invalid_renewal_duration');
   }
   const operationId = deps.operationId == null ? '' : String(deps.operationId);
@@ -756,20 +756,34 @@ async function renewAdminKeyAtomicStrict(code, totalMinutes, deps = {}) {
   }
   const db = deps.db || await getMongoDb();
   const field = `data.${keyCode}`;
+  const removing = totalMinutes < 0;
+  const rawExpiry = { $convert: {
+    input: '$' + field + '.expiresAt', to: 'date', onError: null, onNull: null
+  } };
   const expiryValue = { $convert: {
     input: '$' + field + '.expiresAt', to: 'date', onError: '$' + '$NOW', onNull: '$' + '$NOW'
   } };
   const expiryDate = { $dateAdd: {
-    startDate: { $max: ['$' + '$NOW', expiryValue] }, unit: 'millisecond',
-    amount: totalMinutes * 60000
+    startDate: removing ? rawExpiry : { $max: ['$' + '$NOW', expiryValue] },
+    unit: 'millisecond', amount: totalMinutes * 60000
   } };
   const update = { [`${field}.expiresAt`]: {
     $dateToString: { format: '%Y-%m-%dT%H:%M:%S.%LZ', date: expiryDate, timezone: 'UTC' }
-  }, [`${field}.active`]: true, [`${field}.expireDuration`]: null,
+  }, [`${field}.expireDuration`]: null,
   [`${field}.warnEmailSent`]: false, updatedAt: '$' + '$NOW' };
+  // Removing time never reactivates an administratively blocked license.
+  if (!removing) update[`${field}.active`] = true;
   if (operationId) update[`${field}.lastAdminRenewalOperationId`] = operationId;
   const filter = { _id: 'keys', [field]: { $type: 'object' } };
   if (operationId) filter[`${field}.lastAdminRenewalOperationId`] = { $ne: operationId };
+  if (removing) {
+    // MongoDB evaluates the existing expiry + clock in one atomic write.
+    // No expiry, expired, or insufficient remaining time => no mutation.
+    filter.$expr = { $gt: [rawExpiry, { $dateAdd: {
+      startDate: '$' + '$NOW', unit: 'millisecond',
+      amount: Math.abs(totalMinutes) * 60000 + 60000
+    } }] };
+  }
   let changed;
   try {
     changed = await db.collection('store').findOneAndUpdate(filter, [{ $set: update }],
@@ -3082,14 +3096,14 @@ function buildKeysHtml(snapshot = keys) {
   <td data-field="Ações" class="key-actions-cell"><div class="acts">
     <button class="bs bg" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">Tempo</button>
     <button class="bs bg" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${Number.isFinite(k.maxUses)?k.maxUses:MAX_USES})">Usos</button>
-    <details class="key-actions-more"><summary class="bs bw" title="Outras ações">Mais</summary><div class="key-actions-extra">
+    <button type="button" class="bs bw key-more-trigger" aria-controls="zvm-actions-${escHtml(code)}" aria-expanded="false" aria-label="Mais ações da licença" onclick="this.nextElementSibling.hidden=false;toggleKeyActionMenu(this)">•••</button><div id="zvm-actions-${escHtml(code)}" class="key-actions-popover" popover="auto" hidden>
       <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
       <button class="bs bg" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">Renomear</button>
       ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Números</button>`:''}
       <label class="bs ${k.devAccess===true?'bg':'bw'}" title="Acesso DEV: autoriza builds DEV assinadas" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" class="dev-access-switch" ${k.devAccess===true?'checked':''} onchange="toggleDevAccess('${escHtml(code)}',this.checked,this)" style="accent-color:var(--g);width:13px;height:13px;margin:0"> Acesso DEV</label>
       <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
       ${isSuspect?`<button class="bs bsusp" onclick="clearSuspect('${escHtml(code)}')">🕵️ Suspeita</button>`:''}
-    </div></details></div></td>
+    </div></div></td>
 </tr>`;
   }).join('');
 }
@@ -5540,6 +5554,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     compressible: true,
   }),
 
+  '/assets/zvm-admin-dashboard.cd85ea19cc73.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.cd85ea19cc73.css'),
+    sha256: 'cd85ea19cc732fd85c921d00d0bee6f0939940b5c000b67c6e53e3075d66a0bc',
+    compressible: true,
+  }),
   '/assets/zvm-admin-dashboard.5c649db2edf7.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.5c649db2edf7.css'),
@@ -5646,6 +5666,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     type: 'text/javascript; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.91efd97cea20.js'),
     sha256: '91efd97cea203bf0d151777c286979cd8eb6d12199cb4fc58310726ae1310922',
+    compressible: true,
+  }),
+  '/assets/zvm-admin-dashboard.bc01cf565fa7.js': Object.freeze({
+    type: 'text/javascript; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.bc01cf565fa7.js'),
+    sha256: 'bc01cf565fa774b67cf39ae88a5eb013e114ac08ab73cd5735feb8076811c913',
     compressible: true,
   }),
   '/assets/zvm-admin-dashboard.db80ba5884d9.js': Object.freeze({
@@ -6714,6 +6740,8 @@ function renderAdminDashboard(opts = {}) {
 <link rel="stylesheet" href="/assets/zvm-r46-system.aa366d924866.css">
 <link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css">
 <link rel="stylesheet" href="/assets/zvm-console-design.44762cb103f8.css">
+<link rel="stylesheet" href="/assets/zvm-owner-site.42d17a62234b.css">
+<link rel="stylesheet" href="/assets/zvm-admin-dashboard.cd85ea19cc73.css">
 </head>
 <body class="zvm-admin-r6">
 <a class="zvm-skip-link" href="#zvm-admin-main">Ir para o conteúdo</a>
@@ -6744,9 +6772,9 @@ function renderAdminDashboard(opts = {}) {
 
   <section class="admin-overview" aria-labelledby="admin-overview-title">
     <div class="zvm-overview-main">
-      <span class="admin-overview-kicker">ZVM · Centro de operações</span>
-      <h1 id="admin-overview-title">Toda a sua operação, sob controle.</h1>
-      <p>Licenças, clientes e segurança em uma visão clara. Use os indicadores para localizar o que exige atenção sem sair do painel.</p>
+      <span class="admin-overview-kicker">ZVM · Administração</span>
+      <h1 id="admin-overview-title">Visão geral da operação</h1>
+      <p>Chaves, clientes e auditoria em um único espaço, com a identidade do portal ZVM.</p>
       <div class="admin-overview-actions">
         <button type="button" class="primary" onclick="switchTab('keys')">Gerenciar licenças</button>
         <button type="button" onclick="switchTab('users')">Ver clientes</button>
@@ -6990,17 +7018,18 @@ function renderAdminDashboard(opts = {}) {
 
 <!-- ── Modals ── -->
 <div class="modal-bg" id="renewModal"><div class="modal">
-  <h3>⏱ Adicionar Tempo — <span id="renewKeyLabel" style="color:var(--g)"></span></h3>
+  <h3>Gerenciar validade · <span id="renewKeyLabel" style="color:var(--g)"></span></h3>
   <input type="hidden" id="renewKeyCode">
   <label for="renewMode" class="modal-lbl">O que deseja fazer?</label>
-  <select id="renewMode" class="key-validity-mode" onchange="applyRenewMode()"><option value="add">Adicionar tempo</option><option value="date">Definir data de expiração</option><option value="never">Sem expiração (ilimitado)</option></select>
+  <select id="renewMode" class="key-validity-mode" onchange="applyRenewMode()"><option value="add">Adicionar tempo</option><option value="remove">Remover tempo</option><option value="date">Definir data de expiração</option><option value="never">Sem expiração (ilimitado)</option></select>
   <div id="renewDurationFields" class="key-validity-duration" style="display:flex;gap:10px;margin-bottom:12px">
-    <div style="flex:1;text-align:center"><label for="renewDays" class="modal-lbl">Dias</label><input type="number" id="renewDays" placeholder="0" min="0" style="width:100%;padding:7px;text-align:center"></div>
-    <div style="flex:1;text-align:center"><label for="renewHours" class="modal-lbl">Horas</label><input type="number" id="renewHours" placeholder="0" min="0" style="width:100%;padding:7px;text-align:center"></div>
-    <div style="flex:1;text-align:center"><label for="renewMins" class="modal-lbl">Min</label><input type="number" id="renewMins" placeholder="0" min="0" style="width:100%;padding:7px;text-align:center"></div>
+    <div style="flex:1;text-align:center"><label for="renewDays" class="modal-lbl">Dias</label><input type="number" id="renewDays" placeholder="0" style="width:100%;padding:7px;text-align:center"></div>
+    <div style="flex:1;text-align:center"><label for="renewHours" class="modal-lbl">Horas</label><input type="number" id="renewHours" placeholder="0" style="width:100%;padding:7px;text-align:center"></div>
+    <div style="flex:1;text-align:center"><label for="renewMins" class="modal-lbl">Min</label><input type="number" id="renewMins" placeholder="0" style="width:100%;padding:7px;text-align:center"></div>
   </div>
   <div id="renewExactFields" class="key-validity-exact" hidden><label for="renewExactDate" class="modal-lbl">Expira em (data e hora locais)</label><input type="datetime-local" id="renewExactDate"><small class="key-modal-help">Permite reduzir a validade. Escolha uma data futura.</small></div>
   <p id="renewNeverInfo" class="key-validity-never key-modal-help" hidden>Remove a expiração e o prazo de primeiro uso. As outras restrições permanecem.</p>
+  <div id="renewPreview" class="key-renew-preview" role="status" aria-live="polite">Informe um período para calcular a nova validade.</div>
   <div style="font-size:12px;color:var(--tx3);margin-bottom:12px" id="renewCurrentExpiry"></div>
   <div class="modal-actions">
     <button class="btn modal-cancel" onclick="closeRenew()">Cancelar</button>
@@ -7058,7 +7087,7 @@ function renderAdminDashboard(opts = {}) {
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <template id="zvm-admin-users-data">${initialPortalUsersJson}</template>
-<script src="/assets/zvm-admin-dashboard.db80ba5884d9.js" defer></script>
+<script src="/assets/zvm-admin-dashboard.bc01cf565fa7.js" defer></script>
 </body></html>`;
 }
 
@@ -10227,10 +10256,13 @@ async function handleRequest(req, res) {
     const body = await parseBody(req);
     const days=Number(body.days ?? 0), hours=Number(body.hours ?? 0), mins=Number(body.mins ?? 0);
     const validParts = [days, hours, mins].every(n => Number.isSafeInteger(n) && n >= 0);
-    const totalMinutes = days * 1440 + hours * 60 + mins;
-    if (!validParts || !Number.isSafeInteger(totalMinutes) || totalMinutes <= 0 || totalMinutes > 5256000) {
+    const direction = body.direction === undefined ? 'add' : body.direction;
+    const durationMinutes = days * 1440 + hours * 60 + mins;
+    if (!validParts || !['add','remove'].includes(direction) ||
+        !Number.isSafeInteger(durationMinutes) || durationMinutes <= 0 || durationMinutes > 5256000) {
       sendJson(res, { error: 'invalid_renewal_duration' }, 400); return;
     }
+    const totalMinutes = direction === 'remove' ? -durationMinutes : durationMinutes;
     const operationId = body.operationId == null ? '' : String(body.operationId);
     let renewal;
     try {
@@ -10241,13 +10273,20 @@ async function handleRequest(req, res) {
       }
       sendAdminKeyPersistFailure(res, e, 'renew key'); return;
     }
-    if (!renewal) { sendJson(res, { error:'not found' }, 404); return; }
+    if (!renewal) {
+      sendJson(res, { ok:false, error:direction === 'remove' ?
+        'cannot_remove_time' : 'not_found' }, direction === 'remove' ? 422 : 404); return;
+    }
     const savedRenew = renewal.record;
     if (!renewal.replayed) {
-      await addLog({ keyCode: codeRenew, label: savedRenew.label, phone: '-', ip, wppVersion: '-', action: 'renewed' });
-      addAdminAuditLog({ actor: 'admin', action: 'key_renewed', keyCode: codeRenew, label: savedRenew.label, detail: `+${days}d${hours}h${mins}m` }).catch(()=>{});
+      await addLog({ keyCode: codeRenew, label: savedRenew.label, phone: '-', ip, wppVersion: '-',
+        action: direction === 'remove' ? 'time_removed' : 'renewed' });
+      addAdminAuditLog({ actor: 'admin', action: direction === 'remove' ? 'key_time_removed' : 'key_renewed',
+        keyCode: codeRenew, label: savedRenew.label,
+        detail: `${direction === 'remove' ? '-' : '+'}${days}d${hours}h${mins}m` }).catch(()=>{});
     }
-    sendJson(res, { ok: true, expiresAt: savedRenew.expiresAt, replayed: renewal.replayed }); return;
+    sendJson(res, { ok: true, expiresAt: savedRenew.expiresAt, replayed: renewal.replayed,
+      direction }); return;
   }
 
   const codeValidity = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/validity$`));
