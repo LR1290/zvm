@@ -95,7 +95,7 @@ async function serverFixture(){
   assert.equal(response.status,200);
  }
  const close=()=>new Promise(resolve=>server.close(resolve));
- return {store,data,mediaId:ready.file.id,request,close};
+ return {store,data,mediaId:ready.file.id,request,close,base};
 }
 test('R28: real Node HTTP HEAD/GET, tenant isolation and no truncated 200 after concurrent delete',async()=>{
  const f=await serverFixture();
@@ -189,4 +189,42 @@ test('R28: Mongo cursor is actively closed when the browser aborts',async()=>{
  aborter.abort();
  await assert.rejects(next,/download_aborted/);
  assert(closed>=1,'Mongo cursor must be closed on abort');
+});
+
+test('R28: cancelling a real HTTP fetch closes the cursor and releases the worker slot',async()=>{
+ const f=await serverFixture();
+ try{
+  const path='/api/media/'+f.mediaId;
+  const original=f.store.large.chunks.bind(f.store.large);
+  let notify;const entered=new Promise(resolve=>{notify=resolve;});
+  let once=true;
+  f.store.large.chunks=async function* (email,id,{signal}={}){
+   if(once){
+    once=false;notify();
+    if(!signal?.aborted){
+     await new Promise(resolve=>{
+      const fallback=setTimeout(resolve,1500);
+      signal.addEventListener('abort',()=>{clearTimeout(fallback);resolve();},{once:true});
+     });
+    }
+    return;
+   }
+   yield* original(email,id,{signal});
+  };
+  const abort=new AbortController();
+  const first=fetch(f.base+path,{headers:{Cookie:'a'},signal:abort.signal}).catch(error=>error);
+  await entered;
+  abort.abort();
+  await first;
+  // The connection's close event must release the in-flight download gate.
+  let response;
+  for(let attempt=0;attempt<6;attempt++){
+   response=await f.request(path);
+   if(response.status===200)break;
+   assert.equal(response.status,429);
+   await new Promise(resolve=>setTimeout(resolve,60));
+  }
+  assert.equal(response.status,200);
+  assert.deepEqual(Buffer.from(await response.arrayBuffer()),f.data);
+ }finally{await f.close();}
 });
