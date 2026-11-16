@@ -212,6 +212,8 @@
  // Never POST whole ZVM Desktop backups: filter sensitive storage locally first.
  const IMPORT_KEYS=Object.freeze([
   'EXTUI:CrmStore','EXTUI:labelStore','EXTUI:textMessageStore',
+  'EXTUI:audioStore','EXTUI:mediaStore','EXTUI:stickerStore','EXTUI:documentStore',
+  'EXTUI:pixStore','EXTUI:interactiveListStore','EXTUI:contactCardStore','EXTUI:signaturesStore',
   'EXTUI:extappQuickResponseStore','EXTUI:extappFlowStore',
   'EXTUI:extappFunnelStore','EXTUI:extappScheduleStore','EXTUI:disparosJourneys'
  ]);
