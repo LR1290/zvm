@@ -40,7 +40,7 @@
   if(name==='library')return record.contentStatus==='missing_source'?'Conteúdo original ausente; revise antes de usar':(record.kind||'message')+' · '+String(record.text||'').slice(0,90);
   if(name==='crm')return (record.columns?.length||0)+' etapas no CRM';
   if(name==='campaigns')return 'Destinatários escolhidos: '+(record.recipientIds?.length||0)+' · SEM ENVIO';
-  if(name==='flows'||name==='funnels')return 'Definição em rascunho · Sem execução';
+  if(name==='flows'||name==='funnels')return 'Definição em rascunho · '+(record.recipientIds?.length||0)+' destinatário(s) selecionado(s) · Sem execução';
   if(name==='quickReplies')return String(record.text||'Sequência importada').slice(0,100);
   if(name==='agenda')return String(record.when||'Sem horário')+' · Não agendado no servidor';
   return String(record.description||record.notes||record.value||'Rascunho de trabalho').slice(0,120);
@@ -116,13 +116,13 @@
  }
  async function editor(module,record){
   if(!enabled)return;
-  if(module==='campaigns'&&!cache.has('contacts'))await get('contacts').catch(()=>{});
+  if(['campaigns','flows','funnels'].includes(module)&&!cache.has('contacts'))await get('contacts').catch(()=>{});
   const mount=byId('cloud-list-'+module),previous=mount.querySelector('.workspace-editor');
   if(previous)previous.remove();
   const form=document.createElement('form');form.className='workspace-editor';
   form.append(tag('h3',record?'Editar '+MODULES[module].title:'Novo item · '+MODULES[module].title));
   for(const [name,label] of MODULES[module].fields)form.append(field(name,label,record?.[name]??''));
-  if(module==='campaigns')form.append(audienceArea(form,record));
+  if(['campaigns','flows','funnels'].includes(module))form.append(audienceArea(form,record));
   const actions=tag('div','','workspace-actions');
   const save=document.createElement('button');save.type='submit';save.className='primary';save.textContent='Salvar na Cloud';
   actions.append(save,btn('Cancelar',()=>form.remove()));
@@ -136,9 +136,9 @@
     for(const [name] of MODULES[module].fields)draft[name]=String(form.elements[name]?.value||'').trim();
     if(!draft.name)throw Error('Preencha o nome do item.');
     if(module==='library'&&draft.text)draft.contentStatus='ready';
-    if(module==='campaigns'){
+    if(['campaigns','flows','funnels'].includes(module)){
      draft.recipientIds=[...form.querySelectorAll('input[name=recipientId]:checked')].map(x=>x.value);
-     if(!draft.recipientIds.length&&!confirm('Salvar campanha sem destinatários selecionados?'))return;
+     if(!draft.recipientIds.length&&!confirm('Salvar sem destinatários? O item ficará somente como rascunho.'))return;
     }
     if((module==='flows'||module==='funnels'||module==='quickReplies')&&!record&&draft.text){
      draft.steps=[{id:'step_1',type:'txt',properties:{mensagem:draft.text}}];
