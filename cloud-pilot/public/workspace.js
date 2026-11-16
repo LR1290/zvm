@@ -26,7 +26,7 @@
   agenda:'Nenhum planejamento salvo na Agenda.',
   settings:'Nenhuma preferência Cloud cadastrada.'
  });
- let importPlan=null,enabled=false,mediaSnapshot={revision:0,items:[]},pendingMediaUpload=null,mediaAbort=null,mediaBusy=false,mediaCancelling=false;
+ let importPlan=null,enabled=false,mediaSnapshot={revision:0,items:[]},pendingMediaUpload=null,mediaAbort=null,mediaBusy=false,mediaCancelling=false,zipRestoreBusy=false;
  const byId=id=>document.getElementById(id);
  function tag(name,text,className=''){
   const node=document.createElement(name);node.textContent=String(text??'');if(className)node.className=className;return node;
@@ -414,11 +414,14 @@
   }catch(error){mediaStatus(error.message==='media_still_linked_to_library'?'Desvincule o anexo da Biblioteca antes de excluir.':'Exclusão não confirmada: '+error.message,true);}
  }
  async function restoreZipAssets(file,extracted,view){
-  if(!enabled||!extracted||!Array.isArray(extracted.assets))return;
+  if(!enabled||!extracted||!Array.isArray(extracted.assets)||zipRestoreBusy)return;
+  if(mediaBusy){message(view,'Outra transferência está em andamento. Conclua-a antes de restaurar o ZIP.',true);return;}
   const candidates=extracted.assets.filter(x=>x.eligible&&x.sourceId);
   if(!candidates.length){message(view,'Não há mídias vinculadas e compatíveis de até 32 MB neste ZIP.',true);return;}
   if(!confirm('Restaurar até '+candidates.length+' mídias compatíveis? Cada arquivo será validado e enviado individualmente. O processo pode parar na cota de 128 MB e não ativa envios ao WhatsApp.'))return;
+  zipRestoreBusy=true;
   const buttons=[...view.querySelectorAll('button')];buttons.forEach(x=>x.disabled=true);
+  const inspectButton=byId('inspectBackup');if(inspectButton)inspectButton.disabled=true;
   const progress=tag('p','','workspace-status');
   progress.setAttribute('aria-live','polite');view.append(progress);
   const report={linked:0,already:0,unmapped:0,blocked:0,failed:0,orphans:0};
@@ -479,9 +482,13 @@
   }catch(error){
    progress.textContent='Restauração interrompida: '+error.message+'. Arquivos confirmados anteriormente permanecem na conta.';
    progress.classList.add('error');
-  }finally{buttons.forEach(x=>x.disabled=false);}
+  }finally{
+   zipRestoreBusy=false;buttons.forEach(x=>x.disabled=false);
+   if(inspectButton)inspectButton.disabled=false;
+  }
  }
  async function inspectBackup(){
+  if(zipRestoreBusy)return;
   const file=byId('backupFile').files?.[0],root=byId('backupReview');
   root.replaceChildren();importPlan=null;
   const zip=!!file&&/\.zip$/i.test(file.name);
@@ -580,7 +587,7 @@
    if(mount)message(mount,'Não foi possível carregar os espaços de trabalho.',true);
   }
  }
- function locked(){enabled=false;if(mediaAbort)mediaAbort.abort();pendingMediaUpload=null;mediaBusy=false;mediaCancelling=false;byId('cloudMediaProgress')&&(byId('cloudMediaProgress').hidden=true);updatePending();cache.clear();importPlan=null;mediaSnapshot={revision:0,items:[]};byId('cloudMediaItems')?.replaceChildren();for(const module of Object.keys(MODULES)){const area=byId('cloud-list-'+module);if(area)area.replaceChildren();}}
+ function locked(){enabled=false;if(mediaAbort)mediaAbort.abort();pendingMediaUpload=null;mediaBusy=false;mediaCancelling=false;zipRestoreBusy=false;byId('cloudMediaProgress')&&(byId('cloudMediaProgress').hidden=true);updatePending();cache.clear();importPlan=null;mediaSnapshot={revision:0,items:[]};byId('cloudMediaItems')?.replaceChildren();for(const module of Object.keys(MODULES)){const area=byId('cloud-list-'+module);if(area)area.replaceChildren();}}
  window.addEventListener('zvm-cloud-crm-changed',()=>{if(enabled)loadAll().catch(()=>{});});
  window.addEventListener('zvm-cloud-library-changed',()=>{if(enabled)loadAll().catch(()=>{});});
  window.addEventListener('zvm-cloud-ready',ready);
