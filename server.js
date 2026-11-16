@@ -3082,7 +3082,7 @@ function buildKeysHtml(snapshot = keys) {
   <td data-field="Ações" class="key-actions-cell"><div class="acts">
     <button class="bs bg" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">Tempo</button>
     <button class="bs bg" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${Number.isFinite(k.maxUses)?k.maxUses:MAX_USES})">Usos</button>
-    <details class="key-actions-more"><summary class="bs bw">Mais ações</summary><div class="key-actions-extra">
+    <details class="key-actions-more"><summary class="bs bw" title="Outras ações">Mais</summary><div class="key-actions-extra">
       <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
       <button class="bs bg" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">Renomear</button>
       ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Números</button>`:''}
@@ -5540,10 +5540,10 @@ const _PUBLIC_ASSETS = Object.freeze({
     compressible: true,
   }),
 
-  '/assets/zvm-admin-dashboard.48bb79c271d8.css': Object.freeze({
+  '/assets/zvm-admin-dashboard.5c649db2edf7.css': Object.freeze({
     type: 'text/css; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.48bb79c271d8.css'),
-    sha256: '48bb79c271d84fa2b3abd17bbc2094d20414a3ed6ce1815a4365949a19a0c3b5',
+    file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.5c649db2edf7.css'),
+    sha256: '5c649db2edf7202864b1a9f9afd96f35a4d9fd609f8b31bc002d10b9dbe9ef94',
     compressible: true,
   }),
   '/assets/zvm-admin-dashboard.c06071e4d73f.css': Object.freeze({
@@ -6710,7 +6710,7 @@ function renderAdminDashboard(opts = {}) {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Administração</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="/assets/zvm-admin-dashboard.48bb79c271d8.css">
+<link rel="stylesheet" href="/assets/zvm-admin-dashboard.5c649db2edf7.css">
 <link rel="stylesheet" href="/assets/zvm-r46-system.aa366d924866.css">
 <link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css">
 <link rel="stylesheet" href="/assets/zvm-console-design.44762cb103f8.css">

@@ -270,3 +270,7 @@ header{height:var(--hdr);padding:0 22px;background:rgba(6,10,12,.95);border-bott
  body.zvm-admin-r6 .keys-table tbody tr:not(.key-record){display:block}
  body.zvm-admin-r6 .keys-table tbody tr:not(.key-record)>td{display:block;max-width:none;white-space:normal}
 }
+/* Mobile cards use page scrolling rather than a nested scrollable license list. */
+@media(max-width:750px){
+ body.zvm-admin-r6 .sec-panel[data-panel="keys"]>.sec>.ov{max-height:none;overflow-x:visible;overflow-y:visible;scrollbar-gutter:auto}
+}
