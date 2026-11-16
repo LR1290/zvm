@@ -222,3 +222,18 @@ body.cloud-workspace.cloud-menu-collapsed #app>.tabs .cloud-sidebar-account{padd
  body.cloud-workspace.cloud-menu-collapsed #app>.tabs button{width:auto;min-width:auto;justify-content:flex-start;padding:8px 11px}
  body.cloud-workspace.cloud-menu-collapsed #app>.tabs .cloud-nav-label{display:inline}
 }
+
+/* R24 — upload in chunks: visible, keyboard-accessible progress and retry state. */
+body.cloud-workspace #cloudMediaProgress{
+ display:block;width:100%;height:12px;accent-color:#00c85a;
+ border:0;border-radius:9px;overflow:hidden;background:#1a271e;margin:15px 0 8px
+}
+body.cloud-workspace #cloudMediaProgress[hidden]{display:none}
+body.cloud-workspace #cloudMediaResumeInfo{
+ color:#b5d8bf;max-width:960px;font-size:12px;line-height:1.6;overflow-wrap:anywhere
+}
+body.cloud-workspace #cloudMediaStatus{font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+body.cloud-workspace #cloudMediaCancel:not([hidden]){
+ border:1px solid #77574e;color:#f4c7b9;background:#2b201d
+}
+body.cloud-workspace #cloudMediaCancel:hover{background:#382520}
