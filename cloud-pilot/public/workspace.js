@@ -405,6 +405,7 @@
  }
  function locked(){enabled=false;cache.clear();importPlan=null;mediaSnapshot={revision:0,items:[]};byId('cloudMediaItems')?.replaceChildren();for(const module of Object.keys(MODULES)){const area=byId('cloud-list-'+module);if(area)area.replaceChildren();}}
  window.addEventListener('zvm-cloud-crm-changed',()=>{if(enabled)loadAll().catch(()=>{});});
+ window.addEventListener('zvm-cloud-library-changed',()=>{if(enabled)loadAll().catch(()=>{});});
  window.addEventListener('zvm-cloud-ready',ready);
  window.addEventListener('zvm-cloud-locked',locked);
  init();
