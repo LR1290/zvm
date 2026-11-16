@@ -85,9 +85,11 @@ function createMemoryStore(){
   async close(){}
  };
 }
-async function createMongoStore(uri){
+async function createMongoStore(uri,{driver=null}={}){
  if(!/^mongodb(\+srv)?:\/\//.test(uri||''))throw Error('CLOUD_MONGODB_URI_INVALID');
- const {MongoClient}=require('mongodb');
+ // Constructor injection is restricted to trusted server-side callers.
+ // The real MongoDB driver is always used by the production entrypoint.
+ const {MongoClient}=driver||require('mongodb');
  const client=new MongoClient(uri,{appName:'zvm-cloud-pilot',maxPoolSize:5,minPoolSize:0,serverSelectionTimeoutMS:10000});
  await client.connect();
  const db=client.db(DATABASE),accountGrants=db.collection('cloud_dev_account_grants'),
