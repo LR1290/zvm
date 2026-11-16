@@ -356,16 +356,27 @@
    setTimeout(()=>URL.revokeObjectURL(link.href),30000);
   }catch{alert('Não foi possível exportar os rascunhos Cloud.');}
  }
+ async function checkMeta(){
+  const diag=byId('cloudMetaDiagnostic');if(!diag||!enabled)return;
+  diag.textContent='Consultando configuração oficial...';
+  try{
+   const r=await api('/api/meta/status');
+   diag.textContent=r.webhookReady?
+     'Webhook da Meta configurado e limitado à conta autorizada. Envio de mensagens ainda exige homologação e permanece desativado.':
+     'A integração com a Meta ainda não possui credenciais e número empresarial homologados. Envios desligados; não há cobrança de mensagens pela Cloud.';
+  }catch{diag.textContent='Não foi possível verificar a integração; nenhum envio está habilitado.';}
+ }
  function init(){
   const btnBackup=byId('inspectBackup');btnBackup?.addEventListener('click',inspectBackup);
   byId('cloudMediaUpload')?.addEventListener('click',uploadMedia);
   byId('cloudMediaRefresh')?.addEventListener('click',loadMedia);
+  byId('cloudMetaRefresh')?.addEventListener('click',checkMeta);
   const section=byId('migration')?.querySelector('.section');
   section?.append(btn('Exportar meus rascunhos Cloud',exportData));
  }
  async function ready(){
   enabled=true;
-  try{await loadAll();await loadMedia();}catch(error){
+  try{await loadAll();await loadMedia();await checkMeta();}catch(error){
    const mount=byId('cloud-list-contacts');
    if(mount)message(mount,'Não foi possível carregar os espaços de trabalho.',true);
   }
