@@ -200,26 +200,43 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
    // Media objects are never served from public static paths.
    if(req.method==='GET'&&pathname==='/api/media'){
     const vault=await store.readMedia(user.email);
-    return json(res,200,{...Media.output(vault),sending:false});
+    return json(res,200,{...Large.combined(vault,store.large?await store.large.list(user.email):[]),sending:false});
    }
    if(req.method==='POST'&&pathname==='/api/media'){
     let payload;try{payload=await readJson(req,1500000);}catch{return json(res,413,{error:'media_payload_too_large'});}
     let media;
     try{media=Media.decode(payload);}catch(error){return json(res,422,{error:error.code||'invalid_media'});}
     const current=await store.readMedia(user.email);
+    const large=store.large?await store.large.list(user.email):[];
+    const collision=large.find(x=>x.id===media.id);
+    if(collision){
+     if(collision.sha256!==media.sha256||collision.mime!==media.mime)return json(res,409,{error:'media_id_collision'});
+     return json(res,200,{ok:true,duplicate:true,mediaId:media.id,...Large.combined(current,large)});
+    }
+    if(Large.combined(current,large).usedBytes+media.size>Large.MAX_ACCOUNT)
+     return json(res,409,{error:'media_storage_quota'});
     let updated;try{updated=Media.add(current,media,payload.revision);}
     catch(error){return json(res,error.code==='media_revision_conflict'?409:422,{error:error.code||'media_rejected'});}
-    if(updated.duplicate)return json(res,200,{ok:true,duplicate:true,mediaId:media.id,...Media.output(current)});
+    if(updated.duplicate)return json(res,200,{ok:true,duplicate:true,mediaId:media.id,...Large.combined(current,large)});
     const result=await store.writeMedia(user.email,current.revision,updated.next.items);
     if(result.conflict)return json(res,409,{error:'media_revision_conflict'});
-    return json(res,200,{ok:true,duplicate:false,mediaId:media.id,...Media.output({...updated.next,revision:result.revision})});
+    return json(res,200,{ok:true,duplicate:false,mediaId:media.id,...Large.combined({...updated.next,revision:result.revision},large)});
    }
    const mediaPath=/^\/api\/media\/(m_[a-f0-9]{40})$/.exec(pathname);
    if(mediaPath){
     const id=mediaPath[1];
     if(req.method==='GET'||req.method==='HEAD'){
      const vault=await store.readMedia(user.email),media=vault.items.find(x=>x.id===id);
-     if(!media)return json(res,404,{error:'media_not_found'});
+     if(!media){
+      const file=store.large?await store.large.get(user.email,id):null;
+      if(!file)return json(res,404,{error:'media_not_found'});
+      try{await streamLargeDownload(store,user.email,file,res,req.method);}
+      catch(error){
+       if(!res.headersSent)return json(res,503,{error:'large_media_integrity_failed'});
+       res.destroy(error);
+      }
+      return;
+     }
      const bytes=Media.getBytes(media);
      if(bytes.length!==media.size||Media.sha(bytes)!==media.sha256||!Media.mimeDetected(bytes,media.mime)){
       return json(res,503,{error:'media_integrity_failed'});
@@ -240,11 +257,20 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
      const linked=(workspace.modules.library||[]).some(x=>x.mediaId===id);
      if(linked)return json(res,409,{error:'media_still_linked_to_library'});
      const vault=await store.readMedia(user.email);
+     const large=store.large?await store.large.list(user.email):[];
+     const largeFile=large.find(x=>x.id===id);
+     if(largeFile){
+      if(!Number.isSafeInteger(payload.revision)||payload.revision!==vault.revision)
+       return json(res,409,{error:'media_revision_conflict'});
+      try{await store.large.remove(user.email,id);}
+      catch(error){const err=largeError(error);return json(res,err.status,{error:err.code});}
+      return json(res,200,{ok:true,...Large.combined(vault,await store.large.list(user.email)),sending:false});
+     }
      let next;try{next=Media.remove(vault,id,payload.revision);}
      catch(error){return json(res,error.code==='media_revision_conflict'?409:422,{error:error.code||'invalid_media_delete'});}
      const result=await store.writeMedia(user.email,vault.revision,next.items);
      if(result.conflict)return json(res,409,{error:'media_revision_conflict'});
-     return json(res,200,{ok:true,revision:result.revision,...Media.output({...next,revision:result.revision})});
+     return json(res,200,{ok:true,revision:result.revision,...Large.combined({...next,revision:result.revision},large)});
     }
    }
    if(req.method==='GET'&&pathname==='/api/meta/status'){
@@ -298,7 +324,7 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
      const current=await store.readWorkspace(user.email);
      if(current.revision!==payload.revision)return json(res,409,{error:'workspace_conflict',revision:current.revision});
      if(name==='library'){
-      try{checkLibraryRecords(records,(await store.readMedia(user.email)).items);}
+      try{const vault=await store.readMedia(user.email);checkLibraryRecords(records,[...vault.items,...(store.large?await store.large.list(user.email):[])]);}
       catch(error){return json(res,422,{error:error.code||'invalid_library'});}
      }
      const modules={...current.modules,[name]:records};
@@ -326,7 +352,7 @@ function createHandler({store=null,resolvePortal=null,verifyDevKey=null}={}){
     try{
      modules=mergeModules(current.modules,plan.modules,mode);checkWhole(modules);
      checkCrmLinks(modules.crm||[],modules.contacts||[]);
-     if(Array.isArray(modules.library))checkLibraryRecords(modules.library,(await store.readMedia(user.email)).items);
+     if(Array.isArray(modules.library)){const vault=await store.readMedia(user.email);checkLibraryRecords(modules.library,[...vault.items,...(store.large?await store.large.list(user.email):[])]);}
     }
     catch(error){return json(res,422,{error:error.code||'import_failed'});}
     const committed=await store.writeWorkspace(user.email,current.revision,modules);
