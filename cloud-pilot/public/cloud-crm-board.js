@@ -41,7 +41,11 @@
   try{
    await api('/api/crm/board',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({revision:state.revision,pipelineId:selected,...payload})});
-   await reload();status('Atualizado na sua conta. Nenhuma mensagem enviada.');
+   try{
+    await reload();status('Atualizado na sua conta. Nenhuma mensagem enviada.');
+   }catch{
+    status('Gravação confirmada, mas a atualização da tela falhou. Use Atualizar quadro antes de editar novamente.',true);
+   }
   }catch(error){
    if(error.status===409){
     try{await reload();}catch{}
