@@ -33,7 +33,7 @@
   return body;
  }
  const current=()=>flows.find(x=>x?.id===selected)||null;
- const selectedEntry=()=>current()?.nodes?.find(x=>x.id===selectedNode)||null;
+ const selectedEntry=()=>array(current()?.nodes).find(x=>x?.id===selectedNode)||null;
  const array=x=>Array.isArray(x)?x:[];
  const outgoing=node=>window.ZVMCloudFlowCore.targets(node);
  function notify(message,error=false){notice=message;bad=error;const box=mount.querySelector('.zvm-flow-status');
@@ -172,7 +172,7 @@
    if(node.type==='start'||node.type==='sendText'){
     const targets=el('select');
     targets.append(option('','Sem ligação de saída'));
-    for(const candidate of flow.nodes.filter(x=>x.id!==node.id&&x.type!=='start'))
+    for(const candidate of array(flow.nodes).filter(x=>x?.id!==node.id&&x?.type!=='start'))
      targets.append(option(candidate.id,(names[candidate.type]||candidate.type)+' · '+candidate.id.slice(0,8)));
     const previous=array(node.nextNodeIds)[0]||'';
     targets.value=previous;
@@ -217,6 +217,10 @@
    const buttons=el('div','zvm-flow-node-actions');
    buttons.append(button('+ Mensagem',()=>act('add',{type:'sendText'}),'secondary'),
     button('+ Fim',()=>act('add',{type:'end'}),'secondary'));
+   if(!Array.isArray(flow.nodes)){
+    for(const child of buttons.children)child.disabled=true;
+    top.append(el('small','zvm-flow-warning','Grafo legado sem lista de etapas válida. Preserve o backup e revise na extensão.'));
+   }
    top.append(buttons);main.append(top,canvas(flow));
    const detail=el('div','zvm-flow-review');
    const issues=diagnose(flow);
