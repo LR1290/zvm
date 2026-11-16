@@ -112,9 +112,28 @@
   for(const button of nav.querySelectorAll('button[data-page]')){
    const page=button.dataset.page;
    if(!Object.hasOwn(PAGES,page))continue;
-   button.prepend(icon(PAGES[page][3]));
+   const label=document.createElement('span');
+   label.className='cloud-nav-label';
+   label.textContent=PAGES[page][0];
+   button.replaceChildren(icon(PAGES[page][3]),label);
+   button.setAttribute('title',PAGES[page][0]);
    button.addEventListener('click',()=>select(page));
   }
+  const sidebarToggle=$('cloudSidebarToggle');
+  let collapsed=false;
+  try{collapsed=localStorage.getItem('zvm-cloud-sidebar-collapsed')==='1';}catch{}
+  const setCollapsed=value=>{
+   collapsed=!!value;
+   document.body.classList.toggle('cloud-menu-collapsed',collapsed);
+   if(sidebarToggle){
+    sidebarToggle.setAttribute('aria-expanded',String(!collapsed));
+    sidebarToggle.setAttribute('aria-label',collapsed?'Expandir menu lateral':'Recolher menu lateral');
+    sidebarToggle.setAttribute('title',collapsed?'Expandir menu lateral':'Recolher menu lateral');
+   }
+   try{localStorage.setItem('zvm-cloud-sidebar-collapsed',collapsed?'1':'0');}catch{}
+  };
+  setCollapsed(collapsed);
+  sidebarToggle?.addEventListener('click',()=>setCollapsed(!collapsed));
   $('cloudCommandButton')?.addEventListener('click',()=>dialog(true));
   $('cloudCommandClose')?.addEventListener('click',()=>dialog(false));
   $('cloudCommandInput')?.addEventListener('input',filterCommands);
