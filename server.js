@@ -3297,9 +3297,10 @@ function requireSameOriginPost(req) {
   if (req?.zvmPortalCsrfVerified === true) return true;
   const headers = req?.headers || {};
   const site = String(headers['sec-fetch-site'] || '').trim().toLowerCase();
-  // Fetch Metadata cannot override a contradictory Origin or Referer.
-  // External webhooks and extension routes do not use this cookie guard.
-  if (site && site !== 'same-origin' && site !== 'none') return false;
+  // Browsers may report same-site instead of same-origin. Only accept that
+  // when an explicit Origin/Referer proves the EXACT current origin.
+  // Cross-site metadata always blocks, even if another header claims otherwise.
+  if (site && !['same-origin','same-site','none'].includes(site)) return false;
   const host = String(headers.host || '').trim().toLowerCase();
   if (!host || /[\\/\s@]/.test(host)) return false;
   const sameOriginUrl = value => {
@@ -3311,8 +3312,10 @@ function requireSameOriginPost(req) {
         !parsed.username && !parsed.password;
     } catch { return false; }
   };
-  if (headers.origin) return sameOriginUrl(headers.origin);
-  if (headers.referer) return sameOriginUrl(headers.referer);
+  // A valid Origin does not override a contradictory Referer (or vice versa).
+  if (headers.origin && !sameOriginUrl(headers.origin)) return false;
+  if (headers.referer && !sameOriginUrl(headers.referer)) return false;
+  if (headers.origin || headers.referer) return true;
   return site === 'same-origin' || site === 'none';
 }
 
