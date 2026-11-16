@@ -115,6 +115,10 @@ test('R29: HTTP Flow graph requires DEV, preserves per-account CAS and rejects f
   assert.equal(r.data.revision,1);
   const id=r.data.flow.id,start=r.data.flow.startNodeId;
   assert.equal((await call('/api/workspace/flows','b')).data.records.length,0);
+  // R29 requires the graph-specific API. Generic full-array PUT is disabled.
+  assert.equal((await call('/api/workspace/flows','a','POST',{revision:1,records:[]})).status,404);
+  // Verify the protected legacy writer with a same-origin PUT request.
+
   assert.equal((await call(path,'a','POST',{revision:0,flowId:id,action:'add',type:'sendText'})).status,409);
   r=await call(path,'a','POST',{revision:1,flowId:id,action:'add',type:'sendText'});
   assert.equal(r.status,200);
@@ -128,6 +132,11 @@ test('R29: HTTP Flow graph requires DEV, preserves per-account CAS and rejects f
   assert.deepEqual(seen.data.records[0].nodes[0].nextNodeIds,[text.id]);
   assert.equal((await call('/api/send','a','POST',{})).status,404);
  }finally{await close();}
+});
+test('R29: server disables unsafe generic Flow PUT writer and preserves import route',()=>{
+ const source=require('node:fs').readFileSync(require('node:path').join(__dirname,'../server.js'),'utf8');
+ assert.match(source,/if\(name==='flows'\)return json\(res,405,\{error:'use_flow_graph_editor'\}\)/);
+ assert.match(source,/pathname==='\/api\/import\/commit'/);
 });
 test('R29: Flow Studio is CSP-safe, keyboard accessible and never calls WhatsApp',()=>{
  const fs=require('node:fs'),path=require('node:path');
