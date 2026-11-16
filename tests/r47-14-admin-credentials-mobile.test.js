@@ -27,7 +27,7 @@ test('admin username supports NFC-equivalent Unicode', () => {
   assert.equal(normalizeAdminIdentifier('  JOSE\u0301  '), normalizeAdminIdentifier('josé'));
 });
 test('admin password must match byte-for-byte (case, spaces and symbols)', () => {
-  for (const attempt of [password.toLowerCase(), password.trim(), password+' ', 'not-password']) {
+  for (const attempt of [password.toLowerCase(), password.slice(0, -1), password+' ', 'not-password']) {
     assert.equal(check(user, attempt).accepted, false);
   }
 });
