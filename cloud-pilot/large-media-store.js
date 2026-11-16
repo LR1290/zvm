@@ -82,10 +82,14 @@ function createMemoryLargeMediaStore(){
  }
  async function list(email){return [...owned(email).values()].map(D.publicFile);}
  async function get(email,id){return owned(email).get(id)||null;}
- async function* chunks(email,id){
+ async function* chunks(email,id,{signal=null}={}){
+  if(signal?.aborted)D.fail('download_aborted');
   const file=owned(email).get(id);
   if(!file)return;
-  for(const bytes of file.parts)yield Buffer.from(bytes);
+  for(const bytes of file.parts){
+   if(signal?.aborted)D.fail('download_aborted');
+   yield Buffer.from(bytes);
+  }
  }
  async function remove(email,id){
   const records=owned(email),existing=records.get(id);
@@ -272,10 +276,26 @@ async function createMongoLargeMediaStore(db,client){
   return result;
  }
  async function get(email,id){return fileOf(email,id);}
- async function* readChunks(email,id){
+ async function* readChunks(email,id,{signal=null}={}){
+  if(signal?.aborted)D.fail('download_aborted');
   const row=await fileOf(email,id);if(!row)return;
-  const owner=owned(email);for await(const part of chunks.find({owner,uploadId:row.uploadId}).sort({index:1})){
-   yield mongoBytes(part.bytes);
+  const owner=owned(email);
+  const cursor=chunks.find({owner,uploadId:row.uploadId}).sort({index:1});
+  const onAbort=()=>{
+   // On interrupted HTTP sockets, proactively stop the Mongo cursor.
+   // Close may race normal completion; both outcomes are safe.
+   if(typeof cursor.close==='function')Promise.resolve().then(()=>cursor.close()).catch(()=>{});
+  };
+  if(signal)signal.addEventListener('abort',onAbort,{once:true});
+  try{
+   if(signal?.aborted)D.fail('download_aborted');
+   for await(const part of cursor){
+    if(signal?.aborted)D.fail('download_aborted');
+    yield mongoBytes(part.bytes);
+   }
+  }finally{
+   if(signal)signal.removeEventListener('abort',onAbort);
+   if(typeof cursor.close==='function')try{await cursor.close();}catch{}
   }
  }
  async function remove(email,id){
