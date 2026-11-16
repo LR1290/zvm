@@ -24,7 +24,7 @@ assert(css.includes('.keys-table tbody tr.key-record'),'mobile key cards');
 assert(css.includes('.keys-table tbody tr.key-record.key-expanded'),'expandable details');
 assert(!css.slice(css.indexOf('R47.07:')).includes('!important'),'new CSS has no !important');
 assert(source.includes('class="keys-table"')&&source.includes('class="key-record"'),'responsive HTML');
-assert(source.includes('class="key-actions-more"'),'collapsible secondary actions');
+assert(source.includes('class="key-actions-popover"'),'collapsible secondary actions in non-expanding popover');
 assert(source.includes('data-field="Último IP"'),'IP field preserved');
 assert(source.includes('data-phones-count='),'linked devices summary');
 assert(source.includes("max_uses_below_linked_devices"),'protect enrolled devices on reduction');
