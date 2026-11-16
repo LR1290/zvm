@@ -2,7 +2,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),crypto=require('node:crypto');
 const {createServer}=require('../server');
 const {createMemoryStore}=require('../store');
-const {MODULES,moduleCheck,planLegacy,mergeModules}=require('../workspace-domain');
+const {MODULES,moduleCheck,checkAudience,planLegacy,mergeModules}=require('../workspace-domain');
 const license='zv-test-dev-2026',fp=crypto.createHash('sha256').update(license).digest('hex');
 function setup(){
  const store=createMemoryStore();
@@ -110,4 +110,17 @@ test('module limits and legacy backup corrupt content fail closed',()=>{
  assert.throws(()=>moduleCheck('flows',[{id:'a',name:'A'},{id:'a',name:'B'}]),/duplicate_or_invalid_id/);
  assert.throws(()=>planLegacy({data:{'EXTUI:extappFlowStore':'{corrupt'}}),/legacy_flows_invalid/);
  assert.throws(()=>planLegacy({data:{'EXTUI:licenseSecret':'should-not-import'}}),/no_compatible_modules/);
+});
+
+test('recipient review: reject missing, duplicates and R17 account-bound IDs',()=>{
+ const contacts=moduleCheck('contacts',[{id:'p1',name:'Ana',phone:'5531999887766'}]);
+ assert.throws(()=>moduleCheck('contacts',[{id:'p1',name:'Ana',phone:'5531999887766'},{id:'p2',name:'Duplicada',phone:'55 (31) 99988-7766'}]),/duplicate_phone/);
+ assert.doesNotThrow(()=>checkAudience('flows',[{id:'f',recipientIds:['p1']}],contacts));
+ assert.throws(()=>checkAudience('campaigns',[{id:'c',recipientIds:['missing']}],contacts),/unknown_audience_contact/);
+ assert.throws(()=>checkAudience('funnels',[{id:'f',recipientIds:['p1','p1']}],contacts),/invalid_audience/);
+ const source={data:{'EXTUI:extappFlowStore':JSON.stringify({state:{flowList:[{id:'f2',name:'Flow',recipientIds:['local-wa-contact-42']}]}})}};
+ const plan=planLegacy(source);
+ assert.equal(plan.modules.flows[0].recipientIds,undefined);
+ assert.equal(plan.modules.flows[0].audienceReviewRequired,true);
+ assert.match(plan.warnings.join(' '),/selecionados novamente/);
 });

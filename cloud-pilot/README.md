@@ -31,3 +31,13 @@ node --test cloud-pilot/test/pilot.test.js cloud-pilot/test/mount.test.js
 
 Após deploy, confirmar sem autenticação: GET /dev/cloud/api/session retorna loggedIn:false, devAuthorized:false, sending:false.
 Não publicar senhas, chaves ou credenciais em GitHub, respostas ou logs.
+
+## R17 — novos espaços de trabalho no servidor (somente DEV)
+
+O painel possui editores reais de **Contatos, CRM, Etiquetas, Biblioteca, Respostas rápidas, Disparos, Fluxos, Funis, Agenda e Configurações**. Dados são persistidos na coleção `cloud_workspaces` em um documento CAS por conta com revisão monotônica. O servidor retorna 409 para divergência de revisão, sem substituição silenciosa.
+
+A importação de backup JSON da R17 tem análise e confirmação em duas etapas, digest SHA-256, limites de tamanho, filtro local de dados e segredos antes do upload, e rollback natural por atomicidade do documento por conta. ZIP/.extbackup, mídias e cofre IDB/OPFS continuam bloqueados. Ao importar Fluxos/Funis/Disparos, seleções nativas de contatos são invalidadas e exigem revisão da audiência na Cloud.
+
+O frontend em `cloud-pilot/public/workspace.js` renderiza os módulos somente após a chave DEV e não usa a extensão nem bibliotecas de WhatsApp Web. Não há endpoints de envio, scheduler ativo, execução de nós ou webhooks.
+
+A matriz de compatibilidade e pendências está em `docs/CLOUD_R17_MIGRATION_MATRIX_20261115.md`. Gate de QA: `node --test cloud-pilot/test/pilot.test.js cloud-pilot/test/mount.test.js cloud-pilot/test/workspace.test.js` + `npm run check`, além de homologação mobile visual.

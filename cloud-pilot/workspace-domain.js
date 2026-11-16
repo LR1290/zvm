@@ -53,10 +53,20 @@ function cloneSafe(value,ctx={nodes:0},depth=0){
  return out;
 }
 function normalizePhone(value){const normalized=String(value||'').replace(/\D/g,'');return /^\d{8,15}$/.test(normalized)?normalized:'';}
+function checkAudience(module,records,contacts){
+ if(!['campaigns','flows','funnels'].includes(module))return;
+ const ids=new Set((contacts||[]).map(x=>x.id));
+ for(const record of records){
+  const refs=record.recipientIds;
+  if(refs===undefined||refs===null)continue;
+  if(!Array.isArray(refs)||refs.length>600||new Set(refs).size!==refs.length)throw error('invalid_audience');
+  if(refs.some(id=>typeof id!=='string'||!ids.has(id)))throw error('unknown_audience_contact');
+ }
+}
 function moduleCheck(name,records){
  const spec=MODULES[name];if(!spec)throw error('unknown_module');
  if(!Array.isArray(records)||records.length>spec.max)throw error('record_limit');
- const ids=new Set();
+ const ids=new Set(),phones=new Set();
  const out=records.map((raw,index)=>{
   if(!isObject(raw))throw error('invalid_record');
   const r=cloneSafe(raw);
@@ -68,6 +78,8 @@ function moduleCheck(name,records){
   if(name==='contacts'){
    r.phone=normalizePhone(r.phone||r.phoneNumber||r.contact?.phoneNumber);
    if(!r.phone)throw error('invalid_phone');
+   if(phones.has(r.phone))throw error('duplicate_phone');
+   phones.add(r.phone);
   }
   return r;
  });
@@ -136,6 +148,13 @@ function planLegacy(source){
      }
     }
     sanitized.name=name||sanitized.name;
+    // Native audiences are scoped to the local WhatsApp account. Never convert
+    // their IDs to Cloud recipients without explicit account review.
+    if(['flows','funnels','campaigns'].includes(module)&&Object.prototype.hasOwnProperty.call(sanitized,'recipientIds')){
+     delete sanitized.recipientIds;
+     sanitized.audienceReviewRequired=true;
+     warnings.push(module+': destinatários de "'+name+'" precisam ser selecionados novamente para a conta Cloud.');
+    }
     records.push(sanitized);
    }
   }
@@ -176,4 +195,4 @@ function checkWhole(modules){
  if(Buffer.byteLength(JSON.stringify(modules),'utf8')>1500000)throw error('workspace_too_large');
  return modules;
 }
-module.exports={MODULES,LEGACY,normalizePhone,moduleCheck,planLegacy,mergeModules,checkWhole,cloneSafe};
+module.exports={MODULES,LEGACY,normalizePhone,moduleCheck,checkAudience,planLegacy,mergeModules,checkWhole,cloneSafe};
