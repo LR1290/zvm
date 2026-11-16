@@ -26,7 +26,7 @@
   agenda:'Nenhum planejamento salvo na Agenda.',
   settings:'Nenhuma preferência Cloud cadastrada.'
  });
- let importPlan=null,enabled=false,mediaSnapshot={revision:0,items:[]};
+ let importPlan=null,enabled=false,mediaSnapshot={revision:0,items:[]},pendingMediaUpload=null,mediaAbort=null,mediaBusy=false,mediaCancelling=false;
  const byId=id=>document.getElementById(id);
  function tag(name,text,className=''){
   const node=document.createElement(name);node.textContent=String(text??'');if(className)node.className=className;return node;
@@ -268,22 +268,45 @@
 
  function mediaStatus(text,isError=false){
   const element=byId('cloudMediaStatus');if(!element)return;
-  element.textContent=text;element.classList.toggle('error',isError);
+  element.textContent=text;element.classList.toggle('error',!!isError);
+ }
+ const hex=bytes=>Array.from(new Uint8Array(bytes),x=>x.toString(16).padStart(2,'0')).join('');
+ const sha=async data=>hex(await crypto.subtle.digest('SHA-256',data));
+ const knownMime=file=>{
+  if(file.type)return file.type.toLowerCase();
+  const ext=String(file.name).split('.').pop().toLowerCase();
+  return ({png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',
+   pdf:'application/pdf',mp3:'audio/mpeg',ogg:'audio/ogg',mp4:'video/mp4'})[ext]||'';
+ };
+ function progressMedia(value){
+  const bar=byId('cloudMediaProgress');if(!bar)return;
+  bar.hidden=false;bar.value=Math.max(0,Math.min(100,Math.round(value)));
+ }
+ function updatePending(){
+  const info=byId('cloudMediaResumeInfo'),cancel=byId('cloudMediaCancel');
+  if(info)info.textContent=pendingMediaUpload?
+   'Transferência pendente: '+pendingMediaUpload.name+' · '+Math.round(100*pendingMediaUpload.receivedBytes/pendingMediaUpload.size)+'% enviado. Selecione o mesmo arquivo e clique Enviar para retomar. Prazo de retomada: 24 horas.':'';
+  if(cancel)cancel.hidden=!pendingMediaUpload&&!mediaBusy;
  }
  async function loadMedia(){
   if(!enabled)return;
-  try{mediaSnapshot=await api('/api/media');renderMedia();window.dispatchEvent(new CustomEvent('zvm-cloud-media-data',{detail:{items:mediaSnapshot.items||[]}}));}
-  catch(error){mediaStatus('Falha ao consultar o cofre; o conteúdo antigo permanece no servidor.',true);}
+  try{
+   mediaSnapshot=await api('/api/media');
+   const state=await api('/api/media/uploads');
+   pendingMediaUpload=state.upload||null;
+   renderMedia();updatePending();
+   window.dispatchEvent(new CustomEvent('zvm-cloud-media-data',{detail:{items:mediaSnapshot.items||[]}}));
+  }catch{mediaStatus('Falha ao consultar o cofre; os arquivos antigos permanecem no servidor.',true);}
  }
  function renderMedia(){
   const target=byId('cloudMediaItems');if(!target)return;
   target.replaceChildren();
   const used=Number(mediaSnapshot.usedBytes||0),max=Number(mediaSnapshot.quotaBytes||0);
-  target.append(tag('p','Espaço utilizado: '+(used/1024/1024).toFixed(2)+' de '+(max/1024/1024).toFixed(0)+' MB · '+(mediaSnapshot.items?.length||0)+' arquivo(s)','muted'));
+  target.append(tag('p','Espaço utilizado: '+(used/1048576).toFixed(2)+' de '+(max/1048576).toFixed(0)+' MB · '+(mediaSnapshot.items?.length||0)+' arquivo(s)','muted'));
   for(const item of mediaSnapshot.items||[]){
    const row=tag('div','','workspace-item');
    const info=tag('div','','workspace-item-info');
-   info.append(tag('strong',item.name),tag('small',item.mime+' · '+Math.ceil(item.size/1024)+' KB · SHA-256 verificado'));
+   info.append(tag('strong',item.name),tag('small',item.mime+' · '+Math.ceil(item.size/1024)+' KB · SHA-256 verificado'+(item.storage==='chunked'?' · Blocos privados':'')));
    const actions=tag('div','','workspace-item-actions');
    actions.append(btn('Baixar',()=>downloadMedia(item)));
    actions.append(btn('Excluir',()=>deleteMedia(item)));
@@ -301,22 +324,78 @@
   }catch{mediaStatus('O servidor não confirmou a transferência do anexo.',true);}
  }
  async function uploadMedia(){
-  if(!enabled)return;
+  if(!enabled||mediaBusy)return;
   const input=byId('cloudMediaFile'),file=input?.files?.[0];
   if(!file){mediaStatus('Selecione um arquivo para guardar.',true);return;}
-  if(!file.size||file.size>1024*1024){mediaStatus('Este piloto aceita arquivos entre 1 byte e 1 MB.',true);return;}
+  if(!file.size||file.size>32*1024*1024){
+   mediaStatus('Aceitamos arquivos entre 1 byte e 32 MB nesta fase de QA.',true);return;
+  }
   const button=byId('cloudMediaUpload');button.disabled=true;
+  mediaBusy=true;mediaCancelling=false;mediaAbort=new AbortController();
+  updatePending();
   try{
-   const bytes=new Uint8Array(await file.arrayBuffer());
-   const hash=new Uint8Array(await crypto.subtle.digest('SHA-256',bytes));
-   const sha256=Array.from(hash,x=>x.toString(16).padStart(2,'0')).join('');
-   let binary='';for(let pos=0;pos<bytes.length;pos+=16384)binary+=String.fromCharCode(...bytes.subarray(pos,pos+16384));
-   const out=await api('/api/media',mutation('POST',{revision:mediaSnapshot.revision,name:file.name,mime:file.type,sha256,base64:btoa(binary)}));
-   mediaStatus(out.duplicate?'Arquivo já estava no cofre.':'Anexo verificado e guardado na sua conta. Nada foi enviado ao WhatsApp.');
-   input.value='';await loadMedia();
+   const mime=knownMime(file);
+   mediaStatus('Verificando a integridade SHA-256 do arquivo...');
+   progressMedia(0);
+   const sha256=await sha(await file.arrayBuffer());
+   if(mediaCancelling)throw Error('upload_cancelled');
+   if(pendingMediaUpload&&pendingMediaUpload.sha256!==sha256)
+    throw Error('upload_already_active');
+   const started=await api('/api/media/uploads',mutation('POST',{name:file.name,mime,size:file.size,sha256}));
+   if(started.duplicate){
+    mediaStatus('Arquivo já está no Cofre e continua íntegro.');
+    pendingMediaUpload=null;input.value='';await loadMedia();return;
+   }
+   const upload=started.upload;
+   if(!upload||!upload.uploadId||!Number.isSafeInteger(upload.nextIndex))throw Error('upload_session_invalid');
+   pendingMediaUpload=upload;updatePending();
+   for(let i=upload.nextIndex;i<upload.totalChunks;i++){
+    if(mediaCancelling)throw Error('upload_cancelled');
+    const begin=i*upload.chunkBytes,end=Math.min(file.size,begin+upload.chunkBytes);
+    const bytes=await file.slice(begin,end).arrayBuffer();
+    const chunkSha=await sha(bytes);
+    const response=await api('/api/media/uploads/'+upload.uploadId+'/'+i,{
+     method:'PUT',headers:{'Content-Type':'application/octet-stream','X-Chunk-Sha256':chunkSha},
+     body:bytes,signal:mediaAbort.signal
+    });
+    if(mediaCancelling)throw Error('upload_cancelled');
+    pendingMediaUpload=response.upload;
+    progressMedia(100*pendingMediaUpload.receivedBytes/file.size);
+    mediaStatus('Enviando bloco '+(i+1)+' de '+upload.totalChunks+' · '+Math.round(100*pendingMediaUpload.receivedBytes/file.size)+'%');
+   }
+   if(mediaCancelling)throw Error('upload_cancelled');
+   mediaStatus('Conferindo SHA-256 completo no servidor...');
+   await api('/api/media/uploads/'+upload.uploadId+'/complete',{method:'POST'});
+   pendingMediaUpload=null;input.value='';progressMedia(100);
+   await loadMedia();
+   mediaStatus('Arquivo validado integralmente e guardado na sua conta. Nenhum envio ao WhatsApp foi realizado.');
   }catch(error){
-   mediaStatus(error.message==='media_revision_conflict'?'O cofre mudou em outra sessão. Atualize e tente novamente.':'Anexo recusado: '+error.message,true);
-  }finally{button.disabled=false;}
+   const cancelled=mediaCancelling||error.name==='AbortError'||error.message==='upload_cancelled';
+   mediaStatus(cancelled?'Transferência interrompida. Uma tentativa de cancelamento foi enviada ao servidor.':
+    error.message==='upload_already_active'?'Já existe uma transferência pendente de outro arquivo. Retome o mesmo arquivo ou cancele a anterior.':
+    error.message==='media_storage_quota'?'Espaço de armazenamento da conta insuficiente.':
+    error.message==='media_signature_invalid'?'O conteúdo não corresponde ao tipo do arquivo.':
+    'Transferência não concluída: '+error.message+'. Selecione novamente o mesmo arquivo para retomar.',true);
+   await loadMedia().catch(()=>{});
+  }finally{
+   mediaBusy=false;mediaAbort=null;button.disabled=false;updatePending();
+   if(byId('cloudMediaProgress')&&!pendingMediaUpload)byId('cloudMediaProgress').hidden=true;
+  }
+ }
+ async function cancelMediaUpload(){
+  if(mediaCancelling)return;
+  const id=pendingMediaUpload?.uploadId;
+  if(!id)return;
+  mediaCancelling=true;
+  if(mediaAbort)mediaAbort.abort();
+  try{
+   await api('/api/media/uploads/'+id,{method:'DELETE'});
+   pendingMediaUpload=null;
+   mediaStatus('Transferência cancelada. Os blocos temporários foram descartados.');
+   await loadMedia();
+  }catch{
+   mediaStatus('Não foi possível confirmar o cancelamento. Atualize o cofre e tente novamente.',true);
+  }finally{mediaCancelling=false;updatePending();}
  }
  async function deleteMedia(item){
   if(!confirm('Excluir este anexo do seu cofre Cloud? Itens da Biblioteca vinculados precisam ser desvinculados antes.'))return;
@@ -392,6 +471,7 @@
   const btnBackup=byId('inspectBackup');btnBackup?.addEventListener('click',inspectBackup);
   byId('cloudMediaUpload')?.addEventListener('click',uploadMedia);
   byId('cloudMediaRefresh')?.addEventListener('click',loadMedia);
+  byId('cloudMediaCancel')?.addEventListener('click',cancelMediaUpload);
   byId('cloudMetaRefresh')?.addEventListener('click',checkMeta);
   const section=byId('migration')?.querySelector('.section');
   section?.append(btn('Exportar meus rascunhos Cloud',exportData));
@@ -403,7 +483,7 @@
    if(mount)message(mount,'Não foi possível carregar os espaços de trabalho.',true);
   }
  }
- function locked(){enabled=false;cache.clear();importPlan=null;mediaSnapshot={revision:0,items:[]};byId('cloudMediaItems')?.replaceChildren();for(const module of Object.keys(MODULES)){const area=byId('cloud-list-'+module);if(area)area.replaceChildren();}}
+ function locked(){enabled=false;if(mediaAbort)mediaAbort.abort();pendingMediaUpload=null;mediaBusy=false;mediaCancelling=false;byId('cloudMediaProgress')&&(byId('cloudMediaProgress').hidden=true);updatePending();cache.clear();importPlan=null;mediaSnapshot={revision:0,items:[]};byId('cloudMediaItems')?.replaceChildren();for(const module of Object.keys(MODULES)){const area=byId('cloud-list-'+module);if(area)area.replaceChildren();}}
  window.addEventListener('zvm-cloud-crm-changed',()=>{if(enabled)loadAll().catch(()=>{});});
  window.addEventListener('zvm-cloud-library-changed',()=>{if(enabled)loadAll().catch(()=>{});});
  window.addEventListener('zvm-cloud-ready',ready);
