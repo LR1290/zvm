@@ -60,4 +60,18 @@ function changeCrmBoard(pipelines,contacts,input){
  const output=[...pipelines];output[pipelineIndex]=pipe;
  return {records:output,action:op,pipelineId:pipe.id,columns:pipe.columns.length,cards:count(pipe.columns)};
 }
-module.exports={changeCrmBoard,MAX_COLUMNS,MAX_CARDS};
+function checkCrmLinks(pipelines,contacts){
+ if(!Array.isArray(pipelines)||!Array.isArray(contacts))failure('invalid_crm_links');
+ const ids=new Set(contacts.map(c=>c.id));
+ for(const pipeline of pipelines){
+  if(!pipeline||!Array.isArray(pipeline.columns))continue;
+  for(const column of pipeline.columns){
+   if(!column||!Array.isArray(column.items))continue;
+   for(const card of column.items){
+    if(card?.source==='cloud'&&(!card.contactId||!ids.has(card.contactId)))
+     failure('crm_contact_in_use');
+   }
+  }
+ }
+}
+module.exports={changeCrmBoard,checkCrmLinks,MAX_COLUMNS,MAX_CARDS};
