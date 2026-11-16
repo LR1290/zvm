@@ -140,3 +140,5 @@
 @media(prefers-reduced-motion:reduce){
  #cloudFlowStudio button{transition:none}
 }
+
+#cloudFlowStudio .zvm-flow-inspector input[type="checkbox"]{width:auto;min-height:0;accent-color:#00d36b;margin:4px 0}
