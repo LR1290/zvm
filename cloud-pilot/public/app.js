@@ -34,6 +34,25 @@
   }
  }
  function init(){
+  el('cloudLoginForm').addEventListener('submit',async event=>{
+   event.preventDefault();
+   const form=el('cloudLoginForm'),button=form.querySelector('button[type="submit"]');
+   button.disabled=true;
+   el('cloudLoginError').textContent='';
+   try{
+    const response=await fetch('/cliente/form-token',{credentials:'same-origin',cache:'no-store'});
+    if(!response.ok)throw Error('portal_token_unavailable');
+    const data=await response.json();
+    if(!/^[a-f0-9]{64}$/.test(String(data.token||'')))throw Error('portal_token_invalid');
+    el('cloudLoginCsrf').value=data.token;
+    // Native navigation sends credentials only to the same-origin Portal login.
+    // The Secure + HttpOnly + SameSite CSRF cookie accompanies the POST.
+    form.submit();
+   }catch{
+    el('cloudLoginError').textContent='Não foi possível preparar o login seguro. Recarregue a página ou entre pelo Portal do Cliente.';
+    button.disabled=false;
+   }
+  });
   el('devForm').addEventListener('submit',async event=>{
    event.preventDefault();el('devError').textContent='';
    const button=el('devForm').querySelector('button');
