@@ -3081,7 +3081,7 @@ function buildKeysHtml(snapshot = keys) {
     const suspectBadge = isSuspect ? `<span title="${recentIpCount} IPs nas últimas 24h" style="color:#ff4757;font-size:13px;margin-left:4px">⚠ SUSPEITA</span>` : '';
     const deferredAttr = (!k.expiresAt && k.expireDuration) ? '1' : '0';
     const dispStatus = getKeyDisplayStatus(k);
-    return `<tr class="key-record" data-code="${escHtml(code)}" data-expires-at="${escHtml(k.expiresAt||'')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(String(k.label||'').toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-phones-count="${(k.phones||[]).length}" data-created="${k.createdAt||''}" data-lastused="${escHtml(k.lastUsed||'')}" data-suspect="${isSuspect?'1':''}" data-plan="${escHtml((k.planId||k.plan_id||'pro').toLowerCase())}"` + rowStyle + `>
+    return `<tr class="key-record" data-code="${escHtml(code)}" data-client-name="${escHtml(k.label||'')}" data-max-uses="${(Number.isSafeInteger(k.maxUses)&&(k.maxUses===-1||k.maxUses>=1))?k.maxUses:MAX_USES}" data-expires-at="${escHtml(k.expiresAt||'')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(String(k.label||'').toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-phones-count="${(k.phones||[]).length}" data-created="${escHtml(k.createdAt||'')}" data-lastused="${escHtml(k.lastUsed||'')}" data-suspect="${isSuspect?'1':''}" data-plan="${escHtml((k.planId||k.plan_id||'pro').toLowerCase())}"` + rowStyle + `>
   <td data-field="Chave"><span style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="key-cb" style="cursor:pointer;width:13px;height:13px;flex-shrink:0"><span class="kc" title="Clique para copiar" style="cursor:pointer">${escHtml(code)}</span><button type="button" class="key-mobile-details" aria-expanded="false" onclick="toggleKeyDetails(this)">Detalhes</button></span></td>
   <td data-field="Cliente">${escHtml(k.label)}${suspectBadge}</td>
   <td data-field="Status">${renderKeyStatusBadge(k)}</td>
@@ -3094,15 +3094,15 @@ function buildKeysHtml(snapshot = keys) {
   <td data-field="Origem" class="key-extra-data">${renderTrackingChips(k)}</td>
   <td data-field="Nota" class="note-cell key-extra-data" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${escHtml(k.note||'')||'<span style="color:var(--muted)">—</span>'}</span></td>
   <td data-field="Ações" class="key-actions-cell"><div class="acts">
-    <button class="bs bg" onclick="openRenew('${escHtml(code)}','${escHtml(k.label||'')}')">Tempo</button>
-    <button class="bs bg" onclick="openEditUses('${escHtml(code)}','${escHtml(k.label||'')}',${Number.isFinite(k.maxUses)?k.maxUses:MAX_USES})">Usos</button>
+    <button class="bs bg" onclick="openRenew(this.closest('tr.key-record').dataset.code,this.closest('tr.key-record').dataset.clientName)">Tempo</button>
+    <button class="bs bg" onclick="openEditUses(this.closest('tr.key-record').dataset.code,this.closest('tr.key-record').dataset.clientName,Number(this.closest('tr.key-record').dataset.maxUses))">Usos</button>
     <button type="button" class="bs bw key-more-trigger" aria-controls="zvm-actions-${escHtml(code)}" aria-expanded="false" aria-label="Mais ações da licença" onclick="this.nextElementSibling.hidden=false;toggleKeyActionMenu(this)">•••</button><div id="zvm-actions-${escHtml(code)}" class="key-actions-popover" popover="auto" hidden>
-      <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey('${escHtml(code)}')">${k.active?'Bloquear':'Liberar'}</button>
-      <button class="bs bg" onclick="openRename('${escHtml(code)}','${escHtml(k.label||'')}')">Renomear</button>
-      ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones('${escHtml(code)}','${escHtml(k.label||'')}')">Números</button>`:''}
-      <label class="bs ${k.devAccess===true?'bg':'bw'}" title="Acesso DEV: autoriza builds DEV assinadas" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" class="dev-access-switch" ${k.devAccess===true?'checked':''} onchange="toggleDevAccess('${escHtml(code)}',this.checked,this)" style="accent-color:var(--g);width:13px;height:13px;margin:0"> Acesso DEV</label>
-      <button class="bs bd" onclick="deleteKey('${escHtml(code)}')">Excluir</button>
-      ${isSuspect?`<button class="bs bsusp" onclick="clearSuspect('${escHtml(code)}')">🕵️ Suspeita</button>`:''}
+      <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey(this.closest('tr.key-record').dataset.code)">${k.active?'Bloquear':'Liberar'}</button>
+      <button class="bs bg" onclick="openRename(this.closest('tr.key-record').dataset.code,this.closest('tr.key-record').dataset.clientName)">Renomear</button>
+      ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones(this.closest('tr.key-record').dataset.code,this.closest('tr.key-record').dataset.clientName)">Números</button>`:''}
+      <label class="bs ${k.devAccess===true?'bg':'bw'}" title="Acesso DEV: autoriza builds DEV assinadas" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" class="dev-access-switch" ${k.devAccess===true?'checked':''} onchange="toggleDevAccess(this.closest('tr.key-record').dataset.code,this.checked,this)" style="accent-color:var(--g);width:13px;height:13px;margin:0"> Acesso DEV</label>
+      <button class="bs bd" onclick="deleteKey(this.closest('tr.key-record').dataset.code)">Excluir</button>
+      ${isSuspect?`<button class="bs bsusp" onclick="clearSuspect(this.closest('tr.key-record').dataset.code)">🕵️ Suspeita</button>`:''}
     </div></div></td>
 </tr>`;
   }).join('');
@@ -3289,16 +3289,25 @@ function applyRequestContext(req, res) {
 // respeitam SameSite. NÃO aplicar ao webhook externo da Cakto
 // nem a APIs de extensão — esses são legitimamente cross-origin.
 function requireSameOriginPost(req) {
-  const site = String(req.headers['sec-fetch-site'] || '').toLowerCase();
-  if (site) return site === 'same-origin' || site === 'none';
-  const hostOf = (h) => { try { return new URL(h).host; } catch { return ''; } };
-  const expectedHost = req.headers.host || '';
-  if (!expectedHost) return false;
-  const origin = req.headers.origin;
-  if (origin) return hostOf(origin) === expectedHost;
-  const referer = req.headers.referer;
-  if (referer) return hostOf(referer) === expectedHost;
-  return false;
+  const headers = req?.headers || {};
+  const site = String(headers['sec-fetch-site'] || '').trim().toLowerCase();
+  // Fetch Metadata cannot override a contradictory Origin or Referer.
+  // External webhooks and extension routes do not use this cookie guard.
+  if (site && site !== 'same-origin' && site !== 'none') return false;
+  const host = String(headers.host || '').trim().toLowerCase();
+  if (!host || /[\\/\s@]/.test(host)) return false;
+  const sameOriginUrl = value => {
+    try {
+      const parsed = new URL(String(value));
+      const isLoopback = /^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(host);
+      return parsed.host.toLowerCase() === host &&
+        (parsed.protocol === 'https:' || (isLoopback && parsed.protocol === 'http:')) &&
+        !parsed.username && !parsed.password;
+    } catch { return false; }
+  };
+  if (headers.origin) return sameOriginUrl(headers.origin);
+  if (headers.referer) return sameOriginUrl(headers.referer);
+  return site === 'same-origin' || site === 'none';
 }
 
 function isAnalyticsSession(req) {
