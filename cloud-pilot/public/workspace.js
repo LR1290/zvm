@@ -608,6 +608,7 @@
  function locked(){enabled=false;if(mediaAbort)mediaAbort.abort();pendingMediaUpload=null;mediaBusy=false;mediaCancelling=false;zipRestoreBusy=false;byId('cloudMediaProgress')&&(byId('cloudMediaProgress').hidden=true);updatePending();cache.clear();importPlan=null;mediaSnapshot={revision:0,items:[]};byId('cloudMediaItems')?.replaceChildren();for(const module of Object.keys(MODULES)){const area=byId('cloud-list-'+module);if(area)area.replaceChildren();}}
  window.addEventListener('zvm-cloud-crm-changed',()=>{if(enabled)loadAll().catch(()=>{});});
  window.addEventListener('zvm-cloud-library-changed',()=>{if(enabled)loadAll().catch(()=>{});});
+ window.addEventListener('zvm-cloud-flow-changed',()=>{if(enabled)loadAll().catch(()=>{});});
  window.addEventListener('zvm-cloud-ready',ready);
  window.addEventListener('zvm-cloud-locked',locked);
  init();
