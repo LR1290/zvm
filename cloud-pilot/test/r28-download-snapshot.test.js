@@ -54,6 +54,8 @@ test('R28: corruption, truncated chunks, extra chunks and wrong MIME fail before
  await assert.rejects(()=>verifiedSnapshot(over.store,OWNER,over.file),/large_media_metadata_invalid/);
  const abort=fixture();
  await assert.rejects(()=>verifiedSnapshot(abort.store,OWNER,abort.file,{cancelled:()=>true}),/download_aborted/);
+ const controller=new AbortController();controller.abort();
+ await assert.rejects(()=>verifiedSnapshot(abort.store,OWNER,abort.file,{signal:controller.signal}),/download_aborted/);
 });
 test('R28: download quota is per worker, per tenant and released once',()=>{
  const gate=createDownloadGate({maxConcurrent:2,maxPerAccount:1});
