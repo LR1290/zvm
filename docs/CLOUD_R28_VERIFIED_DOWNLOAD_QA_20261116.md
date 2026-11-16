@@ -17,10 +17,17 @@ Na rota `GET/HEAD /api/media/:id` para arquivos grandes, o servidor verificava S
 
 ## Testes e evidência
 
-1. **Node.js 22.16.0 real:** executados **7/7 testes** do módulo `verified-media-download.js` em ambiente local com dependências de mídia simuladas: bytes imutáveis, corrupção, truncamento, bloco extra, tamanho adulterado, cancelamento e limite/liberação de vagas. **Verificou-se identidade binária do módulo local com o Git blob da PR**, hash SHA-1 de objeto Git `75b4a641bc5b78f722361c52b081c1b6d1e848ee`.
+1. **Node.js 22.16.0 real:** executados **7/7 testes** do módulo `verified-media-download.js` em ambiente local com dependências de mídia simuladas: bytes imutáveis, corrupção, truncamento, bloco extra, tamanho adulterado, cancelamento e limite/liberação de vagas. **Verificou-se identidade binária do módulo local com o Git blob da PR**, hash SHA-1 de objeto Git `9193f56a888d918cade2b4da5b65394604cef9ee`.
 2. **V8 isolado usando `server.js` e `verified-media-download.js` da branch:** **7/7 cenários** de API: GET íntegro, HEAD íntegro, isolamento de contas, exclusão no meio da cópia retornando 503 sem 200, objeto removido retornando 404, concorrência retornando 429 e vaga liberada após resposta.
 3. **Testes Node versionados (ainda pendentes de execução completa no runner):** `cloud-pilot/test/r28-download-snapshot.test.js`, com testes unitários do snapshot e cenários HTTP de exclusão concorrente/HEAD/controle de resposta. Adicionado ao `npm run check`. Contratos antigos de interface também foram atualizados para exigir exatamente uma leitura validada.
 4. A execução dos testes em Node local **não equivale** à homologação completa da aplicação em processo Node + MongoDB/Replica Set + Chromium. O GitHub Actions continuou sem executar as etapas por falta de runner nos checkpoints anteriores.
+
+## Endurecimento R28.1 — cancelamento de ponta a ponta
+
+- `streamLargeDownload` conecta `res.close` a `AbortController.abort()`. A verificação por blocos recebe o `signal`, rejeita uma conexão cancelada antes ou durante a coleta e libera a capacidade em `finish`, `close` ou falha. Uma cópia que já foi concluída permanece íntegra mesmo após a exclusão do original.
+- `createMongoLargeMediaStore().chunks` aceita um `AbortSignal`, interrompe a leitura e tenta fechar o cursor do driver quando o socket fecha; o fechamento também é feito em `finally`. O armazenamento em memória respeita o mesmo contrato.
+- Foram adicionadas regressões Node para fechamento explícito de cursor Mongo simulado, sinal previamente abortado e interrupção HTTP antes de receber os cabeçalhos com posterior liberação do slot.
+- **Execução Node 22 real repetida após o endurecimento:** 7/7 verificações isoladas do módulo exato da branch aprovadas; SHA de Git blob acima confirmado. O teste de integração HTTP/driver real segue **versionado mas não homologado**. Não declarar que os testes novos de cursor passaram no Node real sem execução do CI.
 
 ## Limites operacionais e implantação
 
