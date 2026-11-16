@@ -59,8 +59,8 @@ Extension key authentication uses isolated rate-limit buckets for legacy auth, V
 ## CSP legada e auditoria de CI (16/11/2026)
 
 - Páginas públicas e login usam CSP sem JavaScript inline.
-- O Admin migrou handlers da tabela, comandos da página e botões dinâmicos para JavaScript externo com ação declarativa e `script-src 'self'`; estilos inline ainda precisam de migração visual.
-- Analytics e integrações com legado permanecem em migração. Não remover a compatibilidade sem comparar a renderização e os testes funcionais.
+- Admin e Analytics migraram handlers estáticos e botões dinâmicos para JavaScript externo com ação declarativa e `script-src 'self'`; estilos inline ainda precisam de migração visual.
+- Demais integrações com HTML legado permanecem em migração. Não remover a compatibilidade sem comparar a renderização e os testes funcionais.
 - O `npm run check` removeu execuções duplicadas; `npm run check:security` executa regressões de segurança isoladas.
 - **GitHub Actions:** em 16/11/2026 os jobs falham antes do primeiro step (0 steps nos retornos da API), inclusive em rotas distintas; o problema de runner/permissões/faturamento requer diagnóstico no GitHub. Não divulgar que o CI passou até existir um run completo verde.
 - `npm audit --omit=dev --audit-level=high` permanece obrigatório; o status CVE não é 'limpo' enquanto a auditoria real não tiver terminado.
