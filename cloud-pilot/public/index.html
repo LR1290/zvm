@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#081517">
+<meta name="theme-color" content="#0a0b0a">
 <meta name="robots" content="noindex,nofollow">
 <title>ZVM Cloud • Acesso DEV</title>
 <link rel="stylesheet" href="styles.css">
@@ -12,7 +12,9 @@
 </head>
 <body>
 <header>
- <span class="brand"><b class="logo" aria-hidden="true">Z</b><span><strong>ZVM</strong><small>AUTOMAÇÕES • CLOUD DEV</small></span></span>
+ <div class="cloud-brand-row"><button id="cloudSidebarToggle" class="cloud-sidebar-toggle" type="button" aria-label="Recolher menu lateral" aria-expanded="true" title="Recolher menu lateral">
+   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
+  </button><span class="brand"><b class="logo" aria-hidden="true">Z</b><span><strong>ZVM Cloud</strong><small>AUTOMAÇÕES • ESPAÇO DEV</small></span></span></div>
  <button class="cloud-command-button" id="cloudCommandButton" type="button" aria-label="Buscar módulos (Ctrl K)" title="Buscar módulos — Ctrl K">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><span>Buscar ou executar uma ação...</span><kbd>Ctrl K</kbd>
  </button>
@@ -30,12 +32,14 @@
  <div class="hero-mark">Z</div>
  <p class="eyebrow">SUA CONTA ZVM</p>
  <h1>Entre na ZVM Cloud</h1>
- <p class="muted">Use o mesmo e-mail e senha da sua conta em zvm.onrender.com. Após entrar, será solicitada uma chave com Acesso DEV.</p>
- <form method="POST" action="/cliente/login">
+ <p class="muted">Entre com sua conta ZVM. A chave DEV será solicitada somente na primeira ativação, se ainda não estiver vinculada.</p>
+ <form id="cloudLoginForm" method="POST" action="/cliente/login">
+  <input id="cloudLoginCsrf" type="hidden" name="zvm_portal_csrf" value="">
   <input type="hidden" name="redir" value="/dev/cloud/">
   <label for="email">E-mail da conta ZVM</label><input id="email" name="email" type="email" required autocomplete="username" maxlength="100" placeholder="email@exemplo.com">
   <label for="password">Senha</label><input id="password" name="pass" type="password" required autocomplete="current-password" maxlength="128">
   <button class="primary" type="submit">Entrar com minha conta</button>
+  <p class="error" id="cloudLoginError" role="alert" aria-live="polite"></p>
  </form>
  <p class="tiny">Ainda não tem conta? <a href="/cliente/registro?redir=%2Fdev%2Fcloud%2F">Criar conta ZVM</a></p>
  <p class="tiny">O login e a verificação em duas etapas são realizados pelo Portal do Cliente oficial.</p>
@@ -43,9 +47,9 @@
 <section id="devGate" class="panel login" hidden>
  <div class="hero-mark">✓</div>
  <p class="eyebrow">SEGUNDA ETAPA</p>
- <h1>Ative seu acesso DEV</h1>
+ <h1>Vincule sua chave DEV uma única vez</h1>
  <p class="muted">Conta conectada: <strong id="accountLabel"></strong></p>
- <p class="muted">Para entrar no laboratório, informe a chave de licença vinculada à sua conta e habilitada para DEV pelo administrador.</p>
+ <p class="muted">A chave será associada à sua conta ZVM para os próximos acessos, inclusive após sair e entrar novamente. A licença permanece sujeita à validação de segurança.</p>
  <form id="devForm">
   <label for="devKey">Chave DEV</label>
   <input id="devKey" type="password" autocomplete="off" required maxlength="64" placeholder="Informe sua chave habilitada">
@@ -53,7 +57,7 @@
   <p class="error" id="devError" role="alert"></p>
  </form>
  <p class="tiny"><a href="/cliente/vincular">Vincular minha chave à conta</a> · <a href="/cliente/logout">Trocar de conta</a></p>
- <p class="tiny">A chave não é gravada em texto puro na ZVM Cloud. O acesso é revalidado durante o uso.</p>
+ <p class="tiny">A Cloud guarda somente uma impressão digital da chave, nunca o código original. Se a licença for revogada, expirar ou deixar de ser DEV, o acesso será interrompido.</p>
 </section>
 <section id="unavailable" class="panel login" hidden>
  <div class="hero-mark">!</div><h1>Cloud temporariamente indisponível</h1>
@@ -63,7 +67,7 @@
 <section id="app" hidden>
  <div class="heading">
   <div><p class="eyebrow" id="cloudPageCategory">VISÃO GERAL • ZVM CLOUD</p><h1 id="cloudPageTitle">Painel de controle</h1><p class="muted" id="cloudPageSubtitle">Visão dos dados reais guardados na sua conta.</p></div>
-  <button id="leaveDev" class="secondary" type="button">Bloquear DEV</button>
+  <a class="secondary cloud-portal-shortcut" href="/cliente" title="Abrir minha conta no Portal ZVM">Minha conta ZVM</a>
  </div>
  <div class="notice"><span aria-hidden="true">●</span><span><b>Cloud DEV protegida.</b> Seus dados ficam isolados por conta. Envios e agendamentos automáticos estão desativados até homologação oficial do WhatsApp Business.</span></div>
  <nav class="tabs" aria-label="Navegação ZVM Cloud">
@@ -85,6 +89,10 @@
  <button type="button" data-page="migration">Importar extensão</button>
  <button type="button" data-page="integration">WhatsApp oficial</button>
  <button type="button" data-page="settings">Configurações</button>
+ <div class="cloud-sidebar-account" aria-label="Conta conectada">
+  <span class="cloud-sidebar-avatar" aria-hidden="true">Z</span>
+  <span class="cloud-sidebar-profile"><strong>Conta conectada</strong><small id="cloudSidebarEmail"></small></span>
+ </div>
  </nav>
  <section class="view" id="summary">
   <div class="stats">
@@ -101,7 +109,16 @@
  <section class="view" id="quickReplies" hidden><div class="panel section"><h2>Respostas rápidas</h2><p class="muted">Textos e sequências salvos como rascunho, sem conexão com WhatsApp Web.</p><div id="cloud-list-quickReplies"></div></div></section>
  <section class="view" id="campaigns" hidden><div class="panel section"><h2>Disparos</h2><p class="muted">Prepare uma campanha, selecione destinatários e confira nomes e telefones. O botão de envio não está disponível.</p><div id="cloud-list-campaigns"></div></div></section>
  <section class="view" id="agenda" hidden><div class="panel section"><h2>Agenda</h2><p class="muted">Planejamento de mensagens. Nada será executado com os dispositivos desligados nesta etapa.</p><div id="cloud-list-agenda"></div></div></section>
- <section class="view" id="settings" hidden><div class="panel section"><h2>Configurações</h2><p class="muted">Preferências pessoais do espaço de trabalho Cloud.</p><div id="cloud-list-settings"></div></div></section>
+ <section class="view" id="settings" hidden>
+  <div class="panel section"><h2>Configurações</h2><p class="muted">Preferências do espaço de trabalho.</p><div id="cloud-list-settings"></div></div>
+  <div class="panel section cloud-access-settings">
+   <h2>Segurança da conta Cloud</h2>
+   <p class="muted">A chave DEV já vinculada permanece autorizada entre sessões, enquanto a licença estiver válida. Sair da conta ZVM não desvincula essa autorização.</p>
+   <div class="cloud-access-actions"><span class="cloud-access-state"><span aria-hidden="true">●</span> Acesso DEV vinculado à conta</span><button id="leaveDev" class="secondary" type="button">Desvincular chave DEV</button></div>
+   <p class="tiny">Desvincular exige digitar a chave novamente no próximo acesso. A ação revoga o vínculo para todas as sessões desta conta.</p>
+   <p class="result" id="cloudDevSettingsStatus" aria-live="polite"></p>
+  </div>
+ </section>
  <section class="view" id="migration" hidden>
   <div class="panel section"><h2>Importar dados da ZVM Desktop</h2><p class="muted">Selecione um backup <strong>JSON ou ZIP</strong> da ZVM. O manifesto ZIP é extraído neste navegador, sem enviar o arquivo completo ao servidor. Primeiro analisaremos os dados, sem substituir seus rascunhos. Só depois da confirmação faremos a gravação.</p>
    <label for="backupFile">Backup JSON ou ZIP da extensão</label><input id="backupFile" type="file" accept=".json,.zip,application/json,application/zip">
