@@ -119,8 +119,12 @@ async function createMongoLargeMediaStore(db,client){
   const owner=owned(email),s=await uploads.findOne(id?{_id:id,owner}:{owner},session?{session}:{});
   if(!s)return null;
   if(new Date(s.expiresAt).getTime()>Date.now())return s;
-  await uploads.deleteOne({_id:s._id,owner},session?{session}:{});
-  // Parts are kept under the 72-hour TTL until background cleanup.
+  // Expiry is a destructive transition: remove only the same still-expired
+  // session, then its temporary chunks. Never touch chunks of a file already
+  // committed by a competing finalizer. TTL remains as fallback for crashes.
+  const opts=session?{session}:{};
+  const removed=await uploads.deleteOne({_id:s._id,owner,status:s.status,expiresAt:s.expiresAt},opts);
+  if(removed.deletedCount===1)await chunks.deleteMany({owner,uploadId:s._id},opts);
   return null;
  };
  const fileOf=async(email,id,session=null)=>{
