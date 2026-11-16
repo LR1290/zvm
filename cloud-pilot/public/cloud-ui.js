@@ -34,8 +34,6 @@
   settings:'M12 3v3 M12 18v3 M3 12h3 M18 12h3 M5.6 5.6l2.2 2.2 M16.2 16.2l2.2 2.2 M18.4 5.6l-2.2 2.2 M7.8 16.2l-2.2 2.2 M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8'
  });
  const ICON_NS='http://www.w3.org/2000/svg';
- const keys=Object.keys(PAGES);
- let active='summary',counts=null;
  function icon(key){
   const svg=document.createElementNS(ICON_NS,'svg');
   svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('fill','none');
@@ -47,7 +45,6 @@
  }
  function select(page){
   if(!Object.hasOwn(PAGES,page))return;
-  active=page;
   const [title,subtitle,category]=PAGES[page];
   if($('cloudPageTitle'))$('cloudPageTitle').textContent=title;
   if($('cloudPageSubtitle'))$('cloudPageSubtitle').textContent=subtitle;
@@ -67,7 +64,6 @@
  function countText(value){return Number.isSafeInteger(value)&&value>=0?value.toLocaleString('pt-BR'):'—';}
  function updateSummary(data){
   if(!data||typeof data!=='object')return;
-  counts={...data};
   const totals={cloudContacts:data.contacts,cloudLibrary:data.library,cloudAutomations:(data.flows||0)+(data.funnels||0)};
   for(const [id,value] of Object.entries(totals))if($(id))$(id).textContent=countText(value);
   const overview=$('cloudModulesOverview');if(!overview)return;
@@ -90,7 +86,7 @@
   overlay.hidden=!opened;
   document.body.classList.toggle('cloud-command-open',opened);
   if(opened){$('cloudCommandInput').value='';filterCommands();$('cloudCommandInput').focus();}
-  else $('cloudCommandButton')?.focus();
+  else if(document.body.classList.contains('cloud-workspace'))$('cloudCommandButton')?.focus();
  }
  function filterCommands(){
   const list=$('cloudCommandResults');const term=$('cloudCommandInput').value.trim().toLocaleLowerCase('pt-BR');
@@ -136,7 +132,7 @@
   });
   window.addEventListener('zvm-cloud-ready',()=>{
    document.body.classList.add('cloud-workspace');
-   const deepLink=decodeURIComponent(location.hash.slice(1));
+   const deepLink=location.hash.slice(1);
    open(Object.hasOwn(PAGES,deepLink)?deepLink:'summary');
   });
   window.addEventListener('zvm-cloud-locked',()=>{
