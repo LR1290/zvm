@@ -148,6 +148,13 @@ function planLegacy(source){
      }
     }
     sanitized.name=name||sanitized.name;
+    // Native audiences are scoped to the local WhatsApp account. Never convert
+    // their IDs to Cloud recipients without explicit account review.
+    if(['flows','funnels','campaigns'].includes(module)&&Object.prototype.hasOwnProperty.call(sanitized,'recipientIds')){
+     delete sanitized.recipientIds;
+     sanitized.audienceReviewRequired=true;
+     warnings.push(module+': destinatários de "'+name+'" precisam ser selecionados novamente para a conta Cloud.');
+    }
     records.push(sanitized);
    }
   }
