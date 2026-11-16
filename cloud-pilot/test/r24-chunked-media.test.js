@@ -101,7 +101,7 @@ test('R24: interrupted upload remains resumable and cancel clears temporary part
   assert.equal(r.status,200);assert.equal(r.data.resumed,true);assert.equal(r.data.upload.nextIndex,1);
   r=await call('/api/media/uploads',{method:'POST',json:{...meta,name:'different.png'}});
   assert.equal(r.status,409);assert.equal(r.data.error,'upload_already_active');
-  assert.equal((await call('/api/media/uploads/'+uploadId,{method:'DELETE',who:'b'})).status,401 /* B not activated */);
+  assert.equal((await call('/api/media/uploads/'+uploadId,{method:'DELETE',who:'b'})).status,403); // Another tenant has no DEV grant.
   r=await call('/api/media/uploads/'+uploadId,{method:'DELETE'});
   assert.equal(r.status,200);
   assert.equal((await call('/api/media/uploads')).data.upload,null);
