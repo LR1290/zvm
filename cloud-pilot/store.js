@@ -138,6 +138,7 @@ async function createMongoStore(uri,{driver=null}={}){
  media=db.collection('cloud_media'),metaEvents=db.collection('cloud_meta_events'),
  mediaFences=db.collection('cloud_media_integrity_fences'),
  largeFiles=db.collection('cloud_large_media_files'),
+ largeUploads=db.collection('cloud_large_media_uploads'),
  largeParts=db.collection('cloud_large_media_chunks');
  let large;
  try{
@@ -167,6 +168,35 @@ async function createMongoStore(uri,{driver=null}={}){
  }
  return {
   large,
+  async beginMediaUpload(email,input){
+   const spec=Large.specOf(input);
+   const result=await withMediaFence(email,async session=>{
+    const id=workspaceId(email),owner=Large.ownerId(email);
+    const legacy=(await media.findOne({_id:id},{session}))?.items||[];
+    const existing=legacy.find(row=>row.id===spec.id);
+    if(existing){
+     if(existing.sha256!==spec.sha256||existing.mime!==spec.mime||existing.size!==spec.size)
+      Large.fail('media_id_collision');
+     return {duplicate:true,file:{id:existing.id,name:existing.name,mime:existing.mime,
+      sha256:existing.sha256,size:existing.size,uploadedAt:existing.uploadedAt},upload:null};
+    }
+    const active=await largeUploads.findOne({owner},{session});
+    const ready=await largeFiles.find({owner,status:'ready'},{session}).toArray();
+    if(!ready.some(row=>row.id===spec.id)&&
+       !(active&&new Date(active.expiresAt).getTime()>Date.now()))
+     Quota.enforce(legacy,ready,spec);
+    return large.begin(email,spec,Quota.budget(legacy).usedBytes,legacy.length,{session});
+   });
+   if(result.conflict)Large.fail('media_quota_conflict');
+   return result;
+  },
+  async completeMediaUpload(email,uploadId){
+   // Large.finish performs full SHA-256 verification and a second quota
+   // validation while holding the same account fence in its Mongo transaction.
+   return large.finish(email,uploadId);
+  },
+  async cancelMediaUpload(email,uploadId){return large.cancel(email,uploadId);},
+
   async grantAccount(email,keyHash){
    const now=new Date();
    await accountGrants.updateOne({_id:accountGrantId(email)},{
@@ -238,15 +268,29 @@ async function createMongoStore(uri,{driver=null}={}){
    return doc?{revision:doc.revision,items:doc.items||[]}:{revision:0,items:[]};
   },
   async writeMedia(email,revision,items){
-   const id=workspaceId(email),doc={_id:id,revision:revision+1,items};
-   try{
-    if(revision===0)await media.insertOne(doc);
-    else{
-     const changed=await media.replaceOne({_id:id,revision},doc);
-     if(changed.matchedCount!==1)return {conflict:true};
+   return withMediaFence(email,async session=>{
+    const id=workspaceId(email),owner=Large.ownerId(email);
+    const previous=await media.findOne({_id:id},{session});
+    if((previous?.revision||0)!==revision)return {conflict:true,code:'media_revision_conflict'};
+    if(!Array.isArray(items))Large.fail('invalid_media');
+    if(items.length>Media.MAX_ITEMS)Large.fail('media_item_quota');
+    if(items.some(item=>!item||!Number.isSafeInteger(item.size)||item.size>Media.MAX_FILE))
+     Large.fail('large_media_limit');
+    if(Quota.budget(items).usedBytes>Media.MAX_USER)Large.fail('media_storage_quota');
+    const ready=await largeFiles.find({owner,status:'ready'},{session}).toArray();
+    const active=await largeUploads.findOne({owner},{session});
+    const reserved=active&&new Date(active.expiresAt).getTime()>Date.now()?active:null;
+    Quota.enforce(items,ready,reserved);
+    if(items.some(item=>ready.some(row=>row.id===item.id)))Large.fail('media_id_collision');
+    const doc={_id:id,revision:revision+1,items};
+    if(previous){
+     const result=await media.replaceOne({_id:id,revision},doc,{session});
+     if(result.matchedCount!==1)return {conflict:true,code:'media_revision_conflict'};
+    }else{
+     await media.insertOne(doc,{session});
     }
     return {conflict:false,revision:doc.revision};
-   }catch(error){if(error?.code===11000)return {conflict:true};throw error;}
+   });
   },
   async recordMetaEvent(email,digest,summary){
    const id=crypto.createHash('sha256').update(email+'|'+digest).digest('hex');
