@@ -323,9 +323,9 @@
    setTimeout(()=>URL.revokeObjectURL(href),30000);
   }catch{mediaStatus('O servidor não confirmou a transferência do anexo.',true);}
  }
- async function uploadMedia(){
-  if(!enabled||mediaBusy)return;
-  const input=byId('cloudMediaFile'),file=input?.files?.[0];
+ async function uploadMedia(overrideFile=null,{throwOnError=false}={}){
+  if(!enabled||mediaBusy)throw Error('upload_busy');
+  const input=byId('cloudMediaFile'),file=overrideFile||input?.files?.[0];
   if(!file){mediaStatus('Selecione um arquivo para guardar.',true);return;}
   if(!file.size||file.size>32*1024*1024){
    mediaStatus('Aceitamos arquivos entre 1 byte e 32 MB nesta fase de QA.',true);return;
@@ -344,7 +344,7 @@
    const started=await api('/api/media/uploads',mutation('POST',{name:file.name,mime,size:file.size,sha256}));
    if(started.duplicate){
     mediaStatus('Arquivo já está no Cofre e continua íntegro.');
-    pendingMediaUpload=null;input.value='';await loadMedia();return;
+    pendingMediaUpload=null;if(!overrideFile&&input)input.value='';await loadMedia();return {mediaId:started.file.id,duplicate:true};
    }
    const upload=started.upload;
    if(!upload||!upload.uploadId||!Number.isSafeInteger(upload.nextIndex))throw Error('upload_session_invalid');
@@ -369,10 +369,11 @@
    }
    if(mediaCancelling)throw Error('upload_cancelled');
    mediaStatus('Conferindo SHA-256 completo no servidor...');
-   await api('/api/media/uploads/'+upload.uploadId+'/complete',{method:'POST'});
-   pendingMediaUpload=null;input.value='';progressMedia(100);
+   const finished=await api('/api/media/uploads/'+upload.uploadId+'/complete',{method:'POST'});
+   pendingMediaUpload=null;if(!overrideFile&&input)input.value='';progressMedia(100);
    await loadMedia();
    mediaStatus('Arquivo validado integralmente e guardado na sua conta. Nenhum envio ao WhatsApp foi realizado.');
+   return {mediaId:finished.mediaId,duplicate:finished.duplicate===true};
   }catch(error){
    const cancelled=mediaCancelling||error.name==='AbortError'||error.message==='upload_cancelled';
    mediaStatus(cancelled?'Transferência interrompida. Uma tentativa de cancelamento foi enviada ao servidor.':
@@ -381,6 +382,7 @@
     error.message==='media_signature_invalid'?'O conteúdo não corresponde ao tipo do arquivo.':
     'Transferência não concluída: '+error.message+'. Selecione novamente o mesmo arquivo para retomar.',true);
    await loadMedia().catch(()=>{});
+   if(throwOnError)throw error;
   }finally{
    mediaBusy=false;mediaAbort=null;mediaCancelling=false;button.disabled=false;updatePending();
    if(byId('cloudMediaProgress')&&!pendingMediaUpload)byId('cloudMediaProgress').hidden=true;
@@ -476,7 +478,7 @@
  }
  function init(){
   const btnBackup=byId('inspectBackup');btnBackup?.addEventListener('click',inspectBackup);
-  byId('cloudMediaUpload')?.addEventListener('click',uploadMedia);
+  byId('cloudMediaUpload')?.addEventListener('click',()=>uploadMedia());
   byId('cloudMediaRefresh')?.addEventListener('click',loadMedia);
   byId('cloudMediaCancel')?.addEventListener('click',cancelMediaUpload);
   byId('cloudMetaRefresh')?.addEventListener('click',checkMeta);
