@@ -58,7 +58,7 @@ async function boot(){
   dispatchEvent(event){for(const callback of eventHandlers.get(event.type)||[])callback(event);}
  };
  async function fetchMock(uri,options={}){
-  const route=new URL(uri).pathname.replace('/dev/cloud','');
+  const route=new URL(uri,'https://zvm.onrender.com').pathname.replace('/dev/cloud','');
   fetchCalls.push({route,method:options.method||'GET'});
   if(route==='/api/workspace/flows')return {
    ok:true,status:200,json:async()=>({records:flows,revision})
