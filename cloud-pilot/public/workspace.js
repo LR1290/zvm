@@ -413,7 +413,6 @@
    await loadMedia();mediaStatus('Arquivo excluído do cofre Cloud.');
   }catch(error){mediaStatus(error.message==='media_still_linked_to_library'?'Desvincule o anexo da Biblioteca antes de excluir.':'Exclusão não confirmada: '+error.message,true);}
  }
- const RESTORABLE_LIBRARY_KINDS=new Set(['audio','image','video','media','sticker','document']);
  async function restoreZipAssets(file,extracted,view){
   if(!enabled||!extracted||!Array.isArray(extracted.assets))return;
   const candidates=extracted.assets.filter(x=>x.eligible&&x.sourceId);
@@ -428,12 +427,16 @@
     if(!enabled)throw Error('site_login_required');
     progress.textContent='Restaurando '+(report.linked+report.already+report.unmapped+report.blocked+report.failed+report.orphans+1)+' de '+Math.min(candidates.length,60)+': '+asset.name;
     const current=await api('/api/workspace/library');
-    const linked=(current.records||[]).filter(row=>
-     RESTORABLE_LIBRARY_KINDS.has(row.kind)&&String(row.sourceId||row.id)===asset.sourceId);
-    if(linked.length!==1){report.unmapped++;continue;}
-    const record=linked[0];
-    if(record.mediaId&&record.contentStatus==='ready'){report.already++;continue;}
-    if(record.mediaId){report.blocked++;continue;}
+    const mapping=window.ZVMCloudBackupLinks.resolve(asset,current.records,extracted.assets);
+    if(mapping.status==='already_linked'){report.already++;continue;}
+    if(mapping.status!=='ready'){
+     if(['duplicate_asset_source','ambiguous_library_item','media_kind_mismatch','unexpected_ready_without_media'].includes(mapping.status))
+      report.blocked++;
+     else report.unmapped++;
+     continue;
+    }
+    const record=(current.records||[]).find(row=>row.id===mapping.recordId);
+    if(!record){report.unmapped++;continue;}
     let saved;
     try{
      const blob=await window.ZVMCloudZip.readAsset(file,extracted,asset.id);
@@ -450,9 +453,10 @@
     // are repeated immediately before changing the Library record.
     try{
      const latest=await api('/api/workspace/library');
-     const same=(latest.records||[]).filter(row=>row.id===record.id&&
-      String(row.sourceId||row.id)===asset.sourceId&&RESTORABLE_LIBRARY_KINDS.has(row.kind));
-     if(same.length!==1||same[0].mediaId){report.orphans++;continue;}
+     const freshMapping=window.ZVMCloudBackupLinks.resolve(asset,latest.records,extracted.assets);
+     if(freshMapping.status!=='ready'||freshMapping.recordId!==record.id){
+      report.orphans++;continue;
+     }
      const records=latest.records.map(row=>row.id===record.id?
       {...row,mediaId:saved.mediaId,contentStatus:'ready'}:row);
      await api('/api/workspace/library',mutation('PUT',{revision:latest.revision,records}));
