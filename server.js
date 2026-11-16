@@ -3082,7 +3082,7 @@ function buildKeysHtml(snapshot = keys) {
     const deferredAttr = (!k.expiresAt && k.expireDuration) ? '1' : '0';
     const dispStatus = getKeyDisplayStatus(k);
     return `<tr class="key-record" data-code="${escHtml(code)}" data-client-name="${escHtml(k.label||'')}" data-max-uses="${(Number.isSafeInteger(k.maxUses)&&(k.maxUses===-1||k.maxUses>=1))?k.maxUses:MAX_USES}" data-expires-at="${escHtml(k.expiresAt||'')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(String(k.label||'').toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-phones-count="${(k.phones||[]).length}" data-created="${escHtml(k.createdAt||'')}" data-lastused="${escHtml(k.lastUsed||'')}" data-suspect="${isSuspect?'1':''}" data-plan="${escHtml((k.planId||k.plan_id||'pro').toLowerCase())}"` + rowStyle + `>
-  <td data-field="Chave"><span style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="key-cb" style="cursor:pointer;width:13px;height:13px;flex-shrink:0"><span class="kc" title="Clique para copiar" style="cursor:pointer">${escHtml(code)}</span><button type="button" class="key-mobile-details" aria-expanded="false" onclick="toggleKeyDetails(this)">Detalhes</button></span></td>
+  <td data-field="Chave"><span style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="key-cb" style="cursor:pointer;width:13px;height:13px;flex-shrink:0"><span class="kc" title="Clique para copiar" style="cursor:pointer">${escHtml(code)}</span><button type="button" class="key-mobile-details" aria-expanded="false" data-zvm-key-action="details">Detalhes</button></span></td>
   <td data-field="Cliente">${escHtml(k.label)}${suspectBadge}</td>
   <td data-field="Status">${renderKeyStatusBadge(k)}</td>
   <td data-field="Validade">${formatValidityCell(k)}</td>
@@ -3094,15 +3094,15 @@ function buildKeysHtml(snapshot = keys) {
   <td data-field="Origem" class="key-extra-data">${renderTrackingChips(k)}</td>
   <td data-field="Nota" class="note-cell key-extra-data" data-code="${escHtml(code)}" data-note="${escHtml(k.note||'')}"><span class="note-preview">${escHtml(k.note||'')||'<span style="color:var(--muted)">—</span>'}</span></td>
   <td data-field="Ações" class="key-actions-cell"><div class="acts">
-    <button class="bs bg" onclick="openRenew(this.closest('tr.key-record').dataset.code,this.closest('tr.key-record').dataset.clientName)">Tempo</button>
-    <button class="bs bg" onclick="openEditUses(this.closest('tr.key-record').dataset.code,this.closest('tr.key-record').dataset.clientName,Number(this.closest('tr.key-record').dataset.maxUses))">Usos</button>
-    <button type="button" class="bs bw key-more-trigger" aria-controls="zvm-actions-${escHtml(code)}" aria-expanded="false" aria-label="Mais ações da licença" onclick="this.nextElementSibling.hidden=false;toggleKeyActionMenu(this)">•••</button><div id="zvm-actions-${escHtml(code)}" class="key-actions-popover" popover="auto" hidden>
-      <button class="bs ${k.active?'bd':'bg'}" onclick="toggleKey(this.closest('tr.key-record').dataset.code)">${k.active?'Bloquear':'Liberar'}</button>
-      <button class="bs bg" onclick="openRename(this.closest('tr.key-record').dataset.code,this.closest('tr.key-record').dataset.clientName)">Renomear</button>
-      ${(k.phones||[]).length>0?`<button class="bs bd" onclick="openPhones(this.closest('tr.key-record').dataset.code,this.closest('tr.key-record').dataset.clientName)">Números</button>`:''}
-      <label class="bs ${k.devAccess===true?'bg':'bw'}" title="Acesso DEV: autoriza builds DEV assinadas" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" class="dev-access-switch" ${k.devAccess===true?'checked':''} onchange="toggleDevAccess(this.closest('tr.key-record').dataset.code,this.checked,this)" style="accent-color:var(--g);width:13px;height:13px;margin:0"> Acesso DEV</label>
-      <button class="bs bd" onclick="deleteKey(this.closest('tr.key-record').dataset.code)">Excluir</button>
-      ${isSuspect?`<button class="bs bsusp" onclick="clearSuspect(this.closest('tr.key-record').dataset.code)">🕵️ Suspeita</button>`:''}
+    <button class="bs bg" type="button" data-zvm-key-action="renew">Tempo</button>
+    <button class="bs bg" type="button" data-zvm-key-action="uses">Usos</button>
+    <button type="button" class="bs bw key-more-trigger" aria-controls="zvm-actions-${escHtml(code)}" aria-expanded="false" aria-label="Mais ações da licença" data-zvm-key-action="more">•••</button><div id="zvm-actions-${escHtml(code)}" class="key-actions-popover" popover="auto" hidden>
+      <button class="bs ${k.active?'bd':'bg'}" type="button" data-zvm-key-action="toggle">${k.active?'Bloquear':'Liberar'}</button>
+      <button class="bs bg" type="button" data-zvm-key-action="rename">Renomear</button>
+      ${(k.phones||[]).length>0?`<button class="bs bd" type="button" data-zvm-key-action="phones">Números</button>`:''}
+      <label class="bs ${k.devAccess===true?'bg':'bw'}" title="Acesso DEV: autoriza builds DEV assinadas" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" class="dev-access-switch" ${k.devAccess===true?'checked':''} data-zvm-key-action="dev-toggle" style="accent-color:var(--g);width:13px;height:13px;margin:0"> Acesso DEV</label>
+      <button class="bs bd" type="button" data-zvm-key-action="delete">Excluir</button>
+      ${isSuspect?`<button class="bs bsusp" type="button" data-zvm-key-action="clear-suspect">🕵️ Suspeita</button>`:''}
     </div></div></td>
 </tr>`;
   }).join('');
@@ -5368,6 +5368,9 @@ function _compressedSend(res, buf, status, acceptEncoding = '') {
   fallback();
 }
 
+// CSP exceptions are scoped to legacy HTML only until event handlers have been migrated.
+const _CSP_LEGACY_HTML = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: https://pps.whatsapp.net https://i.ytimg.com; connect-src 'self'; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; media-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests";
+const _CSP_NO_INLINE_RESPONSE = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests";
 const _SEC_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
@@ -5380,7 +5383,7 @@ const _SEC_HEADERS = {
   'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
   // frame-src/media-src precisam citar o YouTube: sem eles o iframe do tutorial cai
   // no default-src 'self' e o navegador bloqueia com ERR_BLOCKED_BY_CSP.
-  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: https://pps.whatsapp.net https://i.ytimg.com; connect-src 'self'; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; media-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests",
+  'Content-Security-Policy': _CSP_NO_INLINE_RESPONSE,
   'Server': 'ZVM',
 };
 
@@ -5677,6 +5680,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '91efd97cea203bf0d151777c286979cd8eb6d12199cb4fc58310726ae1310922',
     compressible: true,
   }),
+  '/assets/zvm-admin-dashboard.ba37f88fcfe6.js': Object.freeze({
+    type: 'text/javascript; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.ba37f88fcfe6.js'),
+    sha256: 'ba37f88fcfe65282448f126cff56e3600162e37ca6c8b7d935aa0b8430766bf1',
+    compressible: true,
+  }),
   '/assets/zvm-admin-dashboard.bc01cf565fa7.js': Object.freeze({
     type: 'text/javascript; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.bc01cf565fa7.js'),
@@ -5833,6 +5842,13 @@ function sendHtml(res, html, status = 200) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Connection', 'keep-alive');
   Object.entries(_SEC_HEADERS).forEach(([k,v]) => res.setHeader(k, v));
+  res.setHeader('Content-Security-Policy', _CSP_LEGACY_HTML);
+  // Progressive CSP migration: violations visible in DevTools, no production UI breakage.
+  const currentPath = new URL(String(res.req?.url || '/'), 'https://zvm.invalid').pathname;
+  if (currentPath === R_ADMIN || currentPath.startsWith(R_ADMIN+'/') ||
+      currentPath === R_ANALYTICS || currentPath.startsWith(R_ANALYTICS+'/')) {
+    res.setHeader('Content-Security-Policy-Report-Only', _CSP_AUTH_STRICT);
+  }
   const accept = String(res.req?.headers?.['accept-encoding'] || '');
   if (buf.length > 4096) {
     _appendVary(res, 'Accept-Encoding');
@@ -7096,7 +7112,7 @@ function renderAdminDashboard(opts = {}) {
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <template id="zvm-admin-users-data">${initialPortalUsersJson}</template>
-<script src="/assets/zvm-admin-dashboard.bc01cf565fa7.js" defer></script>
+<script src="/assets/zvm-admin-dashboard.ba37f88fcfe6.js" defer></script>
 </body></html>`;
 }
 

@@ -24,13 +24,10 @@ assert(!html.includes('onmouseover="alert(2)"'));
 assert(!html.includes('<img src=x onerror=alert(1)>'));
 assert(html.includes('data-max-uses="3"')&&html.includes('class="key-actions-popover"'));
 const handlers=[...html.matchAll(/ on(?:click|change)="([^"]*)"/g)].map(m=>m[1]);
-assert(handlers.length>=8,'handler fixtures');
-for(const h of handlers){
- assert(!h.includes('alert(')&&!h.includes('window.'),'stored code in event handler');
- assert(!h.includes(maliciousName),'label in executable JS');
-}
-assert(handlers.some(h=>h.includes('dataset.clientName')));
-assert(handlers.some(h=>h.includes('dataset.code')));
+assert.equal(handlers.length,0,'license table must not emit executable HTML event handlers');
+for(const action of ['renew','uses','more','toggle','rename','phones','dev-toggle','delete','clear-suspect','details'])
+ assert(html.includes('data-zvm-key-action="'+action+'"'),'missing delegated action '+action);
+assert(html.includes('data-client-name="'+escHtml(maliciousName)+'"'));
 assert.equal((html.match(/<td\b/g)||[]).length,12);
 assert.equal((html.match(/<\/td>/g)||[]).length,12);
 const a=src.indexOf('function requireSameOriginPost('),b=src.indexOf('function isAnalyticsSession(',a);
