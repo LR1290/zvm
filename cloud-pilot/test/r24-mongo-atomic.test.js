@@ -94,6 +94,7 @@ test('R24 Mongo adapter: atomic finalize/delete, owner isolation, resume, no lef
  assert.equal(state.nextIndex,2);
  const complete=await large.finish('a@example.org',id);
  assert.equal(complete.file.id,'m_'+spec.sha256.slice(0,40));
+ assert.equal((await large.finish('a@example.org',id)).duplicate,true);
  assert.equal(env.state.transactions,1);
  assert.equal((await large.list('a@example.org')).length,1);
  assert.equal((await large.list('b@example.org')).length,0);
