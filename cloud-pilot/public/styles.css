@@ -49,3 +49,11 @@ a:hover{color:#c4ffe8}
 #cloudMediaStatus.error{color:#ffb8ad}
 .workspace-media-select{width:100%;background:#0c1a1e;color:var(--text);border:1px solid #36565c;border-radius:10px;padding:12px;min-height:44px}
 @media(max-width:600px){.cloud-media-section{padding:15px 12px}.cloud-media-section .workspace-actions button{width:100%}}
+
+/* New user-approved ZVM icon: images instead of legacy green 'Z' glyph. */
+.brand img.logo,.panel img.hero-mark{
+  display:block;object-fit:contain;background:transparent;box-shadow:none;
+  color:transparent;border:0;flex:0 0 auto;
+}
+.brand img.logo{width:42px;height:42px}
+.panel img.hero-mark{width:55px;height:55px;margin:0 auto 16px}
