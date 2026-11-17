@@ -55,6 +55,7 @@ for(const id of ids){
  assert(privacy.includes('aria-labelledby="heading-privacidade-'+id+'"'),id+' section heading binding missing');
 }
 assert(privacy.includes('/assets/'+readingCssFile),'privacy reading CSS missing');
+assert(!privacy.includes('/assets/zvm-r46-system.cf01433d7f45.css'),'legacy global hero 104px override leaked into Privacy');
 assert(!privacy.includes('/assets/'+cssFile),'privacy must not load obsolete error artwork CSS');
 assert(privacy.includes('class="zvm-trust-layout"'),'privacy two-column layout not rendered');
 assert(privacy.includes('class="zvm-trust-toc"'),'privacy navigation missing');
@@ -64,6 +65,7 @@ for(const [lang,html] of terms){
  assert(html.includes('<html lang="'+lang+'"'),'locale lost '+lang);
  assert(html.includes('class="terms-toc"')&&html.includes('class="terms-body"'),'terms canonical index/content broken');
  assert(html.includes('/assets/'+readingCssFile),'terms reading CSS not loaded');
+ assert(!html.includes('/assets/zvm-r46-system.cf01433d7f45.css'),'legacy global hero 104px override leaked into Terms');
  assert(!html.includes('/assets/'+cssFile),'terms must not load recovery artwork CSS');
  assert(html.includes('<main id="main-content" class="terms-main">'),'terms landmark changed');
  assert(html.includes('href="/privacidade"'),'terms privacy link missing');
