@@ -5529,10 +5529,10 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '42d17a62234b677c088e216baa0565ec3edc192f3345ac74661034405b1e2da8',
     compressible: true,
   }),
-  '/assets/zvm-sales-owner.76ccce3f6669.css': Object.freeze({
+  '/assets/zvm-sales-owner.a0ba31f21435.css': Object.freeze({
     type: 'text/css; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-sales-owner.76ccce3f6669.css'),
-    sha256: '76ccce3f666924644952fd3cce80e6bf881768526e360bdb76798a1da10eac5d',
+    file: path.join(__dirname, 'assets', 'zvm-sales-owner.a0ba31f21435.css'),
+    sha256: 'a0ba31f2143561ed7d1388a72c06698ee3a74b662c3463f1524635c2d9228d60',
     compressible: true,
   }),
   '/assets/zvm-r46-landing.af4c6e5c623b.css': Object.freeze({
@@ -11025,7 +11025,10 @@ async function handleRequest(req, res) {
       salesPaused: ZVM_SALES_PAUSED,
       escHtml,
       testimonialsJson: process.env.ZVM_SALES_TESTIMONIALS_JSON || '',
-      supportUrl: ZVM_SUPPORT_URL
+      supportUrl: ZVM_SUPPORT_URL,
+      // Use the exact same navbar as /planos, /faq and legal pages.
+      // Session only contributes the existing safe display name / login state.
+      publicNavHtml: _sharedNav({activePath:'/', portalUser:isPortalSession(req)?getPortalUser(req):null})
     })); return;
   }
   if (req.method === 'GET' && p === '/verificar') {
