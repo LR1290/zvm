@@ -7505,7 +7505,7 @@ function renderPrivacyPage(portalUser = null) {
 <title>ZVM — Política de Privacidade</title>
 <meta name="description" content="Política de Privacidade da ZVM - Automações: conta, licença, segurança, armazenamento local, integrações opcionais e direitos do usuário.">
 <link rel="icon" type="image/svg+xml" href="${_FAV}">
-${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PRIVACY}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_LEGAL_READING}</head>
+${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PRIVACY}${_CSS_PUBLIC_PREMIUM}${_CSS_LEGAL_READING}</head>
 <body class="zvm-public-premium zvm-legal-premium zvm-privacy-premium">
 ${_sharedNav({activePath:'/privacidade',portalUser,showBack:true})}
 <main id="main-content" class="zvm-privacy-main"><div class="page-hero">
@@ -7724,7 +7724,7 @@ function renderStandaloneTermsPage(portalUser = null, locale = 'pt-BR') {
 <link rel="alternate" hreflang="en" href="https://zvm.onrender.com/termos?lang=en">
 <link rel="alternate" hreflang="x-default" href="https://zvm.onrender.com/termos">
 <link rel="icon" type="image/svg+xml" href="${_FAV}">
-${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PRIVACY}${_CSS_TERMS}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_LEGAL_READING}</head>
+${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PRIVACY}${_CSS_TERMS}${_CSS_PUBLIC_PREMIUM}${_CSS_LEGAL_READING}</head>
 <body class="zvm-terms-page zvm-public-premium zvm-legal-premium">${_sharedNav({activePath:'/termos',portalUser,showBack:true})}
 <main id="main-content" class="terms-main">${renderTermsDocument(lang, ZVM_SUPPORT_URL)}</main>
 ${_standaloneFoot()}</body></html>`;
