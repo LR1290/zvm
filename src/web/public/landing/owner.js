@@ -9,7 +9,7 @@ const template = fs.readFileSync(path.join(__dirname, 'owner-template.html'), 'u
 const ownerBrandSourceMatch = template.match(/<footer[\s\S]*?<img src="(data:image\/png;base64,[A-Za-z0-9+/=]+)" alt="ZVM Automações">/);
 if (!ownerBrandSourceMatch) throw new Error('ZVM canonical header brand artwork missing');
 const OWNER_TOP_BRAND_SRC = ownerBrandSourceMatch[1];
-const OWNER_CSS_HREF = '/assets/zvm-sales-owner.a0ba31f21435.css';
+const OWNER_CSS_HREF = '/assets/zvm-sales-owner.a610cb96b94d.css';
 
 const PLAN_KEYS = Object.freeze({ SOLO: 'solo', PADRAO: 'padrao', PRO: 'pro' });
 
