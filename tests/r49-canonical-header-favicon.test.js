@@ -13,9 +13,9 @@ const localeSource=read('src/web/public/i18n.js');
 const {localizePublicHtml}=require('../src/web/public/i18n');
 const canonicalLogo=require('../src/web/public/landing/owner').OWNER_TOP_BRAND_SRC;
 
-assert(htmlTemplate.includes('<link rel="icon" type="image/png" href="/assets/zvm-brand.167357885820.png">'), 'homepage must declare favicon');
+assert(htmlTemplate.includes('<link rel="icon" type="image/png" href="/assets/zvm-icon.a6f91b5ec82b.png">'), 'homepage must declare favicon');
 assert(server.includes("if (p === '/favicon.ico'"), 'browser favicon fallback');
-assert(server.includes("Location: '/assets/zvm-brand.167357885820.png'"), 'fallback uses official PNG');
+assert(server.includes("Location: '/assets/zvm-icon.a6f91b5ec82b.png'"), 'fallback uses official PNG');
 assert(server.includes("const ZVM_CANONICAL_FAVICON ="), 'same official icon for auth/public/admin');
 assert(!fs.existsSync(path.join(root,'assets/zvm-sales-owner.a0ba31f21435.css')), 'old sales CSS retained');
 assert(!fs.existsSync(path.join(root,'assets/zvm-owner-site.42d17a62234b.css')), 'old public CSS retained');
@@ -60,13 +60,18 @@ for(const route of ['/', '/planos', '/faq', '/privacidade', '/termos']){
   assert(!rendered.includes('</nav><details class="zvm-language"'),route+' picker cannot overlap account CTA');
   assert(rendered.includes('/assets/zvm-i18n-public.5c4469481130.css'), route+' must include picker styles');
 }
-const start=server.indexOf('const ZVM_CANONICAL_FAVICON =');
+const start=server.indexOf('const ZVM_SITE_ICON =');
 const end=server.indexOf('function sendHtml(',start);
 assert(start>0&&end>start,'favicon helper located');
 const favicon=new Function(server.slice(start,end)+'\nreturn applyCanonicalFavicon;')();
 const sample='<html><head><title>test</title></head><body></body></html>';
 const once=favicon(sample);
-assert(once.includes('/assets/zvm-brand.167357885820.png'));
+assert(once.includes('/assets/zvm-icon.a6f91b5ec82b.png'));
 assert.equal(favicon(once),once,'favicon injection idempotent');
+const legacy='<html><head><link rel="icon" type="image/svg+xml" href="data:image/svg+xml,OLD"><title>ZVM</title><link rel="apple-touch-icon" href="/old.png"></head><body></body></html>';
+const cleansed=favicon(legacy);
+assert(!cleansed.includes('data:image/svg+xml,OLD'), 'legacy SVG icon must be removed');
+assert(!cleansed.includes('href="/old.png"'), 'legacy apple icon must be removed');
+assert.equal((cleansed.match(/rel="icon"/g)||[]).length,1,'one canonical browser icon');
 
 console.log('ZVM R49 header: all 5 routes canonical, picker inside buttons, font scope, favicon and mobile checks PASS');
