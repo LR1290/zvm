@@ -23,8 +23,8 @@ const pages=[
  ['register',api.renderStandalonePortalRegister(),'.auth-shell',true,'zvm-auth-premium.a96f915db3f4.css'],
  ['client',api.renderPortalDashboard(user,key,'',''),'.client-shell',false,'zvm-console-design.44762cb103f8.css'],
  ['admin',api.renderAdminDashboard({keysSnapshot:{[key.code]:key},portalUsers:[],portalUserCount:0}),'.admin-content',false,'zvm-console-design.44762cb103f8.css'],
- ['privacy',api.renderStandalonePrivacyPage(null),'.zvm-trust-layout',true,'zvm-legal-premium.a828eee21356.css'],
- ['terms',api.renderStandaloneTermsPage(null,'pt-BR'),'.terms-wrap',true,'zvm-legal-premium.a828eee21356.css'],
+ ['privacy',api.renderStandalonePrivacyPage(null),'.zvm-trust-layout',true,'zvm-legal-reading.49002e7e3dc1.css'],
+ ['terms',api.renderStandaloneTermsPage(null,'pt-BR'),'.terms-wrap',true,'zvm-legal-reading.49002e7e3dc1.css'],
  ['404',api.renderStandalone404Page(null),'.zvm-error-grid',true,'zvm-legal-premium.a828eee21356.css'],
  ['500',api.renderStandalone500Page(null),'.zvm-error-grid',true,'zvm-legal-premium.a828eee21356.css']
 ];
@@ -71,7 +71,10 @@ async function run(){
     });
     assert(rect.visible&&rect.width>0,name+'/'+width+' target hidden '+selector);
     assert(rect.page<=width+4,name+'/'+width+' horizontal overflow '+JSON.stringify(rect));
-    const min=width===1440?(centered?0.85:0.72):width===1920?(centered?0.82:0.72):(centered?0.69:0.67);
+    const legalDoc=name==='privacy'||name==='terms';
+    const min=legalDoc?(width===1440?0.72:width===1920?0.54:0.42):
+      width===1440?(centered?0.85:0.72):width===1920?(centered?0.82:0.72):(centered?0.69:0.67);
+    if(legalDoc)assert(rect.width<=1102,name+'/'+width+' legal document is too wide '+JSON.stringify(rect));
     assert(rect.width/width>=min,name+'/'+width+' still narrow / excessively centralized '+JSON.stringify({rect,expected:min}));
     if(centered){
      const imbalance=Math.abs(rect.x-(width-rect.right));
