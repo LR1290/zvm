@@ -12,7 +12,7 @@ assert.equal(canonical.OWNER_TOP_BRAND_SRC,logoInHome[1], 'same exact top image,
 assert(canonical.OWNER_TOP_BRAND_SRC.length>20000, 'real branded artwork');
 assert(template.includes('{{ZVM_PUBLIC_NAV}}'), 'owner template must mount exact same shared nav');
 assert(!template.includes('owner-mobile-menu'), 'retired second navbar');
-const css = fs.readFileSync(path.join(root,'assets/zvm-owner-site.42d17a62234b.css'),'utf8');
+const css = fs.readFileSync(path.join(root,'assets/zvm-owner-site.e10ede63c1f0.css'),'utf8');
 for (const part of ['.owner-panel-brand-img','.owner-nav-install','.owner-panel-rail-brand',
   '.znav-links.is-open','max-width:1150px','max-width:480px','prefers-reduced-motion']) {
   assert(css.includes(part), 'style contract missing '+part);
@@ -24,7 +24,7 @@ assert(s.includes('class="owner-nav-install"'), 'same install CTA in shared head
 assert(s.includes('class="client-rail-logo owner-panel-rail-brand"'), 'client rail brand');
 assert(s.includes("if (await serveZVMCloud(req, res, p)) return;"), 'Cloud unmodified');
 assert(s.includes("salesPaused: ZVM_SALES_PAUSED"), 'checkout gate still on server');
-const installed = '/assets/zvm-owner-site.42d17a62234b.css';
+const installed = '/assets/zvm-owner-site.e10ede63c1f0.css';
 assert(s.includes(installed), 'new visual asset must be registered');
 assert(!s.includes('zvm-owner-site.ddd1b37eb938.css'),'old visual CSS references not removed');
 assert(!fs.existsSync(path.join(root,'assets/zvm-owner-site.ddd1b37eb938.css')), 'old CSS still present');

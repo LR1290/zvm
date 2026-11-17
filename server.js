@@ -5523,16 +5523,16 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '8996142ec21d4769e5df12a06bafc7d80f748e9a6e698de5632737d272f857de',
     compressible: true,
   }),
-  '/assets/zvm-owner-site.42d17a62234b.css': Object.freeze({
+  '/assets/zvm-owner-site.e10ede63c1f0.css': Object.freeze({
     type: 'text/css; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-owner-site.42d17a62234b.css'),
-    sha256: '42d17a62234b677c088e216baa0565ec3edc192f3345ac74661034405b1e2da8',
+    file: path.join(__dirname, 'assets', 'zvm-owner-site.e10ede63c1f0.css'),
+    sha256: 'e10ede63c1f0d73eaf6cae01395114196f20178e6a4c34cf1516d62978a80918',
     compressible: true,
   }),
-  '/assets/zvm-sales-owner.a0ba31f21435.css': Object.freeze({
+  '/assets/zvm-sales-owner.a610cb96b94d.css': Object.freeze({
     type: 'text/css; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-sales-owner.a0ba31f21435.css'),
-    sha256: 'a0ba31f2143561ed7d1388a72c06698ee3a74b662c3463f1524635c2d9228d60',
+    file: path.join(__dirname, 'assets', 'zvm-sales-owner.a610cb96b94d.css'),
+    sha256: 'a610cb96b94de78e36d8cf6241b6497c319c228c2df0ae34c219a0ef5bf4e98c',
     compressible: true,
   }),
   '/assets/zvm-r46-landing.af4c6e5c623b.css': Object.freeze({
@@ -5842,19 +5842,26 @@ function sendJson(res, data, status = 200) {
 // Owner-approved identity is applied once, after each page's legacy sheets.
 // Scope to document types that actually use this theme; preserve the independent
 // sales homepage, API responses, assets, scripts, checkouts and Cloud application.
-const ZVM_OWNER_SITE_THEME = '<link rel="stylesheet" href="/assets/zvm-owner-site.42d17a62234b.css">';
+const ZVM_OWNER_SITE_THEME = '<link rel="stylesheet" href="/assets/zvm-owner-site.e10ede63c1f0.css">';
 function applyOwnerSiteTheme(html) {
   if (typeof html !== 'string' || !html.includes('</head>') ||
-      html.includes('/assets/zvm-owner-site.42d17a62234b.css')) return html;
+      html.includes('/assets/zvm-owner-site.e10ede63c1f0.css')) return html;
   if (!/<body\b[^>]*class=["'][^"']*\bzvm-(?:public-premium|client-premium|auth-premium|admin-r6)\b/.test(html)) {
     return html;
   }
   return html.replace('</head>', ZVM_OWNER_SITE_THEME + '</head>');
 }
 
+const ZVM_CANONICAL_FAVICON = '<link rel="icon" type="image/png" sizes="any" href="/assets/zvm-brand.167357885820.png">';
+function applyCanonicalFavicon(html) {
+  if (typeof html !== 'string' || !html.includes('</head>') ||
+      html.includes('href="/assets/zvm-brand.167357885820.png"')) return html;
+  return html.replace('</head>', ZVM_CANONICAL_FAVICON + '</head>');
+}
 function sendHtml(res, html, status = 200) {
   // Paginas sensiveis (portal/admin/analytics/erros de sessao) continuam NO-STORE.
   html = applyOwnerSiteTheme(html);
+  html = applyCanonicalFavicon(html);
   const buf = Buffer.from(html, 'utf8');
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
@@ -5918,6 +5925,7 @@ function sendAuthHtml(res, html, status = 200) {
   // The cookie is host-only, HttpOnly, Secure, SameSite=Strict and scoped to /cliente.
   html = decoratePortalForms(html, res);
   html = applyOwnerSiteTheme(html);
+  html = applyCanonicalFavicon(html);
   const buf = Buffer.from(html, 'utf8');
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
@@ -5938,11 +5946,8 @@ function sendPublicHtml(res, html, status = 200) {
   const request = res.req || {};
   const currentPath = new URL(String(request.url || '/'), 'https://zvm.invalid').pathname;
   const localeInfo = resolvePublicLocale(request);
-  if (currentPath === '/' && status === 200) {
-    // Owner-provided campaign layout is authored in pt-BR; don't apply translations
-    // belonging to the retired homepage (Planos, FAQ and legal remain localized).
-    res.setHeader('Content-Language', 'pt-BR');
-  } else if (['/planos', '/faq', '/privacidade', '/termos'].includes(currentPath) && status === 200) {
+  if (['/', '/planos', '/faq', '/privacidade', '/termos'].includes(currentPath) && status === 200) {
+    // Shared public navigation, locale and language-menu placement on every page.
     html = localizePublicHtml(html, localeInfo.locale, { path: currentPath });
     res.setHeader('Content-Language', localeInfo.locale);
     _appendVary(res, 'Accept-Language');
@@ -5956,6 +5961,7 @@ function sendPublicHtml(res, html, status = 200) {
   // - no-cache: navegador pode guardar, mas precisa revalidar antes de reutilizar;
   // - ETag: resposta identica vira 304 sem retransmitir dezenas de KB de HTML.
   html = applyOwnerSiteTheme(html);
+  html = applyCanonicalFavicon(html);
   const buf = Buffer.from(html, 'utf8');
   const etag = _htmlEtag(buf);
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -6787,7 +6793,7 @@ function renderAdminDashboard(opts = {}) {
 <link rel="stylesheet" href="/assets/zvm-r46-system.aa366d924866.css">
 <link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css">
 <link rel="stylesheet" href="/assets/zvm-console-design.44762cb103f8.css">
-<link rel="stylesheet" href="/assets/zvm-owner-site.42d17a62234b.css">
+<link rel="stylesheet" href="/assets/zvm-owner-site.e10ede63c1f0.css">
 <link rel="stylesheet" href="/assets/zvm-admin-dashboard.cd85ea19cc73.css">
 </head>
 <body class="zvm-admin-r6">
@@ -9028,6 +9034,15 @@ async function handleRequest(req, res) {
 
   if (handleSearchConsoleVerification(req, res, p)) return;
 
+  if (p === '/favicon.ico' && (req.method === 'GET' || req.method === 'HEAD')) {
+    // Standard browser path resolves to our existing official green ZVM icon.
+    res.writeHead(302, {
+      Location: '/assets/zvm-brand.167357885820.png',
+      'Cache-Control': 'public, max-age=86400'
+    });
+    res.end();
+    return;
+  }
   if (sendPublicAsset(req, res, p)) return;
   if (serveSSX2012(req, res, p)) return;
   // Cloud pilot follows the SSX subroute pattern: no second listener or service.

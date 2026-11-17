@@ -132,7 +132,12 @@ function localizePublicHtml(raw,locale,{path='/'}={}) {
   if(desc)html=html.replace(/(<meta\s+name="description"\s+content=")[^"]*(")/i,(_,before,after)=>before+desc+after);
   // Nav uses the same source renderer on public pages. Do not insert a second menu.
   const picker=languageOptionsMarkup(lang,path);
-  html=html.replace(/(<nav\s+class="znav[^"]*"[^>]*>[\s\S]*?)<\/nav>/i, (_,nav)=>nav+picker+'</nav>');
+  // Keep the language picker INSIDE the same action group as the account and
+  // install buttons. Appending it after .znav-links used to overlap the CTA.
+  const actionGroup=/(<div class="znav-action-links">[\s\S]*?)(<\/div><\/div>\s*<\/nav>)/i;
+  if(actionGroup.test(html)){
+    html=html.replace(actionGroup,(_,actions,closing)=>actions+picker+closing);
+  }
   html=html.replace('</head>','<link rel="stylesheet" href="/assets/zvm-i18n-public.5c4469481130.css"></head>');
   return html;
 }

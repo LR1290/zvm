@@ -8,14 +8,14 @@ const root = path.join(__dirname, '..');
 const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 const server = read('server.js');
 const owner = read('src/web/public/landing/owner-template.html');
-const themePath = 'assets/zvm-owner-site.42d17a62234b.css';
+const themePath = 'assets/zvm-owner-site.e10ede63c1f0.css';
 const theme = read(themePath);
-const ownerCssPath = 'assets/zvm-sales-owner.a0ba31f21435.css';
+const ownerCssPath = 'assets/zvm-sales-owner.a610cb96b94d.css';
 const ownerCss = read(ownerCssPath);
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 
-assert.equal(hash(theme), '42d17a62234b677c088e216baa0565ec3edc192f3345ac74661034405b1e2da8');
-assert.equal(hash(ownerCss), 'a0ba31f2143561ed7d1388a72c06698ee3a74b662c3463f1524635c2d9228d60');
+assert.equal(hash(theme), 'e10ede63c1f0d73eaf6cae01395114196f20178e6a4c34cf1516d62978a80918');
+assert.equal(hash(ownerCss), 'a610cb96b94de78e36d8cf6241b6497c319c228c2df0ae34c219a0ef5bf4e98c');
 for (const [file, digest] of [
   [themePath, hash(theme)],
   [ownerCssPath, hash(ownerCss)]
@@ -26,7 +26,7 @@ for (const [file, digest] of [
 assert(!fs.existsSync(path.join(root, 'assets/zvm-sales-owner.6a148f96da38.css')),
   'orphaned superseded owner stylesheet');
 assert(owner.includes('{{ZVM_OWNER_CSS}}'), 'CSS is rendered by the owner module');
-assert(server.includes('zvm-sales-owner.a0ba31f21435.css'));
+assert(server.includes('zvm-sales-owner.a610cb96b94d.css'));
 assert(!fs.existsSync(path.join(root, 'assets/zvm-sales-owner.76ccce3f6669.css')), 'superseded owner CSS not removed');
 assert(!owner.includes('6a148f96da38.css'));
 assert(owner.includes('{{ZVM_PUBLIC_NAV}}'), 'shared nav placeholder');
@@ -104,7 +104,7 @@ assert(server.includes('function renderCanonicalOwnerBrand()'), 'shared top bran
 assert(server.includes('class="znav-brand owner-panel-brand"'), 'public pages reuse owner header logo');
 assert(server.includes('class="owner-nav-install"'), 'shared top install button');
 assert(server.includes('class="client-rail-logo owner-panel-rail-brand"'), 'client rail reuses logo');
-assert(server.includes('/assets/zvm-owner-site.42d17a62234b.css'), 'latest stylesheet');
+assert(server.includes('/assets/zvm-owner-site.e10ede63c1f0.css'), 'latest stylesheet');
 assert(theme.includes('.owner-panel-brand-img'), 'top logo styled');
 assert(theme.includes('.owner-nav-install'), 'install button styled');
 assert(theme.includes('.znav-links.is-open'), 'mobile nav remains working');

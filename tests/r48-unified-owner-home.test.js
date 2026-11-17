@@ -6,7 +6,7 @@ const Module = require('node:module');
 const root = path.join(__dirname, '..');
 const read = p => fs.readFileSync(path.join(root,p),'utf8');
 const template=read('src/web/public/landing/owner-template.html');
-const homeCssPath='assets/zvm-sales-owner.a0ba31f21435.css';
+const homeCssPath='assets/zvm-sales-owner.a610cb96b94d.css';
 const homeCss=read(homeCssPath);
 const server=read('server.js');
 const owner=require('../src/web/public/landing/owner');
@@ -72,7 +72,7 @@ for(const page of [render(null),render({name:'Cliente Teste',email:'client@examp
  assert(page.includes('class="owner-nav-install"'),'same install CTA');
  assert(page.includes('class="nav-menu-toggle"'),'shared mobile menu');
  assert(page.includes('/assets/zvm-nav.d7d7bba83d44.js'),'real nav toggle wired');
- assert(page.includes('/assets/zvm-sales-owner.a0ba31f21435.css'),'fingerprinted site stylesheet');
+ assert(page.includes('/assets/zvm-sales-owner.a610cb96b94d.css'),'fingerprinted site stylesheet');
  assert(!page.includes('{{ZVM_'),'all server tokens resolved');
  assert(page.includes('id="aviso" role="status"'), 'sales pause visible');
  assert(!page.includes('https://pay.cakto.com.br/'), 'no direct payment bypass');
