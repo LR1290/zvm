@@ -5608,6 +5608,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: 'ab131a22bcdd11998b7564618bc24d7159f2ffd1fbece5c2475350d3a446404a',
     compressible: true,
   }),
+  '/assets/zvm-legal-reading.49002e7e3dc1.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-legal-reading.49002e7e3dc1.css'),
+    sha256: '49002e7e3dc1e341831d1532929de7806ca9b1b11773e0db603fc8321b66806b',
+    compressible: true,
+  }),
   '/assets/zvm-legal-premium.a828eee21356.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-legal-premium.a828eee21356.css'),
@@ -7199,6 +7205,7 @@ const _CSS_PUBLIC_EXPERIENCE = '<link rel="stylesheet" href="/assets/zvm-public-
 const _CSS_REFERENCE_PUBLIC = '<link rel="stylesheet" href="/assets/zvm-reference-public.19040fd11331.css">';
 const _CSS_SALES_STATE = '<link rel="stylesheet" href="/assets/zvm-sales-state.1422fd551ff5.css">';
 const _CSS_LEGAL_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-legal-premium.a828eee21356.css">';
+const _CSS_LEGAL_READING = '<link rel="stylesheet" href="/assets/zvm-legal-reading.49002e7e3dc1.css">';
 const _CSS_ANALYTICS_PREMIUM = '<link rel="stylesheet" href="/assets/zvm-analytics-premium.e8ce624836b1.css">';
 const _CSS_FAQ = '<link rel="stylesheet" href="/assets/zvm-faq.b388ca55cbf4.css">';
 const _CSS_PRIVACY = '<link rel="stylesheet" href="/assets/zvm-privacy.7be30b7da0a1.css">';
@@ -7498,7 +7505,7 @@ function renderPrivacyPage(portalUser = null) {
 <title>ZVM — Política de Privacidade</title>
 <meta name="description" content="Política de Privacidade da ZVM - Automações: conta, licença, segurança, armazenamento local, integrações opcionais e direitos do usuário.">
 <link rel="icon" type="image/svg+xml" href="${_FAV}">
-${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PRIVACY}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_LEGAL_PREMIUM}</head>
+${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PRIVACY}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_LEGAL_READING}</head>
 <body class="zvm-public-premium zvm-legal-premium zvm-privacy-premium">
 ${_sharedNav({activePath:'/privacidade',portalUser,showBack:true})}
 <main id="main-content" class="zvm-privacy-main"><div class="page-hero">
@@ -7717,7 +7724,7 @@ function renderStandaloneTermsPage(portalUser = null, locale = 'pt-BR') {
 <link rel="alternate" hreflang="en" href="https://zvm.onrender.com/termos?lang=en">
 <link rel="alternate" hreflang="x-default" href="https://zvm.onrender.com/termos">
 <link rel="icon" type="image/svg+xml" href="${_FAV}">
-${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PRIVACY}${_CSS_TERMS}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_LEGAL_PREMIUM}</head>
+${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PRIVACY}${_CSS_TERMS}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_LEGAL_READING}</head>
 <body class="zvm-terms-page zvm-public-premium zvm-legal-premium">${_sharedNav({activePath:'/termos',portalUser,showBack:true})}
 <main id="main-content" class="terms-main">${renderTermsDocument(lang, ZVM_SUPPORT_URL)}</main>
 ${_standaloneFoot()}</body></html>`;
