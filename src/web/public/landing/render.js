@@ -69,7 +69,7 @@ function createLandingRenderer({ escHtml, favicon, sharedCssLink, landingCssLink
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM - Automações | CRM e automação no WhatsApp Web</title>
 <meta name="description" content="CRM, Disparos, Fluxos, Funis, Biblioteca, Agenda, FollowUp e Assistentes IA integrados ao WhatsApp Web.">
-<link rel="icon" type="image/svg+xml" href="${favicon}">${sharedCssLink}${landingCssLink}</head>
+<link rel="icon" type="image/png" href="${favicon}">${sharedCssLink}${landingCssLink}</head>
 <body class="r466-body zvm-public-premium zvm-experience">${typeof publicNav === 'function' ? publicNav(portalUser) : `<a class="r466-skip" href="#main-content">Pular para o conteúdo</a>`}
 <main id="main-content">
 ${salesPaused ? '<section class="r466-sales-paused" role="status" aria-label="Comunicado sobre vendas"><strong>Vendas temporariamente suspensas.</strong> Estamos ajustando o sistema de compras. Nenhum novo checkout está disponível pelo site neste momento. Licenças existentes e compras já pagas continuam atendidas. <a href="/faq">Ver informações e suporte</a>.</section>' : ''}
