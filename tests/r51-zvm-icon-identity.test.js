@@ -1,0 +1,57 @@
+'use strict';
+/* R51: user-supplied ZVM red symbol is the only site favicon/icon.
+   The full ZVM AUTOMAÇÕES wordmark remains a brand logo, not a favicon. */
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const crypto=require('node:crypto');
+const path=require('node:path');
+const root=path.resolve(__dirname,'..');
+const read=x=>fs.readFileSync(path.join(root,x),'utf8');
+const iconFile='assets/zvm-icon.a6f91b5ec82b.png';
+const iconURL='/'+iconFile;
+const icon=fs.readFileSync(path.join(root,iconFile));
+const digest=crypto.createHash('sha256').update(icon).digest('hex');
+assert.equal(digest,'a6f91b5ec82baae3f19234ab540fe79c190f021cd968d6216607e351b2c387ea','ZVM user supplied icon fingerprint');
+assert.equal(icon.subarray(0,8).toString('hex'),'89504e470d0a1a0a','real PNG, not base64 placeholder');
+assert.equal(icon.readUInt32BE(16),32,'favicon native source width');
+assert.equal(icon.readUInt32BE(20),32,'favicon native source height');
+assert(!fs.existsSync(path.join(root,'assets/zvm-brand.167357885820.png')), 'obsolete green icon file must be retired');
+const server=read('server.js');
+const tpl=read('src/web/public/landing/owner-template.html');
+const footer=read('src/web/public/footer.js');
+const cloud=read('cloud-pilot/public/index.html');
+const cloudCSS=read('cloud-pilot/public/styles.css');
+assert(!server.includes('zvm-brand.167357885820.png'),'old icon in server');
+assert(!footer.includes('zvm-brand.167357885820.png'),'old footer icon');
+assert(server.includes("'"+iconURL+"': Object.freeze({"),'immutable static icon route missing');
+assert(server.includes("sha256: '"+digest+"'"),'asset registry digest missing');
+assert(server.includes("const ZVM_SITE_ICON = '"+iconURL+"'"),'one global new favicon path');
+assert(server.includes("const _FAV = '"+iconURL+"'"),'auth/admin pages must not use SVG data-URL favicon');
+assert(server.includes("const ZVM_BRAND_ICON_ASSET = '"+iconURL+"'"),'client/admin ZVM mark not replaced');
+assert(server.includes("Location: '"+iconURL+"'"),'/favicon.ico fallback');
+assert(!/href="data:image\/svg\+xml,%3Csvg/i.test(server),'legacy inline SVG page favicon persisted');
+assert(!/const _FAV\s*=\s*"data:image\/svg\+xml/i.test(server),'legacy embedded SVG mark persisted');
+assert(tpl.includes('<link rel="icon" type="image/png" sizes="32x32" href="'+iconURL+'">'),'home favicon');
+assert(tpl.includes('<link rel="apple-touch-icon" href="'+iconURL+'">'),'home touch icon');
+assert(footer.includes('<img src="'+iconURL+'"'),'site footer icon');
+assert(cloud.includes('<link rel="icon" type="image/png" sizes="32x32" href="'+iconURL+'">'),'ZVM Cloud favicon');
+assert((cloud.match(new RegExp(iconFile.replace(/\./g,'\\.'),'g'))||[]).length>=4,'Cloud brand and icons not replaced');
+assert(!cloud.includes('class="hero-mark">Z<'),'Cloud old Z icon survived');
+assert(cloudCSS.includes('.brand img.logo,.panel img.hero-mark'),'Cloud symbol has no legacy green background');
+assert(server.includes('OWNER_TOP_BRAND_SRC'),'full brand wordmark preserved');
+assert(tpl.includes('{{ZVM_PUBLIC_NAV}}'),'site nav is intact');
+
+const start=server.indexOf('const ZVM_SITE_ICON =');
+const end=server.indexOf('function sendHtml(',start);
+assert(start>0&&end>start);
+const favicon=new Function(server.slice(start,end)+'\nreturn applyCanonicalFavicon;')();
+const templateHtml='<html><head><title>ZVM</title><link rel="icon" type="image/svg+xml" href="data:image/svg+xml,LEGACY"><link rel="apple-touch-icon" href="/old.png"></head><body><img src="/safe.png"></body></html>';
+const output=favicon(templateHtml);
+assert(!output.includes('data:image/svg+xml,LEGACY'),'old SVG favicon left in page');
+assert(!output.includes('/old.png'),'old touch icon left in page');
+assert.equal((output.match(/rel="icon"/g)||[]).length,1,'duplicate favicon links');
+assert.equal((output.match(/rel="apple-touch-icon"/g)||[]).length,1,'duplicate touch icons');
+assert.equal(favicon(output),output,'favicon normalization must be idempotent');
+assert(output.includes('<img src="/safe.png">'),'body images must be untouched');
+
+console.log('R51 new user icon: SHA-256, favicon, authenticated pages, admin, footer, Cloud, cached ICO and cleanup PASS');
