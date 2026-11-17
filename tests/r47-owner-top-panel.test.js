@@ -6,10 +6,12 @@ const Module = require('node:module');
 const root = path.join(__dirname, '..');
 const canonical = require('../src/web/public/landing/owner');
 const template = fs.readFileSync(path.join(root,'src/web/public/landing/owner-template.html'),'utf8');
-const logoInHome = template.match(/<a href="\/" aria-label="ZVM Automações"><img src="(data:image\/png;base64,[A-Za-z0-9+/=]+)"/);
+const logoInHome = template.match(/<footer[\s\S]*?<img src="(data:image\/png;base64,[A-Za-z0-9+/=]+)" alt="ZVM Automações">/);
 assert(logoInHome, 'sale homepage canonical artwork');
 assert.equal(canonical.OWNER_TOP_BRAND_SRC,logoInHome[1], 'same exact top image, not an imitation');
 assert(canonical.OWNER_TOP_BRAND_SRC.length>20000, 'real branded artwork');
+assert(template.includes('{{ZVM_PUBLIC_NAV}}'), 'owner template must mount exact same shared nav');
+assert(!template.includes('owner-mobile-menu'), 'retired second navbar');
 const css = fs.readFileSync(path.join(root,'assets/zvm-owner-site.42d17a62234b.css'),'utf8');
 for (const part of ['.owner-panel-brand-img','.owner-nav-install','.owner-panel-rail-brand',
   '.znav-links.is-open','max-width:1150px','max-width:480px','prefers-reduced-motion']) {
