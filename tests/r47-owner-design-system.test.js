@@ -10,12 +10,12 @@ const server = read('server.js');
 const owner = read('src/web/public/landing/owner-template.html');
 const themePath = 'assets/zvm-owner-site.42d17a62234b.css';
 const theme = read(themePath);
-const ownerCssPath = 'assets/zvm-sales-owner.76ccce3f6669.css';
+const ownerCssPath = 'assets/zvm-sales-owner.a0ba31f21435.css';
 const ownerCss = read(ownerCssPath);
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 
 assert.equal(hash(theme), '42d17a62234b677c088e216baa0565ec3edc192f3345ac74661034405b1e2da8');
-assert.equal(hash(ownerCss), '76ccce3f666924644952fd3cce80e6bf881768526e360bdb76798a1da10eac5d');
+assert.equal(hash(ownerCss), 'a0ba31f2143561ed7d1388a72c06698ee3a74b662c3463f1524635c2d9228d60');
 for (const [file, digest] of [
   [themePath, hash(theme)],
   [ownerCssPath, hash(ownerCss)]
@@ -25,10 +25,14 @@ for (const [file, digest] of [
 }
 assert(!fs.existsSync(path.join(root, 'assets/zvm-sales-owner.6a148f96da38.css')),
   'orphaned superseded owner stylesheet');
-assert(owner.includes('/'+ownerCssPath));
+assert(owner.includes('{{ZVM_OWNER_CSS}}'), 'CSS is rendered by the owner module');
+assert(server.includes('zvm-sales-owner.a0ba31f21435.css'));
+assert(!fs.existsSync(path.join(root, 'assets/zvm-sales-owner.76ccce3f6669.css')), 'superseded owner CSS not removed');
 assert(!owner.includes('6a148f96da38.css'));
-assert(owner.includes('class="owner-mobile-menu"'));
-assert(owner.includes('class="owner-skip-link"'));
+assert(owner.includes('{{ZVM_PUBLIC_NAV}}'), 'shared nav placeholder');
+assert(!owner.includes('owner-mobile-menu'), 'legacy duplicate nav must be retired');
+assert(owner.includes('class="zvm-public-premium zvm-owner-landing"'));
+assert(server.includes('publicNavHtml: _sharedNav({activePath:'), 'navbar must come from single shared renderer');
 assert(owner.includes('id="main-content"'));
 assert(owner.includes('href="/cliente"'));
 assert(owner.includes('href="/faq"'));
@@ -53,8 +57,19 @@ for(const surface of ['.faq-item','.price-card','.doc-section','.terms-section',
 }
 assert(theme.includes('prefers-reduced-motion'));
 assert(theme.includes('max-width:600px'));
-assert(ownerCss.includes('owner-mobile-menu[open]'));
-assert(ownerCss.includes('max-width:390px'));
+assert(ownerCss.includes('body.zvm-owner-landing .hero'));
+assert(ownerCss.includes('body.zvm-owner-landing .mock'));
+assert(ownerCss.includes('body.zvm-owner-landing .owner-sale-status'));
+assert(ownerCss.includes('body.zvm-owner-landing .wrap'));
+assert(ownerCss.includes('body.zvm-owner-landing .znav.standalone-nav'));
+assert(!ownerCss.includes('owner-mobile-menu'), 'old native nav CSS residual must be absent');
+assert(ownerCss.includes('max-width:600px'));
+assert(ownerCss.includes('prefers-reduced-motion'));
+assert(ownerCss.includes('.cards.c4'));
+assert(ownerCss.includes('.cards.c3'));
+assert(ownerCss.includes('.hero .grid'));
+assert(ownerCss.includes('color:#aef2ce'));
+assert(!owner.includes('<header>'), 'old redundant header removed');
 const helperStart = server.indexOf('const ZVM_OWNER_SITE_THEME =');
 const helperEnd = server.indexOf('function sendHtml(', helperStart);
 assert(helperStart > 0 && helperEnd > helperStart, 'missing theme adapter');
