@@ -25,11 +25,11 @@ for(const [name,hash,old,selectors] of assets){
  assert(!fresh.includes('!important'),'R47.04 must add no specificity overrides: '+name);
 }
 // A global R46 legacy CSS !important had neutralized R47.04 backgrounds.
-const systemFile='zvm-r46-system.aa366d924866.css';
+const systemFile='zvm-r46-system.cf01433d7f45.css';
 const legacySystemFile='zvm-r46-system.8873e4d662f5.css';
 const systemCss=fs.readFileSync(path.join(root,'assets',systemFile),'utf8');
 assert.equal(crypto.createHash('sha256').update(systemCss).digest('hex'),
- 'aa366d92486687fb82d3e3dc17f5f846c204f1b3ac799b76d6c7a427932306cf',
+ 'cf01433d7f45c6054eefdc7a33b8f80c225b94bbe2c927b04a1ebe1809a79b6b',
  'immutable global CSS fingerprint');
 assert(server.includes('/assets/'+systemFile),'new canonical system CSS not linked');
 assert(!server.includes(legacySystemFile),'obsolete global CSS registry leaked');
