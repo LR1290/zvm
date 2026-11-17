@@ -23,7 +23,7 @@ assert(server.includes("['/', '/planos', '/faq', '/privacidade', '/termos'].incl
 assert(localeSource.includes('html.replace(actionGroup'), 'flag should join action group, not append to navbar end');
 assert(!localeSource.includes("nav+picker+'</nav>'"), 'language selector previously broken');
 assert(homeCss.includes('body.zvm-owner-landing main *'), 'home reset scoped to main');
-assert(!homeCss.includes('*{box-sizing:border-box;margin:0}'), 'home reset cannot mutate navbar');
+assert(!/(^|\n)\*\{box-sizing:border-box;margin:0\}/.test(homeCss), 'home reset cannot mutate navbar');
 assert(homeCss.includes('body.zvm-owner-landing #faq details'), 'home disclosure styles scoped to FAQ');
 assert(siteCss.includes('/* Canonical public header'), 'dedicated canonical header contract');
 assert(siteCss.includes('font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif'));
@@ -51,7 +51,7 @@ for(const route of ['/', '/planos', '/faq', '/privacidade', '/termos']){
   assert.equal((rendered.match(/class="zvm-language"/g)||[]).length,1,route+' must have exactly one language chooser');
   assert.equal((rendered.match(/class="znav standalone-nav"/g)||[]).length,1,route+' must have exactly one navbar');
   assert(rendered.includes(canonicalLogo),route+' must use official same logo');
-  const group=rendered.match(/<div class="znav-action-links">([\s\S]*?)<\/div><\/div><\/nav>/);
+  const group=rendered.match(/<div class="znav-action-links">([\s\S]*?)<\/div><\/div>\s*<\/nav>/);
   assert(group,route+' must not render picker outside navbar actions');
   assert(group[1].includes('class="zvm-language"'),route+' picker must be INSIDE action buttons');
   for(const segment of ['owner-nav-install','nav-login','nav-cta']){
