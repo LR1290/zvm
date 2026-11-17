@@ -5867,8 +5867,8 @@ function applyCanonicalFavicon(html) {
   // Never let a stale SVG/data-URL icon win because of link ordering.
   // Replace links only in HEAD; do not alter product images, logos or body SVGs.
   const end=html.indexOf('</head>');
-  const head=html.slice(0,end).replace(/<link\\b(?=[^>]*\\brel=["'](?:shortcut\\s+)?icon["'])[^>]*>\\s*/gi,'')
-     .replace(/<link\\b(?=[^>]*\\brel=["']apple-touch-icon["'])[^>]*>\\s*/gi,'');
+  const head=html.slice(0,end).replace(/<link\b(?=[^>]*\brel=["'](?:shortcut\s+)?icon["'])[^>]*>\s*/gi,'')
+     .replace(/<link\b(?=[^>]*\brel=["']apple-touch-icon["'])[^>]*>\s*/gi,'');
   return head + ZVM_CANONICAL_FAVICON + html.slice(end);
 }
 function sendHtml(res, html, status = 200) {
