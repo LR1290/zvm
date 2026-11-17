@@ -6,9 +6,10 @@ const path = require('node:path');
 // Owner-approved landing markup. Keep sales authority on the server, never in client JS.
 const template = fs.readFileSync(path.join(__dirname, 'owner-template.html'), 'utf8');
 
-const ownerBrandSourceMatch = template.match(/<a href="\/" aria-label="ZVM Automações"><img src="(data:image\/png;base64,[A-Za-z0-9+/=]+)" alt="ZVM Automações"><\/a>/);
+const ownerBrandSourceMatch = template.match(/<footer[\s\S]*?<img src="(data:image\/png;base64,[A-Za-z0-9+/=]+)" alt="ZVM Automações">/);
 if (!ownerBrandSourceMatch) throw new Error('ZVM canonical header brand artwork missing');
 const OWNER_TOP_BRAND_SRC = ownerBrandSourceMatch[1];
+const OWNER_CSS_HREF = '/assets/zvm-sales-owner.a0ba31f21435.css';
 
 const PLAN_KEYS = Object.freeze({ SOLO: 'solo', PADRAO: 'padrao', PRO: 'pro' });
 
@@ -36,10 +37,15 @@ function approvedTestimonials(raw, escHtml) {
     '<div class="cards c3">' + cards + '</div></div></section>';
 }
 
-function renderOwnerSalesLanding({ plans, salesPaused, escHtml, testimonialsJson = '', supportUrl = '' }) {
+function renderOwnerSalesLanding({ plans, salesPaused, escHtml, testimonialsJson = '', supportUrl = '', publicNavHtml }) {
   if (!plans || typeof escHtml !== 'function') throw new TypeError('Missing sales page dependencies');
+  if (typeof publicNavHtml !== 'string' || !publicNavHtml.includes('class="znav standalone-nav"')) {
+    throw new TypeError('Missing canonical public navigation');
+  }
   const paused = salesPaused !== false;
   const tokens = Object.create(null);
+  tokens.ZVM_OWNER_CSS = OWNER_CSS_HREF;
+  tokens.ZVM_PUBLIC_NAV = publicNavHtml;
   tokens.ZVM_NOTICE_HIDDEN = paused ? '' : ' hidden';
   tokens.ZVM_NOTE_HIDDEN = paused ? '' : ' hidden';
   tokens.ZVM_TESTIMONIALS = approvedTestimonials(testimonialsJson, escHtml);
