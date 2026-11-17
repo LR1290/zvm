@@ -44,6 +44,8 @@ on:
       - 'tests/r47-04-unified-chromium.test.js'
       - 'tests/r47-05-wide-desktop.test.js'
       - 'tests/r47-05-wide-desktop-chromium.test.js'
+      - 'tests/r50-public-nav-chromium.test.js'
+      - 'tests/r50-public-nav-font-cascade.test.js'
       - 'tests/r47-04-commercial-fail-closed.test.js'
       - 'tests/r47-03-portal-trust.test.js'
       - '.github/workflows/ui-visual-r46-94.yml'
@@ -70,6 +72,10 @@ jobs:
         run: |
           npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund playwright@1.65.0
           npx playwright install --with-deps chromium
+      - name: Canonical public navbar font parity (R50) - real Chromium
+        env:
+          CI: 'true'
+        run: node tests/r50-public-nav-chromium.test.js
       - name: Browser QA with mock users (never production)
         env:
           CI: 'true'

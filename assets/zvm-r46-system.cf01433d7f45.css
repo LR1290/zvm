@@ -21,17 +21,17 @@ body>header,body>nav,body>main,body>footer,body>.auth-shell,body>.client-app,bod
 .r466-brand::after{left:-4px}
 
 /* Shared surfaces and controls */
-.znav,.client-app-topbar,.analytics-topbar,body.zvm-admin-r6>header{background:rgba(2,8,5,.82);border-color:var(--zvm-line);backdrop-filter:blur(18px) saturate(125%)}
+body:not(.zvm-public-premium) .znav,.client-app-topbar,.analytics-topbar,body.zvm-admin-r6>header{background:rgba(2,8,5,.82);border-color:var(--zvm-line);backdrop-filter:blur(18px) saturate(125%)}
 .r466-plan,.price-card,.auth-form-card,.client-app-card,.client-app-mini,.client-app-rail-card,.sc,.sec,.analytics-hero,.analytics-pulse,.analytics-insights>*,.admin-overview,.admin-pulse,.chart-card,.viz-frame,.doc-section,.faq-item{background:linear-gradient(180deg,rgba(8,20,13,.90),rgba(4,11,7,.90));border-color:var(--zvm-line);box-shadow:0 16px 48px rgba(0,0,0,.18)}
 .r466-plan:hover,.price-card:hover,.client-app-mini:hover,.sc:hover,.admin-pulse:hover{border-color:var(--zvm-line-strong);box-shadow:0 18px 56px rgba(0,0,0,.28),0 0 0 1px rgba(22,233,125,.04)}
-.r466-btn,.r466-plan-cta,.plan-btn,.auth-submit,.btn,.nav-cta,.nav-store{border-radius:12px!important;min-height:44px;transition:transform .16s ease,border-color .16s ease,background .16s ease,box-shadow .16s ease}
-.r466-btn:hover,.r466-plan-cta:hover,.plan-btn:hover,.auth-submit:hover,.btn:hover,.nav-cta:hover,.nav-store:hover{transform:translateY(-1px);box-shadow:0 10px 28px rgba(22,233,125,.10)}
+.r466-btn,.r466-plan-cta,.plan-btn,.auth-submit,.btn,body:not(.zvm-public-premium) .nav-cta,.nav-store{border-radius:12px!important;min-height:44px;transition:transform .16s ease,border-color .16s ease,background .16s ease,box-shadow .16s ease}
+.r466-btn:hover,.r466-plan-cta:hover,.plan-btn:hover,.auth-submit:hover,.btn:hover,body:not(.zvm-public-premium) .nav-cta:hover,.nav-store:hover{transform:translateY(-1px);box-shadow:0 10px 28px rgba(22,233,125,.10)}
 
-/* Unified typography */
-body,button,input,select,textarea{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif!important}
-.logo,.znav-brand,.page-hero-tag,.sc .n,.sc .l,.badge-an,.price-tier,.analytics-title,.analytics-hero-kicker{font-family:inherit!important}
+/* Legacy dashboard typography. Public nav is exclusively owned by the public theme. */
+body:not(.zvm-public-premium),body:not(.zvm-public-premium) button,body:not(.zvm-public-premium) input,body:not(.zvm-public-premium) select,body:not(.zvm-public-premium) textarea{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif!important}
+.logo,body:not(.zvm-public-premium) .znav-brand,.page-hero-tag,.sc .n,.sc .l,.badge-an,.price-tier,.analytics-title,.analytics-hero-kicker{font-family:inherit!important}
 .page-hero-tag,.buyer-box-label,.badge-an,.sc .l,.admin-auth-tag{text-transform:none!important;letter-spacing:0!important}
-.znav-links a{text-transform:none!important;letter-spacing:0!important}
+body:not(.zvm-public-premium) .znav-links a{text-transform:none!important;letter-spacing:0!important}
 .logo-ver,.hdr-meta,.admin-auth-meta span{font-size:14px!important}
 
 /* Plan consistency */
@@ -88,11 +88,11 @@ body.zvm-admin-r6 .admin-content,.analytics-workspace{background:transparent!imp
   .r466-plan,.price-card,.auth-form-card,.client-app-card,.client-app-mini,.sc,.sec,.analytics-hero,.admin-overview{border-width:2px!important}
 }
 
-/* Cross-surface identity alignment */
-.znav{min-height:72px!important;height:72px!important;padding-inline:max(22px,calc((100vw - 1240px)/2))!important}
-.znav [data-zvm-mark="1"]{width:38px!important;height:38px!important;object-fit:contain}
-.znav-links{gap:10px!important}
-.znav-links a{font-size:15px!important;font-weight:650!important}
+/* Legacy dashboard navigation only: never override ZVM public-site header. */
+body:not(.zvm-public-premium) .znav{min-height:72px!important;height:72px!important;padding-inline:max(22px,calc((100vw - 1240px)/2))!important}
+body:not(.zvm-public-premium) .znav [data-zvm-mark="1"]{width:38px!important;height:38px!important;object-fit:contain}
+body:not(.zvm-public-premium) .znav-links{gap:10px!important}
+body:not(.zvm-public-premium) .znav-links a{font-size:15px!important;font-weight:650!important}
 .r466-plan,.price-card{min-height:100%;border-radius:20px!important;position:relative;overflow:hidden}
 .r466-plan.is-featured,.price-card.featured{background:linear-gradient(180deg,rgba(12,43,28,.94),rgba(5,17,11,.94))!important;border-color:rgba(22,233,125,.52)!important;box-shadow:0 24px 70px rgba(0,0,0,.28),0 0 42px rgba(22,233,125,.06)!important}
 .r466-plan-badge,.price-badge{background:rgba(22,233,125,.14)!important;color:var(--zvm-green-2)!important;border:1px solid rgba(22,233,125,.24)!important;border-radius:999px!important}
@@ -101,7 +101,7 @@ body.zvm-admin-r6 .admin-content,.analytics-workspace{background:transparent!imp
 .r466-plan li,.price-feats li{color:#b8c8bf!important}
 .r466-plan-cta,.plan-btn{border-color:var(--zvm-line-strong)!important;background:rgba(3,11,7,.72)!important;color:#eff8f3!important}
 .r466-plan-cta:hover,.plan-btn:hover{border-color:rgba(22,233,125,.55)!important;background:rgba(22,233,125,.09)!important;color:#fff!important}
-@media(max-width:760px){.znav{height:68px!important;min-height:68px!important;padding-inline:18px!important}}
+@media(max-width:760px){body:not(.zvm-public-premium) .znav{height:68px!important;min-height:68px!important;padding-inline:18px!important}}
 
 
 /* R46.14 — motion compositor-first + foco ZVM nítido */
@@ -114,7 +114,7 @@ body::after{animation:zvmWaveDriftBack60 23s linear infinite alternate!important
 /* links/botões: outline neon seco; campos usam borda própria */
 a:focus-visible,button:focus-visible,summary:focus-visible,[tabindex]:focus-visible{outline:2px solid #18f295!important;outline-offset:3px!important;box-shadow:0 0 0 1px rgba(24,242,149,.32)!important}
 input:focus-visible,select:focus-visible,textarea:focus-visible{outline:none!important}
-.znav-links a.nav-active{color:#37f7a5!important;border-color:#18f295!important;box-shadow:inset 0 0 0 1px rgba(24,242,149,.24)!important;background:rgba(22,233,125,.09)!important}
+body:not(.zvm-public-premium) .znav-links a.nav-active{color:#37f7a5!important;border-color:#18f295!important;box-shadow:inset 0 0 0 1px rgba(24,242,149,.24)!important;background:rgba(22,233,125,.09)!important}
 .need-opt input:focus-visible+span{outline:2px solid #18f295!important;outline-offset:2px!important;box-shadow:none!important}
 @media(prefers-reduced-motion:reduce){body::before,body::after{animation:none!important;transform:none!important}}
 
