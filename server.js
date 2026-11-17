@@ -5411,11 +5411,6 @@ const _PUBLIC_ASSETS = Object.freeze({
     file: path.join(__dirname, 'assets', 'zvm-icon.a6f91b5ec82b.png'),
     sha256: 'a6f91b5ec82baae3f19234ab540fe79c190f021cd968d6216607e351b2c387ea',
   }),
-  '/assets/zvm-brand.167357885820.png': Object.freeze({
-    type: 'image/png',
-    file: path.join(__dirname, 'assets', 'zvm-brand.167357885820.png'),
-    sha256: '16735788582078e978a4fa802da332c90b96b9172bbcfa88bce7d407fee783ce',
-  }),
   '/assets/lr1290-avatar.313ed8884277.png': Object.freeze({
     type: 'image/png',
     file: path.join(__dirname, 'assets', 'lr1290-avatar.313ed8884277.png'),
