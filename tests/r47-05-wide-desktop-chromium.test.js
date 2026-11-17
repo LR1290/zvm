@@ -23,8 +23,8 @@ const pages=[
  ['register',api.renderStandalonePortalRegister(),'.auth-shell',true,'zvm-auth-premium.a96f915db3f4.css'],
  ['client',api.renderPortalDashboard(user,key,'',''),'.client-shell',false,'zvm-console-design.44762cb103f8.css'],
  ['admin',api.renderAdminDashboard({keysSnapshot:{[key.code]:key},portalUsers:[],portalUserCount:0}),'.admin-content',false,'zvm-console-design.44762cb103f8.css'],
- ['privacy',api.renderStandalonePrivacyPage(null),'.zvm-trust-layout',true,'zvm-legal-premium.a828eee21356.css'],
- ['terms',api.renderStandaloneTermsPage(null,'pt-BR'),'.terms-wrap',true,'zvm-legal-premium.a828eee21356.css'],
+ ['privacy',api.renderStandalonePrivacyPage(null),'.zvm-trust-layout',true,'zvm-legal-reading.49002e7e3dc1.css'],
+ ['terms',api.renderStandaloneTermsPage(null,'pt-BR'),'.terms-wrap',true,'zvm-legal-reading.49002e7e3dc1.css'],
  ['404',api.renderStandalone404Page(null),'.zvm-error-grid',true,'zvm-legal-premium.a828eee21356.css'],
  ['500',api.renderStandalone500Page(null),'.zvm-error-grid',true,'zvm-legal-premium.a828eee21356.css']
 ];
@@ -38,7 +38,8 @@ async function run(){
  let checks=0;const rows=[];
  try{
   for(const [name,html,selector,centered,cssName] of pages){
-   for(const width of [1440,1920,2560]){
+   const legalDoc=name==='privacy'||name==='terms';
+   for(const width of (legalDoc?[360,390,768,1024,1440,1920,2560]:[1440,1920,2560])){
     const page=await browser.newPage({viewport:{width,height:950},reducedMotion:'reduce'});
     let errors=[],external=0,missing=[];
     page.on('pageerror',e=>errors.push(String(e.message)));
@@ -71,7 +72,21 @@ async function run(){
     });
     assert(rect.visible&&rect.width>0,name+'/'+width+' target hidden '+selector);
     assert(rect.page<=width+4,name+'/'+width+' horizontal overflow '+JSON.stringify(rect));
-    const min=width===1440?(centered?0.85:0.72):width===1920?(centered?0.82:0.72):(centered?0.69:0.67);
+    const min=legalDoc?(width===1440?0.72:width===1920?0.54:0.42):
+      width===1440?(centered?0.85:0.72):width===1920?(centered?0.82:0.72):(centered?0.69:0.67);
+    if(legalDoc){
+     assert(rect.width<=1102,name+'/'+width+' legal document is too wide '+JSON.stringify(rect));
+     assert.equal(await page.locator('link[href*="zvm-legal-premium.a828eee21356.css"]').count(),0,'legacy recovery CSS leaked into '+name);
+     assert.equal(await page.locator('link[href*="zvm-r46-system.cf01433d7f45.css"]').count(),0,'legacy R46 hero padding leaked into '+name);
+     const heading=await page.evaluate(()=>{
+      const hero=document.querySelector('.page-hero');
+      const toc=document.querySelector('.zvm-trust-toc,.terms-toc');
+      return {height:hero?.getBoundingClientRect().height??0,gradient:hero?getComputedStyle(hero).backgroundImage:'',tocHeight:toc?.getBoundingClientRect().height??0};
+     });
+     assert.equal(heading.gradient,'none',name+'/'+width+' green fog returned');
+     assert(heading.height>0 && heading.height<260,name+'/'+width+' oversized document heading '+JSON.stringify(heading));
+     if(width<=720)assert(heading.tocHeight<240,name+'/'+width+' mobile index consumes vertical reading space');
+    }
     assert(rect.width/width>=min,name+'/'+width+' still narrow / excessively centralized '+JSON.stringify({rect,expected:min}));
     if(centered){
      const imbalance=Math.abs(rect.x-(width-rect.right));

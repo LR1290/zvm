@@ -29,6 +29,11 @@ for(const [oldName,name,expected,selectors] of styles){
  assert(!fresh.includes('!important'),'new specificity override in '+name);
  for(const selector of selectors)assert(fresh.includes(selector),'missing width authority '+name+' :: '+selector);
 }
+const legalReading=fs.readFileSync(path.join(root,'assets','zvm-legal-reading.49002e7e3dc1.css'),'utf8');
+assert.equal(crypto.createHash('sha256').update(legalReading).digest('hex'),'49002e7e3dc1e341831d1532929de7806ca9b1b11773e0db603fc8321b66806b','legal document SHA');
+assert(src.includes('/assets/zvm-legal-reading.49002e7e3dc1.css'),'legal reading stylesheet not linked');
+assert(legalReading.includes('width:min(1100px,calc(100% - 40px))'),'legal reading width cap missing');
+assert(!legalReading.includes('radial-gradient'),'legal document gradients must not return');
 const publicCss=fs.readFileSync(path.join(root,'assets',styles[0][1]),'utf8');
 assert(publicCss.includes('--r475-wide:min(1840px,calc(100% - clamp(48px,6.25vw,136px)))'),
  'public width must be fluid, bounded and account for gutters');

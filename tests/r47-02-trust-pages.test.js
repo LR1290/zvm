@@ -10,6 +10,14 @@ const source=fs.readFileSync(path.join(root,'server.js'),'utf8');
 const cssFile='zvm-legal-premium.a828eee21356.css';
 const hash='a828eee213564319d2ca10241ce281301f9e33b364152aac47a1e29baa8af1c5';
 const css=fs.readFileSync(path.join(root,'assets',cssFile),'utf8');
+const readingCssFile='zvm-legal-reading.49002e7e3dc1.css';
+const readingHash='49002e7e3dc1e341831d1532929de7806ca9b1b11773e0db603fc8321b66806b';
+const readingCss=fs.readFileSync(path.join(root,'assets',readingCssFile),'utf8');
+assert.equal(crypto.createHash('sha256').update(readingCss).digest('hex'),readingHash,'legal reading stylesheet digest');
+assert(source.includes('/assets/'+readingCssFile),'legal reading CSS must be served');
+assert(source.includes("sha256: '"+readingHash+"'"),'legal reading asset SHA missing in server');
+assert(!readingCss.includes('radial-gradient'),'legal reading stylesheet must not paint green fog');
+assert(readingCss.includes('max-width:1100px'),'document width must be capped');
 assert.equal(crypto.createHash('sha256').update(css).digest('hex'),hash,'immutable legal CSS digest');
 assert(source.includes("sha256: '"+hash+"'"),'CSS must be in integrity registry');
 assert(source.includes('/assets/'+cssFile),'legal CSS not linked');
@@ -35,6 +43,7 @@ const privacy=api.renderStandalonePrivacyPage(null);
 const terms=['pt-BR','pt-PT','en'].map(lang=>[lang,api.renderStandaloneTermsPage(null,lang)]);
 const notFound=api.renderStandalone404Page(null);
 const unavailable=api.renderStandalone500Page(null);
+assert(notFound.includes('/assets/'+cssFile)&&unavailable.includes('/assets/'+cssFile),'recovery pages must retain their original error presentation');
 const ids=['dados','uso','terceiros','retencao','seguranca','direitos','cookies','google','contato'];
 assert.equal((privacy.match(/<section class="doc-section"/g)||[]).length,9,'privacy 9 sections preserved');
 assert.equal((privacy.match(/<\/section>/g)||[]).length,9,'privacy 9 section closings preserved');
@@ -45,6 +54,9 @@ for(const id of ids){
  assert(privacy.includes('href="#privacidade-'+id+'"'),id+' contents link missing');
  assert(privacy.includes('aria-labelledby="heading-privacidade-'+id+'"'),id+' section heading binding missing');
 }
+assert(privacy.includes('/assets/'+readingCssFile),'privacy reading CSS missing');
+assert(!privacy.includes('/assets/zvm-r46-system.cf01433d7f45.css'),'legacy global hero 104px override leaked into Privacy');
+assert(!privacy.includes('/assets/'+cssFile),'privacy must not load obsolete error artwork CSS');
 assert(privacy.includes('class="zvm-trust-layout"'),'privacy two-column layout not rendered');
 assert(privacy.includes('class="zvm-trust-toc"'),'privacy navigation missing');
 assert(!privacy.includes('Última atualização:')&&!privacy.includes('const updDate'),'privacy may not invent a daily policy revision');
@@ -52,7 +64,9 @@ assert(privacy.includes('Lei Geral de Proteção de Dados')&&privacy.includes('N
 for(const [lang,html] of terms){
  assert(html.includes('<html lang="'+lang+'"'),'locale lost '+lang);
  assert(html.includes('class="terms-toc"')&&html.includes('class="terms-body"'),'terms canonical index/content broken');
- assert(html.includes('/assets/'+cssFile),'terms new CSS not loaded');
+ assert(html.includes('/assets/'+readingCssFile),'terms reading CSS not loaded');
+ assert(!html.includes('/assets/zvm-r46-system.cf01433d7f45.css'),'legacy global hero 104px override leaked into Terms');
+ assert(!html.includes('/assets/'+cssFile),'terms must not load recovery artwork CSS');
  assert(html.includes('<main id="main-content" class="terms-main">'),'terms landmark changed');
  assert(html.includes('href="/privacidade"'),'terms privacy link missing');
 }

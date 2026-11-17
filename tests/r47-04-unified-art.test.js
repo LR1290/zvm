@@ -66,7 +66,11 @@ const includes=(page,file)=>assert(pages[page].includes('/assets/'+file),page+' 
 for(const p of ['home','faq','plans'])includes(p,assets[0][0]);
 for(const p of ['login','register'])includes(p,assets[1][0]);
 for(const p of ['client','admin'])includes(p,assets[2][0]);
-for(const p of ['privacy','terms','notFound','unavailable'])includes(p,assets[3][0]);
+for(const p of ['notFound','unavailable'])includes(p,assets[3][0]);
+for(const p of ['privacy','terms']){
+ includes(p,'zvm-legal-reading.49002e7e3dc1.css');
+ assert(!pages[p].includes('/assets/'+assets[3][0]),'legal page must not load recovery art CSS: '+p);
+}
 assert(server.includes('/assets/'+assets[4][0]),'Analytics new CSS not linked');
 assert(pages.home.includes('zvm-shell-home-real.a9c1a0d7b030.png'),'genuine product image removed');
 assert(pages.faq.includes('r4701-question-art'),'FAQ artwork lost');
