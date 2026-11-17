@@ -13,6 +13,26 @@ const localeSource=read('src/web/public/i18n.js');
 const {localizePublicHtml}=require('../src/web/public/i18n');
 const canonicalLogo=require('../src/web/public/landing/owner').OWNER_TOP_BRAND_SRC;
 
+const crypto=require('node:crypto');
+const officialIconPath='/assets/zvm-brand.167357885820.png';
+const greenImage=fs.readFileSync(path.join(root,'assets/zvm-brand.167357885820.png'));
+assert.equal(crypto.createHash('sha256').update(greenImage).digest('hex'),
+  '16735788582078e978a4fa802da332c90b96b9172bbcfa88bce7d407fee783ce',
+  'official original ZVM green icon cannot be silently replaced');
+assert.equal(greenImage.subarray(0,8).toString('hex'),'89504e470d0a1a0a','original icon must remain a real PNG');
+assert(!fs.existsSync(path.join(root,'assets/zvm-icon.a6f91b5ec82b.png')),'wrong red icon was not removed');
+assert(canonicalLogo.startsWith('data:image/png;base64,'),'original full ZVM AUTOMAÇÕES artwork must remain the header logo');
+assert(htmlTemplate.includes('<link rel="apple-touch-icon" href="'+officialIconPath+'">'),'home touch icon missing');
+assert(server.includes("const ZVM_SITE_ICON = '"+officialIconPath+"'"),'canonical favicon must be original green icon');
+const footer=read('src/web/public/footer.js');
+assert(footer.includes('<img src="'+officialIconPath+'"'),'footer must use official green icon');
+const cloud=read('cloud-pilot/public/index.html');
+const cloudCss=read('cloud-pilot/public/styles.css');
+assert(cloud.includes('<link rel="icon" type="image/png" href="'+officialIconPath+'">'),'Cloud favicon must be original green icon');
+assert(cloud.includes('<link rel="apple-touch-icon" href="'+officialIconPath+'">'),'Cloud touch icon must be original green icon');
+assert((cloud.split(officialIconPath).length-1)>=5,'Cloud login/loading/header must use original icon');
+assert(cloudCss.includes('.brand img.logo,.panel img.hero-mark'),'Cloud real icon styling must not revert to glyph-box');
+
 assert(htmlTemplate.includes('<link rel="icon" type="image/png" href="/assets/zvm-brand.167357885820.png">'), 'homepage must declare favicon');
 assert(server.includes("if (p === '/favicon.ico'"), 'browser favicon fallback');
 assert(server.includes("Location: '/assets/zvm-brand.167357885820.png'"), 'fallback uses official PNG');
@@ -69,4 +89,15 @@ const once=favicon(sample);
 assert(once.includes('/assets/zvm-brand.167357885820.png'));
 assert.equal(favicon(once),once,'favicon injection idempotent');
 
-console.log('ZVM R49 header: all 5 routes canonical, picker inside buttons, font scope, favicon and mobile checks PASS');
+
+const legacyIcons='<html><head><link rel="icon" type="image/svg+xml" href="data:image/svg+xml,LEGACY"><link rel="apple-touch-icon" href="/old.png"><title>ZVM</title></head><body><img src="/safe.png"></body></html>';
+const fixedIcons=favicon(legacyIcons);
+assert(!fixedIcons.includes('data:image/svg+xml,LEGACY'),'legacy favicon SVG must be removed');
+assert(!fixedIcons.includes('href="/old.png"'),'obsolete Apple touch icon must be removed');
+assert.equal((fixedIcons.match(/rel="icon"/g)||[]).length,1,'exactly one canonical favicon');
+assert.equal((fixedIcons.match(/rel="apple-touch-icon"/g)||[]).length,1,'exactly one touch icon');
+assert.equal(favicon(fixedIcons),fixedIcons,'favicon normalization must be idempotent');
+assert(fixedIcons.includes('<img src="/safe.png">'),'favicon normalization must not alter body images');
+assert(fixedIcons.includes('href="'+officialIconPath+'"'),'green original icon missing after normalization');
+
+console.log('ZVM R49 header: all 5 routes canonical, picker inside buttons, font scope, original green favicon and mobile checks PASS');
