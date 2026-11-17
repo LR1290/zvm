@@ -5852,11 +5852,19 @@ function applyOwnerSiteTheme(html) {
   return html.replace('</head>', ZVM_OWNER_SITE_THEME + '</head>');
 }
 
-const ZVM_CANONICAL_FAVICON = '<link rel="icon" type="image/png" sizes="any" href="/assets/zvm-brand.167357885820.png">';
+// The original green ZVM identity is canonical on every server-rendered page.
+const ZVM_SITE_ICON = '/assets/zvm-brand.167357885820.png';
+const ZVM_CANONICAL_FAVICON =
+  '<link rel="icon" type="image/png" href="' + ZVM_SITE_ICON + '">' +
+  '<link rel="apple-touch-icon" href="' + ZVM_SITE_ICON + '">';
 function applyCanonicalFavicon(html) {
-  if (typeof html !== 'string' || !html.includes('</head>') ||
-      html.includes('href="/assets/zvm-brand.167357885820.png"')) return html;
-  return html.replace('</head>', ZVM_CANONICAL_FAVICON + '</head>');
+  if (typeof html !== 'string' || !html.includes('</head>')) return html;
+  // Strip competing legacy SVG, shortcut and touch icons in HEAD only.
+  const end = html.indexOf('</head>');
+  const head = html.slice(0, end)
+    .replace(/<link\b(?=[^>]*\brel=["'](?:shortcut\s+)?icon["'])[^>]*>\s*/gi, '')
+    .replace(/<link\b(?=[^>]*\brel=["']apple-touch-icon["'])[^>]*>\s*/gi, '');
+  return head + ZVM_CANONICAL_FAVICON + html.slice(end);
 }
 function sendHtml(res, html, status = 200) {
   // Paginas sensiveis (portal/admin/analytics/erros de sessao) continuam NO-STORE.
