@@ -5406,10 +5406,10 @@ const _CSP_AUTH_STRICT = "default-src 'self'; script-src 'self'; style-src 'self
 // genérico e sem possibilidade de path traversal. O hash no nome permite cache
 // imutável por 1 ano sem risco de servir uma imagem antiga após atualização.
 const _PUBLIC_ASSETS = Object.freeze({
-  '/assets/zvm-brand.167357885820.png': Object.freeze({
+  '/assets/zvm-icon.a6f91b5ec82b.png': Object.freeze({
     type: 'image/png',
-    file: path.join(__dirname, 'assets', 'zvm-brand.167357885820.png'),
-    sha256: '16735788582078e978a4fa802da332c90b96b9172bbcfa88bce7d407fee783ce',
+    file: path.join(__dirname, 'assets', 'zvm-icon.a6f91b5ec82b.png'),
+    sha256: 'a6f91b5ec82baae3f19234ab540fe79c190f021cd968d6216607e351b2c387ea',
   }),
   '/assets/lr1290-avatar.313ed8884277.png': Object.freeze({
     type: 'image/png',
@@ -5852,11 +5852,19 @@ function applyOwnerSiteTheme(html) {
   return html.replace('</head>', ZVM_OWNER_SITE_THEME + '</head>');
 }
 
-const ZVM_CANONICAL_FAVICON = '<link rel="icon" type="image/png" sizes="any" href="/assets/zvm-brand.167357885820.png">';
+// User-approved ZVM icon. Logos/wordmarks are separate and remain unchanged.
+const ZVM_SITE_ICON = '/assets/zvm-icon.a6f91b5ec82b.png';
+const ZVM_CANONICAL_FAVICON =
+  '<link rel="icon" type="image/png" sizes="32x32" href="' + ZVM_SITE_ICON + '">' +
+  '<link rel="apple-touch-icon" href="' + ZVM_SITE_ICON + '">';
 function applyCanonicalFavicon(html) {
-  if (typeof html !== 'string' || !html.includes('</head>') ||
-      html.includes('href="/assets/zvm-brand.167357885820.png"')) return html;
-  return html.replace('</head>', ZVM_CANONICAL_FAVICON + '</head>');
+  if (typeof html !== 'string' || !html.includes('</head>')) return html;
+  // Never let a stale SVG/data-URL icon win because of link ordering.
+  // Replace links only in HEAD; do not alter product images, logos or body SVGs.
+  const end=html.indexOf('</head>');
+  const head=html.slice(0,end).replace(/<link\b(?=[^>]*\brel=["'](?:shortcut\s+)?icon["'])[^>]*>\s*/gi,'')
+     .replace(/<link\b(?=[^>]*\brel=["']apple-touch-icon["'])[^>]*>\s*/gi,'');
+  return head + ZVM_CANONICAL_FAVICON + html.slice(end);
 }
 function sendHtml(res, html, status = 200) {
   // Paginas sensiveis (portal/admin/analytics/erros de sessao) continuam NO-STORE.
@@ -6062,7 +6070,7 @@ function renderPortalPage(body, title='ZVM — Minha Conta', extra='', headExtra
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${title}</title>
-<link rel="icon" type="image/svg+xml" href="${fav}">
+<link rel="icon" type="image/png" href="${fav}">
 <link rel="stylesheet" href="/assets/zvm-r46-client-dashboard.64213392bec3.css"><link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css">
 ${headExtra}
 <link rel="stylesheet" href="/assets/zvm-r46-system.cf01433d7f45.css">
@@ -6121,7 +6129,7 @@ function renderStandalonePortalLogin(err = '', redir = '', ok = '') {
   const benefitsHtml = AUTH_BENEFITS.map(([icon, text]) => `<li><span class="auth-benefit-icon" aria-hidden="true">${icon}</span><span>${text}</span></li>`).join('');
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Entrar</title><link rel="icon" type="image/svg+xml" href="${_FAV}">
+<title>ZVM — Entrar</title><link rel="icon" type="image/png" href="${_FAV}">
 ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_AUTH}${_CSS_SYSTEM}</head>
 <body class="zvm-auth-immersive zvm-auth-premium">
 <a class="skip-link" href="#main-content">Ir para o formulário</a>
@@ -6160,7 +6168,7 @@ function renderStandalonePortalRegister(err = '', vals = {}, redir = '') {
   const benefitsHtml = AUTH_BENEFITS.map(([icon, text]) => `<li><span class="auth-benefit-icon" aria-hidden="true">${icon}</span><span>${text}</span></li>`).join('');
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Criar Conta</title><link rel="icon" type="image/svg+xml" href="${_FAV}">
+<title>ZVM — Criar Conta</title><link rel="icon" type="image/png" href="${_FAV}">
 ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_AUTH}${_CSS_SYSTEM}</head>
 <body class="zvm-auth-immersive zvm-auth-premium">
 <a class="skip-link" href="#main-content">Ir para o formulário</a>
@@ -6256,7 +6264,7 @@ function renderStandalone2FAVerify(err = '') {
   const errHtml = err ? `<div class="auth-alert err" role="alert">⚠ ${escHtml(err)}</div>` : '';
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Verificação em Duas Etapas</title><link rel="icon" type="image/svg+xml" href="${_FAV}">
+<title>ZVM — Verificação em Duas Etapas</title><link rel="icon" type="image/png" href="${_FAV}">
 ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_AUTH}${_CSS_SYSTEM}</head>
 <body class="zvm-auth-premium">${_sharedNav({ variant: 'auth' })}
 <main id="main-content" class="auth-shell">
@@ -6362,7 +6370,7 @@ function renderStandalonePortalResetRequest(err = '', ok = '') {
     : 'Se o e-mail estiver cadastrado, o link será gerado e poderá ser solicitado ao suporte oficial.';
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Recuperar Senha</title><link rel="icon" type="image/svg+xml" href="${_FAV}">
+<title>ZVM — Recuperar Senha</title><link rel="icon" type="image/png" href="${_FAV}">
 ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_AUTH}${_CSS_SYSTEM}</head>
 <body class="zvm-auth-premium">${_sharedNav({ variant: 'auth' })}
 <main id="main-content" class="auth-shell">
@@ -6400,7 +6408,7 @@ function renderStandalonePortalResetForm(err = '', ok = '', token = '') {
   const benefitsHtml = AUTH_BENEFITS.map(([icon, text]) => `<li><span class="auth-benefit-icon" aria-hidden="true">${icon}</span><span>${text}</span></li>`).join('');
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Redefinir Senha</title><link rel="icon" type="image/svg+xml" href="${_FAV}">
+<title>ZVM — Redefinir Senha</title><link rel="icon" type="image/png" href="${_FAV}">
 ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_AUTH}${_CSS_SYSTEM}</head>
 <body class="zvm-auth-premium">${_sharedNav({ variant: 'auth' })}
 <main id="main-content" class="auth-shell">
@@ -6788,7 +6796,7 @@ function renderAdminDashboard(opts = {}) {
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Administração</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E">
+<link rel="icon" type="image/png" href="/assets/zvm-icon.a6f91b5ec82b.png">
 <link rel="stylesheet" href="/assets/zvm-admin-dashboard.5c649db2edf7.css">
 <link rel="stylesheet" href="/assets/zvm-r46-system.cf01433d7f45.css">
 <link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css">
@@ -7147,7 +7155,7 @@ function renderAdminDashboard(opts = {}) {
 function renderAdminLogin(error = '', adminLoginCsrf = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM Admin</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
+<title>ZVM Admin</title><link rel="icon" type="image/png" href="${_FAV}">${_GFONTS}
 ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_AUTH}${_CSS_PRIVILEGED_AUTH}${_CSS_SYSTEM}</head><body class="zvm-auth-immersive zvm-auth-premium">
 <main class="auth-shell">
   <section class="auth-promo" aria-hidden="true"><div class="auth-promo-inner">
@@ -7178,7 +7186,7 @@ function sendAdminLogin(res, error = '', status = 200) {
 }
 
 // ──────────── SHARED PAGE HELPERS ───────────────────────────────
-const _FAV = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2308080f'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E";
+const _FAV = '/assets/zvm-icon.a6f91b5ec82b.png';
 const _CSS_SHARED = '<link rel="stylesheet" href="/assets/zvm-shared.6dac16eb7b5b.css">';
 const _CSS_SYSTEM = '<link rel="stylesheet" href="/assets/zvm-r46-system.cf01433d7f45.css">';
 const _CSS_STANDALONE = '<link rel="stylesheet" href="/assets/zvm-standalone.d6d2222fe00a.css">';
@@ -7206,7 +7214,7 @@ const _GFONTS = '';
 
 // ── Brand oficial ZVM — incorporada no próprio servidor ────────────────
 // O portal não depende de /static nem de arquivos soltos no deploy.
-const ZVM_BRAND_ICON_ASSET = '/assets/zvm-brand.167357885820.png';
+const ZVM_BRAND_ICON_ASSET = '/assets/zvm-icon.a6f91b5ec82b.png';
 const ZVM_FOUNDER_AVATAR_ASSET = '/assets/lr1290-avatar.313ed8884277.png';
 const ZVM_CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/zvm-automações/bdhnikgcdccjabkmbfcakgjkkgdlmgja';
 function renderZvmActionHub(surface='client') {
@@ -7437,7 +7445,7 @@ function renderPlanosPage(portalUser = null) {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="description" content="Planos ZVM SOLO (R$39,90, 1 número), START (R$59,90, 3 números), PRO (R$94,90, 5 números) e ENTERPRISE sob consulta.">
-<title>ZVM — Planos e Preços</title><link rel="icon" type="image/svg+xml" href="${_FAV}">
+<title>ZVM — Planos e Preços</title><link rel="icon" type="image/png" href="${_FAV}">
 ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PLANS}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_SALES_STATE}${_CSS_PUBLIC_EXPERIENCE}${_CSS_REFERENCE_PUBLIC}</head><body class="zvm-public-premium zvm-plans-premium zvm-experience">${_sharedNav({activePath:'/planos',portalUser,showBack:true})}
 <main id="main-content" class="r4700-plans-main r4701-plans-main">
 <header class="page-hero r4700-plans-hero r4701-plans-hero"><div class="r4701-plans-hero-inner">
@@ -7489,7 +7497,7 @@ function renderPrivacyPage(portalUser = null) {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Política de Privacidade</title>
 <meta name="description" content="Política de Privacidade da ZVM - Automações: conta, licença, segurança, armazenamento local, integrações opcionais e direitos do usuário.">
-<link rel="icon" type="image/svg+xml" href="${_FAV}">
+<link rel="icon" type="image/png" href="${_FAV}">
 ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PRIVACY}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_LEGAL_PREMIUM}</head>
 <body class="zvm-public-premium zvm-legal-premium zvm-privacy-premium">
 ${_sharedNav({activePath:'/privacidade',portalUser,showBack:true})}
@@ -7643,7 +7651,7 @@ function renderStandaloneFaqPage(portalUser = null) {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Central de Ajuda e Perguntas Frequentes</title>
 <meta name="description" content="Encontre orientações sobre compra sem login, entrega de chave, instalação, planos, dispositivos, conta e suporte da ZVM - Automações.">
-<link rel="icon" type="image/svg+xml" href="${_FAV}">
+<link rel="icon" type="image/png" href="${_FAV}">
 ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_FAQ}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_SALES_STATE}${_CSS_PUBLIC_EXPERIENCE}${_CSS_REFERENCE_PUBLIC}
 </head><body class="zvm-public-premium zvm-faq-premium zvm-experience">
 ${_sharedNav({activePath:'/faq',portalUser,showBack:true})}
@@ -7708,7 +7716,7 @@ function renderStandaloneTermsPage(portalUser = null, locale = 'pt-BR') {
 <link rel="alternate" hreflang="pt-PT" href="https://zvm.onrender.com/termos?lang=pt-PT">
 <link rel="alternate" hreflang="en" href="https://zvm.onrender.com/termos?lang=en">
 <link rel="alternate" hreflang="x-default" href="https://zvm.onrender.com/termos">
-<link rel="icon" type="image/svg+xml" href="${_FAV}">
+<link rel="icon" type="image/png" href="${_FAV}">
 ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_PRIVACY}${_CSS_TERMS}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_LEGAL_PREMIUM}</head>
 <body class="zvm-terms-page zvm-public-premium zvm-legal-premium">${_sharedNav({activePath:'/termos',portalUser,showBack:true})}
 <main id="main-content" class="terms-main">${renderTermsDocument(lang, ZVM_SUPPORT_URL)}</main>
@@ -7718,7 +7726,7 @@ ${_standaloneFoot()}</body></html>`;
 function renderStandalone404Page(portalUser = null) {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Página não encontrada</title><meta name="robots" content="noindex"><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
+<title>ZVM — Página não encontrada</title><meta name="robots" content="noindex"><link rel="icon" type="image/png" href="${_FAV}">${_GFONTS}
 ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_ERROR_404}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_LEGAL_PREMIUM}</head><body class="zvm-public-premium zvm-error-premium zvm-404-premium">${_sharedNav({activePath:'',portalUser,showBack:false})}
 <main id="main-content" class="err-wrap zvm-trust-error">
   <div class="zvm-error-grid"><div class="zvm-error-copy">
@@ -7740,7 +7748,7 @@ ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_ERROR_404}${_CSS_SYSTEM}${_CSS_PUBLIC_PRE
 function renderStandalone500Page(portalUser = null) {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Indisponibilidade temporária</title><meta name="robots" content="noindex"><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
+<title>ZVM — Indisponibilidade temporária</title><meta name="robots" content="noindex"><link rel="icon" type="image/png" href="${_FAV}">${_GFONTS}
 ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_ERROR_500}${_CSS_SYSTEM}${_CSS_PUBLIC_PREMIUM}${_CSS_LEGAL_PREMIUM}</head><body class="zvm-public-premium zvm-error-premium zvm-500-premium">${_sharedNav({activePath:'',portalUser,showBack:false})}
 <main id="main-content" class="err-wrap zvm-trust-error zvm-error-500">
   <div class="zvm-error-grid"><div class="zvm-error-copy">
@@ -7768,7 +7776,7 @@ function renderAnalyticsLogin(error = '') {
   ].map(([icon,text])=>`<li><span class="auth-benefit-icon" aria-hidden="true">${icon}</span><span>${text}</span></li>`).join('');
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ZVM — Analytics</title><link rel="icon" type="image/svg+xml" href="${_FAV}">${_GFONTS}
+<title>ZVM — Analytics</title><link rel="icon" type="image/png" href="${_FAV}">${_GFONTS}
 ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_AUTH}${_CSS_PRIVILEGED_AUTH}${_CSS_SYSTEM}</head>
 <body class="zvm-auth-premium">
 <main class="auth-shell zvm-privileged-auth-shell">
@@ -7886,7 +7894,7 @@ async function renderAnalyticsDashboard(fixture = null) {
   return `<!DOCTYPE html><html lang="pt-BR" data-analytics-root="${escHtml(R_ANALYTICS)}"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ZVM — Analytics</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E">
+<link rel="icon" type="image/png" href="/assets/zvm-icon.a6f91b5ec82b.png">
 <link rel="stylesheet" href="/assets/zvm-analytics-dashboard.623a7bbac134.css">
 <link rel="stylesheet" href="/assets/zvm-analytics-lab.40519085ae68.css">
 <link rel="stylesheet" href="/assets/zvm-r46-system.cf01433d7f45.css">
@@ -9037,7 +9045,7 @@ async function handleRequest(req, res) {
   if (p === '/favicon.ico' && (req.method === 'GET' || req.method === 'HEAD')) {
     // Standard browser path resolves to our existing official green ZVM icon.
     res.writeHead(302, {
-      Location: '/assets/zvm-brand.167357885820.png',
+      Location: '/assets/zvm-icon.a6f91b5ec82b.png',
       'Cache-Control': 'public, max-age=86400'
     });
     res.end();
