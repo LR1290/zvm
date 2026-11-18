@@ -60,6 +60,8 @@ test('new keys require exact server-side metadata, never a client-supplied produ
   assert.equal(productOfKeyRecord({ active:true }, fullKey), null);
   assert.equal(productOfKeyRecord({ active:true }, liteKey), null);
   assert.equal(productOfKeyRecord({ extensionProductId:'unknown' }, fullKey), null);
+  assert.equal(productOfKeyRecord({extensionProductId:null}, 'zv-abcde-abcde-abcde'), null);
+  assert.equal(productOfKeyRecord({extensionProductId:undefined}, 'zv-abcde-abcde-abcde'), null);
   assert.equal(productOfKeyRecord({ extensionProductId:PRODUCT_LITE }, liteKey.slice(0,-1)+'0'), null);
   assert.equal(productOfKeyRecord(null, liteKey), null);
   assert.equal(productOfKeyRecord([], liteKey), null);
