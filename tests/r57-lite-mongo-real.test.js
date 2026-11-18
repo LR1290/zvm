@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const { MongoClient } = require('mongodb');
 const { generateLicenseKey, PRODUCT_LITE, PRODUCT_AUTOMACOES } = require('../src/license-product-v2');
-const { readLiteLicenseSnapshot, claimLitePhoneSlotAtomic, liteKeyUsable } = require('../src/lite-license-authority');
+const { readLiteLicenseSnapshot, claimLitePhoneSlotAtomic, liteKeyUsable, activateLiteDeferredKeyAtomic } = require('../src/lite-license-authority');
 const { ensureLitePortalLicenseUniqueIndex, revokePortalLitePasswordSessions } = require('../src/portal-license-slots');
 
 const uri=process.env.ZVM_LITE_TEST_MONGO_URI;
@@ -16,6 +16,7 @@ if (!uri || !/^mongodb:\/\/(?:127\.0\.0\.1|localhost):27017\/?(?:\?.*)?$/.test(u
 const full=generateLicenseKey(PRODUCT_AUTOMACOES);
 const lite=generateLicenseKey(PRODUCT_LITE);
 const second=generateLicenseKey(PRODUCT_LITE);
+const deferred=generateLicenseKey(PRODUCT_LITE);
 const phoneA='5538999112233',phoneB='5538999112244',phoneC='5538999112255';
 const base = (extras={}) => ({
   active:true,extensionProductId:PRODUCT_LITE,provisioningStatus:'issued',
@@ -32,6 +33,7 @@ test('R57 real local MongoDB: issued key, concurrent claims, revocation and port
   await db.collection('store').insertOne({_id:'keys',data:{
     [lite]:base(),
     [second]:base({active:false}),
+    [deferred]:base({maxUses:2,phones:[phoneC],expireDuration:3600_000}),
     [full]:{active:true,extensionProductId:PRODUCT_AUTOMACOES,phones:[],maxUses:1,planId:'ZV_PRO'},
   }});
 
@@ -55,6 +57,34 @@ test('R57 real local MongoDB: issued key, concurrent claims, revocation and port
     const repeat=await claimLitePhoneSlotAtomic(db,lite,actual.phones[0],{maxPhonesGlobal:100});
     assert.equal(repeat.status,'already_member');
     assert.equal((await readLiteLicenseSnapshot(db,lite)).phones.length,1);
+  });
+
+  await t.test('LITE first-use expiry activates exactly once on a persisted phone',async()=>{
+    const results=await Promise.all([
+      activateLiteDeferredKeyAtomic(db,deferred,phoneC),
+      activateLiteDeferredKeyAtomic(db,deferred,phoneC),
+    ]);
+    assert.equal(results.filter(x=>x.status==='activated').length,1);
+    assert.equal(results.filter(x=>x.status==='already_active').length,1);
+    const stored=await readLiteLicenseSnapshot(db,deferred);
+    assert.ok(stored.expiresAt);
+    assert.ok(stored.activatedAt);
+    const duration=Date.parse(stored.expiresAt)-Date.parse(stored.activatedAt);
+    assert.equal(duration,3600_000);
+    const again=await activateLiteDeferredKeyAtomic(db,deferred,phoneC);
+    assert.equal(again.status,'already_active');
+    const unknownPhone=await activateLiteDeferredKeyAtomic(db,deferred,phoneA);
+    assert.equal(unknownPhone.status,'entitlement_revoked');
+  });
+
+  await t.test('deferred expiry cannot activate a disabled LITE license',async()=>{
+    await db.collection('store').updateOne({_id:'keys'},{$set:{
+      ['data.'+second+'.phones']:[phoneC],
+      ['data.'+second+'.expireDuration']:3600_000,
+    }});
+    const result=await activateLiteDeferredKeyAtomic(db,second,phoneC);
+    assert.equal(result.status,'entitlement_revoked');
+    assert.equal((await readLiteLicenseSnapshot(db,second)).expiresAt,null);
   });
 
   await t.test('a key revocation prevents new phone claims but does not modify complete keys',async()=>{
