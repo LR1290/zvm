@@ -26,6 +26,7 @@ const https  = require('https');
 const crypto = require('crypto');
 const { PRODUCT_AUTOMACOES, PRODUCT_LITE, selectAdminProduct, generateLicenseKey, productOfKeyRecord, keyBelongsTo } = require('./src/license-product-v2');
 const { readLiteConfig, inspectLiteClient, liteOriginAllowed, liteSessionAllowed, SESSION_TTL: ZVM_LITE_SESSION_TTL } = require('./src/lite-v4-build-authority');
+const { normalizePortalLicenseKey, portalLicenseSlot, linkedPortalKeyForProduct, portalLicenseConflictQuery } = require('./src/portal-license-slots');
 const fs     = require('fs');
 const path   = require('path');
 const zlib   = require('zlib');
@@ -2461,7 +2462,7 @@ async function resolveExtensionAccountEntitlement(user, deps = {}) {
   const expectedProductId = deps.expectedProductId || PRODUCT_AUTOMACOES;
   const now = extensionNow(deps);
   const keyStore = deps.keyStore || keys;
-  const keyCode = sanitizeId(user?.keyCode, 64);
+  const keyCode = linkedPortalKeyForProduct(user, expectedProductId);
   if (!keyCode) return expectedProductId === PRODUCT_LITE ? extensionAuthFailure('lite_license_required',403) : { ok: true, keyCode: null, devAccess:false, entitlement: buildExtensionEntitlement({ now }) };
   const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(keyCode);
   if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
@@ -6305,7 +6306,7 @@ ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_AUTH}${_CSS_SYSTEM}</head>
         <div class="auth-field"><label for="reg-phone">WhatsApp</label><input id="reg-phone" type="tel" name="phone" placeholder="11999990000" value="${v('phone')}" maxlength="20" pattern="[0-9+\s()-]{8,20}" autocomplete="tel"></div>
       </div>
       <div class="auth-field"><label for="reg-email">E-mail</label><input id="reg-email" type="email" name="email" placeholder="seu@email.com" required value="${v('email')}" autocomplete="email"><div class="auth-field-hint">Use este mesmo e-mail na compra para vincular sua licença automaticamente.</div></div>
-      <div class="auth-field"><label for="reg-keycode">Chave ZVM <span class="auth-label-optional">(opcional)</span></label><input id="reg-keycode" type="text" name="keycode" placeholder="zv-xxxxx-xxxxx-xxxxx" value="${v('keycode')}" maxlength="30"><div class="auth-field-hint">Se ainda não tiver uma chave, você pode vincular depois.</div></div>
+      <div class="auth-field"><label for="reg-keycode">Chave ZVM <span class="auth-label-optional">(opcional)</span></label><input id="reg-keycode" type="text" name="keycode" placeholder="zv-xxxxx-xxxxx-xxxxx" value="${v('keycode')}" maxlength="64"><div class="auth-field-hint">Se ainda não tiver uma chave, você pode vincular depois.</div></div>
       <div class="auth-field-row">
         <div class="auth-field"><label for="reg-pass">Senha</label><input id="reg-pass" type="password" name="pass" placeholder="Mínimo 8 caracteres" required minlength="8" autocomplete="new-password"></div>
         <div class="auth-field"><label for="reg-pass2">Confirmar senha</label><input id="reg-pass2" type="password" name="pass2" placeholder="Repita a senha" required minlength="8" autocomplete="new-password"></div>
@@ -6451,7 +6452,7 @@ function renderStandaloneSetup2FA(user, pendingSecret = '', err = '', ok = '') {
 function renderStandalonePortalLinkKey(err = '', ok = '', portalUser = null) {
   const errHtml = err ? `<div class="auth-alert err" role="alert">⚠ ${escHtml(err)}</div>` : '';
   const okHtml = ok ? `<div class="auth-alert ok" role="status">✅ ${escHtml(ok)}</div>` : '';
-  const content=`<div class="auth-form-card"><h2>Vincular chave</h2><p class="auth-form-hint">Associe uma licença existente à sua conta. O portal passa a mostrar validade, plano e dispositivos imediatamente.</p>${errHtml}${okHtml}<form method="POST" action="/cliente/vincular"><div class="auth-field"><label for="link-keycode">Código da chave</label><input id="link-keycode" type="text" name="keycode" placeholder="zv-xxxxx-xxxxx-xxxxx" maxlength="30" pattern="[a-z0-9\\-]+" required autocomplete="off"><div class="auth-field-hint">Use exatamente o código recebido na compra ou no atendimento.</div></div><button type="submit" class="auth-submit">Vincular chave<span class="auth-spinner" aria-hidden="true"></span></button></form><div class="auth-switch"><a href="/cliente">← Voltar à visão geral</a></div></div>`;
+  const content=`<div class="auth-form-card"><h2>Vincular chave</h2><p class="auth-form-hint">Associe uma licença existente à sua conta. O portal passa a mostrar validade, plano e dispositivos imediatamente.</p>${errHtml}${okHtml}<form method="POST" action="/cliente/vincular"><div class="auth-field"><label for="link-keycode">Código da chave</label><input id="link-keycode" type="text" name="keycode" placeholder="zv-xxxxx-xxxxx-xxxxx" maxlength="64" pattern="[a-z0-9\\-]+" required autocomplete="off"><div class="auth-field-hint">Use exatamente o código recebido na compra ou no atendimento.</div></div><button type="submit" class="auth-submit">Vincular chave<span class="auth-spinner" aria-hidden="true"></span></button></form><div class="auth-switch"><a href="/cliente">← Voltar à visão geral</a></div></div>`;
   return renderClientWorkspacePage({portalUser,active:'license',eyebrow:'Licença',title:'Vincular uma chave ZVM',subtitle:'Centralize sua licença, validade, plano e dispositivos dentro da mesma conta.',content,aside:`<div class="client-app-mini"><span>Licença</span><strong>Vinculação imediata</strong><p>Depois de validada, a chave passa a aparecer na visão geral da conta.</p></div><div class="client-app-mini"><span>Segurança</span><strong>Uma chave por conta</strong><p>Se a chave já estiver vinculada a outra conta, o portal bloqueia a associação.</p></div>`});
 }
 
@@ -11384,11 +11385,13 @@ async function handleRequest(req, res) {
     const name    = (form.get('name')||'').trim().slice(0,80);
     const email   = (form.get('email')||'').toLowerCase().trim().slice(0,100);
     const phone   = (form.get('phone')||'').replace(/\D/g,'').slice(0,20);
-    const keycode = ((form.get('keycode')||'').toLowerCase().trim()).replace(/[^a-z0-9\-_]/g,'').slice(0,30);
+    const rawKeyCode = String(form.get('keycode') || '');
+    const keycode = normalizePortalLicenseKey(rawKeyCode);
     const pass    = (form.get('pass')||'').slice(0,128);
     const pass2   = (form.get('pass2')||'').slice(0,128);
     const redir   = safeLocalRedirect((form.get('redir')||'').slice(0,200));
-    const vals = { name, email, phone, keycode };
+    const vals = { name, email, phone, keycode: rawKeyCode.trim().slice(0,64) };
+    if (rawKeyCode.trim() && !keycode) { sendAuthHtml(res, renderStandalonePortalRegister('Formato de chave inválido. Confira o código completo (até 57 caracteres).', vals, redir)); return; }
     if (!name || !email || !pass) { sendAuthHtml(res, renderStandalonePortalRegister('Preencha nome, e-mail e senha.', vals, redir)); return; }
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { sendAuthHtml(res, renderStandalonePortalRegister('E-mail inválido.', vals, redir)); return; }
     if (pass.length < 8) { sendAuthHtml(res, renderStandalonePortalRegister('Senha: mínimo 8 caracteres.', vals, redir)); return; }
@@ -11397,18 +11400,21 @@ async function handleRequest(req, res) {
       const db = await getMongoDb();
       const existing = await db.collection('portal_users').findOne({ _id: email });
       if (existing) { sendAuthHtml(res, renderStandalonePortalRegister('E-mail já cadastrado.', vals, redir)); return; }
+      let portalSlot = null;
       if (keycode) {
         await ensureKeyLoaded(keycode);
         if (!keys[keycode]) { sendAuthHtml(res, renderStandalonePortalRegister('Chave não encontrada. Deixe em branco para vincular depois.', vals, redir)); return; }
-        // Guarda de aplicação: uma licença comercial pertence a uma única conta
-        // do portal. Sem isto, a mesma keyCode poderia ser vinculada a vários
-        // portal_users simultaneamente (cada um veria/gerenciaria a licença do
-        // outro). Checagem em tempo de escrita — não depende de índice único.
-        const alreadyLinked = await db.collection('portal_users').findOne({ keyCode: keycode });
+        portalSlot = portalLicenseSlot(keys[keycode], keycode);
+        if (!portalSlot) { sendAuthHtml(res, renderStandalonePortalRegister('A chave não corresponde a um produto válido.', vals, redir)); return; }
+        // Verificar ambas as posições evita duplicar titularidade entre produtos.
+        const alreadyLinked = await db.collection('portal_users').findOne(portalLicenseConflictQuery(keycode));
         if (alreadyLinked) { sendAuthHtml(res, renderStandalonePortalRegister('Esta chave já está vinculada a outra conta. Entre em contato com o suporte se isso for um engano.', vals, redir)); return; }
       }
       const newPass = await hashNewPortalPassword(pass);
-      await db.collection('portal_users').insertOne({ _id: email, name, email, phone: phone||null, ...newPass, keyCode: keycode||null, createdAt: new Date().toISOString() });
+      await db.collection('portal_users').insertOne({ _id: email, name, email, phone: phone||null, ...newPass,
+        keyCode: portalSlot === 'keyCode' ? keycode : null,
+        ...(portalSlot === 'liteKeyCode' ? { liteKeyCode: keycode } : {}),
+        createdAt: new Date().toISOString() });
       const token = generateToken();
       portalSessions[token] = { email, name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
       setSessionCookie(res, 'zv_portal', token, 86400);
@@ -11431,31 +11437,31 @@ async function handleRequest(req, res) {
       if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
       const sess = getPortalUser(req);
       const form = await parseFormBody(req);
-      const keycode = ((form.get('keycode')||'').toLowerCase().trim()).replace(/[^a-z0-9\-_]/g,'').slice(0,30);
+      const keycode = normalizePortalLicenseKey(String(form.get('keycode') || ''));
       if (!keycode) { sendAuthHtml(res, renderStandalonePortalLinkKey('Informe o código da chave.', '', sess)); return; }
       await ensureKeyLoaded(keycode);
       if (!keys[keycode]) { sendAuthHtml(res, renderStandalonePortalLinkKey('Chave não encontrada.', '', sess)); return; }
+      const portalSlot = portalLicenseSlot(keys[keycode], keycode);
+      if (!portalSlot) { sendAuthHtml(res, renderStandalonePortalLinkKey('Chave ou produto inválido.', '', sess)); return; }
       try {
         const db = await getMongoDb();
-        // Guarda de aplicação: uma licença comercial pertence a uma única conta
-        // do portal. Sem isto, dois portal_users diferentes poderiam vincular a
-        // mesma keyCode simultaneamente (cada um veria/gerenciaria a licença do
-        // outro). Checagem em tempo de escrita — não depende de índice único.
-        const alreadyLinked = await db.collection('portal_users').findOne({ keyCode: keycode, _id: { $ne: sess.email } });
+        const alreadyLinked = await db.collection('portal_users').findOne(portalLicenseConflictQuery(keycode, sess.email));
         if (alreadyLinked) { sendAuthHtml(res, renderStandalonePortalLinkKey('Esta chave já está vinculada a outra conta. Entre em contato com o suporte se isso for um engano.', '', sess)); return; }
-        await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { keyCode: keycode } });
+        // A chave LITE nunca substitui a licença da ZVM completa, nem vice-versa.
+        await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { [portalSlot]: keycode } });
         res.writeHead(302, { Location: '/cliente' }); res.end(); return;
       } catch(e) { sendAuthHtml(res, renderStandalonePortalLinkKey('Erro ao vincular.', '', sess)); return; }
     }
   }
 
-  if (p === '/cliente/desvincular' && req.method === 'POST') {
+  if ((p === '/cliente/desvincular' || p === '/cliente/lite/desvincular') && req.method === 'POST') {
     if (!isPortalSession(req)) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
     if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
     const sess = getPortalUser(req);
     try {
       const db = await getMongoDb();
-      await db.collection('portal_users').updateOne({ _id: sess.email }, { $unset: { keyCode: '' } });
+      const slot = p === '/cliente/lite/desvincular' ? 'liteKeyCode' : 'keyCode';
+      await db.collection('portal_users').updateOne({ _id: sess.email }, { $unset: { [slot]: '' } });
     } catch(e) { /* falha silenciosa — redireciona de qualquer forma */ }
     res.writeHead(302, { Location: '/cliente' }); res.end(); return;
   }
