@@ -103,3 +103,14 @@ test('LITE refresh preserves token when database outage is explicitly retryable'
   assert.equal(denied.errorCode,'temporarily_unavailable');
   assert.equal(h.calls.revoked,0);
 });
+
+test('LITE refresh cannot inherit a newly linked license from an old password token',async()=>{
+  const h=refreshHarness({
+    ok:true,keyCode:'zv2l-a-new-linked-key',
+    devAccess:false,entitlement:{productId:'zvm_lite',entitlementRevision:'r55'}
+  });
+  const denied=await h.run();
+  assert.equal(denied.errorCode,'lite_license_binding_changed');
+  assert.equal(denied.status,403);
+  assert.equal(h.calls.revoked,1);
+});
