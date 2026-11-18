@@ -31,7 +31,7 @@ function linkedPortalKeyForProduct(user, productId) {
 // MongoDB is authoritative; errors propagate and are never reported as success.
 async function revokePortalLitePasswordSessions(db, rawEmail, options = {}) {
   const email = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : '';
-  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || email.length > 120 ||
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 120 ||
       !db || typeof db.collection !== 'function') throw new TypeError('invalid_lite_portal_revoke');
   const collectionName = options.collectionName;
   if (typeof collectionName !== 'string' || !/^[a-zA-Z0-9_]{1,80}$/.test(collectionName)) {
