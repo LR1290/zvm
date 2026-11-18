@@ -188,10 +188,13 @@ test('R57 real local MongoDB: issued key, concurrent claims, revocation and port
       {accountEmail:'one@example.com',extensionProductId:PRODUCT_AUTOMACOES,authMethod:'password',revokedAt:null},
       {accountEmail:'two@example.com',extensionProductId:PRODUCT_LITE,authMethod:'password',revokedAt:null}
     ];
-    await db.collection('extension_sessions').insertMany(data);
+    const inserted=await db.collection('extension_sessions').insertMany(data);
+    const ids=Object.values(inserted.insertedIds);
     const result=await revokePortalLitePasswordSessions(db,'ONE@example.com',{collectionName:'extension_sessions'});
     assert.equal(result.modifiedCount,1);
-    const docs=await db.collection('extension_sessions').find({}, {projection:{_id:0}}).toArray();
+    // Inspect ONLY the four documents created by this subtest, not sessions
+    // inserted by the preceding admin-block regression.
+    const docs=await Promise.all(ids.map(_id=>db.collection('extension_sessions').findOne({_id})));
     assert.ok(docs[0].revokedAt instanceof Date);
     assert.equal(docs[1].revokedAt,null);
     assert.equal(docs[2].revokedAt,null);
