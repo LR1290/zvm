@@ -26,7 +26,7 @@ const https  = require('https');
 const crypto = require('crypto');
 const { PRODUCT_AUTOMACOES, PRODUCT_LITE, selectAdminProduct, generateLicenseKey, productOfKeyRecord, keyBelongsTo } = require('./src/license-product-v2');
 const { readLiteConfig, inspectLiteClient, liteOriginAllowed, liteSessionAllowed, SESSION_TTL: ZVM_LITE_SESSION_TTL } = require('./src/lite-v4-build-authority');
-const { normalizePortalLicenseKey, portalLicenseSlot, linkedPortalKeyForProduct, portalLicenseConflictQuery } = require('./src/portal-license-slots');
+const { normalizePortalLicenseKey, portalLicenseSlot, linkedPortalKeyForProduct, portalLicenseConflictQuery, revokePortalLitePasswordSessions } = require('./src/portal-license-slots');
 const fs     = require('fs');
 const path   = require('path');
 const zlib   = require('zlib');
@@ -2633,7 +2633,14 @@ async function refreshExtensionSession(rawToken, deps = {}) {
       return extensionAuthFailure('subject_not_found', 401);
     }
     entitlementResult = await resolveExtensionAccountEntitlement(user, { ...deps, db, now, expectedProductId });
-    if (!entitlementResult.ok) return entitlementResult;
+    if (!entitlementResult.ok) {
+      // A missing/removed LITE portal key must revoke the existing password token.
+      // DB outages remain retryable; do not destroy a valid session on 503.
+      if (expectedProductId === PRODUCT_LITE && entitlementResult.retryable !== true) {
+        await revokeExtensionSession(rawToken, { ...deps, db, now });
+      }
+      return entitlementResult;
+    }
     licenseKeyCode = entitlementResult.keyCode;
   } else if (doc.authMethod === 'license_key') {
     const keyStore = deps.keyStore || keys;
@@ -11466,7 +11473,12 @@ async function handleRequest(req, res) {
         const alreadyLinked = await db.collection('portal_users').findOne(portalLicenseConflictQuery(keycode, sess.email));
         if (alreadyLinked) { sendAuthHtml(res, renderStandalonePortalLinkKey('Esta chave já está vinculada a outra conta. Entre em contato com o suporte se isso for um engano.', '', sess)); return; }
         // A chave LITE nunca substitui a licença da ZVM completa, nem vice-versa.
-        await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { [portalSlot]: keycode } });
+        const linkResult = await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { [portalSlot]: keycode } });
+        if (portalSlot === 'liteKeyCode') {
+          if (linkResult?.matchedCount !== 1) { sendJson(res, { error: 'portal_account_not_found' }, 404); return; }
+          // Rebinding a LITE key invalidates only pre-existing LITE password sessions.
+          await revokePortalLitePasswordSessions(db, sess.email, { collectionName: EXTENSION_SESSION_COLLECTION });
+        }
         res.writeHead(302, { Location: '/cliente' }); res.end(); return;
       } catch(e) { sendAuthHtml(res, renderStandalonePortalLinkKey('Erro ao vincular.', '', sess)); return; }
     }
@@ -11479,8 +11491,20 @@ async function handleRequest(req, res) {
     try {
       const db = await getMongoDb();
       const slot = p === '/cliente/lite/desvincular' ? 'liteKeyCode' : 'keyCode';
-      await db.collection('portal_users').updateOne({ _id: sess.email }, { $unset: { [slot]: '' } });
-    } catch(e) { /* falha silenciosa — redireciona de qualquer forma */ }
+      const unlinkResult = await db.collection('portal_users').updateOne({ _id: sess.email }, { $unset: { [slot]: '' } });
+      if (slot === 'liteKeyCode') {
+        if (unlinkResult?.matchedCount !== 1) { sendJson(res, { error: 'portal_account_not_found' }, 404); return; }
+        // Never leave an account-password LITE session authorized after unlink.
+        // The full edition and independent key-based sessions are untouched.
+        await revokePortalLitePasswordSessions(db, sess.email, { collectionName: EXTENSION_SESSION_COLLECTION });
+      }
+    } catch(e) {
+      if (p === '/cliente/lite/desvincular') {
+        console.error('[Portal LITE] erro ao desvincular/revogar sessões:', e?.code || e?.message || 'unknown');
+        sendJson(res, { error: 'temporarily_unavailable' }, 503); return;
+      }
+      // Mantém a semântica legada de desvinculação da edição completa.
+    }
     res.writeHead(302, { Location: '/cliente' }); res.end(); return;
   }
 
