@@ -24,6 +24,7 @@ function sanitizeStartupErrorMessage(error) {
 const http   = require('http');
 const https  = require('https');
 const crypto = require('crypto');
+const { PRODUCT_AUTOMACOES, PRODUCT_LITE, selectAdminProduct, generateLicenseKey, productOfKeyRecord, keyBelongsTo } = require('./src/license-product-v2');
 const fs     = require('fs');
 const path   = require('path');
 const zlib   = require('zlib');
@@ -64,7 +65,7 @@ const serveZVMCloud = createCloudRoute({
     if (storedKeyHash !== null && !safeCompare(fingerprint, storedKeyHash)) return false;
     // Read the authoritative DB record, never the in-memory cache of old licenses.
     const record = await readPortalKeySnapshot(keyCode, { db });
-    if (!extensionLicenseIsUsable(record) || !extensionDevAccessAllowed(keyCode, record)) return false;
+    if (!extensionLicenseIsUsable(record) || !keyBelongsTo(record, keyCode, PRODUCT_AUTOMACOES) || !extensionDevAccessAllowed(keyCode, record)) return false;
     return rawCode !== null ? { keyHash: fingerprint } : true;
   },
 });
@@ -2400,11 +2401,12 @@ function extensionAuthFailure(errorCode, status, extra = {}) {
 async function resolveExtensionAccountEntitlement(user, deps = {}) {
   const now = extensionNow(deps);
   const keyStore = deps.keyStore || keys;
-  const keyCode = sanitizeId(user?.keyCode, 32);
+  const keyCode = sanitizeId(user?.keyCode, 64);
   if (!keyCode) return { ok: true, keyCode: null, devAccess:false, entitlement: buildExtensionEntitlement({ now }) };
   const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(keyCode);
   if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
   const keyRecord = loaded.found ? keyStore[keyCode] : null;
+  if (keyRecord && !keyBelongsTo(keyRecord, keyCode, PRODUCT_AUTOMACOES)) return extensionAuthFailure('license_product_mismatch', 403);
   if (!extensionLicenseIsUsable(keyRecord, now)) {
     return { ok: true, keyCode: null, devAccess:false, entitlement: buildExtensionEntitlement({ now }) };
   }
@@ -2448,7 +2450,7 @@ async function authenticateExtensionAccount(input, deps = {}) {
 }
 
 async function authorizeExtensionKeySession(input, deps = {}) {
-  const keyCode = sanitizeId(input?.authKey, 32);
+  const keyCode = sanitizeId(input?.authKey, 64);
   const phoneNumber = normalizePhone(input?.phoneNumber || '');
   const deviceId = safeScalar(input?.deviceId, 160);
   if (!keyCode || isFreeAuthKey(keyCode) || !phoneNumber || !deviceId) {
@@ -2459,6 +2461,7 @@ async function authorizeExtensionKeySession(input, deps = {}) {
   if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
   if (!loaded.found || !keyStore[keyCode]) return extensionAuthFailure('invalid_key', 401);
   const keyRecord = keyStore[keyCode];
+  if (!keyBelongsTo(keyRecord, keyCode, PRODUCT_AUTOMACOES)) return extensionAuthFailure('license_product_mismatch', 403);
   if (keyRecord.active !== true) return extensionAuthFailure('key_blocked', 403);
   // Diferente do helper legado isKeyExpired(), este guard também falha
   // fechado para expiresAt malformado em vez de autenticar a chave e só
@@ -2553,6 +2556,10 @@ async function refreshExtensionSession(rawToken, deps = {}) {
     const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(doc.licenseKeyCode);
     if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
     const keyRecord = loaded.found ? keyStore[doc.licenseKeyCode] : null;
+    if (keyRecord && !keyBelongsTo(keyRecord, doc.licenseKeyCode, PRODUCT_AUTOMACOES)) {
+      await revokeExtensionSession(rawToken, { ...deps, db, now });
+      return extensionAuthFailure('license_product_mismatch', 403);
+    }
     const phoneStillAllowed = !doc.phoneNumber || (Array.isArray(keyRecord?.phones)
       && keyRecord.phones.some(value => normalizePhone(value) === doc.phoneNumber));
     if (!extensionLicenseIsUsable(keyRecord, now) || !phoneStillAllowed) {
@@ -2794,7 +2801,7 @@ async function adminGetKey(code) {
   return readAdminKeySnapshot(code);
 }
 async function resolveUsageKey(body) {
-  const authKey = (body.authKey || '').toLowerCase().slice(0, 32);
+  const authKey = sanitizeId(body.authKey, 64);
   const phone = body.phoneNumber || '';
 
   // A identidade/entitlement vem de chave real ou associação real de
@@ -2804,11 +2811,11 @@ async function resolveUsageKey(body) {
   if (authKey === FREE_AUTH_KEY) return FREE_AUTH_KEY;
 
   if (authKey && authKey !== FREE_AUTH_KEY && await ensureKeyLoaded(authKey)) {
-    return extensionLicenseIsUsable(keys[authKey]) ? authKey : null;
+    return extensionLicenseIsUsable(keys[authKey]) && keyBelongsTo(keys[authKey], authKey, PRODUCT_AUTOMACOES) ? authKey : null;
   }
 
   const byPhone = findKeyCodeByPhone(keys, phone);
-  if (byPhone && await ensureKeyLoaded(byPhone) && extensionLicenseIsUsable(keys[byPhone])) return byPhone;
+  if (byPhone && await ensureKeyLoaded(byPhone) && extensionLicenseIsUsable(keys[byPhone]) && keyBelongsTo(keys[byPhone], byPhone, PRODUCT_AUTOMACOES)) return byPhone;
 
   return null;
 }
@@ -8817,11 +8824,11 @@ async function metaResolveOwner(req, body = {}) {
     return { ownerId: refreshed.sessionDoc.subject.id, auth: 'v4', subject: refreshed.sessionDoc.subject };
   }
   if (ZVM_BUILD_ENFORCE) return null;
-  const keyCode = sanitizeId(body.authKey, 32);
+  const keyCode = sanitizeId(body.authKey, 64);
   const deviceId = safeScalar(body.deviceId, 160);
   if (!keyCode || isFreeAuthKey(keyCode) || !deviceId) return null;
   const loaded = await ensureKeyLoadedEx(keyCode);
-  if (!loaded.found || loaded.dbError || !extensionLicenseIsUsable(keys[keyCode])) return null;
+  if (!loaded.found || loaded.dbError || !extensionLicenseIsUsable(keys[keyCode]) || !keyBelongsTo(keys[keyCode], keyCode, PRODUCT_AUTOMACOES)) return null;
   return { ownerId: extensionSubject('license', keyCode).id, auth: 'v254-compat', subject: extensionSubject('license', keyCode) };
 }
 function metaPublicConnection(rec) {
@@ -9375,7 +9382,7 @@ async function handleRequest(req, res) {
     }
     try {
       const body = await parseBody(req);
-      const keyCodeForBuild = sanitizeId(body.authKey, 32);
+      const keyCodeForBuild = sanitizeId(body.authKey, 64);
       const deviceIdForBuild = String(body.deviceId || '').trim().slice(0, 160);
       const devBuildAllowed = zvmSecurityDevBuildAllowed(keyCodeForBuild, deviceIdForBuild);
       const buildClient = await zvmSecurityCheckClientShared(body.clientSecurity, { allowUnrecognized:devBuildAllowed, licenseKey:keyCodeForBuild });
@@ -9576,7 +9583,7 @@ async function handleRequest(req, res) {
       return;
     }
     const body = await parseBody(req);
-    const keyCode    = sanitizeId(body.authKey, 32);
+    const keyCode    = sanitizeId(body.authKey, 64);
     const phone      = body.phoneNumber || '-';
     const wppVersion = body.wppVersion  || '-';
     const deviceId   = body.deviceId    || '';
@@ -9616,6 +9623,10 @@ async function handleRequest(req, res) {
     if (!_load.found) {
       sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada. Contate o vendedor.', isLoggedIn: false });
       addLog({ keyCode, label: '-', phone, ip, wppVersion, action: 'key_not_found' }).catch(()=>{});
+      return;
+    }
+    if (!keyBelongsTo(keys[keyCode], keyCode, PRODUCT_AUTOMACOES)) {
+      sendJson(res, { authError: 'keyBlocked', reason: 'product_mismatch', isLoggedIn: false }, 403);
       return;
     }
     if (isKeyExpired(keys[keyCode])) {
@@ -9782,7 +9793,7 @@ async function handleRequest(req, res) {
       sendJson(res, { error: 'rate_limited', retryable: true }, 429); return;
     }
     const body    = await parseBody(req); // 64 KB limit + prototype-pollution guard
-    const keyCode = sanitizeId(body.authKey, 32);
+    const keyCode = sanitizeId(body.authKey, 64);
     if (!serverReady) { sendJson(res, { error: 'temporarily_unavailable', retryable: true }, 503); return; }
     if (!keyCode)     { sendJson(res, { error: 'invalid_request' }, 400); return; }
     if (isFreeAuthKey(keyCode)) {
@@ -9813,6 +9824,10 @@ async function handleRequest(req, res) {
     }
     if (!_cs.found) {
       sendJson(res, { active: false, reason: 'not_found' }); return;
+    }
+    if (!keyBelongsTo(keys[keyCode], keyCode, PRODUCT_AUTOMACOES)) {
+      sendJson(res, { active: false, reason: 'product_mismatch' }, 403);
+      return;
     }
     const _k = sanitizeKeyRecord(keys[keyCode]);
     const _csPhone = body.phoneNumber ? normalizePhone(body.phoneNumber) : '';
@@ -10312,11 +10327,19 @@ async function handleRequest(req, res) {
     const body = await parseBody(req);
     const labelResult = normalizeAdminCreateLabel(body.label);
     if (!labelResult.ok) { sendJson(res, { error: labelResult.error }, 400); return; }
-    const code = generateCode();
+    const hasProductSelection = Object.prototype.hasOwnProperty.call(body, 'productId');
+    const extensionProductId = selectAdminProduct(body.productId, { legacyRequest: !hasProductSelection });
+    if (!extensionProductId) { sendJson(res, { error: 'invalid_extension_product' }, 400); return; }
+    // Legacy callers keep the old key format until every full extension accepts 57-char keys.
+    const code = hasProductSelection ? generateLicenseKey(extensionProductId) : generateCode();
     const { expiresAt, expireDuration } = parseKeyExpiryFromBody(body, { allowMinutes: true });
     const maxUses = (body.maxUses !== undefined) ? parseInt(body.maxUses) : MAX_USES;
     const createdKey = {
-      label: labelResult.label, active: true, createdAt: new Date().toISOString(),
+      label: labelResult.label, active: extensionProductId === PRODUCT_AUTOMACOES,
+      extensionProductId,
+      keyFormat: hasProductSelection ? 'v2-256' : 'legacy-v1',
+      provisioningStatus: extensionProductId === PRODUCT_LITE ? 'awaiting_lite_build_authority' : 'issued',
+      createdAt: new Date().toISOString(),
       uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null,
       deviceId: null, wppVersion: null, note: '',
       expiresAt, expireDuration: expireDuration || null,
@@ -10325,8 +10348,8 @@ async function handleRequest(req, res) {
     };
     try { await commitAdminKeyRecordStrict(code, createdKey); }
     catch (e) { sendAdminKeyPersistFailure(res, e, 'create key'); return; }
-    addAdminAuditLog({ actor: 'admin', action: 'key_created', keyCode: code, label: keys[code].label }).catch(()=>{});
-    sendJson(res, { ok: true, key: code }); return;
+    addAdminAuditLog({ actor: 'admin', action: 'key_created', keyCode: code, label: keys[code].label, detail: extensionProductId }).catch(()=>{});
+    sendJson(res, { ok: true, key: code, productId: extensionProductId, activationPending: extensionProductId === PRODUCT_LITE }); return;
   }
 
   const codeToggle = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/toggle$`));
@@ -10334,6 +10357,9 @@ async function handleRequest(req, res) {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const k = await adminGetKey(codeToggle);
     if (!k) { sendJson(res, { error: 'not found' }, 404); return; }
+    if (!k.active && productOfKeyRecord(k, codeToggle) === PRODUCT_LITE) {
+      sendJson(res, { error: 'lite_build_authority_required' }, 409); return;
+    }
     let savedToggle;
     try { savedToggle = await mutateAdminKeyRecordStrict(codeToggle, draft => { draft.active = !draft.active; }); }
     catch (e) { sendAdminKeyPersistFailure(res, e, 'toggle key'); return; }
@@ -10349,6 +10375,9 @@ async function handleRequest(req, res) {
     const kDevAccess = await adminGetKey(codeDevAccess);
     if (!kDevAccess) { sendJson(res, { error: 'not found' }, 404); return; }
     const body = await parseBody(req);
+    if (body.enabled === true && productOfKeyRecord(kDevAccess, codeDevAccess) === PRODUCT_LITE) {
+      sendJson(res, { error: 'lite_build_authority_required' }, 409); return;
+    }
     if (typeof body.enabled !== 'boolean') { sendJson(res, { error: 'invalid_dev_access' }, 400); return; }
     let savedDevAccess;
     try { savedDevAccess = await setAdminKeyDevAccessStrict(codeDevAccess, body.enabled); }
