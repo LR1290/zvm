@@ -70,3 +70,14 @@ test('LITE refresh cannot silently transfer a password session to a replacement 
   const replacement=refresh.indexOf('licenseKeyCode = entitlementResult.keyCode;',start);
   assert.ok(start>=0 && revoke>start && revoke<replacement);
 });
+
+test('portal gives conflict feedback for duplicated LITE key and does not hide account uniqueness errors',()=>{
+  const reg=server.split("if (p === '/cliente/registro' && req.method === 'POST')")[1]?.split("if (p === '/cliente/logout')")[0];
+  const link=server.split("if (p === '/cliente/vincular')")[1]?.split("if ((p === '/cliente/desvincular'")[0];
+  assert.ok(reg&&link);
+  assert.match(reg,/e\?\.code === 11000 && e\?\.keyPattern\?\.liteKeyCode === 1/);
+  assert.match(link,/e\?\.code === 11000 && e\?\.keyPattern\?\.liteKeyCode === 1/);
+  assert.match(reg,/Esta chave LITE já está vinculada a outra conta/);
+  assert.match(link,/Esta chave LITE já está vinculada a outra conta/);
+  assert.match(reg,/E-mail já cadastrado/);
+});
