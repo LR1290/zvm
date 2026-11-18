@@ -26,7 +26,7 @@ const https  = require('https');
 const crypto = require('crypto');
 const { PRODUCT_AUTOMACOES, PRODUCT_LITE, selectAdminProduct, generateLicenseKey, productOfKeyRecord, keyBelongsTo } = require('./src/license-product-v2');
 const { readLiteConfig, inspectLiteClient, liteOriginAllowed, liteSessionAllowed, SESSION_TTL: ZVM_LITE_SESSION_TTL } = require('./src/lite-v4-build-authority');
-const { normalizePortalLicenseKey, portalLicenseSlot, linkedPortalKeyForProduct, portalLicenseConflictQuery, revokePortalLitePasswordSessions } = require('./src/portal-license-slots');
+const { normalizePortalLicenseKey, portalLicenseSlot, linkedPortalKeyForProduct, portalLicenseConflictQuery, revokePortalLitePasswordSessions, ensureLitePortalLicenseUniqueIndex } = require('./src/portal-license-slots');
 const fs     = require('fs');
 const path   = require('path');
 const zlib   = require('zlib');
@@ -2640,6 +2640,12 @@ async function refreshExtensionSession(rawToken, deps = {}) {
         await revokeExtensionSession(rawToken, { ...deps, db, now });
       }
       return entitlementResult;
+    }
+    // Old account sessions must never inherit a newly linked LITE key.
+    // Account owner must sign in again after a LITE rebind or unlink.
+    if (expectedProductId === PRODUCT_LITE && licenseKeyCode !== entitlementResult.keyCode) {
+      await revokeExtensionSession(rawToken, { ...deps, db, now });
+      return extensionAuthFailure('lite_license_binding_changed',403);
     }
     licenseKeyCode = entitlementResult.keyCode;
   } else if (doc.authMethod === 'license_key') {
@@ -11431,6 +11437,8 @@ async function handleRequest(req, res) {
         if (!keys[keycode]) { sendAuthHtml(res, renderStandalonePortalRegister('Chave não encontrada. Deixe em branco para vincular depois.', vals, redir)); return; }
         portalSlot = portalLicenseSlot(keys[keycode], keycode);
         if (!portalSlot) { sendAuthHtml(res, renderStandalonePortalRegister('A chave não corresponde a um produto válido.', vals, redir)); return; }
+        // The DB partial unique index, not only a preflight read, owns LITE uniqueness.
+        if (portalSlot === 'liteKeyCode') await ensureLitePortalLicenseUniqueIndex(db);
         // Verificar ambas as posições evita duplicar titularidade entre produtos.
         const alreadyLinked = await db.collection('portal_users').findOne(portalLicenseConflictQuery(keycode));
         if (alreadyLinked) { sendAuthHtml(res, renderStandalonePortalRegister('Esta chave já está vinculada a outra conta. Entre em contato com o suporte se isso for um engano.', vals, redir)); return; }
@@ -11470,6 +11478,7 @@ async function handleRequest(req, res) {
       if (!portalSlot) { sendAuthHtml(res, renderStandalonePortalLinkKey('Chave ou produto inválido.', '', sess)); return; }
       try {
         const db = await getMongoDb();
+        if (portalSlot === 'liteKeyCode') await ensureLitePortalLicenseUniqueIndex(db);
         const alreadyLinked = await db.collection('portal_users').findOne(portalLicenseConflictQuery(keycode, sess.email));
         if (alreadyLinked) { sendAuthHtml(res, renderStandalonePortalLinkKey('Esta chave já está vinculada a outra conta. Entre em contato com o suporte se isso for um engano.', '', sess)); return; }
         // A chave LITE nunca substitui a licença da ZVM completa, nem vice-versa.
