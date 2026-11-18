@@ -50,7 +50,7 @@ test('LITE V4 login uses only the isolated Mongo-conditional first-use activatio
   assert.equal(result.ok,true);
   assert.equal(result.entitlement.licenseExpiresAt,h.activated.expiresAt);
   assert.equal(result.entitlement.entitlementRevision,'r57');
-  assert.equal(h.cache[code],h.activated);
+  assert.equal(h.cache[code],undefined,'LITE may not leak into the legacy full-product cache');
   assert.equal(h.calls.lite,1);
   assert.equal(h.calls.legacy,0);
   assert.equal(result.subject.productId,PRODUCT_LITE);
