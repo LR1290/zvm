@@ -45,6 +45,26 @@ async function revokePortalLitePasswordSessions(db, rawEmail, options = {}) {
   );
 }
 
+// Administrative blocking revokes BOTH LITE auth modes for this licence,
+// but never sessions belonging to the full ZVM product or other LITE keys.
+// No secret token is needed or logged; Mongo matches the persisted key code.
+async function revokeLiteLicenseSessions(db, code, options = {}) {
+  if (!db || typeof db.collection !== 'function' ||
+      typeof code !== 'string' || !/^zv2l-[a-z2-7]{52}$/.test(code)) {
+    throw new TypeError('invalid_lite_license_revoke');
+  }
+  const collectionName = options.collectionName;
+  if (typeof collectionName !== 'string' || !/^[a-zA-Z0-9_]{1,80}$/.test(collectionName)) {
+    throw new TypeError('invalid_lite_session_collection');
+  }
+  const now = options.now === undefined ? new Date() : new Date(options.now);
+  if (!Number.isFinite(now.getTime())) throw new TypeError('invalid_lite_revoke_time');
+  return db.collection(collectionName).updateMany(
+    { licenseKeyCode: code, extensionProductId: PRODUCT_LITE, revokedAt: null },
+    { $set: { revokedAt: now, lastSeenAt: now } }
+  );
+}
+
 // Enforce one account per LITE license at the MongoDB layer, not merely via a
 // findOne() preflight. Partial string index leaves all historical full-ZVM
 // accounts (no liteKeyCode field) untouched, including legacy null records.
@@ -76,5 +96,6 @@ module.exports = Object.freeze({
   linkedPortalKeyForProduct,
   portalLicenseConflictQuery,
   revokePortalLitePasswordSessions,
+  revokeLiteLicenseSessions,
   ensureLitePortalLicenseUniqueIndex,
 });
