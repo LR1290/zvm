@@ -10,7 +10,7 @@ const path = require('node:path');
 const { MongoClient } = require('mongodb');
 const { generateLicenseKey, PRODUCT_LITE, PRODUCT_AUTOMACOES } = require('../src/license-product-v2');
 const { readLiteLicenseSnapshot, claimLitePhoneSlotAtomic, liteKeyUsable, activateLiteDeferredKeyAtomic } = require('../src/lite-license-authority');
-const { ensureLitePortalLicenseUniqueIndex, revokePortalLitePasswordSessions } = require('../src/portal-license-slots');
+const { ensureLitePortalLicenseUniqueIndex, revokePortalLitePasswordSessions, revokeLiteLicenseSessions } = require('../src/portal-license-slots');
 
 const uri=process.env.ZVM_LITE_TEST_MONGO_URI;
 if (!uri || !/^mongodb:\/\/(?:127\.0\.0\.1|localhost):27017\/?(?:\?.*)?$/.test(uri)) {
@@ -158,6 +158,27 @@ test('R57 real local MongoDB: issued key, concurrent claims, revocation and port
     await db.collection('portal_users').insertOne({_id:'three@example.com',keyCode:full});
     await db.collection('portal_users').insertOne({_id:'four@example.com',keyCode:full});
     assert.equal(await db.collection('portal_users').countDocuments({}),3);
+  });
+
+  await t.test('admin LITE block revokes both Lite session methods but never complete ZVM sessions',async()=>{
+    const inserted=await db.collection('extension_sessions').insertMany([
+      {licenseKeyCode:issuedByAdmin,extensionProductId:PRODUCT_LITE,authMethod:'password',revokedAt:null},
+      {licenseKeyCode:issuedByAdmin,extensionProductId:PRODUCT_LITE,authMethod:'license_key',revokedAt:null},
+      {licenseKeyCode:issuedByAdmin,extensionProductId:PRODUCT_AUTOMACOES,authMethod:'license_key',revokedAt:null},
+      {licenseKeyCode:lite,extensionProductId:PRODUCT_LITE,authMethod:'license_key',revokedAt:null},
+      {licenseKeyCode:full,extensionProductId:PRODUCT_AUTOMACOES,authMethod:'password',revokedAt:null}
+    ]);
+    const ids=Object.values(inserted.insertedIds);
+    const revoked=await revokeLiteLicenseSessions(db,issuedByAdmin,{collectionName:'extension_sessions'});
+    assert.equal(revoked.acknowledged,true);
+    assert.equal(revoked.modifiedCount,2);
+    const docs=await db.collection('extension_sessions').find({_id:{$in:ids}}).toArray();
+    const map=new Map(docs.map(d=>[String(d._id),d]));
+    for(let i=0;i<2;i++)assert.ok(map.get(String(ids[i])).revokedAt instanceof Date);
+    for(let i=2;i<5;i++)assert.equal(map.get(String(ids[i])).revokedAt,null);
+    const again=await revokeLiteLicenseSessions(db,issuedByAdmin,{collectionName:'extension_sessions'});
+    assert.equal(again.modifiedCount,0,'double block/retry must be idempotent');
+    await assert.rejects(revokeLiteLicenseSessions(db,full,{collectionName:'extension_sessions'}),/invalid_lite_license_revoke/);
   });
 
   await t.test('account unlink revokes only LITE password sessions',async()=>{
