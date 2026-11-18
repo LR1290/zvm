@@ -6,6 +6,7 @@ on:
       - 'src/portal-license-slots.js'
       - 'src/license-product-v2.js'
       - 'tests/r57-lite-mongo-real.test.js'
+      - 'tests/r58-lite-signed-api-contract.test.js'
       - '.github/workflows/zvm-lite-mongo-real-r57.yml'
   workflow_dispatch:
 
@@ -41,10 +42,11 @@ jobs:
         run: |
           test "$ZVM_LITE_TEST_MONGO_URI" = "mongodb://127.0.0.1:27017/"
           node --check tests/r57-lite-mongo-real.test.js
+          node --check tests/r58-lite-signed-api-contract.test.js
           node --check src/lite-license-authority.js
         env:
           ZVM_LITE_TEST_MONGO_URI: mongodb://127.0.0.1:27017/
       - name: Test real DB atomic claims, partial index and product isolation
-        run: node --test tests/r57-lite-mongo-real.test.js
+        run: node --test tests/r57-lite-mongo-real.test.js tests/r58-lite-signed-api-contract.test.js
         env:
           ZVM_LITE_TEST_MONGO_URI: mongodb://127.0.0.1:27017/
