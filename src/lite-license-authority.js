@@ -36,7 +36,7 @@ async function claimLitePhoneSlotAtomic(db, code, phone, options = {}) {
   const globalLimit = Number(options.maxPhonesGlobal);
   if (!db || typeof db.collection !== 'function' ||
       typeof code !== 'string' || !CODE.test(code) ||
-      typeof phone !== 'string' || !/^\\d{10,16}$/.test(phone) ||
+      typeof phone !== 'string' || !/^\d{10,16}$/.test(phone) ||
       !Number.isFinite(nowMs) ||
       !Number.isSafeInteger(globalLimit) || globalLimit < 1 || globalLimit > 10000) {
     throw new TypeError('invalid_lite_phone_claim');
