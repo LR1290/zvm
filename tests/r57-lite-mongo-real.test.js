@@ -200,4 +200,50 @@ test('R57 real local MongoDB: issued key, concurrent claims, revocation and port
     assert.equal(docs[2].revokedAt,null);
     assert.equal(docs[3].revokedAt,null);
   });
+  await t.test('idempotent admin recovery revokes Lite sessions without enabling a disabled key',async()=>{
+    const server=fs.readFileSync(path.join(__dirname,'..','server.js'),'utf8');
+    const a=server.indexOf('  const codeLiteRevokeRetry = extractCode(');
+    const b=server.indexOf('  const codeToggle = extractCode(',a);
+    assert.ok(a>=0&&b>a);
+    const run=new Function('req','res','deps','with(deps){return (async()=>{'+server.slice(a,b)+'})()}');
+    await db.collection('store').updateOne({_id:'keys'},{$set:{['data.'+issuedByAdmin+'.active']:false}});
+    const doc={licenseKeyCode:issuedByAdmin,extensionProductId:PRODUCT_LITE,
+      authMethod:'license_key',revokedAt:null};
+    const {insertedId}=await db.collection('extension_sessions').insertOne(doc);
+    const rights=[];
+    async function post(code,{originAllowed=true,admin=true}={}){
+      const p='/admin/api/keys/'+code+'/revoke-lite-sessions';
+      const req={method:'POST'};
+      const res={};
+      await run(req,res,{
+        p,RA:'/admin',
+        extractCode:re=>re.exec(p)?.[1]||null,
+        isAdminSession:()=>admin,requireSameOriginPost:()=>originAllowed,
+        getMongoDb:async()=>db,
+        readAdminKeySnapshot:async code=>(await db.collection('store').findOne({_id:'keys'}))?.data?.[code]||null,
+        productOfKeyRecord:require('../src/license-product-v2').productOfKeyRecord,
+        PRODUCT_LITE,EXTENSION_SESSION_COLLECTION:'extension_sessions',
+        revokeLiteLicenseSessions,
+        addAdminAuditLog:async event=>{rights.push(event.action);},
+        sendJson:(reply,body,status=200)=>{reply.reply={body,status};},
+        console:{error(){}}
+      });
+      assert.ok(res.reply);
+      return res.reply;
+    }
+    assert.equal((await post(issuedByAdmin,{admin:false})).status,401);
+    assert.equal((await post(issuedByAdmin,{originAllowed:false})).status,403);
+    const completed=await post(issuedByAdmin);
+    assert.equal(completed.status,200);
+    assert.equal(completed.body.active,false);
+    assert.equal(completed.body.revokedCount,1);
+    const stored=await db.collection('extension_sessions').findOne({_id:insertedId});
+    assert.ok(stored.revokedAt instanceof Date);
+    assert.equal((await post(issuedByAdmin)).body.revokedCount,0);
+    assert.equal((await readLiteLicenseSnapshot(db,issuedByAdmin)).active,false);
+    assert.equal((await post(deferred)).status,409,'active Lite key cannot invoke retry');
+    assert.equal((await post(full)).status,404,'full-edition key is not accepted');
+    assert.ok(rights.includes('lite_sessions_revoked'));
+  });
+
 });
