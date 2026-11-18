@@ -78,6 +78,8 @@ test('server has product admission before phone slots and covers key, account, r
   assert.match(server, /reason: 'product_mismatch'/);
   assert.match(server, /active: false, reason: 'product_mismatch'/);
   assert.match(server, /lite_build_authority_required/);
+  assert.match(server, /cakto_extension_product_conflict/);
+  assert.match(server, /cakto_portal_product_conflict/);
 });
 
 test('admin UI exposes mandatory product selection, product filter and honest pending status', () => {
