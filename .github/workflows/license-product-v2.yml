@@ -30,6 +30,8 @@ jobs:
           node --check tests/r51-license-products-v2.test.js
       - name: Product admission & entropy tests
         run: node --test tests/r51-license-products-v2.test.js
+      - name: Install pinned test dependencies
+        run: npm ci --no-audit --no-fund
       - name: Existing admin integrity and UX regressions
         run: |
           node tests/r47-07-admin-key-ux.test.js
