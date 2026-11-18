@@ -76,4 +76,50 @@ async function claimLitePhoneSlotAtomic(db, code, phone, options = {}) {
   if (confirmed) return {status:'already_member',record:latest};
   return {status:'limit_reached',record:latest};
 }
-module.exports = Object.freeze({ readLiteLicenseSnapshot, liteKeyUsable, claimLitePhoneSlotAtomic });
+// LITE deferred expiry starts only after a real phone claim. The activation
+// update requires an active, correctly issued LITE key and that claimed phone.
+// A legacy full-product key cannot be activated via this path.
+async function activateLiteDeferredKeyAtomic(db, code, phone, options = {}) {
+  const nowMs = options.nowMs === undefined ? Date.now() : Number(options.nowMs);
+  if (!db || typeof db.collection !== 'function' || !CODE.test(String(code || '')) ||
+      typeof phone !== 'string' || !/^\d{10,16}$/.test(phone) ||
+      !Number.isSafeInteger(nowMs)) throw new TypeError('invalid_lite_deferred_activation');
+  const read = options.readLiteLicenseSnapshot || readLiteLicenseSnapshot;
+  const original = await read(db,code);
+  if (!liteKeyUsable(original,code,nowMs) || !original.phones.includes(phone)) {
+    return {status:'entitlement_revoked',record:original};
+  }
+  if (original.expiresAt != null) return {status:'already_active',record:original};
+  if (!Number.isSafeInteger(original.expireDuration) || original.expireDuration<=0) {
+    return {status:'invalid_deferred_duration',record:original};
+  }
+  const expiresMs = nowMs+original.expireDuration;
+  if (!Number.isSafeInteger(expiresMs) || expiresMs>new Date('2100-01-01T00:00:00.000Z').getTime()) {
+    return {status:'invalid_deferred_duration',record:original};
+  }
+  const prefix = 'data.' + code;
+  const changed=await db.collection('store').updateOne(
+    {_id:'keys',
+      [prefix+'.extensionProductId']:PRODUCT_LITE,
+      [prefix+'.active']:true,
+      [prefix+'.provisioningStatus']:'issued',
+      [prefix+'.planId']:original.planId,
+      [prefix+'.maxUses']:original.maxUses,
+      [prefix+'.phones']:phone,
+      [prefix+'.expireDuration']:original.expireDuration,
+      [prefix+'.expiresAt']:null},
+    {$set:{
+      [prefix+'.expiresAt']:new Date(expiresMs).toISOString(),
+      [prefix+'.activatedAt']:new Date(nowMs).toISOString(),
+      updatedAt:new Date(nowMs),
+    }},
+    {upsert:false,timeoutMS:7000}
+  );
+  const latest=await read(db,code);
+  if (!liteKeyUsable(latest,code,Date.now()) || !latest.phones.includes(phone)) {
+    return {status:'entitlement_revoked',record:latest};
+  }
+  if (latest.expiresAt==null) return {status:'activation_conflict',record:latest};
+  return {status:changed?.modifiedCount===1?'activated':'already_active',record:latest};
+}
+module.exports = Object.freeze({ readLiteLicenseSnapshot, liteKeyUsable, claimLitePhoneSlotAtomic, activateLiteDeferredKeyAtomic });
