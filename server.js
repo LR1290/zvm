@@ -25,6 +25,7 @@ const http   = require('http');
 const https  = require('https');
 const crypto = require('crypto');
 const { PRODUCT_AUTOMACOES, PRODUCT_LITE, selectAdminProduct, generateLicenseKey, productOfKeyRecord, keyBelongsTo } = require('./src/license-product-v2');
+const { readLiteConfig, inspectLiteClient, liteOriginAllowed, liteSessionAllowed, SESSION_TTL: ZVM_LITE_SESSION_TTL } = require('./src/lite-v4-build-authority');
 const fs     = require('fs');
 const path   = require('path');
 const zlib   = require('zlib');
@@ -187,6 +188,7 @@ const EXTENSION_TUTORIALS_JSON = String(process.env.EXTENSION_TUTORIALS_JSON || 
 const EXT_COMPAT_DECODER_V1 = String(process.env.EXT_COMPAT_DECODER_V1 || '').trim();
 const TRUST_PROXY_HEADERS = process.env.TRUST_PROXY_HEADERS === '1' || String(process.env.RENDER || '').toLowerCase() === 'true';
 const ZVM_EXTENSION_IDS = new Set(String(process.env.ZVM_EXTENSION_IDS || '').split(',').map(v => v.trim().toLowerCase()).filter(v => /^[a-p]{32}$/.test(v)));
+const ZVM_LITE_V4_CONFIG = readLiteConfig(process.env, ZVM_EXTENSION_IDS);
 const ZVM_LEGACY_SHIELD_CHECK_TTL_MS = Math.max(30000, Math.min(15 * 60 * 1000, parseInt(process.env.ZVM_LEGACY_SHIELD_CHECK_TTL_MS || '300000', 10) || 300000));
 const ZVM_LEGACY_SHIELD_KEY_TTL_MS = Math.max(5 * 60 * 1000, Math.min(2 * 60 * 60 * 1000, parseInt(process.env.ZVM_LEGACY_SHIELD_KEY_TTL_MS || '3600000', 10) || 3600000));
 const ZVM_LEGACY_SHIELD_MAX_ENTRIES = Math.max(128, Math.min(10000, parseInt(process.env.ZVM_LEGACY_SHIELD_MAX_ENTRIES || '2048', 10) || 2048));
@@ -2128,6 +2130,11 @@ const EXTENSION_FREE_CAPABILITIES = Object.freeze([
   'laboratory.preview',
   'personalization.manage',
 ]);
+const EXTENSION_LITE_CAPABILITIES = Object.freeze([
+  'extension.use','paid','flows.manage','funnels.manage','disparos.execute',
+  'followup.manage','quickReply.send','items.schedule','items.send',
+  'groups.send','export.contacts',
+]);
 const EXTENSION_LICENSED_CAPABILITIES = Object.freeze([
   ...EXTENSION_FREE_CAPABILITIES,
   'academy.ai',
@@ -2186,11 +2193,15 @@ function extensionDevAccessAllowed(keyCode, keyRecord) {
   return ZVM_DEV_LICENSE_KEY_HASHES.has(keyHash);
 }
 
-function buildExtensionEntitlement({ keyCode = null, keyRecord = null, now = Date.now() } = {}) {
+function buildExtensionEntitlement({ keyCode = null, keyRecord = null, now = Date.now(), productId = PRODUCT_AUTOMACOES } = {}) {
   const nowDate = now instanceof Date ? new Date(now) : new Date(now);
   const nowMs = Number.isFinite(nowDate.getTime()) ? nowDate.getTime() : Date.now();
-  const licensed = !!keyCode && extensionLicenseIsUsable(keyRecord, nowMs);
-  const capabilities = [...(licensed ? EXTENSION_LICENSED_CAPABILITIES : EXTENSION_FREE_CAPABILITIES)].sort();
+  const isLite = productId === PRODUCT_LITE;
+  const licensed = !!keyCode && extensionLicenseIsUsable(keyRecord, nowMs) &&
+    keyBelongsTo(keyRecord, keyCode, productId);
+  const capabilities = [...(isLite
+    ? (licensed ? EXTENSION_LITE_CAPABILITIES : [])
+    : (licensed ? EXTENSION_LICENSED_CAPABILITIES : EXTENSION_FREE_CAPABILITIES))].sort();
   const licenseExpiryMs = licensed && keyRecord.expiresAt ? new Date(keyRecord.expiresAt).getTime() : null;
   const leaseExpiryMs = Number.isFinite(licenseExpiryMs)
     ? Math.min(nowMs + EXTENSION_ENTITLEMENT_LEASE_MS, licenseExpiryMs)
@@ -2198,26 +2209,27 @@ function buildExtensionEntitlement({ keyCode = null, keyRecord = null, now = Dat
   const tier = licensed ? 'paid' : 'free';
   const rawPlanId = licensed ? String(keyRecord.plan_id || keyRecord.planId || '').trim() : '';
   const commercialPlan = licensed ? (ZVM_PAYMENT_PLANS[rawPlanId.toLowerCase()] || null) : null;
-  const planId = licensed ? (rawPlanId || 'ZV_PRO') : FREE_PLAN_ID;
+  const planId = licensed ? (isLite ? rawPlanId : (rawPlanId || 'ZV_PRO')) : FREE_PLAN_ID;
   // Legacy/admin-created keys predate explicit plan metadata. Their historical
   // contract was PRO, so keep that fallback instead of exposing a generic
   // "Licenciado" label that loses useful license information.
-  const planName = licensed ? String(keyRecord.planName || commercialPlan?.shortName || commercialPlan?.name || 'Pro') : 'Gratuito';
+  const planName = licensed ? (isLite ? String(keyRecord.planName || 'LITE') : String(keyRecord.planName || commercialPlan?.shortName || commercialPlan?.name || 'Pro')) : 'Gratuito';
   const rawMaxUses = licensed && typeof keyRecord.maxUses === 'number' ? keyRecord.maxUses : null;
   const accessUnlimited = rawMaxUses === -1;
   const accessLimit = licensed && Number.isInteger(rawMaxUses) && rawMaxUses >= 0 ? rawMaxUses : null;
   const accessUsed = licensed
     ? (Array.isArray(keyRecord.phones) ? keyRecord.phones.length : Math.max(0, Number(keyRecord.uses) || 0))
     : 0;
-  const backupOwnerId = licensed ? String(keyRecord.ownerId || 'zv-owner') : '';
+  const backupOwnerId = licensed ? String(keyRecord.ownerId || (isLite ? keyCode : 'zv-owner')) : '';
   const backupOwnerHash = backupOwnerId
-    ? crypto.createHash('sha256').update(`ext:backup-owner:v1:${backupOwnerId}`, 'utf8').digest('hex')
+    ? crypto.createHash('sha256').update(isLite ? `ext:backup-owner:lite:v1:${backupOwnerId}` : `ext:backup-owner:v1:${backupOwnerId}`, 'utf8').digest('hex')
     : null;
   const backupLegacyOwnerHash = backupOwnerId
-    ? crypto.createHash('sha256').update(`zv:backup-owner:v1:${backupOwnerId}`, 'utf8').digest('hex')
+    ? (isLite ? null : crypto.createHash('sha256').update(`zv:backup-owner:v1:${backupOwnerId}`, 'utf8').digest('hex'))
     : null;
   const revisionInput = JSON.stringify({
     tier,
+    ...(isLite ? { productId: PRODUCT_LITE } : {}),
     planId,
     planName,
     accessLimit,
@@ -2230,6 +2242,7 @@ function buildExtensionEntitlement({ keyCode = null, keyRecord = null, now = Dat
     permissions: licensed && Array.isArray(keyRecord.permissions) ? [...keyRecord.permissions].sort() : [],
   });
   return {
+    productId,
     status: licensed ? 'active' : 'free',
     tier: licensed ? 'paid' : 'free',
     planId,
@@ -2290,6 +2303,7 @@ function extensionSessionSuccess(rawToken, sessionDoc, entitlement) {
     entitlement: {
       subject: { ...session.subject },
       authMethod: session.authMethod,
+      productId: entitlement.productId || PRODUCT_AUTOMACOES,
       status: entitlement.status,
       tier: entitlement.tier,
       entitlementRevision: entitlement.entitlementRevision,
