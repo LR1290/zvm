@@ -47,7 +47,8 @@ function productOfKeyRecord(keyRecord, keyCode) {
   if (!keyRecord || typeof keyRecord !== 'object' || Array.isArray(keyRecord)) return null;
   const code = String(keyCode || '').toLowerCase();
   const explicit = keyRecord.extensionProductId;
-  const hasProduct = explicit !== undefined && explicit !== null;
+  // Null/undefined explicitly persisted are malformed; only ABSENT means legacy.
+  const hasProduct = Object.prototype.hasOwnProperty.call(keyRecord, 'extensionProductId');
   const productId = hasProduct ? explicit : PRODUCT_AUTOMACOES;
   if (!PRODUCTS.includes(productId)) return null;
   if (/^zv2[al]-/.test(code)) {
