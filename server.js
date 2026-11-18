@@ -2564,8 +2564,26 @@ async function refreshExtensionSession(rawToken, deps = {}) {
   const current = await readExtensionSession(rawToken, { ...deps, db, now });
   if (!current.ok) return extensionAuthFailure(current.errorCode, 401);
   const doc = current.doc;
+  const expectedProductId = deps.expectedProductId || PRODUCT_AUTOMACOES;
+  const storedProductId = doc.extensionProductId || PRODUCT_AUTOMACOES; // old V4 sessions are full edition
+  if (storedProductId !== expectedProductId) {
+    await revokeExtensionSession(rawToken, { ...deps, db, now });
+    return extensionAuthFailure('license_product_mismatch',403);
+  }
   let buildDecision;
-  if (typeof deps.storedSessionDecision === 'function') {
+  if (expectedProductId === PRODUCT_LITE) {
+    const proof = deps.liteClientSecurity;
+    const installHash = proof?.installationId
+      ? crypto.createHash('sha256').update(String(proof.installationId),'utf8').digest('hex')
+      : '';
+    buildDecision = liteSessionAllowed(ZVM_LITE_V4_CONFIG, doc, now.getTime()) &&
+      proof?.securityProtocol === 2 && proof.extensionId === doc.extensionId &&
+      proof.extensionVersion === doc.extensionVersion && proof.buildId === doc.buildId &&
+      proof.buildFingerprint === doc.buildFingerprint &&
+      proof.signerKeyId === doc.liteSignerKeyId &&
+      installHash && installHash === doc.installationIdHash
+        ? {ok:true} : {ok:false,code:'LITE_BUILD_SESSION_INVALID'};
+  } else if (typeof deps.storedSessionDecision === 'function') {
     buildDecision = deps.storedSessionDecision(doc);
   } else if (typeof deps.buildDenied === 'function' && deps.buildDenied(doc.extensionVersion, doc.buildFingerprint, doc)) {
     buildDecision = { ok:false, code:'BUILD_REVOKED' };
@@ -2578,11 +2596,11 @@ async function refreshExtensionSession(rawToken, deps = {}) {
     await revokeExtensionSession(rawToken, { ...deps, db, now });
     return extensionAuthFailure(buildDecision.code || 'BUILD_NOT_ALLOWED', zvmSecurityClientErrorStatus(buildDecision.code || 'BUILD_NOT_ALLOWED'));
   }
-  if (Number(doc.securityProtocol || 1) === 2 && deps.requireCurrentClientSecurity === true && (!deps.clientSecurity || typeof deps.clientSecurity !== 'object')) {
+  if (expectedProductId !== PRODUCT_LITE && Number(doc.securityProtocol || 1) === 2 && deps.requireCurrentClientSecurity === true && (!deps.clientSecurity || typeof deps.clientSecurity !== 'object')) {
     await revokeExtensionSession(rawToken, { ...deps, db, now });
     return extensionAuthFailure('SECURITY_CLIENT_REQUIRED', 400);
   }
-  if (Number(doc.securityProtocol || 1) === 2 && deps.clientSecurity && typeof deps.clientSecurity === 'object') {
+  if (expectedProductId !== PRODUCT_LITE && Number(doc.securityProtocol || 1) === 2 && deps.clientSecurity && typeof deps.clientSecurity === 'object') {
     const checkCurrentClient = deps.checkClientShared || zvmSecurityCheckClientShared;
     const currentSecurity = await checkCurrentClient(deps.clientSecurity, { licenseKey: doc.licenseKeyCode || '' });
     if (!currentSecurity.ok) {
@@ -2613,7 +2631,7 @@ async function refreshExtensionSession(rawToken, deps = {}) {
       await revokeExtensionSession(rawToken, { ...deps, db, now });
       return extensionAuthFailure('subject_not_found', 401);
     }
-    entitlementResult = await resolveExtensionAccountEntitlement(user, { ...deps, db, now });
+    entitlementResult = await resolveExtensionAccountEntitlement(user, { ...deps, db, now, expectedProductId });
     if (!entitlementResult.ok) return entitlementResult;
     licenseKeyCode = entitlementResult.keyCode;
   } else if (doc.authMethod === 'license_key') {
@@ -2621,13 +2639,13 @@ async function refreshExtensionSession(rawToken, deps = {}) {
     const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(doc.licenseKeyCode);
     if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
     const keyRecord = loaded.found ? keyStore[doc.licenseKeyCode] : null;
-    if (keyRecord && !keyBelongsTo(keyRecord, doc.licenseKeyCode, PRODUCT_AUTOMACOES)) {
+    if (keyRecord && !keyBelongsTo(keyRecord, doc.licenseKeyCode, expectedProductId)) {
       await revokeExtensionSession(rawToken, { ...deps, db, now });
       return extensionAuthFailure('license_product_mismatch', 403);
     }
     const phoneStillAllowed = !doc.phoneNumber || (Array.isArray(keyRecord?.phones)
       && keyRecord.phones.some(value => normalizePhone(value) === doc.phoneNumber));
-    if (!extensionLicenseIsUsable(keyRecord, now) || !phoneStillAllowed) {
+    if (!extensionLicenseIsUsable(keyRecord, now) || !phoneStillAllowed || (expectedProductId === PRODUCT_LITE && (keyRecord.provisioningStatus !== 'issued' || !/^LITE_[A-Z0-9_]+$/.test(String(keyRecord.planId || ''))))) {
       await revokeExtensionSession(rawToken, { ...deps, db, now });
       return extensionAuthFailure('entitlement_revoked', 403);
     }
@@ -2635,7 +2653,7 @@ async function refreshExtensionSession(rawToken, deps = {}) {
       ok: true,
       keyCode: doc.licenseKeyCode,
       devAccess: extensionDevAccessAllowed(doc.licenseKeyCode, keyRecord),
-      entitlement: buildExtensionEntitlement({ keyCode: doc.licenseKeyCode, keyRecord, now }),
+      entitlement: buildExtensionEntitlement({ keyCode: doc.licenseKeyCode, keyRecord, now, productId:expectedProductId }),
     };
   } else {
     await revokeExtensionSession(rawToken, { ...deps, db, now });
