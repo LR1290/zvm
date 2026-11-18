@@ -7,7 +7,8 @@ const crypto = require('node:crypto');
 const FIELDS = Object.freeze(['schema','audience','productId','channel','extensionId','buildId','sha256','keyId','issuedAt','expiresAt']);
 const CHROME_ID = /^[a-p]{32}$/;
 const HEX64 = /^[a-f0-9]{64}$/;
-const BUILD_ID = /^zvm-lite-dev-[A-Za-z0-9_-]{3,96}$/;
+// Source build identity includes dotted semantic versions (e.g. 0.1.41).
+const BUILD_ID = /^zvm-lite-dev-[A-Za-z0-9._-]{3,96}$/;
 const KEY_ID = /^[a-zA-Z0-9._-]{3,100}$/;
 const VERSION = /^\d+(?:\.\d+){2,3}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
