@@ -79,7 +79,7 @@ test('real account entitlement reads the product-specific portal field', async (
   const run=vm.runInNewContext('('+source+')',ctx);
   const u={keyCode:full,liteKeyCode:lite};
   const fullSession=await run(u,{expectedProductId:PRODUCT_AUTOMACOES});
-  const liteSession=await run(u,{expectedProductId:PRODUCT_LITE});
+  const liteSession=await run(u,{expectedProductId:PRODUCT_LITE,db:{},readLiteLicenseSnapshot:async(_db,code)=>keys[code]||null});
   assert.equal(fullSession.ok,true);assert.equal(fullSession.keyCode,full);
   assert.equal(liteSession.ok,true);assert.equal(liteSession.keyCode,lite);
   assert.equal(fullSession.entitlement.productId,PRODUCT_AUTOMACOES);
@@ -87,7 +87,7 @@ test('real account entitlement reads the product-specific portal field', async (
   const liteMissing=await run({keyCode:full},{expectedProductId:PRODUCT_LITE});
   assert.equal(liteMissing.ok,false);
   assert.equal(liteMissing.errorCode,'lite_license_required');
-  const cross=await run({liteKeyCode:full},{expectedProductId:PRODUCT_LITE});
+  const cross=await run({liteKeyCode:full},{expectedProductId:PRODUCT_LITE,db:{},readLiteLicenseSnapshot:async(_db,code)=>keys[code]||null});
   assert.equal(cross.errorCode,'license_product_mismatch');
 });
 
