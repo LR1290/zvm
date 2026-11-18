@@ -116,6 +116,7 @@ async function auth(requireDevAccess) {
     sendExtensionRateLimited: () => { throw new Error('unexpected rate limit'); },
     parseBody: async req => req.body,
     sanitizeId: sandbox.sanitizeId,
+    safeScalar: sandbox.safeScalar,
     zvmSecurityDevBuildAllowed: () => false,
     zvmSecurityCheckClientShared: async client => ({ ok:true, ...client }),
     zvmSecurityClientErrorStatus: () => 403,
