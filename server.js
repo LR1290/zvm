@@ -2543,9 +2543,8 @@ async function authorizeExtensionKeySession(input, deps = {}) {
       return extensionAuthFailure('temporarily_unavailable', 503, { retryable:true });
     }
     if (!keyRecord) return extensionAuthFailure('invalid_key',401);
-    // Update the legacy operation cache only AFTER the DB admitted the LITE record.
-    // Subsequent phone claiming still runs through its atomic Mongo mutation.
-    keyStore[keyCode] = keyRecord;
+    // LITE never populates the legacy global key cache. Each operation uses
+    // the canonical Mongo record and its own scoped in-flight snapshot.
   } else {
     const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(keyCode);
     if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable:true });
@@ -2577,11 +2576,11 @@ async function authorizeExtensionKeySession(input, deps = {}) {
     return extensionAuthFailure('temporarily_unavailable',503,{retryable:true});
   }
   if (expectedProductId === PRODUCT_LITE && claim.record) {
-    // Build the entitlement from the post-write Mongo snapshot, not a stale key.
-    keyStore[keyCode] = claim.record;
+    // Local-only: do not leak LITE key material into the full-edition cache.
+    keyRecord = claim.record;
   }
   if (expectedProductId === PRODUCT_LITE) {
-    const persistedAfterClaim = keyStore[keyCode];
+    const persistedAfterClaim = keyRecord;
     if (persistedAfterClaim?.expireDuration && !persistedAfterClaim.expiresAt) {
       let activated;
       try {
@@ -2597,7 +2596,7 @@ async function authorizeExtensionKeySession(input, deps = {}) {
       if (!['activated','already_active'].includes(activated.status) || !activated.record) {
         return extensionAuthFailure('activation_failed',503,{retryable:true});
       }
-      keyStore[keyCode] = activated.record;
+      keyRecord = activated.record;
     }
   } else if (keyRecord.expireDuration && !keyRecord.expiresAt) {
     // The complete edition deliberately retains its historical first-use contract.
@@ -2605,14 +2604,18 @@ async function authorizeExtensionKeySession(input, deps = {}) {
     if (!activated) return extensionAuthFailure('activation_failed', 503, { retryable: true });
   }
   const now = extensionNow(deps);
-  const entitlement = buildExtensionEntitlement({ keyCode, keyRecord: keyStore[keyCode], now, productId:expectedProductId });
+  const entitlement = buildExtensionEntitlement({
+    keyCode, keyRecord: expectedProductId === PRODUCT_LITE ? keyRecord : keyStore[keyCode],
+    now, productId:expectedProductId
+  });
   return {
     ok: true,
     subject: extensionSubject('license', keyCode, expectedProductId),
     licenseKeyCode: keyCode,
     phoneNumber,
     deviceId,
-    devAccess: extensionDevAccessAllowed(keyCode, keyStore[keyCode]),
+    devAccess: extensionDevAccessAllowed(keyCode,
+      expectedProductId === PRODUCT_LITE ? keyRecord : keyStore[keyCode]),
     entitlement,
     newlyClaimed: claim.status === 'claimed',
   };
