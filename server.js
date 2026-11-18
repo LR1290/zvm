@@ -26,7 +26,7 @@ const https  = require('https');
 const crypto = require('crypto');
 const { PRODUCT_AUTOMACOES, PRODUCT_LITE, selectAdminProduct, generateLicenseKey, productOfKeyRecord, keyBelongsTo } = require('./src/license-product-v2');
 const { readLiteConfig, inspectLiteClient, liteOriginAllowed, liteSessionAllowed, SESSION_TTL: ZVM_LITE_SESSION_TTL } = require('./src/lite-v4-build-authority');
-const { readLiteLicenseSnapshot } = require('./src/lite-license-authority');
+const { readLiteLicenseSnapshot, claimLitePhoneSlotAtomic } = require('./src/lite-license-authority');
 const { normalizePortalLicenseKey, portalLicenseSlot, linkedPortalKeyForProduct, portalLicenseConflictQuery, revokePortalLitePasswordSessions, ensureLitePortalLicenseUniqueIndex } = require('./src/portal-license-slots');
 const fs     = require('fs');
 const path   = require('path');
@@ -2565,8 +2565,21 @@ async function authorizeExtensionKeySession(input, deps = {}) {
     return extensionAuthFailure('phone_limit_global', 403);
   }
   const maxUses = typeof keyRecord.maxUses === 'number' ? keyRecord.maxUses : MAX_USES;
-  const claim = await (deps.claimPhoneSlot || claimPhoneSlotAtomic)(keyCode, phoneNumber, maxUses);
+  const claim = expectedProductId === PRODUCT_LITE
+    ? await (deps.claimLitePhoneSlot || claimLitePhoneSlotAtomic)(
+      deps.db || await getMongoDb(), keyCode, phoneNumber,
+      {maxPhonesGlobal:MAX_PHONES_GLOBAL,readLiteLicenseSnapshot:deps.readLiteLicenseSnapshot}
+    )
+    : await (deps.claimPhoneSlot || claimPhoneSlotAtomic)(keyCode, phoneNumber, maxUses);
+  if (claim.status === 'entitlement_revoked') return extensionAuthFailure('entitlement_revoked', 403);
   if (claim.status === 'limit_reached') return extensionAuthFailure('phone_limit', 403);
+  if (claim.status !== 'claimed' && claim.status !== 'already_member') {
+    return extensionAuthFailure('temporarily_unavailable',503,{retryable:true});
+  }
+  if (expectedProductId === PRODUCT_LITE && claim.record) {
+    // Build the entitlement from the post-write Mongo snapshot, not a stale key.
+    keyStore[keyCode] = claim.record;
+  }
   if (keyRecord.expireDuration && !keyRecord.expiresAt) {
     const activated = await (deps.activateDeferredKey || activateDeferredKey)(keyCode);
     if (!activated) return extensionAuthFailure('activation_failed', 503, { retryable: true });
