@@ -45,6 +45,22 @@ async function revokePortalLitePasswordSessions(db, rawEmail, options = {}) {
   );
 }
 
+// Enforce one account per LITE license at the MongoDB layer, not merely via a
+// findOne() preflight. Partial string index leaves all historical full-ZVM
+// accounts (no liteKeyCode field) untouched, including legacy null records.
+// If creating/verifying the index fails, callers must not bind a LITE key.
+async function ensureLitePortalLicenseUniqueIndex(db) {
+  if (!db || typeof db.collection !== 'function') throw new TypeError('invalid_lite_portal_database');
+  return db.collection('portal_users').createIndex(
+    { liteKeyCode: 1 },
+    {
+      name: 'zvm_lite_license_owner_unique_v1',
+      unique: true,
+      partialFilterExpression: { liteKeyCode: { $type: 'string' } },
+    }
+  );
+}
+
 function portalLicenseConflictQuery(code, exceptEmail = '') {
   const normalized = normalizePortalLicenseKey(code);
   if (!normalized) throw new TypeError('invalid_portal_license_key');
@@ -60,4 +76,5 @@ module.exports = Object.freeze({
   linkedPortalKeyForProduct,
   portalLicenseConflictQuery,
   revokePortalLitePasswordSessions,
+  ensureLitePortalLicenseUniqueIndex,
 });
