@@ -26,7 +26,7 @@ const https  = require('https');
 const crypto = require('crypto');
 const { PRODUCT_AUTOMACOES, PRODUCT_LITE, selectAdminProduct, generateLicenseKey, productOfKeyRecord, keyBelongsTo } = require('./src/license-product-v2');
 const { readLiteConfig, inspectLiteClient, liteOriginAllowed, liteSessionAllowed, SESSION_TTL: ZVM_LITE_SESSION_TTL } = require('./src/lite-v4-build-authority');
-const { readLiteLicenseSnapshot, claimLitePhoneSlotAtomic } = require('./src/lite-license-authority');
+const { readLiteLicenseSnapshot, claimLitePhoneSlotAtomic, activateLiteDeferredKeyAtomic } = require('./src/lite-license-authority');
 const { normalizePortalLicenseKey, portalLicenseSlot, linkedPortalKeyForProduct, portalLicenseConflictQuery, revokePortalLitePasswordSessions, ensureLitePortalLicenseUniqueIndex } = require('./src/portal-license-slots');
 const fs     = require('fs');
 const path   = require('path');
@@ -2580,7 +2580,27 @@ async function authorizeExtensionKeySession(input, deps = {}) {
     // Build the entitlement from the post-write Mongo snapshot, not a stale key.
     keyStore[keyCode] = claim.record;
   }
-  if (keyRecord.expireDuration && !keyRecord.expiresAt) {
+  if (expectedProductId === PRODUCT_LITE) {
+    const persistedAfterClaim = keyStore[keyCode];
+    if (persistedAfterClaim?.expireDuration && !persistedAfterClaim.expiresAt) {
+      let activated;
+      try {
+        activated = await (deps.activateLiteDeferredKey || activateLiteDeferredKeyAtomic)(
+          deps.db || await getMongoDb(), keyCode, phoneNumber,
+          {readLiteLicenseSnapshot:deps.readLiteLicenseSnapshot}
+        );
+      } catch (error) {
+        return extensionAuthFailure('temporarily_unavailable',503,{retryable:true});
+      }
+      if (activated.status === 'entitlement_revoked') return extensionAuthFailure('entitlement_revoked',403);
+      if (activated.status === 'invalid_deferred_duration') return extensionAuthFailure('activation_failed',403);
+      if (!['activated','already_active'].includes(activated.status) || !activated.record) {
+        return extensionAuthFailure('activation_failed',503,{retryable:true});
+      }
+      keyStore[keyCode] = activated.record;
+    }
+  } else if (keyRecord.expireDuration && !keyRecord.expiresAt) {
+    // The complete edition deliberately retains its historical first-use contract.
     const activated = await (deps.activateDeferredKey || activateDeferredKey)(keyCode);
     if (!activated) return extensionAuthFailure('activation_failed', 503, { retryable: true });
   }
