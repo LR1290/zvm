@@ -3026,6 +3026,7 @@ function getAuthData(keyCode, userName) {
   };
 }
 function isAllowedExtensionOrigin(origin, pathname) {
+  if (pathname.startsWith(R_EXT+'/lite/')) return liteOriginAllowed(origin, ZVM_LITE_V4_CONFIG) ? origin : null;
   return resolveExtensionCorsOrigin({
     origin,
     pathname,
@@ -9485,6 +9486,82 @@ async function handleRequest(req, res) {
   // V3 permanece abaixo, sem mudança de path ou schema. V4 nunca recebe
   // tier/capabilities/usage do cliente: toda decisão nasce da conta/chave
   // realmente carregada do banco/cache canônico do servidor.
+  // Dedicated LITE V4. The old ZVM routes never issue a LITE entitlement.
+  // The client cannot supply product authority or signing keys in its JSON.
+  if ((p === R_EXT+'/lite/v4/session/key' || p === R_EXT+'/lite/v4/session/login' ||
+       p === R_EXT+'/lite/v4/session/refresh' || p === R_EXT+'/lite/v4/session/logout') &&
+       req.method === 'POST') {
+    res.setHeader('Cache-Control','no-store, no-cache, must-revalidate');
+    if (!ZVM_LITE_V4_CONFIG.ready) {
+      sendJson(res,{ok:false,errorCode:'LITE_BUILD_AUTHORITY_UNCONFIGURED'},503); return;
+    }
+    if (!liteOriginAllowed(req.headers.origin,ZVM_LITE_V4_CONFIG)) {
+      sendJson(res,{ok:false,errorCode:'LITE_EXTENSION_ORIGIN_REQUIRED'},403); return;
+    }
+    if (!checkRateLimit(ip, 'ext_key_v4')) {
+      sendJson(res,{ok:false,errorCode:'rate_limited',retryable:true},429); return;
+    }
+    const isLogout = p.endsWith('/logout');
+    const token = isLogout || p.endsWith('/refresh') ? getExtensionBearerToken(req) : null;
+    if ((isLogout || p.endsWith('/refresh')) && !token) {
+      sendJson(res,{ok:false,errorCode:'invalid_session'},401); return;
+    }
+    let sessionDb = null;
+    try {
+      if (isLogout) {
+        const snap = await readExtensionSession(token);
+        if (!snap.ok || snap.doc.extensionProductId !== PRODUCT_LITE) {
+          sendJson(res,{ok:false,errorCode:'invalid_session'},401); return;
+        }
+        const revoked = await revokeExtensionSession(token);
+        sendJson(res,{ok:true,revoked:revoked.revoked}); return;
+      }
+      const body = await parseBody(req);
+      const checked = inspectLiteClient(ZVM_LITE_V4_CONFIG,body.clientSecurity,body.signedBuild,req.headers.origin);
+      if (!checked.ok) { sendJson(res,{ok:false,errorCode:checked.code},checked.status || 403); return; }
+      const replay = await zvmSecurityConsumeRequestIdSharedImpl(checked.requestId);
+      if (!replay.ok) { sendJson(res,{ok:false,errorCode:replay.code},replay.code==='SECURITY_REPLAY_UNAVAILABLE'?503:403); return; }
+      if (p.endsWith('/refresh')) {
+        const refreshed=await refreshExtensionSession(token,{expectedProductId:PRODUCT_LITE,liteClientSecurity:checked});
+        if (!refreshed.ok) {
+          const {status,...err}=refreshed; sendJson(res,err,status); return;
+        }
+        sendJson(res,extensionSessionSuccess(token,refreshed.sessionDoc,refreshed.entitlement)); return;
+      }
+      const isPassword=p.endsWith('/login');
+      const db=await getMongoDb();
+      sessionDb=db;
+      const authenticated=isPassword
+        ? await authenticateExtensionAccount(body,{db,expectedProductId:PRODUCT_LITE})
+        : await authorizeExtensionKeySession(body,{expectedProductId:PRODUCT_LITE});
+      if (body && typeof body==='object') delete body.password;
+      if (!authenticated.ok) {
+        const {status,...err}=authenticated; sendJson(res,err,status); return;
+      }
+      const fields=extensionSessionSecurityFields(checked);
+      // This is a LITE signature, not a signature from the full-ZVM signer.
+      const issued=await createExtensionSession({
+        subject:authenticated.subject,
+        authMethod:isPassword?'password':'license_key',
+        extensionProductId:PRODUCT_LITE,
+        accountEmail:isPassword?authenticated.accountEmail:null,
+        licenseKeyCode:authenticated.licenseKeyCode,
+        phoneNumber:authenticated.phoneNumber || body.phoneNumber,
+        deviceId:authenticated.deviceId || body.deviceId,
+        ...fields,
+        signedDev:false,
+        liteSignerKeyId:checked.signerKeyId,
+        liteSignedExpiresAt:checked.signedExpiresAt,
+        entitlementRevision:authenticated.entitlement.entitlementRevision,
+      },{db});
+      sendJson(res,extensionSessionSuccess(issued.token,issued.doc,authenticated.entitlement)); return;
+    } catch(error) {
+      zvmInvalidateMongoOnNetworkError(error,sessionDb);
+      console.error('[extension-lite-v4] erro:',safeScalar(error?.message,90,'unavailable'));
+      sendJson(res,{ok:false,errorCode:'temporarily_unavailable',retryable:true},503); return;
+    }
+  }
+
   if (p === R_EXT+'/v4/session/key' && req.method === 'POST') {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     if (!checkRateLimit(ip, 'ext_key_v4')) {
