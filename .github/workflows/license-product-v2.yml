@@ -1,0 +1,32 @@
+name: ZVM key V2 - isolated checks
+on:
+  pull_request:
+    paths:
+      - 'src/license-product-v2.js'
+      - 'tests/r51-license-products-v2.test.js'
+      - 'server.js'
+      - 'assets/zvm-admin-dashboard.2757c76a8405.js'
+      - '.github/workflows/license-product-v2.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  license-product-contract:
+    name: License separation (no DB, no deploy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Syntax checks
+        run: |
+          node --check server.js
+          node --check src/license-product-v2.js
+          node --check assets/zvm-admin-dashboard.2757c76a8405.js
+          node --check tests/r51-license-products-v2.test.js
+      - name: Product admission & entropy tests
+        run: node --test tests/r51-license-products-v2.test.js
