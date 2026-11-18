@@ -2345,15 +2345,28 @@ function extensionSessionSecurityFields(buildClient) {
 }
 
 async function createExtensionSession(descriptor, deps = {}) {
+  const sessionProduct = descriptor.extensionProductId || PRODUCT_AUTOMACOES;
+  if (![PRODUCT_LITE,PRODUCT_AUTOMACOES].includes(sessionProduct)) throw new Error('EXTENSION_SESSION_PRODUCT_INVALID');
   const db = deps.db || await getMongoDb();
   const now = extensionNow(deps);
   await ensureExtensionSessionIndexes(db);
   for (let attempt = 0; attempt < 3; attempt++) {
     const rawToken = (deps.generateToken || generateToken)();
     const tokenHash = hashExtensionSessionToken(rawToken);
-    const signedDev = Number(descriptor.securityProtocol) === 2 && descriptor.signedDev === true && String(descriptor.channel || '').toLowerCase() === 'dev';
+    const signedDev = sessionProduct !== PRODUCT_LITE && Number(descriptor.securityProtocol) === 2 && descriptor.signedDev === true && String(descriptor.channel || '').toLowerCase() === 'dev';
     let devAttestation = null;
     let sessionExpiryMs = now.getTime() + EXTENSION_SESSION_TTL_MS;
+    if (sessionProduct === PRODUCT_LITE) {
+      if (!liteSessionAllowed(ZVM_LITE_V4_CONFIG, {
+        extensionProductId: PRODUCT_LITE, securityProtocol:2,
+        channel:descriptor.channel, profile:descriptor.profile,
+        extensionId:descriptor.extensionId, extensionVersion:descriptor.extensionVersion,
+        buildId:descriptor.buildId, buildFingerprint:descriptor.buildFingerprint,
+        liteSignerKeyId:descriptor.liteSignerKeyId,
+        liteSignedExpiresAt:descriptor.liteSignedExpiresAt,
+      }, now.getTime())) throw new Error('LITE_BUILD_SESSION_INVALID');
+      sessionExpiryMs = Math.min(now.getTime() + ZVM_LITE_SESSION_TTL, Date.parse(descriptor.liteSignedExpiresAt));
+    }
     if (signedDev) {
       if (!descriptor.devAttestation || typeof descriptor.devAttestation !== 'object') throw new Error('DEV_BUILD_ATTESTATION_INVALID');
       try { devAttestation = JSON.parse(JSON.stringify(descriptor.devAttestation)); } catch (_) { throw new Error('DEV_BUILD_ATTESTATION_INVALID'); }
@@ -2367,6 +2380,9 @@ async function createExtensionSession(descriptor, deps = {}) {
       sessionId: crypto.randomUUID(),
       subject: { ...descriptor.subject },
       authMethod: descriptor.authMethod,
+      extensionProductId: sessionProduct,
+      liteSignerKeyId: sessionProduct === PRODUCT_LITE ? descriptor.liteSignerKeyId : null,
+      liteSignedExpiresAt: sessionProduct === PRODUCT_LITE ? descriptor.liteSignedExpiresAt : null,
       accountEmail: descriptor.accountEmail || null,
       licenseKeyCode: descriptor.licenseKeyCode || null,
       phoneNumber: normalizePhone(descriptor.phoneNumber || '') || null,
@@ -2374,7 +2390,7 @@ async function createExtensionSession(descriptor, deps = {}) {
         ? crypto.createHash('sha256').update(String(descriptor.deviceId), 'utf8').digest('hex')
         : null,
       securityProtocol: Number(descriptor.securityProtocol) === 2 ? 2 : 1,
-      buildId: Number(descriptor.securityProtocol) === 2 && /^zvm-(?:dev|beta|production)-\d+(?:\.\d+){2,3}-s[a-f0-9]{12}$/i.test(String(descriptor.buildId || ''))
+      buildId: Number(descriptor.securityProtocol) === 2 && (sessionProduct === PRODUCT_LITE ? /^zvm-lite-dev-[A-Za-z0-9_-]{3,96}$/.test(String(descriptor.buildId || '')) : /^zvm-(?:dev|beta|production)-\d+(?:\.\d+){2,3}-s[a-f0-9]{12}$/i.test(String(descriptor.buildId || '')))
         ? String(descriptor.buildId).toLowerCase()
         : null,
       channel: Number(descriptor.securityProtocol) === 2 && ['dev','beta','production'].includes(String(descriptor.channel || '').toLowerCase())
@@ -2442,18 +2458,22 @@ function extensionAuthFailure(errorCode, status, extra = {}) {
 }
 
 async function resolveExtensionAccountEntitlement(user, deps = {}) {
+  const expectedProductId = deps.expectedProductId || PRODUCT_AUTOMACOES;
   const now = extensionNow(deps);
   const keyStore = deps.keyStore || keys;
   const keyCode = sanitizeId(user?.keyCode, 64);
-  if (!keyCode) return { ok: true, keyCode: null, devAccess:false, entitlement: buildExtensionEntitlement({ now }) };
+  if (!keyCode) return expectedProductId === PRODUCT_LITE ? extensionAuthFailure('lite_license_required',403) : { ok: true, keyCode: null, devAccess:false, entitlement: buildExtensionEntitlement({ now }) };
   const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(keyCode);
   if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
   const keyRecord = loaded.found ? keyStore[keyCode] : null;
-  if (keyRecord && !keyBelongsTo(keyRecord, keyCode, PRODUCT_AUTOMACOES)) return extensionAuthFailure('license_product_mismatch', 403);
-  if (!extensionLicenseIsUsable(keyRecord, now)) {
+  if (keyRecord && !keyBelongsTo(keyRecord, keyCode, expectedProductId)) return extensionAuthFailure('license_product_mismatch', 403);
+  if (!extensionLicenseIsUsable(keyRecord, now) ||
+      (expectedProductId === PRODUCT_LITE && (keyRecord.provisioningStatus !== 'issued' || !/^LITE_[A-Z0-9_]+$/.test(String(keyRecord.planId || ''))))) {
+    if (expectedProductId === PRODUCT_LITE) return extensionAuthFailure('lite_license_required',403);
     return { ok: true, keyCode: null, devAccess:false, entitlement: buildExtensionEntitlement({ now }) };
   }
-  return { ok: true, keyCode, devAccess:extensionDevAccessAllowed(keyCode, keyRecord), entitlement: buildExtensionEntitlement({ keyCode, keyRecord, now }) };
+  return { ok: true, keyCode, devAccess:extensionDevAccessAllowed(keyCode, keyRecord),
+    entitlement: buildExtensionEntitlement({ keyCode, keyRecord, now, productId:expectedProductId }) };
 }
 
 async function authenticateExtensionAccount(input, deps = {}) {
@@ -2478,7 +2498,7 @@ async function authenticateExtensionAccount(input, deps = {}) {
     if (!mfaSecret || !verifyMfa(mfaSecret, totpCode)) return extensionAuthFailure('invalid_totp', 401);
     if (user.totpSecret && !user.totpSecretEnc) migratePortalTotpLegacy(db, user, email).catch(() => {});
   }
-  const entitlementResult = await resolveExtensionAccountEntitlement(user, { ...deps, db });
+  const entitlementResult = await resolveExtensionAccountEntitlement(user, { ...deps, db, expectedProductId:deps.expectedProductId || PRODUCT_AUTOMACOES });
   if (!entitlementResult.ok) return entitlementResult;
   const rehash = deps.rehashPassword || maybeRehashPortalPassword;
   try { Promise.resolve(rehash(db, email, password, user)).catch(() => {}); } catch (_) {}
@@ -2493,6 +2513,7 @@ async function authenticateExtensionAccount(input, deps = {}) {
 }
 
 async function authorizeExtensionKeySession(input, deps = {}) {
+  const expectedProductId = deps.expectedProductId || PRODUCT_AUTOMACOES;
   const keyCode = sanitizeId(input?.authKey, 64);
   const phoneNumber = normalizePhone(input?.phoneNumber || '');
   const deviceId = safeScalar(input?.deviceId, 160);
@@ -2504,7 +2525,8 @@ async function authorizeExtensionKeySession(input, deps = {}) {
   if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
   if (!loaded.found || !keyStore[keyCode]) return extensionAuthFailure('invalid_key', 401);
   const keyRecord = keyStore[keyCode];
-  if (!keyBelongsTo(keyRecord, keyCode, PRODUCT_AUTOMACOES)) return extensionAuthFailure('license_product_mismatch', 403);
+  if (!keyBelongsTo(keyRecord, keyCode, expectedProductId)) return extensionAuthFailure('license_product_mismatch', 403);
+  if (expectedProductId === PRODUCT_LITE && (keyRecord.provisioningStatus !== 'issued' || !/^LITE_[A-Z0-9_]+$/.test(String(keyRecord.planId || '')))) return extensionAuthFailure('lite_license_not_provisioned', 403);
   if (keyRecord.active !== true) return extensionAuthFailure('key_blocked', 403);
   // Diferente do helper legado isKeyExpired(), este guard também falha
   // fechado para expiresAt malformado em vez de autenticar a chave e só
@@ -2523,7 +2545,7 @@ async function authorizeExtensionKeySession(input, deps = {}) {
     if (!activated) return extensionAuthFailure('activation_failed', 503, { retryable: true });
   }
   const now = extensionNow(deps);
-  const entitlement = buildExtensionEntitlement({ keyCode, keyRecord: keyStore[keyCode], now });
+  const entitlement = buildExtensionEntitlement({ keyCode, keyRecord: keyStore[keyCode], now, productId:expectedProductId });
   return {
     ok: true,
     subject: extensionSubject('license', keyCode),
