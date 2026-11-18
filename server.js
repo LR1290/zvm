@@ -7010,6 +7010,10 @@ function renderAdminDashboard(opts = {}) {
       </div>
     </div>
     <p class="key-modal-help" style="margin:8px 0 4px">Cada chave pertence a uma ferramenta. Chaves LITE ficam pendentes até homologar a identidade e o licenciamento exclusivos. As chaves existentes não mudam de produto.</p>
+    <div role="status" style="font-size:12px; color:${ZVM_LITE_V4_CONFIG.ready ? 'var(--g)' : 'var(--orange)'}">
+      Autoridade DEV da LITE: ${ZVM_LITE_V4_CONFIG.ready ? 'Chave pública e identidade configuradas' : 'Ainda não configurada'}.
+      O uso efetivo exige validação da assinatura do build em cada sessão.
+    </div>
     <div id="admin-create-status" role="status" aria-live="polite" hidden style="display:none;padding:10px 14px;border:1px solid var(--org-brd);border-radius:10px;background:#f0b42912;color:var(--orange);font-size:13px;margin:10px 0"></div>
     <div class="search-bar">
       <input type="text" id="search-input" placeholder="Buscar por nome, chave, telefone ou IP…" data-zvm-handler-input="hf" autocomplete="off" spellcheck="false">
@@ -10526,6 +10530,8 @@ async function handleRequest(req, res) {
       label: labelResult.label, active: extensionProductId === PRODUCT_AUTOMACOES,
       extensionProductId,
       keyFormat: hasProductSelection ? 'v2-256' : 'legacy-v1',
+      planId: extensionProductId === PRODUCT_LITE ? 'LITE_DEV' : 'ZV_PRO',
+      planName: extensionProductId === PRODUCT_LITE ? 'ZVM LITE' : 'Pro',
       provisioningStatus: extensionProductId === PRODUCT_LITE ? 'awaiting_lite_build_authority' : 'issued',
       createdAt: new Date().toISOString(),
       uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null,
@@ -10545,11 +10551,18 @@ async function handleRequest(req, res) {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const k = await adminGetKey(codeToggle);
     if (!k) { sendJson(res, { error: 'not found' }, 404); return; }
-    if (!k.active && productOfKeyRecord(k, codeToggle) === PRODUCT_LITE) {
+    if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
+    if (!k.active && productOfKeyRecord(k, codeToggle) === PRODUCT_LITE && !ZVM_LITE_V4_CONFIG.ready) {
       sendJson(res, { error: 'lite_build_authority_required' }, 409); return;
     }
     let savedToggle;
-    try { savedToggle = await mutateAdminKeyRecordStrict(codeToggle, draft => { draft.active = !draft.active; }); }
+    try { savedToggle = await mutateAdminKeyRecordStrict(codeToggle, draft => {
+      if (!draft.active && productOfKeyRecord(draft, codeToggle) === PRODUCT_LITE) {
+        if (!ZVM_LITE_V4_CONFIG.ready) throw new Error('lite_build_authority_required');
+        draft.provisioningStatus = 'issued';
+      }
+      draft.active = !draft.active;
+    }); }
     catch (e) { sendAdminKeyPersistFailure(res, e, 'toggle key'); return; }
     if (!savedToggle.active) fireWebhook('key_blocked', codeToggle, 'Bloqueio manual pelo admin');
     addAdminAuditLog({ actor: 'admin', action: savedToggle.active ? 'key_enabled' : 'key_disabled', keyCode: codeToggle, label: savedToggle.label }).catch(()=>{});
@@ -10597,7 +10610,8 @@ async function handleRequest(req, res) {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const kRenew = await adminGetKey(codeRenew);
     if (!kRenew) { sendJson(res, { error: 'not_found' }, 404); return; }
-    if (productOfKeyRecord(kRenew, codeRenew) === PRODUCT_LITE) {
+    if (productOfKeyRecord(kRenew, codeRenew) === PRODUCT_LITE &&
+        (!ZVM_LITE_V4_CONFIG.ready || kRenew.provisioningStatus !== 'issued' || kRenew.active !== true)) {
       sendJson(res, { error: 'lite_build_authority_required' }, 409); return;
     }
     const body = await parseBody(req);
