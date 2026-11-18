@@ -6606,7 +6606,7 @@ function renderChromeStoreBadge(){
   </a>`;
 }
 
-function renderStandalonePortalDashboard(user, keyData, okMsg='', deviceMsg='') {
+function renderStandalonePortalDashboard(user, keyData, okMsg='', deviceMsg='', liteKeyData=null) {
   const now = new Date();
 
   // ── Key status computation ───────────────────────────────────────
@@ -6680,8 +6680,8 @@ function renderStandalonePortalDashboard(user, keyData, okMsg='', deviceMsg='') 
   const noKeySection = !keyData ? `
   <div class="dash-nokey">
     <div class="nokey-icon" aria-hidden="true">◇</div>
-    <div class="nokey-title">Nenhuma chave vinculada</div>
-    <div class="nokey-sub">Escolha um plano para receber sua licença por e-mail ou vincule uma chave que você já possui.</div>
+    <div class="nokey-title">Nenhuma chave da ZVM completa vinculada</div>
+    <div class="nokey-sub">Sua licença LITE, quando existente, é independente. Você também pode vincular uma chave da ZVM completa nesta conta.</div>
     <div class="nokey-actions"><a href="/cliente/planos" class="nokey-cta">Ver planos</a><a href="/cliente/vincular" class="nokey-link">Vincular uma chave</a></div>
   </div>` : '';
 
@@ -6689,6 +6689,20 @@ function renderStandalonePortalDashboard(user, keyData, okMsg='', deviceMsg='') 
   // O portal não expõe mais versão de build local/antiga. A origem oficial
   // da instalação é sempre a página pública da ZVM na Chrome Web Store.
   const updateBanner = renderChromeStoreBadge();
+  const liteCode = linkedPortalKeyForProduct(user, PRODUCT_LITE);
+  const liteGood = liteKeyData && keyBelongsTo(liteKeyData, liteCode, PRODUCT_LITE);
+  const liteActive = liteGood && liteKeyData.active === true && liteKeyData.provisioningStatus === 'issued' && extensionLicenseIsUsable(liteKeyData);
+  const liteExpiryDate = liteGood && liteKeyData.expiresAt && Number.isFinite(Date.parse(liteKeyData.expiresAt))
+    ? new Date(liteKeyData.expiresAt).toLocaleDateString('pt-BR') : 'Sem prazo definido';
+  const liteStatus = liteActive ? 'Ativa' : liteGood && liteKeyData.provisioningStatus !== 'issued' ? 'Aguardando liberação' : 'Inativa / indisponível';
+  const litePanel = liteCode ? `<section aria-label="Licença ZVM Automações LITE" style="margin:16px 0 20px">
+    <h2 style="font-size:19px;margin:0 0 12px">ZVM Automações LITE</h2>
+    <div class="client-quickfacts">
+      <div class="client-quickfact"><span class="client-qf-label">Chave LITE</span><strong style="overflow-wrap:anywhere;font-size:13px">${escHtml(liteCode)}</strong><small>Licença independente da ZVM completa</small></div>
+      <div class="client-quickfact"><span class="client-qf-label">Situação LITE</span><strong>${escHtml(liteStatus)}</strong><small>Validade: ${escHtml(liteExpiryDate)}</small></div>
+      <div class="client-quickfact"><span class="client-qf-label">Gerenciar LITE</span><form method="POST" action="/cliente/lite/desvincular" data-confirm="Desvincular somente a chave LITE desta conta?"><button type="submit" class="client-unlink">Desvincular LITE</button></form><small>A licença completa não será alterada</small></div>
+    </div>
+  </section>` : '';
 
   const hasKey = !!keyData;
   const has2fa = portalTotpHasSecret(user);
@@ -6743,6 +6757,7 @@ ${renderClientPortalRail('overview')}
 ${updateBanner}
 ${okMsg ? `<div class="client-ok-banner" role="status" aria-live="polite">✅ ${escHtml(okMsg)}</div>` : ''}
 ${deviceMsg ? `<div class="device-warning" role="alert">⚠ ${escHtml(deviceMsg)} <a href="/cliente">Atualizar dispositivos</a></div>` : ''}
+${litePanel}
 ${noKeySection}
 
 ${keyData ? `<section class="client-quickfacts" aria-label="Resumo da licença">
@@ -11326,6 +11341,9 @@ async function handleRequest(req, res) {
       const user = await db.collection('portal_users').findOne({ _id: sess.email });
       if (!user) { clearSessionCookie(res, 'zv_portal'); sendAuthHtml(res, renderStandalonePortalLogin()); return; }
       const keyData = user.keyCode ? await readPortalKeySnapshot(user.keyCode, { db }) : null;
+      const liteKeyCode = linkedPortalKeyForProduct(user, PRODUCT_LITE);
+      const liteRecord = liteKeyCode ? await readPortalKeySnapshot(liteKeyCode, { db }) : null;
+      const liteKeyData = liteRecord && keyBelongsTo(liteRecord, liteKeyCode, PRODUCT_LITE) ? liteRecord : null;
       const _dashOk = url.searchParams.get('ok');
       const _dashMsg = _dashOk === '2fa_off' ? '2FA desativado com sucesso.' : _dashOk === '1' ? 'Operação realizada com sucesso.' : '';
       const _deviceFailure = url.searchParams.get('device');
@@ -11334,7 +11352,7 @@ async function handleRequest(req, res) {
         : _deviceFailure === 'refresh'
           ? 'Esta página está desatualizada. Atualize a lista de dispositivos antes de remover um número.'
           : '';
-      sendAuthHtml(res, renderStandalonePortalDashboard(user, keyData, _dashMsg, _dashDeviceMsg)); return;
+      sendAuthHtml(res, renderStandalonePortalDashboard(user, keyData, _dashMsg, _dashDeviceMsg, liteKeyData)); return;
     } catch(e) { console.error('[Portal] dashboard temporarily unavailable:', e.message); sendAuthHtml(res, renderPortalLicenseUnavailable('overview'), 503); return; }
   }
 
