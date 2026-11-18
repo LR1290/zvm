@@ -3752,6 +3752,16 @@ async function _processCommercialSaleUnlocked(sale, plan, deps = {}) {
   // recebendo o dobro dos dias por uma única compra. As marcas de txId já
   // gravadas em key.note (criação: "cakto_tx:X"; renovação: "renovado_..._tx:X")
   // servem como prova de que ESTA transação específica já mutou esta chave.
+  // An order for the full product may NEVER renew a LITE license or
+  // overwrite a portal account already bound to a LITE license.
+  // Reject before payment/key mutation; reconciliation can recover safely.
+  if (existingCode && !keyBelongsTo(keyStore[existingCode], existingCode, PRODUCT_AUTOMACOES)) {
+    throw Object.assign(new Error('cakto_extension_product_conflict'), { code: 'cakto_extension_product_conflict' });
+  }
+  if (!existingCode && portalUser?.keyCode && keyStore[portalUser.keyCode] &&
+      !keyBelongsTo(keyStore[portalUser.keyCode], portalUser.keyCode, PRODUCT_AUTOMACOES)) {
+    throw Object.assign(new Error('cakto_portal_product_conflict'), { code: 'cakto_portal_product_conflict' });
+  }
   const preMutationCode = existingCode || null;
   const preMutationKey = preMutationCode && keyStore[preMutationCode]
     ? JSON.parse(JSON.stringify(keyStore[preMutationCode]))
