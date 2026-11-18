@@ -4,6 +4,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const path = require('node:path');
 const { MongoClient } = require('mongodb');
 const { generateLicenseKey, PRODUCT_LITE, PRODUCT_AUTOMACOES } = require('../src/license-product-v2');
 const { readLiteLicenseSnapshot, claimLitePhoneSlotAtomic, liteKeyUsable, activateLiteDeferredKeyAtomic } = require('../src/lite-license-authority');
@@ -17,6 +20,7 @@ const full=generateLicenseKey(PRODUCT_AUTOMACOES);
 const lite=generateLicenseKey(PRODUCT_LITE);
 const second=generateLicenseKey(PRODUCT_LITE);
 const deferred=generateLicenseKey(PRODUCT_LITE);
+const issuedByAdmin=generateLicenseKey(PRODUCT_LITE);
 const phoneA='5538999112233',phoneB='5538999112244',phoneC='5538999112255';
 const base = (extras={}) => ({
   active:true,extensionProductId:PRODUCT_LITE,provisioningStatus:'issued',
@@ -36,6 +40,53 @@ test('R57 real local MongoDB: issued key, concurrent claims, revocation and port
     [deferred]:base({maxUses:2,phones:[phoneC],expireDuration:3600_000}),
     [full]:{active:true,extensionProductId:PRODUCT_AUTOMACOES,phones:[],maxUses:1,planId:'ZV_PRO'},
   }});
+
+  await t.test('actual admin server function issues a pending LITE key without overwrite, then CAS activates it',async()=>{
+    const server=fs.readFileSync(path.join(__dirname,'..','server.js'),'utf8');
+    const source=(name)=>{
+      const begin=server.indexOf('async function '+name+'(');
+      assert.ok(begin>=0,'real server function '+name);
+      const end=server.indexOf('\n}\n',begin);
+      assert.ok(end>begin);
+      return server.slice(begin,end+2).replace(/^async function [^(]+/,'async function');
+    };
+    const memoryKeys={};
+    let updated=0;
+    const context={
+      keys:memoryKeys,
+      cloneKeyRecordForCommit:record=>JSON.parse(JSON.stringify(record)),
+      invalidateKeysHtmlCache:()=>{updated++;},
+      zvmInvalidateMongoOnNetworkError:()=>{},
+      getMongoDb:async()=>db,
+      setTimeout,
+    };
+    context.readAdminKeySnapshot=vm.runInNewContext('('+source('readAdminKeySnapshot')+')',context);
+    const insert=vm.runInNewContext('('+source('insertNewAdminKeyStrict')+')',context);
+    const mutate=vm.runInNewContext('('+source('mutateAdminKeyRecordStrict')+')',context);
+    const pending=base({active:false,provisioningStatus:'awaiting_lite_build_authority',maxUses:2});
+    const stored=await insert(issuedByAdmin,pending,{db});
+    assert.equal(stored.active,false);
+    assert.equal(stored.provisioningStatus,'awaiting_lite_build_authority');
+    assert.equal((await readLiteLicenseSnapshot(db,issuedByAdmin)).active,false);
+    await assert.rejects(insert(issuedByAdmin,pending,{db}),/admin_key_conflict_or_store_unavailable/);
+    assert.equal((await readLiteLicenseSnapshot(db,issuedByAdmin)).active,false);
+
+    // Simulate the authenticated admin's transition ONLY in this disposable DB.
+    // The real HTTP route separately requires ZVM_LITE_V4_CONFIG.ready.
+    assert.match(server,/if \(!k\.active && productOfKeyRecord\(k, codeToggle\) === PRODUCT_LITE && !ZVM_LITE_V4_CONFIG\.ready\)/);
+    const active=await mutate(issuedByAdmin,draft=>{
+      assert.equal(draft.active,false);
+      draft.provisioningStatus='issued';
+      draft.active=true;
+    },{db});
+    assert.equal(active.active,true);
+    assert.equal(active.provisioningStatus,'issued');
+    assert.ok(updated>=2);
+    assert.equal(liteKeyUsable(await readLiteLicenseSnapshot(db,issuedByAdmin),issuedByAdmin),true);
+    const claimed=await claimLitePhoneSlotAtomic(db,issuedByAdmin,phoneA,{maxPhonesGlobal:100});
+    assert.equal(claimed.status,'claimed');
+    assert.deepEqual((await readLiteLicenseSnapshot(db,issuedByAdmin)).phones,[phoneA]);
+  });
 
   await t.test('only a matching LITE key is accepted from the persisted store',async()=>{
     assert.equal((await readLiteLicenseSnapshot(db,lite)).extensionProductId,PRODUCT_LITE);
