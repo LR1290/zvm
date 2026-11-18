@@ -5,6 +5,8 @@ on:
       - 'src/license-product-v2.js'
       - 'src/lite-v4-build-authority.js'
       - 'tests/r52-lite-v4-authority.test.js'
+      - 'tools/lite-provision-dev.js'
+      - 'tests/r52-lite-provision.test.js'
       - '.env.example'
       - 'tests/r51-license-products-v2.test.js'
       - 'server.js'
@@ -31,10 +33,12 @@ jobs:
           node --check src/license-product-v2.js
           node --check src/lite-v4-build-authority.js
           node --check tests/r52-lite-v4-authority.test.js
+          node --check tools/lite-provision-dev.js
+          node --check tests/r52-lite-provision.test.js
           node --check assets/zvm-admin-dashboard.2757c76a8405.js
           node --check tests/r51-license-products-v2.test.js
       - name: Product admission & entropy tests
-        run: node --test tests/r51-license-products-v2.test.js tests/r52-lite-v4-authority.test.js
+        run: node --test tests/r51-license-products-v2.test.js tests/r52-lite-v4-authority.test.js tests/r52-lite-provision.test.js
       - name: Install pinned test dependencies
         run: npm ci --no-audit --no-fund
       - name: Existing admin integrity and UX regressions
