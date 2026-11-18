@@ -21,7 +21,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '24.22.3'
       - name: Syntax checks
         run: |
           node --check server.js
@@ -30,3 +30,9 @@ jobs:
           node --check tests/r51-license-products-v2.test.js
       - name: Product admission & entropy tests
         run: node --test tests/r51-license-products-v2.test.js
+      - name: Existing admin integrity and UX regressions
+        run: |
+          node tests/r47-07-admin-key-ux.test.js
+          node tests/r46-92-admin-authority.test.js
+          node tests/r47-08-admin-redesign.test.js
+          node --test tests/r47-13-admin-mobile-csrf.test.js
