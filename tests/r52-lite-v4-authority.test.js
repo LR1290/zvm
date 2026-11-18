@@ -39,6 +39,9 @@ const client={
 };
 test('LITE DEV signer is disabled unless fully configured and independent',()=>{
   assert.equal(cfg.ready,true);
+  // Real source build IDs embed dotted semantic versions, unlike early R52 fixtures.
+  const canonicalVersionBuild='zvm-lite-dev-0.1.41-s'+ '1'.repeat(12);
+  assert.equal(readLiteConfig({...cfgEnv,ZVM_LITE_DEV_BUILD_ID:canonicalVersionBuild,ZVM_LITE_DEV_VERSION:'0.1.41'},new Set([fullId])).ready,true);
   assert.equal(readLiteConfig({},new Set()).ready,false);
   for(const change of [
     {ZVM_LITE_DEV_EXTENSION_ID:fullId},{ZVM_LITE_DEV_KEY_ID:'full-key'},
