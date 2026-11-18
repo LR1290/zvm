@@ -26,6 +26,7 @@ const https  = require('https');
 const crypto = require('crypto');
 const { PRODUCT_AUTOMACOES, PRODUCT_LITE, selectAdminProduct, generateLicenseKey, productOfKeyRecord, keyBelongsTo } = require('./src/license-product-v2');
 const { readLiteConfig, inspectLiteClient, liteOriginAllowed, liteSessionAllowed, SESSION_TTL: ZVM_LITE_SESSION_TTL } = require('./src/lite-v4-build-authority');
+const { readLiteLicenseSnapshot } = require('./src/lite-license-authority');
 const { normalizePortalLicenseKey, portalLicenseSlot, linkedPortalKeyForProduct, portalLicenseConflictQuery, revokePortalLitePasswordSessions, ensureLitePortalLicenseUniqueIndex } = require('./src/portal-license-slots');
 const fs     = require('fs');
 const path   = require('path');
@@ -2464,9 +2465,20 @@ async function resolveExtensionAccountEntitlement(user, deps = {}) {
   const keyStore = deps.keyStore || keys;
   const keyCode = linkedPortalKeyForProduct(user, expectedProductId);
   if (!keyCode) return expectedProductId === PRODUCT_LITE ? extensionAuthFailure('lite_license_required',403) : { ok: true, keyCode: null, devAccess:false, entitlement: buildExtensionEntitlement({ now }) };
-  const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(keyCode);
-  if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
-  const keyRecord = loaded.found ? keyStore[keyCode] : null;
+  let keyRecord = null;
+  if (expectedProductId === PRODUCT_LITE) {
+    try {
+      const db = deps.db || await getMongoDb();
+      keyRecord = await (deps.readLiteLicenseSnapshot || readLiteLicenseSnapshot)(db, keyCode);
+    } catch (error) {
+      // For LITE, a DB outage is unknown entitlement, never stale-cache access.
+      return extensionAuthFailure('temporarily_unavailable', 503, { retryable:true });
+    }
+  } else {
+    const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(keyCode);
+    if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable:true });
+    keyRecord = loaded.found ? keyStore[keyCode] : null;
+  }
   if (keyRecord && !keyBelongsTo(keyRecord, keyCode, expectedProductId)) return extensionAuthFailure('license_product_mismatch', 403);
   if (!extensionLicenseIsUsable(keyRecord, now) ||
       (expectedProductId === PRODUCT_LITE && (keyRecord.provisioningStatus !== 'issued' || !/^LITE_[A-Z0-9_]+$/.test(String(keyRecord.planId || ''))))) {
@@ -2522,10 +2534,24 @@ async function authorizeExtensionKeySession(input, deps = {}) {
     return extensionAuthFailure('invalid_request', 400);
   }
   const keyStore = deps.keyStore || keys;
-  const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(keyCode);
-  if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
-  if (!loaded.found || !keyStore[keyCode]) return extensionAuthFailure('invalid_key', 401);
-  const keyRecord = keyStore[keyCode];
+  let keyRecord;
+  if (expectedProductId === PRODUCT_LITE) {
+    try {
+      const db = deps.db || await getMongoDb();
+      keyRecord = await (deps.readLiteLicenseSnapshot || readLiteLicenseSnapshot)(db, keyCode);
+    } catch (error) {
+      return extensionAuthFailure('temporarily_unavailable', 503, { retryable:true });
+    }
+    if (!keyRecord) return extensionAuthFailure('invalid_key',401);
+    // Update the legacy operation cache only AFTER the DB admitted the LITE record.
+    // Subsequent phone claiming still runs through its atomic Mongo mutation.
+    keyStore[keyCode] = keyRecord;
+  } else {
+    const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(keyCode);
+    if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable:true });
+    if (!loaded.found || !keyStore[keyCode]) return extensionAuthFailure('invalid_key',401);
+    keyRecord = keyStore[keyCode];
+  }
   if (!keyBelongsTo(keyRecord, keyCode, expectedProductId)) return extensionAuthFailure('license_product_mismatch', 403);
   if (expectedProductId === PRODUCT_LITE && (keyRecord.provisioningStatus !== 'issued' || !/^LITE_[A-Z0-9_]+$/.test(String(keyRecord.planId || '')))) return extensionAuthFailure('lite_license_not_provisioned', 403);
   if (keyRecord.active !== true) return extensionAuthFailure('key_blocked', 403);
@@ -2650,9 +2676,19 @@ async function refreshExtensionSession(rawToken, deps = {}) {
     licenseKeyCode = entitlementResult.keyCode;
   } else if (doc.authMethod === 'license_key') {
     const keyStore = deps.keyStore || keys;
-    const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(doc.licenseKeyCode);
-    if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
-    const keyRecord = loaded.found ? keyStore[doc.licenseKeyCode] : null;
+    let keyRecord;
+    if (expectedProductId === PRODUCT_LITE) {
+      try {
+        const dbForRead = deps.db || db;
+        keyRecord = await (deps.readLiteLicenseSnapshot || readLiteLicenseSnapshot)(dbForRead, doc.licenseKeyCode);
+      } catch (error) {
+        return extensionAuthFailure('temporarily_unavailable', 503, { retryable:true });
+      }
+    } else {
+      const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(doc.licenseKeyCode);
+      if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable:true });
+      keyRecord = loaded.found ? keyStore[doc.licenseKeyCode] : null;
+    }
     if (keyRecord && !keyBelongsTo(keyRecord, doc.licenseKeyCode, expectedProductId)) {
       await revokeExtensionSession(rawToken, { ...deps, db, now });
       return extensionAuthFailure('license_product_mismatch', 403);
