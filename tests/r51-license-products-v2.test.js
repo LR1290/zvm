@@ -71,12 +71,12 @@ test('new keys require exact server-side metadata, never a client-supplied produ
 test('server has product admission before phone slots and covers key, account, refresh and V3', () => {
   const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
   const keyAuth = server.match(/async function authorizeExtensionKeySession\([\s\S]*?(?=\nasync function refreshExtensionSession)/)?.[0] || '';
-  assert.match(keyAuth, /keyBelongsTo\(keyRecord, keyCode, PRODUCT_AUTOMACOES\)/);
+  assert.match(keyAuth, /keyBelongsTo\(keyRecord, keyCode, expectedProductId\)/);
   assert.ok(keyAuth.indexOf('keyBelongsTo(') < keyAuth.indexOf('claimPhoneSlot'), 'product must be checked BEFORE allocating a phone slot');
   const account = server.match(/async function resolveExtensionAccountEntitlement\([\s\S]*?(?=\nasync function authenticateExtensionAccount)/)?.[0] || '';
   assert.match(account, /license_product_mismatch/);
   const refresh = server.match(/async function refreshExtensionSession\([\s\S]*?(?=\n\/\/ Reset tokens)/)?.[0] || '';
-  assert.match(refresh, /keyBelongsTo\(keyRecord, doc\.licenseKeyCode, PRODUCT_AUTOMACOES\)/);
+  assert.match(refresh, /keyBelongsTo\(keyRecord, doc\.licenseKeyCode, expectedProductId\)/);
   assert.match(refresh, /revokeExtensionSession/);
   assert.match(server, /reason: 'product_mismatch'/);
   assert.match(server, /active: false, reason: 'product_mismatch'/);
@@ -124,6 +124,7 @@ test('actual V4 key authorization refuses LITE before claiming any phone slot', 
     extensionLicenseIsUsable: () => true,
     keyBelongsTo,
     PRODUCT_AUTOMACOES,
+    PRODUCT_LITE,
     MAX_USES: 3,
     MAX_PHONES_GLOBAL: 100,
     keys: {},
