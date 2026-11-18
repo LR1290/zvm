@@ -14,10 +14,26 @@ const routeBegin = source.indexOf("  if (p === R_EXT+'/v4/session/key' && req.me
 const routeEnd = source.indexOf("  if (p === R_EXT+'/v4/session/login' && req.method === 'POST') {", routeBegin);
 assert.ok(routeBegin > 0 && routeEnd > routeBegin, 'canonical key-session route exists');
 const route = source.slice(routeBegin, routeEnd);
-assert.match(route, /authorizeExtensionKeySession\(body,\s*\{\s*requireDevAccess:\s*buildClient\.signedDev\s*===\s*true,?\s*\}\)/,
-  'signed DEV must request server-side permission before slot claim');
-assert.match(route, /buildClient\.signedDev === true && authorized\.devAccess !== true/,
-  'second-layer signed DEV permission check remains in the route');
+assert.match(route, /authorizeExtensionKeySession\(body,\s*\{\s*requireDevAccess:\s*extensionDevEntitlementRequired\(buildClient\),?\s*\}\)/,
+  'all V2 DEV builds require permission before slot claim');
+assert.match(route, /extensionDevEntitlementRequired\(buildClient\) && authorized\.devAccess !== true/,
+  'second-layer DEV entitlement check remains in the route');
+assert.match(source, /extensionDevEntitlementRequired\(buildClient\) && authenticated\.devAccess !== true/,
+  'password login enforces DEV entitlement');
+assert.match(source, /extensionDevEntitlementRequired\(doc\) && entitlementResult\.devAccess !== true/,
+  'DEV session refresh enforces DEV entitlement');
+const policyBegin = source.indexOf('function extensionDevEntitlementRequired(build) {');
+const policyEnd = source.indexOf('\nfunction buildExtensionEntitlement(', policyBegin);
+assert.ok(policyBegin > 0 && policyEnd > policyBegin, 'canonical DEV entitlement policy exists');
+const policy = {};
+vm.runInNewContext(source.slice(policyBegin, policyEnd) +
+  '\nglobalThis.requiresDev = extensionDevEntitlementRequired;', policy, { timeout: 3000 });
+assert.equal(policy.requiresDev({ securityProtocol:2, channel:'dev', signedDev:true }), true);
+assert.equal(policy.requiresDev({ securityProtocol:2, channel:'dev', signedDev:false }), true,
+  'registered DEV must never bypass the key entitlement');
+assert.equal(policy.requiresDev({ securityProtocol:2, channel:'production', signedDev:false }), false);
+assert.equal(policy.requiresDev({ securityProtocol:2, channel:'beta', signedDev:false }), false);
+assert.equal(policy.requiresDev({ securityProtocol:1, channel:'dev' }), false);
 
 let record = { active: true, devAccess: false, expiresAt: null, lastPhone: '5511999991111', maxUses: 3 };
 let found = true, dbError = false, claims = 0, activations = 0;
@@ -90,5 +106,55 @@ async function auth(requireDevAccess) {
   assert.equal((await auth(true)).errorCode, 'phone_limit_global');
   assert.equal(claims, 2);
 
-  console.log('R57 PASS: 8 DEV/key/RELEASE outcomes, slot protection, route binding, denied mutations');
+  // Execute the actual V4 key route with a registered (not dynamic-signed)
+  // DEV build. This is the critical case that previously bypassed devAccess.
+  const runRoute = new Function('req', 'res', 'ip', 'deps',
+    'with(deps) { return (async function() {' + route + '})(); }');
+  const deps = {
+    p: '/extension/v4/session/key', R_EXT: '/extension', keys,
+    checkRateLimit: () => true,
+    sendExtensionRateLimited: () => { throw new Error('unexpected rate limit'); },
+    parseBody: async req => req.body,
+    sanitizeId: sandbox.sanitizeId,
+    zvmSecurityDevBuildAllowed: () => false,
+    zvmSecurityCheckClientShared: async client => ({ ok:true, ...client }),
+    zvmSecurityClientErrorStatus: () => 403,
+    authorizeExtensionKeySession: sandbox.authorizeKey,
+    extensionDevEntitlementRequired: policy.requiresDev,
+    createExtensionSession: async () => ({ token:'synthetic-token', doc:{} }),
+    extensionSessionSecurityFields: () => ({}),
+    extensionSessionSuccess: () => ({ ok:true }),
+    upsertActivation: () => Promise.resolve(),
+    saveKey: () => Promise.resolve(),
+    sendJson: (res, body, status=200) => { res.reply = {body,status}; },
+    console: { error() {} },
+  };
+  async function tryRoute(channel, signedDev = false) {
+    const req = { method:'POST', body:{
+      authKey:'TESTKEY',phoneNumber:'5511999992222',deviceId:'synthetic-device',
+      clientSecurity:{securityProtocol:2,channel,signedDev,recognized:true}
+    }};
+    const res = {setHeader() {}};
+    await runRoute(req,res,'synthetic-ip',deps);
+    assert.ok(res.reply);
+    return res.reply;
+  }
+  record = {active:true,devAccess:false,expiresAt:null,lastPhone:'5511999991111',maxUses:3};
+  keys.TESTKEY = record;
+  const priorClaims = claims;
+  const registeredDevDenied = await tryRoute('dev',false);
+  assert.equal(registeredDevDenied.status,403);
+  assert.equal(registeredDevDenied.body.errorCode,'DEV_ACCESS_REQUIRED');
+  assert.equal(claims,priorClaims,'registered DEV denial cannot claim device slot');
+  assert.equal('phones' in record,false,'registered DEV denial leaves record untouched');
+  const signedDevDenied = await tryRoute('dev',true);
+  assert.equal(signedDevDenied.body.errorCode,'DEV_ACCESS_REQUIRED');
+  assert.equal(claims,priorClaims,'signed DEV denial cannot claim device slot');
+  record.devAccess = true;
+  assert.equal((await tryRoute('dev',false)).status,200,'registered DEV may authenticate with explicit access');
+  record.devAccess = false;
+  assert.equal((await tryRoute('production',false)).status,200,'RELEASE unaffected');
+  assert.equal(claims,priorClaims + 2);
+
+  console.log('R57 PASS: signed + registered DEV, key/RELEASE, denied mutations, route, login and refresh guards');
 })().catch(error => { console.error(error); process.exitCode = 1; });
