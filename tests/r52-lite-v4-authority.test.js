@@ -126,6 +126,7 @@ test('live V4 auth source only allocates phone slots for the expected product',a
     expectedProductId:PRODUCT_LITE,ensureKeyLoadedEx:async()=>({found:true,dbError:false}),
     db:{},
     claimPhoneSlot:async()=>{claimed++;return{status:'claimed'};},
+    claimLitePhoneSlot:async()=>{claimed++;return{status:'claimed'};},
   };
   const full=await authorize({...auth,authKey:fullKey},{...common,keyStore:{[fullKey]:{active:true,extensionProductId:PRODUCT_AUTOMACOES,phones:[]}},readLiteLicenseSnapshot:async()=>({active:true,extensionProductId:PRODUCT_AUTOMACOES,phones:[]})});
   assert.equal(full.ok,false);assert.equal(full.errorCode,'license_product_mismatch');assert.equal(claimed,0);
