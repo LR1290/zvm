@@ -40,7 +40,7 @@ assert.equal(head.get('new-Set-Cookie'),'zvm_lang=pt-PT; Path=/; Max-Age=3153600
 const plansStub=sample.replace('</main>','<section class="plans-wrap"><section class="pricing-grid"></section></section></main>');
 assert.match(localizePublicHtml(plansStub,'en',{path:'/planos'}), /Prices are shown in Brazilian reais \(BRL\)/);
 assert.match(localizePublicHtml(plansStub,'pt-PT',{path:'/planos'}), /preços são apresentados em reais brasileiros \(BRL\)/);
-const privacySample='<!doctype html><html lang="pt-BR"><head><title>ZVM — Política de Privacidade</title></head><body><nav class="znav standalone-nav"><div class="znav-links"><div class="znav-action-links"><a href="/cliente">Entrar</a></div></div></nav><main><h2>Dados tratados pela ZVM</h2><p>O Portal do Cliente utiliza cookies essenciais de sessão. O site também guarda sua escolha de idioma em um cookie funcional. Esses cookies não são usados para publicidade nem para acompanhar sua navegação.</p></main></body></html>';
+const privacySample='<!doctype html><html lang="pt-BR"><head><title>ZVM — Política de Privacidade</title></head><body><nav class="znav standalone-nav"></nav><main><h2>Dados tratados pela ZVM</h2><p>O Portal do Cliente utiliza cookies essenciais de sessão. O site também guarda sua escolha de idioma em um cookie funcional. Esses cookies não são usados para publicidade nem para acompanhar sua navegação.</p></main></body></html>';
 const privacyEn=localizePublicHtml(privacySample,'en',{path:'/privacidade'});
 assert.match(privacyEn,/Privacy Policy/);
 assert.match(privacyEn,/Data handled by ZVM/);
