@@ -124,13 +124,14 @@ test('live V4 auth source only allocates phone slots for the expected product',a
   const auth={authKey:liteKey,phoneNumber:'5538999999999',deviceId:'r52-device'};
   const common={
     expectedProductId:PRODUCT_LITE,ensureKeyLoadedEx:async()=>({found:true,dbError:false}),
+    db:{},
     claimPhoneSlot:async()=>{claimed++;return{status:'claimed'};},
   };
-  const full=await authorize({...auth,authKey:fullKey},{...common,keyStore:{[fullKey]:{active:true,extensionProductId:PRODUCT_AUTOMACOES,phones:[]}}});
+  const full=await authorize({...auth,authKey:fullKey},{...common,keyStore:{[fullKey]:{active:true,extensionProductId:PRODUCT_AUTOMACOES,phones:[]}},readLiteLicenseSnapshot:async()=>({active:true,extensionProductId:PRODUCT_AUTOMACOES,phones:[]})});
   assert.equal(full.ok,false);assert.equal(full.errorCode,'license_product_mismatch');assert.equal(claimed,0);
-  const pending=await authorize(auth,{...common,keyStore:{[liteKey]:{active:true,extensionProductId:PRODUCT_LITE,phones:[],planId:'LITE_DEV',provisioningStatus:'awaiting_lite_build_authority'}}});
+  const pending=await authorize(auth,{...common,keyStore:{[liteKey]:{active:true,extensionProductId:PRODUCT_LITE,phones:[],planId:'LITE_DEV',provisioningStatus:'awaiting_lite_build_authority'}},readLiteLicenseSnapshot:async()=>({active:true,extensionProductId:PRODUCT_LITE,phones:[],planId:'LITE_DEV',provisioningStatus:'awaiting_lite_build_authority'})});
   assert.equal(pending.ok,false);assert.equal(pending.errorCode,'lite_license_not_provisioned');assert.equal(claimed,0);
-  const ready=await authorize(auth,{...common,keyStore:{[liteKey]:{active:true,extensionProductId:PRODUCT_LITE,phones:[],planId:'LITE_DEV',provisioningStatus:'issued'}}});
+  const ready=await authorize(auth,{...common,keyStore:{[liteKey]:{active:true,extensionProductId:PRODUCT_LITE,phones:[],planId:'LITE_DEV',provisioningStatus:'issued'}},readLiteLicenseSnapshot:async()=>({active:true,extensionProductId:PRODUCT_LITE,phones:[],planId:'LITE_DEV',provisioningStatus:'issued'})});
   assert.equal(ready.ok,true);assert.equal(ready.entitlement.productId,PRODUCT_LITE);assert.equal(claimed,1);
 });
 test('LITE V4 admission and shared replay are before license/phone mutation',()=>{
