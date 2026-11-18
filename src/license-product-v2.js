@@ -51,6 +51,11 @@ function productOfKeyRecord(keyRecord, keyCode) {
   const hasProduct = Object.prototype.hasOwnProperty.call(keyRecord, 'extensionProductId');
   const productId = hasProduct ? explicit : PRODUCT_AUTOMACOES;
   if (!PRODUCTS.includes(productId)) return null;
+  // A record labelled LITE can never wrap a legacy/full-edition key.
+  // Product identity comes from BOTH the persisted product and V2L syntax.
+  if (productId === PRODUCT_LITE) {
+    return hasProduct && /^zv2l-[a-z2-7]{52}$/.test(code) ? PRODUCT_LITE : null;
+  }
   if (/^zv2[al]-/.test(code)) {
     if (!hasProduct) return null;
     if (code.startsWith('zv2a-') && productId !== PRODUCT_AUTOMACOES) return null;
