@@ -2172,10 +2172,10 @@ function hashExtensionSessionToken(rawToken) {
   return crypto.createHash('sha256').update(String(rawToken || ''), 'utf8').digest('hex');
 }
 
-function extensionSubject(type, stableId) {
+function extensionSubject(type, stableId, productId = PRODUCT_AUTOMACOES) {
   return {
     type,
-    id: crypto.createHash('sha256').update(`zvm-extension:${type}:${String(stableId || '')}`, 'utf8').digest('hex'),
+    id: crypto.createHash('sha256').update(`${productId === PRODUCT_LITE ? 'zvm-lite-extension' : 'zvm-extension'}:${type}:${String(stableId || '')}`, 'utf8').digest('hex'),
   };
 }
 
@@ -2504,7 +2504,7 @@ async function authenticateExtensionAccount(input, deps = {}) {
   try { Promise.resolve(rehash(db, email, password, user)).catch(() => {}); } catch (_) {}
   return {
     ok: true,
-    subject: extensionSubject('account', email),
+    subject: extensionSubject('account', email, deps.expectedProductId || PRODUCT_AUTOMACOES),
     accountEmail: email,
     licenseKeyCode: entitlementResult.keyCode,
     devAccess: entitlementResult.devAccess === true,
@@ -2548,7 +2548,7 @@ async function authorizeExtensionKeySession(input, deps = {}) {
   const entitlement = buildExtensionEntitlement({ keyCode, keyRecord: keyStore[keyCode], now, productId:expectedProductId });
   return {
     ok: true,
-    subject: extensionSubject('license', keyCode),
+    subject: extensionSubject('license', keyCode, expectedProductId),
     licenseKeyCode: keyCode,
     phoneNumber,
     deviceId,
