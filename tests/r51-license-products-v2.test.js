@@ -2,6 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
+const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
 const {
@@ -108,4 +109,46 @@ test('admin UI exposes mandatory product selection, product filter and honest pe
   const hash = crypto.createHash('sha256').update(client).digest('hex');
   assert.equal(hash, '2757c76a8405a16c1a610f9872146f950d82ec66bd98049dd57bbf77e52f010a');
   assert.ok(server.includes("'/assets/"+clientFile+"':"));
+});
+
+test('actual V4 key authorization refuses LITE before claiming any phone slot', async () => {
+  const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const code = server.match(/async function authorizeExtensionKeySession[\s\S]*?(?=\nasync function refreshExtensionSession)/)?.[0];
+  assert.ok(code, 'real V4 authorization function must be extractable');
+  const context = {
+    sanitizeId: (value, length) => String(value || '').toLowerCase().replace(/[^a-z0-9-]/g,'').slice(0,length),
+    normalizePhone: value => String(value || '').replace(/\D/g,''),
+    safeScalar: (value,length) => String(value || '').slice(0,length),
+    isFreeAuthKey: () => false,
+    extensionAuthFailure: (errorCode,status,extra={}) => ({ok:false,errorCode,status,...extra}),
+    extensionLicenseIsUsable: () => true,
+    keyBelongsTo,
+    PRODUCT_AUTOMACOES,
+    MAX_USES: 3,
+    MAX_PHONES_GLOBAL: 100,
+    keys: {},
+    extensionNow: () => new Date(),
+    extensionSubject: (type,id) => ({type,id}),
+    buildExtensionEntitlement: ({keyCode}) => ({ entitlementRevision:'test-only', keyCode }),
+    extensionDevAccessAllowed: () => false,
+  };
+  const authorize = vm.runInNewContext('('+code+')', context);
+  let claimed = 0;
+  const common = {
+    ensureKeyLoadedEx: async () => ({ found: true, dbError: false }),
+    claimPhoneSlot: async () => { claimed++; return {status:'claimed'}; },
+  };
+  const lite = generateLicenseKey(PRODUCT_LITE);
+  const liteResult = await authorize({authKey:lite, phoneNumber:'5538999999999', deviceId:'test-device'},
+    {...common, keyStore: { [lite]:{active:true,extensionProductId:PRODUCT_LITE,phones:[],maxUses:3} }});
+  assert.equal(liteResult.ok,false);
+  assert.equal(liteResult.errorCode,'license_product_mismatch');
+  assert.equal(liteResult.status,403);
+  assert.equal(claimed,0,'a LITE license must never claim a full-product phone slot');
+
+  const fullKey = generateLicenseKey(PRODUCT_AUTOMACOES);
+  const fullResult = await authorize({authKey:fullKey, phoneNumber:'5538999999999', deviceId:'test-device'},
+    {...common, keyStore: { [fullKey]:{active:true,extensionProductId:PRODUCT_AUTOMACOES,phones:[],maxUses:3} }});
+  assert.equal(fullResult.ok,true);
+  assert.equal(claimed,1,'a valid full license must reach the expected slot code');
 });
