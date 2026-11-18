@@ -3091,9 +3091,9 @@ function buildKeysHtml(snapshot = keys) {
     const suspectBadge = isSuspect ? `<span title="${recentIpCount} IPs nas últimas 24h" style="color:#ff4757;font-size:13px;margin-left:4px">⚠ SUSPEITA</span>` : '';
     const deferredAttr = (!k.expiresAt && k.expireDuration) ? '1' : '0';
     const dispStatus = getKeyDisplayStatus(k);
-    return `<tr class="key-record" data-code="${escHtml(code)}" data-client-name="${escHtml(k.label||'')}" data-max-uses="${(Number.isSafeInteger(k.maxUses)&&(k.maxUses===-1||k.maxUses>=1))?k.maxUses:MAX_USES}" data-expires-at="${escHtml(k.expiresAt||'')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(String(k.label||'').toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-phones-count="${(k.phones||[]).length}" data-created="${escHtml(k.createdAt||'')}" data-lastused="${escHtml(k.lastUsed||'')}" data-suspect="${isSuspect?'1':''}" data-plan="${escHtml((k.planId||k.plan_id||'pro').toLowerCase())}"` + rowStyle + `>
+    return `<tr class="key-record" data-code="${escHtml(code)}" data-client-name="${escHtml(k.label||'')}" data-max-uses="${(Number.isSafeInteger(k.maxUses)&&(k.maxUses===-1||k.maxUses>=1))?k.maxUses:MAX_USES}" data-expires-at="${escHtml(k.expiresAt||'')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(String(k.label||'').toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-phones-count="${(k.phones||[]).length}" data-created="${escHtml(k.createdAt||'')}" data-lastused="${escHtml(k.lastUsed||'')}" data-suspect="${isSuspect?'1':''}" data-product="${escHtml(productOfKeyRecord(k, code) || 'invalid')}" data-plan="${escHtml((k.planId||k.plan_id||'pro').toLowerCase())}"` + rowStyle + `>
   <td data-field="Chave"><span style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="key-cb" style="cursor:pointer;width:13px;height:13px;flex-shrink:0"><span class="kc" title="Clique para copiar" style="cursor:pointer">${escHtml(code)}</span><button type="button" class="key-mobile-details" aria-expanded="false" data-zvm-key-action="details">Detalhes</button></span></td>
-  <td data-field="Cliente">${escHtml(k.label)}${suspectBadge}</td>
+  <td data-field="Cliente">${escHtml(k.label)}${suspectBadge}<div style="font-size:11px;margin-top:3px;color:var(--tx2);font-weight:700">${productOfKeyRecord(k, code) === PRODUCT_LITE ? "ZVM LITE · " + (k.provisioningStatus === "awaiting_lite_build_authority" ? "Aguardando ativação" : "Licença LITE") : productOfKeyRecord(k, code) === PRODUCT_AUTOMACOES ? "ZVM Automações" : "Produto inválido"}</div></td>
   <td data-field="Status">${renderKeyStatusBadge(k)}</td>
   <td data-field="Validade">${formatValidityCell(k)}</td>
   <td data-field="Usos"><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
@@ -6889,6 +6889,12 @@ function renderAdminDashboard(opts = {}) {
     <div class="sh">
       <div class="st"><span class="st-accent">🔑</span> Chaves de Acesso</div>
       <div class="gen-form">
+        <div class="fi-col" style="min-width:165px;flex:1"><label for="nproduct" class="fi-lbl">Ferramenta</label>
+          <select id="nproduct" required style="width:100%;min-height:36px;border:1px solid var(--brd);border-radius:7px;padding:7px;background:var(--bg);color:var(--tx)">
+            <option value="">Selecione o produto</option>
+            <option value="zvm_automacoes">ZVM Automações</option>
+            <option value="zvm_lite">ZVM Automações LITE</option>
+          </select></div>
         <div class="fi-name"><input type="text" id="nlabel" placeholder="Nome do cliente"></div>
         <div class="fi-sep"></div>
         <div class="fi-group">
@@ -6903,6 +6909,7 @@ function renderAdminDashboard(opts = {}) {
 <button class="btn bp" id="admin-generate-key-btn" data-zvm-handler-click="he">+ Gerar Chave(s)</button>
       </div>
     </div>
+    <p class="key-modal-help" style="margin:8px 0 4px">Cada chave pertence a uma ferramenta. Chaves LITE ficam pendentes até homologar a identidade e o licenciamento exclusivos. As chaves existentes não mudam de produto.</p>
     <div id="admin-create-status" role="status" aria-live="polite" hidden style="display:none;padding:10px 14px;border:1px solid var(--org-brd);border-radius:10px;background:#f0b42912;color:var(--orange);font-size:13px;margin:10px 0"></div>
     <div class="search-bar">
       <input type="text" id="search-input" placeholder="Buscar por nome, chave, telefone ou IP…" data-zvm-handler-input="hf" autocomplete="off" spellcheck="false">
@@ -6914,6 +6921,11 @@ function renderAdminDashboard(opts = {}) {
         <option value="bloqueado">Bloqueadas</option>
         <option value="aguardando">Aguardando 1º uso</option>
         <option value="suspect">⚠ Suspeitas</option>
+      </select>
+      <select id="filter-product" data-zvm-handler-change="hg" aria-label="Filtrar produto" style="min-width:150px">
+        <option value="">Ambas as ferramentas</option>
+        <option value="zvm_automacoes">ZVM Automações</option>
+        <option value="zvm_lite">ZVM Automações LITE</option>
       </select>
       <select id="filter-plan" data-zvm-handler-change="hg" style="min-width:120px">
         <option value="">Todos os planos</option>
@@ -10408,7 +10420,10 @@ async function handleRequest(req, res) {
   if (codeRenew && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const kRenew = await adminGetKey(codeRenew);
-    if (!kRenew) { sendJson(res, { error: 'not found' }, 404); return; }
+    if (!kRenew) { sendJson(res, { error: 'not_found' }, 404); return; }
+    if (productOfKeyRecord(kRenew, codeRenew) === PRODUCT_LITE) {
+      sendJson(res, { error: 'lite_build_authority_required' }, 409); return;
+    }
     const body = await parseBody(req);
     const days=Number(body.days ?? 0), hours=Number(body.hours ?? 0), mins=Number(body.mins ?? 0);
     const validParts = [days, hours, mins].every(n => Number.isSafeInteger(n) && n >= 0);
