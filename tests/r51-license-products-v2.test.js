@@ -91,6 +91,12 @@ test('admin UI exposes mandatory product selection, product filter and honest pe
   assert.match(server, /active: extensionProductId === PRODUCT_AUTOMACOES/);
   assert.match(server, /extensionProductId,/);
   assert.match(server, /activationPending: extensionProductId === PRODUCT_LITE/);
+  assert.match(server, /async function insertNewAdminKeyStrict/);
+  const insertion = server.match(/async function insertNewAdminKeyStrict[\s\S]*?(?=\n\/\/ No painel Admin)/)?.[0] || '';
+  assert.match(insertion, /\$exists: false/);
+  assert.match(insertion, /upsert: false/);
+  assert.doesNotMatch(insertion, /upsert: true/);
+  assert.match(server, /await insertNewAdminKeyStrict\(code, createdKey\)/);
   const clientFile = 'zvm-admin-dashboard.2757c76a8405.js';
   const client = fs.readFileSync(path.join(__dirname, '..', 'assets', clientFile), 'utf8');
   assert.match(client, /productId=\(get\('nproduct'\)/);
