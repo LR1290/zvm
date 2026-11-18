@@ -27,7 +27,7 @@ const crypto = require('crypto');
 const { PRODUCT_AUTOMACOES, PRODUCT_LITE, selectAdminProduct, generateLicenseKey, productOfKeyRecord, keyBelongsTo } = require('./src/license-product-v2');
 const { readLiteConfig, inspectLiteClient, liteOriginAllowed, liteSessionAllowed, SESSION_TTL: ZVM_LITE_SESSION_TTL } = require('./src/lite-v4-build-authority');
 const { readLiteLicenseSnapshot, claimLitePhoneSlotAtomic, activateLiteDeferredKeyAtomic } = require('./src/lite-license-authority');
-const { normalizePortalLicenseKey, portalLicenseSlot, linkedPortalKeyForProduct, portalLicenseConflictQuery, revokePortalLitePasswordSessions, ensureLitePortalLicenseUniqueIndex } = require('./src/portal-license-slots');
+const { normalizePortalLicenseKey, portalLicenseSlot, linkedPortalKeyForProduct, portalLicenseConflictQuery, revokePortalLitePasswordSessions, revokeLiteLicenseSessions, ensureLitePortalLicenseUniqueIndex } = require('./src/portal-license-slots');
 const fs     = require('fs');
 const path   = require('path');
 const zlib   = require('zlib');
@@ -10665,8 +10665,25 @@ async function handleRequest(req, res) {
       draft.active = !draft.active;
     }); }
     catch (e) { sendAdminKeyPersistFailure(res, e, 'toggle key'); return; }
+    const liteBlocked = savedToggle.active === false &&
+      productOfKeyRecord(savedToggle, codeToggle) === PRODUCT_LITE;
     if (!savedToggle.active) fireWebhook('key_blocked', codeToggle, 'Bloqueio manual pelo admin');
     addAdminAuditLog({ actor: 'admin', action: savedToggle.active ? 'key_enabled' : 'key_disabled', keyCode: codeToggle, label: savedToggle.label }).catch(()=>{});
+    if (liteBlocked) {
+      try {
+        const db = await getMongoDb();
+        // Do not report a LITE block as fully complete until its existing
+        // password/key sessions have also been invalidated in MongoDB.
+        const result = await revokeLiteLicenseSessions(db, codeToggle, {
+          collectionName: EXTENSION_SESSION_COLLECTION
+        });
+        if (result?.acknowledged !== true) throw new Error('lite_session_revoke_unacknowledged');
+      } catch (error) {
+        console.error('[ADMIN] LITE key disabled; session revocation requires retry:', error?.code || error?.message || 'unavailable');
+        sendJson(res, { ok:false, active:false, error:'lite_sessions_revocation_pending',
+          retryable:false, operation:'key_disabled' },503); return;
+      }
+    }
     sendJson(res, { ok: true, active: savedToggle.active }); return;
   }
 
