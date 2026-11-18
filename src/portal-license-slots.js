@@ -26,6 +26,25 @@ function linkedPortalKeyForProduct(user, productId) {
   return '';
 }
 
+// On account-side unlink/relink, invalidate only password sessions of ZVM LITE.
+// A direct key-based session is controlled by the key owner, not the portal link.
+// MongoDB is authoritative; errors propagate and are never reported as success.
+async function revokePortalLitePasswordSessions(db, rawEmail, options = {}) {
+  const email = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : '';
+  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || email.length > 120 ||
+      !db || typeof db.collection !== 'function') throw new TypeError('invalid_lite_portal_revoke');
+  const collectionName = options.collectionName;
+  if (typeof collectionName !== 'string' || !/^[a-zA-Z0-9_]{1,80}$/.test(collectionName)) {
+    throw new TypeError('invalid_lite_session_collection');
+  }
+  const now = options.now === undefined ? new Date() : new Date(options.now);
+  if (!Number.isFinite(now.getTime())) throw new TypeError('invalid_lite_revoke_time');
+  return db.collection(collectionName).updateMany(
+    { accountEmail: email, extensionProductId: PRODUCT_LITE, authMethod: 'password', revokedAt: null },
+    { $set: { revokedAt: now, lastSeenAt: now } }
+  );
+}
+
 function portalLicenseConflictQuery(code, exceptEmail = '') {
   const normalized = normalizePortalLicenseKey(code);
   if (!normalized) throw new TypeError('invalid_portal_license_key');
@@ -40,4 +59,5 @@ module.exports = Object.freeze({
   portalLicenseSlot,
   linkedPortalKeyForProduct,
   portalLicenseConflictQuery,
+  revokePortalLitePasswordSessions,
 });
