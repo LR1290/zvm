@@ -2391,7 +2391,7 @@ async function createExtensionSession(descriptor, deps = {}) {
         ? crypto.createHash('sha256').update(String(descriptor.deviceId), 'utf8').digest('hex')
         : null,
       securityProtocol: Number(descriptor.securityProtocol) === 2 ? 2 : 1,
-      buildId: Number(descriptor.securityProtocol) === 2 && (sessionProduct === PRODUCT_LITE ? /^zvm-lite-dev-[A-Za-z0-9_-]{3,96}$/.test(String(descriptor.buildId || '')) : /^zvm-(?:dev|beta|production)-\d+(?:\.\d+){2,3}-s[a-f0-9]{12}$/i.test(String(descriptor.buildId || '')))
+      buildId: Number(descriptor.securityProtocol) === 2 && (sessionProduct === PRODUCT_LITE ? /^zvm-lite-dev-[A-Za-z0-9._-]{3,96}$/.test(String(descriptor.buildId || '')) : /^zvm-(?:dev|beta|production)-\d+(?:\.\d+){2,3}-s[a-f0-9]{12}$/i.test(String(descriptor.buildId || '')))
         ? String(descriptor.buildId).toLowerCase()
         : null,
       channel: Number(descriptor.securityProtocol) === 2 && ['dev','beta','production'].includes(String(descriptor.channel || '').toLowerCase())
