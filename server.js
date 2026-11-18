@@ -703,6 +703,35 @@ async function commitAdminKeyRecordStrict(code, record, deps = {}) {
   return keys[keyCode];
 }
 
+// New administrative keys must be inserted ONLY IF ABSENT. Existing license
+// records can never be overwritten by a token collision or a parallel admin.
+async function insertNewAdminKeyStrict(code, record, deps = {}) {
+  const keyCode = String(code || '');
+  if (!/^[a-z0-9_-]{1,64}$/.test(keyCode) || !record || typeof record !== 'object') {
+    throw Object.assign(new Error('invalid_key_record'), { code: 'invalid_key_record' });
+  }
+  const db = deps.db || await getMongoDb();
+  const next = cloneKeyRecordForCommit(record);
+  const field = `data.${keyCode}`;
+  let result;
+  try {
+    result = await db.collection('store').updateOne(
+      { _id: 'keys', [field]: { $exists: false } },
+      { $set: { [field]: next, updatedAt: new Date() } },
+      { upsert: false, timeoutMS: 7000 }
+    );
+  } catch (error) {
+    zvmInvalidateMongoOnNetworkError(error, db);
+    throw error; // Never retry an uncertain write without a transaction ID.
+  }
+  if (result?.matchedCount !== 1 || result?.modifiedCount !== 1) {
+    throw Object.assign(new Error('admin_key_conflict_or_store_unavailable'), { code:'admin_key_conflict_or_store_unavailable' });
+  }
+  keys[keyCode] = next;
+  invalidateKeysHtmlCache();
+  return keys[keyCode];
+}
+
 // No painel Admin, o MongoDB é a autoridade, não a cópia carregada no boot.
 // A projeção reduz a leitura para uma chave. Nunca servir cache quando o
 // banco não puder confirmar o estado de uma licença administrativa.
@@ -10374,7 +10403,7 @@ async function handleRequest(req, res) {
       maxUses: isNaN(maxUses) ? MAX_USES : maxUses, warnCount: 0,
       modules: { ...DEFAULT_MODULES, zapSaver: true },
     };
-    try { await commitAdminKeyRecordStrict(code, createdKey); }
+    try { await insertNewAdminKeyStrict(code, createdKey); }
     catch (e) { sendAdminKeyPersistFailure(res, e, 'create key'); return; }
     addAdminAuditLog({ actor: 'admin', action: 'key_created', keyCode: code, label: keys[code].label, detail: extensionProductId }).catch(()=>{});
     sendJson(res, { ok: true, key: code, productId: extensionProductId, activationPending: extensionProductId === PRODUCT_LITE }); return;
