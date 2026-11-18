@@ -8,7 +8,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 function refuse(message){console.error('ZVM LITE:',message);process.exitCode=2;}
 function chromeIdFromSpki(spki){
-  const digest=crypto.createHash('sha256').update(spki).subarray(0,16);
+  const digest=crypto.createHash('sha256').update(spki).digest().subarray(0,16);
   return Array.from(digest).map(n=>String.fromCharCode(97+(n>>>4))+String.fromCharCode(97+(n&15))).join('');
 }
 function provision(out){
