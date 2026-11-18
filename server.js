@@ -11452,7 +11452,16 @@ async function handleRequest(req, res) {
       portalSessions[token] = { email, name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
       setSessionCookie(res, 'zv_portal', token, 86400);
       res.writeHead(302, { Location: redir || '/cliente' }); res.end();
-    } catch(e) { console.error('[Portal] registro:', e.message); sendAuthHtml(res, renderStandalonePortalRegister('Erro ao criar conta.', vals, redir)); return; }
+    } catch(e) {
+      if (e?.code === 11000 && e?.keyPattern?.liteKeyCode === 1) {
+        sendAuthHtml(res, renderStandalonePortalRegister('Esta chave LITE já está vinculada a outra conta.', vals, redir)); return;
+      }
+      if (e?.code === 11000 && e?.keyPattern?._id === 1) {
+        sendAuthHtml(res, renderStandalonePortalRegister('E-mail já cadastrado.', vals, redir)); return;
+      }
+      console.error('[Portal] registro:', e?.code || e?.message || 'unavailable');
+      sendAuthHtml(res, renderStandalonePortalRegister('Erro ao criar conta.', vals, redir)); return;
+    }
     return;
   }
 
@@ -11489,7 +11498,12 @@ async function handleRequest(req, res) {
           await revokePortalLitePasswordSessions(db, sess.email, { collectionName: EXTENSION_SESSION_COLLECTION });
         }
         res.writeHead(302, { Location: '/cliente' }); res.end(); return;
-      } catch(e) { sendAuthHtml(res, renderStandalonePortalLinkKey('Erro ao vincular.', '', sess)); return; }
+      } catch(e) {
+        if (e?.code === 11000 && e?.keyPattern?.liteKeyCode === 1) {
+          sendAuthHtml(res, renderStandalonePortalLinkKey('Esta chave LITE já está vinculada a outra conta.', '', sess)); return;
+        }
+        sendAuthHtml(res, renderStandalonePortalLinkKey('Erro ao vincular. Verifique a conexão e tente novamente.', '', sess)); return;
+      }
     }
   }
 
