@@ -29,6 +29,10 @@ assert.equal(future.messages.length,1);
 assert(src.includes('client.db(MONGODB_DB)'),'runtime must use configured namespace');
 assert(src.includes('🍃 MongoDB: ${MONGODB_DB}.store | Chaves:'),
   'startup log must report selected DB namespace');
+assert(src.includes('🔒 LITE V4: ${ZVM_LITE_V4_CONFIG.ready ?'),
+ 'operator diagnostics must distinguish LITE V4 authority from global Build Registry');
+assert(src.includes('assinatura por sessão'),
+ 'startup must not imply that a configured public key bypasses per-session signature checks');
 assert(!src.includes('🍃 MongoDB: zapvoice.store | Chaves:'),
   'hardcoded misleading DB name must not return');
 console.log('R79 MONGODB LOG PASS: production default stable; staging DB logs accurate; no writes');
