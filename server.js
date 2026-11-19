@@ -8,6 +8,7 @@ const { renderOwnerSalesLanding, OWNER_TOP_BRAND_SRC } = require('./src/web/publ
 const { renderPublicFooter } = require('./src/web/public/footer');
 const { TERMS, renderTermsDocument } = require('./src/web/public/terms');
 const { SUPPORT_URL: ZVM_SUPPORT_URL } = require('./src/support-contact');
+const { PRODUCT_AUTOMACOES, generateLicenseKey, keyBelongsTo } = require('./src/license-product-v2');
 const { resolvePublicLocale, localizePublicHtml, localizeAuthHtml, setLanguageCookie } = require('./src/web/public/i18n');
 'use strict';
 
@@ -64,7 +65,7 @@ const serveZVMCloud = createCloudRoute({
     if (storedKeyHash !== null && !safeCompare(fingerprint, storedKeyHash)) return false;
     // Read the authoritative DB record, never the in-memory cache of old licenses.
     const record = await readPortalKeySnapshot(keyCode, { db });
-    if (!extensionLicenseIsUsable(record) || !extensionDevAccessAllowed(keyCode, record)) return false;
+    if (!extensionLicenseIsUsable(record) || !keyBelongsTo(record, keyCode, PRODUCT_AUTOMACOES) || !extensionDevAccessAllowed(keyCode, record)) return false;
     return rawCode !== null ? { keyHash: fingerprint } : true;
   },
 });
@@ -2071,6 +2072,24 @@ function generateCode() {
   };
   return `zv-${seg()}-${seg()}-${seg()}`;
 }
+// Emissão nova: OFF por padrão até Chrome/Opera oficiais comprovarem 57 caracteres.
+function officialV2IssuanceEnabled() {
+  return String(process.env.ZVM_OFFICIAL_KEYS_V2_ENABLED || '').trim().toLowerCase() === 'true';
+}
+function generateOfficialCode() {
+  return officialV2IssuanceEnabled() ? generateLicenseKey(PRODUCT_AUTOMACOES) : generateCode();
+}
+function normalizeOfficialLicenseCode(value) {
+  if (typeof value !== 'string') return '';
+  const code = value.trim().toLowerCase();
+  if (!/^[a-z0-9_-]{1,64}$/.test(code)) return '';
+  // Não converter/truncar uma V2 LITE ou V2 malformada para legado.
+  if (/^zv2/.test(code) && !/^zv2a-[a-z2-7]{52}$/.test(code)) return '';
+  return code;
+}
+function officialV2Metadata(code) {
+  return /^zv2a-[a-z2-7]{52}$/.test(code) ? { extensionProductId: PRODUCT_AUTOMACOES } : {};
+}
 function generateToken() { return crypto.randomBytes(32).toString('hex'); }
 
 // Token de reset de senha do portal standalone: o valor UTILIZÁVEL (o que
@@ -2400,12 +2419,12 @@ function extensionAuthFailure(errorCode, status, extra = {}) {
 async function resolveExtensionAccountEntitlement(user, deps = {}) {
   const now = extensionNow(deps);
   const keyStore = deps.keyStore || keys;
-  const keyCode = sanitizeId(user?.keyCode, 32);
+  const keyCode = normalizeOfficialLicenseCode(user?.keyCode);
   if (!keyCode) return { ok: true, keyCode: null, devAccess:false, entitlement: buildExtensionEntitlement({ now }) };
   const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(keyCode);
   if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
   const keyRecord = loaded.found ? keyStore[keyCode] : null;
-  if (!extensionLicenseIsUsable(keyRecord, now)) {
+  if (!extensionLicenseIsUsable(keyRecord, now) || !keyBelongsTo(keyRecord, keyCode, PRODUCT_AUTOMACOES)) {
     return { ok: true, keyCode: null, devAccess:false, entitlement: buildExtensionEntitlement({ now }) };
   }
   return { ok: true, keyCode, devAccess:extensionDevAccessAllowed(keyCode, keyRecord), entitlement: buildExtensionEntitlement({ keyCode, keyRecord, now }) };
@@ -2448,7 +2467,7 @@ async function authenticateExtensionAccount(input, deps = {}) {
 }
 
 async function authorizeExtensionKeySession(input, deps = {}) {
-  const keyCode = sanitizeId(input?.authKey, 32);
+  const keyCode = normalizeOfficialLicenseCode(input?.authKey);
   const phoneNumber = normalizePhone(input?.phoneNumber || '');
   const deviceId = safeScalar(input?.deviceId, 160);
   if (!keyCode || isFreeAuthKey(keyCode) || !phoneNumber || !deviceId) {
@@ -2459,6 +2478,7 @@ async function authorizeExtensionKeySession(input, deps = {}) {
   if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
   if (!loaded.found || !keyStore[keyCode]) return extensionAuthFailure('invalid_key', 401);
   const keyRecord = keyStore[keyCode];
+  if (!keyBelongsTo(keyRecord, keyCode, PRODUCT_AUTOMACOES)) return extensionAuthFailure('invalid_key', 401);
   if (keyRecord.active !== true) return extensionAuthFailure('key_blocked', 403);
   // Diferente do helper legado isKeyExpired(), este guard também falha
   // fechado para expiresAt malformado em vez de autenticar a chave e só
@@ -2794,7 +2814,7 @@ async function adminGetKey(code) {
   return readAdminKeySnapshot(code);
 }
 async function resolveUsageKey(body) {
-  const authKey = (body.authKey || '').toLowerCase().slice(0, 32);
+  const authKey = normalizeOfficialLicenseCode(body.authKey);
   const phone = body.phoneNumber || '';
 
   // A identidade/entitlement vem de chave real ou associação real de
@@ -2804,11 +2824,11 @@ async function resolveUsageKey(body) {
   if (authKey === FREE_AUTH_KEY) return FREE_AUTH_KEY;
 
   if (authKey && authKey !== FREE_AUTH_KEY && await ensureKeyLoaded(authKey)) {
-    return extensionLicenseIsUsable(keys[authKey]) ? authKey : null;
+    return extensionLicenseIsUsable(keys[authKey]) && keyBelongsTo(keys[authKey], authKey, PRODUCT_AUTOMACOES) ? authKey : null;
   }
 
   const byPhone = findKeyCodeByPhone(keys, phone);
-  if (byPhone && await ensureKeyLoaded(byPhone) && extensionLicenseIsUsable(keys[byPhone])) return byPhone;
+  if (byPhone && await ensureKeyLoaded(byPhone) && extensionLicenseIsUsable(keys[byPhone]) && keyBelongsTo(keys[byPhone], byPhone, PRODUCT_AUTOMACOES)) return byPhone;
 
   return null;
 }
@@ -3736,6 +3756,11 @@ async function _processCommercialSaleUnlocked(sale, plan, deps = {}) {
     }
   }
 
+  // Nunca renovar uma licença de outro produto, nem durante replays da Cakto.
+  if (existingCode && !keyBelongsTo(keyStore[existingCode], existingCode, PRODUCT_AUTOMACOES)) {
+    throw Object.assign(new Error('cakto_license_product_mismatch'), { code: 'cakto_license_product_mismatch' });
+  }
+
   // P0 — retomada de falha parcial não pode somar a duração duas vezes: se
   // persistKey/linkPortalUser/savePayment falhar DEPOIS que a chave já foi
   // mutada em memória (criada ou renovada), o evento vira "failed" e é
@@ -3780,10 +3805,11 @@ async function _processCommercialSaleUnlocked(sale, plan, deps = {}) {
       key.note = [key.note || '', renewalTxMarker || `renovado_${txLabel}`].filter(Boolean).join('\n');
     }
   } else {
-    keyCode = generateCode();
+    keyCode = generateOfficialCode();
     renewed = false;
     const expiresAt = new Date(now.getTime() + durationMs).toISOString();
     keyStore[keyCode] = {
+      ...officialV2Metadata(keyCode),
       label: `${sale.testMode ? '🧪 Simulação' : 'Venda Cakto'} - ${safeScalar(sale.clientName, 120, 'Cliente')}`,
       active: true, phones: [], activations: [], uses: 0,
       maxUses: plan.maxUses, planId: plan.id, commercialPaidAt: new Date(incomingPaidAtMs).toISOString(), commercialOrderKey: incomingOrderKey,
@@ -6198,7 +6224,7 @@ ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_AUTH}${_CSS_SYSTEM}</head>
         <div class="auth-field"><label for="reg-phone">WhatsApp</label><input id="reg-phone" type="tel" name="phone" placeholder="11999990000" value="${v('phone')}" maxlength="20" pattern="[0-9+\s()-]{8,20}" autocomplete="tel"></div>
       </div>
       <div class="auth-field"><label for="reg-email">E-mail</label><input id="reg-email" type="email" name="email" placeholder="seu@email.com" required value="${v('email')}" autocomplete="email"><div class="auth-field-hint">Use este mesmo e-mail na compra para vincular sua licença automaticamente.</div></div>
-      <div class="auth-field"><label for="reg-keycode">Chave ZVM <span class="auth-label-optional">(opcional)</span></label><input id="reg-keycode" type="text" name="keycode" placeholder="zv-xxxxx-xxxxx-xxxxx" value="${v('keycode')}" maxlength="30"><div class="auth-field-hint">Se ainda não tiver uma chave, você pode vincular depois.</div></div>
+      <div class="auth-field"><label for="reg-keycode">Chave ZVM <span class="auth-label-optional">(opcional)</span></label><input id="reg-keycode" type="text" name="keycode" placeholder="zv-xxxxx-xxxxx-xxxxx" value="${v('keycode')}" maxlength="64"><div class="auth-field-hint">Se ainda não tiver uma chave, você pode vincular depois.</div></div>
       <div class="auth-field-row">
         <div class="auth-field"><label for="reg-pass">Senha</label><input id="reg-pass" type="password" name="pass" placeholder="Mínimo 8 caracteres" required minlength="8" autocomplete="new-password"></div>
         <div class="auth-field"><label for="reg-pass2">Confirmar senha</label><input id="reg-pass2" type="password" name="pass2" placeholder="Repita a senha" required minlength="8" autocomplete="new-password"></div>
@@ -6344,7 +6370,7 @@ function renderStandaloneSetup2FA(user, pendingSecret = '', err = '', ok = '') {
 function renderStandalonePortalLinkKey(err = '', ok = '', portalUser = null) {
   const errHtml = err ? `<div class="auth-alert err" role="alert">⚠ ${escHtml(err)}</div>` : '';
   const okHtml = ok ? `<div class="auth-alert ok" role="status">✅ ${escHtml(ok)}</div>` : '';
-  const content=`<div class="auth-form-card"><h2>Vincular chave</h2><p class="auth-form-hint">Associe uma licença existente à sua conta. O portal passa a mostrar validade, plano e dispositivos imediatamente.</p>${errHtml}${okHtml}<form method="POST" action="/cliente/vincular"><div class="auth-field"><label for="link-keycode">Código da chave</label><input id="link-keycode" type="text" name="keycode" placeholder="zv-xxxxx-xxxxx-xxxxx" maxlength="30" pattern="[a-z0-9\\-]+" required autocomplete="off"><div class="auth-field-hint">Use exatamente o código recebido na compra ou no atendimento.</div></div><button type="submit" class="auth-submit">Vincular chave<span class="auth-spinner" aria-hidden="true"></span></button></form><div class="auth-switch"><a href="/cliente">← Voltar à visão geral</a></div></div>`;
+  const content=`<div class="auth-form-card"><h2>Vincular chave</h2><p class="auth-form-hint">Associe uma licença existente à sua conta. O portal passa a mostrar validade, plano e dispositivos imediatamente.</p>${errHtml}${okHtml}<form method="POST" action="/cliente/vincular"><div class="auth-field"><label for="link-keycode">Código da chave</label><input id="link-keycode" type="text" name="keycode" placeholder="zv-xxxxx-xxxxx-xxxxx" maxlength="64" pattern="[a-z0-9\\-]+" required autocomplete="off"><div class="auth-field-hint">Use exatamente o código recebido na compra ou no atendimento.</div></div><button type="submit" class="auth-submit">Vincular chave<span class="auth-spinner" aria-hidden="true"></span></button></form><div class="auth-switch"><a href="/cliente">← Voltar à visão geral</a></div></div>`;
   return renderClientWorkspacePage({portalUser,active:'license',eyebrow:'Licença',title:'Vincular uma chave ZVM',subtitle:'Centralize sua licença, validade, plano e dispositivos dentro da mesma conta.',content,aside:`<div class="client-app-mini"><span>Licença</span><strong>Vinculação imediata</strong><p>Depois de validada, a chave passa a aparecer na visão geral da conta.</p></div><div class="client-app-mini"><span>Segurança</span><strong>Uma chave por conta</strong><p>Se a chave já estiver vinculada a outra conta, o portal bloqueia a associação.</p></div>`});
 }
 
@@ -8817,11 +8843,11 @@ async function metaResolveOwner(req, body = {}) {
     return { ownerId: refreshed.sessionDoc.subject.id, auth: 'v4', subject: refreshed.sessionDoc.subject };
   }
   if (ZVM_BUILD_ENFORCE) return null;
-  const keyCode = sanitizeId(body.authKey, 32);
+  const keyCode = normalizeOfficialLicenseCode(body.authKey);
   const deviceId = safeScalar(body.deviceId, 160);
   if (!keyCode || isFreeAuthKey(keyCode) || !deviceId) return null;
   const loaded = await ensureKeyLoadedEx(keyCode);
-  if (!loaded.found || loaded.dbError || !extensionLicenseIsUsable(keys[keyCode])) return null;
+  if (!loaded.found || loaded.dbError || !extensionLicenseIsUsable(keys[keyCode]) || !keyBelongsTo(keys[keyCode], keyCode, PRODUCT_AUTOMACOES)) return null;
   return { ownerId: extensionSubject('license', keyCode).id, auth: 'v254-compat', subject: extensionSubject('license', keyCode) };
 }
 function metaPublicConnection(rec) {
@@ -9375,7 +9401,7 @@ async function handleRequest(req, res) {
     }
     try {
       const body = await parseBody(req);
-      const keyCodeForBuild = sanitizeId(body.authKey, 32);
+      const keyCodeForBuild = normalizeOfficialLicenseCode(body.authKey);
       const deviceIdForBuild = String(body.deviceId || '').trim().slice(0, 160);
       const devBuildAllowed = zvmSecurityDevBuildAllowed(keyCodeForBuild, deviceIdForBuild);
       const buildClient = await zvmSecurityCheckClientShared(body.clientSecurity, { allowUnrecognized:devBuildAllowed, licenseKey:keyCodeForBuild });
@@ -9576,7 +9602,7 @@ async function handleRequest(req, res) {
       return;
     }
     const body = await parseBody(req);
-    const keyCode    = sanitizeId(body.authKey, 32);
+    const keyCode    = normalizeOfficialLicenseCode(body.authKey);
     const phone      = body.phoneNumber || '-';
     const wppVersion = body.wppVersion  || '-';
     const deviceId   = body.deviceId    || '';
@@ -9613,7 +9639,7 @@ async function handleRequest(req, res) {
       sendJson(res, { error: 'temporarily_unavailable', retryable: true }, 503);
       return;
     }
-    if (!_load.found) {
+    if (!_load.found || !keyBelongsTo(keys[keyCode], keyCode, PRODUCT_AUTOMACOES)) {
       sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada. Contate o vendedor.', isLoggedIn: false });
       addLog({ keyCode, label: '-', phone, ip, wppVersion, action: 'key_not_found' }).catch(()=>{});
       return;
@@ -9782,7 +9808,7 @@ async function handleRequest(req, res) {
       sendJson(res, { error: 'rate_limited', retryable: true }, 429); return;
     }
     const body    = await parseBody(req); // 64 KB limit + prototype-pollution guard
-    const keyCode = sanitizeId(body.authKey, 32);
+    const keyCode = normalizeOfficialLicenseCode(body.authKey);
     if (!serverReady) { sendJson(res, { error: 'temporarily_unavailable', retryable: true }, 503); return; }
     if (!keyCode)     { sendJson(res, { error: 'invalid_request' }, 400); return; }
     if (isFreeAuthKey(keyCode)) {
@@ -10312,10 +10338,11 @@ async function handleRequest(req, res) {
     const body = await parseBody(req);
     const labelResult = normalizeAdminCreateLabel(body.label);
     if (!labelResult.ok) { sendJson(res, { error: labelResult.error }, 400); return; }
-    const code = generateCode();
+    const code = generateOfficialCode();
     const { expiresAt, expireDuration } = parseKeyExpiryFromBody(body, { allowMinutes: true });
     const maxUses = (body.maxUses !== undefined) ? parseInt(body.maxUses) : MAX_USES;
     const createdKey = {
+      ...officialV2Metadata(code),
       label: labelResult.label, active: true, createdAt: new Date().toISOString(),
       uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null,
       deviceId: null, wppVersion: null, note: '',
@@ -10894,10 +10921,10 @@ async function handleRequest(req, res) {
     if (_cl > 256) { sendJson(res, { error: 'payload_too_large' }, 400); return; }
     const body = await parseBody(req);
     const _rawKey = (typeof body.key === 'string' ? body.key : '').trim().toLowerCase();
-    if (!/^[a-z0-9\-]{20}$/.test(_rawKey)) { sendJson(res, { error: 'invalid_key' }, 400); return; }
-    const code = sanitizeId(_rawKey, 20);
+    const code = normalizeOfficialLicenseCode(_rawKey);
+    if (!code || !(/^[a-z0-9\-]{20}$/.test(code) || /^zv2a-[a-z2-7]{52}$/.test(code))) { sendJson(res, { error: 'invalid_key' }, 400); return; }
     if (!code) { sendJson(res, { error: 'not_found' }, 404); return; }
-    if (!await ensureKeyLoaded(code)) { sendJson(res, { error: 'not_found' }, 404); return; }
+    if (!await ensureKeyLoaded(code) || !keyBelongsTo(keys[code], code, PRODUCT_AUTOMACOES)) { sendJson(res, { error: 'not_found' }, 404); return; }
     const k = keys[code];
 
     sendJson(res, {
@@ -10923,13 +10950,13 @@ async function handleRequest(req, res) {
     if (_clRm > 256) { sendJson(res, { error: 'payload_too_large' }, 400); return; }
     const body    = await parseBody(req);
     const _rawRmKey = (typeof body.key === 'string' ? body.key : '').trim().toLowerCase();
-    if (!/^[a-z0-9\-]{20}$/.test(_rawRmKey)) { sendJson(res, { error: 'invalid_key' }, 400); return; }
-    const keyCode = sanitizeId(_rawRmKey, 20);
+    const keyCode = normalizeOfficialLicenseCode(_rawRmKey);
+    if (!keyCode || !(/^[a-z0-9\-]{20}$/.test(keyCode) || /^zv2a-[a-z2-7]{52}$/.test(keyCode))) { sendJson(res, { error: 'invalid_key' }, 400); return; }
     const phoneIdx = body.phoneIdx != null ? parseInt(body.phoneIdx) : -1;
     const phoneTxt = (body.phone||'').trim();
     if (!keyCode) { sendJson(res, { error: 'not_found' }, 404); return; }
     if (phoneIdx < 0 && !phoneTxt) { sendJson(res, { error: 'phone obrigatorio' }, 400); return; }
-    if (!await ensureKeyLoaded(keyCode)) { sendJson(res, { error: 'not_found' }, 404); return; }
+    if (!await ensureKeyLoaded(keyCode) || !keyBelongsTo(keys[keyCode], keyCode, PRODUCT_AUTOMACOES)) { sendJson(res, { error: 'not_found' }, 404); return; }
     const phones = keys[keyCode].phones || [];
     const phone = resolvePhoneToRemove(phones, { phoneIdx, phoneTxt });
     if (!phone) { sendJson(res, { error: 'numero nao encontrado' }, 404); return; }
@@ -11026,13 +11053,13 @@ async function handleRequest(req, res) {
     if (!checkRateLimit(ip, 'checkkey')) { sendJson(res, { valid: false, error: 'Muitas tentativas. Aguarde.' }, 429); return; }
     try {
       const body = await parseBody(req);
-      const code = (body.code || '').trim().toLowerCase().slice(0, 64);
+      const code = normalizeOfficialLicenseCode(body.code);
       if (!code) { sendJson(res, { valid: false, error: 'Código não informado.' }); return; }
       const _ck = await ensureKeyLoadedEx(code);
       // Banco fora do ar: nao afirmar que a chave e invalida (o cliente veria
       // "chave invalida" durante uma queda). Devolve erro temporario.
       if (_ck.dbError) { sendJson(res, { error: 'temporarily_unavailable', retryable: true }, 503); return; }
-      if (!_ck.found) { sendJson(res, { valid: false }); return; }
+      if (!_ck.found || !keyBelongsTo(keys[code], code, PRODUCT_AUTOMACOES)) { sendJson(res, { valid: false }); return; }
       const k = keys[code] || {};
       const now = Date.now();
       const expired = k.expiresAt ? new Date(k.expiresAt).getTime() < now : false;
@@ -11150,11 +11177,13 @@ async function handleRequest(req, res) {
     const name    = (form.get('name')||'').trim().slice(0,80);
     const email   = (form.get('email')||'').toLowerCase().trim().slice(0,100);
     const phone   = (form.get('phone')||'').replace(/\D/g,'').slice(0,20);
-    const keycode = ((form.get('keycode')||'').toLowerCase().trim()).replace(/[^a-z0-9\-_]/g,'').slice(0,30);
+    const enteredKeyCode = (form.get('keycode') || '').trim();
+      const keycode = normalizeOfficialLicenseCode(enteredKeyCode);
     const pass    = (form.get('pass')||'').slice(0,128);
     const pass2   = (form.get('pass2')||'').slice(0,128);
     const redir   = safeLocalRedirect((form.get('redir')||'').slice(0,200));
     const vals = { name, email, phone, keycode };
+    if (enteredKeyCode && !keycode) { sendAuthHtml(res, renderStandalonePortalRegister('Chave inválida: confira o código completo.', vals, redir)); return; }
     if (!name || !email || !pass) { sendAuthHtml(res, renderStandalonePortalRegister('Preencha nome, e-mail e senha.', vals, redir)); return; }
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { sendAuthHtml(res, renderStandalonePortalRegister('E-mail inválido.', vals, redir)); return; }
     if (pass.length < 8) { sendAuthHtml(res, renderStandalonePortalRegister('Senha: mínimo 8 caracteres.', vals, redir)); return; }
@@ -11165,7 +11194,7 @@ async function handleRequest(req, res) {
       if (existing) { sendAuthHtml(res, renderStandalonePortalRegister('E-mail já cadastrado.', vals, redir)); return; }
       if (keycode) {
         await ensureKeyLoaded(keycode);
-        if (!keys[keycode]) { sendAuthHtml(res, renderStandalonePortalRegister('Chave não encontrada. Deixe em branco para vincular depois.', vals, redir)); return; }
+        if (!keys[keycode] || !keyBelongsTo(keys[keycode], keycode, PRODUCT_AUTOMACOES)) { sendAuthHtml(res, renderStandalonePortalRegister('Chave não encontrada. Deixe em branco para vincular depois.', vals, redir)); return; }
         // Guarda de aplicação: uma licença comercial pertence a uma única conta
         // do portal. Sem isto, a mesma keyCode poderia ser vinculada a vários
         // portal_users simultaneamente (cada um veria/gerenciaria a licença do
@@ -11197,10 +11226,11 @@ async function handleRequest(req, res) {
       if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
       const sess = getPortalUser(req);
       const form = await parseFormBody(req);
-      const keycode = ((form.get('keycode')||'').toLowerCase().trim()).replace(/[^a-z0-9\-_]/g,'').slice(0,30);
-      if (!keycode) { sendAuthHtml(res, renderStandalonePortalLinkKey('Informe o código da chave.', '', sess)); return; }
+      const enteredKeyCode = (form.get('keycode') || '').trim();
+      const keycode = normalizeOfficialLicenseCode(enteredKeyCode);
+      if (!keycode) { sendAuthHtml(res, renderStandalonePortalLinkKey(enteredKeyCode ? 'Chave inválida: confira o código completo.' : 'Informe o código da chave.', '', sess)); return; }
       await ensureKeyLoaded(keycode);
-      if (!keys[keycode]) { sendAuthHtml(res, renderStandalonePortalLinkKey('Chave não encontrada.', '', sess)); return; }
+      if (!keys[keycode] || !keyBelongsTo(keys[keycode], keycode, PRODUCT_AUTOMACOES)) { sendAuthHtml(res, renderStandalonePortalLinkKey('Chave não encontrada.', '', sess)); return; }
       try {
         const db = await getMongoDb();
         // Guarda de aplicação: uma licença comercial pertence a uma única conta

@@ -45,7 +45,7 @@ function legacyKeyStateSignature(record) {
 function legacyReloginCacheKey(input) {
   const row = input || {};
   return [
-    String(row.keyCode || '').slice(0, 32),
+    String(row.keyCode || '').slice(0, 64),
     normalizeLegacyPhone(row.phone),
     String(row.deviceId || '').slice(0, 80),
     String(row.ip || '').slice(0, 64),
