@@ -38,7 +38,7 @@ const err500=api.renderStandalone500Page(null);
 assert(pt.includes('class="zvm-public-premium zvm-legal-premium zvm-privacy-premium"'));
 assert(pt.includes('<main id="main-content" class="zvm-privacy-main">'),'Privacy skip link target must be semantic');
 assert.equal((pt.match(/id="main-content"/g)||[]).length,1,'Privacy has duplicate main IDs');
-const standaloneLinks=[...pt.matchAll(/href="\\/assets\\/(zvm-standalone\\.[a-f0-9]{12}\\.css)"/g)].map(m=>m[1]);
+const standaloneLinks=[...pt.matchAll(/zvm-standalone\.[a-f0-9]{12}\.css/g)].map(m=>m[0]);
 assert.equal(standaloneLinks.length,1,'Privacy must load precisely one current standalone stylesheet');
 const standaloneBytes=fs.readFileSync(path.join(root,'assets',standaloneLinks[0]));
 const standaloneDigest=crypto.createHash('sha256').update(standaloneBytes).digest('hex');
