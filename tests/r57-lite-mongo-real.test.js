@@ -22,6 +22,7 @@ const second=generateLicenseKey(PRODUCT_LITE);
 const deferred=generateLicenseKey(PRODUCT_LITE);
 const issuedByAdmin=generateLicenseKey(PRODUCT_LITE);
 const invalidZeroLimit=generateLicenseKey(PRODUCT_LITE);
+const stressLite=generateLicenseKey(PRODUCT_LITE);
 const phoneA='5538999112233',phoneB='5538999112244',phoneC='5538999112255';
 const base = (extras={}) => ({
   active:true,extensionProductId:PRODUCT_LITE,provisioningStatus:'issued',
@@ -39,6 +40,7 @@ test('R57 real local MongoDB: issued key, concurrent claims, revocation and port
     [lite]:base(),
     [second]:base({active:false}),
     [invalidZeroLimit]:base({maxUses:0}),
+    [stressLite]:base({maxUses:3}),
     [deferred]:base({maxUses:2,phones:[phoneC],expireDuration:3600_000}),
     [full]:{active:true,extensionProductId:PRODUCT_AUTOMACOES,phones:[],maxUses:1,planId:'ZV_PRO'},
   }});
@@ -121,6 +123,20 @@ test('R57 real local MongoDB: issued key, concurrent claims, revocation and port
     const repeat=await claimLitePhoneSlotAtomic(db,lite,actual.phones[0],{maxPhonesGlobal:100});
     assert.equal(repeat.status,'already_member');
     assert.equal((await readLiteLicenseSnapshot(db,lite)).phones.length,1);
+  });
+
+  await t.test('24 parallel device claims respect a three-device LITE ceiling atomically',async()=>{
+    const phones=Array.from({length:24},(_,i)=>'55389991'+String(i).padStart(5,'0'));
+    const results=await Promise.all(phones.map(phone=>
+      claimLitePhoneSlotAtomic(db,stressLite,phone,{maxPhonesGlobal:100})
+    ));
+    assert.equal(results.filter(r=>r.status==='claimed').length,3);
+    assert.equal(results.filter(r=>r.status==='limit_reached').length,21);
+    const stored=await readLiteLicenseSnapshot(db,stressLite);
+    assert.equal(stored.phones.length,3);
+    assert.equal(new Set(stored.phones).size,3);
+    assert(stored.phones.every(phone=>phones.includes(phone)));
+    assert.equal(stored.maxUses,3);
   });
 
   await t.test('LITE first-use expiry activates exactly once on a persisted phone',async()=>{
