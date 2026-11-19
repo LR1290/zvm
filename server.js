@@ -5771,6 +5771,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: 'd84043f003e4982440cf28dd8fcb0b5105d6949e2de4855afbe4f6e5008479aa',
     compressible: true,
   }),
+  '/assets/zvm-admin-operations.aca63b115154.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-admin-operations.aca63b115154.css'),
+    sha256: 'aca63b11515460f54b24a4bb178e57e89e694ead99c71cdbbef244c4f33bf66f',
+    compressible: true,
+  }),
   '/assets/zvm-admin-dashboard.cd85ea19cc73.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.cd85ea19cc73.css'),
@@ -7049,7 +7055,7 @@ function renderAdminDashboard(opts = {}) {
 <link rel="stylesheet" href="/assets/zvm-console-design.7a7b24cd5fa8.css">
 <link rel="stylesheet" href="/assets/zvm-owner-site.e10ede63c1f0.css">
 <link rel="stylesheet" href="/assets/zvm-admin-dashboard.cd85ea19cc73.css">
-<link rel="stylesheet" href="/assets/zvm-admin-operations.d84043f003e4.css">
+<link rel="stylesheet" href="/assets/zvm-admin-operations.aca63b115154.css">
 </head>
 <body class="zvm-admin-r6">
 <a class="zvm-skip-link" href="#zvm-admin-main">Ir para o conteúdo</a>
