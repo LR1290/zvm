@@ -8,6 +8,7 @@ on:
       - 'tools/zvm-mongodb-migrate.js'
       - 'tests/r85-mongo-rename-guard.test.js'
       - 'tests/r86-mongo-crossdb-copy.test.js'
+      - 'tools/zvm-db-backup-readonly.ps1'
       - 'package.json'
       - '.github/workflows/zvm-mongodb-migration.yml'
   workflow_dispatch:
@@ -28,3 +29,10 @@ jobs:
           node-version: '24.22.3'
       - name: Verify syntax and migration safety without MongoDB credentials
         run: npm run check:db-migration
+      - name: Parse Windows backup operator script (no database access)
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile('tools/zvm-db-backup-readonly.ps1', [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { throw ($errors | Out-String) }

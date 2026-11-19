@@ -32,3 +32,26 @@ MongoDB não oferece uma operação simples e segura de renomeação integral de
 - Nenhum deploy/merge/autodeploy nesta etapa.
 - Sem alterações no servidor oficial, nem no banco zapvoice.
 - Backup temporário de watidy está isolado e documentado; a sua remoção deve ocorrer apenas depois do encerramento da janela de recuperação.
+
+
+## R86 — validação cruzada e backup externo
+
+- Em 19/11/2026, a cópia sintética REAL entre bancos separados do Atlas (zvm_migration_r86_source para zvm_migration_r86_target) preservou 2 documentos fictícios e um índice secundário. O conector retornou erro de transporte, mas a leitura posterior comprovou a escrita. Ambos os bancos de laboratório foram excluídos e a ausência foi confirmada.
+- CI especializado R85+R86: 22 controles da R85 e 17 controles da R86 passaram. O R86 verifica a execução real do módulo com mocks independentes e uma resposta ambígua após $out, sem autorizar sobrescrita.
+- O banco oficial zapvoice permanece em uso. Em leitura posterior, a quantidade de objetos variou de 1.228 para 1.223 (por exemplo, índices TTL podem expirar documentos automaticamente): sem congelar writers, não existe garantia de instantâneo consistente.
+- Por ser um cluster Atlas FREE, não presumir que há snapshot sob demanda. Backups gratuitos opcionais dependem de disponibilidade do Atlas. Para execução auditável, usar MongoDB Database Tools.
+
+### Backup externo de operação Windows — não executado nesta etapa
+1. Instalar MongoDB Database Tools 100.3+ (mongodump e mongorestore no PATH).
+2. Em diretório privado fora do repositório, criar arquivo YAML de configuração do MongoDB Database Tools contendo a URI do Atlas. Nunca inserir URI, senha ou licença no GitHub, em logs ou no chat.
+3. Escolher unidade criptografada / protegida para o arquivo de backup.
+4. Executar no PowerShell em diretório do repositório:
+
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools/zvm-db-backup-readonly.ps1 -MongoConfigYaml "C:\SEGREDOS\mongodb-tools.yml" -BackupDirectory "E:\ZVM-Backups"
+
+5. O script executa mongodump na base zapvoice com BSON e metadados, usa mongorestore --dryRun sem gravar dados e produz archive.gz mais manifesto SHA256. Sem parar writers, o próprio manifesto indica backup preliminar.
+6. Para um backup final no corte, rodar somente depois de interromper e conferir TODOS os escritores, com a opção -IConfirmWritersPaused. Essa opção é declaração do operador, não para os serviços.
+7. Dry-run não substitui restauração real em banco ou cluster isolado, conferindo contagem e índices antes da troca. Armazenar e transportar o archive de forma criptografada.
+8. O backup é proteção extra. Não mudar MONGODB_DB no Render antes da transferência e reconciliação sem divergências.
+
+Código de backup não é executado automaticamente pela CI e não precisa conhecer credenciais. Na CI, só o parser do PowerShell é executado.
