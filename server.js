@@ -5765,6 +5765,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     compressible: true,
   }),
 
+  '/assets/zvm-admin-operations.d84043f003e4.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-admin-operations.d84043f003e4.css'),
+    sha256: 'd84043f003e4982440cf28dd8fcb0b5105d6949e2de4855afbe4f6e5008479aa',
+    compressible: true,
+  }),
   '/assets/zvm-admin-dashboard.cd85ea19cc73.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.cd85ea19cc73.css'),
@@ -6980,6 +6986,18 @@ function parseAdminBatchDeleteCodes(body) {
   return { ok: true, codes: [...new Set(rawCodes)] };
 }
 
+// Textos próprios do painel. Data em BRT, sem API externa ou coleta de dados.
+const ADMIN_DAILY_THOUGHTS = Object.freeze([
+  'Uma operação confiável começa com informações claras.',
+  'Decisões melhores surgem de dados verificados, não de pressa.',
+  'Cada melhoria pequena fortalece o sistema inteiro.',
+  'Segurança é manter o controle mesmo quando algo falha.',
+  'A simplicidade faz o trabalho importante aparecer.',
+  'O que pode ser medido pode ser acompanhado com responsabilidade.',
+  'Uma boa rotina previne mais problemas do que corrige.',
+  'Organização hoje significa menos retrabalho amanhã.',
+]);
+
 // Dashboard administrativo do banco canônico ZVM.
 function renderAdminDashboard(opts = {}) {
   const snapshot = opts.keysSnapshot || keys;
@@ -7004,6 +7022,14 @@ function renderAdminDashboard(opts = {}) {
   }).join('') : '<tr><td colspan="8" class="empty">Nenhum usuário cadastrado.</td></tr>';
   const { expiredKeys: expiredCount, warnKeys: expiringSoon } = stats;
   const _adminBrand = renderStandaloneBrand('compact');
+  const adminLocalDate = new Date();
+  const adminThoughtDate = new Intl.DateTimeFormat('pt-BR',{
+    timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric'
+  }).format(adminLocalDate);
+  const adminLocalDay = Number(new Intl.DateTimeFormat('en-US',{
+    timeZone:'America/Sao_Paulo',day:'numeric'
+  }).format(adminLocalDate));
+  const adminDailyThought = ADMIN_DAILY_THOUGHTS[(adminLocalDay-1) % ADMIN_DAILY_THOUGHTS.length];
 
   return `<!DOCTYPE html>
 <html lang="pt-BR" data-admin-root="${escHtml(R_ADMIN)}">
@@ -7017,6 +7043,7 @@ function renderAdminDashboard(opts = {}) {
 <link rel="stylesheet" href="/assets/zvm-console-design.44762cb103f8.css">
 <link rel="stylesheet" href="/assets/zvm-owner-site.e10ede63c1f0.css">
 <link rel="stylesheet" href="/assets/zvm-admin-dashboard.cd85ea19cc73.css">
+<link rel="stylesheet" href="/assets/zvm-admin-operations.d84043f003e4.css">
 </head>
 <body class="zvm-admin-r6">
 <a class="zvm-skip-link" href="#zvm-admin-main">Ir para o conteúdo</a>
@@ -7045,26 +7072,25 @@ function renderAdminDashboard(opts = {}) {
 </nav>
 <main class="admin-content" id="zvm-admin-main" tabindex="-1">
 
-  <section class="admin-overview" aria-labelledby="admin-overview-title">
+  <!-- Área de licenças: resumo, indicadores e filtros pertencem somente a Chaves. -->
+  <div class="sec-panel active" data-panel="keys">
+  <section class="admin-overview admin-overview-compact" aria-labelledby="admin-overview-title">
     <div class="zvm-overview-main">
-      <span class="admin-overview-kicker">ZVM · Administração</span>
-      <h1 id="admin-overview-title">Visão geral da operação</h1>
-      <p>Chaves, clientes e auditoria em um único espaço, com a identidade do portal ZVM.</p>
-      <div class="admin-overview-actions">
-        <button type="button" class="primary" data-zvm-handler-click="h2">Gerenciar licenças</button>
-        <button type="button" data-zvm-handler-click="h5">Ver clientes</button>
-        <button type="button" data-zvm-handler-click="h6">Segurança</button>
-        <button type="button" data-zvm-handler-click="h4">Auditoria</button>
+      <span class="admin-overview-kicker">ZVM · Centro de licenças</span>
+      <h1 id="admin-overview-title">Licenças sob controle</h1>
+      <p>Gerencie ZVM Automações e ZVM Automações LITE com identidades de licença independentes.</p>
+      <div class="admin-ops-inline" aria-label="Resumo atualizado de licenças">
+        <span><strong id="hero-admin-active">${stats.activeKeys}</strong> ativas</span>
+        <span><strong id="hero-admin-expired">${expiredCount}</strong> expiradas</span>
+        <span><strong id="hero-admin-suspect">${stats.suspectKeys}</strong> suspeitas</span>
       </div>
     </div>
-    <aside class="zvm-overview-help" aria-label="Orientações operacionais">
-      <strong>Operação com confiança</strong>
-      <p>As métricas e os registros são consultados no servidor. Confira a indicação de atualização antes de operações importantes.</p>
-      <div class="zvm-overview-step"><span class="zvm-step-number">01</span><span>Encontre a licença com busca, filtros e indicadores.</span></div>
-      <div class="zvm-overview-step"><span class="zvm-step-number">02</span><span>Confirme as alterações realizadas e consulte o histórico quando necessário.</span></div>
+    <aside class="admin-day-thought" aria-label="Pensamento do dia">
+      <span class="admin-thought-kicker">Pensamento do dia · ${escHtml(adminThoughtDate)}</span>
+      <strong>${escHtml(adminDailyThought)}</strong>
+      <small>Dados sujeitos à última atualização confirmada no servidor.</small>
     </aside>
   </section>
-
 
   <div class="alert-strip" id="urgent-alert" style="${(expiredCount>0||expiringSoon>0)?'':'display:none'}">
     <span>⚠</span>
@@ -7085,7 +7111,6 @@ function renderAdminDashboard(opts = {}) {
   <p class="admin-key-action-guide" id="admin-key-guide">Selecione um indicador para filtrar as licenças. Confira o resultado na tabela antes de bloquear, renovar ou alterar uma chave.</p>
 
   <!-- ── PAINEL CHAVES ── -->
-  <div class="sec-panel active" data-panel="keys">
   <div class="sec">
     <div class="sh">
       <div class="st"><span class="st-accent">🔑</span> Chaves de Acesso</div>
@@ -7110,7 +7135,7 @@ function renderAdminDashboard(opts = {}) {
 <button class="btn bp" id="admin-generate-key-btn" data-zvm-handler-click="he">+ Gerar Chave(s)</button>
       </div>
     </div>
-    <p class="key-modal-help" style="margin:8px 0 4px">Cada chave pertence a uma ferramenta. Chaves LITE ficam pendentes até homologar a identidade e o licenciamento exclusivos. As chaves existentes não mudam de produto.</p>
+    <p class="admin-product-hint" data-product="zvm_lite">Escolha a ferramenta no campo acima. Chaves ZVM e LITE não são intercambiáveis. A chave LITE é gerada como reserva inativa até a homologação da build assinada; sua criação não ativa o produto.</p>
     <div role="status" style="font-size:12px; color:${ZVM_LITE_V4_CONFIG.ready ? 'var(--g)' : 'var(--orange)'}">
       Autoridade DEV da LITE: ${ZVM_LITE_V4_CONFIG.ready ? 'Chave pública e identidade configuradas' : 'Ainda não configurada'}.
       O uso efetivo exige validação da assinatura do build em cada sessão.
