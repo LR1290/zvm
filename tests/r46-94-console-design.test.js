@@ -86,7 +86,9 @@ const admin=api.renderAdminDashboard({
 assert.match(admin,/<main class="admin-content" id="zvm-admin-main"/);
 assert.match(admin,/<nav class="rsidebar" id="rsidebar" aria-label="Navegação administrativa">/);
 assert.match(admin,/<a class="zvm-skip-link" href="#zvm-admin-main">/);
-assert.match(admin,/<aside class="zvm-overview-help"/);
+assert.match(admin,/<aside class="admin-day-thought" aria-label="Pensamento do dia">/,'keep the approved daily-thought module');
+assert.doesNotMatch(admin,/<aside class="zvm-overview-help"/,'retired oversized help aside must not return');
+assert.match(admin,/<section class="admin-overview admin-overview-compact"/,'licenses summary stays compact');
 for(const id of ['kb','last-refresh','s-total','nlabel','phonesModal','users-tb','ip-bl-tb','toast']){
   assert(admin.includes('id="'+id+'"'),'functional Admin ID removed: '+id);
 }
