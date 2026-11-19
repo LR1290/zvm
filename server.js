@@ -9623,6 +9623,8 @@ async function handleRequest(req, res) {
         operationId:body?.operationId,
         period:body?.period,
         scheduledItems:body?.scheduledItems,
+        ack:body?.ack,
+        messageId:body?.messageId,
       });
       sendJson(res, usage);
     } catch (error) {
