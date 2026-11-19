@@ -82,7 +82,7 @@ const account = extractedFunction(
   result=await account({keyCode:legacy});
   await check('V4 account-password entitlement retains old license',result.ok===true && result.keyCode===legacy && result.entitlement.tier==='paid');
   result=await auth({authKey:lite,phoneNumber:'5538999999999',deviceId:'synthetic-device'});
-  await check('V4 cannot activate a LITE license in full ZVM',result.ok===false && result.errorCode==='invalid_key');
+  await check('V4 cannot activate a LITE license in full ZVM',result.ok===false && result.errorCode==='invalid_request');
   result=await auth({authKey:v2,phoneNumber:'5538999999999',deviceId:'synthetic-device'});
   await check('V4 still accepts a correctly marked official V2 key',result.ok===true && result.licenseKeyCode===v2);
   const n=claims.length;
