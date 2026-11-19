@@ -121,4 +121,47 @@ async function testOtherSessionTypes(){
   assert.equal(+t.sandbox.extensionRenewedAccountExpiry(dev,clock),+dev.expiresAt);
   console.log('R82 does not extend key or signed development sessions');
 }
-(async()=>{await testIssue();await testRefresh();await testRevocationRace();await testOtherSessionTypes();})().catch(e=>{console.error(e);process.exitCode=1;});
+async function testOfficialUpgradeBinding(){
+  const original='bdhnikgcdccjabkmbfcakgjkkgdlmgja';
+  const old={
+    _id:'sha256-token',sessionId:'sid',subject:{type:'account',id:'user'},
+    authMethod:'password',accountEmail:'synthetic@example.invalid',
+    createdAt:expiry(-60*60*1000),expiresAt:expiry(60*60*1000),
+    securityProtocol:2,channel:'production',profile:'release',signedDev:false,
+    extensionId:original,extensionVersion:'0.9.289',
+    buildId:'zvm-production-0.9.289-s123456789abc',
+    buildFingerprint:'a'.repeat(64),
+    installationIdHash:crypto.createHash('sha256').update('install-1').digest('hex'),revokedAt:null,
+  };
+  const latest={
+    securityProtocol:2,channel:'production',profile:'release',signedDev:false,
+    extensionId:original,extensionVersion:'0.9.290',buildId:'zvm-production-0.9.290-s123456789abc',
+    buildFingerprint:'b'.repeat(64),installationId:'install-1'
+  };
+  const t=runtime({doc:old});
+  assert.equal(t.sandbox.extensionProductionUpgradeAllowed(old,latest,old.installationIdHash),true);
+  assert.equal(t.sandbox.extensionProductionUpgradeAllowed(old,{...latest,extensionVersion:'0.9.288'},old.installationIdHash),false);
+  assert.equal(t.sandbox.extensionProductionUpgradeAllowed(old,{...latest,extensionVersion:'0.9.289'},old.installationIdHash),false);
+  assert.equal(t.sandbox.extensionProductionUpgradeAllowed(old,{...latest,channel:'dev'},old.installationIdHash),false);
+  assert.equal(t.sandbox.extensionProductionUpgradeAllowed(old,{...latest,extensionId:'c'.repeat(32)},old.installationIdHash),false);
+  assert.equal(t.sandbox.extensionProductionUpgradeAllowed(old,latest,'f'.repeat(64)),false);
+  const good=await t.sandbox.refreshExtensionSession('a'.repeat(64),{
+    db:t.db,now:clock,storedSessionDecision:()=>({ok:true}),
+    clientSecurity:{},requireCurrentClientSecurity:true,
+    checkClientShared:async()=>({ok:true,...latest})
+  });
+  assert.equal(good.ok,true);
+  assert.equal(t.updated.update.$set.buildId,latest.buildId);
+  assert.equal(t.updated.update.$set.buildFingerprint,latest.buildFingerprint);
+  const invalid=runtime({doc:old});
+  const blocked=await invalid.sandbox.refreshExtensionSession('a'.repeat(64),{
+    db:invalid.db,now:clock,storedSessionDecision:()=>({ok:true}),
+    clientSecurity:{},requireCurrentClientSecurity:true,
+    checkClientShared:async()=>({ok:true,...latest,installationId:'other-install'})
+  });
+  assert.equal(blocked.ok,false);
+  assert.equal(blocked.errorCode,'BUILD_NOT_ALLOWED');
+  assert.equal(invalid.revocations,1);
+  console.log('R82 CWS upgrades: same installation, newer approved release; downgrade, DEV, cross-install blocked');
+}
+(async()=>{await testIssue();await testRefresh();await testRevocationRace();await testOtherSessionTypes();await testOfficialUpgradeBinding();})().catch(e=>{console.error(e);process.exitCode=1;});
