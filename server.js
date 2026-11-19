@@ -10865,8 +10865,10 @@ async function handleRequest(req, res) {
     if (!kMu) { sendJson(res, { error: 'not found' }, 404); return; }
     const body = await parseBody(req);
     const rawMaxUses = body.maxUses;
-    const maxUses = typeof rawMaxUses === 'number' ? rawMaxUses :
-      (typeof rawMaxUses === 'string' && /^-?\d{1,5}$/.test(rawMaxUses) ? Number(rawMaxUses) : NaN);
+    const maxUses = productOfKeyRecord(kMu, codeMaxUses) === PRODUCT_LITE
+      ? (rawMaxUses === undefined ? null : parseLiteMaxUses(rawMaxUses, MAX_USES, MAX_PHONES_GLOBAL))
+      : (typeof rawMaxUses === 'number' ? rawMaxUses :
+        (typeof rawMaxUses === 'string' && /^-?\d{1,5}$/.test(rawMaxUses) ? Number(rawMaxUses) : NaN));
     if (!Number.isSafeInteger(maxUses) || !(maxUses===-1 || (maxUses>=1 && maxUses<=10000))) {
       sendJson(res,{ok:false,error:'invalid_max_uses'},400);return;
     }
