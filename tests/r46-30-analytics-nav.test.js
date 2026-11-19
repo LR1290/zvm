@@ -44,7 +44,10 @@ const sections=new Map(['overview','performance','customers','payments'].map(id=
  getBoundingClientRect:()=>({top:100,bottom:240})
 }]));
 const win={location:{hash:'#performance',pathname:'/private-analytics',search:'?view=mine'},history:{state:{hello:'world'},replaceState:(state,unused,url)=>{handlers.legacyUrl=url;}},matchMedia:()=>({matches:true}),innerHeight:800};
-vm.runInNewContext(js.slice(js.indexOf('// R46.30:')),{
+const navStart=js.indexOf('// R46.30:');
+const navEnd=js.indexOf('// Sync assistive status',navStart);
+assert(navStart>=0&&navEnd>navStart,'Analytics navigation controller isolated from later delegated handlers');
+vm.runInNewContext(js.slice(navStart,navEnd),{
  document:{querySelectorAll:()=>links,getElementById:id=>sections.get(id)},window:win,Map
 });
 assert.equal(handlers.legacyUrl,'/private-analytics?view=mine','clean only legacy fragment; preserve URL and query');
