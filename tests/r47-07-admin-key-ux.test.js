@@ -3,6 +3,7 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),Module=require('node:module'),vm=require('node:vm');
 const root=path.resolve(__dirname,'..');
+const {PRODUCT_LITE, productOfKeyRecord, parseLiteMaxUses, generateLicenseKey}=require('../src/license-product-v2');
 const source=fs.readFileSync(path.join(root,'server.js'),'utf8');
 const jsPath=(source.match(/<script src="\/assets\/(zvm-admin-dashboard\.[a-f0-9]{12}\.js)" defer><\/script>/)||[])[1];
 const cssPath=(source.match(/<link rel="stylesheet" href="\/assets\/(zvm-admin-dashboard\.[a-f0-9]{12}\.css)">/)||[])[1];
@@ -60,8 +61,11 @@ assert(begin>0&&end>begin,'isolated key-edit route');
 const execute=new Function('req','res','deps','with(deps){return (async function(){'+source.slice(begin,end)+'})();}');
 const state=new Map([['qa',{label:'Fictício',active:true,phones:['111','222'],maxUses:3,expiresAt:'2026-12-30T00:00:00.000Z',expireDuration:86400000}]]);
 let writes=0;
+const liteCode=generateLicenseKey(PRODUCT_LITE);
+state.set(liteCode,{label:'LITE QA',active:true,extensionProductId:PRODUCT_LITE,phones:['111'],maxUses:3,expiresAt:null,expireDuration:null});
 const deps={
  R_ADMIN:'/qa-admin',RA:'/qa-admin',p:'',
+ PRODUCT_LITE,productOfKeyRecord,parseLiteMaxUses,MAX_USES:3,MAX_PHONES_GLOBAL:50,
  parseAdminValidityChange:api.parseAdminValidityChange,
  extractCode:re=>(deps.p.match(re)||[])[1]||null,
  isAdminSession:req=>req.auth!==false,
@@ -76,8 +80,8 @@ const deps={
  sendAdminKeyPersistFailure:(res,error)=>{res.reply={status:503,body:{error:error.code||'db_unavailable'}}},
  addAdminAuditLog:()=>Promise.resolve()
 };
-async function post(route,body,auth=true){
- deps.p='/qa-admin/api/keys/qa/'+route;
+async function post(route,body,auth=true,code='qa'){
+ deps.p='/qa-admin/api/keys/'+code+'/'+route;
  const res={};await execute({method:'POST',body,auth},res,deps);
  return res.reply;
 }
@@ -86,6 +90,18 @@ async function post(route,body,auth=true){
  assert.equal((await post('max-uses',{maxUses:-1})).status,200);assert.equal(state.get('qa').maxUses,-1);
  for(const invalid of [0,2.4,'2bad',10001]){before=writes;assert.equal((await post('max-uses',{maxUses:invalid})).status,400);assert.equal(writes,before)}
  assert.equal((await post('max-uses',{maxUses:2})).status,200);
+ for(const invalid of [0,-2,1.5,'2extra',51,'',null]){
+   before=writes;
+   assert.equal((await post('max-uses',{maxUses:invalid},true,liteCode)).status,400);
+   assert.equal(writes,before,'invalid LITE edits must never persist');
+ }
+ before=writes;
+ assert.equal((await post('max-uses',{},true,liteCode)).status,400);
+ assert.equal(writes,before,'missing maxUses cannot reset a LITE key');
+ assert.equal((await post('max-uses',{maxUses:2},true,liteCode)).status,200);
+ assert.equal(state.get(liteCode).maxUses,2);
+ assert.equal((await post('max-uses',{maxUses:-1},true,liteCode)).status,200);
+ assert.equal(state.get(liteCode).maxUses,-1);
  const expiry=new Date(Date.now()+2*86400000).toISOString();
  assert.equal((await post('validity',{mode:'date',expiresAt:expiry})).status,200);
  assert.equal(state.get('qa').expiresAt,expiry);assert.equal(state.get('qa').expireDuration,null);
