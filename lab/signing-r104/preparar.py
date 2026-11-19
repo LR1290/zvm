@@ -1,10 +1,12 @@
 """Python 3 + Node 24, uso offline. Sem --key, calcula somente a identidade."""
-import argparse,base64,datetime,hashlib,json,pathlib,subprocess,zipfile
+import argparse,base64,datetime,hashlib,json,pathlib,subprocess,zipfile,re
 p=argparse.ArgumentParser()
 p.add_argument('lab',type=pathlib.Path)
 p.add_argument('--key',type=pathlib.Path)
 p.add_argument('--out',type=pathlib.Path)
+p.add_argument('--qa-host', required=True, help='Hostname HTTPS do ambiente QA previamente verificado')
 a=p.parse_args()
+if not re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.onrender\.com', a.qa_host) or a.qa_host=='zvm.onrender.com':p.error('Informe o hostname exclusivo QA compatível com o runtime R104')
 if bool(a.key)!=bool(a.out):p.error('--key e --out devem ser usados juntos')
 h=lambda b:hashlib.sha256(b).hexdigest()
 def encode(value,sort=False):
@@ -16,7 +18,13 @@ bp='app/security/build-identity.json'
 m=json.loads(raw['manifest.json'])
 extid=''.join(chr(97+int(c,16)) for c in h(base64.b64decode(m['key']))[:32])
 if extid!='ckbffcbmanboelbihfkhiahgafnimcho':raise ValueError('ID DEV divergente')
-m['version_name']='0.9.305-dev+R104'
+old_origin='https://zvm.onrender.com/*'
+if m['host_permissions'].count(old_origin)!=1:raise ValueError('Origem inesperada')
+m['host_permissions'][m['host_permissions'].index(old_origin)]='https://'+a.qa_host+'/*'
+probe='app/background/authority/dev-csp-probe.js'
+if raw[probe].count(b'zvm.onrender.com')!=2:raise ValueError('Probe inesperado')
+raw[probe]=raw[probe].replace(b'zvm.onrender.com',a.qa_host.encode('ascii'))
+m['version_name']='0.9.305-dev+R104-QA' 
 raw['manifest.json']=encode(m)
 integrity=json.loads(raw[ip]);identity=json.loads(raw[bp])
 tree=hashlib.sha256()
