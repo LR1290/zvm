@@ -17,6 +17,8 @@ on:
       - '.env.example'
       - 'tests/r51-license-products-v2.test.js'
       - 'server.js'
+      - 'assets/zvm-admin-operations.*.css'
+      - 'tests/r78-admin-multiproduct-layout.test.js'
       - 'assets/zvm-admin-dashboard.2757c76a8405.js'
       - '.github/workflows/license-product-v2.yml'
   workflow_dispatch:
@@ -61,3 +63,5 @@ jobs:
           node tests/r46-92-admin-authority.test.js
           # r47-08 pins an obsolete owner-site CSS hash and is a known pre-existing baseline failure.
           node --test tests/r47-13-admin-mobile-csrf.test.js
+      - name: Admin R78 — product selector, scoped license cards and signed static CSS
+        run: node tests/r78-admin-multiproduct-layout.test.js
