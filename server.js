@@ -2156,6 +2156,13 @@ function extensionDevAccessAllowed(keyCode, keyRecord) {
   return ZVM_DEV_LICENSE_KEY_HASHES.has(keyHash);
 }
 
+// All V2 DEV builds require key-level entitlement, including registered
+// builds that do not carry the dynamic signedDev flag.
+function extensionDevEntitlementRequired(build) {
+  return Number(build?.securityProtocol || 1) === 2 &&
+    String(build?.channel || '').toLowerCase() === 'dev';
+}
+
 function buildExtensionEntitlement({ keyCode = null, keyRecord = null, now = Date.now() } = {}) {
   const nowDate = now instanceof Date ? new Date(now) : new Date(now);
   const nowMs = Number.isFinite(nowDate.getTime()) ? nowDate.getTime() : Date.now();
@@ -2464,6 +2471,11 @@ async function authorizeExtensionKeySession(input, deps = {}) {
   // fechado para expiresAt malformado em vez de autenticar a chave e só
   // depois degradar silenciosamente o entitlement.
   if (!extensionLicenseIsUsable(keyRecord)) return extensionAuthFailure('key_expired', 403);
+  // A signed DEV without key-level permission must not reserve a phone slot.
+  // Check before normalizing phones or invoking the atomic slot claim.
+  if (deps.requireDevAccess === true && !extensionDevAccessAllowed(keyCode, keyRecord)) {
+    return extensionAuthFailure('DEV_ACCESS_REQUIRED', 403);
+  }
   if (!Array.isArray(keyRecord.phones)) keyRecord.phones = keyRecord.lastPhone ? [keyRecord.lastPhone] : [];
   const alreadyKnown = keyRecord.phones.some(value => normalizePhone(value) === phoneNumber);
   if (!alreadyKnown && keyRecord.phones.length >= MAX_PHONES_GLOBAL) {
@@ -2569,7 +2581,7 @@ async function refreshExtensionSession(rawToken, deps = {}) {
     await revokeExtensionSession(rawToken, { ...deps, db, now });
     return extensionAuthFailure('invalid_session', 401);
   }
-  if (doc.signedDev === true && entitlementResult.devAccess !== true) {
+  if (extensionDevEntitlementRequired(doc) && entitlementResult.devAccess !== true) {
     await revokeExtensionSession(rawToken, { ...deps, db, now });
     return extensionAuthFailure('DEV_ACCESS_REQUIRED', 403);
   }
@@ -9380,13 +9392,15 @@ async function handleRequest(req, res) {
       const devBuildAllowed = zvmSecurityDevBuildAllowed(keyCodeForBuild, deviceIdForBuild);
       const buildClient = await zvmSecurityCheckClientShared(body.clientSecurity, { allowUnrecognized:devBuildAllowed, licenseKey:keyCodeForBuild });
       if (!buildClient.ok) { sendJson(res, { ok:false, errorCode:buildClient.code }, zvmSecurityClientErrorStatus(buildClient.code)); return; }
-      const authorized = await authorizeExtensionKeySession(body);
+      const authorized = await authorizeExtensionKeySession(body, {
+        requireDevAccess: extensionDevEntitlementRequired(buildClient),
+      });
       if (!authorized.ok) {
         const { status, ...errorBody } = authorized;
         sendJson(res, errorBody, status);
         return;
       }
-      if (buildClient.signedDev === true && authorized.devAccess !== true) {
+      if (extensionDevEntitlementRequired(buildClient) && authorized.devAccess !== true) {
         sendJson(res, { ok:false, errorCode:'DEV_ACCESS_REQUIRED' }, 403); return;
       }
       const issued = await createExtensionSession({
@@ -9461,7 +9475,7 @@ async function handleRequest(req, res) {
         }
         if (buildClient.recognized !== true && accountDevAllowed) buildClient = { ...buildClient, developmentAuthorized:true };
       }
-      if (buildClient.signedDev === true && authenticated.devAccess !== true) {
+      if (extensionDevEntitlementRequired(buildClient) && authenticated.devAccess !== true) {
         sendJson(res, { ok:false, errorCode:'DEV_ACCESS_REQUIRED' }, 403); return;
       }
       const issued = await createExtensionSession({
