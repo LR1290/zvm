@@ -37,7 +37,7 @@ jobs:
         with:
           node-version: '24.22.3'
       - name: Unit tests for RELEASE restrictions
-        run: node --test tests/security-extension-release.test.mjs
+        run: node --test tests/security-extension-release.test.mjs tests/repository-hygiene.test.mjs
 
   dependency-audit:
     runs-on: ubuntu-latest
