@@ -40,12 +40,15 @@ assert.equal(head.get('new-Set-Cookie'),'zvm_lang=pt-PT; Path=/; Max-Age=3153600
 const plansStub=sample.replace('</main>','<section class="plans-wrap"><section class="pricing-grid"></section></section></main>');
 assert.match(localizePublicHtml(plansStub,'en',{path:'/planos'}), /Prices are shown in Brazilian reais \(BRL\)/);
 assert.match(localizePublicHtml(plansStub,'pt-PT',{path:'/planos'}), /preços são apresentados em reais brasileiros \(BRL\)/);
-const privacySample='<!doctype html><html lang="pt-BR"><head><title>ZVM — Política de Privacidade</title></head><body><nav class="znav standalone-nav"></nav><main><h2>Dados tratados pela ZVM</h2><p>O Portal do Cliente utiliza cookies essenciais de sessão. O site também guarda sua escolha de idioma em um cookie funcional. Esses cookies não são usados para publicidade nem para acompanhar sua navegação.</p></main></body></html>';
+const privacySample='<!doctype html><html lang="pt-BR"><head><title>ZVM — Política de Privacidade</title></head><body><nav class="znav standalone-nav"><div class="znav-links"><div class="znav-action-links"><a href="/cliente">Entrar</a></div></div></nav><main><h2>Dados tratados pela ZVM</h2><p>O Portal do Cliente utiliza cookies essenciais de sessão. O site também guarda sua escolha de idioma em um cookie funcional. Esses cookies não são usados para publicidade nem para acompanhar sua navegação.</p></main></body></html>';
 const privacyEn=localizePublicHtml(privacySample,'en',{path:'/privacidade'});
 assert.match(privacyEn,/Privacy Policy/);
 assert.match(privacyEn,/Data handled by ZVM/);
 assert.match(privacyEn,/language preference in a functional cookie/);
 assert.match(privacyEn,/href="\/privacidade\?lang=pt-PT"/);
+assert.equal((privacyEn.match(/data-zvm-language/g)||[]).length,1,'privacy page must offer exactly one language menu');
+assert.match(privacyEn,/aria-label="Choose language"/,'privacy language control must be accessible');
+assert.match(privacyEn,/href="\/cliente">Sign in<\/a>/,'language picker must preserve account navigation');
 const {localizeAuthHtml} = require('../src/web/public/i18n');
 const loginSample='<!doctype html><html lang="pt-BR"><head><title>ZVM — Entrar</title></head><body class="zvm-auth-immersive"><main id="main-content" class="auth-shell"><h2>Entrar na sua conta</h2><form action="/cliente/login" method="POST"><input name="pass" type="password" placeholder="Sua senha"><button>Entrar</button></form><p>Esqueci minha senha</p></main></body></html>';
 const translatedLogin=localizeAuthHtml(loginSample,'en',{path:'/cliente?redir=%2Fplanos'});

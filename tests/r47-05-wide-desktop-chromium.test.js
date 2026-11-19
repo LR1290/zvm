@@ -2,7 +2,7 @@
 // R47.05: offline 1440/1920/2560 visual contract for site-wide desktop utilization.
 // Real CSS, mocked accounts and analytics, zero production traffic or commercial writes.
 const assert=require('node:assert/strict');
-const fs=require('node:fs'),path=require('node:path'),Module=require('node:module');
+const fs=require('node:fs'),path=require('node:path'),Module=require('node:module'),crypto=require('node:crypto');
 const {chromium}=require('playwright');
 const root=path.resolve(__dirname,'..');
 process.env.ZVM_SALES_PAUSED='1';process.env.RENDER='true';
@@ -21,13 +21,23 @@ const pages=[
  ['plans',api.renderPlanosPage(null),'.plans-wrap',true,'zvm-reference-public.19040fd11331.css'],
  ['login',api.renderStandalonePortalLogin(),'.auth-shell',true,'zvm-auth-premium.a96f915db3f4.css'],
  ['register',api.renderStandalonePortalRegister(),'.auth-shell',true,'zvm-auth-premium.a96f915db3f4.css'],
- ['client',api.renderPortalDashboard(user,key,'',''),'.client-shell',false,'zvm-console-design.44762cb103f8.css'],
- ['admin',api.renderAdminDashboard({keysSnapshot:{[key.code]:key},portalUsers:[],portalUserCount:0}),'.admin-content',false,'zvm-console-design.44762cb103f8.css'],
+ ['client',api.renderPortalDashboard(user,key,'',''),'.client-shell',false,'zvm-console-design.7a7b24cd5fa8.css'],
+ ['admin',api.renderAdminDashboard({keysSnapshot:{[key.code]:key},portalUsers:[],portalUserCount:0}),'.admin-content',false,'zvm-console-design.7a7b24cd5fa8.css'],
  ['privacy',api.renderStandalonePrivacyPage(null),'.zvm-trust-layout',true,'zvm-legal-reading.49002e7e3dc1.css'],
  ['terms',api.renderStandaloneTermsPage(null,'pt-BR'),'.terms-wrap',true,'zvm-legal-reading.49002e7e3dc1.css'],
  ['404',api.renderStandalone404Page(null),'.zvm-error-grid',true,'zvm-legal-premium.a828eee21356.css'],
  ['500',api.renderStandalone500Page(null),'.zvm-error-grid',true,'zvm-legal-premium.a828eee21356.css']
 ];
+const activeConsole='zvm-console-design.7a7b24cd5fa8.css';
+const activeBytes=fs.readFileSync(path.join(root,'assets',activeConsole));
+assert.equal(crypto.createHash('sha256').update(activeBytes).digest('hex'),
+ '7a7b24cd5fa8f487a6ce481ee8bb505bd68c75816876c745a0518ee175e83c8a',
+ 'the linked client/admin CSS must match its full immutable fingerprint');
+for(const [name,html,,,cssName] of pages.filter(p=>p[0]==='client'||p[0]==='admin')){
+ assert.equal(cssName,activeConsole,name+' must select the active Console stylesheet');
+ assert(html.includes('/assets/'+activeConsole),name+' must render current CSS');
+ assert(!html.includes('/assets/zvm-console-design.44762cb103f8.css'),name+' must not render the cached predecessor');
+}
 const shots=path.join(root,'artifacts','visual-qa');fs.mkdirSync(shots,{recursive:true});
 async function run(){
  const stats={total:1,last30:1,last7:1,revenueTotal:59.9,revenueLast30:59.9,

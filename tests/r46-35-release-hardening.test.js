@@ -1,7 +1,16 @@
 'use strict';
 const assert=require('node:assert/strict'); const fs=require('node:fs'); const crypto=require('node:crypto');
 const root=require('node:path').join(__dirname,'..'); const src=fs.readFileSync(root+'/server.js','utf8');
-function asset(prefix,ext,activeScript=false){const names=fs.readdirSync(root+'/assets').filter(n=>n.startsWith(prefix)&&n.endsWith(ext)).filter(n=>!activeScript||src.includes('<script src="/assets/'+n+'" defer>'));assert.equal(names.length,1,prefix); const name=names[0],data=fs.readFileSync(root+'/assets/'+name);assert.equal(name.match(/\.([0-9a-f]{12})\./)[1],crypto.createHash('sha256').update(data).digest('hex').slice(0,12));assert(src.includes('/assets/'+name));return data.toString();}
+function asset(prefix,ext,activeScript=false){const names=fs.readdirSync(root+'/assets').filter(n=>n.startsWith(prefix)&&n.endsWith(ext)).filter(n=>!activeScript||src.includes('<script src="/assets/'+n+'" defer>'));let selected=names;
+ if(prefix==='zvm-admin-dashboard.'&&ext==='.css'){
+  // Keep immutable CSS history for cached pages; validate the last
+  // stylesheet explicitly included by the current Admin HTML.
+  const linked=names.filter(n=>src.includes('<link rel="stylesheet" href="/assets/'+n+'">'));
+  assert(linked.length>=1,'current Admin HTML must link an admin stylesheet');
+  linked.sort((a,b)=>src.lastIndexOf(a)-src.lastIndexOf(b));
+  selected=[linked[linked.length-1]];
+ }
+ assert.equal(selected.length,1,prefix); const name=selected[0],data=fs.readFileSync(root+'/assets/'+name);assert.equal(name.match(/\.([0-9a-f]{12})\./)[1],crypto.createHash('sha256').update(data).digest('hex').slice(0,12));assert(src.includes('/assets/'+name));return data.toString();}
 const sys=asset('zvm-r46-system.','.css');const adm=asset('zvm-admin-dashboard.','.js',true); const admCSS=asset('zvm-admin-dashboard.','.css');
 assert.doesNotMatch(sys,/body>\.toast(?=[,{])/,'do not override toast position');assert.match(admCSS,/\.toast\{position:fixed/);
 const row=src.slice(src.indexOf('function buildKeysHtml('),src.indexOf('function getKeysHtmlCached('));assert.doesNotMatch(row,/toggleModule\(|ZapSaver ativo|title="ZapSaver"/);
