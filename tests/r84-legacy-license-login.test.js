@@ -38,6 +38,7 @@ function record(extra = {}) {
 function makeAuthEnv(store, claimHistory) {
   return {
     normalizeOfficialLicenseCode: normalize, normalizePhone, keyBelongsTo,
+    isFreeAuthKey:key=>key==='free',
     PRODUCT_AUTOMACOES, extensionLicenseIsUsable: usable,
     extensionNow: () => new Date('2026-11-19T12:00:00.000Z'),
     extensionAuthFailure:(errorCode,status,rest={})=>({ok:false,errorCode,status,...rest}),
