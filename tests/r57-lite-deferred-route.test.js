@@ -5,6 +5,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
 const {PRODUCT_LITE,PRODUCT_AUTOMACOES,generateLicenseKey,keyBelongsTo}=require('../src/license-product-v2');
+const {liteKeyUsable}=require('../src/lite-license-authority');
 const server=fs.readFileSync(path.join(__dirname,'..','server.js'),'utf8');
 const source=server.match(/async function authorizeExtensionKeySession\([\s\S]*?(?=\nasync function refreshExtensionSession)/)?.[0];
 assert.ok(source,'must test the actual V4 login implementation');
@@ -20,7 +21,7 @@ function harness(){
   const calls={lite:0,legacy:0};
   const cache={};
   const ctx={
-    keys:cache,PRODUCT_LITE,PRODUCT_AUTOMACOES,keyBelongsTo,
+    keys:cache,PRODUCT_LITE,PRODUCT_AUTOMACOES,keyBelongsTo,liteKeyUsable,
     sanitizeId:(v,n)=>String(v||'').toLowerCase().replace(/[^a-z0-9_-]/g,'').slice(0,n),
     normalizePhone:v=>String(v||'').replace(/\D/g,''),
     safeScalar:(v,n)=>String(v||'').slice(0,n),

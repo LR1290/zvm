@@ -11,7 +11,7 @@ const path = require('node:path');
 const {MongoClient} = require('mongodb');
 const {PRODUCT_LITE,PRODUCT_AUTOMACOES,generateLicenseKey,keyBelongsTo} = require('../src/license-product-v2');
 const {readLiteConfig,inspectLiteClient,liteOriginAllowed} = require('../src/lite-v4-build-authority');
-const {readLiteLicenseSnapshot,claimLitePhoneSlotAtomic} = require('../src/lite-license-authority');
+const {readLiteLicenseSnapshot,claimLitePhoneSlotAtomic,liteKeyUsable} = require('../src/lite-license-authority');
 const {linkedPortalKeyForProduct} = require('../src/portal-license-slots');
 const uri = process.env.ZVM_LITE_TEST_MONGO_URI;
 if(uri !== 'mongodb://127.0.0.1:27017/') throw new Error('R58_ONLY_LOCAL_EPHEMERAL_MONGO');
@@ -67,7 +67,7 @@ test('R58 real signed V4 route: issue, replay, product/origin denial, refresh, l
   const memory={};
   const base={
     keys:memory,PRODUCT_LITE,PRODUCT_AUTOMACOES,keyBelongsTo,linkedPortalKeyForProduct,
-    getMongoDb:async()=>db,readLiteLicenseSnapshot,claimLitePhoneSlotAtomic,
+    getMongoDb:async()=>db,readLiteLicenseSnapshot,claimLitePhoneSlotAtomic,liteKeyUsable,
     sanitizeId:(v,n)=>String(v||'').toLowerCase().replace(/[^a-z0-9_-]/g,'').slice(0,n),
     normalizePhone:v=>String(v||'').replace(/\D/g,''),
     safeScalar:(v,n)=>String(v||'').slice(0,n),isFreeAuthKey:()=>false,
