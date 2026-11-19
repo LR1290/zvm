@@ -81,8 +81,7 @@ check(helpers.normalizeOfficialLicenseCode(' ' + full.toUpperCase() + ' ') === f
 check(helpers.normalizeOfficialLicenseCode(lite) === '', 'reject LITE key before any DB query');
 check(helpers.normalizeOfficialLicenseCode('zv2a-' + 'a'.repeat(51)) === '', 'reject truncated V2');
 check(helpers.normalizeOfficialLicenseCode(full + '-extra') === '', 'reject V2 with tail');
-check(helpers.normalizeOfficialLicenseCode('zv2a-' + 'a'.repeat(51) + '
-) === '', 'reject corrupt V2');
+check(helpers.normalizeOfficialLicenseCode('zv2a-' + 'a'.repeat(51) + String.fromCharCode(36)) === '', 'reject corrupt V2');
 check(helpers.normalizeOfficialLicenseCode({code: full}) === '', 'reject NoSQL-like object');
 check(helpers.normalizeOfficialLicenseCode(['zv-abcde-12345-abcde']) === '', 'reject arrays / parameter pollution');
 check(helpers.officialV2Metadata(full).extensionProductId === PRODUCT_AUTOMACOES,'V2 saved with product');
