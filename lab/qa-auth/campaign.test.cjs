@@ -62,3 +62,21 @@ test('follow-up preserves uncertain effect across cancellation and next tick',as
   await env.fireDue(rules,queue,2,null,1,outcomes);
   assert.equal(sends,1);
 });
+test('restarted watchdog persists ambiguity and retains earlier positive evidence',async()=>{
+  const end=panel.indexOf('  var REMOTE_CANCEL_KEY',finish);
+  assert(end>finish);
+  const rows=[{state:'sending',actionAttemptToken:'admitted',remoteEffectSucceeded:true}];
+  const events=[];
+  const env={broadcastRuntime:{},cancelled:false,readQueue:async()=>structuredClone(rows),
+    bulkWatchdogDueAt:()=>1,persistQueueItems:async(queue,items)=>{
+      assert.equal(items.length,1);Object.assign(rows[0],items[0]);events.push('persist');
+    },bulkQueueNeedsManualReview:queue=>queue.some(r=>r.durableReviewRequired),
+    holdBulkQueueForManualReview:async()=>events.push('hold'),
+    processQueue:()=>events.push('restart'),reportRuntime:(code,err)=>{throw err}};
+  vm.runInNewContext(panel.slice(begin,end),env);
+  await env.runBulkWatchdog();
+  assert.deepEqual(events,['persist','hold']);
+  assert.equal(rows[0].remoteEffectSucceeded,true);
+  assert.equal(rows[0].remoteEffectUncertain,true);
+  assert.equal(rows[0].failureRetryable,false);
+});

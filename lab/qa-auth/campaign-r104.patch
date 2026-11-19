@@ -1,0 +1,11 @@
+--- a/app/content/features/broadcast/panel.js
++++ b/app/content/features/broadcast/panel.js
+@@ -3146,7 +3146,7 @@
+           // commit sending -> error for an admitted remote attempt. Without
+           // it the watchdog itself stalls, leaving a permanent sending row.
+           item.remoteEffectUncertain = true;
+-          item.remoteEffectSucceeded = false;
++          // Earlier confirmed actions remain recorded while the interrupted action is reviewed.
+         }
+         item.lastStatusAt = Math.max(now,Number(item.lastStatusAt)||0);
+         changedItems.push(item);

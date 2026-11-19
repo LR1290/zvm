@@ -36,3 +36,5 @@ O ensaio atlas-race.cjs inicia quatro processos Node, cada um com conexão indep
 | Follow-up | Posse durável antes do despacho e resultado incerto exige revisão mesmo se houver cancelamento | Confirmar persistência ao encerrar a página durante o commit |
 
 Para os testes adicionais do cliente, aplicar r104-client-tests.patch sobre client-integration.test.cjs do kit R99 e executar junto à árvore R104 e ao módulo de quota do backend deste PR, preservando os caminhos relativos do kit.
+
+Aplicar também campaign-r104.patch na cópia R104. O watchdog conserva a evidência positiva de ações anteriores ao persistir o estado incerto de uma campanha interrompida.
