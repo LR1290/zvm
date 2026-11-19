@@ -35,7 +35,11 @@ assert(server.includes(`${adminCssName}">\n<link rel="stylesheet" href="/assets/
 assert(server.includes(`${analyticsCssName}">\n<link rel="stylesheet" href="/assets/${analyticsLabCssName}">\n<link rel="stylesheet" href="/assets/${m[1]}`),'analytics loads system CSS after local and lab CSS');
 {const a=server.indexOf('zvm-r46-client-dashboard.64213392bec3.css');const b=server.indexOf(m[1],a);assert(a>=0&&b>a,'client dashboard loads system CSS after local CSS');}
 assert(server.includes(`zvm-status.be29b1782339.css"><link rel="stylesheet" href="/assets/${m[1]}`),'status loads system CSS after local CSS');
-for(const composite of ['_CSS_LANDING + _CSS_SYSTEM','_CSS_PLANS}${_CSS_SYSTEM}','_CSS_STANDALONE}${_CSS_PRIVACY}${_CSS_SYSTEM}','_CSS_FAQ}${_CSS_SYSTEM}','_CSS_AUTH}${_CSS_CLIENT_WORKSPACE}']) assert(server.includes(composite),composite);
+for(const composite of ['_CSS_LANDING + _CSS_SYSTEM','_CSS_PLANS}${_CSS_SYSTEM}','_CSS_STANDALONE}${_CSS_PRIVACY}${_CSS_PUBLIC_PREMIUM}${_CSS_LEGAL_READING}','_CSS_FAQ}${_CSS_SYSTEM}','_CSS_AUTH}${_CSS_CLIENT_WORKSPACE}']) assert(server.includes(composite),composite);
+assert(!server.includes('${_CSS_STANDALONE}${_CSS_PRIVACY}${_CSS_SYSTEM}'),'privacy must not restore global motion CSS');
+const consoleCss=fs.readFileSync('assets/zvm-console-design.7a7b24cd5fa8.css','utf8');
+assert.strictEqual(crypto.createHash('sha256').update(consoleCss).digest('hex'),'7a7b24cd5fa8f487a6ce481ee8bb505bd68c75816876c745a0518ee175e83c8a','hashed console CSS integrity');
+assert(consoleCss.includes('body.zvm-client-premium .client-rail{')&&consoleCss.includes('height:auto!important;min-height:0!important'),'mobile rail height must be corrected');
 assert(renderer.includes('Explore a ZVM em ação.'),'public copy uses customer language');
 assert(!renderer.includes('Painel da Shell'),'public Shell wording removed');
 const authMatch=server.match(/\/assets\/(zvm-r46-auth\.([0-9a-f]{12})\.css)'[\s\S]*?sha256: '([0-9a-f]{64})'/);
