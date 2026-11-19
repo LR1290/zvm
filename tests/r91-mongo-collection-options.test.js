@@ -54,5 +54,11 @@ function fixture(options) {
  check((await M.snapshotDatabase(first,EJSON)).checksum===original.checksum,'restoring metadata recovers checksum');
  const views=[{name:'payments',type:'view',options:opts}];
  assert.throws(()=>M.listCollectionNames(views),/unsupported_collection_type_or_name/);checks++;
+ check(M.indexSignatures([{name:'byStatus',key:{status:1,createdAt:-1}}])[0]!==
+  M.indexSignatures([{name:'byStatus',key:{createdAt:-1,status:1}}])[0],
+  'compound index fields must preserve order');
+ check(M.indexSignatures([{name:'x',key:{a:1}},{name:'y',key:{b:1}}]).join('|')===
+  M.indexSignatures([{name:'y',key:{b:1}},{name:'x',key:{a:1}}]).join('|'),
+  'index list order is irrelevant');
  console.log('R91 MongoDB collection options fidelity PASS: '+checks+' controls');
 })().catch(error=>{console.error(error);process.exitCode=1});

@@ -120,3 +120,17 @@ Antes de aceitar a comparação fonte/destino, o comparador valida igualdade can
 A R91 acrescenta testes sintéticos de divergência de validador, collation, nível/ação de validação e opções capped. A R86 injeta diferença de validationAction durante uma cópia e comprova que o corte seria recusado. A R88 passa a detectar mudanças apenas na configuração da coleção, sem qualquer modificação em documentos.
 
 Nota operacional: a restauração local de mongodump precisa preservar as opções de todas as coleções; qualquer diferença entre o backup restaurado e o Atlas faz o comando COPY abortar ANTES da primeira escrita no destino. Nenhum upgrade/reformatação automática de opções deve ser realizado em produção sem investigação.
+
+
+## R92 — teste integrado real com MongoDB 8 isolado, sem dados dos clientes
+
+A auditoria revelou que um comparador genérico ordenava alfabeticamente as chaves dos índices compostos. MongoDB trata os índices {status:1,createdAt:-1} e {createdAt:-1,status:1} como **diferentes**. Corrigido o indexSignatures para preservar a ordem das colunas em cada índice, mas permitir ordem arbitrária da LISTA de índices.
+
+A suíte sintética de teste agora inclui um container descartável MongoDB 8.x no GitHub Actions, vinculado apenas a 127.0.0.1:27018, sem URI Atlas, sem chaves reais e sem acesso de produção:
+- Semeia 20 coleções reais com 49 índices, com uma chave legada ativa, uma wt- histórica inativa, KEY V2 fictícia, conta e pagamento fictícios Decimal128, documento BinData e Date, validador e collation.
+- Executa realmente os comandos oficiais mongodump e mongorestore em outro database do container, preservando BSON, índices e opções da coleção; inspeciona hashes integrais e todas as 20/49 estruturas.
+- Executa o módulo real copyDatabase com $out entre bancos distintos no mesmo MongoDB e verifica a paridade/estabilidade e o bloqueio contra rerun sobre alvo preenchido.
+- Ao fim, apaga apenas os três namespaces de laboratório e destrói o container, mesmo em erro. O script recusará execução fora do ambiente explícito GitHub Actions e sem confirmação de laboratório.
+- O job não tem secrets, não usa MONGODB_URI e não cria bancos no Atlas. Se falhar, NÃO interpretar os testes sintéticos R85-R91 como prova de funcionamento real: corrigir causa e repetir o teste integrado até ficar verde.
+
+Não executar a R92 contra Atlas, e nunca autorizar produção somente porque a R92 passou: backup externo real, writers parados, checagem do credenciamento e deploy manual continuam exigidos.

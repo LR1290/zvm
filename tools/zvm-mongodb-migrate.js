@@ -40,7 +40,15 @@ function indexSpec(raw) {
   return next;
 }
 function indexSignatures(indexes) {
-  return indexes.map(indexSpec).map(canonical).sort();
+  // R92: compound-index FIELD ORDER is semantically significant in MongoDB.
+  // Sorting the object recursively (as generic canonical() does) masks an
+  // inverted compound index with the same name and index options.
+  return indexes.map(indexSpec).map(spec => {
+    const {key, ...options} = spec;
+    if (!key || typeof key !== 'object' || Array.isArray(key) ||
+        Object.keys(key).length === 0) throw new Error('invalid_index_keys');
+    return canonical({orderedFields:Object.entries(key),options});
+  }).sort();
 }
 function collectionOptionsSignature(row, EJSON) {
   // Options affect behavior even when BSON records/indexes match:

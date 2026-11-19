@@ -15,6 +15,7 @@ on:
       - 'tools/zvm-mongodb-local-restore.js'
       - 'tests/r89-backup-restore-gate.test.js'
       - 'tests/r91-mongo-collection-options.test.js'
+      - 'tests/r92-mongodb-real-e2e.test.js'
       - 'tools/zvm-db-backup-readonly.ps1'
       - 'package.json'
       - '.github/workflows/zvm-mongodb-migration.yml'
@@ -43,3 +44,43 @@ jobs:
           $errors = $null
           [System.Management.Automation.Language.Parser]::ParseFile('tools/zvm-db-backup-readonly.ps1', [ref]$tokens, [ref]$errors) | Out-Null
           if ($errors.Count -gt 0) { throw ($errors | Out-String) }
+
+
+  real-mongo-synthetic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 17
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.3'
+          cache: npm
+      - name: Install pinned MongoDB Node driver (no project scripts)
+        run: npm ci --ignore-scripts --omit=optional --no-audit --no-fund
+      - name: Start throwaway MongoDB 8 Docker container
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --rm --name zvm-r92-mongodb \
+            -p 127.0.0.1:27018:27017 mongo:8.0 --bind_ip_all
+          ready=0
+          for i in $(seq 1 45); do
+            if docker exec zvm-r92-mongodb mongosh --quiet --eval 'db.adminCommand({ping:1}).ok' 2>/dev/null | grep -qx '1'; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = 1
+      - name: End-to-end MongoDB 8 tests with synthetic documents only
+        env:
+          CI: 'true'
+          GITHUB_ACTIONS: 'true'
+          ZVM_R92_EPHEMERAL_ACK: 'throwaway-mongo-only'
+        run: node tests/r92-mongodb-real-e2e.test.js
+      - name: Destroy ephemeral MongoDB instance and all test data
+        if: always()
+        shell: bash
+        run: docker rm -f zvm-r92-mongodb >/dev/null 2>&1 || true
