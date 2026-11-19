@@ -21,6 +21,7 @@ const lite=generateLicenseKey(PRODUCT_LITE);
 const second=generateLicenseKey(PRODUCT_LITE);
 const deferred=generateLicenseKey(PRODUCT_LITE);
 const issuedByAdmin=generateLicenseKey(PRODUCT_LITE);
+const invalidZeroLimit=generateLicenseKey(PRODUCT_LITE);
 const phoneA='5538999112233',phoneB='5538999112244',phoneC='5538999112255';
 const base = (extras={}) => ({
   active:true,extensionProductId:PRODUCT_LITE,provisioningStatus:'issued',
@@ -37,6 +38,7 @@ test('R57 real local MongoDB: issued key, concurrent claims, revocation and port
   await db.collection('store').insertOne({_id:'keys',data:{
     [lite]:base(),
     [second]:base({active:false}),
+    [invalidZeroLimit]:base({maxUses:0}),
     [deferred]:base({maxUses:2,phones:[phoneC],expireDuration:3600_000}),
     [full]:{active:true,extensionProductId:PRODUCT_AUTOMACOES,phones:[],maxUses:1,planId:'ZV_PRO'},
   }});
@@ -94,6 +96,17 @@ test('R57 real local MongoDB: issued key, concurrent claims, revocation and port
     assert.equal(await readLiteLicenseSnapshot(db,'zv2l-not-valid'),null);
     const record=await readLiteLicenseSnapshot(db,second);
     assert.equal(liteKeyUsable(record,second),false);
+  });
+
+  await t.test('invalid zero-seat LITE key never claims a phone in real MongoDB',async()=>{
+    const before=await readLiteLicenseSnapshot(db,invalidZeroLimit);
+    assert.equal(before.maxUses,0);
+    assert.equal(liteKeyUsable(before,invalidZeroLimit),false);
+    const denied=await claimLitePhoneSlotAtomic(db,invalidZeroLimit,phoneA,{maxPhonesGlobal:100});
+    assert.equal(denied.status,'entitlement_revoked');
+    const after=await readLiteLicenseSnapshot(db,invalidZeroLimit);
+    assert.deepEqual(after,before,'invalid key must remain unchanged in persistent store');
+    assert.deepEqual(after.phones,[]);
   });
 
   await t.test('two simultaneous first-use claims never exceed maxUses=1',async()=>{
