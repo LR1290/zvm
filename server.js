@@ -26,7 +26,7 @@ const https  = require('https');
 const crypto = require('crypto');
 const { PRODUCT_AUTOMACOES, PRODUCT_LITE, selectAdminProduct, generateLicenseKey, productOfKeyRecord, keyBelongsTo, parseLiteMaxUses } = require('./src/license-product-v2');
 const { readLiteConfig, inspectLiteClient, liteOriginAllowed, liteSessionAllowed, SESSION_TTL: ZVM_LITE_SESSION_TTL } = require('./src/lite-v4-build-authority');
-const { readLiteLicenseSnapshot, claimLitePhoneSlotAtomic, activateLiteDeferredKeyAtomic } = require('./src/lite-license-authority');
+const { readLiteLicenseSnapshot, liteKeyUsable, claimLitePhoneSlotAtomic, activateLiteDeferredKeyAtomic } = require('./src/lite-license-authority');
 const { normalizePortalLicenseKey, portalLicenseSlot, linkedPortalKeyForProduct, portalLicenseConflictQuery, revokePortalLitePasswordSessions, revokeLiteLicenseSessions, ensureLitePortalLicenseUniqueIndex } = require('./src/portal-license-slots');
 const fs     = require('fs');
 const path   = require('path');
@@ -2200,7 +2200,8 @@ function buildExtensionEntitlement({ keyCode = null, keyRecord = null, now = Dat
   const nowMs = Number.isFinite(nowDate.getTime()) ? nowDate.getTime() : Date.now();
   const isLite = productId === PRODUCT_LITE;
   const licensed = !!keyCode && extensionLicenseIsUsable(keyRecord, nowMs) &&
-    keyBelongsTo(keyRecord, keyCode, productId);
+    keyBelongsTo(keyRecord, keyCode, productId) &&
+    (!isLite || liteKeyUsable(keyRecord, keyCode, nowMs));
   const capabilities = [...(isLite
     ? (licensed ? EXTENSION_LITE_CAPABILITIES : [])
     : (licensed ? EXTENSION_LICENSED_CAPABILITIES : EXTENSION_FREE_CAPABILITIES))].sort();
@@ -2481,7 +2482,7 @@ async function resolveExtensionAccountEntitlement(user, deps = {}) {
   }
   if (keyRecord && !keyBelongsTo(keyRecord, keyCode, expectedProductId)) return extensionAuthFailure('license_product_mismatch', 403);
   if (!extensionLicenseIsUsable(keyRecord, now) ||
-      (expectedProductId === PRODUCT_LITE && (keyRecord.provisioningStatus !== 'issued' || !/^LITE_[A-Z0-9_]+$/.test(String(keyRecord.planId || ''))))) {
+      (expectedProductId === PRODUCT_LITE && !liteKeyUsable(keyRecord, keyCode, now.getTime()))) {
     if (expectedProductId === PRODUCT_LITE) return extensionAuthFailure('lite_license_required',403);
     return { ok: true, keyCode: null, devAccess:false, entitlement: buildExtensionEntitlement({ now }) };
   }
@@ -2558,6 +2559,7 @@ async function authorizeExtensionKeySession(input, deps = {}) {
   // fechado para expiresAt malformado em vez de autenticar a chave e só
   // depois degradar silenciosamente o entitlement.
   if (!extensionLicenseIsUsable(keyRecord)) return extensionAuthFailure('key_expired', 403);
+  if (expectedProductId === PRODUCT_LITE && !liteKeyUsable(keyRecord, keyCode)) return extensionAuthFailure('entitlement_revoked', 403);
   if (!Array.isArray(keyRecord.phones)) keyRecord.phones = keyRecord.lastPhone ? [keyRecord.lastPhone] : [];
   const alreadyKnown = keyRecord.phones.some(value => normalizePhone(value) === phoneNumber);
   if (!alreadyKnown && keyRecord.phones.length >= MAX_PHONES_GLOBAL) {
@@ -2731,7 +2733,7 @@ async function refreshExtensionSession(rawToken, deps = {}) {
     }
     const phoneStillAllowed = !doc.phoneNumber || (Array.isArray(keyRecord?.phones)
       && keyRecord.phones.some(value => normalizePhone(value) === doc.phoneNumber));
-    if (!extensionLicenseIsUsable(keyRecord, now) || !phoneStillAllowed || (expectedProductId === PRODUCT_LITE && (keyRecord.provisioningStatus !== 'issued' || !/^LITE_[A-Z0-9_]+$/.test(String(keyRecord.planId || ''))))) {
+    if (!extensionLicenseIsUsable(keyRecord, now) || !phoneStillAllowed || (expectedProductId === PRODUCT_LITE && !liteKeyUsable(keyRecord, doc.licenseKeyCode, now.getTime()))) {
       await revokeExtensionSession(rawToken, { ...deps, db, now });
       return extensionAuthFailure('entitlement_revoked', 403);
     }
