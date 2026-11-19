@@ -38,3 +38,50 @@ test('paid/key sessions cannot use free quota',async()=>{const x=ctx();await den
 test('Mongo error never becomes success',async()=>{const x=ctx();x.collection.findOneAndUpdate=async()=>{throw Error('Mongo write timeout')};await assert.rejects(()=>run({...x,action:'reserve',operationId:id(1)}))});
 test('only reconciliation may read previous day',async()=>{const x=ctx();await run({...x,action:'reserve',operationId:id(1)});const t=new Date('2026-11-20T00:01:00Z');assert.equal((await run({...x,now:t,action:'reconcile',period:'2026-11-19',operationId:id(1)})).operationStatus,'reserved');await denied('period_changed_reconcile_required',()=>run({...x,now:t,action:'reserve',period:'2026-11-19',operationId:id(2)}))});
 test('daily cap is not bypassed with new operation IDs',async()=>{const x=ctx();for(let i=1;i<=20;i++)await run({...x,action:'reserve',operationId:id(i)});await denied('MAX_LIMIT_REACHED',()=>run({...x,action:'reserve',operationId:id(21)}));assert.equal(x.collection.mutations,20)});
+
+test('R100: confirmed acknowledgement wins after an uncertain CAS races first',async()=>{
+ const x=ctx();await run({...x,action:'reserve',operationId:id(1)});
+ const base=x.collection.findOneAndUpdate.bind(x.collection), statusPath='receipts.'+id(1)+'.status';
+ let collided=false;
+ x.collection.findOneAndUpdate=async(filter,update,options)=>{
+  if(!collided&&update.$set?.[statusPath]==='confirmed'){
+   collided=true;
+   assert.ok(await base(filter,{$set:{[statusPath]:'uncertain'}}));
+   return null;
+  }
+  return base(filter,update,options);
+ };
+ const result=await run({...x,action:'settle',operationId:id(1),ack:'confirmed',messageIdHash:'d'.repeat(64)});
+ assert.equal(collided,true);assert.equal(result.operationStatus,'confirmed');
+ assert.equal((await run({...x,action:'reconcile',operationId:id(1)})).operationStatus,'confirmed');
+ assert.equal(result.limits.message.sent,1);
+});
+test('R100: uncertain acknowledgement cannot downgrade a concurrent positive receipt',async()=>{
+ const x=ctx();await run({...x,action:'reserve',operationId:id(1)});
+ const base=x.collection.findOneAndUpdate.bind(x.collection),path='receipts.'+id(1);
+ let collided=false;
+ x.collection.findOneAndUpdate=async(filter,update,options)=>{
+  if(!collided&&update.$set?.[path+'.status']==='uncertain'){
+   collided=true;
+   assert.ok(await base(filter,{$set:{[path+'.status']:'confirmed',[path+'.receiptHash']:'e'.repeat(64)}}));
+   return null;
+  }
+  return base(filter,update,options);
+ };
+ const result=await run({...x,action:'settle',operationId:id(1),ack:'uncertain'});
+ assert.equal(collided,true);assert.equal(result.operationStatus,'confirmed');assert.equal(result.duplicate,true);
+ assert.equal((await run({...x,action:'reconcile',operationId:id(1)})).operationStatus,'confirmed');
+});
+test('R100: conflicting WA-JS receipt hashes for one operation are rejected',async()=>{
+ const x=ctx();await run({...x,action:'reserve',operationId:id(1)});
+ await run({...x,action:'settle',operationId:id(1),ack:'confirmed',messageIdHash:'b'.repeat(64)});
+ await denied('message_receipt_mismatch',()=>run({...x,action:'settle',operationId:id(1),ack:'confirmed',messageIdHash:'c'.repeat(64)}));
+ assert.equal((await run({...x,action:'reconcile',operationId:id(1)})).operationStatus,'confirmed');
+});
+test('R100: sustained CAS contention fails closed without claiming confirmation',async()=>{
+ const x=ctx();await run({...x,action:'reserve',operationId:id(1)});
+ let attempts=0;x.collection.findOneAndUpdate=async()=>{attempts++;return null};
+ await denied('quota_result_uncertain',()=>run({...x,action:'settle',operationId:id(1),ack:'confirmed',messageIdHash:'d'.repeat(64)}));
+ assert.equal(attempts,5);
+ assert.equal((await run({...x,action:'reconcile',operationId:id(1)})).operationStatus,'reserved');
+});
