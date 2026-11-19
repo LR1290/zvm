@@ -36,22 +36,22 @@ const rIssue = region('function generateCode() {', 'function generateToken() {')
 check(/function generateOfficialCode\(/.test(rIssue), 'gated official issuance helper');
 check(/ZVM_OFFICIAL_KEYS_V2_ENABLED/.test(rIssue), 'explicit server rollout gate');
 check(/generateLicenseKey\(PRODUCT_AUTOMACOES\)/.test(rIssue), 'official V2 uses shared secure generator');
-const commercial = region('async function processCommercialSale(', '\n//');
+const commercial = region('async function processCommercialSale(', '\n  // P0 — ordem importa pra recuperação');
 check(/generateOfficialCode\(\)/.test(commercial), 'new Cakto sale uses gated generator');
-check(/extensionProductId: PRODUCT_AUTOMACOES/.test(commercial), 'new commercial V2 records persist product authority');
+check(/\.\.\.officialV2Metadata\(keyCode\)/.test(commercial), 'new commercial V2 records persist product authority');
 const admin = region("if (p === R_ADMIN+'/api/keys' && req.method === 'POST')", 'const codeToggle =');
 check(/generateOfficialCode\(\)/.test(admin), 'admin create uses gated generator');
-check(/extensionProductId: PRODUCT_AUTOMACOES/.test(admin), 'admin V2 record persists product authority');
+check(/\.\.\.officialV2Metadata\(code\)/.test(admin), 'admin V2 record persists product authority');
 check(/keyBelongsTo\(/.test(source), 'product boundary must be applied on authentication');
 check(!/sanitizeId\((?:input\?|body|user\?)?\.?authKey,\s*32\)/.test(source), 'no 32-char authKey parser remains');
 check(!source.includes('sanitizeId(input?.authKey, 32)'), 'V4 key auth accepts full 57 chars');
 check(!source.includes('sanitizeId(body.authKey, 32)'), 'legacy key endpoints accept full 57 chars');
 check(!source.includes("toLowerCase().slice(0, 32);"), 'usage no longer silently truncates license');
 const register = region("if (p === '/cliente/registro'", "if (p === '/cliente/logout')");
-check(/normalizeOfficialLicenseCode\(form\.get\('keycode'\)/.test(register), 'registration consumes exact code');
+check(/normalizeOfficialLicenseCode\(enteredKeyCode\)/.test(register), 'registration consumes exact code');
 check(/Chave inválida/.test(register), 'invalid registration key rejected, not silently dropped');
 const link = region("if (p === '/cliente/vincular')", "if (p === '/cliente/desvincular'");
-check(/normalizeOfficialLicenseCode\(form\.get\('keycode'\)/.test(link), 'portal linkage uses exact code');
+check(/normalizeOfficialLicenseCode\(enteredKeyCode\)/.test(link), 'portal linkage uses exact code');
 check(/keyBelongsTo\(keys\[keycode\],\s*keycode,\s*PRODUCT_AUTOMACOES\)/.test(link),'portal never links foreign product');
 const publicKey = region("if (p === '/api/checkkey'", "if (req.method === 'GET' && p === '/')");
 check(/normalizeOfficialLicenseCode\(/.test(publicKey),'public key check does not truncate');
@@ -60,4 +60,34 @@ const clientStatus = region("if (p === '/client/status'", "if (p === '/politica'
 check(/keyBelongsTo\(/.test(clientStatus),'legacy client management rejects other products');
 check(/normalizeOfficialLicenseCode\(/.test(clientStatus),'legacy client management accepts V2 shape');
 check(source.includes('name="keycode" placeholder="zv-xxxxx-xxxxx-xxxxx" value="' ) && source.includes('maxlength="64"'), 'portal registration UI supports 57');
+
+// Exercita os helpers reais extraídos do runtime, não um algoritmo replicado no teste.
+const helpersSource = region('function officialV2IssuanceEnabled() {', 'function generateToken() {');
+let legacyIssues = 0, v2Issues = 0;
+const runtimeEnv = { env: {} };
+const helpers = new Function('process','generateCode','generateLicenseKey','PRODUCT_AUTOMACOES',
+  helpersSource + '\nreturn { officialV2IssuanceEnabled, generateOfficialCode, normalizeOfficialLicenseCode, officialV2Metadata };'
+)(runtimeEnv,
+  () => { legacyIssues++; return 'zv-abcde-12345-abcde'; },
+  product => { assert.equal(product, PRODUCT_AUTOMACOES); v2Issues++; return full; },
+  PRODUCT_AUTOMACOES);
+check(helpers.generateOfficialCode() === 'zv-abcde-12345-abcde' && legacyIssues === 1 && v2Issues === 0,
+  'without flag new keys remain legacy');
+runtimeEnv.env.ZVM_OFFICIAL_KEYS_V2_ENABLED = 'false';
+check(helpers.generateOfficialCode().startsWith('zv-') && v2Issues === 0, 'explicit false remains legacy');
+runtimeEnv.env.ZVM_OFFICIAL_KEYS_V2_ENABLED = 'true';
+check(helpers.generateOfficialCode() === full && v2Issues === 1, 'true enables full 256-bit V2');
+check(helpers.normalizeOfficialLicenseCode(' ' + full.toUpperCase() + ' ') === full, 'normalize human-entered V2 safely');
+check(helpers.normalizeOfficialLicenseCode(lite) === '', 'reject LITE key before any DB query');
+check(helpers.normalizeOfficialLicenseCode('zv2a-' + 'a'.repeat(51)) === '', 'reject truncated V2');
+check(helpers.normalizeOfficialLicenseCode(full + '-extra') === '', 'reject V2 with tail');
+check(helpers.normalizeOfficialLicenseCode('zv2a-' + 'a'.repeat(51) + '
+) === '', 'reject corrupt V2');
+check(helpers.normalizeOfficialLicenseCode({code: full}) === '', 'reject NoSQL-like object');
+check(helpers.normalizeOfficialLicenseCode(['zv-abcde-12345-abcde']) === '', 'reject arrays / parameter pollution');
+check(helpers.officialV2Metadata(full).extensionProductId === PRODUCT_AUTOMACOES,'V2 saved with product');
+check(Object.keys(helpers.officialV2Metadata('zv-abcde-12345-abcde')).length === 0,'existing keys retain legacy record shape');
+const shield = fs.readFileSync(path.join(__dirname, '..', 'legacy-v3-shield.js'),'utf8');
+check(shield.includes("String(row.keyCode || '').slice(0, 64)"),'V3 relogin cache does not truncate V2 identity');
+
 console.log('R83 official keys V2 PASS: ' + checks + ' source/crypto/product controls');

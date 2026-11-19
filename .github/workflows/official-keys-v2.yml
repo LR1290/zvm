@@ -1,0 +1,29 @@
+name: Official KEY V2 R83 (no deployment)
+
+on:
+  pull_request:
+    paths:
+      - 'server.js'
+      - 'src/license-product-v2.js'
+      - 'legacy-v3-shield.js'
+      - 'tests/r83-official-license-v2.test.js'
+      - 'package.json'
+      - '.github/workflows/official-keys-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  official-v2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.3'
+      - name: Test official KEY V2 and legacy compatibility without secrets
+        run: npm run check:official-keys-v2
