@@ -83,7 +83,7 @@ for(const route of ['/', '/planos', '/faq', '/privacidade', '/termos']){
 const start=server.indexOf('const ZVM_CANONICAL_FAVICON =');
 const end=server.indexOf('function sendHtml(',start);
 assert(start>0&&end>start,'favicon helper located');
-const favicon=new Function(server.slice(start,end)+'\nreturn applyCanonicalFavicon;')();
+const favicon=new Function('ZVM_SITE_ICON',server.slice(start,end)+'\nreturn applyCanonicalFavicon;')(officialIconPath);
 const sample='<html><head><title>test</title></head><body></body></html>';
 const once=favicon(sample);
 assert(once.includes('/assets/zvm-brand.167357885820.png'));
