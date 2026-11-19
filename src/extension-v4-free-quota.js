@@ -1,5 +1,4 @@
 'use strict';
-const crypto = require('node:crypto');
 // Account-bound, atomic FREE V4 quotas. NEVER take identity from request body.
 const FREE_V4_QUOTA_LIMITS=Object.freeze({message:20,audio:10,media:10,document:10,scheduleItem:5});
 const COLLECTION='extension_v4_free_usage';
@@ -14,7 +13,7 @@ function rows(doc){const counts=doc?.counts||{};return Object.fromEntries(Object
 function output(doc,day,now,details={}){return{ok:true,status:true,tier:'free',period:day,limits:rows(doc),expires_at:nextPeriod(now).toISOString(),...details};}
 // Atomic conditional counter+operationId. Do not replay sends after an unknown ack.
 async function executeV4FreeQuota({ collection, subject, tier, action = 'check',
-  itemType, operationId, period, ack, messageId, scheduledItems, now = new Date() }) {
+  itemType, operationId, period, ack, messageIdHash, scheduledItems, now = new Date() }) {
   now = now instanceof Date ? now : new Date(now);
   if (!Number.isFinite(now.getTime())) fail('invalid_server_clock', 503);
   const subjectId = ensureSubject(subject);
@@ -40,7 +39,7 @@ async function executeV4FreeQuota({ collection, subject, tier, action = 'check',
   }
   if (action === 'settle') {
     if (!['confirmed','uncertain'].includes(String(ack))) fail('invalid_settlement', 400);
-    if (ack === 'confirmed' && (typeof messageId !== 'string' || messageId.length < 8 || messageId.length > 256)) fail('message_receipt_required', 400);
+    if (ack === 'confirmed' && (!/^[a-f0-9]{64}$/i.test(String(messageIdHash || '')))) fail('message_receipt_required', 400);
     const doc = await collection.findOne({ _id: recordId }), op = getOp(doc);
     if (!op) fail('reservation_not_found', 409);
     if (op.type !== itemType) fail('operation_type_mismatch', 409);
@@ -48,7 +47,7 @@ async function executeV4FreeQuota({ collection, subject, tier, action = 'check',
       return output(doc, target, now, { operationStatus: op.status, duplicate: true });
     }
     const status = ack === 'confirmed' ? 'confirmed' : 'uncertain', patch = { status, updatedAt: now };
-    if (status === 'confirmed') patch.receiptHash = crypto.createHash('sha256').update(messageId, 'utf8').digest('hex');
+    if (status === 'confirmed') patch.receiptHash = messageIdHash.toLowerCase();
     const update = { $set: Object.fromEntries(Object.entries(patch).map(([key, value]) => [path+'.'+key, value])) };
     const changed = await collection.findOneAndUpdate({ _id: recordId, [path+'.status']: op.status }, update, { returnDocument: 'after' });
     if (changed) return output(changed, target, now, { operationStatus: status });
