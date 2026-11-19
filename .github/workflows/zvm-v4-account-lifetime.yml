@@ -1,0 +1,32 @@
+name: ZVM Complete V4 account session hard-cap QA (no deployment)
+
+on:
+  pull_request:
+    paths:
+      - 'server.js'
+      - 'package.json'
+      - 'tests/r82-session-continuity.test.js'
+      - 'tests/r105-v4-account-lifetime.test.js'
+      - '.github/workflows/zvm-v4-account-lifetime.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  account-session-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.3'
+      - name: Syntax and actual server V4 session tests (synthetic users only)
+        run: |
+          node --check server.js
+          node --check tests/r105-v4-account-lifetime.test.js
+          node tests/r82-session-continuity.test.js
+          node tests/r105-v4-account-lifetime.test.js
