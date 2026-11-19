@@ -49,7 +49,7 @@ async function run(){
  try{
   for(const [name,html,selector,centered,cssName] of pages){
    const legalDoc=name==='privacy'||name==='terms';
-   for(const width of (legalDoc?[360,390,768,1024,1440,1920,2560]:[1440,1920,2560])){
+   for(const width of (legalDoc?[360,390,768,1024,1440,1920,2560]:name==='admin'?[320,390,1440,1920,2560]:[1440,1920,2560])){
     const page=await browser.newPage({viewport:{width,height:950},reducedMotion:'reduce'});
     let errors=[],external=0,missing=[];
     page.on('pageerror',e=>errors.push(String(e.message)));
@@ -103,7 +103,7 @@ async function run(){
      assert(imbalance<=90,name+'/'+width+' unbalanced gutters '+JSON.stringify(rect));
     }
     assert.equal(await page.locator('[data-buy-plan],a[href^="https://pay.cakto.com.br/"]').count(),0,name+'/'+width+' checkout appeared despite pause');
-    if(width!==1440){
+    if(width!==1440||name==='admin'){
      await page.screenshot({path:path.join(shots,'r47-05-'+name+'-'+width+'.png'),fullPage:false,animations:'disabled'});
     }
     rows.push({name,width,occupancy:Math.round(100*rect.width/width)});
