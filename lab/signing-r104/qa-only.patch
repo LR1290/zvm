@@ -1,0 +1,15 @@
+--- a/server.js
++++ b/server.js
+@@ -2418,7 +2418,11 @@
+   const now = extensionNow(deps);
+   const keyStore = deps.keyStore || keys;
+   const keyCode = sanitizeId(user?.keyCode, 32);
+-  if (!keyCode) return { ok: true, keyCode: null, devAccess:false, entitlement: buildExtensionEntitlement({ now }) };
++  if (!keyCode) {
++    const subject = extensionSubject('account', user?._id).id;
++    const devAccess = require('./lab/signing-r104/qa-free.cjs').freeDevAccess(user, deps.db, subject);
++    return { ok: true, keyCode: null, devAccess, entitlement: buildExtensionEntitlement({ now }) };
++  }
+   const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(keyCode);
+   if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
+   const keyRecord = loaded.found ? keyStore[keyCode] : null;

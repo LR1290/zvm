@@ -1,0 +1,15 @@
+'use strict';
+const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:assert/strict');
+const api=require('../../dev-build-signing');
+const [keyPath]=process.argv.slice(2),id='ckbffcbmanboelbihfkhiahgafnimcho',keyId='dev-2026-01';
+const pub=api.importEd25519PublicKeyB64(fs.readFileSync(__dirname+'/dev-public.spki.b64','utf8').trim());
+const descriptor=JSON.parse(fs.readFileSync(0,'utf8'));
+const text=fs.readFileSync(keyPath,'utf8').trim();
+const privateKey=text.startsWith('-----BEGIN')?crypto.createPrivateKey(text):api.importEd25519PrivateKeyB64(text);
+assert(crypto.createPublicKey(privateKey).equals(pub),'Chave institucional divergente');
+const att=api.createDevBuildAttestation(descriptor,{privateKey,keyId,expectedExtensionId:id});
+const options={expectedExtensionId:id,publicKeys:new Map([[keyId,pub]])};
+assert(api.verifyDevBuildAttestation(att,options).ok);
+assert(!api.verifyDevBuildAttestation({...att,descriptor:{...descriptor,buildFingerprint:'0'.repeat(64)}},options).ok);
+assert.equal(api.verifyDevBuildAttestation(att,{...options,nowMs:Date.parse(att.expiresAt)}).code,'DEV_BUILD_EXPIRED');
+process.stdout.write(JSON.stringify(att));
