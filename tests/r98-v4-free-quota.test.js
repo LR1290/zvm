@@ -9,6 +9,7 @@ class FakeCollection{
  async findOne(filter){return structuredClone(this.data.get(filter._id)||null);}
  async findOneAndUpdate(filter,update){
   const doc=this.data.get(filter._id);if(!doc||doc.operations.includes(filter.operations.$ne))return null;
+  if(filter.$expr&&doc.operations.length>=128)return null;
   for(const [k,v] of Object.entries(filter))if(k.startsWith('counts.')&&doc.counts[k.slice(7)]>=v.$lt)return null;
   if(update.$inc)for(const [k,v] of Object.entries(update.$inc))doc.counts[k.slice(7)]+=v;
   if(update.$max)for(const [k,v] of Object.entries(update.$max))doc.counts[k.slice(7)]=Math.max(doc.counts[k.slice(7)],v);
@@ -28,3 +29,10 @@ test('reconciliation after an uncertain network acknowledgement',async()=>{const
 test('no backdated commits and historical reconciliation',async()=>{const x=ctx();await execute({...x,action:'commit',operationId:op(1)});const tomorrow=new Date('2026-11-20T00:01:00Z');assert.equal((await execute({...x,now:tomorrow,action:'reconcile',period:'2026-11-19',operationId:op(1)})).operationStatus,'committed');await denied('period_changed_reconcile_required',()=>execute({...x,now:tomorrow,action:'commit',operationId:op(1),period:'2026-11-19'}));});
 test('scheduled item count never exceeds five',async()=>{const x=ctx({itemType:'scheduleItem'});await denied('invalid_schedule_count',()=>execute({...x,action:'commit',operationId:op(1),scheduledItems:6}));const r=await execute({...x,action:'commit',operationId:op(2),scheduledItems:5});assert.equal(r.limits.scheduleItem.sent,FREE_V4_QUOTA_LIMITS.scheduleItem);});
 test('storage errors are not accepted as success',async()=>{const x=ctx();x.collection.findOneAndUpdate=async()=>{throw new Error('write timeout')};await assert.rejects(()=>execute({...x,action:'commit',operationId:op(3)}));});
+
+test('at most 128 receipts per Free account/day',async()=>{
+ const x=ctx({itemType:'scheduleItem'});
+ for(let i=0;i<128;i++)await execute({...x,action:'commit',operationId:op(i+1),scheduledItems:5});
+ await denied('quota_operation_limit_reached',()=>execute({...x,action:'commit',operationId:op(129),scheduledItems:5}));
+ assert.equal((await execute({...x,action:'check'})).limits.scheduleItem.sent,5);
+});
