@@ -73,9 +73,9 @@ function validateRuntimeSecurityConfig(env = {}, authorityState = {}, featureSta
     if (extensionIdCount < 1) problems.push('ZVM_EXTENSION_IDS_required');
     if (devBuildAllow && devKeyHashCount < 1) problems.push('ZVM_DEV_BUILD_KEY_HASHES_required');
     if (devBuildAllow && devDeviceHashCount < 1) problems.push('ZVM_DEV_BUILD_DEVICE_HASHES_required');
-    const productionDbName = String(featureState.productionDbName || 'zapvoice').trim();
-    const currentDbName = String(env.MONGODB_DB || '').trim();
-    if (!currentDbName || currentDbName === productionDbName) problems.push('MONGODB_DB_must_be_isolated');
+    const productionDbNames = new Set(['zapvoice', 'zvm', String(featureState.productionDbName || 'zapvoice').trim().toLowerCase()]);
+    const currentDbName = String(env.MONGODB_DB || '').trim().toLowerCase();
+    if (!currentDbName || productionDbNames.has(currentDbName)) problems.push('MONGODB_DB_must_be_isolated');
     if (authorityState.registryV2Error === true) problems.push('ZVM_BUILD_REGISTRY_V2_invalid');
   }
 
