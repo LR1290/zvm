@@ -93,3 +93,19 @@ O programa tools/zvm-mongodb-local-restore.js gera a prova; exige mongorestore e
 7. Executar node tools/zvm-mongodb-migrate.js verify. Fazer corte MANUAL no Render com MONGODB_DB=zvm e ZVM_DB_CUTOVER_CONFIRMED=zapvoice-to-zvm-verified, e validar a ZVM completa; jamais apagar zapvoice prematuramente.
 
 A verificação da restauração local comprova recoverability do archive, NÃO comprova por si só que todos os escritores foram pausados ou que os pagamentos não mudaram depois do backup. Se o backup for anterior ao congelamento, criar novo archive e nova prova. O script não tem processo de deploy, e os testes da CI só usam dados sintéticos.
+
+
+## R90 — equivalência integral do backup restaurado e a origem
+
+Uma contagem mínima de coleções, índices, chaves, clientes e pagamentos não comprova que um arquivo compactado é a cópia integral atualizada. O procedimento de corte agora tem uma barreira obrigatória:
+
+1. A RESTAURAÇÃO REAL, em MongoDB local temporário, calcula um checksum SHA-256 de TODAS as coleções, seus documentos BSON ordenados e definições de índices, usando o mesmo snapshotDatabase do migrador. Não imprime documentos, chaves nem e-mails.
+2. Só depois de confirmar que o banco local temporário foi excluído, o programa registra no comprovante restore-proof.json o campo sourceChecksum, vinculado ao SHA-256 do archive.gz validado.
+3. Na ação CLI copy, o migrador confere a prova do archive real ANTES de conectar ao Atlas; então lê toda a fonte zapvoice ANTES de escrever qualquer coleção em zvm e exige que a assinatura atual corresponda ao checksum do backup restaurado.
+4. Se um pagamento, licença, usuário, sessão, webhook, documento TTL ou índice mudou desde a captura do backup, rejeita com backup_source_checksum_mismatch SEM TOCAR NO DESTINO. Não aceita backup preliminar anterior à pausa dos writers.
+5. A R88 continua conferindo novamente a fonte APÓS a cópia e a verificação BSON do destino precisa continuar idêntica. São três provas independentes: archive restaurado == fonte congelada antes, fonte == destino, fonte antes == fonte depois.
+6. Os testes R86 simulam archive restaurado correto, assinatura incorreta e renovação de pagamento posterior à captura do backup. R89 rejeita comprovantes sem assinatura e valida a integração com o restorer.
+
+Esse mecanismo detecta divergências mas NÃO substitui a pausa coordenada dos escritores, a confirmação das permissões da credencial no novo banco e a aprovação manual do deploy. Se o backup e a fonte diferirem, gerar novo backup e nova prova com todos os writers parados. Nunca editar manualmente o checksum.
+
+NOTA: comprovantes locais de R89 sem sourceChecksum ficam intencionalmente inválidos na R90. Gerar novo comprovante com o restorer atualizado.

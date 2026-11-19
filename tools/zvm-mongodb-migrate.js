@@ -121,7 +121,7 @@ async function compareDatabases(source, target, EJSON) {
   return {collections:results.length,documents:totalDocuments,indexes:totalIndexes,verified:true,results};
 }
 
-async function copyDatabase(client, EJSON, env = process.env) {
+async function copyDatabase(client, EJSON, env = process.env, expectedSourceChecksum = null) {
   copyGuard('copy',env);
   const source = client.db(SOURCE_DB), target = client.db(TARGET_DB);
   const sourceRows = await collectionRows(source);
@@ -133,6 +133,11 @@ async function copyDatabase(client, EJSON, env = process.env) {
     throw new Error('target_not_empty_manual_review_required');
   }
   const baseline = await snapshotDatabase(source, EJSON);
+  if(expectedSourceChecksum !== null && baseline.checksum !== expectedSourceChecksum) {
+    // Valid restore proof, but production has changed since archive creation:
+    // refuse cutover before writing ANY target collection.
+    throw new Error('backup_source_checksum_mismatch');
+  }
   if (canonical(baseline.sections.map(s => s.name)) !== canonical(sourceNames)) {
     throw new Error('source_collection_set_changed_before_copy');
   }
@@ -158,11 +163,12 @@ async function copyDatabase(client, EJSON, env = process.env) {
 
 async function execute(action, env = process.env) {
   if (!['audit','verify','copy'].includes(action)) throw new Error('usage: audit | verify | copy');
+  let backupGate = null;
   if (action === 'copy') {
     copyGuard(action,env);
     // R89: an actual archive, its SHA-256, an isolated RESTORE test and a
     // paused-writers receipt are mandatory. Flags alone cannot unlock copy.
-    await validateBackupGate(env);
+    backupGate = await validateBackupGate(env);
   }
   const uri = String(env.MONGODB_URI || '').trim();
   if (!uri) throw new Error('MONGODB_URI_required');
@@ -181,7 +187,7 @@ async function execute(action, env = process.env) {
     if (action === 'verify') return {mode:'verify', ...await compareDatabases(
       client.db(SOURCE_DB),client.db(TARGET_DB),EJSON
     ),mutating:false};
-    const result = await copyDatabase(client,EJSON,env);
+    const result = await copyDatabase(client,EJSON,env,backupGate.sourceChecksum);
     return {mode:'copy', ...result, sourceRetained:true};
   } finally {
     await client.close();

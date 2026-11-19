@@ -77,6 +77,24 @@ function makeClient({corruptOutput=false, failAfterOutput=false, mutateBothAfter
 }
 (async()=>{
   let checks=0;
+  const guard=makeClient();
+  await assert.rejects(
+    M.copyDatabase(guard.client,EJSON,flags,'0'.repeat(64)),
+    /backup_source_checksum_mismatch/
+  );checks++;
+  assert.equal(guard.target.items.size,0,'mismatched restore proof fails before any write');checks++;
+  const proofFixture=makeClient();
+  const checksum=(await M.snapshotDatabase(proofFixture.origin,EJSON)).checksum;
+  const passResult=await M.copyDatabase(proofFixture.client,EJSON,flags,checksum);
+  assert.equal(passResult.sourceStable,true,'matching restored backup opens copy gate');checks++;
+  const stale=makeClient();
+  const staleChecksum=(await M.snapshotDatabase(stale.origin,EJSON)).checksum;
+  stale.origin.items.get('payments').rows[0].amount=999;
+  await assert.rejects(
+    M.copyDatabase(stale.client,EJSON,flags,staleChecksum),
+    /backup_source_checksum_mismatch/
+  );checks++;
+  assert.equal(stale.target.items.size,0,'stale payment archive blocks all target writes');checks++;
   const {client,origin,target}=makeClient();
   const before=await M.describe(origin);
   assert.equal(before.length,4);checks++;

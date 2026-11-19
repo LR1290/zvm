@@ -19,6 +19,7 @@ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'zvm-r89-synthetic-'));
   const base={sourceDatabase:'zapvoice',dryRunVerified:true,writersReportedPaused:true,
     archiveFile:'synthetic.archive.gz',sizeBytes:source.length,sha256:sha};
   const proof={format:B.FORMAT,sourceDatabase:'zapvoice',archiveSha256:sha,
+    sourceChecksum:'a'.repeat(64),
     verifiedAtUtc:new Date().toISOString(),cleanupConfirmed:true,localOnly:true,
     collections:20,indexes:49,legacyOrOfficialKeyCount:61,portalUserCount:39,paymentCount:33};
   const write=(file,obj)=>fs.writeFileSync(file,JSON.stringify(obj));
@@ -39,6 +40,8 @@ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'zvm-r89-synthetic-'));
   await rejects(()=>B.validateBackupGate(env),/RESTORE_INDEXES_INCOMPLETE/);
   write(proofPath,{...proof,paymentCount:0});
   await rejects(()=>B.validateBackupGate(env),/RESTORE_CRITICAL_RECORDS_MISSING/);
+  write(proofPath,{...proof,sourceChecksum:'not-a-checksum'});
+  await rejects(()=>B.validateBackupGate(env),/RESTORE_SOURCE_CHECKSUM_INVALID/);
   write(proofPath,proof);
   write(manifestPath,{...base,writersReportedPaused:false});
   await rejects(()=>B.validateBackupGate(env),/WRITERS_NOT_DECLARED_PAUSED/);
@@ -51,6 +54,7 @@ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'zvm-r89-synthetic-'));
   await rejects(()=>B.validateBackupGate(env),/ARCHIVE_HASH_MISMATCH/);
   fs.writeFileSync(archive,source);
   pass((await B.validateBackupGate(env)).verified,'valid archive recovered');
+  pass((await B.validateBackupGate(env)).sourceChecksum===proof.sourceChecksum,'proof binds source checksum');
   pass(B.localUri('mongodb://127.0.0.1:27017')==='mongodb://127.0.0.1:27017','loopback allowed');
   pass(B.localUri('mongodb://localhost:27017')==='mongodb://localhost:27017','hostname loopback allowed');
   for(const url of ['mongodb+srv://prod.example.com','mongodb://atlas.example.com:27017',
@@ -76,6 +80,9 @@ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'zvm-r89-synthetic-'));
   pass(migration.indexOf('await validateBackupGate(env)')<migration.indexOf('const uri = String(env.MONGODB_URI'),'backup proof before Atlas connection');
   const restoration=fs.readFileSync(path.join(__dirname,'..','tools','zvm-mongodb-local-restore.js'),'utf8');
   pass(restoration.includes('await client.db(tmpName).dropDatabase()'),'temporary local cleanup exists');
+  pass(restoration.includes('M.snapshotDatabase(client.db(tmpName),EJSON)'), 'full BSON snapshot used on restored backup');
+  pass(migration.includes('backup_source_checksum_mismatch'), 'live source must equal restored backup before copy');
+  pass(migration.includes('backupGate.sourceChecksum'), 'CLI carries restored fingerprint into copy');
   pass(restoration.includes("fs.writeFileSync(proofPath")&&restoration.indexOf("fs.writeFileSync(proofPath")>restoration.indexOf("if(!cleanupConfirmed)throw"),'proof only after cleanup');
   console.log('R89 MongoDB external backup + isolated restore gate PASS: '+checks+' controls');
  }finally{fs.rmSync(dir,{recursive:true,force:true});}

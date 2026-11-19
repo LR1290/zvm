@@ -42,6 +42,7 @@ async function validatedBackup(manifestPath,{pauseRequired=true}={}) {
 function validateRestoreProof(proof,sha256) {
   if(!proof||proof.format!==FORMAT||proof.sourceDatabase!=='zapvoice')fail('RESTORE_PROOF_INVALID');
   if(proof.archiveSha256!==sha256||proof.cleanupConfirmed!==true||proof.localOnly!==true)fail('RESTORE_PROOF_MISMATCH');
+  if(!/^[a-f0-9]{64}$/.test(String(proof.sourceChecksum||'')))fail('RESTORE_SOURCE_CHECKSUM_INVALID');
   if(!Number.isSafeInteger(proof.collections)||proof.collections<REQUIRED_COLLECTIONS)fail('RESTORE_COLLECTIONS_INCOMPLETE');
   if(!Number.isSafeInteger(proof.indexes)||proof.indexes<REQUIRED_INDEXES)fail('RESTORE_INDEXES_INCOMPLETE');
   for(const field of ['legacyOrOfficialKeyCount','portalUserCount','paymentCount']){
@@ -55,8 +56,9 @@ async function validateBackupGate(env=process.env) {
   const manifestPath=String(env.ZVM_MONGO_BACKUP_MANIFEST||'');
   const proofPath=String(env.ZVM_MONGO_RESTORE_PROOF||'');
   const {sha256}=await validatedBackup(manifestPath,{pauseRequired:true});
-  validateRestoreProof(readJson(proofPath),sha256);
-  return {verified:true,sha256};
+  const proof=readJson(proofPath);
+  validateRestoreProof(proof,sha256);
+  return {verified:true,sha256,sourceChecksum:proof.sourceChecksum};
 }
 function localUri(raw) {
   const str=String(raw||'mongodb://127.0.0.1:27017');

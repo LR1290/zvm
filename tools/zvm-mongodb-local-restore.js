@@ -6,6 +6,7 @@ const path=require('node:path');
 const crypto=require('node:crypto');
 const {spawnSync}=require('node:child_process');
 const B=require('./zvm-mongodb-backup-proof');
+const M=require('./zvm-mongodb-migrate');
 const REQUIRED=Object.freeze(['store','portal_users','payments','extension_sessions',
   'webhook_events','cakto_mail_outbox']);
 function restorationAck(env) {
@@ -43,10 +44,11 @@ async function runLocalRestore(env=process.env) {
   const {archive,sha256}=await B.validatedBackup(manifestPath,{pauseRequired:false});
   const proofPath=path.resolve(path.dirname(path.resolve(manifestPath)),path.basename(archive)+'.restore-proof.json');
   if(fs.existsSync(proofPath))throw new Error('ZVM_LOCAL_RESTORE_PROOF_ALREADY_EXISTS');
-  const {MongoClient}=require('mongodb');
+  const {MongoClient,BSON}=require('mongodb');
+  const EJSON=BSON?.EJSON||require('bson').EJSON;
   const client=new MongoClient(uri,{serverSelectionTimeoutMS:4000,maxPoolSize:2});
   const tmpName='zvm_restore_r89_'+crypto.randomBytes(8).toString('hex');
-  let created=false,cleanupConfirmed=false,summary=null;
+  let created=false,cleanupConfirmed=false,summary=null,sourceChecksum=null;
   await client.connect();
   try {
     const dbs=await client.db('admin').admin().listDatabases({nameOnly:true});
@@ -58,6 +60,9 @@ async function runLocalRestore(env=process.env) {
       timeout:180000,windowsHide:true,maxBuffer:1024*1024});
     if(proc.error||proc.status!==0)throw new Error('ZVM_LOCAL_RESTORE_EXECUTION_FAILED');
     summary=await inspectRestoredDb(client.db(tmpName));
+    // R90: full BSON + index fingerprint, not only 20 collections / 49 indexes.
+    // It must exactly match the frozen live source BEFORE any copy writes.
+    sourceChecksum=(await M.snapshotDatabase(client.db(tmpName),EJSON)).checksum;
   } finally {
     if(created){
       try{
@@ -69,10 +74,11 @@ async function runLocalRestore(env=process.env) {
     await client.close();
   }
   if(!cleanupConfirmed)throw new Error('ZVM_LOCAL_RESTORE_CLEANUP_NOT_CONFIRMED');
-  if(!summary)throw new Error('ZVM_LOCAL_RESTORE_NO_SUMMARY');
+  if(!summary||!/^[a-f0-9]{64}$/.test(String(sourceChecksum||'')))throw new Error('ZVM_LOCAL_RESTORE_NO_SUMMARY');
   const proof={
     format:B.FORMAT,sourceDatabase:'zapvoice',archiveSha256:sha256,
-    verifiedAtUtc:new Date().toISOString(),localOnly:true,cleanupConfirmed:true,...summary
+    verifiedAtUtc:new Date().toISOString(),localOnly:true,cleanupConfirmed:true,
+    sourceChecksum,...summary
   };
   fs.writeFileSync(proofPath,JSON.stringify(proof,null,2)+'\n',{flag:'wx',mode:0o600});
   return {validated:true,proofPath,collections:summary.collections,indexes:summary.indexes};
