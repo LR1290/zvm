@@ -48,10 +48,15 @@ test('LITE freshness fails closed on product mismatch, expiry, disabled or unpro
     fresh({planId:'ZV_PRO'}),
     fresh({provisioningStatus:'awaiting_lite_build_authority'}),
     fresh({maxUses:'3'}),
+    fresh({maxUses:0}), // zero must not silently mean unlimited
+    fresh({maxUses:-2}),
+    fresh({maxUses:1.5}),
     fresh({phones:null}),
     fresh({expiresAt:'2026-11-18T18:59:00.000Z'}),
     fresh({expiresAt:'invalid'}),
   ]) assert.equal(liteKeyUsable(k,code,nowMs),false);
+  assert.equal(liteKeyUsable(fresh({maxUses:-1}),code,nowMs),true,
+    'explicit -1 remains the only unlimited value');
   assert.equal(keyBelongsTo(fresh(),code,PRODUCT_AUTOMACOES),false);
 });
 
@@ -117,6 +122,8 @@ test('a changed maxUses prevents a stale limit from being applied',async()=>{
 test('no database write is attempted for a disabled, invalid, duplicate or exhausted LITE key',async()=>{
   for(const [record,expected] of [
     [fresh({active:false}),'entitlement_revoked'],
+    [fresh({maxUses:0}),'entitlement_revoked'],
+    [fresh({maxUses:-2}),'entitlement_revoked'],
     [fresh({extensionProductId:PRODUCT_AUTOMACOES}),'entitlement_revoked'],
     [fresh({phones:[phone]}),'already_member'],
     [fresh({phones:['5538999999999','5538999999998','5538999999997']}),'limit_reached'],
