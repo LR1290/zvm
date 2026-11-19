@@ -172,6 +172,7 @@ test('LITE refresh CAS rejects a token revoked by another concurrent request',as
       }};
       const ctx={
         PRODUCT_LITE,PRODUCT_AUTOMACOES,crypto,keys:{},
+        EXTENSION_SESSION_COLLECTION:'extension_sessions',
         keyBelongsTo,liteKeyUsable,linkedPortalKeyForProduct,
         extensionNow:()=>now,readExtensionSession:async()=>({ok:true,doc}),
         extensionAuthFailure:fail,getMongoDb:async()=>db,
