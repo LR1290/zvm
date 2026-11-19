@@ -40,6 +40,18 @@ test('LITE seat counts reject 0, junk and ceilings above the global cap before D
   assert(validator>=0&&error>validator&&insert>error,'bad LITE seat limit must be rejected BEFORE writing');
   assert(route.includes('maxUses: extensionProductId === PRODUCT_LITE ? maxUses :'),
     'do not silently replace a rejected LITE seat limit with a default');
+  const editStart=server.indexOf('  const codeMaxUses = extractCode(');
+  const editEnd=server.indexOf('  const codeLabel = extractCode(',editStart);
+  assert(editStart>=0 && editEnd>editStart,'max-uses edit route exists');
+  const editRoute=server.slice(editStart,editEnd);
+  const editGuard=editRoute.indexOf('productOfKeyRecord(kMu, codeMaxUses) === PRODUCT_LITE');
+  const editValidate=editRoute.indexOf('parseLiteMaxUses(rawMaxUses, MAX_USES, MAX_PHONES_GLOBAL)');
+  const editPersist=editRoute.indexOf('await mutateAdminKeyRecordStrict(codeMaxUses');
+  assert(editGuard>=0&&editValidate>editGuard&&editPersist>editValidate,
+    'LITE edits must enforce the global cap before persistent update');
+  assert(editRoute.includes('rawMaxUses === undefined ? null'),
+    'partial LITE edit payload cannot silently reset to a default');
+
 });
 
 test('v2 keys contain 256 unpredictable bits encoded in exactly 52 base32 characters', () => {
