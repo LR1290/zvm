@@ -22,3 +22,17 @@ Não registrar bearer, senha, conteúdo ou destinatário nos resultados.
 Em uma cópia da R96 verificada, aplicar as sete substituições do inventário R99. Aplicar auth-r103.patch e depois auth-r104.patch na raiz da cópia com patch -p1. Definir ZVM_LAB_SOURCE para o caminho absoluto dessa árvore e executar node --test lab/qa-auth/*.test.cjs a partir do checkout do PR. A identidade assinada da R96 não cobre essas alterações.
 
 O ensaio atlas-race.cjs inicia quatro processos Node, cada um com conexão independente. O supervisor verifica o limite agregado para um sujeito fictício exclusivo da execução. Cada processo confere a role antes da primeira reserva. A aprovação externa do cluster exclusivo continua necessária. O executor exige ZVM_QA_WRITE_APPROVED=exclusive-cluster-verified, além de host e URI de QA. O ensaio deixa os registros sintéticos disponíveis para auditoria.
+
+## Rotas revisadas em R104
+
+| Caminho | Contrato observado | Aceite restante |
+|---|---|---|
+| Biblioteca, texto e áudio | sendNow verifica plano e guardedInteractiveSend exige reserva antes do WA-JS | Confirmar recibo por tipo no Chrome QA |
+| Imagem, vídeo e documento | Mesmo preflight. Mídias compartilham cota, documentos têm contador próprio | Testar anexos, conta ativa e ACK real |
+| Resposta rápida | quick-response.send exige plano pago antes de resolver a sequência | Testar o executor e o compositor com contas Free e PRO |
+| Agenda | Reserva de scheduleItem bloqueada antes de mutação até existir autoridade no servidor | Limite autoritativo de cinco agendamentos depende de AGENDA-01 |
+| Disparos | Recuperação automática só admite atraso pré-despacho com histórico sem indício de efeito | Reinício real do processador e persistência de Pausar/Cancelar |
+| Funis e Fluxos | Identidade do WhatsApp verificada contra a execução antes da continuação | Troca de conta durante uma ação já em curso |
+| Follow-up | Posse durável antes do despacho e resultado incerto exige revisão mesmo se houver cancelamento | Confirmar persistência ao encerrar a página durante o commit |
+
+Para os testes adicionais do cliente, aplicar r104-client-tests.patch sobre client-integration.test.cjs do kit R99 e executar junto à árvore R104 e ao módulo de quota do backend deste PR, preservando os caminhos relativos do kit.

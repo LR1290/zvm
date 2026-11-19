@@ -8,9 +8,9 @@ const source=fs.readFileSync(file,'utf8');
 const start=source.lastIndexOf(';(function()',source.indexOf('var EXTUI_OPAQUE_V4_KEY'));
 const end=source.indexOf('})();',source.indexOf('self.extuiOpaqueV4Ensure=ensure'));
 assert(start>=0 && end>start);
-function worker(subject, publicId, broken=false, fetch){
+function worker(subject, publicId, broken=false, fetch, expiry=Date.now()+3600000){
   const sessionKey='EXTUI:opaqueSessionV4', vaultKey=sessionKey+'Sealed';
-  const saved={authMethod:'password',subject:{id:subject},token:'a'.repeat(64),expiresAtMs:Date.now()+3600000};
+  const saved={authMethod:'password',subject:{id:subject},token:'a'.repeat(64),expiresAtMs:expiry};
   const removed=[];
   let cached=null, durable=saved;
   const area={get:async()=>{if(broken)throw Error('read');return {[sessionKey]:cached};},set:async row=>{cached=row[sessionKey]},remove:async key=>{removed.push(key);cached=null}};
@@ -71,4 +71,11 @@ test('in-flight refresh cannot restore the session after logout',async()=>{
   acknowledge({status:200,body:{session:{authMethod:'password',token:'a'.repeat(64),subject:{id:'A'},expiresAt},entitlement:{tier:'free',expiresAt}}});
   await assert.rejects(pending,{code:'SESSION_OPERATION_SUPERSEDED'});
   assert.equal(await api.extuiOpaqueV4HasLocalCredential(),false);
+});
+test('expired sealed account credential cannot authorize a protected operation',async()=>{
+  let requests=0;
+  const {api}=worker('A','A',false,async()=>{requests++},Date.now()-1000);
+  assert.equal(await api.extuiOpaqueV4HasLocalCredential(),false);
+  await assert.rejects(api.extuiOpaqueV4Authorize('disparos.execute'),{code:'ACCOUNT_SESSION_REQUIRED'});
+  assert.equal(requests,0);
 });
