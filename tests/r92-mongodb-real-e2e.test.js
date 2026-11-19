@@ -33,10 +33,6 @@ function docker(args) {
    throw Error('r92_docker_mongo_tool_failed:' + args[0] + ':exit_' + String(p.status));
  }
 }
-function dockerHost(args){
- const p=spawnSync('docker',args,{encoding:'utf8',shell:false,timeout:90000,maxBuffer:1024*1024});
- if(p.error||p.status!==0)throw Error('r93_docker_file_transfer_failed');
-}
 function collectionOptions(name){
  return name==='payments'?{
   validator:{$jsonSchema:{bsonType:'object',required:['_id','amount'],
@@ -108,18 +104,34 @@ async function main(){
     'real restore contains old key, new key, accounts and payments');
   check((await M.compareDatabases(source,restored,EJSON)).verified,
     'real archive parity including complex MongoDB metadata');
-  // R93: real on-host archival proof, using the actual production-code
-  // local restore script. Only the fake archive is used; never customer data.
-  const archive=path.join(workspace,'synthetic-r92.archive.gz');
-  dockerHost(['cp','zvm-r92-mongodb:/tmp/zvm-r92.archive.gz',archive]);
+  // R94: call the ACTUAL PowerShell operator backup script against localhost,
+  // instead of constructing a synthetic manifest by hand.
+  const yaml=path.join(workspace,'mongo-tools.yml');
+  fs.writeFileSync(yaml,'uri: '+uri+'\n',{flag:'wx',mode:0o600});
+  const script=path.join(__dirname,'..','tools','zvm-db-backup-readonly.ps1');
+  const backup=spawnSync('pwsh',['-NoProfile','-NonInteractive','-File',script,
+    '-MongoConfigYaml',yaml,'-BackupDirectory',workspace,
+    '-IConfirmWritersPaused'],{
+      shell:false,encoding:'utf8',timeout:90000,maxBuffer:1024*1024
+    });
+  if(backup.error||backup.status!==0) {
+    throw Error('r94_real_powershell_backup_failed:exit_'+String(backup.status)+
+      ' '+String(backup.stderr||'').slice(-350));
+  }
+  const generated=fs.readdirSync(workspace).filter(
+    n=>/^zapvoice-\d{8}T\d{6}Z\.archive\.gz$/.test(n)
+  );
+  check(generated.length===1,'actual PowerShell script emitted archive');
+  const archive=path.join(workspace,generated[0]);
   const bytes=fs.readFileSync(archive);
   const sha256=crypto.createHash('sha256').update(bytes).digest('hex');
   const manifestPath=archive+'.sha256.json';
-  fs.writeFileSync(manifestPath,JSON.stringify({
-    sourceDatabase:'zapvoice',createdUtc:new Date().toISOString(),
-    archiveFile:path.basename(archive),sizeBytes:bytes.length,sha256,
-    dryRunVerified:true,actualRestoreTested:false,writersReportedPaused:true
-  }),{flag:'wx',mode:0o600});
+  const manifest=B.readJson(manifestPath);
+  check(manifest.sha256.toLowerCase()===sha256&&
+    manifest.writersReportedPaused===true&&manifest.dryRunVerified===true,
+    'PowerShell real archive manifest binds size, SHA and writer receipt');
+  check(!fs.existsSync(archive+'.partial')&&!fs.existsSync(manifestPath+'.partial'),
+    'PowerShell removes temporary files after success');
   const restoredLocal=await R.runLocalRestore({
     ZVM_LOCAL_RESTORE_ACK:'restore-archive-local-only',
     ZVM_LOCAL_RESTORE_URI:uri,
@@ -161,7 +173,7 @@ async function main(){
     ZVM_MONGO_BACKUP_MANIFEST:manifestPath,ZVM_MONGO_RESTORE_PROOF:proofPath
   }),/ARCHIVE_HASH_MISMATCH/);
   checks++;
-  console.log('R92/R93 MongoDB 8 REAL E2E + local restore PASS: '+checks+' controls');
+  console.log('R92-R94 MongoDB 8 REAL E2E + PowerShell backup/restore PASS: '+checks+' controls');
  }finally{
   if(started){
     await client.db(destName).dropDatabase();

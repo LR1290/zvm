@@ -13,7 +13,8 @@ function readJson(file) {
   const filePath=path.resolve(file);
   const st=fs.lstatSync(filePath);
   if(!st.isFile()||st.isSymbolicLink()||st.size>65536)fail('INVALID_JSON_FILE');
-  return JSON.parse(fs.readFileSync(filePath,'utf8'));
+  // Windows PowerShell 5.1 writes UTF-8 BOM by default; accept historical manifests.
+  return JSON.parse(fs.readFileSync(filePath,'utf8').replace(/^\uFEFF/,''));
 }
 function archivePathFromManifest(manifestPath,manifest) {
   const n=String(manifest.archiveFile||'');

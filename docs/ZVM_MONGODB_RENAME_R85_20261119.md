@@ -149,3 +149,14 @@ A R93 acrescenta, no job Docker isolado, esta sequência de ponta a ponta:
 - Qualquer falha mantém o job vermelho e impede declarar a migração pronta; não existe segredo, webhook ou dado de cliente no ambiente.
 
 A R93 é um teste real e mais abrangente do fluxo de recuperação, mas NÃO realiza backup de produção, não pausa os escritores, não concede permissões e não muda Render. O corte oficial permanece manual.
+
+
+## R94 — script PowerShell de backup real e compatibilidade Windows
+
+Os testes anteriores produziam o manifesto em JavaScript, portanto não verificavam o script PowerShell que será usado pelo operador de backup. Esta lacuna está sendo fechada: o teste integrado com MongoDB 8 descartável, 20 coleções e 49 índices executa diretamente tools/zvm-db-backup-readonly.ps1 contra a instância LOCAL fictícia, com um YAML privado contendo somente localhost:27018.
+
+O script deve executar mongodump com --config, archive.gz e gzip, conferir mongorestore --dryRun, calcular SHA-256 e gravar o manifesto. O teste lê o manifesto REAL (não inventado), confere o hash e as flags de pausa do laboratório, verifica que não sobraram arquivos parciais, restaura via runLocalRestore, valida sourceChecksum e executa a cópia cross-database. Também adultera um byte após a restauração e exige falha segura.
+
+Correções adicionais: em Windows PowerShell 5.1, Set-Content -Encoding UTF8 pode gerar BOM que o JSON.parse do Node.js recusa. A escrita agora usa UTF-8 sem BOM e o leitor tolera um BOM histórico; o manifesto é gravado em arquivo parcial separado e movido de forma atômica. Falhas de manifesto não excluem silenciosamente o archive já produzido: o backup fica retido para investigação manual e NÃO é elegível para cutover.
+
+Nenhum backup real de clientes foi criado nesta rodada; testes R94 usam somente arquivos sintéticos e MongoDB em Docker descartável. Não alterar Render, Atlas ou webhooks com esse teste.

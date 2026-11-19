@@ -82,8 +82,11 @@ jobs:
           test -n "$mongo_tool"
           mkdir -p "$RUNNER_TEMP/zvm-r92-tools"
           docker cp "zvm-r92-mongodb:$mongo_tool" "$RUNNER_TEMP/zvm-r92-tools/mongorestore"
-          chmod 700 "$RUNNER_TEMP/zvm-r92-tools/mongorestore"
+          mongo_dump_tool=$(docker exec zvm-r92-mongodb sh -c 'command -v mongodump')
+          docker cp "zvm-r92-mongodb:$mongo_dump_tool" "$RUNNER_TEMP/zvm-r92-tools/mongodump"
+          chmod 700 "$RUNNER_TEMP/zvm-r92-tools/mongorestore" "$RUNNER_TEMP/zvm-r92-tools/mongodump"
           "$RUNNER_TEMP/zvm-r92-tools/mongorestore" --version >/dev/null
+          "$RUNNER_TEMP/zvm-r92-tools/mongodump" --version >/dev/null
           echo "$RUNNER_TEMP/zvm-r92-tools" >> "$GITHUB_PATH"
       - name: End-to-end MongoDB 8 tests with synthetic documents only
         env:

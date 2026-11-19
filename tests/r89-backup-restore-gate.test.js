@@ -24,6 +24,10 @@ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'zvm-r89-synthetic-'));
     collections:20,indexes:49,legacyOrOfficialKeyCount:61,portalUserCount:39,paymentCount:33};
   const write=(file,obj)=>fs.writeFileSync(file,JSON.stringify(obj));
   write(manifestPath,base);write(proofPath,proof);
+  // R94: Windows PowerShell 5.1 can emit BOM; avoid rejecting valid older archives.
+  fs.writeFileSync(manifestPath,Buffer.concat([Buffer.from([0xef,0xbb,0xbf]),Buffer.from(JSON.stringify(base))]));
+  pass(B.readJson(manifestPath).sourceDatabase==='zapvoice','UTF-8 BOM accepted');
+  write(manifestPath,base);
   const env={ZVM_MONGO_BACKUP_MANIFEST:manifestPath,ZVM_MONGO_RESTORE_PROOF:proofPath};
   pass((await B.validateBackupGate(env)).verified,'real archive and proof accepted');
   pass((await B.validatedBackup(manifestPath)).sha256===sha,'archive SHA validated');

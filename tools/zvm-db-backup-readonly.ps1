@@ -29,7 +29,8 @@ $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
 $archive = Join-Path $folder ("zapvoice-$stamp.archive.gz")
 $partial = "$archive.partial"
 $manifest = "$archive.sha256.json"
-if ((Test-Path -LiteralPath $archive) -or (Test-Path -LiteralPath $partial) -or (Test-Path -LiteralPath $manifest)) {
+$manifestPartial = "$manifest.partial"
+if ((Test-Path -LiteralPath $archive) -or (Test-Path -LiteralPath $partial) -or (Test-Path -LiteralPath $manifest) -or (Test-Path -LiteralPath $manifestPartial)) {
   throw 'Arquivo de backup preexistente; recusar sobrescrita'
 }
 try {
@@ -52,7 +53,10 @@ try {
     actualRestoreTested=$false
     writersReportedPaused=[bool]$IConfirmWritersPaused
   }
-  $record | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $manifest -Encoding UTF8
+  # Atomic manifest and stable UTF-8 without BOM on both PowerShell 5.1 and 7+.
+  $json = ($record | ConvertTo-Json -Depth 3)
+  [System.IO.File]::WriteAllText($manifestPartial, $json, (New-Object System.Text.UTF8Encoding($false)))
+  Move-Item -LiteralPath $manifestPartial -Destination $manifest -ErrorAction Stop
   Write-Host 'Backup criado:' $archive
   Write-Host 'SHA256:' $sha
   if (-not $IConfirmWritersPaused) {
@@ -64,6 +68,12 @@ try {
 } catch {
   if (Test-Path -LiteralPath $partial) {
     Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue
+  }
+  if (Test-Path -LiteralPath $manifestPartial) {
+    Remove-Item -LiteralPath $manifestPartial -Force -ErrorAction SilentlyContinue
+  }
+  if ((Test-Path -LiteralPath $archive) -and -not (Test-Path -LiteralPath $manifest)) {
+    Write-Warning 'Backup existente sem manifesto. Preservado para revisao manual; nao usar para corte.'
   }
   throw
 }
