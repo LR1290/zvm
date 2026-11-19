@@ -5671,6 +5671,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: 'cd85ea19cc732fd85c921d00d0bee6f0939940b5c000b67c6e53e3075d66a0bc',
     compressible: true,
   }),
+  '/assets/zvm-admin-dashboard.ec5c57a47d43.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.ec5c57a47d43.css'),
+    sha256: 'ec5c57a47d4393a2b0bcc36081811369b72c0a9da5859cbea32851bd0e179915',
+    compressible: true,
+  }),
   '/assets/zvm-admin-dashboard.5c649db2edf7.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.5c649db2edf7.css'),
@@ -6901,7 +6907,7 @@ function renderAdminDashboard(opts = {}) {
 <link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css">
 <link rel="stylesheet" href="/assets/zvm-console-design.7a7b24cd5fa8.css">
 <link rel="stylesheet" href="/assets/zvm-owner-site.e10ede63c1f0.css">
-<link rel="stylesheet" href="/assets/zvm-admin-dashboard.cd85ea19cc73.css">
+<link rel="stylesheet" href="/assets/zvm-admin-dashboard.ec5c57a47d43.css">
 </head>
 <body class="zvm-admin-r6">
 <a class="zvm-skip-link" href="#zvm-admin-main">Ir para o conteúdo</a>

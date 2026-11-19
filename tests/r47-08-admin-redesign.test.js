@@ -3,7 +3,7 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),vm=require('node:vm');
 const root=path.resolve(__dirname,'..'),source=fs.readFileSync(path.join(root,'server.js'),'utf8');
-const jsName='zvm-admin-dashboard.bc01cf565fa7.js',cssName='zvm-admin-dashboard.cd85ea19cc73.css';
+const jsName='zvm-admin-dashboard.bc01cf565fa7.js',cssName='zvm-admin-dashboard.ec5c57a47d43.css';
 const js=fs.readFileSync(path.join(root,'assets',jsName),'utf8');
 const css=fs.readFileSync(path.join(root,'assets',cssName),'utf8');
 for(const name of [jsName,cssName]){
