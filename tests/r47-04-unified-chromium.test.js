@@ -71,8 +71,17 @@ async function run(){
    const target=page.locator(selector).first();
    assert(await target.isVisible(),name+'/'+width+' visual component hidden: '+selector);
    const visual=await target.evaluate(el=>({border:getComputedStyle(el).borderColor,
-     background:getComputedStyle(el).backgroundImage,boxShadow:getComputedStyle(el).boxShadow}));
-   assert(visual.background!=='none'||visual.boxShadow!=='none',name+'/'+width+' missing art direction '+JSON.stringify(visual));
+     background:getComputedStyle(el).backgroundImage,
+     backgroundColor:getComputedStyle(el).backgroundColor,
+     boxShadow:getComputedStyle(el).boxShadow}));
+   // Legal pages intentionally use a calm, solid reading surface instead of
+   // atmospheric gradients; require an actual painted panel rather than
+   // reintroducing the large green glow removed from Privacy/Terms.
+   const painted=(visual.background!=='none'||visual.boxShadow!=='none');
+   const calmLegalPanel=['privacy','terms'].includes(name) &&
+     visual.backgroundColor!=='rgba(0, 0, 0, 0)' &&
+     visual.backgroundColor!=='transparent';
+   assert(painted||calmLegalPanel,name+'/'+width+' missing art direction '+JSON.stringify(visual));
    assert.equal(await page.locator('[data-buy-plan],a[href^="https://pay.cakto.com.br/"]').count(),0,name+' leaked checkout');
    if(name==='home'){
     assert(await page.locator('.r4701-hero-visual img').evaluate(im=>im.complete&&im.naturalWidth>0),'genuine product image missing');
