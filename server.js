@@ -2514,12 +2514,42 @@ function extensionRenewedAccountExpiry(doc, now) {
   return new Date(Math.max(current.getTime(), wanted));
 }
 
+// A Chrome Web Store update changes buildId/fingerprint while retaining the
+// same installation. Rebinding is allowed only for a newer, separately
+// authorized production/release build from that SAME extension installation.
+function extensionProductionUpgradeAllowed(doc, current, installationIdHash) {
+  if (Number(doc?.securityProtocol) !== 2 || doc?.signedDev === true ||
+      String(doc?.channel) !== 'production' || String(doc?.profile) !== 'release' ||
+      Number(current?.securityProtocol) !== 2 || current?.signedDev === true ||
+      String(current?.channel) !== 'production' || String(current?.profile) !== 'release' ||
+      String(current?.extensionId || '').toLowerCase() !== String(doc?.extensionId || '').toLowerCase() ||
+      !/^[a-p]{32}$/.test(String(doc?.extensionId || '').toLowerCase()) ||
+      !installationIdHash || installationIdHash !== String(doc?.installationIdHash || '').toLowerCase() ||
+      !/^[a-f0-9]{64}$/i.test(String(current?.buildFingerprint || '')) ||
+      !/^zvm-production-\d+(?:\.\d+){2,3}-s[a-f0-9]{12}$/i.test(String(current?.buildId || ''))
+  ) return false;
+  function parts(v) {
+    const found=/^(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?$/.exec(String(v||''));
+    if (!found) return null;
+    const result=found.slice(1).map(x=>x===undefined?0:Number(x));
+    return result.every(x=>Number.isSafeInteger(x)&&x>=0)?result:null;
+  }
+  const oldVersion=parts(doc.extensionVersion),newVersion=parts(current.extensionVersion);
+  if (!oldVersion||!newVersion) return false;
+  for(let i=0;i<4;i++){
+    if(newVersion[i]>oldVersion[i])return true;
+    if(newVersion[i]<oldVersion[i])return false;
+  }
+  return false; // never migrate sideways to a different fingerprint at same version
+}
+
 async function refreshExtensionSession(rawToken, deps = {}) {
   const db = deps.db || await getMongoDb();
   const now = extensionNow(deps);
   const current = await readExtensionSession(rawToken, { ...deps, db, now });
   if (!current.ok) return extensionAuthFailure(current.errorCode, 401);
   const doc = current.doc;
+  let nextProductionBuild = null;
   let buildDecision;
   if (typeof deps.storedSessionDecision === 'function') {
     buildDecision = deps.storedSessionDecision(doc);
@@ -2557,8 +2587,15 @@ async function refreshExtensionSession(rawToken, deps = {}) {
       String(currentSecurity.buildFingerprint || '').toLowerCase() === String(doc.buildFingerprint || '').toLowerCase() &&
       installationIdHash === String(doc.installationIdHash || '').toLowerCase();
     if (!sameIdentity) {
-      await revokeExtensionSession(rawToken, { ...deps, db, now });
-      return extensionAuthFailure('BUILD_NOT_ALLOWED', 403);
+      if (!extensionProductionUpgradeAllowed(doc, currentSecurity, installationIdHash)) {
+        await revokeExtensionSession(rawToken, { ...deps, db, now });
+        return extensionAuthFailure('BUILD_NOT_ALLOWED', 403);
+      }
+      nextProductionBuild = {
+        buildId: currentSecurity.buildId,
+        extensionVersion: currentSecurity.extensionVersion,
+        buildFingerprint: String(currentSecurity.buildFingerprint).toLowerCase(),
+      };
     }
   }
   let entitlementResult;
@@ -2611,6 +2648,7 @@ async function refreshExtensionSession(rawToken, deps = {}) {
       licenseKeyCode: licenseKeyCode || null,
       entitlementRevision: entitlementResult.entitlement.entitlementRevision,
       expiresAt: renewedExpiry,
+      ...(nextProductionBuild || {}),
     } },
     { timeoutMS: ZVM_EXTENSION_AUTH_DB_TIMEOUT_MS }
   );
