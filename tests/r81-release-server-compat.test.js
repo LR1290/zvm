@@ -23,12 +23,15 @@ assert.equal(release.extensionVersion, '0.9.289');
 assert.equal(release.securityProtocol, 2);
 assert.deepEqual([...release.extensionIds], [commercialId]);
 
-const oldReleases = ['0.9.287', '0.9.288'].map(version => {
-  const entry = [...registry.values()].find(item => item.extensionVersion === version &&
-    item.status === 'active' && item.channel === 'production' && item.extensionIds.includes(commercialId));
-  assert.ok(entry, version + ' must remain registered');
-  return entry;
-});
+const oldReleases = [...registry.values()].filter(item =>
+  item.buildId !== expected.buildId && item.status === 'active' &&
+  ['production', 'beta'].includes(item.channel) && item.profile === 'release' &&
+  item.extensionIds.includes(commercialId));
+for (const version of ['0.9.287', '0.9.288']) {
+  assert.ok(oldReleases.some(entry => entry.extensionVersion === version && entry.channel === 'production'),
+    version + ' must remain registered');
+}
+assert.ok(oldReleases.length >= 2, 'existing commercial versions must remain available');
 
 const timestamp = Date.now();
 const mk = (overrides = {}) => createBuildAuthority({
@@ -94,4 +97,4 @@ try {
   if (old === undefined) delete process.env.ZVM_CWS_COMPAT;
   else process.env.ZVM_CWS_COMPAT = old;
 }
-console.log('R81 PASS: production 0.9.289, legacy 0.9.287/0.9.288, session refresh, strict deny, DEV isolation and CWS gates');
+console.log('R81 PASS: production 0.9.289 + ' + oldReleases.length + ' earlier commercial builds, session refresh, strict deny, DEV isolation and CWS gates');
