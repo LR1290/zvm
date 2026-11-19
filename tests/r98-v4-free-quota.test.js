@@ -1,38 +1,40 @@
 'use strict';
-const test=require('node:test');
-const assert=require('node:assert/strict');
-const {executeV4FreeQuota:execute,FREE_V4_QUOTA_LIMITS}=require('../src/extension-v4-free-quota');
+const test=require('node:test'),assert=require('node:assert/strict');
+const {executeV4FreeQuota:run}=require('../src/extension-v4-free-quota');
 const SUBJECT={type:'account',id:'a'.repeat(64)},NOW=new Date('2026-11-19T15:00:00Z');
-class FakeCollection{
- constructor(){this.data=new Map();this.charges=0;}
- async insertOne(doc){if(this.data.has(doc._id))throw Object.assign(new Error('duplicate'),{code:11000});this.data.set(doc._id,structuredClone(doc));}
- async findOne(filter){return structuredClone(this.data.get(filter._id)||null);}
+function get(doc,path){return path.split('.').reduce((x,k)=>x?.[k],doc)}
+function set(doc,path,value){const parts=path.split('.');let p=doc;for(const k of parts.slice(0,-1))p=p[k]||(p[k]={});p[parts.at(-1)]=structuredClone(value)}
+class MemoryCollection{
+ constructor(){this.docs=new Map();this.mutations=0}
+ async insertOne(doc){if(this.docs.has(doc._id))throw Object.assign(new Error('dup'),{code:11000});this.docs.set(doc._id,structuredClone(doc))}
+ async findOne(filter){return structuredClone(this.docs.get(filter._id)||null)}
  async findOneAndUpdate(filter,update){
-  const doc=this.data.get(filter._id);if(!doc||doc.operations.includes(filter.operations.$ne))return null;
-  if(filter.$expr&&doc.operations.length>=128)return null;
-  for(const [k,v] of Object.entries(filter))if(k.startsWith('counts.')&&doc.counts[k.slice(7)]>=v.$lt)return null;
-  if(update.$inc)for(const [k,v] of Object.entries(update.$inc))doc.counts[k.slice(7)]+=v;
-  if(update.$max)for(const [k,v] of Object.entries(update.$max))doc.counts[k.slice(7)]=Math.max(doc.counts[k.slice(7)],v);
-  doc.operations.push(update.$addToSet.operations);this.charges++;return structuredClone(doc);
+  const doc=this.docs.get(filter._id);if(!doc)return null;
+  for(const [path,condition] of Object.entries(filter)){
+   if(path==='_id')continue;
+   const v=get(doc,path);
+   if(condition&&typeof condition==='object'&&'$exists'in condition&&((v!==undefined)!==condition.$exists))return null;
+   if(condition&&typeof condition==='object'&&'$lt'in condition&&!(v<condition.$lt))return null;
+   if(!(condition&&typeof condition==='object')&&condition!==v)return null;
+  }
+  for(const [k,v] of Object.entries(update.$inc||{}))set(doc,k,get(doc,k)+v);
+  for(const [k,v] of Object.entries(update.$set||{}))set(doc,k,v);
+  this.mutations++;return structuredClone(doc);
  }
 }
-const op=n=>n.toString(16).padStart(32,'0');
-const ctx=(extra={})=>({collection:new FakeCollection(),subject:SUBJECT,tier:'free',itemType:'message',now:NOW,...extra});
-async function denied(code,fn){await assert.rejects(fn,e=>e.code===code);}
-test('free account checks without phone or commercial key',async()=>{const x=ctx(),r=await execute({...x,action:'check'});assert.equal(r.limits.message.max,20);assert.equal(r.limits.message.sent,0);});
-test('idempotent commit ignores replay',async()=>{const x=ctx();await execute({...x,action:'commit',operationId:op(1)});const r=await execute({...x,action:'commit',operationId:op(1)});assert.equal(r.limits.message.sent,1);assert.equal(x.collection.charges,1);});
-test('50 concurrent duplicated commits only count once',async()=>{const x=ctx();await Promise.all(Array.from({length:50},()=>execute({...x,action:'commit',operationId:op(2)})));assert.equal(x.collection.charges,1);});
-test('40 different sends cannot exceed 20 free messages',async()=>{const x=ctx();const r=await Promise.allSettled(Array.from({length:40},(_,i)=>execute({...x,action:'commit',operationId:op(i+1)})));assert.equal(r.filter(v=>v.status==='fulfilled').length,20);assert.equal(r.filter(v=>v.reason?.code==='MAX_LIMIT_REACHED').length,20);});
-test('subject not from input and paid session denied',async()=>{await denied('invalid_subject',()=>execute(ctx({subject:{type:'account',id:'wrong'}})));await denied('account_session_required',()=>execute(ctx({subject:{type:'license',id:'a'.repeat(64)}})));await denied('free_plan_required',()=>execute(ctx({tier:'paid'})));});
-test('unrecognized type, action and operation id rejected',async()=>{await denied('unknown_item_type',()=>execute(ctx({itemType:'bulkMessages'})));await denied('invalid_action',()=>execute(ctx({action:'erase'})));await denied('invalid_operation_id',()=>execute(ctx({action:'commit',operationId:'xxx'})));});
-test('reconciliation after an uncertain network acknowledgement',async()=>{const x=ctx();await execute({...x,action:'commit',operationId:op(1)});assert.equal((await execute({...x,action:'reconcile',operationId:op(1),period:'2026-11-19'})).operationStatus,'committed');assert.equal((await execute({...x,action:'reconcile',operationId:op(2),period:'2026-11-19'})).operationStatus,'not_found');});
-test('no backdated commits and historical reconciliation',async()=>{const x=ctx();await execute({...x,action:'commit',operationId:op(1)});const tomorrow=new Date('2026-11-20T00:01:00Z');assert.equal((await execute({...x,now:tomorrow,action:'reconcile',period:'2026-11-19',operationId:op(1)})).operationStatus,'committed');await denied('period_changed_reconcile_required',()=>execute({...x,now:tomorrow,action:'commit',operationId:op(1),period:'2026-11-19'}));});
-test('scheduled item count never exceeds five',async()=>{const x=ctx({itemType:'scheduleItem'});await denied('invalid_schedule_count',()=>execute({...x,action:'commit',operationId:op(1),scheduledItems:6}));const r=await execute({...x,action:'commit',operationId:op(2),scheduledItems:5});assert.equal(r.limits.scheduleItem.sent,FREE_V4_QUOTA_LIMITS.scheduleItem);});
-test('storage errors are not accepted as success',async()=>{const x=ctx();x.collection.findOneAndUpdate=async()=>{throw new Error('write timeout')};await assert.rejects(()=>execute({...x,action:'commit',operationId:op(3)}));});
-
-test('at most 128 receipts per Free account/day',async()=>{
- const x=ctx({itemType:'scheduleItem'});
- for(let i=0;i<128;i++)await execute({...x,action:'commit',operationId:op(i+1),scheduledItems:5});
- await denied('quota_operation_limit_reached',()=>execute({...x,action:'commit',operationId:op(129),scheduledItems:5}));
- assert.equal((await execute({...x,action:'check'})).limits.scheduleItem.sent,5);
-});
+const id=n=>n.toString(16).padStart(32,'0');
+const ctx=(more={})=>({collection:new MemoryCollection(),subject:SUBJECT,tier:'free',itemType:'message',now:NOW,...more});
+const denied=async(code,fn)=>assert.rejects(fn,err=>err.code===code);
+test('Free without key or phone can check quota',async()=>{const x=ctx(),r=await run({...x,action:'check'});assert.equal(r.limits.message.max,20);assert.equal(r.limits.message.sent,0)});
+test('50 concurrent duplicate reservations debit only once',async()=>{const x=ctx();const r=await Promise.all(Array.from({length:50},()=>run({...x,action:'reserve',operationId:id(1)})));assert.equal(x.collection.mutations,1);assert.equal(r.at(-1).limits.message.sent,1);assert.equal(r.at(-1).operationStatus,'reserved')});
+test('40 distinct requests cannot exceed 20 message sends',async()=>{const x=ctx();const r=await Promise.allSettled(Array.from({length:40},(_,i)=>run({...x,action:'reserve',operationId:id(i+1)})));assert.equal(r.filter(v=>v.status==='fulfilled').length,20);assert.equal(r.filter(v=>v.reason?.code==='MAX_LIMIT_REACHED').length,20)});
+test('reported WAJS confirmation is hashed and never consumes twice',async()=>{const x=ctx();await run({...x,action:'reserve',operationId:id(1)});const r=await run({...x,action:'settle',operationId:id(1),ack:'confirmed',messageId:'true_5511999999999@c.us_ID1000'});assert.equal(r.operationStatus,'confirmed');const doc=[...x.collection.docs.values()][0];assert.match(doc.receipts[id(1)].receiptHash,/^[a-f0-9]{64}$/);assert.ok(!JSON.stringify(doc).includes('5511999999999'));assert.equal(r.limits.message.sent,1);assert.equal((await run({...x,action:'reconcile',operationId:id(1)})).operationStatus,'confirmed')});
+test('uncertain ack remains charged and later confirmed',async()=>{const x=ctx();await run({...x,action:'reserve',operationId:id(1)});await run({...x,action:'settle',operationId:id(1),ack:'uncertain'});assert.equal((await run({...x,action:'reconcile',operationId:id(1)})).operationStatus,'uncertain');assert.equal((await run({...x,action:'settle',operationId:id(1),ack:'confirmed',messageId:'another-wa-ack-id-12345'})).limits.message.sent,1)});
+test('one operation id cannot change item type',async()=>{const x=ctx();await run({...x,action:'reserve',operationId:id(1)});await denied('operation_type_mismatch',()=>run({...x,itemType:'audio',action:'reserve',operationId:id(1)}))});
+test('old post-send commit and client refund are forbidden',async()=>{await denied('invalid_action',()=>run({...ctx(),action:'commit',operationId:id(1)}));await denied('invalid_action',()=>run({...ctx(),action:'release',operationId:id(1)}))});
+test('ack confirmation requires WA-JS message id',async()=>{const x=ctx();await run({...x,action:'reserve',operationId:id(1)});await denied('message_receipt_required',()=>run({...x,action:'settle',operationId:id(1),ack:'confirmed',messageId:''}));await denied('invalid_settlement',()=>run({...x,action:'settle',operationId:id(1),ack:'sent'}))});
+test('client-reported active schedule count denied',async()=>{const x=ctx({itemType:'scheduleItem'});await denied('schedule_server_authority_required',()=>run({...x,action:'reserve',operationId:id(1),scheduledItems:5}));await denied('schedule_server_authority_required',()=>run({...x,action:'reserve',operationId:id(1)}))});
+test('paid/key sessions cannot use free quota',async()=>{const x=ctx();await denied('invalid_subject',()=>run({...x,subject:{type:'license',id:'a'.repeat(64)}}));await denied('free_plan_required',()=>run({...x,tier:'paid'}))});
+test('Mongo error never becomes success',async()=>{const x=ctx();x.collection.findOneAndUpdate=async()=>{throw Error('Mongo write timeout')};await assert.rejects(()=>run({...x,action:'reserve',operationId:id(1)}))});
+test('only reconciliation may read previous day',async()=>{const x=ctx();await run({...x,action:'reserve',operationId:id(1)});const t=new Date('2026-11-20T00:01:00Z');assert.equal((await run({...x,now:t,action:'reconcile',period:'2026-11-19',operationId:id(1)})).operationStatus,'reserved');await denied('period_changed_reconcile_required',()=>run({...x,now:t,action:'reserve',period:'2026-11-19',operationId:id(2)}))});
+test('daily cap is not bypassed with new operation IDs',async()=>{const x=ctx();for(let i=1;i<=20;i++)await run({...x,action:'reserve',operationId:id(i)});await denied('MAX_LIMIT_REACHED',()=>run({...x,action:'reserve',operationId:id(21)}));assert.equal(x.collection.mutations,20)});
