@@ -170,6 +170,25 @@ async function main(){
     'historical inactive legacy key preserved exactly');
   const same=await destination.collection('payments').findOne({_id:'synthetic-payment'});
   check(same.amount.toString()==='149.90','Decimal128 payment survived copy');
+  // R96: after cutover, the new DB can receive payments not present in
+  // zapvoice. A naive rollback would silently lose them. Verification must
+  // FAIL until all new writes are reconciled under a fresh freeze.
+  const postCutoverPayment={
+    _id:'synthetic-post-cutover',amount:BSON.Decimal128.fromString('59.90'),
+    tag:'synthetic',status:'processed',createdAt:new Date('2032-06-02T12:00:00Z')
+  };
+  await destination.collection('payments').insertOne(postCutoverPayment);
+  await assert.rejects(M.compareDatabases(source,destination,EJSON),
+    /database_mismatch:payments/);
+  checks++;
+  check((await source.collection('payments').countDocuments({
+    _id:'synthetic-post-cutover'
+  }))===0,'post-cutover payment was never in legacy bank');
+  // LAB ONLY: undo the synthetic write to demonstrate that exact equality
+  // must be established before a simulated rollback can pass.
+  await destination.collection('payments').deleteOne({_id:'synthetic-post-cutover'});
+  check((await M.compareDatabases(source,destination,EJSON)).verified,
+    'rollback gate accepts only fully reconciled source and target');
   await assert.rejects(M.copyDatabase(client,EJSON,flags,gate.sourceChecksum),
     /target_not_empty_manual_review_required/);
   checks++;
@@ -182,7 +201,7 @@ async function main(){
     ZVM_MONGO_BACKUP_MANIFEST:manifestPath,ZVM_MONGO_RESTORE_PROOF:proofPath
   }),/ARCHIVE_HASH_MISMATCH/);
   checks++;
-  console.log('R92-R94 MongoDB 8 REAL E2E + PowerShell backup/restore PASS: '+checks+' controls');
+  console.log('R92-R96 MongoDB REAL E2E + rollback protection PASS: '+checks+' controls');
  }finally{
   if(started){
     await client.db(destName).dropDatabase();

@@ -181,3 +181,23 @@ Uma conexão sem autenticação, sem retorno de privilégios, com papel somente 
 Na CI o teste R95 usa mocks com roles/permissões fictícias. O teste integrado real em MongoDB 8 descartável verifica que a conexão de laboratório anônima NÃO é classificada como credencial de produção autorizada. NÃO usar senha ou URI reais no GitHub Actions, em prints ou no chat.
 
 A R95 não altera nenhum usuário Atlas; eventual concessão readWrite em zvm deve ocorrer somente após identificar a identidade de conexão ativa no Render e antes da migração, usando menor privilégio possível.
+
+
+## R96 — prova de proteção contra rollback com pagamentos posteriores
+
+Uma troca de zvm para zapvoice por meio de uma simples variável no Render é perigosa depois que novas transações foram gravadas em zvm. Mesmo com o banco original intacto, zapvoice estará defasado caso a Cakto, o portal, licenciamento ou trabalhadores tenham recebido eventos posteriores.
+
+O job real de MongoDB 8 agora simula:
+1. A cópia integral inicial zapvoice -> zvm fica idêntica.
+2. Após o corte fictício, um novo pagamento Decimal128 é inserido SOMENTE em zvm.
+3. Executar M.compareDatabases(source,destination) recusa a igualdade com database_mismatch:payments; a confirmação de que o pagamento NÃO existe em zapvoice comprova o risco de perda de uma reversão ingênua.
+4. SOMENTE NO LABORATÓRIO, o teste desfaz a transação fictícia e confirma a igualdade novamente. Na produção, NUNCA apagar pagamentos reais para forçar a igualdade.
+
+Procedimento operacional de rollback (não executado):
+- Suspender novamente todos os writers no banco em uso, incluindo Cakto, fila de e-mail, renovação, login/portal e qualquer processo auxiliar.
+- Executar node tools/zvm-mongodb-migrate.js verify com acesso de leitura aos dois bancos. Se o verificador indicar divergência, NÃO apontar Render de volta ao banco antigo. Primeiro coletar e reconciliar de forma auditável os eventos posteriores ao corte, preservando ambas as cópias e os recibos.
+- Confirmar também acessos à credencial e integridade de sessões, pagamento e histórico, e registrar a evidência de reconciliação antes de qualquer reversão manual.
+- Somente quando as bases estiverem comprovadamente equivalentes, realizar o ajuste MANUAL do banco ativo em Render com testes de login e pagamento. Não emitir nova KEY, não duplicar webhook e não reprocessar os eventos CAKTO_UNMAPPED_PLAN sem mapeamento validado.
+- Se não for possível garantir equivalência, manter o banco novo e recuperar o serviço no próprio destino, em vez de executar um rollback que descartaria gravações.
+
+O verificador existente já é fail-closed sobre diferenças de documento, índice, opções e conjunto de coleções: não há duplicação de utilitário ou outro script de rollback que facilite ações destrutivas. A R96 exercita esse bloqueio contra MongoDB real com dados sintéticos, sem tocar no Atlas de produção.
