@@ -12093,6 +12093,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
       `🍃 MongoDB: ${MONGODB_DB}.store | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}\n` +
       `🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | 2FA: ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | TOTP crypto: ${portalTotpCryptoMode()} | Cakto: ${CAKTO_WEBHOOK_SECRET ? 'ATIVO' : '⚠ INATIVO'}\n` +
       `🛡️ Runtime: ${buildAuthorityState.runtimeEnv || 'não definido'} | Build Authority: ${buildAuthorityState.buildEnforce ? 'ATIVO' : 'DESATIVADO'} | Registry V2 active: ${buildAuthorityState.registryV2ActiveCount} | DEV bypass: ${buildAuthorityState.devBuildAllow ? 'ATIVO' : 'INATIVO'} | DEV cohost: ${buildAuthorityState.devCohostAllow ? 'ATIVO' : 'INATIVO'} | Legacy V3: ${buildAuthorityState.legacyV3 ? 'ATIVO' : 'INATIVO'} | Legacy V3 endpoints: ${legacyV3Allowed() ? 'ATIVOS (Build 3 unpacked: key/check-status/usage/get-usage/sync-usage)' : 'INATIVOS'}\n` +
+      `🔒 LITE V4: ${ZVM_LITE_V4_CONFIG.ready ? 'CHAVE PÚBLICA DEV CONFIGURADA (assinatura por sessão)' : 'BLOQUEADA (autoridade DEV não configurada)'}\n` +
       `🧪 Local safe mode: ${ZVM_LOCAL_SAFE_MODE ? 'ATIVO — jobs autônomos desativados' : 'INATIVO'}\n` +
       // Rota admin derivada + usuário administrativo NÃO vão pro log de boot:
       // quem operou já tem essas duas informações a partir das próprias env
