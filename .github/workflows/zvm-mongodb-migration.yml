@@ -14,6 +14,7 @@ on:
       - 'tools/zvm-mongodb-backup-proof.js'
       - 'tools/zvm-mongodb-local-restore.js'
       - 'tests/r89-backup-restore-gate.test.js'
+      - 'tests/r91-mongo-collection-options.test.js'
       - 'tools/zvm-db-backup-readonly.ps1'
       - 'package.json'
       - '.github/workflows/zvm-mongodb-migration.yml'

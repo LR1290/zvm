@@ -10,7 +10,7 @@ const flags = {
   ZVM_MONGO_WRITERS_PAUSED:M.PAUSE_ACK,
 };
 function clone(x) {return JSON.parse(JSON.stringify(x));}
-function makeClient({corruptOutput=false, failAfterOutput=false, mutateBothAfterOut=false}={}) {
+function makeClient({corruptOutput=false, corruptTargetOptions=false, failAfterOutput=false, mutateBothAfterOut=false}={}) {
   const initial = {
     store:[{_id:'keys',data:{'zv-abcde-12345-abcde':{active:true,expiresAt:'2030-01-01'}}}],
     payments:[{_id:'tx-1',approved:true,amount:14990}],
@@ -23,12 +23,12 @@ function makeClient({corruptOutput=false, failAfterOutput=false, mutateBothAfter
       items.set(name,{
         rows:clone(docs),
         indexes:[{name:'_id_',key:{_id:1}},...(name==='payments'?[{name:'txId_1',key:{_id:1},unique:true}]:[])],
-        options:{}
+        options:name==='payments'?{validator:{approved:{$exists:true}},validationAction:'error'}:{}
       });
     }
     const db={
       name:dbName,items,
-      listCollections(){return {toArray:async()=>[...items.keys()].map(name=>({name,type:'collection',options:{}}))};},
+      listCollections(){return {toArray:async()=>[...items.keys()].map(name=>({name,type:'collection',options:clone(items.get(name).options)}))};},
       async createCollection(name,options) {
         if(items.has(name))throw Error('already_exists');
         items.set(name,{rows:[],indexes:[{name:'_id_',key:{_id:1}}],options:clone(options)});
@@ -53,6 +53,9 @@ function makeClient({corruptOutput=false, failAfterOutput=false, mutateBothAfter
               const destination=client.db(out.db).items.get(out.coll);
               if(!destination)throw Error('destination_missing');
               destination.rows=clone(item.rows);
+              if(corruptTargetOptions && name==='payments') {
+                destination.options.validationAction='warn';
+              }
               if(mutateBothAfterOut && name==='store') {
                 // An external writer touched BOTH stores after copy: equality alone
                 // would pass, but the origin's initial checksum must reject it.
@@ -116,6 +119,9 @@ function makeClient({corruptOutput=false, failAfterOutput=false, mutateBothAfter
   await assert.rejects(M.copyDatabase(t.client,EJSON,flags),/connection lost/);checks++;
   assert.equal(t.target.items.get('payments').rows.length,1,'outcome remains inspectable after network failure');checks++;
   await assert.rejects(M.copyDatabase(t.client,EJSON,flags),/target_not_empty_manual_review_required/);checks++;
+  const badOptions=makeClient({corruptTargetOptions:true});
+  await assert.rejects(M.copyDatabase(badOptions.client,EJSON,flags),/collection_options_mismatch:payments/);checks++;
+  assert.equal(badOptions.origin.items.get('payments').options.validationAction,'error','source validation preserved');checks++;
   const c=makeClient({corruptOutput:true});
   await assert.rejects(M.copyDatabase(c.client,EJSON,flags),/database_mismatch:payments/);checks++;
   assert.equal(c.origin.items.get('payments').rows[0].amount,14990,'source untouched if output corrupt');checks++;

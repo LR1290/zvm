@@ -109,3 +109,14 @@ Uma contagem mínima de coleções, índices, chaves, clientes e pagamentos não
 Esse mecanismo detecta divergências mas NÃO substitui a pausa coordenada dos escritores, a confirmação das permissões da credencial no novo banco e a aprovação manual do deploy. Se o backup e a fonte diferirem, gerar novo backup e nova prova com todos os writers parados. Nunca editar manualmente o checksum.
 
 NOTA: comprovantes locais de R89 sem sourceChecksum ficam intencionalmente inválidos na R90. Gerar novo comprovante com o restorer atualizado.
+
+
+## R91 — integridade de opções das coleções
+
+O migrador agora inclui também as configurações de cada coleção no hash das fontes e do backup restaurado: validadores, validationAction, validationLevel, collation, opções de coleção capped, clusteredIndex e demais valores listados em listCollections.options. Não inclui UUIDs/metadados transitórios, nem imprime conteúdo de documentos.
+
+Antes de aceitar a comparação fonte/destino, o comparador valida igualdade canônica das opções de TODAS as coleções. Se uma coleção destino tiver validação diferente da origem, falha com collection_options_mismatch:NOME mesmo que todos os documentos e índices sejam exatamente iguais.
+
+A R91 acrescenta testes sintéticos de divergência de validador, collation, nível/ação de validação e opções capped. A R86 injeta diferença de validationAction durante uma cópia e comprova que o corte seria recusado. A R88 passa a detectar mudanças apenas na configuração da coleção, sem qualquer modificação em documentos.
+
+Nota operacional: a restauração local de mongodump precisa preservar as opções de todas as coleções; qualquer diferença entre o backup restaurado e o Atlas faz o comando COPY abortar ANTES da primeira escrita no destino. Nenhum upgrade/reformatação automática de opções deve ser realizado em produção sem investigação.

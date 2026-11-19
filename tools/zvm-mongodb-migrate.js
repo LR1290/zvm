@@ -42,6 +42,24 @@ function indexSpec(raw) {
 function indexSignatures(indexes) {
   return indexes.map(indexSpec).map(canonical).sort();
 }
+function collectionOptionsSignature(row, EJSON) {
+  // Options affect behavior even when BSON records/indexes match:
+  // validators, validationAction/Level, collation, capped, clusteredIndex, etc.
+  // Driver listCollections returns options without volatile collection UUIDs.
+  const raw = row && row.options && typeof row.options === 'object' &&
+    !Array.isArray(row.options) ? row.options : {};
+  return canonical(EJSON.serialize(raw, {relaxed:false}));
+}
+
+function collectionOptionsByName(rows, EJSON) {
+  const options = new Map();
+  for (const row of rows) {
+    if (options.has(row.name)) throw new Error('duplicate_collection_name');
+    options.set(row.name, collectionOptionsSignature(row, EJSON));
+  }
+  return options;
+}
+
 function listCollectionNames(rows) {
   if (!Array.isArray(rows)) throw new Error('invalid_collection_list');
   const unexpected = rows.find(r => r.type !== 'collection' || !/^[a-zA-Z0-9_-]+$/.test(r.name));
@@ -81,7 +99,9 @@ async function digestCollection(collection, EJSON) {
 // collection, document and index twice. The receipt is never persisted to
 // MongoDB or emitted as customer-derived hashes in public logs.
 async function snapshotDatabase(db, EJSON) {
-  const names = listCollectionNames(await collectionRows(db));
+  const rows = await collectionRows(db);
+  const names = listCollectionNames(rows);
+  const optionSignatures = collectionOptionsByName(rows, EJSON);
   const sections = [];
   for (const name of names) {
     const collection = db.collection(name);
@@ -90,17 +110,28 @@ async function snapshotDatabase(db, EJSON) {
       collection.listIndexes().toArray(),
       digestCollection(collection, EJSON)
     ]);
-    sections.push({name, count, indexes: indexSignatures(indexes), digest});
+    sections.push({name, count, options:optionSignatures.get(name), indexes: indexSignatures(indexes), digest});
   }
   const checksum = crypto.createHash('sha256').update(canonical(sections)).digest('hex');
   return {sections, checksum};
 }
 
 async function compareDatabases(source, target, EJSON) {
-  const sourceNames = listCollectionNames(await collectionRows(source));
-  const targetNames = listCollectionNames(await collectionRows(target));
+  const sourceRows = await collectionRows(source);
+  const targetRows = await collectionRows(target);
+  const sourceNames = listCollectionNames(sourceRows);
+  const targetNames = listCollectionNames(targetRows);
   if (canonical(sourceNames) !== canonical(targetNames)) {
     throw new Error('collection_sets_differ');
+  }
+  const sourceOptions = collectionOptionsByName(sourceRows, EJSON);
+  const targetOptions = collectionOptionsByName(targetRows, EJSON);
+  // R91: do not accept data-equal databases with different validation behavior.
+  // Check before costly BSON scans and before switching any production config.
+  for (const name of sourceNames) {
+    if (sourceOptions.get(name) !== targetOptions.get(name)) {
+      throw new Error('collection_options_mismatch:' + name);
+    }
   }
   let totalDocuments = 0, totalIndexes = 0;
   const results = [];
@@ -210,5 +241,6 @@ if (require.main === module) {
 }
 module.exports = {
   SOURCE_DB,TARGET_DB,COPY_ACK,PAUSE_ACK,copyGuard,canonical,indexSpec,indexSignatures,
-  listCollectionNames,describe,digestCollection,snapshotDatabase,compareDatabases,copyDatabase,execute
+  listCollectionNames,collectionOptionsSignature,collectionOptionsByName,
+  describe,digestCollection,snapshotDatabase,compareDatabases,copyDatabase,execute
 };

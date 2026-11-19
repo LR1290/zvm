@@ -10,11 +10,11 @@ const verify=(condition,msg)=>{assert.ok(condition,msg);checks++};
 function dbFixture() {
   const items=new Map([
     ['store',{rows:[{_id:'keys',data:{'zv-abcde-12345-abcde':{status:'active',maxUses:3}}}],indexes:[{name:'_id_',key:{_id:1}}]}],
-    ['payments',{rows:[{_id:42,amount:14990,paid:true}],indexes:[{name:'_id_',key:{_id:1}},{name:'payment_1',key:{amount:1},unique:false}]}],
+    ['payments',{rows:[{_id:42,amount:14990,paid:true}],indexes:[{name:'_id_',key:{_id:1}},{name:'payment_1',key:{amount:1},unique:false}],options:{validationLevel:'strict',validationAction:'error',validator:{amount:{$gte:0}}}}],
     ['portal_users',{rows:[{_id:'synthetic@example.invalid',keyCode:'zv-abcde-12345-abcde'}],indexes:[{name:'_id_',key:{_id:1}}]}]
   ]);
   return {items,
-    listCollections(){return {toArray:async()=>[...items.keys()].map(name=>({name,type:'collection'}))};},
+    listCollections(){return {toArray:async()=>[...items.keys()].map(name=>({name,type:'collection',options:items.get(name).options||{}}))};},
     collection(name) {
       const item=items.get(name);
       return {
@@ -42,6 +42,10 @@ function dbFixture() {
  src.items.get('payments').indexes[1].unique=true;
  verify((await M.snapshotDatabase(src,EJSON)).checksum!==first.checksum,'unique-index change detected');
  src.items.get('payments').indexes[1].unique=false;
+ src.items.get('payments').options.validationAction='warn';
+ verify((await M.snapshotDatabase(src,EJSON)).checksum!==first.checksum,'validator action mutation detected');
+ src.items.get('payments').options.validationAction='error';
+ verify((await M.snapshotDatabase(src,EJSON)).checksum===first.checksum,'metadata revert returns original receipt');
  src.items.get('portal_users').rows.push({_id:'extra',keyCode:'fake'});
  verify((await M.snapshotDatabase(src,EJSON)).checksum!==first.checksum,'new portal record detected');
  src.items.get('portal_users').rows.pop();
