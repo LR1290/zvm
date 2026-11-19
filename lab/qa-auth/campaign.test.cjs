@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
-const src=fs.readFileSync(path.join(__dirname,'../staging/app/content/core/send-safety.js'),'utf8');
+const src=fs.readFileSync(path.join(process.env.ZVM_LAB_SOURCE || path.join(__dirname,'../staging'),'app/content/core/send-safety.js'),'utf8');
 const start=src.indexOf('  function extBoundedSendTask('),end=src.indexOf('  async function runJob(',start);
 assert(start>=0&&end>start);
 test('campaign timeout remains uncertain after late ACK and dispatches once',async()=>{
@@ -14,3 +14,29 @@ test('campaign timeout remains uncertain after late ACK and dispatches once',asy
   await assert.rejects(outcome,e=>e.remoteEffectUncertain===true && e.code==='SEND_TASK_ACK_TIMEOUT');
   finish('ack'); await Promise.resolve();assert.equal(calls,1);
 });
+const panel=fs.readFileSync(path.join(process.env.ZVM_LAB_SOURCE || path.join(__dirname,'../staging'),'app/content/features/broadcast/panel.js'),'utf8');
+const begin=panel.indexOf('  function bulkPreDispatchUnadmitted('), finish=panel.indexOf('  async function runBulkWatchdog(',begin);
+assert(begin>=0&&finish>begin);
+test('campaign recovery requeues only pre-dispatch delay',()=>{
+  const env={};vm.runInNewContext(panel.slice(begin,finish),env);
+  const delay={state:'sending',processorStage:'delay',delayStartedAt:1};
+  assert.equal(env.bulkPreDispatchUnadmitted(delay),true);
+  for(const evidence of [{actionAttemptToken:'pending'},{effectProofs:['receipt']},{remoteEffectUncertain:true},{remoteEffectSucceeded:true},{state:'paused'},{state:'cancelled'},{durableReviewRequired:true},{processorStage:'dispatch'}])
+    assert.equal(env.bulkPreDispatchUnadmitted({...delay,...evidence}),false);
+});
+for(const [folder,kind,endMarker] of [['flows','Flow','  async function createBoundFlowInstance'],['funnels','Funnel','  // O armazenamento']]){
+  test(kind+' refuses continuation after account switch or loss of identity',async()=>{
+    const source=fs.readFileSync(path.join(process.env.ZVM_LAB_SOURCE || path.join(__dirname,'../staging'),'app/content/features',folder,'engine.js'),'utf8');
+    const start=source.indexOf('  async function current'+kind+'SenderScope'),end=source.indexOf(endMarker,start);
+    assert(start>=0&&end>start);
+    let scope='a'.repeat(64);
+    const env={window:{__extFunnelActionWhatsappIdentity:{currentScope:async()=>scope}},flowTerminalError:(code,msg)=>Object.assign(Error(msg),{code})};
+    vm.runInNewContext(source.slice(start,end),env);
+    const verify=env['verify'+kind+'SenderScope'],instance={whatsappScope:scope};
+    await verify(instance);
+    scope='b'.repeat(64);
+    await assert.rejects(verify(instance),{code:kind.toUpperCase()+'_SENDER_SCOPE_CHANGED'});
+    scope='';
+    await assert.rejects(verify(instance),{code:kind.toUpperCase()+'_SENDER_SCOPE_UNAVAILABLE'});
+  });
+}

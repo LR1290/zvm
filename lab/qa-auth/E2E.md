@@ -16,3 +16,9 @@ Use um perfil descartável, uma candidata DEV com identidade e atestado próprio
 Provisionar cluster exclusivo da COMPLETA QA, usuário zvm_completa_qa_runner com readWrite somente em zvm_completa_qa_r103, rede restrita ao executor e sem roles administrativas. Conferir o identificador do cluster no Atlas antes de definir ZVM_QA_ATLAS_HOST. Injetar ZVM_QA_MONGODB_URI via secret do laboratório. mongoQa valida a configuração local e devolve as duas variáveis que o backend lê. A validação sintática não comprova roles nem isolamento físico. Nenhuma conexão é aberta pelo validador.
 
 Não registrar bearer, senha, conteúdo ou destinatário nos resultados.
+
+## Reproduzir R104
+
+Em uma cópia da R96 verificada, aplicar as sete substituições do inventário R99. Aplicar auth-r103.patch e depois auth-r104.patch na raiz da cópia com patch -p1. Definir ZVM_LAB_SOURCE para o caminho absoluto dessa árvore e executar node --test lab/qa-auth/*.test.cjs a partir do checkout do PR. A identidade assinada da R96 não cobre essas alterações.
+
+O ensaio atlas-race.cjs inicia quatro processos Node, cada um com conexão independente. O supervisor verifica o limite agregado para um sujeito fictício exclusivo da execução. Cada processo confere a role antes da primeira reserva. A aprovação externa do cluster exclusivo continua necessária. O executor exige ZVM_QA_WRITE_APPROVED=exclusive-cluster-verified, além de host e URI de QA. O ensaio deixa os registros sintéticos disponíveis para auditoria.
