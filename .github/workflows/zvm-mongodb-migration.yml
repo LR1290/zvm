@@ -8,6 +8,8 @@ on:
       - 'tools/zvm-mongodb-migrate.js'
       - 'tests/r85-mongo-rename-guard.test.js'
       - 'tests/r86-mongo-crossdb-copy.test.js'
+      - 'src/db-cutover-guard.js'
+      - 'tests/r87-db-cutover-guard.test.js'
       - 'tools/zvm-db-backup-readonly.ps1'
       - 'package.json'
       - '.github/workflows/zvm-mongodb-migration.yml'

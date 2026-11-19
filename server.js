@@ -112,6 +112,7 @@ const {
   loadRegistryV2: zvmSecurityLoadRegistryV2,
 } = require('./build-authority');
 const { validateRuntimeSecurityConfig } = require('./runtime-config');
+const { assertZvmCutoverReady } = require('./src/db-cutover-guard');
 const { loadDevBuildSigningConfig, createDevBuildSigningService } = require('./dev-build-signing');
 const { resolveExtensionCorsOrigin } = require('./extension-origin-policy');
 const { checkoutUrlForPortal, readCheckoutBinding, isZvmCheckoutBinding } = require('./src/cakto-checkout-binding');
@@ -408,8 +409,12 @@ async function getMongoDb() {
     });
     try {
       await client.connect();
+      const candidateDb = client.db(MONGODB_DB);
+      // R87: fail-closed before creating indexes, jobs or reading paid licenses.
+      // Changing Render MONGODB_DB to an empty/stale database MUST NOT log customers out.
+      await assertZvmCutoverReady(candidateDb, process.env);
       _mongoClient = client;
-      _mongoDb = client.db(MONGODB_DB);
+      _mongoDb = candidateDb;
       console.log('✅ MongoDB conectado');
       return _mongoDb;
     } catch (error) {

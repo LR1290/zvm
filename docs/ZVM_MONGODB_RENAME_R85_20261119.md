@@ -55,3 +55,11 @@ MongoDB não oferece uma operação simples e segura de renomeação integral de
 8. O backup é proteção extra. Não mudar MONGODB_DB no Render antes da transferência e reconciliação sem divergências.
 
 Código de backup não é executado automaticamente pela CI e não precisa conhecer credenciais. Na CI, só o parser do PowerShell é executado.
+
+
+## R87 — trava de mudança de banco no boot
+- Antes de abrir o acesso à nova base, o próprio servidor verifica se MONGODB_DB=zvm, exige ZVM_DB_CUTOVER_CONFIRMED=zapvoice-to-zvm-verified e confirma, SOMENTE LEITURA, a existência de store, portal_users, payments, extension_sessions, webhook_events e cakto_mail_outbox.
+- O guarda verifica presença de pelo menos uma chave antiga oficial (zv-...) ou KEY V2 oficial (zv2a-...), pelo menos uma conta do portal e um pagamento; não registra nem transfere chaves reais ou dados de clientes.
+- Se alguma condição falhar, o servidor NÃO assume o banco novo e lança erro de configuração de corte. A opção padrão ainda é zapvoice: nenhum cliente é migrado automaticamente.
+- Depois do backup externo protegido e da pausa coordenada de todas as escritas, cópia e comparação da base zvm, o operador deve ajustar MANUALMENTE MONGODB_DB=zvm e ZVM_DB_CUTOVER_CONFIRMED=zapvoice-to-zvm-verified no Render, com deploy MANUAL. Jamais configurar a flag sem realizar e comprovar a migração.
+- A flag evita erro humano ao mudar a conexão cedo demais, mas não prova por si só a consistência do backup ou a parada das escritas: isso exige procedimentos operacionais independentes.
