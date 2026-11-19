@@ -63,3 +63,12 @@ Código de backup não é executado automaticamente pela CI e não precisa conhe
 - Se alguma condição falhar, o servidor NÃO assume o banco novo e lança erro de configuração de corte. A opção padrão ainda é zapvoice: nenhum cliente é migrado automaticamente.
 - Depois do backup externo protegido e da pausa coordenada de todas as escritas, cópia e comparação da base zvm, o operador deve ajustar MANUALMENTE MONGODB_DB=zvm e ZVM_DB_CUTOVER_CONFIRMED=zapvoice-to-zvm-verified no Render, com deploy MANUAL. Jamais configurar a flag sem realizar e comprovar a migração.
 - A flag evita erro humano ao mudar a conexão cedo demais, mas não prova por si só a consistência do backup ou a parada das escritas: isso exige procedimentos operacionais independentes.
+
+
+## R88 — estabilidade da origem e checagem de concorrência
+
+- O migrador agora computa um resumo SHA-256 por coleção, com conteúdo BSON representado de modo canônico, quantidade de documentos e definições completas de índices, **antes de iniciar qualquer escrita no destino**.
+- Depois de copiar as coleções e comparar a origem com o destino, repete a leitura integral da origem. Se algo mudou durante o processo (licença, pagamento, sessão, índices ou quantidade de registros), interrompe com `source_changed_during_migration`; **não autoriza o corte**.
+- A assinatura não é exposta em logs nem gravada no MongoDB; tem a finalidade de detectar alterações concorrentes, não substituir o backup externo.
+- Uma comparação dupla **não torna a migração online segura**: para preservar a consistência transacional entre coleções e eventos da Cakto, todos os writers precisam estar parados durante o corte. Indexes TTL do próprio MongoDB ainda podem expirar documentos, devendo qualquer divergência abortar o corte.
+- Testes R88 usam somente dados sintéticos e simulam alterações de chave antiga, pagamento, índice e conjunto de coleções; R86 também simula atualização de ambos os bancos depois da cópia para provar que igualdade simples não basta.

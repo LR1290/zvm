@@ -10,7 +10,7 @@ const flags = {
   ZVM_MONGO_WRITERS_PAUSED:M.PAUSE_ACK,
 };
 function clone(x) {return JSON.parse(JSON.stringify(x));}
-function makeClient({corruptOutput=false, failAfterOutput=false}={}) {
+function makeClient({corruptOutput=false, failAfterOutput=false, mutateBothAfterOut=false}={}) {
   const initial = {
     store:[{_id:'keys',data:{'zv-abcde-12345-abcde':{active:true,expiresAt:'2030-01-01'}}}],
     payments:[{_id:'tx-1',approved:true,amount:14990}],
@@ -53,6 +53,13 @@ function makeClient({corruptOutput=false, failAfterOutput=false}={}) {
               const destination=client.db(out.db).items.get(out.coll);
               if(!destination)throw Error('destination_missing');
               destination.rows=clone(item.rows);
+              if(mutateBothAfterOut && name==='store') {
+                // An external writer touched BOTH stores after copy: equality alone
+                // would pass, but the origin's initial checksum must reject it.
+                const legacy='zv-abcde-12345-abcde';
+                item.rows[0].data[legacy].active=false;
+                destination.rows[0].data[legacy].active=false;
+              }
               if(corruptOutput && name==='payments')destination.rows[0].amount++;
               if(failAfterOutput && name==='payments')throw Error('connection lost after server-side $out');
               return [];
@@ -76,6 +83,7 @@ function makeClient({corruptOutput=false, failAfterOutput=false}={}) {
   assert.equal((await M.describe(target)).length,0);checks++;
   const result=await M.copyDatabase(client,EJSON,flags);
   assert.equal(result.verified,true);checks++;
+  assert.equal(result.sourceStable,true,'double-source snapshot stable');checks++;
   assert.equal(result.collections,4);checks++;
   assert.equal(result.documents,4);checks++;
   assert.equal(result.indexes,5);checks++;
@@ -93,5 +101,8 @@ function makeClient({corruptOutput=false, failAfterOutput=false}={}) {
   const c=makeClient({corruptOutput:true});
   await assert.rejects(M.copyDatabase(c.client,EJSON,flags),/database_mismatch:payments/);checks++;
   assert.equal(c.origin.items.get('payments').rows[0].amount,14990,'source untouched if output corrupt');checks++;
+  const drifting=makeClient({mutateBothAfterOut:true});
+  await assert.rejects(M.copyDatabase(drifting.client,EJSON,flags),/source_changed_during_migration/);checks++;
+  assert.equal(drifting.origin.items.get('store').rows[0].data['zv-abcde-12345-abcde'].active,false);checks++;
   console.log('R86 MongoDB cross-DB copy PASS: '+checks+' synthetic controls');
 })().catch(error=>{console.error(error);process.exitCode=1});

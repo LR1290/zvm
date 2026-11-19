@@ -76,6 +76,25 @@ async function digestCollection(collection, EJSON) {
   return hash.digest('hex');
 }
 
+// R88: immutable in-memory receipt for the frozen origin. Checks every source
+// collection, document and index twice. The receipt is never persisted to
+// MongoDB or emitted as customer-derived hashes in public logs.
+async function snapshotDatabase(db, EJSON) {
+  const names = listCollectionNames(await collectionRows(db));
+  const sections = [];
+  for (const name of names) {
+    const collection = db.collection(name);
+    const [count, indexes, digest] = await Promise.all([
+      collection.countDocuments({}),
+      collection.listIndexes().toArray(),
+      digestCollection(collection, EJSON)
+    ]);
+    sections.push({name, count, indexes: indexSignatures(indexes), digest});
+  }
+  const checksum = crypto.createHash('sha256').update(canonical(sections)).digest('hex');
+  return {sections, checksum};
+}
+
 async function compareDatabases(source, target, EJSON) {
   const sourceNames = listCollectionNames(await collectionRows(source));
   const targetNames = listCollectionNames(await collectionRows(target));
@@ -112,6 +131,10 @@ async function copyDatabase(client, EJSON, env = process.env) {
     // Never replace, drop, merge or resume an unknown target automatically.
     throw new Error('target_not_empty_manual_review_required');
   }
+  const baseline = await snapshotDatabase(source, EJSON);
+  if (canonical(baseline.sections.map(s => s.name)) !== canonical(sourceNames)) {
+    throw new Error('source_collection_set_changed_before_copy');
+  }
   for (const item of sourceRows.sort((a,b)=>a.name.localeCompare(b.name))) {
     const name = item.name;
     const sourceColl = source.collection(name);
@@ -124,7 +147,12 @@ async function copyDatabase(client, EJSON, env = process.env) {
     const cursor = sourceColl.aggregate([{$out:{db:TARGET_DB,coll:name}}], {allowDiskUse:true});
     await cursor.toArray();
   }
-  return compareDatabases(source,target,EJSON);
+  const checked = await compareDatabases(source, target, EJSON);
+  const after = await snapshotDatabase(source, EJSON);
+  if (baseline.checksum !== after.checksum) {
+    throw new Error('source_changed_during_migration');
+  }
+  return { ...checked, sourceStable: true };
 }
 
 async function execute(action, env = process.env) {
@@ -170,5 +198,5 @@ if (require.main === module) {
 }
 module.exports = {
   SOURCE_DB,TARGET_DB,COPY_ACK,PAUSE_ACK,copyGuard,canonical,indexSpec,indexSignatures,
-  listCollectionNames,describe,digestCollection,compareDatabases,copyDatabase,execute
+  listCollectionNames,describe,digestCollection,snapshotDatabase,compareDatabases,copyDatabase,execute
 };

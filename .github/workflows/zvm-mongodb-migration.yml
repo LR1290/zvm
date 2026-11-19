@@ -10,6 +10,7 @@ on:
       - 'tests/r86-mongo-crossdb-copy.test.js'
       - 'src/db-cutover-guard.js'
       - 'tests/r87-db-cutover-guard.test.js'
+      - 'tests/r88-mongo-source-stability.test.js'
       - 'tools/zvm-db-backup-readonly.ps1'
       - 'package.json'
       - '.github/workflows/zvm-mongodb-migration.yml'
