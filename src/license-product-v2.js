@@ -68,4 +68,17 @@ function productOfKeyRecord(keyRecord, keyCode) {
 function keyBelongsTo(keyRecord, keyCode, expectedProduct) {
   return PRODUCTS.includes(expectedProduct) && productOfKeyRecord(keyRecord, keyCode) === expectedProduct;
 }
-module.exports = { PRODUCT_AUTOMACOES, PRODUCT_LITE, PRODUCTS, selectAdminProduct, generateLicenseKey, productOfKeyRecord, keyBelongsTo };
+// A LITE seat ceiling has one explicit unlimited sentinel (-1); zero is NEVER unlimited.
+// Parse the complete admin input, not parseInt('3abc') / parseInt('1.5').
+// The effective ceiling cannot exceed the server's global device cap.
+function parseLiteMaxUses(value, defaultUses, globalLimit) {
+  if (!Number.isSafeInteger(defaultUses) || defaultUses < 1 ||
+      !Number.isSafeInteger(globalLimit) || globalLimit < 1) return null;
+  const raw = value === undefined ? String(Math.min(defaultUses,globalLimit)) :
+    (typeof value === 'number' || typeof value === 'string' ? String(value).trim() : '');
+  if (!/^(?:-1|[1-9]\d*)$/.test(raw)) return null;
+  const number = Number(raw);
+  return Number.isSafeInteger(number) && (number === -1 || number <= globalLimit) ? number : null;
+}
+
+module.exports = { PRODUCT_AUTOMACOES, PRODUCT_LITE, PRODUCTS, selectAdminProduct, generateLicenseKey, productOfKeyRecord, keyBelongsTo, parseLiteMaxUses };
