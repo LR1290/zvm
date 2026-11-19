@@ -12,6 +12,7 @@ const {
   portalLicenseConflictQuery,
 } = require('../src/portal-license-slots');
 
+const {liteKeyUsable}=require('../src/lite-license-authority');
 const full = generateLicenseKey(PRODUCT_AUTOMACOES);
 const lite = generateLicenseKey(PRODUCT_LITE);
 const legacy = 'zv-abcde-abcde-abcde';
@@ -65,10 +66,10 @@ test('real account entitlement reads the product-specific portal field', async (
   assert.ok(source, 'must inspect the real account entitlement implementation');
   const keys = {
     [full]: {active:true, extensionProductId:PRODUCT_AUTOMACOES, planId:'ZV_PRO'},
-    [lite]: {active:true, extensionProductId:PRODUCT_LITE, provisioningStatus:'issued', planId:'LITE_DEV'}
+    [lite]: {active:true, extensionProductId:PRODUCT_LITE, provisioningStatus:'issued', planId:'LITE_DEV', maxUses:3, phones:[], expiresAt:null}
   };
   const ctx = {
-    PRODUCT_AUTOMACOES, PRODUCT_LITE, keys, linkedPortalKeyForProduct, keyBelongsTo,
+    PRODUCT_AUTOMACOES, PRODUCT_LITE, keys, linkedPortalKeyForProduct, keyBelongsTo, liteKeyUsable,
     extensionNow:()=>new Date('2026-11-18T16:00:00.000Z'),
     ensureKeyLoadedEx:async code=>({found:!!keys[code],dbError:false}),
     extensionAuthFailure:(errorCode,status)=>({ok:false,errorCode,status}),

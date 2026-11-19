@@ -56,7 +56,7 @@ function harness(extra={}) {
   return {ctx,doc,get,toasts,calls,createdLinks,run:name=>vm.runInContext(name,ctx)};
 }
 function prepareCreation(h){
-  for(const [id,value] of Object.entries({nlabel:'Lote',ndays:'30',nhours:'0',nmins:'0',nuses:'2','batch-qty':'3'}))h.get(id).value=value;
+  for(const [id,value] of Object.entries({nlabel:'Lote',ndays:'30',nhours:'0',nmins:'0',nuses:'2','batch-qty':'3',nproduct:'zvm_automacoes'}))h.get(id).value=value;
 }
 (async()=>{
   // 1. Concurrent modal reads must never replace the last-opened license.
@@ -142,9 +142,11 @@ function prepareCreation(h){
   // 7. Partial batch with unknown result must preserve form and report only confirmed keys.
   {
     let creates=0;
+    const posted=[];
     const h=harness({fetch:async(_url,options)=>{
       if(options?.method==='POST'){
         creates++;
+        posted.push(JSON.parse(options.body));
         if(creates===1)return reply(200,{ok:true,key:'ZVM-ONE'});
         throw new Error('timeout after server may have committed');
       }
@@ -153,6 +155,7 @@ function prepareCreation(h){
     prepareCreation(h);
     await h.run('generateKey')();
     assert.equal(creates,2);
+    assert(posted.every(x=>x.productId==='zvm_automacoes'),'all batch requests explicitly identify the complete product');
     assert.equal(h.get('nlabel').value,'Lote');
     assert.equal(h.get('admin-generate-key-btn').disabled,false);
     assert.match(h.get('admin-create-status').textContent,/1 de 3 chave/);
@@ -161,6 +164,15 @@ function prepareCreation(h){
     const text=decodeURIComponent(h.createdLinks[0].href.split(',').slice(1).join(','));
     assert(text.includes('ZVM-ONE'));
     assert(!text.includes('ZVM-TWO'));
+    passed++;
+  }
+  // 7b. Product is mandatory: fail closed before any key-creation POST.
+  {
+    const h=harness();prepareCreation(h);
+    h.get('nproduct').value='';
+    await h.run('generateKey')();
+    assert.equal(h.calls.length,0,'empty product cannot create a key');
+    assert(h.toasts.some(x=>x.m.includes('Selecione a ferramenta')),'operator is told to choose the product');
     passed++;
   }
   // 8. Validate batch count and max-uses before hitting the server.

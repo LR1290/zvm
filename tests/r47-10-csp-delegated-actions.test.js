@@ -2,6 +2,7 @@
 // R47.10 isolated security regression; never accesses live services or client records.
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),vm=require('node:vm');
 const root=path.resolve(__dirname,'..'),source=fs.readFileSync(path.join(root,'server.js'),'utf8');
+const {productOfKeyRecord,PRODUCT_AUTOMACOES,PRODUCT_LITE}=require('../src/license-product-v2');
 const name=(source.match(/<script src="\/assets\/(zvm-admin-dashboard\.[a-f0-9]{12}\.js)" defer><\/script>/)||[])[1];
 assert(name,'versioned Admin script');
 const js=fs.readFileSync(path.join(root,'assets',name),'utf8');
@@ -13,7 +14,7 @@ new vm.Script(js,{filename:name});
 const first=source.indexOf('function buildKeysHtml('),last=source.indexOf('function getKeysHtmlCached(',first);
 const block=source.slice(first,last);
 const escHtml=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/\x60/g,'&#96;');
-const fakeDeps={keys:{},logs:[],isKeyExpired:()=>false,isKeyExpiringSoon:()=>false,
+const fakeDeps={productOfKeyRecord,PRODUCT_AUTOMACOES,PRODUCT_LITE,keys:{},logs:[],isKeyExpired:()=>false,isKeyExpiringSoon:()=>false,
  getSuspectMeta:()=>({isSuspect:false,recentIpCount:0}),escHtml,
  getKeyDisplayStatus:()=>'ativo',getKeyValiditySortKey:()=>12345,
  renderKeyStatusBadge:()=>'<span>ATIVO</span>',formatValidityCell:()=>'<span>32 dias</span>',
@@ -22,6 +23,7 @@ const render=new Function('deps','with(deps){'+block+'return buildKeysHtml;}')(f
 const label="');window.bad=true;//";
 const html=render({'qa-key':{label,phones:['123'],active:true,maxUses:3,expiresAt:'2026-12-20T00:00:00.000Z'}});
 assert(html.includes('data-client-name="'+escHtml(label)+'"'));
+assert(html.includes('data-product="zvm_automacoes"'),'legacy license may only identify the complete product');
 assert.equal((html.match(/ on(?:click|change)="[^"]*"/g)||[]).length,0,'no inline handlers in key list');
 for(const action of ['renew','uses','more','toggle','rename','phones','dev-toggle','delete','details'])
  assert(html.includes('data-zvm-key-action="'+action+'"'),'missing action '+action);
@@ -68,7 +70,7 @@ assert(!csp._CSP_NO_INLINE_RESPONSE.includes("'unsafe-inline'"));
 const sh=source.indexOf('function sendHtml('),se=source.indexOf('function sendAuthHtml(',sh);
 assert(sh>0&&se>sh);
 const deps={
- applyOwnerSiteTheme:x=>x,Buffer,
+ applyOwnerSiteTheme:x=>x,applyCanonicalFavicon:x=>x,Buffer,URL,
  _SEC_HEADERS:{'Content-Security-Policy':csp._CSP_NO_INLINE_RESPONSE},
  _CSP_LEGACY_HTML:csp._CSP_LEGACY_HTML,
  _CSP_PRIVILEGED_SCRIPT_STRICT:csp._CSP_PRIVILEGED_SCRIPT_STRICT,

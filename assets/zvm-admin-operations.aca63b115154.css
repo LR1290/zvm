@@ -1,0 +1,82 @@
+/* ZVM administration R78 — page-scoped license operations, compact overview.
+   Loaded after the legacy sheets. Never affects the client portal. */
+body.zvm-admin-r6 .sec-panel[data-panel="keys"]>.admin-overview-compact {
+  display:grid; grid-template-columns:minmax(0,1.45fr) minmax(255px,.75fr);
+  align-items:center; gap:18px; margin:0 0 12px; min-height:0;
+  padding:14px 18px; border:1px solid #2b3a30; border-radius:15px;
+  background:linear-gradient(108deg,#141a16 0%,#111814 72%,#14241a 100%);
+  box-shadow:none;
+}
+body.zvm-admin-r6 .admin-overview-compact .admin-overview-kicker {
+  padding:3px 8px; font-size:10px; letter-spacing:.04em;
+}
+body.zvm-admin-r6 .admin-overview-compact h1 {
+  font-size:clamp(18px,1.65vw,23px); line-height:1.2; margin:7px 0 0;
+}
+body.zvm-admin-r6 .admin-overview-compact p {
+  margin:5px 0 0; font-size:12px; line-height:1.45; max-width:730px;
+}
+body.zvm-admin-r6 .admin-ops-inline {
+  display:flex; gap:7px; flex-wrap:wrap; margin-top:10px; align-items:center;
+}
+body.zvm-admin-r6 .admin-ops-inline span {
+  display:inline-flex; align-items:baseline; gap:5px; padding:5px 9px;
+  border:1px solid #304036; border-radius:8px; background:#0d1510;
+  color:#b1c3b6; font-size:11px;
+}
+body.zvm-admin-r6 .admin-ops-inline strong { color:#e8f7ec; font-size:13px; }
+body.zvm-admin-r6 .admin-day-thought {
+  display:flex; flex-direction:column; gap:7px; min-width:0;
+  padding:10px 12px; border-left:2px solid #22b764;
+  border-radius:0 9px 9px 0; background:rgba(4,12,7,.45);
+}
+body.zvm-admin-r6 .admin-day-thought .admin-thought-kicker {
+  color:#83daa3; font-size:10px; font-weight:750;
+  letter-spacing:.05em; text-transform:uppercase;
+}
+body.zvm-admin-r6 .admin-day-thought strong {
+  color:#ecf7ef; font-size:12px; font-weight:650; line-height:1.4;
+}
+body.zvm-admin-r6 .admin-day-thought small { color:#a0b3a7; font-size:10px; }
+body.zvm-admin-r6 .sec-panel[data-panel="keys"]>.alert-strip,
+body.zvm-admin-r6 .sec-panel[data-panel="keys"]>.stats,
+body.zvm-admin-r6 .sec-panel[data-panel="keys"]>.admin-key-action-guide { width:100%; }
+body.zvm-admin-r6 .sec-panel[data-panel="keys"] .gen-form #nproduct {
+  min-width:185px; max-width:100%; min-height:37px;
+  background:#0f1711; color:#e8f8ec; border-color:#365642;
+}
+body.zvm-admin-r6 .sec-panel[data-panel="keys"] .gen-form label[for="nproduct"] {
+  font-weight:800; color:#b2e3c1;
+}
+body.zvm-admin-r6 .admin-product-hint {
+  display:flex; align-items:center; gap:7px; margin:8px 0 3px;
+  padding:9px 11px; border-radius:9px;
+  color:#bdd4c4; background:#0e1811; border:1px solid #28412f;
+  font-size:11px; line-height:1.5;
+}
+body.zvm-admin-r6 .admin-product-hint[data-product="zvm_lite"] {
+  border-color:#775a2f; background:#221a10; color:#f6ce90;
+}
+@media(max-width:1050px){
+  body.zvm-admin-r6 .sec-panel[data-panel="keys"]>.admin-overview-compact {
+    grid-template-columns:minmax(0,1fr); gap:9px; padding:13px 14px;
+  }
+  body.zvm-admin-r6 .admin-day-thought { padding:8px 11px; }
+}
+@media(max-width:550px){
+  body.zvm-admin-r6 .admin-ops-inline span { flex:1 1 95px; }
+  body.zvm-admin-r6 .sec-panel[data-panel="keys"] .gen-form { align-items:stretch; }
+  body.zvm-admin-r6 .sec-panel[data-panel="keys"] .gen-form .fi-col:has(#nproduct){
+    min-width:100%!important; flex-basis:100%!important;
+  }
+}
+
+/* R79: ultrawide Admin workspace. Keep forms and sidebar dimensions; remove
+   obsolete 1840px parent cap which squeezed 2560px data views. */
+@media(min-width:2000px){
+ body.zvm-admin-r6 .admin-wrap{
+  width:calc(100% - 48px);
+  max-width:2360px;
+  margin-inline:auto;
+ }
+}

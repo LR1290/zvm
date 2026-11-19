@@ -21,6 +21,8 @@ const lite=generateLicenseKey(PRODUCT_LITE);
 const second=generateLicenseKey(PRODUCT_LITE);
 const deferred=generateLicenseKey(PRODUCT_LITE);
 const issuedByAdmin=generateLicenseKey(PRODUCT_LITE);
+const invalidZeroLimit=generateLicenseKey(PRODUCT_LITE);
+const stressLite=generateLicenseKey(PRODUCT_LITE);
 const phoneA='5538999112233',phoneB='5538999112244',phoneC='5538999112255';
 const base = (extras={}) => ({
   active:true,extensionProductId:PRODUCT_LITE,provisioningStatus:'issued',
@@ -37,6 +39,8 @@ test('R57 real local MongoDB: issued key, concurrent claims, revocation and port
   await db.collection('store').insertOne({_id:'keys',data:{
     [lite]:base(),
     [second]:base({active:false}),
+    [invalidZeroLimit]:base({maxUses:0}),
+    [stressLite]:base({maxUses:3}),
     [deferred]:base({maxUses:2,phones:[phoneC],expireDuration:3600_000}),
     [full]:{active:true,extensionProductId:PRODUCT_AUTOMACOES,phones:[],maxUses:1,planId:'ZV_PRO'},
   }});
@@ -96,6 +100,17 @@ test('R57 real local MongoDB: issued key, concurrent claims, revocation and port
     assert.equal(liteKeyUsable(record,second),false);
   });
 
+  await t.test('invalid zero-seat LITE key never claims a phone in real MongoDB',async()=>{
+    const before=await readLiteLicenseSnapshot(db,invalidZeroLimit);
+    assert.equal(before.maxUses,0);
+    assert.equal(liteKeyUsable(before,invalidZeroLimit),false);
+    const denied=await claimLitePhoneSlotAtomic(db,invalidZeroLimit,phoneA,{maxPhonesGlobal:100});
+    assert.equal(denied.status,'entitlement_revoked');
+    const after=await readLiteLicenseSnapshot(db,invalidZeroLimit);
+    assert.deepEqual(after,before,'invalid key must remain unchanged in persistent store');
+    assert.deepEqual(after.phones,[]);
+  });
+
   await t.test('two simultaneous first-use claims never exceed maxUses=1',async()=>{
     const statuses=await Promise.all([phoneA,phoneB].map(phone=>
       claimLitePhoneSlotAtomic(db,lite,phone,{maxPhonesGlobal:100})
@@ -108,6 +123,20 @@ test('R57 real local MongoDB: issued key, concurrent claims, revocation and port
     const repeat=await claimLitePhoneSlotAtomic(db,lite,actual.phones[0],{maxPhonesGlobal:100});
     assert.equal(repeat.status,'already_member');
     assert.equal((await readLiteLicenseSnapshot(db,lite)).phones.length,1);
+  });
+
+  await t.test('24 parallel device claims respect a three-device LITE ceiling atomically',async()=>{
+    const phones=Array.from({length:24},(_,i)=>'55389991'+String(i).padStart(5,'0'));
+    const results=await Promise.all(phones.map(phone=>
+      claimLitePhoneSlotAtomic(db,stressLite,phone,{maxPhonesGlobal:100})
+    ));
+    assert.equal(results.filter(r=>r.status==='claimed').length,3);
+    assert.equal(results.filter(r=>r.status==='limit_reached').length,21);
+    const stored=await readLiteLicenseSnapshot(db,stressLite);
+    assert.equal(stored.phones.length,3);
+    assert.equal(new Set(stored.phones).size,3);
+    assert(stored.phones.every(phone=>phones.includes(phone)));
+    assert.equal(stored.maxUses,3);
   });
 
   await t.test('LITE first-use expiry activates exactly once on a persisted phone',async()=>{

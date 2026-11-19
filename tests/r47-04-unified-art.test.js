@@ -65,7 +65,16 @@ const pages={
 const includes=(page,file)=>assert(pages[page].includes('/assets/'+file),page+' missing '+file);
 for(const p of ['home','faq','plans'])includes(p,assets[0][0]);
 for(const p of ['login','register'])includes(p,assets[1][0]);
-for(const p of ['client','admin'])includes(p,assets[2][0]);
+const activeConsole='zvm-console-design.7a7b24cd5fa8.css';
+const currentConsoleBytes=fs.readFileSync(path.join(root,'assets',activeConsole));
+const currentConsoleSha=crypto.createHash('sha256').update(currentConsoleBytes).digest('hex');
+assert.equal(currentConsoleSha,'7a7b24cd5fa8f487a6ce481ee8bb505bd68c75816876c745a0518ee175e83c8a');
+assert(server.includes("sha256: '"+currentConsoleSha+"'"),'active CSS must be hash-pinned');
+for(const p of ['client','admin']){
+ includes(p,activeConsole);
+ assert(!pages[p].includes('/assets/'+assets[2][0]),p+' should use only active mobile-safe Console CSS');
+}
+assert(server.includes("sha256: '"+assets[2][1]+"'"),'previous immutable CSS remains served for cache compatibility');
 for(const p of ['notFound','unavailable'])includes(p,assets[3][0]);
 for(const p of ['privacy','terms']){
  includes(p,'zvm-legal-reading.49002e7e3dc1.css');

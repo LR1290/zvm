@@ -2,12 +2,13 @@
 // R47.09 — offline security regression. No network or production license writes.
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const root=path.resolve(__dirname,'..'),src=fs.readFileSync(path.join(root,'server.js'),'utf8');
+const {productOfKeyRecord, PRODUCT_AUTOMACOES, PRODUCT_LITE}=require('../src/license-product-v2');
 const start=src.indexOf('function buildKeysHtml('),stop=src.indexOf('function getKeysHtmlCached(',start);
 assert(start>0&&stop>start,'renderer boundaries');
 const escHtml=value=>String(value||'')
  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
  .replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/\x60/g,'&#96;');
-const deps={keys:{},logs:[],isKeyExpired:()=>false,isKeyExpiringSoon:()=>false,
+const deps={productOfKeyRecord,PRODUCT_AUTOMACOES,PRODUCT_LITE,keys:{},logs:[],isKeyExpired:()=>false,isKeyExpiringSoon:()=>false,
  getSuspectMeta:()=>({isSuspect:false,recentIpCount:0}),getKeyDisplayStatus:()=>'ativo',
  getKeyValiditySortKey:()=>12345,escHtml,fmtShortDate:()=>'-',MAX_USES:3,
  renderKeyStatusBadge:()=>'<b>ATIVO</b>',formatValidityCell:()=>'<small>32 dias</small>',
@@ -23,6 +24,10 @@ assert(html.includes('data-created="'+escHtml(maliciousCreated)+'"'));
 assert(!html.includes('onmouseover="alert(2)"'));
 assert(!html.includes('<img src=x onerror=alert(1)>'));
 assert(html.includes('data-max-uses="3"')&&html.includes('class="key-actions-popover"'));
+assert(html.includes('data-product="zvm_automacoes"'),'legacy key metadata must identify only the complete product');
+const forgedLite={...item,extensionProductId:PRODUCT_LITE};
+const invalidHtml=build({'zv-qa-key':forgedLite});
+assert(invalidHtml.includes('data-product="invalid"'),'a legacy/full key cannot masquerade as LITE');
 const handlers=[...html.matchAll(/ on(?:click|change)="([^"]*)"/g)].map(m=>m[1]);
 assert.equal(handlers.length,0,'license table must not emit executable HTML event handlers');
 for(const action of ['renew','uses','more','toggle','rename','phones','dev-toggle','delete','details'])

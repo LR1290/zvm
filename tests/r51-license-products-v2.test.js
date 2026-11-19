@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {
   PRODUCT_AUTOMACOES, PRODUCT_LITE, selectAdminProduct,
-  generateLicenseKey, productOfKeyRecord, keyBelongsTo
+  generateLicenseKey, productOfKeyRecord, keyBelongsTo, parseLiteMaxUses
 } = require('../src/license-product-v2');
 
 test('the administrator must select a known product, except for legacy callers', () => {
@@ -18,6 +18,40 @@ test('the administrator must select a known product, except for legacy callers',
   for (const forged of ['', 'ZVM_LITE', '__proto__', 'zvm', null, {}, ['zvm_lite'], true]) {
     assert.equal(selectAdminProduct(forged), null);
   }
+});
+
+test('LITE seat counts reject 0, junk and ceilings above the global cap before DB writes', () => {
+  assert.equal(parseLiteMaxUses(undefined,3,50),3);
+  assert.equal(parseLiteMaxUses(undefined,3,1),1,'default respects server global cap');
+  assert.equal(parseLiteMaxUses('-1',3,50),-1);
+  assert.equal(parseLiteMaxUses(1,3,50),1);
+  assert.equal(parseLiteMaxUses('50',3,50),50);
+  for(const invalid of ['0','-0',0,'-2','1.5','3abc','+2','01','51',51,'',null,{},[],true,NaN,Infinity,'9007199254740993']){
+    assert.equal(parseLiteMaxUses(invalid,3,50),null,'invalid LITE device ceiling: '+String(invalid));
+  }
+  const server = fs.readFileSync(path.join(__dirname,'..','server.js'),'utf8');
+  const begin=server.indexOf("if (p === R_ADMIN+'/api/keys' && req.method === 'POST')");
+  const end=server.indexOf('// Idempotent retry if LITE was blocked',begin);
+  assert(begin>=0&&end>begin,'admin key creation route present');
+  const route=server.slice(begin,end);
+  const validator=route.indexOf('parseLiteMaxUses(body.maxUses, MAX_USES, MAX_PHONES_GLOBAL)');
+  const error=route.indexOf("error: 'invalid_lite_max_uses'");
+  const insert=route.indexOf('await insertNewAdminKeyStrict(code, createdKey)');
+  assert(validator>=0&&error>validator&&insert>error,'bad LITE seat limit must be rejected BEFORE writing');
+  assert(route.includes('maxUses: extensionProductId === PRODUCT_LITE ? maxUses :'),
+    'do not silently replace a rejected LITE seat limit with a default');
+  const editStart=server.indexOf('  const codeMaxUses = extractCode(');
+  const editEnd=server.indexOf('  const codeLabel = extractCode(',editStart);
+  assert(editStart>=0 && editEnd>editStart,'max-uses edit route exists');
+  const editRoute=server.slice(editStart,editEnd);
+  const editGuard=editRoute.indexOf('productOfKeyRecord(kMu, codeMaxUses) === PRODUCT_LITE');
+  const editValidate=editRoute.indexOf('parseLiteMaxUses(rawMaxUses, MAX_USES, MAX_PHONES_GLOBAL)');
+  const editPersist=editRoute.indexOf('await mutateAdminKeyRecordStrict(codeMaxUses');
+  assert(editGuard>=0&&editValidate>editGuard&&editPersist>editValidate,
+    'LITE edits must enforce the global cap before persistent update');
+  assert(editRoute.includes('rawMaxUses === undefined ? null'),
+    'partial LITE edit payload cannot silently reset to a default');
+
 });
 
 test('v2 keys contain 256 unpredictable bits encoded in exactly 52 base32 characters', () => {

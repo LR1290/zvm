@@ -7,6 +7,7 @@ const path=require('node:path');
 const vm=require('node:vm');
 const {readLiteConfig,inspectLiteClient,liteOriginAllowed,liteSessionAllowed}=require('../src/lite-v4-build-authority');
 const {PRODUCT_LITE,PRODUCT_AUTOMACOES,generateLicenseKey,keyBelongsTo}=require('../src/license-product-v2');
+const {liteKeyUsable}=require('../src/lite-license-authority');
 const fullId='bdhnikgcdccjabkmbfcakgjkkgdlmgja',liteId='a'.repeat(32);
 const buildId='zvm-lite-dev-fixtureR52';
 const digest='b'.repeat(64);
@@ -107,7 +108,7 @@ test('live V4 auth source only allocates phone slots for the expected product',a
   assert.ok(snippet);
   let claimed=0;
   const context={
-    PRODUCT_LITE,PRODUCT_AUTOMACOES,
+    PRODUCT_LITE,PRODUCT_AUTOMACOES,liteKeyUsable,
     sanitizeId:(x,n)=>String(x||'').toLowerCase().replace(/[^a-z0-9-]/g,'').slice(0,n),
     normalizePhone:x=>String(x||'').replace(/\D/g,''),
     safeScalar:(x,n)=>String(x||'').slice(0,n),
@@ -132,7 +133,7 @@ test('live V4 auth source only allocates phone slots for the expected product',a
   assert.equal(full.ok,false);assert.equal(full.errorCode,'license_product_mismatch');assert.equal(claimed,0);
   const pending=await authorize(auth,{...common,keyStore:{[liteKey]:{active:true,extensionProductId:PRODUCT_LITE,phones:[],planId:'LITE_DEV',provisioningStatus:'awaiting_lite_build_authority'}},readLiteLicenseSnapshot:async()=>({active:true,extensionProductId:PRODUCT_LITE,phones:[],planId:'LITE_DEV',provisioningStatus:'awaiting_lite_build_authority'})});
   assert.equal(pending.ok,false);assert.equal(pending.errorCode,'lite_license_not_provisioned');assert.equal(claimed,0);
-  const ready=await authorize(auth,{...common,keyStore:{[liteKey]:{active:true,extensionProductId:PRODUCT_LITE,phones:[],planId:'LITE_DEV',provisioningStatus:'issued'}},readLiteLicenseSnapshot:async()=>({active:true,extensionProductId:PRODUCT_LITE,phones:[],planId:'LITE_DEV',provisioningStatus:'issued'})});
+  const ready=await authorize(auth,{...common,keyStore:{[liteKey]:{active:true,extensionProductId:PRODUCT_LITE,phones:[],planId:'LITE_DEV',provisioningStatus:'issued'}},readLiteLicenseSnapshot:async()=>({active:true,extensionProductId:PRODUCT_LITE,phones:[],planId:'LITE_DEV',provisioningStatus:'issued',maxUses:3,expiresAt:null})});
   assert.equal(ready.ok,true);assert.equal(ready.entitlement.productId,PRODUCT_LITE);assert.equal(claimed,1);
 });
 test('LITE V4 admission and shared replay are before license/phone mutation',()=>{

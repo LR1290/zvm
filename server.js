@@ -24,9 +24,9 @@ function sanitizeStartupErrorMessage(error) {
 const http   = require('http');
 const https  = require('https');
 const crypto = require('crypto');
-const { PRODUCT_AUTOMACOES, PRODUCT_LITE, selectAdminProduct, generateLicenseKey, productOfKeyRecord, keyBelongsTo } = require('./src/license-product-v2');
+const { PRODUCT_AUTOMACOES, PRODUCT_LITE, selectAdminProduct, generateLicenseKey, productOfKeyRecord, keyBelongsTo, parseLiteMaxUses } = require('./src/license-product-v2');
 const { readLiteConfig, inspectLiteClient, liteOriginAllowed, liteSessionAllowed, SESSION_TTL: ZVM_LITE_SESSION_TTL } = require('./src/lite-v4-build-authority');
-const { readLiteLicenseSnapshot, claimLitePhoneSlotAtomic, activateLiteDeferredKeyAtomic } = require('./src/lite-license-authority');
+const { readLiteLicenseSnapshot, liteKeyUsable, claimLitePhoneSlotAtomic, activateLiteDeferredKeyAtomic } = require('./src/lite-license-authority');
 const { normalizePortalLicenseKey, portalLicenseSlot, linkedPortalKeyForProduct, portalLicenseConflictQuery, revokePortalLitePasswordSessions, revokeLiteLicenseSessions, ensureLitePortalLicenseUniqueIndex } = require('./src/portal-license-slots');
 const fs     = require('fs');
 const path   = require('path');
@@ -334,7 +334,7 @@ const MONGODB_DB = (() => {
   const fromEnv = (process.env.MONGODB_DB || '').trim();
   if (fromEnv) {
     if (fromEnv.toLowerCase() !== 'zapvoice')
-      console.warn(`[DB] MONGODB_DB="${fromEnv}" — suas chaves estao em "zapvoice" (Atlas).`);
+      console.info(`[DB] MONGODB_DB selecionado: "${fromEnv}" (sem migracao automatica do legado).`);
     return fromEnv;
   }
   return 'zapvoice';
@@ -2200,7 +2200,8 @@ function buildExtensionEntitlement({ keyCode = null, keyRecord = null, now = Dat
   const nowMs = Number.isFinite(nowDate.getTime()) ? nowDate.getTime() : Date.now();
   const isLite = productId === PRODUCT_LITE;
   const licensed = !!keyCode && extensionLicenseIsUsable(keyRecord, nowMs) &&
-    keyBelongsTo(keyRecord, keyCode, productId);
+    keyBelongsTo(keyRecord, keyCode, productId) &&
+    (!isLite || liteKeyUsable(keyRecord, keyCode, nowMs));
   const capabilities = [...(isLite
     ? (licensed ? EXTENSION_LITE_CAPABILITIES : [])
     : (licensed ? EXTENSION_LICENSED_CAPABILITIES : EXTENSION_FREE_CAPABILITIES))].sort();
@@ -2481,7 +2482,7 @@ async function resolveExtensionAccountEntitlement(user, deps = {}) {
   }
   if (keyRecord && !keyBelongsTo(keyRecord, keyCode, expectedProductId)) return extensionAuthFailure('license_product_mismatch', 403);
   if (!extensionLicenseIsUsable(keyRecord, now) ||
-      (expectedProductId === PRODUCT_LITE && (keyRecord.provisioningStatus !== 'issued' || !/^LITE_[A-Z0-9_]+$/.test(String(keyRecord.planId || ''))))) {
+      (expectedProductId === PRODUCT_LITE && !liteKeyUsable(keyRecord, keyCode, now.getTime()))) {
     if (expectedProductId === PRODUCT_LITE) return extensionAuthFailure('lite_license_required',403);
     return { ok: true, keyCode: null, devAccess:false, entitlement: buildExtensionEntitlement({ now }) };
   }
@@ -2558,6 +2559,7 @@ async function authorizeExtensionKeySession(input, deps = {}) {
   // fechado para expiresAt malformado em vez de autenticar a chave e só
   // depois degradar silenciosamente o entitlement.
   if (!extensionLicenseIsUsable(keyRecord)) return extensionAuthFailure('key_expired', 403);
+  if (expectedProductId === PRODUCT_LITE && !liteKeyUsable(keyRecord, keyCode)) return extensionAuthFailure('entitlement_revoked', 403);
   if (!Array.isArray(keyRecord.phones)) keyRecord.phones = keyRecord.lastPhone ? [keyRecord.lastPhone] : [];
   const alreadyKnown = keyRecord.phones.some(value => normalizePhone(value) === phoneNumber);
   if (!alreadyKnown && keyRecord.phones.length >= MAX_PHONES_GLOBAL) {
@@ -2731,7 +2733,7 @@ async function refreshExtensionSession(rawToken, deps = {}) {
     }
     const phoneStillAllowed = !doc.phoneNumber || (Array.isArray(keyRecord?.phones)
       && keyRecord.phones.some(value => normalizePhone(value) === doc.phoneNumber));
-    if (!extensionLicenseIsUsable(keyRecord, now) || !phoneStillAllowed || (expectedProductId === PRODUCT_LITE && (keyRecord.provisioningStatus !== 'issued' || !/^LITE_[A-Z0-9_]+$/.test(String(keyRecord.planId || ''))))) {
+    if (!extensionLicenseIsUsable(keyRecord, now) || !phoneStillAllowed || (expectedProductId === PRODUCT_LITE && !liteKeyUsable(keyRecord, doc.licenseKeyCode, now.getTime()))) {
       await revokeExtensionSession(rawToken, { ...deps, db, now });
       return extensionAuthFailure('entitlement_revoked', 403);
     }
@@ -2749,7 +2751,7 @@ async function refreshExtensionSession(rawToken, deps = {}) {
     await revokeExtensionSession(rawToken, { ...deps, db, now });
     return extensionAuthFailure('DEV_ACCESS_REQUIRED', 403);
   }
-  await db.collection(EXTENSION_SESSION_COLLECTION).updateOne(
+  const refreshedSession = await db.collection(EXTENSION_SESSION_COLLECTION).updateOne(
     { _id: doc._id, revokedAt: null },
     { $set: {
       lastSeenAt: now,
@@ -2757,6 +2759,13 @@ async function refreshExtensionSession(rawToken, deps = {}) {
       entitlementRevision: entitlementResult.entitlement.entitlementRevision,
     } }
   );
+  // A concurrent administrative block/unlink can revoke this LITE token
+  // after the read. Never return an entitlement when that final CAS lost.
+  // Keep historical full-product refresh semantics unchanged.
+  if (expectedProductId === PRODUCT_LITE &&
+      (refreshedSession?.acknowledged !== true || refreshedSession.matchedCount !== 1)) {
+    return extensionAuthFailure('session_revoked', 403);
+  }
   return {
     ok: true,
     sessionDoc: doc,
@@ -5615,10 +5624,10 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: 'cf01433d7f45c6054eefdc7a33b8f80c225b94bbe2c927b04a1ebe1809a79b6b',
     compressible: true,
   }),
-  '/assets/zvm-standalone.d6d2222fe00a.css': Object.freeze({
+  '/assets/zvm-standalone.46e5536d6d3c.css': Object.freeze({
     type: 'text/css; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-standalone.d6d2222fe00a.css'),
-    sha256: 'd6d2222fe00a952abffb4db44498378fc446af76111cdf9f1980c177b78a0c70',
+    file: path.join(__dirname, 'assets', 'zvm-standalone.46e5536d6d3c.css'),
+    sha256: '46e5536d6d3cd1b176edf7c50e49242d237985961d8cad4498add326b5ce40b7',
     compressible: true,
   }),
   '/assets/zvm-action-hub.07aa17b87c3e.css': Object.freeze({
@@ -5771,6 +5780,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: 'd84043f003e4982440cf28dd8fcb0b5105d6949e2de4855afbe4f6e5008479aa',
     compressible: true,
   }),
+  '/assets/zvm-admin-operations.aca63b115154.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-admin-operations.aca63b115154.css'),
+    sha256: 'aca63b11515460f54b24a4bb178e57e89e694ead99c71cdbbef244c4f33bf66f',
+    compressible: true,
+  }),
   '/assets/zvm-admin-dashboard.cd85ea19cc73.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.cd85ea19cc73.css'),
@@ -5865,6 +5880,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-console-design.44762cb103f8.css'),
     sha256: '44762cb103f86784b9a7ad5dccf99b5ec304076e728f5dac1bb7875631cb7349',
+    compressible: true,
+  }),
+  '/assets/zvm-console-design.7a7b24cd5fa8.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-console-design.7a7b24cd5fa8.css'),
+    sha256: '7a7b24cd5fa8f487a6ce481ee8bb505bd68c75816876c745a0518ee175e83c8a',
     compressible: true,
   }),
   '/assets/zvm-admin-dashboard.b892a520f957.js': Object.freeze({
@@ -6279,7 +6300,7 @@ function renderPortalPage(body, title='ZVM — Minha Conta', extra='', headExtra
 <link rel="stylesheet" href="/assets/zvm-r46-client-dashboard.64213392bec3.css"><link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css">
 ${headExtra}
 <link rel="stylesheet" href="/assets/zvm-r46-system.cf01433d7f45.css">
-<link rel="stylesheet" href="/assets/zvm-console-design.44762cb103f8.css">
+<link rel="stylesheet" href="/assets/zvm-console-design.7a7b24cd5fa8.css">
 </head><body class="zvm-client-premium">
 <a class="portal-skip" href="#main-content">Ir para o conteúdo</a>
 <div class="page-wrap portal-page-wrap">
@@ -7040,10 +7061,10 @@ function renderAdminDashboard(opts = {}) {
 <link rel="stylesheet" href="/assets/zvm-admin-dashboard.5c649db2edf7.css">
 <link rel="stylesheet" href="/assets/zvm-r46-system.cf01433d7f45.css">
 <link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css">
-<link rel="stylesheet" href="/assets/zvm-console-design.44762cb103f8.css">
+<link rel="stylesheet" href="/assets/zvm-console-design.7a7b24cd5fa8.css">
 <link rel="stylesheet" href="/assets/zvm-owner-site.e10ede63c1f0.css">
 <link rel="stylesheet" href="/assets/zvm-admin-dashboard.cd85ea19cc73.css">
-<link rel="stylesheet" href="/assets/zvm-admin-operations.d84043f003e4.css">
+<link rel="stylesheet" href="/assets/zvm-admin-operations.aca63b115154.css">
 </head>
 <body class="zvm-admin-r6">
 <a class="zvm-skip-link" href="#zvm-admin-main">Ir para o conteúdo</a>
@@ -7444,7 +7465,7 @@ function sendAdminLogin(res, error = '', status = 200) {
 const _FAV = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2308080f'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E";
 const _CSS_SHARED = '<link rel="stylesheet" href="/assets/zvm-shared.6dac16eb7b5b.css">';
 const _CSS_SYSTEM = '<link rel="stylesheet" href="/assets/zvm-r46-system.cf01433d7f45.css">';
-const _CSS_STANDALONE = '<link rel="stylesheet" href="/assets/zvm-standalone.d6d2222fe00a.css">';
+const _CSS_STANDALONE = '<link rel="stylesheet" href="/assets/zvm-standalone.46e5536d6d3c.css">';
 const _CSS_AUTH = '<link rel="stylesheet" href="/assets/zvm-r46-auth.286cb26442a2.css"><link rel="stylesheet" href="/assets/zvm-auth-premium.a96f915db3f4.css">';
 const _CSS_PRIVILEGED_AUTH = '<link rel="stylesheet" href="/assets/zvm-privileged-auth.daab7ea4861a.css">';
 const _CSS_CLIENT_WORKSPACE = '<link rel="stylesheet" href="/assets/zvm-r46-client-workspace.6dbf0f685e67.css">';
@@ -10651,7 +10672,12 @@ async function handleRequest(req, res) {
     // Legacy callers keep the old key format until every full extension accepts 57-char keys.
     const code = hasProductSelection ? generateLicenseKey(extensionProductId) : generateCode();
     const { expiresAt, expireDuration } = parseKeyExpiryFromBody(body, { allowMinutes: true });
-    const maxUses = (body.maxUses !== undefined) ? parseInt(body.maxUses) : MAX_USES;
+    const maxUses = extensionProductId === PRODUCT_LITE
+      ? parseLiteMaxUses(body.maxUses, MAX_USES, MAX_PHONES_GLOBAL)
+      : ((body.maxUses !== undefined) ? parseInt(body.maxUses) : MAX_USES);
+    if (extensionProductId === PRODUCT_LITE && maxUses === null) {
+      sendJson(res, { error: 'invalid_lite_max_uses' }, 400); return;
+    }
     const createdKey = {
       label: labelResult.label, active: extensionProductId === PRODUCT_AUTOMACOES,
       extensionProductId,
@@ -10663,7 +10689,7 @@ async function handleRequest(req, res) {
       uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null,
       deviceId: null, wppVersion: null, note: '',
       expiresAt, expireDuration: expireDuration || null,
-      maxUses: isNaN(maxUses) ? MAX_USES : maxUses, warnCount: 0,
+      maxUses: extensionProductId === PRODUCT_LITE ? maxUses : (isNaN(maxUses) ? MAX_USES : maxUses), warnCount: 0,
       modules: { ...DEFAULT_MODULES, zapSaver: true },
     };
     try { await insertNewAdminKeyStrict(code, createdKey); }
@@ -10848,8 +10874,10 @@ async function handleRequest(req, res) {
     if (!kMu) { sendJson(res, { error: 'not found' }, 404); return; }
     const body = await parseBody(req);
     const rawMaxUses = body.maxUses;
-    const maxUses = typeof rawMaxUses === 'number' ? rawMaxUses :
-      (typeof rawMaxUses === 'string' && /^-?\d{1,5}$/.test(rawMaxUses) ? Number(rawMaxUses) : NaN);
+    const maxUses = productOfKeyRecord(kMu, codeMaxUses) === PRODUCT_LITE
+      ? (rawMaxUses === undefined ? null : parseLiteMaxUses(rawMaxUses, MAX_USES, MAX_PHONES_GLOBAL))
+      : (typeof rawMaxUses === 'number' ? rawMaxUses :
+        (typeof rawMaxUses === 'string' && /^-?\d{1,5}$/.test(rawMaxUses) ? Number(rawMaxUses) : NaN));
     if (!Number.isSafeInteger(maxUses) || !(maxUses===-1 || (maxUses>=1 && maxUses<=10000))) {
       sendJson(res,{ok:false,error:'invalid_max_uses'},400);return;
     }
@@ -12078,9 +12106,10 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     const buildAuthorityState = ZVM_BUILD_AUTHORITY.describe();
     console.log(
       `✅ ZVM Server ${ZVM_BUILD_ID} — porta ${PORT}\n` +
-      `🍃 MongoDB: zapvoice.store | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}\n` +
+      `🍃 MongoDB: ${MONGODB_DB}.store | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}\n` +
       `🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | 2FA: ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | TOTP crypto: ${portalTotpCryptoMode()} | Cakto: ${CAKTO_WEBHOOK_SECRET ? 'ATIVO' : '⚠ INATIVO'}\n` +
       `🛡️ Runtime: ${buildAuthorityState.runtimeEnv || 'não definido'} | Build Authority: ${buildAuthorityState.buildEnforce ? 'ATIVO' : 'DESATIVADO'} | Registry V2 active: ${buildAuthorityState.registryV2ActiveCount} | DEV bypass: ${buildAuthorityState.devBuildAllow ? 'ATIVO' : 'INATIVO'} | DEV cohost: ${buildAuthorityState.devCohostAllow ? 'ATIVO' : 'INATIVO'} | Legacy V3: ${buildAuthorityState.legacyV3 ? 'ATIVO' : 'INATIVO'} | Legacy V3 endpoints: ${legacyV3Allowed() ? 'ATIVOS (Build 3 unpacked: key/check-status/usage/get-usage/sync-usage)' : 'INATIVOS'}\n` +
+      `🔒 LITE V4: ${ZVM_LITE_V4_CONFIG.ready ? 'CHAVE PÚBLICA DEV CONFIGURADA (assinatura por sessão)' : 'BLOQUEADA (autoridade DEV não configurada)'}\n` +
       `🧪 Local safe mode: ${ZVM_LOCAL_SAFE_MODE ? 'ATIVO — jobs autônomos desativados' : 'INATIVO'}\n` +
       // Rota admin derivada + usuário administrativo NÃO vão pro log de boot:
       // quem operou já tem essas duas informações a partir das próprias env

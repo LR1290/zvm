@@ -12,7 +12,12 @@ for(const name of [jsName,cssName]){
  assert(source.includes("sha256: '"+digest+"'"),'asset allowlist pins full SHA-256');
 }
 new vm.Script(js,{filename:jsName});
-assert(source.includes('href="/assets/zvm-owner-site.42d17a62234b.css"'));
+const ownerLink=source.match(/href="\/assets\/(zvm-owner-site\.[a-f0-9]{12}\.css)"/);
+assert(ownerLink,'canonical current owner site stylesheet must be loaded');
+const ownerBytes=fs.readFileSync(path.join(root,'assets',ownerLink[1]));
+const ownerHash=crypto.createHash('sha256').update(ownerBytes).digest('hex');
+assert.equal(ownerLink[1].split('.')[1],ownerHash.slice(0,12));
+assert(source.includes("sha256: '"+ownerHash+"'"),'owner style digest must remain allowlisted');
 assert(source.includes('class="key-actions-popover" popover="auto"'));
 assert(!source.includes('class="key-actions-more"'));
 assert(source.includes('id="renewPreview"'));

@@ -23,7 +23,7 @@ function liteKeyUsable(record, code, nowMs = Date.now()) {
   if (!keyBelongsTo(record,code,PRODUCT_LITE) || record.active !== true ||
       record.provisioningStatus !== 'issued' ||
       !/^LITE_[A-Z0-9_]+$/.test(String(record.planId || '')) ||
-      !Number.isSafeInteger(record.maxUses) || record.maxUses < -1 ||
+      !Number.isSafeInteger(record.maxUses) || (record.maxUses !== -1 && record.maxUses < 1) ||
       !Array.isArray(record.phones)) return false;
   if (record.expiresAt != null) {
     const expires = new Date(record.expiresAt).getTime();
