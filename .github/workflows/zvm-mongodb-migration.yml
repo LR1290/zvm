@@ -7,6 +7,7 @@ on:
       - 'runtime-config.js'
       - 'tools/zvm-mongodb-migrate.js'
       - 'tests/r85-mongo-rename-guard.test.js'
+      - 'tests/r86-mongo-crossdb-copy.test.js'
       - 'package.json'
       - '.github/workflows/zvm-mongodb-migration.yml'
   workflow_dispatch:
