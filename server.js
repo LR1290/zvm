@@ -9624,7 +9624,7 @@ async function handleRequest(req, res) {
         period:body?.period,
         scheduledItems:body?.scheduledItems,
         ack:body?.ack,
-        messageId:body?.messageId,
+        messageIdHash:body?.messageIdHash,
       });
       sendJson(res, usage);
     } catch (error) {
