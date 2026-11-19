@@ -18,6 +18,7 @@ on:
       - 'tests/r92-mongodb-real-e2e.test.js'
       - 'tools/zvm-mongodb-cutover-preflight.js'
       - 'tests/r95-mongo-preflight-permissions.test.js'
+      - 'tests/r97-mongo-authenticated-rbac-real.test.js'
       - 'tools/zvm-db-backup-readonly.ps1'
       - 'package.json'
       - '.github/workflows/zvm-mongodb-migration.yml'
@@ -96,7 +97,29 @@ jobs:
           GITHUB_ACTIONS: 'true'
           ZVM_R92_EPHEMERAL_ACK: 'throwaway-mongo-only'
         run: node tests/r92-mongodb-real-e2e.test.js
-      - name: Destroy ephemeral MongoDB instance and all test data
+      - name: Start isolated authenticated MongoDB 8 (synthetic users only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --rm --name zvm-r97-auth             -p 127.0.0.1:27019:27017             -e MONGO_INITDB_ROOT_USERNAME=zvm_r97_root             -e MONGO_INITDB_ROOT_PASSWORD=synthetic-root-only             mongo:8.0
+          ready=0
+          for i in $(seq 1 45); do
+            if docker exec zvm-r97-auth mongosh --quiet               --username zvm_r97_root --password synthetic-root-only               --authenticationDatabase admin               --eval 'db.adminCommand({ping:1}).ok' 2>/dev/null | grep -qx '1'; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = 1
+      - name: Check REAL MongoDB read/target-write RBAC
+        env:
+          CI: 'true'
+          GITHUB_ACTIONS: 'true'
+          ZVM_R97_AUTH_LAB_ACK: 'synthetic-auth-mongodb-only'
+        run: node tests/r97-mongo-authenticated-rbac-real.test.js
+      - name: Destroy ephemeral MongoDB instances and all test data
         if: always()
         shell: bash
-        run: docker rm -f zvm-r92-mongodb >/dev/null 2>&1 || true
+        run: |
+          docker rm -f zvm-r97-auth >/dev/null 2>&1 || true
+          docker rm -f zvm-r92-mongodb >/dev/null 2>&1 || true

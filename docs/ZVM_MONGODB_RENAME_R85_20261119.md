@@ -201,3 +201,14 @@ Procedimento operacional de rollback (não executado):
 - Se não for possível garantir equivalência, manter o banco novo e recuperar o serviço no próprio destino, em vez de executar um rollback que descartaria gravações.
 
 O verificador existente já é fail-closed sobre diferenças de documento, índice, opções e conjunto de coleções: não há duplicação de utilitário ou outro script de rollback que facilite ações destrutivas. A R96 exercita esse bloqueio contra MongoDB real com dados sintéticos, sem tocar no Atlas de produção.
+
+
+## R97 — validação de permissões com autenticação REAL MongoDB 8
+
+O R95 foi testado com permissões sintéticas em mocks e demonstrou o comportamento fail-closed em MongoDB sem autenticação. A R97 adiciona uma segunda instância MongoDB 8 real, também efêmera, agora com SCRAM/autenticação ativa.
+
+Um usuário de teste com role read@zapvoice + readWrite@zvm precisa passar no preflight de permissões, inventário mínimo de 20 coleções/49 índices e destino vazio; um segundo usuário de teste com SOMENTE read@zapvoice deve falhar na verificação de autorização para escrita no destino, apesar de conseguir ler a origem. Após criar uma coleção fictícia no destino, mesmo o usuário autorizado deve ser recusado porque o banco não está vazio.
+
+Todos os nomes, senhas e registros da R97 são fixos e COMPLETAMENTE FICTÍCIOS, existentes exclusivamente no container de laboratório local ao runner. Não são credenciais Atlas, Render nem dados do usuário. O teste não exibe conexão, usuário ou licença no relatório, e o job remove ambas as instâncias Docker, mesmo quando os testes falham.
+
+Esta é a prova de que o código de detecção de permissão funciona em um servidor MongoDB com autenticação real. Ainda não substitui a execução do preflight usando a credencial efetivamente configurada no Render durante uma janela operacional segura.
