@@ -2751,7 +2751,7 @@ async function refreshExtensionSession(rawToken, deps = {}) {
     await revokeExtensionSession(rawToken, { ...deps, db, now });
     return extensionAuthFailure('DEV_ACCESS_REQUIRED', 403);
   }
-  await db.collection(EXTENSION_SESSION_COLLECTION).updateOne(
+  const refreshedSession = await db.collection(EXTENSION_SESSION_COLLECTION).updateOne(
     { _id: doc._id, revokedAt: null },
     { $set: {
       lastSeenAt: now,
@@ -2759,6 +2759,13 @@ async function refreshExtensionSession(rawToken, deps = {}) {
       entitlementRevision: entitlementResult.entitlement.entitlementRevision,
     } }
   );
+  // A concurrent administrative block/unlink can revoke this LITE token
+  // after the read. Never return an entitlement when that final CAS lost.
+  // Keep historical full-product refresh semantics unchanged.
+  if (expectedProductId === PRODUCT_LITE &&
+      (refreshedSession?.acknowledged !== true || refreshedSession.matchedCount !== 1)) {
+    return extensionAuthFailure('session_revoked', 403);
+  }
   return {
     ok: true,
     sessionDoc: doc,

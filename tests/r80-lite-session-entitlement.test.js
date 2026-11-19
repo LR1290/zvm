@@ -143,3 +143,60 @@ test('both LITE session refresh methods revoke corrupt persisted licensing',asyn
     assert.equal(dbWrites,0,'no session should be renewed on malformed limits');
   }
 });
+
+test('LITE refresh CAS rejects a token revoked by another concurrent request',async()=>{
+  const installation='22222222-2222-4222-8222-222222222222';
+  const buildId='zvm-lite-dev-0.1.80-sabcdefabcdef';
+  const id='c'.repeat(32),fingerprint='d'.repeat(64);
+  const proof={securityProtocol:2,extensionId:id,extensionVersion:'0.1.80',
+    buildId,buildFingerprint:fingerprint,signerKeyId:'lite-r80-fixture',
+    installationId:installation};
+  for(const authMethod of ['password','license_key']){
+    for(const matchedCount of [0,1]){
+      let updates=0;
+      const doc={
+        _id:'synthetic-sha',licenseKeyCode:lite,
+        extensionProductId:PRODUCT_LITE,authMethod,
+        accountEmail:'fake@example.invalid',phoneNumber:phone,revokedAt:null,
+        extensionId:id,extensionVersion:'0.1.80',buildId,
+        buildFingerprint:fingerprint,liteSignerKeyId:'lite-r80-fixture',
+        installationIdHash:crypto.createHash('sha256').update(installation).digest('hex'),
+        securityProtocol:2,channel:'dev',profile:'dev'
+      };
+      const db={collection(name){
+        if(name==='portal_users')return{findOne:async()=>({_id:'fake@example.invalid',liteKeyCode:lite})};
+        if(name==='extension_sessions')return{
+          updateOne:async()=>{updates++;return{acknowledged:true,matchedCount,modifiedCount:matchedCount}}
+        };
+        throw Error('unexpected collection: '+name);
+      }};
+      const ctx={
+        PRODUCT_LITE,PRODUCT_AUTOMACOES,crypto,keys:{},
+        keyBelongsTo,liteKeyUsable,linkedPortalKeyForProduct,
+        extensionNow:()=>now,readExtensionSession:async()=>({ok:true,doc}),
+        extensionAuthFailure:fail,getMongoDb:async()=>db,
+        ZVM_LITE_V4_CONFIG:{ready:true},liteSessionAllowed:()=>true,
+        revokeExtensionSession:async()=>({ok:true}),
+        normalizePhone:v=>String(v||'').replace(/\D/g,''),
+        extensionLicenseIsUsable:usable,
+        extensionDevAccessAllowed:()=>false,
+        buildExtensionEntitlement:()=>({tier:'paid',entitlementRevision:'r80-cas'}),
+        readLiteLicenseSnapshot:async()=>good()
+      };
+      ctx.resolveExtensionAccountEntitlement=vm.runInNewContext('('+accountSource+')',ctx);
+      const run=vm.runInNewContext('('+refreshSource+')',ctx);
+      const result=await run('a'.repeat(64),{db,expectedProductId:PRODUCT_LITE,
+        liteClientSecurity:proof,readLiteLicenseSnapshot:async()=>good()});
+      assert.equal(updates,1);
+      if(matchedCount===0){
+        assert.equal(result.ok,false);
+        assert.equal(result.errorCode,'session_revoked');
+        assert.equal(result.status,403);
+        assert.equal(result.entitlement,undefined);
+      } else {
+        assert.equal(result.ok,true);
+        assert.equal(result.entitlement.tier,'paid');
+      }
+    }
+  }
+});
