@@ -2088,6 +2088,11 @@ function hashResetToken(rawToken) {
 // portanto uma leitura indevida do Mongo não entrega um bearer reutilizável.
 const EXTENSION_SESSION_COLLECTION = 'extension_sessions';
 const EXTENSION_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+// Password sessions: 7 days of inactivity, bounded by 30 days absolute.
+// Key sessions retain the historical 24-hour lifetime and their vault reissue.
+// Signed development sessions retain attestation-bound expiry.
+const EXTENSION_ACCOUNT_SESSION_IDLE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const EXTENSION_ACCOUNT_SESSION_ABSOLUTE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const EXTENSION_ENTITLEMENT_LEASE_MS = 15 * 60 * 1000;
 const EXTENSION_FREE_CAPABILITIES = Object.freeze([
   'account.manage',
@@ -2309,7 +2314,7 @@ async function createExtensionSession(descriptor, deps = {}) {
     const tokenHash = hashExtensionSessionToken(rawToken);
     const signedDev = Number(descriptor.securityProtocol) === 2 && descriptor.signedDev === true && String(descriptor.channel || '').toLowerCase() === 'dev';
     let devAttestation = null;
-    let sessionExpiryMs = now.getTime() + EXTENSION_SESSION_TTL_MS;
+    let sessionExpiryMs = now.getTime() + (descriptor.authMethod === 'password' && !signedDev ? EXTENSION_ACCOUNT_SESSION_IDLE_TTL_MS : EXTENSION_SESSION_TTL_MS);
     if (signedDev) {
       if (!descriptor.devAttestation || typeof descriptor.devAttestation !== 'object') throw new Error('DEV_BUILD_ATTESTATION_INVALID');
       try { devAttestation = JSON.parse(JSON.stringify(descriptor.devAttestation)); } catch (_) { throw new Error('DEV_BUILD_ATTESTATION_INVALID'); }
@@ -2351,6 +2356,9 @@ async function createExtensionSession(descriptor, deps = {}) {
       entitlementRevision: descriptor.entitlementRevision,
       createdAt: now,
       lastSeenAt: now,
+      absoluteExpiresAt: descriptor.authMethod === 'password' && !signedDev
+        ? new Date(now.getTime() + EXTENSION_ACCOUNT_SESSION_ABSOLUTE_TTL_MS)
+        : null,
       expiresAt: new Date(sessionExpiryMs),
       revokedAt: null,
     };
@@ -2490,12 +2498,58 @@ async function authorizeExtensionKeySession(input, deps = {}) {
   };
 }
 
+function extensionRenewedAccountExpiry(doc, now) {
+  const current = new Date(doc?.expiresAt || 0);
+  if (!Number.isFinite(current.getTime())) return null;
+  if (doc?.authMethod !== 'password' || doc?.signedDev === true) return current;
+  // Legacy sessions issued before this policy have no absoluteExpiresAt.
+  // Their original createdAt is the anchor: refresh never resets the 30-day cap.
+  const created = new Date(doc.createdAt);
+  if (!Number.isFinite(created.getTime())) return null;
+  const rawAbsolute = doc.absoluteExpiresAt == null
+    ? created.getTime() + EXTENSION_ACCOUNT_SESSION_ABSOLUTE_TTL_MS
+    : new Date(doc.absoluteExpiresAt).getTime();
+  if (!Number.isFinite(rawAbsolute) || rawAbsolute <= now.getTime()) return null;
+  const wanted = Math.min(now.getTime() + EXTENSION_ACCOUNT_SESSION_IDLE_TTL_MS, rawAbsolute);
+  return new Date(Math.max(current.getTime(), wanted));
+}
+
+// A Chrome Web Store update changes buildId/fingerprint while retaining the
+// same installation. Rebinding is allowed only for a newer, separately
+// authorized production/release build from that SAME extension installation.
+function extensionProductionUpgradeAllowed(doc, current, installationIdHash) {
+  if (Number(doc?.securityProtocol) !== 2 || doc?.signedDev === true ||
+      String(doc?.channel) !== 'production' || String(doc?.profile) !== 'release' ||
+      Number(current?.securityProtocol) !== 2 || current?.signedDev === true ||
+      String(current?.channel) !== 'production' || String(current?.profile) !== 'release' ||
+      String(current?.extensionId || '').toLowerCase() !== String(doc?.extensionId || '').toLowerCase() ||
+      !/^[a-p]{32}$/.test(String(doc?.extensionId || '').toLowerCase()) ||
+      !installationIdHash || installationIdHash !== String(doc?.installationIdHash || '').toLowerCase() ||
+      !/^[a-f0-9]{64}$/i.test(String(current?.buildFingerprint || '')) ||
+      !/^zvm-production-\d+(?:\.\d+){2,3}-s[a-f0-9]{12}$/i.test(String(current?.buildId || ''))
+  ) return false;
+  function parts(v) {
+    const found=/^(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?$/.exec(String(v||''));
+    if (!found) return null;
+    const result=found.slice(1).map(x=>x===undefined?0:Number(x));
+    return result.every(x=>Number.isSafeInteger(x)&&x>=0)?result:null;
+  }
+  const oldVersion=parts(doc.extensionVersion),newVersion=parts(current.extensionVersion);
+  if (!oldVersion||!newVersion) return false;
+  for(let i=0;i<4;i++){
+    if(newVersion[i]>oldVersion[i])return true;
+    if(newVersion[i]<oldVersion[i])return false;
+  }
+  return false; // never migrate sideways to a different fingerprint at same version
+}
+
 async function refreshExtensionSession(rawToken, deps = {}) {
   const db = deps.db || await getMongoDb();
   const now = extensionNow(deps);
   const current = await readExtensionSession(rawToken, { ...deps, db, now });
   if (!current.ok) return extensionAuthFailure(current.errorCode, 401);
   const doc = current.doc;
+  let nextProductionBuild = null;
   let buildDecision;
   if (typeof deps.storedSessionDecision === 'function') {
     buildDecision = deps.storedSessionDecision(doc);
@@ -2533,8 +2587,15 @@ async function refreshExtensionSession(rawToken, deps = {}) {
       String(currentSecurity.buildFingerprint || '').toLowerCase() === String(doc.buildFingerprint || '').toLowerCase() &&
       installationIdHash === String(doc.installationIdHash || '').toLowerCase();
     if (!sameIdentity) {
-      await revokeExtensionSession(rawToken, { ...deps, db, now });
-      return extensionAuthFailure('BUILD_NOT_ALLOWED', 403);
+      if (!extensionProductionUpgradeAllowed(doc, currentSecurity, installationIdHash)) {
+        await revokeExtensionSession(rawToken, { ...deps, db, now });
+        return extensionAuthFailure('BUILD_NOT_ALLOWED', 403);
+      }
+      nextProductionBuild = {
+        buildId: currentSecurity.buildId,
+        extensionVersion: currentSecurity.extensionVersion,
+        buildFingerprint: String(currentSecurity.buildFingerprint).toLowerCase(),
+      };
     }
   }
   let entitlementResult;
@@ -2573,17 +2634,28 @@ async function refreshExtensionSession(rawToken, deps = {}) {
     await revokeExtensionSession(rawToken, { ...deps, db, now });
     return extensionAuthFailure('DEV_ACCESS_REQUIRED', 403);
   }
-  await db.collection(EXTENSION_SESSION_COLLECTION).updateOne(
-    { _id: doc._id, revokedAt: null },
+  const renewedExpiry = extensionRenewedAccountExpiry(doc, now);
+  if (!renewedExpiry || renewedExpiry.getTime() <= now.getTime()) {
+    await revokeExtensionSession(rawToken, { ...deps, db, now });
+    return extensionAuthFailure('session_expired', 401);
+  }
+  // The update is an authorization fence: a simultaneous logout/revocation
+  // must not be followed by a successful refresh response.
+  const updated = await db.collection(EXTENSION_SESSION_COLLECTION).updateOne(
+    { _id: doc._id, revokedAt: null, expiresAt: { $gt: now } },
     { $set: {
       lastSeenAt: now,
       licenseKeyCode: licenseKeyCode || null,
       entitlementRevision: entitlementResult.entitlement.entitlementRevision,
-    } }
+      expiresAt: renewedExpiry,
+      ...(nextProductionBuild || {}),
+    } },
+    { timeoutMS: ZVM_EXTENSION_AUTH_DB_TIMEOUT_MS }
   );
+  if (updated?.matchedCount !== 1) return extensionAuthFailure('session_revoked', 401);
   return {
     ok: true,
-    sessionDoc: doc,
+    sessionDoc: { ...doc, expiresAt: renewedExpiry },
     entitlement: entitlementResult.entitlement,
   };
 }
