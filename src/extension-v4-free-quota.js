@@ -40,20 +40,34 @@ async function executeV4FreeQuota({ collection, subject, tier, action = 'check',
   if (action === 'settle') {
     if (!['confirmed','uncertain'].includes(String(ack))) fail('invalid_settlement', 400);
     if (ack === 'confirmed' && (!/^[a-f0-9]{64}$/i.test(String(messageIdHash || '')))) fail('message_receipt_required', 400);
-    const doc = await collection.findOne({ _id: recordId }), op = getOp(doc);
-    if (!op) fail('reservation_not_found', 409);
-    if (op.type !== itemType) fail('operation_type_mismatch', 409);
-    if (op.status === 'confirmed' || (ack === 'uncertain' && op.status === 'uncertain')) {
-      return output(doc, target, now, { operationStatus: op.status, duplicate: true });
+    // A positive WA-JS confirmation has precedence over a concurrently recorded
+    // uncertain ACK. Re-read and CAS retry: no stale uncertain response may mask
+    // a confirmed receipt and no uncertain write may downgrade a confirmed one.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const doc = await collection.findOne({ _id: recordId }), op = getOp(doc);
+      if (!op) fail('reservation_not_found', 409);
+      if (op.type !== itemType) fail('operation_type_mismatch', 409);
+      if (op.status === 'confirmed') {
+        if (ack === 'confirmed' && op.receiptHash &&
+            op.receiptHash !== messageIdHash.toLowerCase()) fail('message_receipt_mismatch', 409);
+        return output(doc, target, now, { operationStatus: 'confirmed', duplicate: true });
+      }
+      if (ack === 'uncertain' && op.status === 'uncertain') {
+        return output(doc, target, now, { operationStatus: 'uncertain', duplicate: true });
+      }
+      if (!['reserved', 'uncertain'].includes(op.status)) fail('invalid_reservation_state', 409);
+      const status = ack === 'confirmed' ? 'confirmed' : 'uncertain';
+      const patch = { status, updatedAt: now };
+      if (status === 'confirmed') patch.receiptHash = messageIdHash.toLowerCase();
+      const update = { $set: Object.fromEntries(
+        Object.entries(patch).map(([key, value]) => [path+'.'+key, value])) };
+      const changed = await collection.findOneAndUpdate(
+        { _id: recordId, [path+'.status']: op.status }, update, { returnDocument: 'after' });
+      if (changed) return output(changed, target, now, { operationStatus: status });
+      // A different worker won the CAS. Observe the new state and retry if a
+      // positive receipt still needs promotion from uncertain -> confirmed.
     }
-    const status = ack === 'confirmed' ? 'confirmed' : 'uncertain', patch = { status, updatedAt: now };
-    if (status === 'confirmed') patch.receiptHash = messageIdHash.toLowerCase();
-    const update = { $set: Object.fromEntries(Object.entries(patch).map(([key, value]) => [path+'.'+key, value])) };
-    const changed = await collection.findOneAndUpdate({ _id: recordId, [path+'.status']: op.status }, update, { returnDocument: 'after' });
-    if (changed) return output(changed, target, now, { operationStatus: status });
-    const latest = await collection.findOne({ _id: recordId }), after = getOp(latest);
-    if (!after) fail('quota_result_uncertain', 503);
-    return output(latest, target, now, { operationStatus: after.status, duplicate: true });
+    fail('quota_result_uncertain', 503);
   }
   // A client cannot claim the number of active schedules. This requires
   // an authoritative scheduler; keeping the Free scheduling gate closed until
