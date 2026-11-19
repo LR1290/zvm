@@ -38,7 +38,12 @@ const err500=api.renderStandalone500Page(null);
 assert(pt.includes('class="zvm-public-premium zvm-legal-premium zvm-privacy-premium"'));
 assert(pt.includes('<main id="main-content" class="zvm-privacy-main">'),'Privacy skip link target must be semantic');
 assert.equal((pt.match(/id="main-content"/g)||[]).length,1,'Privacy has duplicate main IDs');
-assert.equal((pt.match(/zvm-standalone.d6d2222fe00a.css/g)||[]).length,1,'Privacy loads standalone CSS twice');
+const standaloneLinks=[...pt.matchAll(/href="\\/assets\\/(zvm-standalone\\.[a-f0-9]{12}\\.css)"/g)].map(m=>m[1]);
+assert.equal(standaloneLinks.length,1,'Privacy must load precisely one current standalone stylesheet');
+const standaloneBytes=fs.readFileSync(path.join(root,'assets',standaloneLinks[0]));
+const standaloneDigest=crypto.createHash('sha256').update(standaloneBytes).digest('hex');
+assert.equal(standaloneLinks[0].split('.')[1],standaloneDigest.slice(0,12),'Privacy standalone asset hash matches its bytes');
+assert(source.includes("sha256: '"+standaloneDigest+"'"),'privacy standalone CSS is pinned by the server');
 for(const phrase of ['Lei Geral de Proteção de Dados','Cookies e rastreamento','Não vendemos dados pessoais']){
  assert(pt.includes(phrase),'Privacy text changed or lost '+phrase);
 }
