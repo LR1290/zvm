@@ -5515,6 +5515,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: 'd6d2222fe00a952abffb4db44498378fc446af76111cdf9f1980c177b78a0c70',
     compressible: true,
   }),
+  '/assets/zvm-standalone.46e5536d6d3c.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-standalone.46e5536d6d3c.css'),
+    sha256: '46e5536d6d3cd1b176edf7c50e49242d237985961d8cad4498add326b5ce40b7',
+    compressible: true,
+  }),
   '/assets/zvm-action-hub.07aa17b87c3e.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-action-hub.07aa17b87c3e.css'),
@@ -7282,7 +7288,7 @@ function sendAdminLogin(res, error = '', status = 200) {
 const _FAV = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2308080f'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZVM%3C/text%3E%3C/svg%3E";
 const _CSS_SHARED = '<link rel="stylesheet" href="/assets/zvm-shared.6dac16eb7b5b.css">';
 const _CSS_SYSTEM = '<link rel="stylesheet" href="/assets/zvm-r46-system.cf01433d7f45.css">';
-const _CSS_STANDALONE = '<link rel="stylesheet" href="/assets/zvm-standalone.d6d2222fe00a.css">';
+const _CSS_STANDALONE = '<link rel="stylesheet" href="/assets/zvm-standalone.46e5536d6d3c.css">';
 const _CSS_AUTH = '<link rel="stylesheet" href="/assets/zvm-r46-auth.286cb26442a2.css"><link rel="stylesheet" href="/assets/zvm-auth-premium.a96f915db3f4.css">';
 const _CSS_PRIVILEGED_AUTH = '<link rel="stylesheet" href="/assets/zvm-privileged-auth.daab7ea4861a.css">';
 const _CSS_CLIENT_WORKSPACE = '<link rel="stylesheet" href="/assets/zvm-r46-client-workspace.6dbf0f685e67.css">';
