@@ -40,3 +40,25 @@ for(const [folder,kind,endMarker] of [['flows','Flow','  async function createBo
     await assert.rejects(verify(instance),{code:kind.toUpperCase()+'_SENDER_SCOPE_UNAVAILABLE'});
   });
 }
+test('follow-up preserves uncertain effect across cancellation and next tick',async()=>{
+  const src=fs.readFileSync(path.join(process.env.ZVM_LAB_SOURCE || path.join(__dirname,'../staging'),'app/content/features/followup/engine.js'),'utf8');
+  const start=src.indexOf('  function isTickCurrent('),end=src.indexOf('  async function publishFollowUpOutcomes(',start);
+  assert(start>=0&&end>start);
+  const cancelled=new Set(),outcomes=[];
+  let sends=0;
+  const env={started:true,pageSuspended:false,lifecycleEpoch:1,cancelledFollowupIds:cancelled,
+    window:{__extDataMutationClient:{followup:async(action,claim)=>{
+      assert.equal(action,'queue_claim');
+      return {item:{id:claim.id,status:'sending',attemptToken:claim.attemptToken}};
+    }}},dispatch:async(rule,entry)=>{
+      sends++;cancelled.add(entry.id);
+      throw Object.assign(Error('ACK unavailable'),{remoteEffectUncertain:true});
+    }};
+  vm.runInNewContext(src.slice(start,end),env);
+  const rules=[{id:'r',active:true}],queue=[{id:'q',followUpId:'r',status:'pending',trigger:'enter'}];
+  await env.fireDue(rules,queue,1,null,1,outcomes);
+  assert.equal(queue[0].durableReviewRequired,true);
+  assert.equal(outcomes[0].name,'FollowUpFailed');
+  await env.fireDue(rules,queue,2,null,1,outcomes);
+  assert.equal(sends,1);
+});
