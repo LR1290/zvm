@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { PRODUCT_AUTOMACOES, PRODUCT_LITE } = require('../src/license-product-v2');
 const source = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
 
 function region(from, until) {
@@ -130,19 +131,25 @@ async function loginTests() {
     'const ZVM_EXTENSION_AUTH_DB_TIMEOUT_MS = 3200;\n' +
     'function extensionAuthFailure(errorCode,status,extra) { return {ok:false,errorCode,status,...extra}; }\n' +
     loginCode + '\nglobalThis.login = authenticateExtensionAccount;', {
+    PRODUCT_AUTOMACOES, PRODUCT_LITE,
     getMongoDb: async()=>db,
     verifyPortalPassword: async()=>passwordValid,
     portalTotpHasSecret: ()=>hasMfa,
     portalTotpReadSecret: ()=>'test-secret',
     verifyTOTP: ()=>totpValid,
     maybeRehashPortalPassword: async()=>{},
-    extensionSubject:()=>({type:'account',id:'hash'}),
+    extensionSubject:(_type,_email,productId)=>({type:'account',id:productId}),
     resolveExtensionAccountEntitlement: async()=>({
       ok:true,keyCode:null,devAccess:false,entitlement:{tier:'free'}
     })
   });
   const input = {email:'test@example.invalid',password:'safe-test-password'};
-  assert.equal((await s.login(input,{db})).ok,true);
+  const defaultLogin = await s.login(input,{db});
+  assert.equal(defaultLogin.ok,true);
+  assert.equal(defaultLogin.subject.id,PRODUCT_AUTOMACOES,'unmarked legacy account login defaults to the complete product');
+  const liteLogin = await s.login(input,{db,expectedProductId:PRODUCT_LITE});
+  assert.equal(liteLogin.ok,true,'isolated fixture preserves caller-specified product');
+  assert.equal(liteLogin.subject.id,PRODUCT_LITE,'LITE account subject does not inherit full-product namespace');
   assert.equal(capturedTimeout,3200,'account read cannot hang for 30 seconds');
   passwordValid=false;
   assert.equal((await s.login(input,{db})).errorCode,'invalid_credentials');
