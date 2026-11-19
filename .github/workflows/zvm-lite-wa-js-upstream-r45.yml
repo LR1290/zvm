@@ -1,0 +1,38 @@
+name: ZVM LITE R45 - fetch pinned official WA-JS bundle (no deploy)
+on:
+  push:
+    branches:
+      - feature/zvm-lite-key-v2-isolado-20261118
+    paths:
+      - .github/workflows/zvm-lite-wa-js-upstream-r45.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  fetch-verified-upstream:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Retrieve v4.8.2 GitHub release asset (exact SHA256)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          curl --retry 3 --fail --location --silent --show-error \
+            --max-time 90 \
+            https://github.com/wppconnect-team/wa-js/releases/download/v4.8.2/wppconnect-wa.js \
+            -o out/wppconnect-wa.js
+          printf '%s  %s\n' \
+            'b1a9c3c42357ad2a9fb7504f460c909dcf0e2b1ad8129abdb485f151164a4b10' \
+            out/wppconnect-wa.js | sha256sum --check --status
+          test "$(wc -c < out/wppconnect-wa.js)" -eq 595652
+          head -c 200 out/wppconnect-wa.js | grep -F 'v4.8.2'
+          node --check out/wppconnect-wa.js
+          sha256sum out/wppconnect-wa.js > out/SHA256SUMS.txt
+      - name: Upload isolated upstream artifact (no build or publication)
+        uses: actions/upload-artifact@v4
+        with:
+          name: zvm-lite-wa-js-4.8.2-r45
+          path: out/
+          retention-days: 3
+          if-no-files-found: error

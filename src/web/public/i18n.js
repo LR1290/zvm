@@ -137,6 +137,11 @@ function localizePublicHtml(raw,locale,{path='/'}={}) {
   const actionGroup=/(<div class="znav-action-links">[\s\S]*?)(<\/div><\/div>\s*<\/nav>)/i;
   if(actionGroup.test(html)){
     html=html.replace(actionGroup,(_,actions,closing)=>actions+picker+closing);
+  } else {
+    // Standalone/minimal public templates may render an empty nav. Keep the
+    // language switcher accessible there without duplicating a populated nav.
+    const emptyNav=/(<nav\b(?=[^>]*\bclass="[^"]*\bznav\b[^"]*\bstandalone-nav\b[^"]*")[^>]*>)\s*(<\/nav>)/i;
+    html=html.replace(emptyNav,(_,opening,closing)=>opening+'<div class="znav-action-links">'+picker+'</div>'+closing);
   }
   html=html.replace('</head>','<link rel="stylesheet" href="/assets/zvm-i18n-public.5c4469481130.css"></head>');
   return html;

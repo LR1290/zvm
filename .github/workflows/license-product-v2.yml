@@ -1,0 +1,63 @@
+name: ZVM key V2 - isolated checks
+on:
+  pull_request:
+    paths:
+      - 'src/license-product-v2.js'
+      - 'src/portal-license-slots.js'
+      - 'src/lite-license-authority.js'
+      - 'tests/r53-lite-portal-slots.test.js'
+      - 'tests/r54-lite-portal-session-revocation.test.js'
+      - 'tests/r55-lite-unique-key-owner.test.js'
+      - 'tests/r56-lite-authoritative-db.test.js'
+      - 'tests/r57-lite-deferred-route.test.js'
+      - 'src/lite-v4-build-authority.js'
+      - 'tests/r52-lite-v4-authority.test.js'
+      - 'tools/lite-provision-dev.js'
+      - 'tests/r52-lite-provision.test.js'
+      - '.env.example'
+      - 'tests/r51-license-products-v2.test.js'
+      - 'server.js'
+      - 'assets/zvm-admin-dashboard.2757c76a8405.js'
+      - '.github/workflows/license-product-v2.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  license-product-contract:
+    name: License separation (no DB, no deploy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.3'
+      - name: Syntax checks
+        run: |
+          node --check server.js
+          node --check src/license-product-v2.js
+          node --check src/portal-license-slots.js
+          node --check src/lite-license-authority.js
+          node --check tests/r53-lite-portal-slots.test.js
+          node --check tests/r54-lite-portal-session-revocation.test.js
+          node --check tests/r55-lite-unique-key-owner.test.js
+          node --check tests/r56-lite-authoritative-db.test.js
+          node --check tests/r57-lite-deferred-route.test.js
+          node --check src/lite-v4-build-authority.js
+          node --check tests/r52-lite-v4-authority.test.js
+          node --check tools/lite-provision-dev.js
+          node --check tests/r52-lite-provision.test.js
+          node --check assets/zvm-admin-dashboard.2757c76a8405.js
+          node --check tests/r51-license-products-v2.test.js
+      - name: Product admission & entropy tests
+        run: node --test tests/r51-license-products-v2.test.js tests/r52-lite-v4-authority.test.js tests/r52-lite-provision.test.js tests/r53-lite-portal-slots.test.js tests/r54-lite-portal-session-revocation.test.js tests/r55-lite-unique-key-owner.test.js tests/r56-lite-authoritative-db.test.js tests/r57-lite-deferred-route.test.js
+      - name: Install pinned test dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Existing admin integrity and UX regressions
+        run: |
+          node tests/r47-07-admin-key-ux.test.js
+          node tests/r46-92-admin-authority.test.js
+          # r47-08 pins an obsolete owner-site CSS hash and is a known pre-existing baseline failure.
+          node --test tests/r47-13-admin-mobile-csrf.test.js

@@ -24,6 +24,10 @@ function sanitizeStartupErrorMessage(error) {
 const http   = require('http');
 const https  = require('https');
 const crypto = require('crypto');
+const { PRODUCT_AUTOMACOES, PRODUCT_LITE, selectAdminProduct, generateLicenseKey, productOfKeyRecord, keyBelongsTo } = require('./src/license-product-v2');
+const { readLiteConfig, inspectLiteClient, liteOriginAllowed, liteSessionAllowed, SESSION_TTL: ZVM_LITE_SESSION_TTL } = require('./src/lite-v4-build-authority');
+const { readLiteLicenseSnapshot, claimLitePhoneSlotAtomic, activateLiteDeferredKeyAtomic } = require('./src/lite-license-authority');
+const { normalizePortalLicenseKey, portalLicenseSlot, linkedPortalKeyForProduct, portalLicenseConflictQuery, revokePortalLitePasswordSessions, revokeLiteLicenseSessions, ensureLitePortalLicenseUniqueIndex } = require('./src/portal-license-slots');
 const fs     = require('fs');
 const path   = require('path');
 const zlib   = require('zlib');
@@ -64,7 +68,7 @@ const serveZVMCloud = createCloudRoute({
     if (storedKeyHash !== null && !safeCompare(fingerprint, storedKeyHash)) return false;
     // Read the authoritative DB record, never the in-memory cache of old licenses.
     const record = await readPortalKeySnapshot(keyCode, { db });
-    if (!extensionLicenseIsUsable(record) || !extensionDevAccessAllowed(keyCode, record)) return false;
+    if (!extensionLicenseIsUsable(record) || !keyBelongsTo(record, keyCode, PRODUCT_AUTOMACOES) || !extensionDevAccessAllowed(keyCode, record)) return false;
     return rawCode !== null ? { keyHash: fingerprint } : true;
   },
 });
@@ -186,6 +190,7 @@ const EXTENSION_TUTORIALS_JSON = String(process.env.EXTENSION_TUTORIALS_JSON || 
 const EXT_COMPAT_DECODER_V1 = String(process.env.EXT_COMPAT_DECODER_V1 || '').trim();
 const TRUST_PROXY_HEADERS = process.env.TRUST_PROXY_HEADERS === '1' || String(process.env.RENDER || '').toLowerCase() === 'true';
 const ZVM_EXTENSION_IDS = new Set(String(process.env.ZVM_EXTENSION_IDS || '').split(',').map(v => v.trim().toLowerCase()).filter(v => /^[a-p]{32}$/.test(v)));
+const ZVM_LITE_V4_CONFIG = readLiteConfig(process.env, ZVM_EXTENSION_IDS);
 const ZVM_LEGACY_SHIELD_CHECK_TTL_MS = Math.max(30000, Math.min(15 * 60 * 1000, parseInt(process.env.ZVM_LEGACY_SHIELD_CHECK_TTL_MS || '300000', 10) || 300000));
 const ZVM_LEGACY_SHIELD_KEY_TTL_MS = Math.max(5 * 60 * 1000, Math.min(2 * 60 * 60 * 1000, parseInt(process.env.ZVM_LEGACY_SHIELD_KEY_TTL_MS || '3600000', 10) || 3600000));
 const ZVM_LEGACY_SHIELD_MAX_ENTRIES = Math.max(128, Math.min(10000, parseInt(process.env.ZVM_LEGACY_SHIELD_MAX_ENTRIES || '2048', 10) || 2048));
@@ -696,6 +701,35 @@ async function commitAdminKeyRecordStrict(code, record, deps = {}) {
       zvmInvalidateMongoOnNetworkError(retryError, recovered);
       throw retryError;
     }
+  }
+  keys[keyCode] = next;
+  invalidateKeysHtmlCache();
+  return keys[keyCode];
+}
+
+// New administrative keys must be inserted ONLY IF ABSENT. Existing license
+// records can never be overwritten by a token collision or a parallel admin.
+async function insertNewAdminKeyStrict(code, record, deps = {}) {
+  const keyCode = String(code || '');
+  if (!/^[a-z0-9_-]{1,64}$/.test(keyCode) || !record || typeof record !== 'object') {
+    throw Object.assign(new Error('invalid_key_record'), { code: 'invalid_key_record' });
+  }
+  const db = deps.db || await getMongoDb();
+  const next = cloneKeyRecordForCommit(record);
+  const field = `data.${keyCode}`;
+  let result;
+  try {
+    result = await db.collection('store').updateOne(
+      { _id: 'keys', [field]: { $exists: false } },
+      { $set: { [field]: next, updatedAt: new Date() } },
+      { upsert: false, timeoutMS: 7000 }
+    );
+  } catch (error) {
+    zvmInvalidateMongoOnNetworkError(error, db);
+    throw error; // Never retry an uncertain write without a transaction ID.
+  }
+  if (result?.matchedCount !== 1 || result?.modifiedCount !== 1) {
+    throw Object.assign(new Error('admin_key_conflict_or_store_unavailable'), { code:'admin_key_conflict_or_store_unavailable' });
   }
   keys[keyCode] = next;
   invalidateKeysHtmlCache();
@@ -2098,6 +2132,11 @@ const EXTENSION_FREE_CAPABILITIES = Object.freeze([
   'laboratory.preview',
   'personalization.manage',
 ]);
+const EXTENSION_LITE_CAPABILITIES = Object.freeze([
+  'extension.use','paid','flows.manage','funnels.manage','disparos.execute',
+  'followup.manage','quickReply.send','items.schedule','items.send',
+  'groups.send','export.contacts',
+]);
 const EXTENSION_LICENSED_CAPABILITIES = Object.freeze([
   ...EXTENSION_FREE_CAPABILITIES,
   'academy.ai',
@@ -2135,10 +2174,10 @@ function hashExtensionSessionToken(rawToken) {
   return crypto.createHash('sha256').update(String(rawToken || ''), 'utf8').digest('hex');
 }
 
-function extensionSubject(type, stableId) {
+function extensionSubject(type, stableId, productId = PRODUCT_AUTOMACOES) {
   return {
     type,
-    id: crypto.createHash('sha256').update(`zvm-extension:${type}:${String(stableId || '')}`, 'utf8').digest('hex'),
+    id: crypto.createHash('sha256').update(`${productId === PRODUCT_LITE ? 'zvm-lite-extension' : 'zvm-extension'}:${type}:${String(stableId || '')}`, 'utf8').digest('hex'),
   };
 }
 
@@ -2156,11 +2195,15 @@ function extensionDevAccessAllowed(keyCode, keyRecord) {
   return ZVM_DEV_LICENSE_KEY_HASHES.has(keyHash);
 }
 
-function buildExtensionEntitlement({ keyCode = null, keyRecord = null, now = Date.now() } = {}) {
+function buildExtensionEntitlement({ keyCode = null, keyRecord = null, now = Date.now(), productId = PRODUCT_AUTOMACOES } = {}) {
   const nowDate = now instanceof Date ? new Date(now) : new Date(now);
   const nowMs = Number.isFinite(nowDate.getTime()) ? nowDate.getTime() : Date.now();
-  const licensed = !!keyCode && extensionLicenseIsUsable(keyRecord, nowMs);
-  const capabilities = [...(licensed ? EXTENSION_LICENSED_CAPABILITIES : EXTENSION_FREE_CAPABILITIES)].sort();
+  const isLite = productId === PRODUCT_LITE;
+  const licensed = !!keyCode && extensionLicenseIsUsable(keyRecord, nowMs) &&
+    keyBelongsTo(keyRecord, keyCode, productId);
+  const capabilities = [...(isLite
+    ? (licensed ? EXTENSION_LITE_CAPABILITIES : [])
+    : (licensed ? EXTENSION_LICENSED_CAPABILITIES : EXTENSION_FREE_CAPABILITIES))].sort();
   const licenseExpiryMs = licensed && keyRecord.expiresAt ? new Date(keyRecord.expiresAt).getTime() : null;
   const leaseExpiryMs = Number.isFinite(licenseExpiryMs)
     ? Math.min(nowMs + EXTENSION_ENTITLEMENT_LEASE_MS, licenseExpiryMs)
@@ -2168,26 +2211,27 @@ function buildExtensionEntitlement({ keyCode = null, keyRecord = null, now = Dat
   const tier = licensed ? 'paid' : 'free';
   const rawPlanId = licensed ? String(keyRecord.plan_id || keyRecord.planId || '').trim() : '';
   const commercialPlan = licensed ? (ZVM_PAYMENT_PLANS[rawPlanId.toLowerCase()] || null) : null;
-  const planId = licensed ? (rawPlanId || 'ZV_PRO') : FREE_PLAN_ID;
+  const planId = licensed ? (isLite ? rawPlanId : (rawPlanId || 'ZV_PRO')) : FREE_PLAN_ID;
   // Legacy/admin-created keys predate explicit plan metadata. Their historical
   // contract was PRO, so keep that fallback instead of exposing a generic
   // "Licenciado" label that loses useful license information.
-  const planName = licensed ? String(keyRecord.planName || commercialPlan?.shortName || commercialPlan?.name || 'Pro') : 'Gratuito';
+  const planName = licensed ? (isLite ? String(keyRecord.planName || 'LITE') : String(keyRecord.planName || commercialPlan?.shortName || commercialPlan?.name || 'Pro')) : 'Gratuito';
   const rawMaxUses = licensed && typeof keyRecord.maxUses === 'number' ? keyRecord.maxUses : null;
   const accessUnlimited = rawMaxUses === -1;
   const accessLimit = licensed && Number.isInteger(rawMaxUses) && rawMaxUses >= 0 ? rawMaxUses : null;
   const accessUsed = licensed
     ? (Array.isArray(keyRecord.phones) ? keyRecord.phones.length : Math.max(0, Number(keyRecord.uses) || 0))
     : 0;
-  const backupOwnerId = licensed ? String(keyRecord.ownerId || 'zv-owner') : '';
+  const backupOwnerId = licensed ? String(keyRecord.ownerId || (isLite ? keyCode : 'zv-owner')) : '';
   const backupOwnerHash = backupOwnerId
-    ? crypto.createHash('sha256').update(`ext:backup-owner:v1:${backupOwnerId}`, 'utf8').digest('hex')
+    ? crypto.createHash('sha256').update(isLite ? `ext:backup-owner:lite:v1:${backupOwnerId}` : `ext:backup-owner:v1:${backupOwnerId}`, 'utf8').digest('hex')
     : null;
   const backupLegacyOwnerHash = backupOwnerId
-    ? crypto.createHash('sha256').update(`zv:backup-owner:v1:${backupOwnerId}`, 'utf8').digest('hex')
+    ? (isLite ? null : crypto.createHash('sha256').update(`zv:backup-owner:v1:${backupOwnerId}`, 'utf8').digest('hex'))
     : null;
   const revisionInput = JSON.stringify({
     tier,
+    ...(isLite ? { productId: PRODUCT_LITE } : {}),
     planId,
     planName,
     accessLimit,
@@ -2200,6 +2244,7 @@ function buildExtensionEntitlement({ keyCode = null, keyRecord = null, now = Dat
     permissions: licensed && Array.isArray(keyRecord.permissions) ? [...keyRecord.permissions].sort() : [],
   });
   return {
+    productId,
     status: licensed ? 'active' : 'free',
     tier: licensed ? 'paid' : 'free',
     planId,
@@ -2260,6 +2305,7 @@ function extensionSessionSuccess(rawToken, sessionDoc, entitlement) {
     entitlement: {
       subject: { ...session.subject },
       authMethod: session.authMethod,
+      productId: entitlement.productId || PRODUCT_AUTOMACOES,
       status: entitlement.status,
       tier: entitlement.tier,
       entitlementRevision: entitlement.entitlementRevision,
@@ -2301,15 +2347,28 @@ function extensionSessionSecurityFields(buildClient) {
 }
 
 async function createExtensionSession(descriptor, deps = {}) {
+  const sessionProduct = descriptor.extensionProductId || PRODUCT_AUTOMACOES;
+  if (![PRODUCT_LITE,PRODUCT_AUTOMACOES].includes(sessionProduct)) throw new Error('EXTENSION_SESSION_PRODUCT_INVALID');
   const db = deps.db || await getMongoDb();
   const now = extensionNow(deps);
   await ensureExtensionSessionIndexes(db);
   for (let attempt = 0; attempt < 3; attempt++) {
     const rawToken = (deps.generateToken || generateToken)();
     const tokenHash = hashExtensionSessionToken(rawToken);
-    const signedDev = Number(descriptor.securityProtocol) === 2 && descriptor.signedDev === true && String(descriptor.channel || '').toLowerCase() === 'dev';
+    const signedDev = sessionProduct !== PRODUCT_LITE && Number(descriptor.securityProtocol) === 2 && descriptor.signedDev === true && String(descriptor.channel || '').toLowerCase() === 'dev';
     let devAttestation = null;
     let sessionExpiryMs = now.getTime() + EXTENSION_SESSION_TTL_MS;
+    if (sessionProduct === PRODUCT_LITE) {
+      if (!liteSessionAllowed(ZVM_LITE_V4_CONFIG, {
+        extensionProductId: PRODUCT_LITE, securityProtocol:2,
+        channel:descriptor.channel, profile:descriptor.profile,
+        extensionId:descriptor.extensionId, extensionVersion:descriptor.extensionVersion,
+        buildId:descriptor.buildId, buildFingerprint:descriptor.buildFingerprint,
+        liteSignerKeyId:descriptor.liteSignerKeyId,
+        liteSignedExpiresAt:descriptor.liteSignedExpiresAt,
+      }, now.getTime())) throw new Error('LITE_BUILD_SESSION_INVALID');
+      sessionExpiryMs = Math.min(now.getTime() + ZVM_LITE_SESSION_TTL, Date.parse(descriptor.liteSignedExpiresAt));
+    }
     if (signedDev) {
       if (!descriptor.devAttestation || typeof descriptor.devAttestation !== 'object') throw new Error('DEV_BUILD_ATTESTATION_INVALID');
       try { devAttestation = JSON.parse(JSON.stringify(descriptor.devAttestation)); } catch (_) { throw new Error('DEV_BUILD_ATTESTATION_INVALID'); }
@@ -2323,6 +2382,9 @@ async function createExtensionSession(descriptor, deps = {}) {
       sessionId: crypto.randomUUID(),
       subject: { ...descriptor.subject },
       authMethod: descriptor.authMethod,
+      extensionProductId: sessionProduct,
+      liteSignerKeyId: sessionProduct === PRODUCT_LITE ? descriptor.liteSignerKeyId : null,
+      liteSignedExpiresAt: sessionProduct === PRODUCT_LITE ? descriptor.liteSignedExpiresAt : null,
       accountEmail: descriptor.accountEmail || null,
       licenseKeyCode: descriptor.licenseKeyCode || null,
       phoneNumber: normalizePhone(descriptor.phoneNumber || '') || null,
@@ -2330,7 +2392,7 @@ async function createExtensionSession(descriptor, deps = {}) {
         ? crypto.createHash('sha256').update(String(descriptor.deviceId), 'utf8').digest('hex')
         : null,
       securityProtocol: Number(descriptor.securityProtocol) === 2 ? 2 : 1,
-      buildId: Number(descriptor.securityProtocol) === 2 && /^zvm-(?:dev|beta|production)-\d+(?:\.\d+){2,3}-s[a-f0-9]{12}$/i.test(String(descriptor.buildId || ''))
+      buildId: Number(descriptor.securityProtocol) === 2 && (sessionProduct === PRODUCT_LITE ? /^zvm-lite-dev-[A-Za-z0-9._-]{3,96}$/.test(String(descriptor.buildId || '')) : /^zvm-(?:dev|beta|production)-\d+(?:\.\d+){2,3}-s[a-f0-9]{12}$/i.test(String(descriptor.buildId || '')))
         ? String(descriptor.buildId).toLowerCase()
         : null,
       channel: Number(descriptor.securityProtocol) === 2 && ['dev','beta','production'].includes(String(descriptor.channel || '').toLowerCase())
@@ -2398,17 +2460,33 @@ function extensionAuthFailure(errorCode, status, extra = {}) {
 }
 
 async function resolveExtensionAccountEntitlement(user, deps = {}) {
+  const expectedProductId = deps.expectedProductId || PRODUCT_AUTOMACOES;
   const now = extensionNow(deps);
   const keyStore = deps.keyStore || keys;
-  const keyCode = sanitizeId(user?.keyCode, 32);
-  if (!keyCode) return { ok: true, keyCode: null, devAccess:false, entitlement: buildExtensionEntitlement({ now }) };
-  const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(keyCode);
-  if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
-  const keyRecord = loaded.found ? keyStore[keyCode] : null;
-  if (!extensionLicenseIsUsable(keyRecord, now)) {
+  const keyCode = linkedPortalKeyForProduct(user, expectedProductId);
+  if (!keyCode) return expectedProductId === PRODUCT_LITE ? extensionAuthFailure('lite_license_required',403) : { ok: true, keyCode: null, devAccess:false, entitlement: buildExtensionEntitlement({ now }) };
+  let keyRecord = null;
+  if (expectedProductId === PRODUCT_LITE) {
+    try {
+      const db = deps.db || await getMongoDb();
+      keyRecord = await (deps.readLiteLicenseSnapshot || readLiteLicenseSnapshot)(db, keyCode);
+    } catch (error) {
+      // For LITE, a DB outage is unknown entitlement, never stale-cache access.
+      return extensionAuthFailure('temporarily_unavailable', 503, { retryable:true });
+    }
+  } else {
+    const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(keyCode);
+    if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable:true });
+    keyRecord = loaded.found ? keyStore[keyCode] : null;
+  }
+  if (keyRecord && !keyBelongsTo(keyRecord, keyCode, expectedProductId)) return extensionAuthFailure('license_product_mismatch', 403);
+  if (!extensionLicenseIsUsable(keyRecord, now) ||
+      (expectedProductId === PRODUCT_LITE && (keyRecord.provisioningStatus !== 'issued' || !/^LITE_[A-Z0-9_]+$/.test(String(keyRecord.planId || ''))))) {
+    if (expectedProductId === PRODUCT_LITE) return extensionAuthFailure('lite_license_required',403);
     return { ok: true, keyCode: null, devAccess:false, entitlement: buildExtensionEntitlement({ now }) };
   }
-  return { ok: true, keyCode, devAccess:extensionDevAccessAllowed(keyCode, keyRecord), entitlement: buildExtensionEntitlement({ keyCode, keyRecord, now }) };
+  return { ok: true, keyCode, devAccess:extensionDevAccessAllowed(keyCode, keyRecord),
+    entitlement: buildExtensionEntitlement({ keyCode, keyRecord, now, productId:expectedProductId }) };
 }
 
 async function authenticateExtensionAccount(input, deps = {}) {
@@ -2433,13 +2511,13 @@ async function authenticateExtensionAccount(input, deps = {}) {
     if (!mfaSecret || !verifyMfa(mfaSecret, totpCode)) return extensionAuthFailure('invalid_totp', 401);
     if (user.totpSecret && !user.totpSecretEnc) migratePortalTotpLegacy(db, user, email).catch(() => {});
   }
-  const entitlementResult = await resolveExtensionAccountEntitlement(user, { ...deps, db });
+  const entitlementResult = await resolveExtensionAccountEntitlement(user, { ...deps, db, expectedProductId:deps.expectedProductId || PRODUCT_AUTOMACOES });
   if (!entitlementResult.ok) return entitlementResult;
   const rehash = deps.rehashPassword || maybeRehashPortalPassword;
   try { Promise.resolve(rehash(db, email, password, user)).catch(() => {}); } catch (_) {}
   return {
     ok: true,
-    subject: extensionSubject('account', email),
+    subject: extensionSubject('account', email, deps.expectedProductId || PRODUCT_AUTOMACOES),
     accountEmail: email,
     licenseKeyCode: entitlementResult.keyCode,
     devAccess: entitlementResult.devAccess === true,
@@ -2448,17 +2526,33 @@ async function authenticateExtensionAccount(input, deps = {}) {
 }
 
 async function authorizeExtensionKeySession(input, deps = {}) {
-  const keyCode = sanitizeId(input?.authKey, 32);
+  const expectedProductId = deps.expectedProductId || PRODUCT_AUTOMACOES;
+  const keyCode = sanitizeId(input?.authKey, 64);
   const phoneNumber = normalizePhone(input?.phoneNumber || '');
   const deviceId = safeScalar(input?.deviceId, 160);
   if (!keyCode || isFreeAuthKey(keyCode) || !phoneNumber || !deviceId) {
     return extensionAuthFailure('invalid_request', 400);
   }
   const keyStore = deps.keyStore || keys;
-  const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(keyCode);
-  if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
-  if (!loaded.found || !keyStore[keyCode]) return extensionAuthFailure('invalid_key', 401);
-  const keyRecord = keyStore[keyCode];
+  let keyRecord;
+  if (expectedProductId === PRODUCT_LITE) {
+    try {
+      const db = deps.db || await getMongoDb();
+      keyRecord = await (deps.readLiteLicenseSnapshot || readLiteLicenseSnapshot)(db, keyCode);
+    } catch (error) {
+      return extensionAuthFailure('temporarily_unavailable', 503, { retryable:true });
+    }
+    if (!keyRecord) return extensionAuthFailure('invalid_key',401);
+    // LITE never populates the legacy global key cache. Each operation uses
+    // the canonical Mongo record and its own scoped in-flight snapshot.
+  } else {
+    const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(keyCode);
+    if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable:true });
+    if (!loaded.found || !keyStore[keyCode]) return extensionAuthFailure('invalid_key',401);
+    keyRecord = keyStore[keyCode];
+  }
+  if (!keyBelongsTo(keyRecord, keyCode, expectedProductId)) return extensionAuthFailure('license_product_mismatch', 403);
+  if (expectedProductId === PRODUCT_LITE && (keyRecord.provisioningStatus !== 'issued' || !/^LITE_[A-Z0-9_]+$/.test(String(keyRecord.planId || '')))) return extensionAuthFailure('lite_license_not_provisioned', 403);
   if (keyRecord.active !== true) return extensionAuthFailure('key_blocked', 403);
   // Diferente do helper legado isKeyExpired(), este guard também falha
   // fechado para expiresAt malformado em vez de autenticar a chave e só
@@ -2470,21 +2564,58 @@ async function authorizeExtensionKeySession(input, deps = {}) {
     return extensionAuthFailure('phone_limit_global', 403);
   }
   const maxUses = typeof keyRecord.maxUses === 'number' ? keyRecord.maxUses : MAX_USES;
-  const claim = await (deps.claimPhoneSlot || claimPhoneSlotAtomic)(keyCode, phoneNumber, maxUses);
+  const claim = expectedProductId === PRODUCT_LITE
+    ? await (deps.claimLitePhoneSlot || claimLitePhoneSlotAtomic)(
+      deps.db || await getMongoDb(), keyCode, phoneNumber,
+      {maxPhonesGlobal:MAX_PHONES_GLOBAL,readLiteLicenseSnapshot:deps.readLiteLicenseSnapshot}
+    )
+    : await (deps.claimPhoneSlot || claimPhoneSlotAtomic)(keyCode, phoneNumber, maxUses);
+  if (claim.status === 'entitlement_revoked') return extensionAuthFailure('entitlement_revoked', 403);
   if (claim.status === 'limit_reached') return extensionAuthFailure('phone_limit', 403);
-  if (keyRecord.expireDuration && !keyRecord.expiresAt) {
+  if (claim.status !== 'claimed' && claim.status !== 'already_member') {
+    return extensionAuthFailure('temporarily_unavailable',503,{retryable:true});
+  }
+  if (expectedProductId === PRODUCT_LITE && claim.record) {
+    // Local-only: do not leak LITE key material into the full-edition cache.
+    keyRecord = claim.record;
+  }
+  if (expectedProductId === PRODUCT_LITE) {
+    const persistedAfterClaim = keyRecord;
+    if (persistedAfterClaim?.expireDuration && !persistedAfterClaim.expiresAt) {
+      let activated;
+      try {
+        activated = await (deps.activateLiteDeferredKey || activateLiteDeferredKeyAtomic)(
+          deps.db || await getMongoDb(), keyCode, phoneNumber,
+          {readLiteLicenseSnapshot:deps.readLiteLicenseSnapshot}
+        );
+      } catch (error) {
+        return extensionAuthFailure('temporarily_unavailable',503,{retryable:true});
+      }
+      if (activated.status === 'entitlement_revoked') return extensionAuthFailure('entitlement_revoked',403);
+      if (activated.status === 'invalid_deferred_duration') return extensionAuthFailure('activation_failed',403);
+      if (!['activated','already_active'].includes(activated.status) || !activated.record) {
+        return extensionAuthFailure('activation_failed',503,{retryable:true});
+      }
+      keyRecord = activated.record;
+    }
+  } else if (keyRecord.expireDuration && !keyRecord.expiresAt) {
+    // The complete edition deliberately retains its historical first-use contract.
     const activated = await (deps.activateDeferredKey || activateDeferredKey)(keyCode);
     if (!activated) return extensionAuthFailure('activation_failed', 503, { retryable: true });
   }
   const now = extensionNow(deps);
-  const entitlement = buildExtensionEntitlement({ keyCode, keyRecord: keyStore[keyCode], now });
+  const entitlement = buildExtensionEntitlement({
+    keyCode, keyRecord: expectedProductId === PRODUCT_LITE ? keyRecord : keyStore[keyCode],
+    now, productId:expectedProductId
+  });
   return {
     ok: true,
-    subject: extensionSubject('license', keyCode),
+    subject: extensionSubject('license', keyCode, expectedProductId),
     licenseKeyCode: keyCode,
     phoneNumber,
     deviceId,
-    devAccess: extensionDevAccessAllowed(keyCode, keyStore[keyCode]),
+    devAccess: extensionDevAccessAllowed(keyCode,
+      expectedProductId === PRODUCT_LITE ? keyRecord : keyStore[keyCode]),
     entitlement,
     newlyClaimed: claim.status === 'claimed',
   };
@@ -2496,8 +2627,26 @@ async function refreshExtensionSession(rawToken, deps = {}) {
   const current = await readExtensionSession(rawToken, { ...deps, db, now });
   if (!current.ok) return extensionAuthFailure(current.errorCode, 401);
   const doc = current.doc;
+  const expectedProductId = deps.expectedProductId || PRODUCT_AUTOMACOES;
+  const storedProductId = doc.extensionProductId || PRODUCT_AUTOMACOES; // old V4 sessions are full edition
+  if (storedProductId !== expectedProductId) {
+    await revokeExtensionSession(rawToken, { ...deps, db, now });
+    return extensionAuthFailure('license_product_mismatch',403);
+  }
   let buildDecision;
-  if (typeof deps.storedSessionDecision === 'function') {
+  if (expectedProductId === PRODUCT_LITE) {
+    const proof = deps.liteClientSecurity;
+    const installHash = proof?.installationId
+      ? crypto.createHash('sha256').update(String(proof.installationId),'utf8').digest('hex')
+      : '';
+    buildDecision = liteSessionAllowed(ZVM_LITE_V4_CONFIG, doc, now.getTime()) &&
+      proof?.securityProtocol === 2 && proof.extensionId === doc.extensionId &&
+      proof.extensionVersion === doc.extensionVersion && proof.buildId === doc.buildId &&
+      proof.buildFingerprint === doc.buildFingerprint &&
+      proof.signerKeyId === doc.liteSignerKeyId &&
+      installHash && installHash === doc.installationIdHash
+        ? {ok:true} : {ok:false,code:'LITE_BUILD_SESSION_INVALID'};
+  } else if (typeof deps.storedSessionDecision === 'function') {
     buildDecision = deps.storedSessionDecision(doc);
   } else if (typeof deps.buildDenied === 'function' && deps.buildDenied(doc.extensionVersion, doc.buildFingerprint, doc)) {
     buildDecision = { ok:false, code:'BUILD_REVOKED' };
@@ -2510,11 +2659,11 @@ async function refreshExtensionSession(rawToken, deps = {}) {
     await revokeExtensionSession(rawToken, { ...deps, db, now });
     return extensionAuthFailure(buildDecision.code || 'BUILD_NOT_ALLOWED', zvmSecurityClientErrorStatus(buildDecision.code || 'BUILD_NOT_ALLOWED'));
   }
-  if (Number(doc.securityProtocol || 1) === 2 && deps.requireCurrentClientSecurity === true && (!deps.clientSecurity || typeof deps.clientSecurity !== 'object')) {
+  if (expectedProductId !== PRODUCT_LITE && Number(doc.securityProtocol || 1) === 2 && deps.requireCurrentClientSecurity === true && (!deps.clientSecurity || typeof deps.clientSecurity !== 'object')) {
     await revokeExtensionSession(rawToken, { ...deps, db, now });
     return extensionAuthFailure('SECURITY_CLIENT_REQUIRED', 400);
   }
-  if (Number(doc.securityProtocol || 1) === 2 && deps.clientSecurity && typeof deps.clientSecurity === 'object') {
+  if (expectedProductId !== PRODUCT_LITE && Number(doc.securityProtocol || 1) === 2 && deps.clientSecurity && typeof deps.clientSecurity === 'object') {
     const checkCurrentClient = deps.checkClientShared || zvmSecurityCheckClientShared;
     const currentSecurity = await checkCurrentClient(deps.clientSecurity, { licenseKey: doc.licenseKeyCode || '' });
     if (!currentSecurity.ok) {
@@ -2545,17 +2694,44 @@ async function refreshExtensionSession(rawToken, deps = {}) {
       await revokeExtensionSession(rawToken, { ...deps, db, now });
       return extensionAuthFailure('subject_not_found', 401);
     }
-    entitlementResult = await resolveExtensionAccountEntitlement(user, { ...deps, db, now });
-    if (!entitlementResult.ok) return entitlementResult;
+    entitlementResult = await resolveExtensionAccountEntitlement(user, { ...deps, db, now, expectedProductId });
+    if (!entitlementResult.ok) {
+      // A missing/removed LITE portal key must revoke the existing password token.
+      // DB outages remain retryable; do not destroy a valid session on 503.
+      if (expectedProductId === PRODUCT_LITE && entitlementResult.retryable !== true) {
+        await revokeExtensionSession(rawToken, { ...deps, db, now });
+      }
+      return entitlementResult;
+    }
+    // Old account sessions must never inherit a newly linked LITE key.
+    // Account owner must sign in again after a LITE rebind or unlink.
+    if (expectedProductId === PRODUCT_LITE && licenseKeyCode !== entitlementResult.keyCode) {
+      await revokeExtensionSession(rawToken, { ...deps, db, now });
+      return extensionAuthFailure('lite_license_binding_changed',403);
+    }
     licenseKeyCode = entitlementResult.keyCode;
   } else if (doc.authMethod === 'license_key') {
     const keyStore = deps.keyStore || keys;
-    const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(doc.licenseKeyCode);
-    if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
-    const keyRecord = loaded.found ? keyStore[doc.licenseKeyCode] : null;
+    let keyRecord;
+    if (expectedProductId === PRODUCT_LITE) {
+      try {
+        const dbForRead = deps.db || db;
+        keyRecord = await (deps.readLiteLicenseSnapshot || readLiteLicenseSnapshot)(dbForRead, doc.licenseKeyCode);
+      } catch (error) {
+        return extensionAuthFailure('temporarily_unavailable', 503, { retryable:true });
+      }
+    } else {
+      const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(doc.licenseKeyCode);
+      if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable:true });
+      keyRecord = loaded.found ? keyStore[doc.licenseKeyCode] : null;
+    }
+    if (keyRecord && !keyBelongsTo(keyRecord, doc.licenseKeyCode, expectedProductId)) {
+      await revokeExtensionSession(rawToken, { ...deps, db, now });
+      return extensionAuthFailure('license_product_mismatch', 403);
+    }
     const phoneStillAllowed = !doc.phoneNumber || (Array.isArray(keyRecord?.phones)
       && keyRecord.phones.some(value => normalizePhone(value) === doc.phoneNumber));
-    if (!extensionLicenseIsUsable(keyRecord, now) || !phoneStillAllowed) {
+    if (!extensionLicenseIsUsable(keyRecord, now) || !phoneStillAllowed || (expectedProductId === PRODUCT_LITE && (keyRecord.provisioningStatus !== 'issued' || !/^LITE_[A-Z0-9_]+$/.test(String(keyRecord.planId || ''))))) {
       await revokeExtensionSession(rawToken, { ...deps, db, now });
       return extensionAuthFailure('entitlement_revoked', 403);
     }
@@ -2563,7 +2739,7 @@ async function refreshExtensionSession(rawToken, deps = {}) {
       ok: true,
       keyCode: doc.licenseKeyCode,
       devAccess: extensionDevAccessAllowed(doc.licenseKeyCode, keyRecord),
-      entitlement: buildExtensionEntitlement({ keyCode: doc.licenseKeyCode, keyRecord, now }),
+      entitlement: buildExtensionEntitlement({ keyCode: doc.licenseKeyCode, keyRecord, now, productId:expectedProductId }),
     };
   } else {
     await revokeExtensionSession(rawToken, { ...deps, db, now });
@@ -2794,7 +2970,7 @@ async function adminGetKey(code) {
   return readAdminKeySnapshot(code);
 }
 async function resolveUsageKey(body) {
-  const authKey = (body.authKey || '').toLowerCase().slice(0, 32);
+  const authKey = sanitizeId(body.authKey, 64);
   const phone = body.phoneNumber || '';
 
   // A identidade/entitlement vem de chave real ou associação real de
@@ -2804,11 +2980,11 @@ async function resolveUsageKey(body) {
   if (authKey === FREE_AUTH_KEY) return FREE_AUTH_KEY;
 
   if (authKey && authKey !== FREE_AUTH_KEY && await ensureKeyLoaded(authKey)) {
-    return extensionLicenseIsUsable(keys[authKey]) ? authKey : null;
+    return extensionLicenseIsUsable(keys[authKey]) && keyBelongsTo(keys[authKey], authKey, PRODUCT_AUTOMACOES) ? authKey : null;
   }
 
   const byPhone = findKeyCodeByPhone(keys, phone);
-  if (byPhone && await ensureKeyLoaded(byPhone) && extensionLicenseIsUsable(keys[byPhone])) return byPhone;
+  if (byPhone && await ensureKeyLoaded(byPhone) && extensionLicenseIsUsable(keys[byPhone]) && keyBelongsTo(keys[byPhone], byPhone, PRODUCT_AUTOMACOES)) return byPhone;
 
   return null;
 }
@@ -2936,6 +3112,7 @@ function getAuthData(keyCode, userName) {
   };
 }
 function isAllowedExtensionOrigin(origin, pathname) {
+  if (pathname.startsWith(R_EXT+'/lite/')) return liteOriginAllowed(origin, ZVM_LITE_V4_CONFIG) ? origin : null;
   return resolveExtensionCorsOrigin({
     origin,
     pathname,
@@ -3084,9 +3261,9 @@ function buildKeysHtml(snapshot = keys) {
     const suspectBadge = isSuspect ? `<span title="${recentIpCount} IPs nas últimas 24h" style="color:#ff4757;font-size:13px;margin-left:4px">⚠ SUSPEITA</span>` : '';
     const deferredAttr = (!k.expiresAt && k.expireDuration) ? '1' : '0';
     const dispStatus = getKeyDisplayStatus(k);
-    return `<tr class="key-record" data-code="${escHtml(code)}" data-client-name="${escHtml(k.label||'')}" data-max-uses="${(Number.isSafeInteger(k.maxUses)&&(k.maxUses===-1||k.maxUses>=1))?k.maxUses:MAX_USES}" data-expires-at="${escHtml(k.expiresAt||'')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(String(k.label||'').toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-phones-count="${(k.phones||[]).length}" data-created="${escHtml(k.createdAt||'')}" data-lastused="${escHtml(k.lastUsed||'')}" data-suspect="${isSuspect?'1':''}" data-plan="${escHtml((k.planId||k.plan_id||'pro').toLowerCase())}"` + rowStyle + `>
+    return `<tr class="key-record" data-code="${escHtml(code)}" data-client-name="${escHtml(k.label||'')}" data-max-uses="${(Number.isSafeInteger(k.maxUses)&&(k.maxUses===-1||k.maxUses>=1))?k.maxUses:MAX_USES}" data-expires-at="${escHtml(k.expiresAt||'')}" data-deferred="${deferredAttr}" data-validity="${getKeyValiditySortKey(k)}" data-label="${escHtml(String(k.label||'').toLowerCase())}" data-phone="${escHtml(k.lastPhone||'')}" data-status="${dispStatus}" data-uses="${k.uses||0}" data-phones-count="${(k.phones||[]).length}" data-created="${escHtml(k.createdAt||'')}" data-lastused="${escHtml(k.lastUsed||'')}" data-suspect="${isSuspect?'1':''}" data-product="${escHtml(productOfKeyRecord(k, code) || 'invalid')}" data-plan="${escHtml((k.planId||k.plan_id||'pro').toLowerCase())}"` + rowStyle + `>
   <td data-field="Chave"><span style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="key-cb" style="cursor:pointer;width:13px;height:13px;flex-shrink:0"><span class="kc" title="Clique para copiar" style="cursor:pointer">${escHtml(code)}</span><button type="button" class="key-mobile-details" aria-expanded="false" data-zvm-key-action="details">Detalhes</button></span></td>
-  <td data-field="Cliente">${escHtml(k.label)}${suspectBadge}</td>
+  <td data-field="Cliente">${escHtml(k.label)}${suspectBadge}<div style="font-size:11px;margin-top:3px;color:var(--tx2);font-weight:700">${productOfKeyRecord(k, code) === PRODUCT_LITE ? "ZVM LITE · " + (k.provisioningStatus === "awaiting_lite_build_authority" ? "Aguardando ativação" : "Licença LITE") : productOfKeyRecord(k, code) === PRODUCT_AUTOMACOES ? "ZVM Automações" : "Produto inválido"}</div></td>
   <td data-field="Status">${renderKeyStatusBadge(k)}</td>
   <td data-field="Validade">${formatValidityCell(k)}</td>
   <td data-field="Usos"><span style="color:${((k.phones||[]).length>=(k.maxUses>0?k.maxUses:MAX_USES)&&(k.maxUses>0?k.maxUses:MAX_USES)>0)?'var(--orange)':'inherit'}">${(k.phones||[]).length}/${k.maxUses===-1?'&#x221E;':(k.maxUses>0?k.maxUses:MAX_USES)}</span></td>
@@ -3745,6 +3922,16 @@ async function _processCommercialSaleUnlocked(sale, plan, deps = {}) {
   // recebendo o dobro dos dias por uma única compra. As marcas de txId já
   // gravadas em key.note (criação: "cakto_tx:X"; renovação: "renovado_..._tx:X")
   // servem como prova de que ESTA transação específica já mutou esta chave.
+  // An order for the full product may NEVER renew a LITE license or
+  // overwrite a portal account already bound to a LITE license.
+  // Reject before payment/key mutation; reconciliation can recover safely.
+  if (existingCode && !keyBelongsTo(keyStore[existingCode], existingCode, PRODUCT_AUTOMACOES)) {
+    throw Object.assign(new Error('cakto_extension_product_conflict'), { code: 'cakto_extension_product_conflict' });
+  }
+  if (!existingCode && portalUser?.keyCode && keyStore[portalUser.keyCode] &&
+      !keyBelongsTo(keyStore[portalUser.keyCode], portalUser.keyCode, PRODUCT_AUTOMACOES)) {
+    throw Object.assign(new Error('cakto_portal_product_conflict'), { code: 'cakto_portal_product_conflict' });
+  }
   const preMutationCode = existingCode || null;
   const preMutationKey = preMutationCode && keyStore[preMutationCode]
     ? JSON.parse(JSON.stringify(keyStore[preMutationCode]))
@@ -5704,6 +5891,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '91efd97cea203bf0d151777c286979cd8eb6d12199cb4fc58310726ae1310922',
     compressible: true,
   }),
+  '/assets/zvm-admin-dashboard.2757c76a8405.js': Object.freeze({
+    type: 'text/javascript; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.2757c76a8405.js'),
+    sha256: '2757c76a8405a16c1a610f9872146f950d82ec66bd98049dd57bbf77e52f010a',
+    compressible: true,
+  }),
   '/assets/zvm-admin-dashboard.f687617ee4b9.js': Object.freeze({
     type: 'text/javascript; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-admin-dashboard.f687617ee4b9.js'),
@@ -6198,7 +6391,7 @@ ${_CSS_SHARED}${_CSS_STANDALONE}${_CSS_AUTH}${_CSS_SYSTEM}</head>
         <div class="auth-field"><label for="reg-phone">WhatsApp</label><input id="reg-phone" type="tel" name="phone" placeholder="11999990000" value="${v('phone')}" maxlength="20" pattern="[0-9+\s()-]{8,20}" autocomplete="tel"></div>
       </div>
       <div class="auth-field"><label for="reg-email">E-mail</label><input id="reg-email" type="email" name="email" placeholder="seu@email.com" required value="${v('email')}" autocomplete="email"><div class="auth-field-hint">Use este mesmo e-mail na compra para vincular sua licença automaticamente.</div></div>
-      <div class="auth-field"><label for="reg-keycode">Chave ZVM <span class="auth-label-optional">(opcional)</span></label><input id="reg-keycode" type="text" name="keycode" placeholder="zv-xxxxx-xxxxx-xxxxx" value="${v('keycode')}" maxlength="30"><div class="auth-field-hint">Se ainda não tiver uma chave, você pode vincular depois.</div></div>
+      <div class="auth-field"><label for="reg-keycode">Chave ZVM <span class="auth-label-optional">(opcional)</span></label><input id="reg-keycode" type="text" name="keycode" placeholder="zv-xxxxx-xxxxx-xxxxx" value="${v('keycode')}" maxlength="64"><div class="auth-field-hint">Se ainda não tiver uma chave, você pode vincular depois.</div></div>
       <div class="auth-field-row">
         <div class="auth-field"><label for="reg-pass">Senha</label><input id="reg-pass" type="password" name="pass" placeholder="Mínimo 8 caracteres" required minlength="8" autocomplete="new-password"></div>
         <div class="auth-field"><label for="reg-pass2">Confirmar senha</label><input id="reg-pass2" type="password" name="pass2" placeholder="Repita a senha" required minlength="8" autocomplete="new-password"></div>
@@ -6344,7 +6537,7 @@ function renderStandaloneSetup2FA(user, pendingSecret = '', err = '', ok = '') {
 function renderStandalonePortalLinkKey(err = '', ok = '', portalUser = null) {
   const errHtml = err ? `<div class="auth-alert err" role="alert">⚠ ${escHtml(err)}</div>` : '';
   const okHtml = ok ? `<div class="auth-alert ok" role="status">✅ ${escHtml(ok)}</div>` : '';
-  const content=`<div class="auth-form-card"><h2>Vincular chave</h2><p class="auth-form-hint">Associe uma licença existente à sua conta. O portal passa a mostrar validade, plano e dispositivos imediatamente.</p>${errHtml}${okHtml}<form method="POST" action="/cliente/vincular"><div class="auth-field"><label for="link-keycode">Código da chave</label><input id="link-keycode" type="text" name="keycode" placeholder="zv-xxxxx-xxxxx-xxxxx" maxlength="30" pattern="[a-z0-9\\-]+" required autocomplete="off"><div class="auth-field-hint">Use exatamente o código recebido na compra ou no atendimento.</div></div><button type="submit" class="auth-submit">Vincular chave<span class="auth-spinner" aria-hidden="true"></span></button></form><div class="auth-switch"><a href="/cliente">← Voltar à visão geral</a></div></div>`;
+  const content=`<div class="auth-form-card"><h2>Vincular chave</h2><p class="auth-form-hint">Associe uma licença existente à sua conta. O portal passa a mostrar validade, plano e dispositivos imediatamente.</p>${errHtml}${okHtml}<form method="POST" action="/cliente/vincular"><div class="auth-field"><label for="link-keycode">Código da chave</label><input id="link-keycode" type="text" name="keycode" placeholder="zv-xxxxx-xxxxx-xxxxx" maxlength="64" pattern="[a-z0-9\\-]+" required autocomplete="off"><div class="auth-field-hint">Use exatamente o código recebido na compra ou no atendimento.</div></div><button type="submit" class="auth-submit">Vincular chave<span class="auth-spinner" aria-hidden="true"></span></button></form><div class="auth-switch"><a href="/cliente">← Voltar à visão geral</a></div></div>`;
   return renderClientWorkspacePage({portalUser,active:'license',eyebrow:'Licença',title:'Vincular uma chave ZVM',subtitle:'Centralize sua licença, validade, plano e dispositivos dentro da mesma conta.',content,aside:`<div class="client-app-mini"><span>Licença</span><strong>Vinculação imediata</strong><p>Depois de validada, a chave passa a aparecer na visão geral da conta.</p></div><div class="client-app-mini"><span>Segurança</span><strong>Uma chave por conta</strong><p>Se a chave já estiver vinculada a outra conta, o portal bloqueia a associação.</p></div>`});
 }
 
@@ -6498,7 +6691,7 @@ function renderChromeStoreBadge(){
   </a>`;
 }
 
-function renderStandalonePortalDashboard(user, keyData, okMsg='', deviceMsg='') {
+function renderStandalonePortalDashboard(user, keyData, okMsg='', deviceMsg='', liteKeyData=null) {
   const now = new Date();
 
   // ── Key status computation ───────────────────────────────────────
@@ -6572,8 +6765,8 @@ function renderStandalonePortalDashboard(user, keyData, okMsg='', deviceMsg='') 
   const noKeySection = !keyData ? `
   <div class="dash-nokey">
     <div class="nokey-icon" aria-hidden="true">◇</div>
-    <div class="nokey-title">Nenhuma chave vinculada</div>
-    <div class="nokey-sub">Escolha um plano para receber sua licença por e-mail ou vincule uma chave que você já possui.</div>
+    <div class="nokey-title">Nenhuma chave da ZVM completa vinculada</div>
+    <div class="nokey-sub">Sua licença LITE, quando existente, é independente. Você também pode vincular uma chave da ZVM completa nesta conta.</div>
     <div class="nokey-actions"><a href="/cliente/planos" class="nokey-cta">Ver planos</a><a href="/cliente/vincular" class="nokey-link">Vincular uma chave</a></div>
   </div>` : '';
 
@@ -6581,6 +6774,20 @@ function renderStandalonePortalDashboard(user, keyData, okMsg='', deviceMsg='') 
   // O portal não expõe mais versão de build local/antiga. A origem oficial
   // da instalação é sempre a página pública da ZVM na Chrome Web Store.
   const updateBanner = renderChromeStoreBadge();
+  const liteCode = linkedPortalKeyForProduct(user, PRODUCT_LITE);
+  const liteGood = liteKeyData && keyBelongsTo(liteKeyData, liteCode, PRODUCT_LITE);
+  const liteActive = liteGood && liteKeyData.active === true && liteKeyData.provisioningStatus === 'issued' && extensionLicenseIsUsable(liteKeyData);
+  const liteExpiryDate = liteGood && liteKeyData.expiresAt && Number.isFinite(Date.parse(liteKeyData.expiresAt))
+    ? new Date(liteKeyData.expiresAt).toLocaleDateString('pt-BR') : 'Sem prazo definido';
+  const liteStatus = liteActive ? 'Ativa' : liteGood && liteKeyData.provisioningStatus !== 'issued' ? 'Aguardando liberação' : 'Inativa / indisponível';
+  const litePanel = liteCode ? `<section aria-label="Licença ZVM Automações LITE" style="margin:16px 0 20px">
+    <h2 style="font-size:19px;margin:0 0 12px">ZVM Automações LITE</h2>
+    <div class="client-quickfacts">
+      <div class="client-quickfact"><span class="client-qf-label">Chave LITE</span><strong style="overflow-wrap:anywhere;font-size:13px">${escHtml(liteCode)}</strong><small>Licença independente da ZVM completa</small></div>
+      <div class="client-quickfact"><span class="client-qf-label">Situação LITE</span><strong>${escHtml(liteStatus)}</strong><small>Validade: ${escHtml(liteExpiryDate)}</small></div>
+      <div class="client-quickfact"><span class="client-qf-label">Gerenciar LITE</span><form method="POST" action="/cliente/lite/desvincular" data-confirm="Desvincular somente a chave LITE desta conta?"><button type="submit" class="client-unlink">Desvincular LITE</button></form><small>A licença completa não será alterada</small></div>
+    </div>
+  </section>` : '';
 
   const hasKey = !!keyData;
   const has2fa = portalTotpHasSecret(user);
@@ -6635,6 +6842,7 @@ ${renderClientPortalRail('overview')}
 ${updateBanner}
 ${okMsg ? `<div class="client-ok-banner" role="status" aria-live="polite">✅ ${escHtml(okMsg)}</div>` : ''}
 ${deviceMsg ? `<div class="device-warning" role="alert">⚠ ${escHtml(deviceMsg)} <a href="/cliente">Atualizar dispositivos</a></div>` : ''}
+${litePanel}
 ${noKeySection}
 
 ${keyData ? `<section class="client-quickfacts" aria-label="Resumo da licença">
@@ -6882,6 +7090,12 @@ function renderAdminDashboard(opts = {}) {
     <div class="sh">
       <div class="st"><span class="st-accent">🔑</span> Chaves de Acesso</div>
       <div class="gen-form">
+        <div class="fi-col" style="min-width:165px;flex:1"><label for="nproduct" class="fi-lbl">Ferramenta</label>
+          <select id="nproduct" required style="width:100%;min-height:36px;border:1px solid var(--brd);border-radius:7px;padding:7px;background:var(--bg);color:var(--tx)">
+            <option value="">Selecione o produto</option>
+            <option value="zvm_automacoes">ZVM Automações</option>
+            <option value="zvm_lite">ZVM Automações LITE</option>
+          </select></div>
         <div class="fi-name"><input type="text" id="nlabel" placeholder="Nome do cliente"></div>
         <div class="fi-sep"></div>
         <div class="fi-group">
@@ -6896,6 +7110,11 @@ function renderAdminDashboard(opts = {}) {
 <button class="btn bp" id="admin-generate-key-btn" data-zvm-handler-click="he">+ Gerar Chave(s)</button>
       </div>
     </div>
+    <p class="key-modal-help" style="margin:8px 0 4px">Cada chave pertence a uma ferramenta. Chaves LITE ficam pendentes até homologar a identidade e o licenciamento exclusivos. As chaves existentes não mudam de produto.</p>
+    <div role="status" style="font-size:12px; color:${ZVM_LITE_V4_CONFIG.ready ? 'var(--g)' : 'var(--orange)'}">
+      Autoridade DEV da LITE: ${ZVM_LITE_V4_CONFIG.ready ? 'Chave pública e identidade configuradas' : 'Ainda não configurada'}.
+      O uso efetivo exige validação da assinatura do build em cada sessão.
+    </div>
     <div id="admin-create-status" role="status" aria-live="polite" hidden style="display:none;padding:10px 14px;border:1px solid var(--org-brd);border-radius:10px;background:#f0b42912;color:var(--orange);font-size:13px;margin:10px 0"></div>
     <div class="search-bar">
       <input type="text" id="search-input" placeholder="Buscar por nome, chave, telefone ou IP…" data-zvm-handler-input="hf" autocomplete="off" spellcheck="false">
@@ -6907,6 +7126,11 @@ function renderAdminDashboard(opts = {}) {
         <option value="bloqueado">Bloqueadas</option>
         <option value="aguardando">Aguardando 1º uso</option>
         <option value="suspect">⚠ Suspeitas</option>
+      </select>
+      <select id="filter-product" data-zvm-handler-change="hg" aria-label="Filtrar produto" style="min-width:150px">
+        <option value="">Ambas as ferramentas</option>
+        <option value="zvm_automacoes">ZVM Automações</option>
+        <option value="zvm_lite">ZVM Automações LITE</option>
       </select>
       <select id="filter-plan" data-zvm-handler-change="hg" style="min-width:120px">
         <option value="">Todos os planos</option>
@@ -7154,7 +7378,7 @@ function renderAdminDashboard(opts = {}) {
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <template id="zvm-admin-users-data">${initialPortalUsersJson}</template>
-<script src="/assets/zvm-admin-dashboard.f687617ee4b9.js" defer></script>
+<script src="/assets/zvm-admin-dashboard.2757c76a8405.js" defer></script>
 </body></html>`;
 }
 
@@ -8817,11 +9041,11 @@ async function metaResolveOwner(req, body = {}) {
     return { ownerId: refreshed.sessionDoc.subject.id, auth: 'v4', subject: refreshed.sessionDoc.subject };
   }
   if (ZVM_BUILD_ENFORCE) return null;
-  const keyCode = sanitizeId(body.authKey, 32);
+  const keyCode = sanitizeId(body.authKey, 64);
   const deviceId = safeScalar(body.deviceId, 160);
   if (!keyCode || isFreeAuthKey(keyCode) || !deviceId) return null;
   const loaded = await ensureKeyLoadedEx(keyCode);
-  if (!loaded.found || loaded.dbError || !extensionLicenseIsUsable(keys[keyCode])) return null;
+  if (!loaded.found || loaded.dbError || !extensionLicenseIsUsable(keys[keyCode]) || !keyBelongsTo(keys[keyCode], keyCode, PRODUCT_AUTOMACOES)) return null;
   return { ownerId: extensionSubject('license', keyCode).id, auth: 'v254-compat', subject: extensionSubject('license', keyCode) };
 }
 function metaPublicConnection(rec) {
@@ -9367,6 +9591,82 @@ async function handleRequest(req, res) {
   // V3 permanece abaixo, sem mudança de path ou schema. V4 nunca recebe
   // tier/capabilities/usage do cliente: toda decisão nasce da conta/chave
   // realmente carregada do banco/cache canônico do servidor.
+  // Dedicated LITE V4. The old ZVM routes never issue a LITE entitlement.
+  // The client cannot supply product authority or signing keys in its JSON.
+  if ((p === R_EXT+'/lite/v4/session/key' || p === R_EXT+'/lite/v4/session/login' ||
+       p === R_EXT+'/lite/v4/session/refresh' || p === R_EXT+'/lite/v4/session/logout') &&
+       req.method === 'POST') {
+    res.setHeader('Cache-Control','no-store, no-cache, must-revalidate');
+    if (!ZVM_LITE_V4_CONFIG.ready) {
+      sendJson(res,{ok:false,errorCode:'LITE_BUILD_AUTHORITY_UNCONFIGURED'},503); return;
+    }
+    if (!liteOriginAllowed(req.headers.origin,ZVM_LITE_V4_CONFIG)) {
+      sendJson(res,{ok:false,errorCode:'LITE_EXTENSION_ORIGIN_REQUIRED'},403); return;
+    }
+    if (!checkRateLimit(ip, 'ext_key_v4')) {
+      sendJson(res,{ok:false,errorCode:'rate_limited',retryable:true},429); return;
+    }
+    const isLogout = p.endsWith('/logout');
+    const token = isLogout || p.endsWith('/refresh') ? getExtensionBearerToken(req) : null;
+    if ((isLogout || p.endsWith('/refresh')) && !token) {
+      sendJson(res,{ok:false,errorCode:'invalid_session'},401); return;
+    }
+    let sessionDb = null;
+    try {
+      if (isLogout) {
+        const snap = await readExtensionSession(token);
+        if (!snap.ok || snap.doc.extensionProductId !== PRODUCT_LITE) {
+          sendJson(res,{ok:false,errorCode:'invalid_session'},401); return;
+        }
+        const revoked = await revokeExtensionSession(token);
+        sendJson(res,{ok:true,revoked:revoked.revoked}); return;
+      }
+      const body = await parseBody(req);
+      const checked = inspectLiteClient(ZVM_LITE_V4_CONFIG,body.clientSecurity,body.signedBuild,req.headers.origin);
+      if (!checked.ok) { sendJson(res,{ok:false,errorCode:checked.code},checked.status || 403); return; }
+      const replay = await zvmSecurityConsumeRequestIdSharedImpl(checked.requestId);
+      if (!replay.ok) { sendJson(res,{ok:false,errorCode:replay.code},replay.code==='SECURITY_REPLAY_UNAVAILABLE'?503:403); return; }
+      if (p.endsWith('/refresh')) {
+        const refreshed=await refreshExtensionSession(token,{expectedProductId:PRODUCT_LITE,liteClientSecurity:checked});
+        if (!refreshed.ok) {
+          const {status,...err}=refreshed; sendJson(res,err,status); return;
+        }
+        sendJson(res,extensionSessionSuccess(token,refreshed.sessionDoc,refreshed.entitlement)); return;
+      }
+      const isPassword=p.endsWith('/login');
+      const db=await getMongoDb();
+      sessionDb=db;
+      const authenticated=isPassword
+        ? await authenticateExtensionAccount(body,{db,expectedProductId:PRODUCT_LITE})
+        : await authorizeExtensionKeySession(body,{expectedProductId:PRODUCT_LITE});
+      if (body && typeof body==='object') delete body.password;
+      if (!authenticated.ok) {
+        const {status,...err}=authenticated; sendJson(res,err,status); return;
+      }
+      const fields=extensionSessionSecurityFields(checked);
+      // This is a LITE signature, not a signature from the full-ZVM signer.
+      const issued=await createExtensionSession({
+        subject:authenticated.subject,
+        authMethod:isPassword?'password':'license_key',
+        extensionProductId:PRODUCT_LITE,
+        accountEmail:isPassword?authenticated.accountEmail:null,
+        licenseKeyCode:authenticated.licenseKeyCode,
+        phoneNumber:authenticated.phoneNumber || body.phoneNumber,
+        deviceId:authenticated.deviceId || body.deviceId,
+        ...fields,
+        signedDev:false,
+        liteSignerKeyId:checked.signerKeyId,
+        liteSignedExpiresAt:checked.signedExpiresAt,
+        entitlementRevision:authenticated.entitlement.entitlementRevision,
+      },{db});
+      sendJson(res,extensionSessionSuccess(issued.token,issued.doc,authenticated.entitlement)); return;
+    } catch(error) {
+      zvmInvalidateMongoOnNetworkError(error,sessionDb);
+      console.error('[extension-lite-v4] erro:',safeScalar(error?.message,90,'unavailable'));
+      sendJson(res,{ok:false,errorCode:'temporarily_unavailable',retryable:true},503); return;
+    }
+  }
+
   if (p === R_EXT+'/v4/session/key' && req.method === 'POST') {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     if (!checkRateLimit(ip, 'ext_key_v4')) {
@@ -9375,7 +9675,7 @@ async function handleRequest(req, res) {
     }
     try {
       const body = await parseBody(req);
-      const keyCodeForBuild = sanitizeId(body.authKey, 32);
+      const keyCodeForBuild = sanitizeId(body.authKey, 64);
       const deviceIdForBuild = String(body.deviceId || '').trim().slice(0, 160);
       const devBuildAllowed = zvmSecurityDevBuildAllowed(keyCodeForBuild, deviceIdForBuild);
       const buildClient = await zvmSecurityCheckClientShared(body.clientSecurity, { allowUnrecognized:devBuildAllowed, licenseKey:keyCodeForBuild });
@@ -9576,7 +9876,7 @@ async function handleRequest(req, res) {
       return;
     }
     const body = await parseBody(req);
-    const keyCode    = sanitizeId(body.authKey, 32);
+    const keyCode    = sanitizeId(body.authKey, 64);
     const phone      = body.phoneNumber || '-';
     const wppVersion = body.wppVersion  || '-';
     const deviceId   = body.deviceId    || '';
@@ -9616,6 +9916,10 @@ async function handleRequest(req, res) {
     if (!_load.found) {
       sendJson(res, { authError: 'keyNotFound', authErrorMessage: 'Chave não encontrada. Contate o vendedor.', isLoggedIn: false });
       addLog({ keyCode, label: '-', phone, ip, wppVersion, action: 'key_not_found' }).catch(()=>{});
+      return;
+    }
+    if (!keyBelongsTo(keys[keyCode], keyCode, PRODUCT_AUTOMACOES)) {
+      sendJson(res, { authError: 'keyBlocked', reason: 'product_mismatch', isLoggedIn: false }, 403);
       return;
     }
     if (isKeyExpired(keys[keyCode])) {
@@ -9782,7 +10086,7 @@ async function handleRequest(req, res) {
       sendJson(res, { error: 'rate_limited', retryable: true }, 429); return;
     }
     const body    = await parseBody(req); // 64 KB limit + prototype-pollution guard
-    const keyCode = sanitizeId(body.authKey, 32);
+    const keyCode = sanitizeId(body.authKey, 64);
     if (!serverReady) { sendJson(res, { error: 'temporarily_unavailable', retryable: true }, 503); return; }
     if (!keyCode)     { sendJson(res, { error: 'invalid_request' }, 400); return; }
     if (isFreeAuthKey(keyCode)) {
@@ -9813,6 +10117,10 @@ async function handleRequest(req, res) {
     }
     if (!_cs.found) {
       sendJson(res, { active: false, reason: 'not_found' }); return;
+    }
+    if (!keyBelongsTo(keys[keyCode], keyCode, PRODUCT_AUTOMACOES)) {
+      sendJson(res, { active: false, reason: 'product_mismatch' }, 403);
+      return;
     }
     const _k = sanitizeKeyRecord(keys[keyCode]);
     const _csPhone = body.phoneNumber ? normalizePhone(body.phoneNumber) : '';
@@ -10312,21 +10620,60 @@ async function handleRequest(req, res) {
     const body = await parseBody(req);
     const labelResult = normalizeAdminCreateLabel(body.label);
     if (!labelResult.ok) { sendJson(res, { error: labelResult.error }, 400); return; }
-    const code = generateCode();
+    const hasProductSelection = Object.prototype.hasOwnProperty.call(body, 'productId');
+    const extensionProductId = selectAdminProduct(body.productId, { legacyRequest: !hasProductSelection });
+    if (!extensionProductId) { sendJson(res, { error: 'invalid_extension_product' }, 400); return; }
+    // Legacy callers keep the old key format until every full extension accepts 57-char keys.
+    const code = hasProductSelection ? generateLicenseKey(extensionProductId) : generateCode();
     const { expiresAt, expireDuration } = parseKeyExpiryFromBody(body, { allowMinutes: true });
     const maxUses = (body.maxUses !== undefined) ? parseInt(body.maxUses) : MAX_USES;
     const createdKey = {
-      label: labelResult.label, active: true, createdAt: new Date().toISOString(),
+      label: labelResult.label, active: extensionProductId === PRODUCT_AUTOMACOES,
+      extensionProductId,
+      keyFormat: hasProductSelection ? 'v2-256' : 'legacy-v1',
+      planId: extensionProductId === PRODUCT_LITE ? 'LITE_DEV' : 'ZV_PRO',
+      planName: extensionProductId === PRODUCT_LITE ? 'ZVM LITE' : 'Pro',
+      provisioningStatus: extensionProductId === PRODUCT_LITE ? 'awaiting_lite_build_authority' : 'issued',
+      createdAt: new Date().toISOString(),
       uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null,
       deviceId: null, wppVersion: null, note: '',
       expiresAt, expireDuration: expireDuration || null,
       maxUses: isNaN(maxUses) ? MAX_USES : maxUses, warnCount: 0,
       modules: { ...DEFAULT_MODULES, zapSaver: true },
     };
-    try { await commitAdminKeyRecordStrict(code, createdKey); }
+    try { await insertNewAdminKeyStrict(code, createdKey); }
     catch (e) { sendAdminKeyPersistFailure(res, e, 'create key'); return; }
-    addAdminAuditLog({ actor: 'admin', action: 'key_created', keyCode: code, label: keys[code].label }).catch(()=>{});
-    sendJson(res, { ok: true, key: code }); return;
+    addAdminAuditLog({ actor: 'admin', action: 'key_created', keyCode: code, label: keys[code].label, detail: extensionProductId }).catch(()=>{});
+    sendJson(res, { ok: true, key: code, productId: extensionProductId, activationPending: extensionProductId === PRODUCT_LITE }); return;
+  }
+
+  // Idempotent retry if LITE was blocked but the session DB was temporarily unavailable.
+  // It cannot activate a key and never modifies full-edition session records.
+  const codeLiteRevokeRetry = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/revoke-lite-sessions$`));
+  if (codeLiteRevokeRetry && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res,{error:'unauthorized'},401); return; }
+    if (!requireSameOriginPost(req)) { sendJson(res,{error:'invalid_origin'},403); return; }
+    try {
+      const db = await getMongoDb();
+      const record = await readAdminKeySnapshot(codeLiteRevokeRetry,{db});
+      if (!record || productOfKeyRecord(record,codeLiteRevokeRetry) !== PRODUCT_LITE) {
+        sendJson(res,{error:'lite_key_not_found'},404); return;
+      }
+      if (record.active !== false) {
+        sendJson(res,{error:'lite_disable_key_before_revocation'},409); return;
+      }
+      const revoked = await revokeLiteLicenseSessions(db, codeLiteRevokeRetry,{
+        collectionName:EXTENSION_SESSION_COLLECTION
+      });
+      if (revoked?.acknowledged !== true) throw new Error('lite_session_revoke_unacknowledged');
+      addAdminAuditLog({actor:'admin',action:'lite_sessions_revoked',
+        keyCode:codeLiteRevokeRetry,label:record.label||'',detail:'retry_after_block'}).catch(()=>{});
+      sendJson(res,{ok:true,active:false,revokedCount:revoked.modifiedCount});return;
+    } catch(error) {
+      console.error('[ADMIN] LITE revoke retry failed:', error?.code||error?.message||'unavailable');
+      sendJson(res,{ok:false,error:'lite_sessions_revocation_pending',active:false,
+        retryable:true},503);return;
+    }
   }
 
   const codeToggle = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/toggle$`));
@@ -10334,11 +10681,38 @@ async function handleRequest(req, res) {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const k = await adminGetKey(codeToggle);
     if (!k) { sendJson(res, { error: 'not found' }, 404); return; }
+    if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
+    if (!k.active && productOfKeyRecord(k, codeToggle) === PRODUCT_LITE && !ZVM_LITE_V4_CONFIG.ready) {
+      sendJson(res, { error: 'lite_build_authority_required' }, 409); return;
+    }
     let savedToggle;
-    try { savedToggle = await mutateAdminKeyRecordStrict(codeToggle, draft => { draft.active = !draft.active; }); }
+    try { savedToggle = await mutateAdminKeyRecordStrict(codeToggle, draft => {
+      if (!draft.active && productOfKeyRecord(draft, codeToggle) === PRODUCT_LITE) {
+        if (!ZVM_LITE_V4_CONFIG.ready) throw new Error('lite_build_authority_required');
+        draft.provisioningStatus = 'issued';
+      }
+      draft.active = !draft.active;
+    }); }
     catch (e) { sendAdminKeyPersistFailure(res, e, 'toggle key'); return; }
+    const liteBlocked = savedToggle.active === false &&
+      productOfKeyRecord(savedToggle, codeToggle) === PRODUCT_LITE;
     if (!savedToggle.active) fireWebhook('key_blocked', codeToggle, 'Bloqueio manual pelo admin');
     addAdminAuditLog({ actor: 'admin', action: savedToggle.active ? 'key_enabled' : 'key_disabled', keyCode: codeToggle, label: savedToggle.label }).catch(()=>{});
+    if (liteBlocked) {
+      try {
+        const db = await getMongoDb();
+        // Do not report a LITE block as fully complete until its existing
+        // password/key sessions have also been invalidated in MongoDB.
+        const result = await revokeLiteLicenseSessions(db, codeToggle, {
+          collectionName: EXTENSION_SESSION_COLLECTION
+        });
+        if (result?.acknowledged !== true) throw new Error('lite_session_revoke_unacknowledged');
+      } catch (error) {
+        console.error('[ADMIN] LITE key disabled; session revocation requires retry:', error?.code || error?.message || 'unavailable');
+        sendJson(res, { ok:false, active:false, error:'lite_sessions_revocation_pending',
+          retryable:false, operation:'key_disabled' },503); return;
+      }
+    }
     sendJson(res, { ok: true, active: savedToggle.active }); return;
   }
 
@@ -10349,6 +10723,9 @@ async function handleRequest(req, res) {
     const kDevAccess = await adminGetKey(codeDevAccess);
     if (!kDevAccess) { sendJson(res, { error: 'not found' }, 404); return; }
     const body = await parseBody(req);
+    if (body.enabled === true && productOfKeyRecord(kDevAccess, codeDevAccess) === PRODUCT_LITE) {
+      sendJson(res, { error: 'lite_build_authority_required' }, 409); return;
+    }
     if (typeof body.enabled !== 'boolean') { sendJson(res, { error: 'invalid_dev_access' }, 400); return; }
     let savedDevAccess;
     try { savedDevAccess = await setAdminKeyDevAccessStrict(codeDevAccess, body.enabled); }
@@ -10379,7 +10756,11 @@ async function handleRequest(req, res) {
   if (codeRenew && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const kRenew = await adminGetKey(codeRenew);
-    if (!kRenew) { sendJson(res, { error: 'not found' }, 404); return; }
+    if (!kRenew) { sendJson(res, { error: 'not_found' }, 404); return; }
+    if (productOfKeyRecord(kRenew, codeRenew) === PRODUCT_LITE &&
+        (!ZVM_LITE_V4_CONFIG.ready || kRenew.provisioningStatus !== 'issued' || kRenew.active !== true)) {
+      sendJson(res, { error: 'lite_build_authority_required' }, 409); return;
+    }
     const body = await parseBody(req);
     const days=Number(body.days ?? 0), hours=Number(body.hours ?? 0), mins=Number(body.mins ?? 0);
     const validParts = [days, hours, mins].every(n => Number.isSafeInteger(n) && n >= 0);
@@ -11091,6 +11472,9 @@ async function handleRequest(req, res) {
       const user = await db.collection('portal_users').findOne({ _id: sess.email });
       if (!user) { clearSessionCookie(res, 'zv_portal'); sendAuthHtml(res, renderStandalonePortalLogin()); return; }
       const keyData = user.keyCode ? await readPortalKeySnapshot(user.keyCode, { db }) : null;
+      const liteKeyCode = linkedPortalKeyForProduct(user, PRODUCT_LITE);
+      const liteRecord = liteKeyCode ? await readPortalKeySnapshot(liteKeyCode, { db }) : null;
+      const liteKeyData = liteRecord && keyBelongsTo(liteRecord, liteKeyCode, PRODUCT_LITE) ? liteRecord : null;
       const _dashOk = url.searchParams.get('ok');
       const _dashMsg = _dashOk === '2fa_off' ? '2FA desativado com sucesso.' : _dashOk === '1' ? 'Operação realizada com sucesso.' : '';
       const _deviceFailure = url.searchParams.get('device');
@@ -11099,7 +11483,7 @@ async function handleRequest(req, res) {
         : _deviceFailure === 'refresh'
           ? 'Esta página está desatualizada. Atualize a lista de dispositivos antes de remover um número.'
           : '';
-      sendAuthHtml(res, renderStandalonePortalDashboard(user, keyData, _dashMsg, _dashDeviceMsg)); return;
+      sendAuthHtml(res, renderStandalonePortalDashboard(user, keyData, _dashMsg, _dashDeviceMsg, liteKeyData)); return;
     } catch(e) { console.error('[Portal] dashboard temporarily unavailable:', e.message); sendAuthHtml(res, renderPortalLicenseUnavailable('overview'), 503); return; }
   }
 
@@ -11150,11 +11534,13 @@ async function handleRequest(req, res) {
     const name    = (form.get('name')||'').trim().slice(0,80);
     const email   = (form.get('email')||'').toLowerCase().trim().slice(0,100);
     const phone   = (form.get('phone')||'').replace(/\D/g,'').slice(0,20);
-    const keycode = ((form.get('keycode')||'').toLowerCase().trim()).replace(/[^a-z0-9\-_]/g,'').slice(0,30);
+    const rawKeyCode = String(form.get('keycode') || '');
+    const keycode = normalizePortalLicenseKey(rawKeyCode);
     const pass    = (form.get('pass')||'').slice(0,128);
     const pass2   = (form.get('pass2')||'').slice(0,128);
     const redir   = safeLocalRedirect((form.get('redir')||'').slice(0,200));
-    const vals = { name, email, phone, keycode };
+    const vals = { name, email, phone, keycode: rawKeyCode.trim().slice(0,64) };
+    if (rawKeyCode.trim() && !keycode) { sendAuthHtml(res, renderStandalonePortalRegister('Formato de chave inválido. Confira o código completo (até 57 caracteres).', vals, redir)); return; }
     if (!name || !email || !pass) { sendAuthHtml(res, renderStandalonePortalRegister('Preencha nome, e-mail e senha.', vals, redir)); return; }
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { sendAuthHtml(res, renderStandalonePortalRegister('E-mail inválido.', vals, redir)); return; }
     if (pass.length < 8) { sendAuthHtml(res, renderStandalonePortalRegister('Senha: mínimo 8 caracteres.', vals, redir)); return; }
@@ -11163,23 +11549,37 @@ async function handleRequest(req, res) {
       const db = await getMongoDb();
       const existing = await db.collection('portal_users').findOne({ _id: email });
       if (existing) { sendAuthHtml(res, renderStandalonePortalRegister('E-mail já cadastrado.', vals, redir)); return; }
+      let portalSlot = null;
       if (keycode) {
         await ensureKeyLoaded(keycode);
         if (!keys[keycode]) { sendAuthHtml(res, renderStandalonePortalRegister('Chave não encontrada. Deixe em branco para vincular depois.', vals, redir)); return; }
-        // Guarda de aplicação: uma licença comercial pertence a uma única conta
-        // do portal. Sem isto, a mesma keyCode poderia ser vinculada a vários
-        // portal_users simultaneamente (cada um veria/gerenciaria a licença do
-        // outro). Checagem em tempo de escrita — não depende de índice único.
-        const alreadyLinked = await db.collection('portal_users').findOne({ keyCode: keycode });
+        portalSlot = portalLicenseSlot(keys[keycode], keycode);
+        if (!portalSlot) { sendAuthHtml(res, renderStandalonePortalRegister('A chave não corresponde a um produto válido.', vals, redir)); return; }
+        // The DB partial unique index, not only a preflight read, owns LITE uniqueness.
+        if (portalSlot === 'liteKeyCode') await ensureLitePortalLicenseUniqueIndex(db);
+        // Verificar ambas as posições evita duplicar titularidade entre produtos.
+        const alreadyLinked = await db.collection('portal_users').findOne(portalLicenseConflictQuery(keycode));
         if (alreadyLinked) { sendAuthHtml(res, renderStandalonePortalRegister('Esta chave já está vinculada a outra conta. Entre em contato com o suporte se isso for um engano.', vals, redir)); return; }
       }
       const newPass = await hashNewPortalPassword(pass);
-      await db.collection('portal_users').insertOne({ _id: email, name, email, phone: phone||null, ...newPass, keyCode: keycode||null, createdAt: new Date().toISOString() });
+      await db.collection('portal_users').insertOne({ _id: email, name, email, phone: phone||null, ...newPass,
+        keyCode: portalSlot === 'keyCode' ? keycode : null,
+        ...(portalSlot === 'liteKeyCode' ? { liteKeyCode: keycode } : {}),
+        createdAt: new Date().toISOString() });
       const token = generateToken();
       portalSessions[token] = { email, name, expiresAt: new Date(Date.now()+24*60*60*1000).toISOString() };
       setSessionCookie(res, 'zv_portal', token, 86400);
       res.writeHead(302, { Location: redir || '/cliente' }); res.end();
-    } catch(e) { console.error('[Portal] registro:', e.message); sendAuthHtml(res, renderStandalonePortalRegister('Erro ao criar conta.', vals, redir)); return; }
+    } catch(e) {
+      if (e?.code === 11000 && e?.keyPattern?.liteKeyCode === 1) {
+        sendAuthHtml(res, renderStandalonePortalRegister('Esta chave LITE já está vinculada a outra conta.', vals, redir)); return;
+      }
+      if (e?.code === 11000 && e?.keyPattern?._id === 1) {
+        sendAuthHtml(res, renderStandalonePortalRegister('E-mail já cadastrado.', vals, redir)); return;
+      }
+      console.error('[Portal] registro:', e?.code || e?.message || 'unavailable');
+      sendAuthHtml(res, renderStandalonePortalRegister('Erro ao criar conta.', vals, redir)); return;
+    }
     return;
   }
 
@@ -11197,32 +11597,55 @@ async function handleRequest(req, res) {
       if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
       const sess = getPortalUser(req);
       const form = await parseFormBody(req);
-      const keycode = ((form.get('keycode')||'').toLowerCase().trim()).replace(/[^a-z0-9\-_]/g,'').slice(0,30);
+      const keycode = normalizePortalLicenseKey(String(form.get('keycode') || ''));
       if (!keycode) { sendAuthHtml(res, renderStandalonePortalLinkKey('Informe o código da chave.', '', sess)); return; }
       await ensureKeyLoaded(keycode);
       if (!keys[keycode]) { sendAuthHtml(res, renderStandalonePortalLinkKey('Chave não encontrada.', '', sess)); return; }
+      const portalSlot = portalLicenseSlot(keys[keycode], keycode);
+      if (!portalSlot) { sendAuthHtml(res, renderStandalonePortalLinkKey('Chave ou produto inválido.', '', sess)); return; }
       try {
         const db = await getMongoDb();
-        // Guarda de aplicação: uma licença comercial pertence a uma única conta
-        // do portal. Sem isto, dois portal_users diferentes poderiam vincular a
-        // mesma keyCode simultaneamente (cada um veria/gerenciaria a licença do
-        // outro). Checagem em tempo de escrita — não depende de índice único.
-        const alreadyLinked = await db.collection('portal_users').findOne({ keyCode: keycode, _id: { $ne: sess.email } });
+        if (portalSlot === 'liteKeyCode') await ensureLitePortalLicenseUniqueIndex(db);
+        const alreadyLinked = await db.collection('portal_users').findOne(portalLicenseConflictQuery(keycode, sess.email));
         if (alreadyLinked) { sendAuthHtml(res, renderStandalonePortalLinkKey('Esta chave já está vinculada a outra conta. Entre em contato com o suporte se isso for um engano.', '', sess)); return; }
-        await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { keyCode: keycode } });
+        // A chave LITE nunca substitui a licença da ZVM completa, nem vice-versa.
+        const linkResult = await db.collection('portal_users').updateOne({ _id: sess.email }, { $set: { [portalSlot]: keycode } });
+        if (portalSlot === 'liteKeyCode') {
+          if (linkResult?.matchedCount !== 1) { sendJson(res, { error: 'portal_account_not_found' }, 404); return; }
+          // Rebinding a LITE key invalidates only pre-existing LITE password sessions.
+          await revokePortalLitePasswordSessions(db, sess.email, { collectionName: EXTENSION_SESSION_COLLECTION });
+        }
         res.writeHead(302, { Location: '/cliente' }); res.end(); return;
-      } catch(e) { sendAuthHtml(res, renderStandalonePortalLinkKey('Erro ao vincular.', '', sess)); return; }
+      } catch(e) {
+        if (e?.code === 11000 && e?.keyPattern?.liteKeyCode === 1) {
+          sendAuthHtml(res, renderStandalonePortalLinkKey('Esta chave LITE já está vinculada a outra conta.', '', sess)); return;
+        }
+        sendAuthHtml(res, renderStandalonePortalLinkKey('Erro ao vincular. Verifique a conexão e tente novamente.', '', sess)); return;
+      }
     }
   }
 
-  if (p === '/cliente/desvincular' && req.method === 'POST') {
+  if ((p === '/cliente/desvincular' || p === '/cliente/lite/desvincular') && req.method === 'POST') {
     if (!isPortalSession(req)) { res.writeHead(302, { Location: '/cliente' }); res.end(); return; }
     if (!requireSameOriginPost(req)) { sendJson(res, { error: 'invalid_origin' }, 403); return; }
     const sess = getPortalUser(req);
     try {
       const db = await getMongoDb();
-      await db.collection('portal_users').updateOne({ _id: sess.email }, { $unset: { keyCode: '' } });
-    } catch(e) { /* falha silenciosa — redireciona de qualquer forma */ }
+      const slot = p === '/cliente/lite/desvincular' ? 'liteKeyCode' : 'keyCode';
+      const unlinkResult = await db.collection('portal_users').updateOne({ _id: sess.email }, { $unset: { [slot]: '' } });
+      if (slot === 'liteKeyCode') {
+        if (unlinkResult?.matchedCount !== 1) { sendJson(res, { error: 'portal_account_not_found' }, 404); return; }
+        // Never leave an account-password LITE session authorized after unlink.
+        // The full edition and independent key-based sessions are untouched.
+        await revokePortalLitePasswordSessions(db, sess.email, { collectionName: EXTENSION_SESSION_COLLECTION });
+      }
+    } catch(e) {
+      if (p === '/cliente/lite/desvincular') {
+        console.error('[Portal LITE] erro ao desvincular/revogar sessões:', e?.code || e?.message || 'unknown');
+        sendJson(res, { error: 'temporarily_unavailable' }, 503); return;
+      }
+      // Mantém a semântica legada de desvinculação da edição completa.
+    }
     res.writeHead(302, { Location: '/cliente' }); res.end(); return;
   }
 

@@ -1,0 +1,101 @@
+'use strict';
+// Keep the complete ZVM account binding stable while giving LITE its own slot.
+// This is used only for account registration, linking and extension login.
+const { PRODUCT_AUTOMACOES, PRODUCT_LITE, productOfKeyRecord } = require('./license-product-v2');
+
+function normalizePortalLicenseKey(raw) {
+  if (typeof raw !== 'string') return '';
+  const code = raw.trim().toLowerCase();
+  if (!/^[a-z0-9_-]{1,64}$/.test(code)) return '';
+  // Never silently truncate, strip characters or treat a malformed V2 key as legacy.
+  if (/^zv2[al]-/.test(code) && !/^zv2[al]-[a-z2-7]{52}$/.test(code)) return '';
+  return code;
+}
+
+function portalLicenseSlot(record, code) {
+  const product = productOfKeyRecord(record, code);
+  if (product === PRODUCT_LITE && /^zv2l-[a-z2-7]{52}$/.test(code)) return 'liteKeyCode';
+  if (product === PRODUCT_AUTOMACOES) return 'keyCode';
+  return null;
+}
+
+function linkedPortalKeyForProduct(user, productId) {
+  if (!user || typeof user !== 'object') return '';
+  if (productId === PRODUCT_LITE) return normalizePortalLicenseKey(user.liteKeyCode);
+  if (productId === PRODUCT_AUTOMACOES) return normalizePortalLicenseKey(user.keyCode);
+  return '';
+}
+
+// On account-side unlink/relink, invalidate only password sessions of ZVM LITE.
+// A direct key-based session is controlled by the key owner, not the portal link.
+// MongoDB is authoritative; errors propagate and are never reported as success.
+async function revokePortalLitePasswordSessions(db, rawEmail, options = {}) {
+  const email = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : '';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 120 ||
+      !db || typeof db.collection !== 'function') throw new TypeError('invalid_lite_portal_revoke');
+  const collectionName = options.collectionName;
+  if (typeof collectionName !== 'string' || !/^[a-zA-Z0-9_]{1,80}$/.test(collectionName)) {
+    throw new TypeError('invalid_lite_session_collection');
+  }
+  const now = options.now === undefined ? new Date() : new Date(options.now);
+  if (!Number.isFinite(now.getTime())) throw new TypeError('invalid_lite_revoke_time');
+  return db.collection(collectionName).updateMany(
+    { accountEmail: email, extensionProductId: PRODUCT_LITE, authMethod: 'password', revokedAt: null },
+    { $set: { revokedAt: now, lastSeenAt: now } }
+  );
+}
+
+// Administrative blocking revokes BOTH LITE auth modes for this licence,
+// but never sessions belonging to the full ZVM product or other LITE keys.
+// No secret token is needed or logged; Mongo matches the persisted key code.
+async function revokeLiteLicenseSessions(db, code, options = {}) {
+  if (!db || typeof db.collection !== 'function' ||
+      typeof code !== 'string' || !/^zv2l-[a-z2-7]{52}$/.test(code)) {
+    throw new TypeError('invalid_lite_license_revoke');
+  }
+  const collectionName = options.collectionName;
+  if (typeof collectionName !== 'string' || !/^[a-zA-Z0-9_]{1,80}$/.test(collectionName)) {
+    throw new TypeError('invalid_lite_session_collection');
+  }
+  const now = options.now === undefined ? new Date() : new Date(options.now);
+  if (!Number.isFinite(now.getTime())) throw new TypeError('invalid_lite_revoke_time');
+  return db.collection(collectionName).updateMany(
+    { licenseKeyCode: code, extensionProductId: PRODUCT_LITE, revokedAt: null },
+    { $set: { revokedAt: now, lastSeenAt: now } }
+  );
+}
+
+// Enforce one account per LITE license at the MongoDB layer, not merely via a
+// findOne() preflight. Partial string index leaves all historical full-ZVM
+// accounts (no liteKeyCode field) untouched, including legacy null records.
+// If creating/verifying the index fails, callers must not bind a LITE key.
+async function ensureLitePortalLicenseUniqueIndex(db) {
+  if (!db || typeof db.collection !== 'function') throw new TypeError('invalid_lite_portal_database');
+  return db.collection('portal_users').createIndex(
+    { liteKeyCode: 1 },
+    {
+      name: 'zvm_lite_license_owner_unique_v1',
+      unique: true,
+      partialFilterExpression: { liteKeyCode: { $type: 'string' } },
+    }
+  );
+}
+
+function portalLicenseConflictQuery(code, exceptEmail = '') {
+  const normalized = normalizePortalLicenseKey(code);
+  if (!normalized) throw new TypeError('invalid_portal_license_key');
+  return {
+    ...(exceptEmail ? { _id: { $ne: String(exceptEmail).toLowerCase() } } : {}),
+    $or: [{ keyCode: normalized }, { liteKeyCode: normalized }],
+  };
+}
+
+module.exports = Object.freeze({
+  normalizePortalLicenseKey,
+  portalLicenseSlot,
+  linkedPortalKeyForProduct,
+  portalLicenseConflictQuery,
+  revokePortalLitePasswordSessions,
+  revokeLiteLicenseSessions,
+  ensureLitePortalLicenseUniqueIndex,
+});

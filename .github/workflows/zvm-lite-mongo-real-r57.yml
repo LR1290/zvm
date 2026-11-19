@@ -1,0 +1,52 @@
+name: ZVM LITE R57 - isolated real MongoDB checks (no deploy)
+on:
+  pull_request:
+    paths:
+      - 'src/lite-license-authority.js'
+      - 'src/portal-license-slots.js'
+      - 'src/license-product-v2.js'
+      - 'tests/r57-lite-mongo-real.test.js'
+      - 'tests/r58-lite-signed-api-contract.test.js'
+      - '.github/workflows/zvm-lite-mongo-real-r57.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lite-mongo-real:
+    name: LITE key ownership and device race (ephemeral MongoDB)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      mongo:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping:1})'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.3'
+          cache: npm
+      - name: Install pinned dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-fund --no-audit
+      - name: Verify the test cannot contact production MongoDB
+        run: |
+          test "$ZVM_LITE_TEST_MONGO_URI" = "mongodb://127.0.0.1:27017/"
+          node --check tests/r57-lite-mongo-real.test.js
+          node --check tests/r58-lite-signed-api-contract.test.js
+          node --check src/lite-license-authority.js
+        env:
+          ZVM_LITE_TEST_MONGO_URI: mongodb://127.0.0.1:27017/
+      - name: Test real DB atomic claims, partial index and product isolation
+        run: node --test tests/r57-lite-mongo-real.test.js tests/r58-lite-signed-api-contract.test.js
+        env:
+          ZVM_LITE_TEST_MONGO_URI: mongodb://127.0.0.1:27017/
