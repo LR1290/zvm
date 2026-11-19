@@ -29,6 +29,15 @@ const path   = require('path');
 const zlib   = require('zlib');
 const { serveSSX2012 } = require('./src/hobbies/ssx/route');
 const { createCloudRoute } = require('./src/web/cloud/route');
+const { executeV4FreeQuota, COLLECTION: EXT_V4_FREE_USAGE_COLLECTION, QuotaContractError } = require('./src/extension-v4-free-quota');
+const _extV4FreeUsageIndexes = new WeakMap();
+function ensureExtV4FreeUsageIndex(db) {
+  if (_extV4FreeUsageIndexes.has(db)) return;
+  const pending = db.collection(EXT_V4_FREE_USAGE_COLLECTION).createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 })
+    .catch(error => { _extV4FreeUsageIndexes.delete(db); console.error('[extension-v4] free-usage TTL index:', String(error?.message || 'index unavailable').slice(0, 120)); });
+  _extV4FreeUsageIndexes.set(db, pending);
+}
+
 // ZVM Cloud shares the portal login but never reuses ADMIN_PASS, portal passwords,
 // or the extension's commercial license writes. DEV authorization is revalidated
 // against current, persisted license status on every privileged Cloud request.
@@ -9583,6 +9592,49 @@ async function handleRequest(req, res) {
     return;
   }
 
+
+
+  // Identity and tier are derived exclusively from the V4 bearer authority.
+  // No client-provided authKey, phone, managerId or planId can grant quota.
+  if (p === R_EXT+'/v4/free-usage' && req.method === 'POST') {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    if (!checkRateLimit(ip, 'ext_v4_free_usage', 120, 60000)) {
+      sendJson(res, { ok:false, errorCode:'rate_limited', retryable:true }, 429);
+      return;
+    }
+    const token = getExtensionBearerToken(req);
+    if (!token) { sendJson(res, { ok:false, errorCode:'invalid_session' }, 401); return; }
+    try {
+      const body = await parseBody(req);
+      const refreshed = await refreshExtensionSession(token);
+      if (!refreshed.ok) {
+        const { status, ...errorBody } = refreshed;
+        sendJson(res, errorBody, status);
+        return;
+      }
+      const db = await getMongoDb();
+      ensureExtV4FreeUsageIndex(db);
+      const usage = await executeV4FreeQuota({
+        collection:db.collection(EXT_V4_FREE_USAGE_COLLECTION),
+        subject:refreshed.sessionDoc.subject,
+        tier:refreshed.entitlement.tier,
+        action:body?.action || 'check',
+        itemType:body?.itemType,
+        operationId:body?.operationId,
+        period:body?.period,
+        scheduledItems:body?.scheduledItems,
+        ack:body?.ack,
+        messageIdHash:body?.messageIdHash,
+      });
+      sendJson(res, usage);
+    } catch (error) {
+      const known = error instanceof QuotaContractError;
+      if (!known) console.error('[extension-v4] free-usage temporarily unavailable:', String(error?.message || 'unknown').slice(0, 160));
+      sendJson(res, { ok:false, status:false, errorCode:known ? error.code : 'temporarily_unavailable', retryable:!known },
+        known ? error.status : 503);
+    }
+    return;
+  }
 
   if (p === R_EXT+'/v4/backup/decoder-material' && req.method === 'POST') {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
