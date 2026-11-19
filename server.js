@@ -24,7 +24,7 @@ function sanitizeStartupErrorMessage(error) {
 const http   = require('http');
 const https  = require('https');
 const crypto = require('crypto');
-const { PRODUCT_AUTOMACOES, PRODUCT_LITE, selectAdminProduct, generateLicenseKey, productOfKeyRecord, keyBelongsTo } = require('./src/license-product-v2');
+const { PRODUCT_AUTOMACOES, PRODUCT_LITE, selectAdminProduct, generateLicenseKey, productOfKeyRecord, keyBelongsTo, parseLiteMaxUses } = require('./src/license-product-v2');
 const { readLiteConfig, inspectLiteClient, liteOriginAllowed, liteSessionAllowed, SESSION_TTL: ZVM_LITE_SESSION_TTL } = require('./src/lite-v4-build-authority');
 const { readLiteLicenseSnapshot, claimLitePhoneSlotAtomic, activateLiteDeferredKeyAtomic } = require('./src/lite-license-authority');
 const { normalizePortalLicenseKey, portalLicenseSlot, linkedPortalKeyForProduct, portalLicenseConflictQuery, revokePortalLitePasswordSessions, revokeLiteLicenseSessions, ensureLitePortalLicenseUniqueIndex } = require('./src/portal-license-slots');
@@ -10663,7 +10663,12 @@ async function handleRequest(req, res) {
     // Legacy callers keep the old key format until every full extension accepts 57-char keys.
     const code = hasProductSelection ? generateLicenseKey(extensionProductId) : generateCode();
     const { expiresAt, expireDuration } = parseKeyExpiryFromBody(body, { allowMinutes: true });
-    const maxUses = (body.maxUses !== undefined) ? parseInt(body.maxUses) : MAX_USES;
+    const maxUses = extensionProductId === PRODUCT_LITE
+      ? parseLiteMaxUses(body.maxUses, MAX_USES, MAX_PHONES_GLOBAL)
+      : ((body.maxUses !== undefined) ? parseInt(body.maxUses) : MAX_USES);
+    if (extensionProductId === PRODUCT_LITE && maxUses === null) {
+      sendJson(res, { error: 'invalid_lite_max_uses' }, 400); return;
+    }
     const createdKey = {
       label: labelResult.label, active: extensionProductId === PRODUCT_AUTOMACOES,
       extensionProductId,
@@ -10675,7 +10680,7 @@ async function handleRequest(req, res) {
       uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null,
       deviceId: null, wppVersion: null, note: '',
       expiresAt, expireDuration: expireDuration || null,
-      maxUses: isNaN(maxUses) ? MAX_USES : maxUses, warnCount: 0,
+      maxUses: extensionProductId === PRODUCT_LITE ? maxUses : (isNaN(maxUses) ? MAX_USES : maxUses), warnCount: 0,
       modules: { ...DEFAULT_MODULES, zapSaver: true },
     };
     try { await insertNewAdminKeyStrict(code, createdKey); }
