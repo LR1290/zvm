@@ -56,7 +56,7 @@ const admin=api.renderAdminDashboard({keysSnapshot:{'qa-zvm-r4703':expired},port
 assert.match(admin,/<button type="button" id="hdr-suspect-badge"/,'suspect filter must be keyboard operable');
 assert.match(admin,/id="hdr-suspect-badge"[^>]*data-zvm-handler-click="h0"/,'suspect filter is wired to its delegated handler');
 assert.doesNotMatch(admin,/id="hdr-suspect-badge"[^>]*onclick=/,'strict CSP forbids inline execution');
-const activeAdminScript=src.match(/<script src="\\/assets\\/(zvm-admin-dashboard\\.[a-f0-9]{12}\\.js)" defer><\\/script>/);
+const activeAdminScript=src.match(/<script src="\/assets\/(zvm-admin-dashboard\.[a-f0-9]{12}\.js)" defer><\/script>/);
 assert(activeAdminScript,'Admin has one active versioned script');
 const script=fs.readFileSync(path.join(root,'assets',activeAdminScript[1]),'utf8');
 assert(script.includes('"h0":function(event){document.getElementById(\'filter-status\').value=\'suspect\';switchTab(\'keys\');filterKeys()}'),'delegated h0 applies the suspect filter');
