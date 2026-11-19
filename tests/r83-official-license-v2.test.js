@@ -36,7 +36,7 @@ const rIssue = region('function generateCode() {', 'function generateToken() {')
 check(/function generateOfficialCode\(/.test(rIssue), 'gated official issuance helper');
 check(/ZVM_OFFICIAL_KEYS_V2_ENABLED/.test(rIssue), 'explicit server rollout gate');
 check(/generateLicenseKey\(PRODUCT_AUTOMACOES\)/.test(rIssue), 'official V2 uses shared secure generator');
-const commercial = region('async function processCommercialSale(', '\n  // P0 — ordem importa pra recuperação');
+const commercial = region('async function _processCommercialSaleUnlocked(', '\n  // P0 — ordem importa pra recuperação');
 check(/generateOfficialCode\(\)/.test(commercial), 'new Cakto sale uses gated generator');
 check(/\.\.\.officialV2Metadata\(keyCode\)/.test(commercial), 'new commercial V2 records persist product authority');
 const admin = region("if (p === R_ADMIN+'/api/keys' && req.method === 'POST')", 'const codeToggle =');
