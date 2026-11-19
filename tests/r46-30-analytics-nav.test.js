@@ -3,7 +3,14 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const crypto=require('node:crypto');
 const srv=fs.readFileSync('server.js','utf8');
-function asset(prefix, ext){const found=fs.readdirSync('assets').filter(x=>new RegExp('^'+prefix+'\\.[a-f0-9]{12}\\.'+ext+'$').test(x));assert.equal(found.length,1,`exactly one ${prefix}.${ext}`);return found[0];}
+function asset(prefix, ext){const found=fs.readdirSync('assets').filter(x=>new RegExp('^'+prefix+'\\.[a-f0-9]{12}\\.'+ext+'$').test(x));if(prefix==='zvm-analytics-dashboard'&&ext==='js'){
+  // Previously served version remains valid for cached HTML. Assert the one
+  // active JS actually linked from the current Analytics page instead.
+  const active=found.filter(x=>srv.includes('src="/assets/'+x+'" defer'));
+  assert.equal(active.length,1,'exactly one active Analytics JS in generated HTML');
+  return active[0];
+ }
+ assert.equal(found.length,1,`exactly one ${prefix}.${ext}`);return found[0];}
 const system=fs.readFileSync('assets/'+asset('zvm-r46-system','css'),'utf8');
 const analytics=fs.readFileSync('assets/'+asset('zvm-analytics-dashboard','css'),'utf8');
 const js=fs.readFileSync('assets/'+asset('zvm-analytics-dashboard','js'),'utf8');
