@@ -85,3 +85,14 @@ test('R100: sustained CAS contention fails closed without claiming confirmation'
  assert.equal(attempts,5);
  assert.equal((await run({...x,action:'reconcile',operationId:id(1)})).operationStatus,'reserved');
 });
+
+for (const itemType of ['audio','document','media']) {
+  test('concurrent Free reservations respect the daily cap for '+itemType, async()=>{
+    const context=ctx({itemType});
+    const results=await Promise.allSettled(Array.from({length:20},(_,i)=>
+      run({...context,action:'reserve',operationId:id(i+1)})));
+    assert.equal(results.filter(r=>r.status==='fulfilled').length,10);
+    assert.equal(results.filter(r=>r.reason?.code==='MAX_LIMIT_REACHED').length,10);
+    assert.equal((await run({...context,action:'check'})).limits[itemType].sent,10);
+  });
+}

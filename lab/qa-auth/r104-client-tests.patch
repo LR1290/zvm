@@ -1,0 +1,27 @@
+--- a/client-integration.test.cjs
++++ b/client-integration.test.cjs
+@@ -111,3 +111,24 @@
+ test('Free schedule creation is blocked before mutating any schedule state',async()=>{
+  const x=gateEnv();await assert.rejects(()=>x.api.requireScheduleCapacity(0),e=>e.code==='SCHEDULE_SERVER_AUTHORITY_REQUIRED');
+ });
++test('duplicate server reservation never authorizes a new dispatch',async()=>{
++  const x=setup(),fetch=x.sandbox.fetch;
++  x.sandbox.fetch=async(url,opts)=>{
++    const response=await fetch(url,opts);
++    response.payload.duplicate=true;
++    return response;
++  };
++  await assert.rejects(x.sandbox.extPlanUsageBg('reserve','message'),{code:'EXTAPP_FREE_QUOTA_INVALID_RESPONSE'});
++});
++test('journal collision preserves prior operation',async()=>{
++  const x=setup();x.sandbox.extFreeQuotaOperationId=()=>'e'.repeat(32);
++  await x.sandbox.extPlanUsageBg('reserve','audio');
++  await assert.rejects(x.sandbox.extPlanUsageBg('reserve','document'),{code:'EXTAPP_FREE_OPERATION_EXISTS'});
++  assert.equal(x.calls.length,1);
++});
++test('missing entitlement prevents Free quota HTTP request',async()=>{
++  const x=setup();
++  x.sandbox.self.extuiOpaqueV4Ensure=async()=>({authMethod:'password',subject:x.subject,token:'b'.repeat(64)});
++  await assert.rejects(x.sandbox.extPlanUsageBg('reserve','message'),{code:'EXTAPP_FREE_QUOTA_SESSION_CHANGED'});
++  assert.equal(x.calls.length,0);
++});
