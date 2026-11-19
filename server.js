@@ -5861,10 +5861,10 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '19040fd113310e45c7f9096fdb75aece8f7a82a9cc5496781405fad178e2805b',
     compressible: true,
   }),
-  '/assets/zvm-console-design.44762cb103f8.css': Object.freeze({
+  '/assets/zvm-console-design.7a7b24cd5fa8.css': Object.freeze({
     type: 'text/css; charset=utf-8',
-    file: path.join(__dirname, 'assets', 'zvm-console-design.44762cb103f8.css'),
-    sha256: '44762cb103f86784b9a7ad5dccf99b5ec304076e728f5dac1bb7875631cb7349',
+    file: path.join(__dirname, 'assets', 'zvm-console-design.7a7b24cd5fa8.css'),
+    sha256: '7a7b24cd5fa8f487a6ce481ee8bb505bd68c75816876c745a0518ee175e83c8a',
     compressible: true,
   }),
   '/assets/zvm-admin-dashboard.b892a520f957.js': Object.freeze({
@@ -6279,7 +6279,7 @@ function renderPortalPage(body, title='ZVM — Minha Conta', extra='', headExtra
 <link rel="stylesheet" href="/assets/zvm-r46-client-dashboard.64213392bec3.css"><link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css">
 ${headExtra}
 <link rel="stylesheet" href="/assets/zvm-r46-system.cf01433d7f45.css">
-<link rel="stylesheet" href="/assets/zvm-console-design.44762cb103f8.css">
+<link rel="stylesheet" href="/assets/zvm-console-design.7a7b24cd5fa8.css">
 </head><body class="zvm-client-premium">
 <a class="portal-skip" href="#main-content">Ir para o conteúdo</a>
 <div class="page-wrap portal-page-wrap">
@@ -7040,7 +7040,7 @@ function renderAdminDashboard(opts = {}) {
 <link rel="stylesheet" href="/assets/zvm-admin-dashboard.5c649db2edf7.css">
 <link rel="stylesheet" href="/assets/zvm-r46-system.cf01433d7f45.css">
 <link rel="stylesheet" href="/assets/zvm-action-hub.07aa17b87c3e.css">
-<link rel="stylesheet" href="/assets/zvm-console-design.44762cb103f8.css">
+<link rel="stylesheet" href="/assets/zvm-console-design.7a7b24cd5fa8.css">
 <link rel="stylesheet" href="/assets/zvm-owner-site.e10ede63c1f0.css">
 <link rel="stylesheet" href="/assets/zvm-admin-dashboard.cd85ea19cc73.css">
 <link rel="stylesheet" href="/assets/zvm-admin-operations.d84043f003e4.css">
