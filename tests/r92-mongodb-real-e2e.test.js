@@ -12,6 +12,7 @@ const {MongoClient,BSON}=require('mongodb');
 const M=require('../tools/zvm-mongodb-migrate');
 const R=require('../tools/zvm-mongodb-local-restore');
 const B=require('../tools/zvm-mongodb-backup-proof');
+const P=require('../tools/zvm-mongodb-cutover-preflight');
 const uri='mongodb://127.0.0.1:27018';
 const srcName='zapvoice',destName='zvm',restoreName='zvm_r92_archive';
 const collectionNames=[
@@ -80,6 +81,11 @@ async function main(){
   started=true;
   const source=client.db(srcName),restored=client.db(restoreName),destination=client.db(destName);
   await seed(source);
+  const inventory=await P.inspectClient(client);
+  check(!inventory.technicalPreflightPassed&&!inventory.auth.authenticated,
+    'anonymous Docker MongoDB cannot masquerade as production credentials');
+  check(inventory.source.collections===20&&inventory.source.indexes===49&&inventory.targetEmpty,
+    'read-only live preflight counts 20 collections and 49 indexes');
   const before=await M.snapshotDatabase(source,EJSON);
   check(before.sections.length===20,'20 actual MongoDB collections seeded');
   check(before.sections.reduce((n,s)=>n+s.indexes.length,0)===49,
@@ -157,6 +163,9 @@ async function main(){
     'actual cross-db $out preserves source fingerprint');
   check((await M.compareDatabases(source,destination,EJSON)).verified,
     'actual cross-db source vs target compare passed');
+  const afterCutoverPreflight=await P.inspectClient(client);
+  check(!afterCutoverPreflight.targetEmpty&&!afterCutoverPreflight.technicalPreflightPassed,
+    'read-only preflight refuses repeat copy into populated target');
   check((await destination.collection('store').findOne({_id:'keys'})).data['wt-abcde-12345-abcde'].active===false,
     'historical inactive legacy key preserved exactly');
   const same=await destination.collection('payments').findOne({_id:'synthetic-payment'});

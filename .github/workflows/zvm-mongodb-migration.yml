@@ -16,6 +16,8 @@ on:
       - 'tests/r89-backup-restore-gate.test.js'
       - 'tests/r91-mongo-collection-options.test.js'
       - 'tests/r92-mongodb-real-e2e.test.js'
+      - 'tools/zvm-mongodb-cutover-preflight.js'
+      - 'tests/r95-mongo-preflight-permissions.test.js'
       - 'tools/zvm-db-backup-readonly.ps1'
       - 'package.json'
       - '.github/workflows/zvm-mongodb-migration.yml'

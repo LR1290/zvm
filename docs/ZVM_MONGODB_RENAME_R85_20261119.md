@@ -160,3 +160,24 @@ O script deve executar mongodump com --config, archive.gz e gzip, conferir mongo
 Correções adicionais: em Windows PowerShell 5.1, Set-Content -Encoding UTF8 pode gerar BOM que o JSON.parse do Node.js recusa. A escrita agora usa UTF-8 sem BOM e o leitor tolera um BOM histórico; o manifesto é gravado em arquivo parcial separado e movido de forma atômica. Falhas de manifesto não excluem silenciosamente o archive já produzido: o backup fica retido para investigação manual e NÃO é elegível para cutover.
 
 Nenhum backup real de clientes foi criado nesta rodada; testes R94 usam somente arquivos sintéticos e MongoDB em Docker descartável. Não alterar Render, Atlas ou webhooks com esse teste.
+
+
+## R95 — preflight read-only com verificação da credencial REAL da migração
+
+Embora os testes R92-R94 tenham validado os comandos de cópia e recuperação em laboratório, eles não comprovam que a credencial oficial Render tem permissão suficiente para a nova base. A R95 implementa a ferramenta de operação tools/zvm-mongodb-cutover-preflight.js.
+
+Usar no ambiente privado onde MONGODB_URI já está injetada, ANTES da janela de corte:
+  node tools/zvm-mongodb-cutover-preflight.js
+
+A ferramenta usa somente comandos de leitura (connectionStatus com showPrivileges, listCollections, listIndexes, countDocuments e consulta restrita de store/keys). Não cria coleções, não executa $out, não modifica pagamentos ou licenças e não imprime usuários MongoDB, connection strings, e-mails ou códigos de licença. A saída expõe apenas contagens e booleanos seguros:
+- sourceReadAuthorized confirma privilégios de leitura e inventário em zapvoice;
+- targetWriteAuthorized confirma o conjunto mínimo de privilégios de escrita em zvm, a partir de authenticatedUserPrivileges do servidor, SEM executar uma gravação;
+- source.integrityMinimumMet confirma pelo menos 20 coleções, 49 índices, as coleções críticas, contas, pagamentos e chaves oficiais preservadas;
+- targetEmpty é TRUE somente se a base zvm continua vazia;
+- technicalPreflightPassed apenas indica que a validação TÉCNICA foi aprovada, mas manualBackupPauseAndDeployStillRequired continua verdadeiro mesmo em sucesso.
+
+Uma conexão sem autenticação, sem retorno de privilégios, com papel somente read@zapvoice ou sem direito sobre zvm falha em modo seguro. Usuários com role customizada legítima podem exigir inspeção explícita dos privilégios antes do corte, sem promover permissões indiscriminadamente.
+
+Na CI o teste R95 usa mocks com roles/permissões fictícias. O teste integrado real em MongoDB 8 descartável verifica que a conexão de laboratório anônima NÃO é classificada como credencial de produção autorizada. NÃO usar senha ou URI reais no GitHub Actions, em prints ou no chat.
+
+A R95 não altera nenhum usuário Atlas; eventual concessão readWrite em zvm deve ocorrer somente após identificar a identidade de conexão ativa no Render e antes da migração, usando menor privilégio possível.
