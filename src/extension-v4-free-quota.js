@@ -30,13 +30,14 @@ async function executeV4FreeQuota({collection,subject,tier,action='check',itemTy
  else if(scheduledItems!==undefined)fail('invalid_schedule_count',400);
  const initial={_id:key,counts:Object.fromEntries(Object.keys(FREE_V4_QUOTA_LIMITS).map(k=>[k,0])),operations:[],createdAt:now,expireAt:new Date(now.getTime()+35*86400000)};
  try{await collection.insertOne(initial);}catch(e){if(e?.code!==11000)throw e;}
- const field='counts.'+itemType,filter={_id:key,operations:{$ne:op}},update={$addToSet:{operations:op}};
+ const field='counts.'+itemType,filter={_id:key,operations:{$ne:op},$expr:{$lt:[{$size:'$operations'},128]}},update={$addToSet:{operations:op}};
  if(itemType==='scheduleItem')update.$max={[field]:scheduledItems};
  else{filter[field]={$lt:max};update.$inc={[field]:1};}
  const changed=await collection.findOneAndUpdate(filter,update,{returnDocument:'after'});
  if(changed)return output(changed,today,now,{operationStatus:'committed'});
  const existing=await collection.findOne({_id:key});
  if(Array.isArray(existing?.operations)&&existing.operations.includes(op))return output(existing,today,now,{operationStatus:'committed',duplicate:true});
+ if(Array.isArray(existing?.operations)&&existing.operations.length>=128)fail('quota_operation_limit_reached',429);
  if(itemType!=='scheduleItem'&&Number(existing?.counts?.[itemType]||0)>=max)fail('MAX_LIMIT_REACHED',403);
  fail('quota_result_uncertain',503);
 }
