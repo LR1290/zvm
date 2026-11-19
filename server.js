@@ -5861,6 +5861,12 @@ const _PUBLIC_ASSETS = Object.freeze({
     sha256: '19040fd113310e45c7f9096fdb75aece8f7a82a9cc5496781405fad178e2805b',
     compressible: true,
   }),
+  '/assets/zvm-console-design.44762cb103f8.css': Object.freeze({
+    type: 'text/css; charset=utf-8',
+    file: path.join(__dirname, 'assets', 'zvm-console-design.44762cb103f8.css'),
+    sha256: '44762cb103f86784b9a7ad5dccf99b5ec304076e728f5dac1bb7875631cb7349',
+    compressible: true,
+  }),
   '/assets/zvm-console-design.7a7b24cd5fa8.css': Object.freeze({
     type: 'text/css; charset=utf-8',
     file: path.join(__dirname, 'assets', 'zvm-console-design.7a7b24cd5fa8.css'),
