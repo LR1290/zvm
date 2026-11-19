@@ -68,7 +68,7 @@ assert(!csp._CSP_NO_INLINE_RESPONSE.includes("'unsafe-inline'"));
 const sh=source.indexOf('function sendHtml('),se=source.indexOf('function sendAuthHtml(',sh);
 assert(sh>0&&se>sh);
 const deps={
- applyOwnerSiteTheme:x=>x,Buffer,
+ applyOwnerSiteTheme:x=>x,applyCanonicalFavicon:x=>x,Buffer,URL,
  _SEC_HEADERS:{'Content-Security-Policy':csp._CSP_NO_INLINE_RESPONSE},
  _CSP_LEGACY_HTML:csp._CSP_LEGACY_HTML,
  _CSP_PRIVILEGED_SCRIPT_STRICT:csp._CSP_PRIVILEGED_SCRIPT_STRICT,
