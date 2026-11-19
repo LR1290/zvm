@@ -72,3 +72,24 @@ Código de backup não é executado automaticamente pela CI e não precisa conhe
 - A assinatura não é exposta em logs nem gravada no MongoDB; tem a finalidade de detectar alterações concorrentes, não substituir o backup externo.
 - Uma comparação dupla **não torna a migração online segura**: para preservar a consistência transacional entre coleções e eventos da Cakto, todos os writers precisam estar parados durante o corte. Indexes TTL do próprio MongoDB ainda podem expirar documentos, devendo qualquer divergência abortar o corte.
 - Testes R88 usam somente dados sintéticos e simulam alterações de chave antiga, pagamento, índice e conjunto de coleções; R86 também simula atualização de ambos os bancos depois da cópia para provar que igualdade simples não basta.
+
+
+## R89 — backup realmente restaurável e prova vinculada ao archive
+
+Flags de operador, sozinhas, não comprovam que existe backup real. Por isso a ação COPY agora exige, ANTES de abrir qualquer conexão ao Atlas:
+- ZVM_MONGO_BACKUP_MANIFEST apontando ao manifesto de backup PowerShell (banco zapvoice, dryRunVerified=true, writersReportedPaused=true, SHA-256 real e tamanho do archive).
+- ZVM_MONGO_RESTORE_PROOF apontando ao comprovante de RESTAURAÇÃO REAL em MongoDB local isolado: vincula SHA-256 do mesmo archive, pelo menos 20 coleções, 49 índices, chave oficial, portal e pagamentos presentes, e limpeza do banco local comprovada.
+- O arquivo archive.gz ainda existir, com bytes/sha256 idênticos ao manifesto; qualquer divergência aborta antes do cutover.
+
+O programa tools/zvm-mongodb-local-restore.js gera a prova; exige mongorestore e mongod LOCAL, exclusivamente 127.0.0.1 ou localhost. Rejeita URI externa, usuário/senha, conexões com roteamento ou parâmetros inesperados; cria namespace temporário aleatório zvm_restore_r89_* e faz drop SOMENTE dessa base provisória, com validação posterior. Os dados restaurados permanecem temporariamente no disco local: usar disco criptografado (BitLocker) e não compartilhar os arquivos.
+
+### Procedimento Windows, ainda NÃO executado
+1. Instalar MongoDB Server local e MongoDB Database Tools, mantendo a instância de testes vinculada apenas ao loopback (127.0.0.1).
+2. Depois de suspender e verificar todos os writers de produção, gerar o backup DEFINITIVO com o script PowerShell anterior, incluindo a chave -IConfirmWritersPaused, em disco privado/criptografado.
+3. Definir no PowerShell as variáveis ZVM_MONGO_BACKUP_MANIFEST (caminho completo .sha256.json), ZVM_LOCAL_RESTORE_URI=mongodb://127.0.0.1:27017 e ZVM_LOCAL_RESTORE_ACK=restore-archive-local-only; rodar node tools/zvm-mongodb-local-restore.js.
+4. O script confere o archive, restaura, valida registros e índices, elimina a base temporária e grava o comprovante .archive.gz.restore-proof.json na mesma pasta. Um arquivo de prova preexistente é motivo para interromper, nunca sobrescrever.
+5. Definir ZVM_MONGO_RESTORE_PROOF para esse comprovante; manter manifesto e archive íntegros.
+6. Somente com todos os writers pausados, definir ZVM_MONGO_MIGRATION_ACK=zapvoice-to-zvm, ZVM_MONGO_WRITERS_PAUSED=writers-stopped, disponibilizar MONGODB_URI por ambiente privado e executar node tools/zvm-mongodb-migrate.js copy.
+7. Executar node tools/zvm-mongodb-migrate.js verify. Fazer corte MANUAL no Render com MONGODB_DB=zvm e ZVM_DB_CUTOVER_CONFIRMED=zapvoice-to-zvm-verified, e validar a ZVM completa; jamais apagar zapvoice prematuramente.
+
+A verificação da restauração local comprova recoverability do archive, NÃO comprova por si só que todos os escritores foram pausados ou que os pagamentos não mudaram depois do backup. Se o backup for anterior ao congelamento, criar novo archive e nova prova. O script não tem processo de deploy, e os testes da CI só usam dados sintéticos.

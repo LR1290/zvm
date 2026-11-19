@@ -4,6 +4,7 @@
 // Executar exclusivamente após pausar TODOS os writers, inclusive Cakto/webhooks.
 // Sem dependência de ambiente de produção nos testes: require('mongodb') é tardio.
 const crypto = require('node:crypto');
+const { validateBackupGate } = require('./zvm-mongodb-backup-proof');
 const SOURCE_DB = 'zapvoice';
 const TARGET_DB = 'zvm';
 const COPY_ACK = 'zapvoice-to-zvm';
@@ -157,7 +158,12 @@ async function copyDatabase(client, EJSON, env = process.env) {
 
 async function execute(action, env = process.env) {
   if (!['audit','verify','copy'].includes(action)) throw new Error('usage: audit | verify | copy');
-  if (action === 'copy') copyGuard(action,env);
+  if (action === 'copy') {
+    copyGuard(action,env);
+    // R89: an actual archive, its SHA-256, an isolated RESTORE test and a
+    // paused-writers receipt are mandatory. Flags alone cannot unlock copy.
+    await validateBackupGate(env);
+  }
   const uri = String(env.MONGODB_URI || '').trim();
   if (!uri) throw new Error('MONGODB_URI_required');
   const {MongoClient,BSON} = require('mongodb');
