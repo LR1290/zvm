@@ -134,3 +134,18 @@ A suíte sintética de teste agora inclui um container descartável MongoDB 8.x 
 - O job não tem secrets, não usa MONGODB_URI e não cria bancos no Atlas. Se falhar, NÃO interpretar os testes sintéticos R85-R91 como prova de funcionamento real: corrigir causa e repetir o teste integrado até ficar verde.
 
 Não executar a R92 contra Atlas, e nunca autorizar produção somente porque a R92 passou: backup externo real, writers parados, checagem do credenciamento e deploy manual continuam exigidos.
+
+
+## R93 — restauração local REAL pelo mesmo código do corte
+
+O R92 já havia testado, com êxito em MongoDB 8 descartável, o mongodump, mongorestore, índices e $out. Contudo, os testes anteriores não chamavam diretamente a rotina operacional R89/R90 runLocalRestore que assina o backup e exclui o banco temporário.
+
+A R93 acrescenta, no job Docker isolado, esta sequência de ponta a ponta:
+- Executa mongorestore --dryRun sobre o archive sintético, sem alterar nenhum banco.
+- Copia o archive BSON/GZIP produzido no container para a máquina efêmera do GitHub Actions; utiliza o executável mongorestore oficial obtido do MESMO container (não há upload de ferramentas ou arquivos dos clientes).
+- Gera manifesto SHA-256 e chama a implementação REAL runLocalRestore, passando MongoDB localhost:27018, URI sem segredo e confirmação exclusiva de laboratório. O método cria um namespace local temporário de nome aleatório, restaura via mongorestore, calcula o checksum BSON/índices/opções, faz drop desse namespace e verifica sua ausência.
+- Valida o comprovante REAL por validateBackupGate e usa o sourceChecksum da prova para autorizar a execução de copyDatabase com $out. Verifica nova igualdade completa, 20 coleções, 49 índices, contas, pagamento Decimal128, KEY V2 e chave histórica inativa.
+- Adultera intencionalmente UM BYTE do arquivo sintético após o sucesso e exige que o hash verificado seja rejeitado. Depois elimina todos os bancos de laboratório, arquivos temporários e o container.
+- Qualquer falha mantém o job vermelho e impede declarar a migração pronta; não existe segredo, webhook ou dado de cliente no ambiente.
+
+A R93 é um teste real e mais abrangente do fluxo de recuperação, mas NÃO realiza backup de produção, não pausa os escritores, não concede permissões e não muda Render. O corte oficial permanece manual.
