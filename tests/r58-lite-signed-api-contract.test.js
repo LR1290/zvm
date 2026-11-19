@@ -160,6 +160,21 @@ test('R58 real signed V4 route: issue, replay, product/origin denial, refresh, l
     assert.equal(r.body.errorCode,'invalid_key');
     assert.equal(sessionCount,0);
   });
+  await t.test('signed password login rejects invalid LITE seat ceiling before session creation',async()=>{
+    await db.collection('store').updateOne({_id:'keys'},{$set:{['data.'+key+'.maxUses']:0}});
+    try {
+      const denied=await post('login','r58-corrupt-seat-count',{
+        email:'lite@example.com',password:'correct-test-password'
+      });
+      assert.equal(denied.status,403);
+      assert.equal(denied.body.errorCode,'lite_license_required');
+      assert.equal(sessionCount,0);
+      const persisted=await readLiteLicenseSnapshot(db,key);
+      assert.deepEqual(persisted.phones,[]);
+    } finally {
+      await db.collection('store').updateOne({_id:'keys'},{$set:{['data.'+key+'.maxUses']:2}});
+    }
+  });
   let token;
   await t.test('valid signed Lite request issues persisted session and claims phone',async()=>{
     const r=await post('key','r58-key-issue',validBody);
