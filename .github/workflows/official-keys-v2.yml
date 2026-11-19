@@ -7,6 +7,7 @@ on:
       - 'src/license-product-v2.js'
       - 'legacy-v3-shield.js'
       - 'tests/r83-official-license-v2.test.js'
+      - 'tests/r84-legacy-license-login.test.js'
       - 'package.json'
       - '.github/workflows/official-keys-v2.yml'
   workflow_dispatch:
