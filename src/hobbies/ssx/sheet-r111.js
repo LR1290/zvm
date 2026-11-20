@@ -133,7 +133,7 @@ function refresh(records,tracks,snapshotSources=sources()){
         const scoreSource=sheet.value(r,scoreCol);
         const evidence=scoreSource?.link||
           ((old&&norm(old[4])===norm(rider)&&
-            (String(old[5]).trim()===score||metric(mode,old[5]).numeric===m.numeric))
+            (String(old[5]).trim()===score||(mode>=2&&metric(mode,old[5]).numeric===m.numeric)))
           ? safeLink(old[8]):'');
         const platform=old?.[7]||'PS3';
         const resultCell=String.fromCharCode(64+scoreCol)+r;
@@ -194,9 +194,9 @@ function locate(html,key){
   throw new Error('SSX_R111_LITERAL_UNTERMINATED:'+key);
 }
 function updateHtml(html) {
-  const original=locate(html,'G'),tracks=locate(html,'TRACKS'),meta=locate(html,'META');
+  const original=locate(html,'G'),tracks=locate(html,'TRACKS'),meta=locate(html,'META'),special=locate(html,'SNG');
   const result=refresh(original.value,tracks.value);
-  const m={...meta.value,googleRecords:result.records.length,regionalCapture:CAPTURED,
+  const m={...meta.value,googleRecords:result.records.length+special.value.length,regionalCapture:CAPTURED,
     regionalGroupsUpdated:result.summary.regionalGroupsUpdated,
     regionalRows:result.summary.regionalRows,regionalSource:SHEET_ID};
   const replacements=[
