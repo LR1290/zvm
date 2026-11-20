@@ -1,0 +1,29 @@
+name: ZVM R109 DEV login recovery (no deployment)
+on:
+  pull_request:
+    paths:
+      - 'lab/qa-auth/r109-*'
+      - '.github/workflows/zvm-r109-auth-recovery.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  recovery-contract:
+    name: Reauthentication stays reachable without bypassing integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Validate regression contract and patch format
+        run: |
+          node --test lab/qa-auth/r109-login-recovery.test.cjs
+          git apply --unidiff-zero --numstat lab/qa-auth/r109-login-recovery-from-minified-r106.patch
+      - name: Verify no private keys are embedded in this patch
+        run: |
+          if grep -E 'BEGIN.*PRIVATE KEY|dev-2026-01-private-key' lab/qa-auth/r109-login-recovery-from-minified-r106.patch; then
+            echo 'Refusing private key material'
+            exit 1
+          fi
