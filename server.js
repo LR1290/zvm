@@ -112,6 +112,7 @@ const {
   loadRegistryV2: zvmSecurityLoadRegistryV2,
 } = require('./build-authority');
 const { validateRuntimeSecurityConfig } = require('./runtime-config');
+const { assertZvmCutoverReady } = require('./src/db-cutover-guard');
 const { loadDevBuildSigningConfig, createDevBuildSigningService } = require('./dev-build-signing');
 const { resolveExtensionCorsOrigin } = require('./extension-origin-policy');
 const { checkoutUrlForPortal, readCheckoutBinding, isZvmCheckoutBinding } = require('./src/cakto-checkout-binding');
@@ -325,14 +326,13 @@ const USAGE_ITEM_TYPES = [
   'audio', 'document', 'media', 'message', 'flow', 'funnel',
   'bulkMessages', 'scheduleItem', 'zapsaver',
 ];
+// Compatibilidade de rollout: o nome legado permanece padrão até a virada manual no Render.
+// Uma base "zvm" vazia jamais deve ser escolhida automaticamente por um deploy.
 const MONGODB_DB = (() => {
   const fromEnv = (process.env.MONGODB_DB || '').trim();
-  if (fromEnv) {
-    if (fromEnv.toLowerCase() !== 'zapvoice')
-      console.warn(`[DB] MONGODB_DB="${fromEnv}" — suas chaves estao em "zapvoice" (Atlas).`);
-    return fromEnv;
-  }
-  return 'zapvoice';
+  if (fromEnv && !/^[a-z0-9_]{1,64}$/i.test(fromEnv)) throw new Error('invalid_mongodb_database_name');
+  if (fromEnv.toLowerCase() === 'watidy') throw new Error('retired_watidy_database');
+  return fromEnv || 'zapvoice';
 })();
 const MAX_USES = 3;
 const MAX_PHONES_GLOBAL = Math.max(1, parseInt(process.env.MAX_PHONES_GLOBAL || '50') || 50);
@@ -409,8 +409,12 @@ async function getMongoDb() {
     });
     try {
       await client.connect();
+      const candidateDb = client.db(MONGODB_DB);
+      // R87: fail-closed before creating indexes, jobs or reading paid licenses.
+      // Changing Render MONGODB_DB to an empty/stale database MUST NOT log customers out.
+      await assertZvmCutoverReady(candidateDb, process.env);
       _mongoClient = client;
-      _mongoDb = client.db(MONGODB_DB);
+      _mongoDb = candidateDb;
       console.log('✅ MongoDB conectado');
       return _mongoDb;
     } catch (error) {
@@ -505,7 +509,7 @@ async function loadDb(opts = {}) {
     ]);
     const keyCount = keysDoc?.data ? Object.keys(keysDoc.data).length : 0;
     if (keyCount === 0) {
-      console.warn(`[DB] Nenhuma chave em zapvoice.store (doc _id:"keys"). Verifique Atlas ou permissao do usuario.`);
+      console.warn(`[DB] Nenhuma chave em ${MONGODB_DB}.store (doc _id:"keys"). Verifique Atlas ou permissao do usuario.`);
     }
     // Restaurar blacklist de IPs em forma canônica para que IPv4-mapped/IPv6
     // não criem entradas equivalentes com representações diferentes.
@@ -11630,7 +11634,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     const buildAuthorityState = ZVM_BUILD_AUTHORITY.describe();
     console.log(
       `✅ ZVM Server ${ZVM_BUILD_ID} — porta ${PORT}\n` +
-      `🍃 MongoDB: zapvoice.store | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}\n` +
+      `🍃 MongoDB: ${MONGODB_DB}.store | Chaves: ${Object.keys(keys).length} | Logs: ${logs.length}\n` +
       `🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | 2FA: ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | TOTP crypto: ${portalTotpCryptoMode()} | Cakto: ${CAKTO_WEBHOOK_SECRET ? 'ATIVO' : '⚠ INATIVO'}\n` +
       `🛡️ Runtime: ${buildAuthorityState.runtimeEnv || 'não definido'} | Build Authority: ${buildAuthorityState.buildEnforce ? 'ATIVO' : 'DESATIVADO'} | Registry V2 active: ${buildAuthorityState.registryV2ActiveCount} | DEV bypass: ${buildAuthorityState.devBuildAllow ? 'ATIVO' : 'INATIVO'} | DEV cohost: ${buildAuthorityState.devCohostAllow ? 'ATIVO' : 'INATIVO'} | Legacy V3: ${buildAuthorityState.legacyV3 ? 'ATIVO' : 'INATIVO'} | Legacy V3 endpoints: ${legacyV3Allowed() ? 'ATIVOS (Build 3 unpacked: key/check-status/usage/get-usage/sync-usage)' : 'INATIVOS'}\n` +
       `🧪 Local safe mode: ${ZVM_LOCAL_SAFE_MODE ? 'ATIVO — jobs autônomos desativados' : 'INATIVO'}\n` +
