@@ -388,7 +388,7 @@ function serveSSX2012(req, res, pathname) {
     'Referrer-Policy': 'no-referrer',
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   };
-  headers['X-SSX-Regional-Snapshot']='2026-11-20';
+  if(!isArchive)headers['X-SSX-Regional-Snapshot']='2026-11-20';
   headers['X-SSX-Variant'] = isAdmin ? 'ssx-admin-v40' : isPreview ? 'ssx-ui-v40-preview'
     : isArchive ? 'v36-archive-auth' : fallback ? 'v36-public-redacted' : 'ssx-ui-v40-public';
   if (encoding !== 'identity') headers['Content-Encoding'] = encoding;
