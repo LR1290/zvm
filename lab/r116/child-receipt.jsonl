@@ -1,0 +1,8 @@
+{"version":"base","kind":"flow","status":"sent","event":"FollowUpSent"}
+{"version":"base","kind":"funnel","status":"sent","event":"FollowUpSent"}
+{"version":"base","kind":"direct","status":"sent","event":"FollowUpSent"}
+{"version":"base","kind":"local","status":"sent","event":"FollowUpSent"}
+{"version":"candidate","kind":"flow","status":"processed","event":"FollowUpProcessed"}
+{"version":"candidate","kind":"funnel","status":"processed","event":"FollowUpProcessed"}
+{"version":"candidate","kind":"direct","status":"sent","event":"FollowUpSent"}
+{"version":"candidate","kind":"local","status":"processed","event":"FollowUpProcessed"}

@@ -1,0 +1,4 @@
+{"first":{"motor":"flows","calls":1,"transitions":["effect_prepare","effect_begin","effect_ambiguous"],"code":"SEND_EFFECT_AMBIGUOUS"},"replay":{"motor":"flows","calls":0,"transitions":["effect_prepare"],"code":"SEND_EFFECT_AMBIGUOUS"}}
+{"first":{"motor":"funnels","calls":1,"transitions":["effect_prepare","effect_begin","effect_ambiguous"],"code":"SEND_EFFECT_AMBIGUOUS"},"replay":{"motor":"funnels","calls":0,"transitions":["effect_prepare"],"code":"SEND_EFFECT_AMBIGUOUS"}}
+{"first":{"motor":"followup","calls":1,"transitions":["effect_prepare","effect_begin","effect_ambiguous"],"code":"SEND_EFFECT_AMBIGUOUS"},"replay":{"motor":"followup","calls":0,"transitions":["effect_prepare"],"code":"SEND_EFFECT_AMBIGUOUS"}}
+{"first":{"motor":"broadcast","calls":1,"transitions":["effect_prepare","effect_begin","effect_ambiguous"],"code":"SEND_EFFECT_AMBIGUOUS"},"replay":{"motor":"broadcast","calls":0,"transitions":["effect_prepare"],"code":"SEND_EFFECT_AMBIGUOUS"}}

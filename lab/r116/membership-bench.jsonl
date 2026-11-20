@@ -1,0 +1,10 @@
+{"revision":"base","n":1,"lookups":3,"ms":0.40600200000000086,"created":1}
+{"revision":"base","n":10,"lookups":75,"ms":0.34251700000000085,"created":10}
+{"revision":"base","n":100,"lookups":5250,"ms":1.6259390000000025,"created":100}
+{"revision":"base","n":1000,"lookups":502500,"ms":74.21685300000001,"created":1000}
+{"revision":"base","n":10000,"lookups":50025000,"ms":5892.91356,"created":10000}
+{"revision":"candidate","n":1,"lookups":2,"ms":0.37118999999984226,"created":1}
+{"revision":"candidate","n":10,"lookups":20,"ms":0.1754689999997936,"created":10}
+{"revision":"candidate","n":100,"lookups":200,"ms":0.39942100000007486,"created":100}
+{"revision":"candidate","n":1000,"lookups":2000,"ms":3.9334259999995993,"created":1000}
+{"revision":"candidate","n":10000,"lookups":20000,"ms":31.60976800000026,"created":10000}

@@ -1,0 +1,4 @@
+PASS Fluxos: pause/cancel persisted intent and fallback guard
+PASS Funis: cancel with digest, partial success, uncertain or missing result
+PASS Follow-up: restored pending+review held, missing executor response marked uncertain
+PASS Disparos: partial sequence and absent executor result retain remote evidence
