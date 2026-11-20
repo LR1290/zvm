@@ -7,6 +7,7 @@
  * intentionally unavailable until an authenticated protocol is reviewed.
  */
 var SSX_BRIDGE_VERSION = 8;
+var SSX_EXPECTED_SHEET_ID = '1SAk84oy05R0UK3JJ_JWJTskSqxj4GpGJkdRqfSmnx2I';
 var SSX_REGIONS = ['AFRICA','ALASKA','ALPS','ANTARCTICA','HIMALAYAS',
   'JAPAN','MOUNT EDDIE','NEW ZEALAND','PATAGONIA','ROCKIES','SIBERIA'];
 var SSX_MAX_ROWS = 170;
@@ -18,10 +19,10 @@ function ssxJson_(obj) {
 }
 function ssxBook_() {
   var configured = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
-  if (configured) return SpreadsheetApp.openById(configured);
-  var active = SpreadsheetApp.getActiveSpreadsheet();
-  if (!active) throw new Error('SPREADSHEET_NOT_CONFIGURED');
-  return active;
+  var book = configured ? SpreadsheetApp.openById(configured) : SpreadsheetApp.getActiveSpreadsheet();
+  if (!book || book.getId() !== SSX_EXPECTED_SHEET_ID)
+    throw new Error('OFFICIAL_SPREADSHEET_NOT_CONNECTED');
+  return book;
 }
 function ssxRegion_(value) {
   var name = String(value || '').trim().toUpperCase().replace(/_/g,' ');
@@ -44,10 +45,13 @@ function doGet(e) {
   try {
     var q = (e && e.parameter) || {};
     var action = String(q.action || 'ping').toLowerCase();
-    if (action === 'ping') return ssxJson_({
+    if (action === 'ping') {
+      ssxBook_(); // A healthy /exec must have access to the correct workbook.
+      return ssxJson_({
       ok:true,version:SSX_BRIDGE_VERSION,readOnly:true,
       service:'ssx2012-google-sheets-bridge'
     });
+    }
     if (action !== 'manifest' && action !== 'region')
       return ssxJson_({ok:false,version:SSX_BRIDGE_VERSION,error:'UNSUPPORTED_ACTION'});
     var book = ssxBook_();
