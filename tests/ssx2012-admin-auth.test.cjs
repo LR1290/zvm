@@ -5,6 +5,7 @@ const http=require('node:http');
 const {once}=require('node:events');
 const {test}=require('node:test');
 const {serveSSX2012,SSX_ROUTE,SSX_V36_ARCHIVE_ROUTE,publicBridgeEndpoint,ssxAuth}=require('../src/hobbies/ssx/route');
+const {checkBridge}=require('../src/hobbies/ssx/admin-dashboard');
 const ADMIN='/hobbies/ssx/ssx2012/admin';
 async function harness(callback) {
   const server=http.createServer((req,res)=>{
@@ -80,15 +81,55 @@ test('admin email/password uses same-origin POST, signed HttpOnly cookie and no-
   const admin=await fetch(base+ADMIN,{headers:{Cookie:cookie},redirect:'manual'});
   assert.equal(admin.status,200);
   assert.equal(admin.headers.get('cache-control'),'no-store, private');
-  assert.equal(admin.headers.get('x-ssx-variant'),'ssx-admin-v39');
-  const html=await admin.text();
+  assert.match(admin.headers.get('content-security-policy'),/default-src 'none'/);
+  const dashboard=await admin.text();
+  assert.match(dashboard,/Painel administrativo/);
+  assert.match(dashboard,/action="\/hobbies\/ssx\/ssx2012\/admin\/logout"/);
+  assert.doesNotMatch(dashboard,/adminToken|ADMIN_API_KEY|class="modal admin-modal"/);
+  const editor=await fetch(base+ADMIN+'/editor',{headers:{Cookie:cookie},redirect:'manual'});
+  assert.equal(editor.status,200);
+  assert.equal(editor.headers.get('x-ssx-variant'),'ssx-admin-v39');
+  const html=await editor.text();
   assert.match(html,/class="modal admin-modal"/);
   assert.match(html,/id="liveSaveBtn"/);
   const archive=await fetch(base+ADMIN+'/archive',{headers:{Cookie:cookie},redirect:'manual'});
   assert.equal(archive.status,200);
+  const guarded=await fetch(base+ADMIN+'/bridge-health',{redirect:'manual'});
+  assert.equal(guarded.status,303);
+  assert.equal(guarded.headers.get('location'),ADMIN+'/login');
   const forged=cookie.slice(0,-2)+'zz';
   assert.equal((await fetch(base+ADMIN,{headers:{Cookie:forged},redirect:'manual'})).status,303);
   const logout=await fetch(base+ADMIN+'/logout',{method:'POST',headers:{Origin:base,Cookie:cookie},redirect:'manual'});
   assert.equal(logout.status,303);
   assert.match(logout.headers.get('set-cookie'),/Max-Age=0/);
+}));
+
+test('read-only Bridge health probe accepts v8 and refuses redirects to untrusted hosts',async()=>{
+  const good=async(url,options)=>{
+    assert.equal(new URL(url).searchParams.get('action'),'ping');
+    assert.equal(options.method,'GET');
+    assert.equal(options.redirect,'manual');
+    return new Response(JSON.stringify({ok:true,version:8}),{
+      status:200,headers:{'Content-Type':'application/json'}
+    });
+  };
+  const ok=await checkBridge(good);
+  assert.deepEqual(ok,{configured:true,ok:true,version:8});
+  const old=await checkBridge(async()=>new Response('{"ok":true,"version":7}',{status:200}));
+  assert.equal(old.ok,false);assert.equal(old.version,7);
+  const untrusted=await checkBridge(async()=>new Response(null,{status:302,headers:{Location:'https://example.com/leak'}}));
+  assert.equal(untrusted.ok,false);
+  const tiny=await checkBridge(async()=>new Response('x'.repeat(32769),{status:200}));
+  assert.equal(tiny.ok,false);
+});
+test('GET administrative health and editor remain protected when credentials are absent',()=>harness(async base=>{
+  const address=process.env.SSX_PUBLIC_BRIDGE_URL;
+  process.env.SSX_PUBLIC_BRIDGE_URL='';
+  try {
+    const login=await fetch(base+ADMIN+'/login');
+    assert.equal(login.status,200);
+    const a=await fetch(base+ADMIN+'/bridge-health',{redirect:'manual'});
+    const b=await fetch(base+ADMIN+'/editor',{redirect:'manual'});
+    assert.equal(a.status,303);assert.equal(b.status,303);
+  } finally {process.env.SSX_PUBLIC_BRIDGE_URL=address;}
 }));
