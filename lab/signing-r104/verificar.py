@@ -24,7 +24,14 @@ with zipfile.ZipFile(p) as z:
   assert h(data)==row['sha256'] and len(data)==row['size'],name
  excluded={'app/security/build-identity.json','app/security/integrity.json'}
  assert seen==set(names)-excluded
- canonical=sorted(files,key=lambda x:x['path'])
+ # Reconstruct the exact insertion order used by the MV3 runtime verifier.
+ # Dictionary equality ignores key order; SHA-256 of JSON.stringify does not.
+ canonical=[]
+ for row in sorted(files,key=lambda x:x['path']):
+  item={'path':row['path'],'sha256':row['sha256'],'size':row['size']}
+  if row.get('mode'):
+   item['mode']=row['mode']
+  canonical.append(item)
  fp=h(json.dumps({'extensionVersion':manifest['version'],'files':canonical},ensure_ascii=False,separators=(',',':')).encode())
  assert fp==integrity['buildFingerprint']
  tree=h(''.join(f'{n}\0{h(raw[n])}\0{len(raw[n])}\n' for n in sorted(names) if n not in excluded).encode())
