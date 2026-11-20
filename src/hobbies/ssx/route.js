@@ -7,6 +7,8 @@ const crypto = require('node:crypto');
 const zlib = require('node:zlib');
 const { SSX_FAVICON_ROUTE, serveSSXFavicon } = require('./official-favicon');
 const ssxAuth = require('./admin-auth');
+const ssxDashboard = require('./admin-dashboard');
+const { publicBridgeEndpoint } = require('./live-endpoint');
 
 const SSX_ROUTE = '/hobbies/ssx/ssx2012';
 const SSX_V36_ARCHIVE_ROUTE = '/hobbies/ssx/ssx2012-v36';
@@ -212,15 +214,6 @@ function bodyFor(encoding) {
 
 // Public live sync configuration is server-owned. Never trust a browser-provided
 // spreadsheet URL, and never embed an administrator/bot secret in HTML.
-function publicBridgeEndpoint() {
-  const raw=String(process.env.SSX_PUBLIC_BRIDGE_URL||'').trim();
-  try {
-    const u=new URL(raw);
-    if(u.protocol!=='https:' || u.hostname.toLowerCase()!=='script.google.com' ||
-      !/^\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(u.pathname) || u.search || u.hash || u.username || u.password) return '';
-    return u.toString();
-  } catch {return '';}
-}
 function configureLiveEndpoint(html, admin) {
   const before="function loadLiveConfig(){LIVE_STATE.endpoint=normalizeAdminEndpoint(safeGet('ssx.live.endpoint','')||safeGet('ssx.admin.endpoint',''));";
   const configured=JSON.stringify(publicBridgeEndpoint());
@@ -312,7 +305,15 @@ function serveSSX2012(req, res, pathname) {
   if(serveSSXFavicon(req,res,pathname))return true;
   if(serveSSXMedia(req,res,pathname))return true;
   if(ssxAuth.handleAuth(req,res,pathname))return true;
-  const isAdmin=pathname===ssxAuth.BASE;
+  if(pathname===ssxAuth.BASE || pathname===ssxAuth.BASE+'/bridge-health'){
+    // Route is already authenticated. This read-only handler can complete asynchronously.
+    ssxDashboard.serveDashboard(req,res,pathname).catch(()=>{
+      if(!res.headersSent){res.writeHead(503,{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store'});}
+      if(!res.writableEnded)res.end('SSX administrator dashboard temporarily unavailable');
+    });
+    return true;
+  }
+  const isAdmin=pathname===ssxAuth.BASE+'/editor';
   const isAdminArchive=pathname===ssxAuth.BASE+'/archive';
   const isLegacyArchive=pathname===SSX_V36_ARCHIVE_ROUTE || pathname===SSX_V36_ARCHIVE_ROUTE+'/';
   if(isLegacyArchive){
