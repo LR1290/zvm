@@ -1,0 +1,186 @@
+✔ campaign timeout remains uncertain after late ACK and dispatches once (6.25139ms)
+✔ campaign recovery requeues only pre-dispatch delay (4.009118ms)
+✔ Flow refuses continuation after account switch or loss of identity (5.199762ms)
+✔ Funnel refuses continuation after account switch or loss of identity (3.483349ms)
+✔ follow-up preserves uncertain effect across cancellation and next tick (3.165759ms)
+✔ restarted watchdog persists ambiguity and retains earlier positive evidence (3.072421ms)
+✔ accept dedicated fixture (2.098549ms)
+✔ reject outside QA undefined (0.88386ms)
+✔ reject outside QA ompleta_qa_r103 (0.269639ms)
+✔ reject outside QA leta_production (0.564736ms)
+✔ reject outside QA _r103?tls=false (0.38482ms)
+✔ offline recovery offers key/account without granting authorization (1.49204ms)
+✔ integrity/context failures cannot expose manual auth action (0.577906ms)
+✔ cached credential cannot trap reauthentication in retry-only UI (0.647239ms)
+✔ network/session response errors are HOST errors, not boot failures (0.230111ms)
+✔ corrects all visible labels and preserves MV3 identifier and permissions (7.290849ms)
+✔ detects unexpected branding drift before writing any files (8.764001ms)
+✔ dry-run performs no mutation (2.97073ms)
+✔ cold start ["A","A"] (10.007934ms)
+✔ cold start ["A","B"] (2.028444ms)
+✔ cold start [null,null] (1.927765ms)
+✔ cold start [" "," "] (2.598268ms)
+✔ logout clears both stores and reports the original read failure (4.224247ms)
+✔ restoration offline blocks use then retries refresh once across concurrent callers (5.979346ms)
+✔ authoritative revocation prevents a second restoration (2.522637ms)
+✔ remote logout confirmation 200,true,true (1.770783ms)
+✔ remote logout confirmation 200,true,false (2.559201ms)
+✔ remote logout confirmation 503,false,false (1.935136ms)
+✔ remote logout confirmation 429,false,false (2.55841ms)
+✔ in-flight refresh cannot restore the session after logout (2.694301ms)
+✔ expired sealed account credential cannot authorize a protected operation (2.269532ms)
+✔ Free account can check quota without commercial key (14.466027ms)
+✔ reserve persists before sending and consumes only one (5.516682ms)
+✔ settle confirmed removes pending local record and does not charge again (5.087375ms)
+✔ uncertain receipt remains in journal without retrying WhatsApp (6.994571ms)
+✔ server reserve missing response: no send is authorized (4.208624ms)
+✔ wrong V4 subject blocks request before HTTP (4.762765ms)
+✔ schedule creation cannot fake authority from local count (2.278174ms)
+✔ paid operations bypass free reservation only after paid authorization (1.92418ms)
+✔ real guarded send reserves before WA-JS task (6.19151ms)
+✔ no reservation means NO WA-JS send (3.862631ms)
+✔ wrong active chat is rejected before consuming quota (4.91551ms)
+✔ send safety treats quota refusal as proven pre-dispatch, not uncertain WA-JS result (4.232419ms)
+✔ WPP send watchdog releases waiting UI without replaying remote task (3.164377ms)
+✔ real plan-gate uses reserve and settle with an opaque operation id (2.856231ms)
+✔ real plan-gate treats missing worker reply as finite error (4.947688ms)
+✔ Free schedule creation is blocked before mutating any schedule state (2.662894ms)
+✔ duplicate server reservation never authorizes a new dispatch (3.936ms)
+✔ journal collision preserves prior operation (4.49028ms)
+✔ missing entitlement prevents Free quota HTTP request (4.297755ms)
+✔ native rail command-state hang fails closed and is rate-limited in logs (18.840696ms)
+✔ sidebar state hang exits deadline and records exactly one timeout (18.12797ms)
+✔ native event storms are throttled and stale results no longer discarded (0.559549ms)
+✔ popup observer targets popup, not entire WhatsApp document subtree (1.240107ms)
+✔ broker ignores ZVM-owned UI before scanning descendants (0.221949ms)
+✔ official extension name and QA-only origin retained after optimization (1.632789ms)
+ℹ tests 56
+ℹ suites 0
+ℹ pass 56
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 771.845375
+R46.78: Mongo reconnect, replay, password and 2FA passed
+✔ ../../tests/r46-78-v4-session-db-recovery.test.js (96.546734ms)
+✔ Free without key or phone can check quota (3.891765ms)
+✔ 50 concurrent duplicate reservations debit only once (4.934689ms)
+✔ 40 distinct requests cannot exceed 20 message sends (2.829311ms)
+✔ reported WAJS confirmation is hashed and never consumes twice (0.582873ms)
+✔ uncertain ack remains charged and later confirmed (0.611926ms)
+✔ one operation id cannot change item type (0.787236ms)
+✔ old post-send commit and client refund are forbidden (0.223111ms)
+✔ ack confirmation requires WA-JS message id (0.610785ms)
+✔ client-reported active schedule count denied (0.528013ms)
+✔ paid/key sessions cannot use free quota (0.388806ms)
+✔ Mongo error never becomes success (0.280446ms)
+✔ only reconciliation may read previous day (0.535483ms)
+✔ daily cap is not bypassed with new operation IDs (2.026271ms)
+✔ R100: confirmed acknowledgement wins after an uncertain CAS races first (0.39143ms)
+✔ R100: uncertain acknowledgement cannot downgrade a concurrent positive receipt (0.37771ms)
+✔ R100: conflicting WA-JS receipt hashes for one operation are rejected (0.393924ms)
+✔ R100: sustained CAS contention fails closed without claiming confirmation (0.31792ms)
+✔ concurrent Free reservations respect the daily cap for audio (1.220869ms)
+✔ concurrent Free reservations respect the daily cap for document (1.144926ms)
+✔ concurrent Free reservations respect the daily cap for media (1.348697ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 200.375883
+{"version":"base","rows":[{"source":"flow-runtime","nested":false,"status":"error","code":"UNKNOWN_ACTION_TYPE","evidence":false,"calls":1},{"source":"flow-runtime","nested":true,"status":"error","code":"UNKNOWN_ACTION_TYPE","evidence":false,"calls":1},{"source":"funnel","nested":false,"status":"error","code":"UNKNOWN_ACTION_TYPE","evidence":false,"calls":1},{"source":"funnel","nested":true,"status":"error","code":"UNKNOWN_ACTION_TYPE","evidence":false,"calls":1},{"source":"bulk","nested":false,"status":"error","code":"UNKNOWN_ACTION_TYPE","evidence":false,"calls":1},{"source":"bulk","nested":true,"status":"error","code":"UNKNOWN_ACTION_TYPE","evidence":false,"calls":1},{"source":"followup","nested":false,"status":"error","code":"UNKNOWN_ACTION_TYPE","evidence":false,"calls":1},{"source":"followup","nested":true,"status":"error","code":"UNKNOWN_ACTION_TYPE","evidence":false,"calls":1}]}
+{"version":"candidate","rows":[{"source":"flow-runtime","nested":false,"status":"error","code":"UNKNOWN_ACTION_TYPE","evidence":true,"calls":1},{"source":"flow-runtime","nested":true,"status":"error","code":"UNKNOWN_ACTION_TYPE","evidence":true,"calls":1},{"source":"funnel","nested":false,"status":"error","code":"UNKNOWN_ACTION_TYPE","evidence":true,"calls":1},{"source":"funnel","nested":true,"status":"error","code":"UNKNOWN_ACTION_TYPE","evidence":true,"calls":1},{"source":"bulk","nested":false,"status":"error","code":"UNKNOWN_ACTION_TYPE","evidence":true,"calls":1},{"source":"bulk","nested":true,"status":"error","code":"UNKNOWN_ACTION_TYPE","evidence":true,"calls":1},{"source":"followup","nested":false,"status":"error","code":"UNKNOWN_ACTION_TYPE","evidence":true,"calls":1},{"source":"followup","nested":true,"status":"error","code":"UNKNOWN_ACTION_TYPE","evidence":true,"calls":1}]}
+{"version":"base","status":"error","code":"SEND_TASK_ACK_TIMEOUT","bridge":1}
+{"version":"candidate","status":"error","code":"SEND_TASK_ACK_TIMEOUT","bridge":0}
+{"version":"base","result":[{"source":"flow-runtime","calls":1,"status":"success"},{"source":"funnel","calls":1,"status":"success"}]}
+{"version":"candidate","result":[{"source":"flow-runtime","calls":0,"status":"error","code":"SEND_SAFETY_SENDER_SCOPE_CHANGED"},{"source":"funnel","calls":0,"status":"error","code":"SEND_SAFETY_SENDER_SCOPE_CHANGED"}]}
+{"version":"base","n":1,"reads":2,"ticks":1,"ms":0.19999999925494194,"active":5,"afterStop":0}
+{"version":"base","n":10,"reads":20,"ticks":10,"ms":0.10000000149011612,"active":5,"afterStop":0}
+{"version":"base","n":100,"reads":200,"ticks":100,"ms":0.19999999925494194,"active":5,"afterStop":0}
+{"version":"base","n":1000,"reads":2000,"ticks":1000,"ms":8.100000001490116,"active":5,"afterStop":0}
+{"version":"base","n":10000,"reads":20000,"ticks":10000,"ms":129.10000000149012,"active":5,"afterStop":0}
+{"version":"candidate","n":1,"reads":2,"ticks":1,"ms":0.09999999776482582,"active":5,"afterStop":0}
+{"version":"candidate","n":10,"reads":2,"ticks":1,"ms":0.10000000149011612,"active":5,"afterStop":0}
+{"version":"candidate","n":100,"reads":2,"ticks":1,"ms":0,"active":5,"afterStop":0}
+{"version":"candidate","n":1000,"reads":2,"ticks":1,"ms":0.30000000074505806,"active":5,"afterStop":0}
+{"version":"candidate","n":10000,"reads":2,"ticks":1,"ms":2.699999999254942,"active":5,"afterStop":0}
+{"version":"base","stableMembershipWriteRequests":1000,"afterSwitch":1,"legacyHeld":false}
+{"version":"candidate","stableMembershipWriteRequests":0,"afterSwitch":0,"legacyHeld":true}
+{"version":"base","membersPersisted":200,"duplicatePending":50}
+{"version":"candidate","membersPersisted":250,"duplicatePending":0,"legacyHeld":50}
+{"revision":"base","n":1,"lookups":3,"ms":0.3543149999999997,"created":1}
+{"revision":"base","n":10,"lookups":75,"ms":0.18347199999999475,"created":10}
+{"revision":"base","n":100,"lookups":5250,"ms":1.3195750000000004,"created":100}
+{"revision":"base","n":1000,"lookups":502500,"ms":63.214943000000005,"created":1000}
+{"revision":"base","n":10000,"lookups":50025000,"ms":6297.8944360000005,"created":10000}
+{"revision":"candidate","n":1,"lookups":2,"ms":0.3578699999998207,"created":1}
+{"revision":"candidate","n":10,"lookups":20,"ms":0.12239099999987957,"created":10}
+{"revision":"candidate","n":100,"lookups":200,"ms":0.47949100000005274,"created":100}
+{"revision":"candidate","n":1000,"lookups":2000,"ms":2.707140000000436,"created":1000}
+{"revision":"candidate","n":10000,"lookups":20000,"ms":19.951884000000064,"created":10000}
+{"version":"base","uncertainKept":false,"normalTerminal":300,"detachedInFlight":0}
+{"version":"candidate","uncertainKept":true,"normalTerminal":300,"detachedInFlight":1}
+{"events":["recover_orphans","queue_claim","FOLLOWUP_QUEUE_NOT_FOUND","FollowUpTickFailed","recover_orphans","queue_claim","FOLLOWUP_QUEUE_NOT_FOUND","FollowUpTickFailed"],"sends":0}
+{"events":["recover_orphans","engine_commit","queue_claim","engine_commit","FollowUpFailed","FollowUpTickCompleted","recover_orphans","FollowUpTickCompleted"],"sends":1,"status":"error","review":true}
+{"version":"base","kind":"flow","status":"sent","event":"FollowUpSent"}
+{"version":"base","kind":"funnel","status":"sent","event":"FollowUpSent"}
+{"version":"base","kind":"direct","status":"sent","event":"FollowUpSent"}
+{"version":"base","kind":"local","status":"sent","event":"FollowUpSent"}
+{"version":"candidate","kind":"flow","status":"processed","event":"FollowUpProcessed"}
+{"version":"candidate","kind":"funnel","status":"processed","event":"FollowUpProcessed"}
+{"version":"candidate","kind":"direct","status":"sent","event":"FollowUpSent"}
+{"version":"candidate","kind":"local","status":"processed","event":"FollowUpProcessed"}
+{"revision":"base","first":"sending","sends":1,"secondClaim":"offline"}
+{"revision":"candidate","first":"sent","sends":1,"secondClaim":"offline"}
+{"version":"base","queueStartsAfterWithdrawal":1}
+{"version":"candidate","queueStartsAfterWithdrawal":0}
+PASS Fluxos: pause/cancel persisted intent and fallback guard
+PASS Funis: cancel with digest, partial success, uncertain or missing result
+PASS Follow-up: restored pending+review held, missing executor response marked uncertain
+PASS Disparos: partial sequence and absent executor result retain remote evidence
+PASS Fluxos: 3 active states x preparing/dispatching, second recovery idempotent
+PASS Funis: actual tick twice x restart/pause/cancel; no second step after ambiguous marker
+PASS Disparos: processor holds admitted and uncertain rows before iterating recipients
+PASS switched account, authority denied, review pending, rule inactive: zero claim writes. Positive control: one write.
+PASS positive late login: one public session write, newer identity retained, zero clears
+{"late":"positive","public":"newer","opaque":"newer","sealed":"newer"}
+{"late":429,"public":"newer","opaque":"newer","sealed":"newer"}
+{"late":503,"public":"newer","opaque":"newer","sealed":"newer"}
+{"count":1,"duplicate":"ACTION_EXECUTION_IN_PROGRESS","pause":"paused","resume":"success","cancel":"cancelled","beforeAck":false,"status":"error","uncertain":true}
+{"first":{"source":"flow-runtime","failAck":true,"calls":1,"status":"error","code":"SEND_EFFECT_AMBIGUOUS","transitions":["effect_prepare","effect_begin","effect_ambiguous"]},"replay":{"source":"flow-runtime","failAck":true,"calls":0,"status":"error","code":"SEND_EFFECT_AMBIGUOUS","transitions":["effect_prepare"]}}
+{"first":{"source":"flow-runtime","failAck":false,"calls":1,"status":"success","transitions":["effect_prepare","effect_begin","effect_commit"]},"replay":{"source":"flow-runtime","failAck":false,"calls":0,"status":"success","transitions":["effect_prepare"]}}
+{"first":{"source":"funnel","failAck":true,"calls":1,"status":"error","code":"SEND_EFFECT_AMBIGUOUS","transitions":["effect_prepare","effect_begin","effect_ambiguous"]},"replay":{"source":"funnel","failAck":true,"calls":0,"status":"error","code":"SEND_EFFECT_AMBIGUOUS","transitions":["effect_prepare"]}}
+{"first":{"source":"funnel","failAck":false,"calls":1,"status":"success","transitions":["effect_prepare","effect_begin","effect_commit"]},"replay":{"source":"funnel","failAck":false,"calls":0,"status":"success","transitions":["effect_prepare"]}}
+{"first":{"source":"bulk","failAck":true,"calls":1,"status":"error","code":"SEND_EFFECT_AMBIGUOUS","transitions":["effect_prepare","effect_begin","effect_ambiguous"]},"replay":{"source":"bulk","failAck":true,"calls":0,"status":"error","code":"SEND_EFFECT_AMBIGUOUS","transitions":["effect_prepare"]}}
+{"first":{"source":"bulk","failAck":false,"calls":1,"status":"success","transitions":["effect_prepare","effect_begin","effect_commit"]},"replay":{"source":"bulk","failAck":false,"calls":0,"status":"success","transitions":["effect_prepare"]}}
+{"first":{"source":"followup","failAck":true,"calls":1,"status":"error","code":"SEND_EFFECT_AMBIGUOUS","transitions":["effect_prepare","effect_begin","effect_ambiguous"]},"replay":{"source":"followup","failAck":true,"calls":0,"status":"error","code":"SEND_EFFECT_AMBIGUOUS","transitions":["effect_prepare"]}}
+{"first":{"source":"followup","failAck":false,"calls":1,"status":"success","transitions":["effect_prepare","effect_begin","effect_commit"]},"replay":{"source":"followup","failAck":false,"calls":0,"status":"success","transitions":["effect_prepare"]}}
+{"first":{"motor":"flows","calls":1,"transitions":["effect_prepare","effect_begin","effect_ambiguous"],"code":"SEND_EFFECT_AMBIGUOUS"},"replay":{"motor":"flows","calls":0,"transitions":["effect_prepare"],"code":"SEND_EFFECT_AMBIGUOUS"}}
+{"first":{"motor":"funnels","calls":1,"transitions":["effect_prepare","effect_begin","effect_ambiguous"],"code":"SEND_EFFECT_AMBIGUOUS"},"replay":{"motor":"funnels","calls":0,"transitions":["effect_prepare"],"code":"SEND_EFFECT_AMBIGUOUS"}}
+{"first":{"motor":"followup","calls":1,"transitions":["effect_prepare","effect_begin","effect_ambiguous"],"code":"SEND_EFFECT_AMBIGUOUS"},"replay":{"motor":"followup","calls":0,"transitions":["effect_prepare"],"code":"SEND_EFFECT_AMBIGUOUS"}}
+{"first":{"motor":"broadcast","calls":1,"transitions":["effect_prepare","effect_begin","effect_ambiguous"],"code":"SEND_EFFECT_AMBIGUOUS"},"replay":{"motor":"broadcast","calls":0,"transitions":["effect_prepare"],"code":"SEND_EFFECT_AMBIGUOUS"}}
+{"feedback":0.5999999977648258,"hasPending":true,"oldIgnored":true,"attempts":1,"queues":0,"rendered":0}
+{"rate":1,"iteration":0,"wait":756.1999999992549,"switched":true,"attempts":1,"mfaHidden":true,"calls":2,"restored":true,"errorHidden":true,"mode":"account"}
+{"rate":1,"iteration":1,"wait":755.6999999992549,"switched":true,"attempts":1,"mfaHidden":true,"calls":2,"restored":true,"errorHidden":true,"mode":"account"}
+{"rate":1,"iteration":2,"wait":756.5999999977648,"switched":true,"attempts":1,"mfaHidden":true,"calls":2,"restored":true,"errorHidden":true,"mode":"account"}
+{"rate":1,"iteration":3,"wait":755.5999999977648,"switched":true,"attempts":1,"mfaHidden":true,"calls":2,"restored":true,"errorHidden":true,"mode":"account"}
+{"rate":1,"iteration":4,"wait":756.5,"switched":true,"attempts":1,"mfaHidden":true,"calls":2,"restored":true,"errorHidden":true,"mode":"account"}
+{"rate":1,"iteration":5,"wait":756.2999999970198,"switched":true,"attempts":1,"mfaHidden":true,"calls":2,"restored":true,"errorHidden":true,"mode":"account"}
+{"rate":1,"iteration":6,"wait":755.0999999977648,"switched":true,"attempts":1,"mfaHidden":true,"calls":2,"restored":true,"errorHidden":true,"mode":"account"}
+{"rate":1,"iteration":7,"wait":758.1999999992549,"switched":true,"attempts":1,"mfaHidden":true,"calls":2,"restored":true,"errorHidden":true,"mode":"account"}
+{"rate":1,"iteration":8,"wait":755.3000000007451,"switched":true,"attempts":1,"mfaHidden":true,"calls":2,"restored":true,"errorHidden":true,"mode":"account"}
+{"rate":1,"iteration":9,"wait":755.1999999992549,"switched":true,"attempts":1,"mfaHidden":true,"calls":2,"restored":true,"errorHidden":true,"mode":"account"}
+{"rate":4,"iteration":0,"wait":759.1000000014901,"switched":true,"attempts":1,"mfaHidden":true,"calls":2,"restored":true,"errorHidden":true,"mode":"account"}
+{"rate":4,"iteration":1,"wait":761.6999999992549,"switched":true,"attempts":1,"mfaHidden":true,"calls":2,"restored":true,"errorHidden":true,"mode":"account"}
+{"rate":4,"iteration":2,"wait":760.4000000022352,"switched":true,"attempts":1,"mfaHidden":true,"calls":2,"restored":true,"errorHidden":true,"mode":"account"}
+{"rate":4,"iteration":3,"wait":757.6999999992549,"switched":true,"attempts":1,"mfaHidden":true,"calls":2,"restored":true,"errorHidden":true,"mode":"account"}
+{"rate":4,"iteration":4,"wait":761.8000000007451,"switched":true,"attempts":1,"mfaHidden":true,"calls":2,"restored":true,"errorHidden":true,"mode":"account"}
+{"rate":4,"iteration":5,"wait":762.6000000014901,"switched":true,"attempts":1,"mfaHidden":true,"calls":2,"restored":true,"errorHidden":true,"mode":"account"}
+{"rate":4,"iteration":6,"wait":759.9000000022352,"switched":true,"attempts":1,"mfaHidden":true,"calls":2,"restored":true,"errorHidden":true,"mode":"account"}
+{"rate":4,"iteration":7,"wait":759.1000000014901,"switched":true,"attempts":1,"mfaHidden":true,"calls":2,"restored":true,"errorHidden":true,"mode":"account"}
+{"rate":4,"iteration":8,"wait":762.5,"switched":true,"attempts":1,"mfaHidden":true,"calls":2,"restored":true,"errorHidden":true,"mode":"account"}
+{"rate":4,"iteration":9,"wait":762.9000000022352,"switched":true,"attempts":1,"mfaHidden":true,"calls":2,"restored":true,"errorHidden":true,"mode":"account"}

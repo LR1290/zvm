@@ -1,0 +1,4 @@
+r114 {"name":"_s0D","stale":"opaque reached","opaqueCalls":2}
+r114 {"name":"extAccountV4Login","stale":"opaque reached","opaqueCalls":2}
+r116 {"name":"_s0D","stale":"LICENSE_OPERATION_SUPERSEDED","opaqueCalls":1}
+r116 {"name":"extAccountV4Login","stale":"LICENSE_OPERATION_SUPERSEDED","opaqueCalls":1}

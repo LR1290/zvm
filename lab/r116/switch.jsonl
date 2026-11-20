@@ -1,0 +1,2 @@
+{"version":"base","result":[{"source":"flow-runtime","calls":1,"status":"success"},{"source":"funnel","calls":1,"status":"success"}]}
+{"version":"candidate","result":[{"source":"flow-runtime","calls":0,"status":"error","code":"SEND_SAFETY_SENDER_SCOPE_CHANGED"},{"source":"funnel","calls":0,"status":"error","code":"SEND_SAFETY_SENDER_SCOPE_CHANGED"}]}

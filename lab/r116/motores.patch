@@ -1,0 +1,620 @@
+--- a/app/content/core/action-engine.js
++++ b/app/content/core/action-engine.js
+@@ -288,11 +288,13 @@
+ }
+ if(ctx&&typeof ctx.__extPreDispatchCheck==="function"){
+ await ctx.__extPreDispatchCheck();
++await assertTaskActive();
+ }
+ var signal=ctx&&ctx.cancellationSignal;
+ if(signal&&signal.aborted){var stopped=new Error("Execução cancelada");stopped.code="ACTION_CANCELLED";throw stopped;}
+ var rpcStartedAt=Date.now();
+ try{
++if(dispatchState.expired)throw Object.assign(new Error("O prazo terminou antes do envio."),{code:"SEND_TASK_EXPIRED_BEFORE_DISPATCH"});
+ dispatchState.entered=true;
+ var rpcResult=await bridge.invoke("Chat",method,payload);
+ traceRpcResult({source:ctx&&ctx.source||"action-engine",status:"rpc_resolved",elapsedMs:Math.max(0,Date.now()-rpcStartedAt)});
+@@ -399,8 +401,9 @@
+ var nestedErr=new Error(nestedResult&&nestedResult.error&&nestedResult.error.message||"A Resposta Rápida aninhada não pôde ser concluída.");
+ nestedErr.code=nestedResult&&nestedResult.error&&nestedResult.error.code||"QUICK_REPLY_ACTION_FAILED";
+ nestedErr.effectDigest=nestedResult&&nestedResult.error&&nestedResult.error.effectDigest||null;
+-nestedErr.remoteEffectSucceeded=nestedResult&&nestedResult.error&&nestedResult.error.remoteEffectSucceeded===true;
+-nestedErr.remoteEffectUncertain=nestedResult&&nestedResult.error&&nestedResult.error.remoteEffectUncertain===true;
++nestedErr.remoteActionsSucceeded=Number(nestedResult&&nestedResult.remoteActionsSucceeded)||0;
++nestedErr.remoteEffectSucceeded=!!(nestedResult&&nestedResult.remoteEffectSucceeded)||nestedErr.remoteActionsSucceeded>0||!!(nestedResult&&nestedResult.error&&nestedResult.error.remoteEffectSucceeded);
++nestedErr.remoteEffectUncertain=!nestedResult||nestedResult&&nestedResult.error&&nestedResult.error.remoteEffectUncertain===true;
+ nestedErr.durableReviewRequired=nestedResult&&nestedResult.error&&nestedResult.error.durableReviewRequired===true;
+ throw nestedErr;
+ }
+@@ -488,8 +491,19 @@
+ if(requested())abort();
+ });
+ }
+-function completedRemoteMessageCount(record){
+-return(record&&Array.isArray(record.results)?record.results:[]).reduce(function(count,row){var def=row&&registry[row.type];return count+(def&&def.group==="message"&&!(row.result&&(row.result.skipped===true||row.result.__extDurableEffectRecovered===true))?1:0);},0);
++function executionResult(record,status){
++var count=0,confirmed=false;
++record.results.forEach(function(row){
++var value=row.result,def=registry[row.type];
++if(row.type==="respostaRapida"&&value){
++count+=Number(value.remoteActionsSucceeded)||0;
++if(value.remoteEffectSucceeded)confirmed=true;
++}else if(def&&def.group==="message"&&!(value&&value.skipped===true)){
++confirmed=true;
++if(!(value&&value.__extDurableEffectRecovered===true))count++;
++}
++});
++return{status:status,executionId:record.id,monitor:record.monitor,results:record.results,remoteActionsSucceeded:count,remoteEffectSucceeded:confirmed};
+ }
+ async function notifyActionProgress(context,event){
+ if(!context||typeof context.onActionProgress!=="function")return;
+@@ -561,6 +575,13 @@
+ var providedExecutionId=typeof context.executionId==="string"&&context.executionId.trim()?context.executionId.trim():"";
+ var stableExecutionId=context.__extExecutionIdStable===false?false:!!providedExecutionId;
+ var id=providedExecutionId||"extui-act-"+Date.now().toString(36)+"-"+(++seq).toString(36);
++var existing=executions.get(id);
++if(existing&&existing.finishedAt==null){
++var conflict=new Error("Já existe uma execução em andamento com este identificador.");
++conflict.code="ACTION_EXECUTION_IN_PROGRESS";
++conflict.durableReviewRequired=true;
++throw conflict;
++}
+ var monitor=createMonitor(id,actions,context);
+ var externalCancellationSignal=context.cancellationSignal||null;
+ var cancellationController=typeof AbortController==="function"?new AbortController():null;
+@@ -602,10 +623,10 @@
+ var outboundCadenceMs=Math.max(0,Number(record.context&&record.context.outboundCadenceMs)||0),lastMessageActionAtMs=0;
+ for(var i=0;i<actions.length;i++){
+ if(record.control.cancelled||(record.context.cancellationSignal&&record.context.cancellationSignal.aborted)){
+-monitor.status="cancelled";monitor.sendAction="Cancelled";return{status:"cancelled",executionId:id,monitor:monitor,results:record.results,remoteActionsSucceeded:completedRemoteMessageCount(record)};
++monitor.status="cancelled";monitor.sendAction="Cancelled";return executionResult(record,"cancelled");
+ }
+ await waitIfPaused(record);
+-if(record.control.cancelled){monitor.status="cancelled";monitor.sendAction="Cancelled";return{status:"cancelled",executionId:id,monitor:monitor,results:record.results,remoteActionsSucceeded:completedRemoteMessageCount(record)};}
++if(record.control.cancelled){monitor.status="cancelled";monitor.sendAction="Cancelled";return executionResult(record,"cancelled");}
+ var action=actions[i];
+ var def=registry[action.type];
+ monitor.actionIndice=i;
+@@ -640,26 +661,29 @@
+ await notifyActionProgress(record.context,{status:"success",skipped:true,reason:"bulk-presence-disabled",index:i,actionId:String(action.id||("action-"+i)),type:action.type});
+ continue;
+ }
+-var result=await awaitActionResult(record,Promise.resolve().then(function(){return def.handler(props,record.context,action);}),def.group==="message");
++var result=await awaitActionResult(record,Promise.resolve().then(function(){return def.handler(props,record.context,action);}),def.group==="message"||action.type==="respostaRapida");
+ record.results.push({id:action.id,type:action.type,result:result===undefined?null:result});
+ if(def.group==="message")lastMessageActionAtMs=Date.now();
+ await notifyActionProgress(record.context,{status:"success",index:i,actionId:String(action.id||("action-"+i)),type:action.type});
+ }
+ monitor.status="success";monitor.sendAction="Completed";monitor.activeAction=null;monitor.updatedAt=Date.now();
+-return{status:"success",executionId:id,monitor:monitor,results:record.results};
++return executionResult(record,"success");
+ }catch(err){
+-if(err&&err.code==="ACTION_CANCELLED"){
++if(err&&err.code==="ACTION_CANCELLED"&&!err.remoteEffectUncertain&&!err.remoteEffectSucceeded&&!err.durableReviewRequired&&!err.effectDigest){
+ monitor.status="cancelled";monitor.sendAction="Cancelled";
+-return{status:"cancelled",executionId:id,monitor:monitor,results:record.results,remoteActionsSucceeded:completedRemoteMessageCount(record)};
++return executionResult(record,"cancelled");
+ }
+ monitor.status="error";monitor.sendAction="Error";monitor.error=err&&err.message?err.message:String(err);monitor.errorCode=err&&err.code||"ACTION_EXECUTION_ERROR";monitor.updatedAt=Date.now();
+-var executionError={code:monitor.errorCode,message:monitor.error,dependency:err&&err.dependency||null,effectDigest:err&&err.effectDigest||null,remoteEffectSucceeded:err&&err.remoteEffectSucceeded===true,remoteEffectUncertain:err&&err.remoteEffectUncertain===true,durableReviewRequired:err&&err.durableReviewRequired===true};
++var failure=executionResult(record,"error");
++failure.remoteActionsSucceeded+=Number(err&&err.remoteActionsSucceeded)||0;
++failure.remoteEffectSucceeded=failure.remoteEffectSucceeded||failure.remoteActionsSucceeded>0||!!(err&&err.remoteEffectSucceeded);
++var executionError={code:monitor.errorCode,message:monitor.error,dependency:err&&err.dependency||null,effectDigest:err&&err.effectDigest||null,remoteEffectSucceeded:failure.remoteEffectSucceeded,remoteEffectUncertain:err&&err.remoteEffectUncertain===true,durableReviewRequired:err&&err.durableReviewRequired===true};
+ var variableAuthority=window.__extVariableResolver;
+ if(monitor.errorCode==="LIBRARY_VARIABLE_UNRESOLVED"&&variableAuthority&&typeof variableAuthority.diagnosticKeys==="function"){
+ executionError.missingVariableKeys=variableAuthority.diagnosticKeys(err&&err.missingVariableKeys);
+ }
+ if(monitor.actionIndice>=0)await notifyActionProgress(record.context,{status:"error",index:monitor.actionIndice,actionId:actions[monitor.actionIndice]&&String(actions[monitor.actionIndice].id||("action-"+monitor.actionIndice)),type:monitor.activeAction,error:executionError});
+-return{status:"error",executionId:id,monitor:monitor,results:record.results,error:executionError};
++failure.error=executionError;return failure;
+ }finally{
+ record.finishedAt=Date.now();
+ if(record.externalCancellationSignal&&record.externalCancellationSignal.removeEventListener)record.externalCancellationSignal.removeEventListener("abort",record.relayExternalCancellation);
+--- a/app/content/core/send-safety.js
++++ b/app/content/core/send-safety.js
+@@ -827,11 +827,11 @@
+   // WA-JS may have received a message before its promise stops responding.
+   // A watchdog releases the UI and leaves the durable effect marked UNCERTAIN;
+   // it NEVER authorizes replay or assumes the message was not sent.
+-  function extBoundedSendTask(task,method,isCampaign){
++  function extBoundedSendTask(task,method,isCampaign,dispatchState){
+     var budget=isCampaign?240000:/file|audio|video|media|image|document|sendDoc/i.test(String(method||""))?180000:90000;
+     var alarm;
+     var pending=Promise.resolve().then(task);
+-    var expiry=new Promise(function(_,reject){alarm=setTimeout(function(){reject(makeError("SEND_TASK_ACK_TIMEOUT","O WhatsApp não confirmou este envio no prazo. Verifique a conversa antes de tentar novamente.",{remoteEffectUncertain:true}));},budget);});
++    var expiry=new Promise(function(_,reject){alarm=setTimeout(function(){if(dispatchState)dispatchState.expired=true;reject(makeError("SEND_TASK_ACK_TIMEOUT","O WhatsApp não confirmou este envio no prazo. Verifique a conversa antes de tentar novamente.",{remoteEffectUncertain:true}));},budget);});
+     return Promise.race([pending,expiry]).finally(function(){clearTimeout(alarm);});
+   }
+ 
+@@ -881,7 +881,7 @@
+       await ensureSessionReady(meta.signal,true);
+       assertNotCancelled(meta);
+       remoteAttempted=true;
+-      var result = await extBoundedSendTask((typeof window.__extPreserveChatListScroll === "function") ? function(){return window.__extPreserveChatListScroll(task);} : task, meta.method, campaignPolicy);
++      var result = await extBoundedSendTask((typeof window.__extPreserveChatListScroll === "function") ? function(){return window.__extPreserveChatListScroll(task);} : task, meta.method, campaignPolicy, meta.__extDispatchState);
+       remoteSucceeded=true;
+       if(effect){
+         try{if(!await commitDurableEffect(effect))throw makeError("SEND_EFFECT_COMMIT_FAILED","O journal durável não confirmou o envio concluído.");}
+@@ -951,7 +951,13 @@
+       effectPayload:payload,
+       signal:context && context.cancellationSignal || options.signal || null
+     });
+-    return enqueue(meta, function () { return bridge.invoke("Chat", method, payload); });
++    var dispatchState={entered:false,expired:false};
++    meta.__extDispatchState=dispatchState;
++    return enqueue(meta, function () {
++      if(dispatchState.expired)throw makeError("SEND_TASK_EXPIRED_BEFORE_DISPATCH","O prazo terminou antes do envio.");
++      dispatchState.entered=true;
++      return bridge.invoke("Chat",method,payload);
++    });
+   }
+ 
+   function riskAssessment(result) {
+--- a/app/content/features/flows/engine.js
++++ b/app/content/features/flows/engine.js
+@@ -658,8 +658,7 @@
+ var fallback=node&&node.data&&String(node.data.errorFallbackNodeId||"").trim();
+ if(!fallback||fallback===String(node&&node.id||""))return"";
+ if(isFlowCancellationError(error,null))return"";
+-if(error&&(error.remoteEffectSucceeded===true||error.remoteEffectUncertain===true||error.durableReviewRequired===true||error.effectDigest||Math.max(0,Number(error.remoteActionsSucceeded)||0)>0))return"";
+-if(window.__extSendSafetyManager&&typeof window.__extSendSafetyManager.isDurableTerminalError==="function"&&window.__extSendSafetyManager.isDurableTerminalError(error))return"";
++if(requiresFlowEffectReview(error))return"";
+ return flow&&Array.isArray(flow.nodes)&&flow.nodes.some(function(candidate){return candidate&&String(candidate.id||"")===fallback;})?fallback:"";
+ }
+ function matchesKeywordRule(rule,text){
+@@ -910,16 +909,16 @@
+ }
+ var remoteActionsSucceeded=Math.max(0,Number(result&&result.remoteActionsSucceeded)||0);
+ if(result&&result.status==="cancelled"){
+-if(remoteActionsSucceeded>0||result.error&&
++if(requiresFlowEffectReview(result)||result.error&&
+ (result.error.remoteEffectSucceeded===true||result.error.remoteEffectUncertain===true||
+ result.error.durableReviewRequired===true||!!result.error.effectDigest)){
+ var uncertainCancel=new Error("Cancelamento após ação externa com resultado incerto. Verifique a conversa antes de repetir.");
+ uncertainCancel.code="FLOW_SEND_RESULT_UNCERTAIN";
+-uncertainCancel.remoteEffectSucceeded=remoteActionsSucceeded>0||!!(result.error&&result.error.remoteEffectSucceeded);
+-uncertainCancel.remoteEffectUncertain=!!(result.error&&result.error.remoteEffectUncertain);
++uncertainCancel.remoteEffectSucceeded=result.remoteEffectSucceeded===true||remoteActionsSucceeded>0||!!(result.error&&result.error.remoteEffectSucceeded);
++uncertainCancel.remoteEffectUncertain=result.remoteEffectUncertain===true||!!(result.error&&result.error.remoteEffectUncertain);
+ uncertainCancel.durableReviewRequired=true;
+ uncertainCancel.remoteActionsSucceeded=remoteActionsSucceeded;
+-uncertainCancel.effectDigest=result.error&&result.error.effectDigest||null;
++uncertainCancel.effectDigest=result.effectDigest||result.error&&result.error.effectDigest||null;
+ uncertainCancel.actionResult=result;
+ throw uncertainCancel;
+ }
+@@ -930,7 +929,7 @@
+ failed.code=result&&result.error&&result.error.code||"FLOW_ACTION_EXECUTION_FAILED";
+ failed.effectDigest=result&&result.error&&result.error.effectDigest||null;
+ failed.remoteEffectSucceeded=Math.max(0,Number(result&&result.remoteActionsSucceeded)||0)>0||!!(result&&result.error&&result.error.remoteEffectSucceeded===true);
+-failed.remoteEffectUncertain=!!(result&&result.error&&result.error.remoteEffectUncertain===true);
++failed.remoteEffectUncertain=!result||result.remoteEffectUncertain===true||!!(result.error&&result.error.remoteEffectUncertain===true);
+ failed.durableReviewRequired=Math.max(0,Number(result&&result.remoteActionsSucceeded)||0)>0||!!(result&&result.error&&result.error.durableReviewRequired===true);
+ failed.remoteActionsSucceeded=Math.max(0,Number(result&&result.remoteActionsSucceeded)||0);
+ var varAuthority=window.__extVariableResolver;
+--- a/app/content/features/funnels/engine.js
++++ b/app/content/features/funnels/engine.js
+@@ -122,7 +122,7 @@
+ var uncertain=!result||detail.remoteEffectUncertain===true||result.remoteEffectUncertain===true;
+ var hasRemoteEffect=succeeded>0||detail.remoteEffectSucceeded===true||result&&result.remoteEffectSucceeded===true;
+ var review=uncertain||hasRemoteEffect||detail.durableReviewRequired===true||
+-result&&result.durableReviewRequired===true||!!detail.effectDigest;
++result&&result.durableReviewRequired===true||!!detail.effectDigest||!!(result&&result.effectDigest);
+ var error=new Error(review&&cancelled
+ ?"Cancelamento com efeito remoto possível. Confira a conversa antes de repetir."
+ :detail.message||(cancelled?"Execução de Funil cancelada.":fallbackMessage));
+--- a/app/content/features/followup/engine.js
++++ b/app/content/features/followup/engine.js
+@@ -4,8 +4,7 @@
+ "use strict";
+ if(window.__extFollowUpEngineBooted)return;
+ var RULES_KEY="EXTUI:extappFollowUpStore",QUEUE_KEY="EXTUI:extappFollowUpQueueStore",CRM_KEY="EXTUI:CrmStore",MEMBERSHIP_KEY="EXTUI:extappFollowUpMembershipStore";
+-var tickMutex=Promise.resolve(),started=false,pageSuspended=false,lifecycleEpoch=0,fallbackTimer=null,tickOff=null,messageOff=null,waitingForBus=false,eventbusReadyHandler=null,storageOffs=[],cancelledFollowupIds=new Set(),cancellationTimers=new Map();
+-function queueStateMutation(work){var op=tickMutex.then(work,work);tickMutex=op.catch(function(){});return op;}
++var tickMutex=Promise.resolve(),queuedTick=null,started=false,pageSuspended=false,lifecycleEpoch=0,fallbackTimer=null,tickOff=null,messageOff=null,waitingForBus=false,eventbusReadyHandler=null,storageOffs=[],cancelledFollowupIds=new Set(),cancellationTimers=new Map();
+ function digits(value){var phone=window.__extPhoneCountryCore||window.ExtensionCore&&window.ExtensionCore.phoneCountry;if(!phone||typeof phone.digits!=="function"){var e=new Error("Normalizador de telefone indisponível.");e.code="PHONE_COUNTRY_CORE_UNAVAILABLE";throw e;}return phone.digits(value,20);}
+ function repo(){if(!window.ExtensionStorage){var e=new Error("Os dados da extensão não estão disponíveis no momento");e.code="STORAGE_UNAVAILABLE";throw e;}return window.ExtensionStorage;}
+ function parse(raw){if(raw==null||raw==="")return null;try{return typeof raw==="string"?JSON.parse(raw):raw;}catch(err){err.code=err.code||"FOLLOWUP_STORE_CORRUPT";throw err;}}
+@@ -53,59 +52,102 @@
+ return null;
+ }
+ async function dispatch(rule,entry,lease){
++if(!/^[a-f0-9]{64}$/.test(String(entry.whatsappScope||"")))throw Object.assign(new Error("A fila anterior não possui uma conta WhatsApp comprovada. Revise esta entrada."),{code:"FOLLOWUP_SENDER_SCOPE_UNBOUND",durableReviewRequired:true});
++if(await window.__extFunnelActionWhatsappIdentity.currentScope()!==entry.whatsappScope)throw Object.assign(new Error("A conta do WhatsApp mudou. Revise esta entrada."),{code:"FOLLOWUP_SENDER_SCOPE_CHANGED",durableReviewRequired:true});
+ var target=await resolveTarget(entry.chatId||entry.phoneNumber);if(!allowsGroup(rule,target)){var e=new Error("Regra não permite grupos");e.code="FOLLOWUP_GROUP_BLOCKED";throw e;}
+-if(rule.sendType==="funnel"&&!rule.actions&&!rule.quickResponseId){if(typeof window.__extFunnelsStartManually!=="function")throw new Error("funnels-engine.js não carregado");return window.__extFunnelsStartManually(rule.itemId,target,{executionId:("followup-funnel:"+String(entry.id||"")).slice(0,220)});}
+-if(rule.sendType==="flow"&&!rule.actions&&!rule.quickResponseId){if(typeof window.__extFluxosStartFlowManually!=="function")throw new Error("fluxos-engine.js não carregado");return window.__extFluxosStartFlowManually(rule.itemId,target,{executionId:("followup-flow:"+String(entry.id||"")).slice(0,220)});}
++if((rule.sendType==="funnel"||rule.sendType==="flow")&&!rule.actions&&!rule.quickResponseId){
++var launch=rule.sendType==="funnel"?window.__extFunnelsStartManually:window.__extFluxosStartFlowManually;
++if(typeof launch!=="function")throw new Error("Motor da automação indisponível.");
++var childId=("followup-"+rule.sendType+":"+String(entry.id||"")).slice(0,220),child;
++try{
++child=await launch(rule.itemId,target,{expectedWhatsappScope:entry.whatsappScope,executionId:childId});
++}catch(err){
++throw Object.assign(new Error("O início da automação não foi confirmado."),{code:err&&err.code||"FOLLOWUP_CHILD_UNCONFIRMED",cause:err,durableReviewRequired:true});
++}
++if(!child||String(child.executionId||child.id||"")!==childId||
++["running","paused","waitingDelay","waitingForInput","needsHuman","finished"].indexOf(child.status)<0)
++throw Object.assign(new Error("A automação não confirmou uma execução válida."),{code:"FOLLOWUP_CHILD_UNCONFIRMED",durableReviewRequired:true});
++return{childExecutionId:childId,remoteEffectSucceeded:false};
++}
+ var actions=await actionsForRule(rule);if(!actions){var er=new Error("Ações do Follow-up não encontradas");er.code="FOLLOWUP_ACTIONS_NOT_FOUND";throw er;}
+-var ex=await window.__extActionExecutor.execute(actions,{source:"followup",contactId:target,remetente:target,followUpId:rule.id,executionId:"followup:"+entry.id,variables:rule.variables||{},cancellationSignal:lease&&lease.signal||null});
+-if(ex.status!=="success"){var remoteCount=Math.max(0,Number(ex.remoteActionsSucceeded)||0),ee=new Error(ex.error&&ex.error.message||(remoteCount>0?"O cancelamento ocorreu após parte do envio já ter sido concluída.":"ActionExecutor falhou"));ee.code=ex.error&&ex.error.code||(remoteCount>0?"FOLLOWUP_CANCELLED_PARTIAL":"FOLLOWUP_ACTION_ERROR");ee.remoteEffectSucceeded=ex.error&&ex.error.remoteEffectSucceeded===true||remoteCount>0;ee.remoteEffectUncertain=ex.error&&ex.error.remoteEffectUncertain===true;ee.durableReviewRequired=ex.error&&ex.error.durableReviewRequired===true;ee.remoteActionsSucceeded=remoteCount;throw ee;}return ex;
++var ex=await window.__extActionExecutor.execute(actions,{source:"followup",whatsappScope:entry.whatsappScope,contactId:target,remetente:target,followUpId:rule.id,executionId:"followup:"+entry.id,variables:rule.variables||{},cancellationSignal:lease&&lease.signal||null});
++if(!ex)throw Object.assign(new Error("O executor não confirmou o resultado do Follow-up."),{code:"FOLLOWUP_RESULT_UNCONFIRMED",remoteEffectUncertain:true,durableReviewRequired:true});
++if(ex.status!=="success"){var remoteCount=Math.max(0,Number(ex.remoteActionsSucceeded)||0),ee=new Error(ex.error&&ex.error.message||(remoteCount>0?"O cancelamento ocorreu após parte do envio já ter sido concluída.":"ActionExecutor falhou"));ee.code=ex.error&&ex.error.code||(remoteCount>0?"FOLLOWUP_CANCELLED_PARTIAL":"FOLLOWUP_ACTION_ERROR");ee.remoteEffectSucceeded=ex.remoteEffectSucceeded===true||ex.error&&ex.error.remoteEffectSucceeded===true||remoteCount>0;ee.remoteEffectUncertain=ex.error&&ex.error.remoteEffectUncertain===true;ee.effectDigest=ex.error&&ex.error.effectDigest||null;ee.durableReviewRequired=!!ee.effectDigest||!!(ex.error&&ex.error.durableReviewRequired===true);ee.remoteActionsSucceeded=remoteCount;throw ee;}return ex;
+ }
+-function pendingFor(q,ruleId,key,cycle){return q.some(function(x){return x.followUpId===ruleId&&x.contactKey===key&&(x.status==="pending"||x.status==="sending"||x.durableReviewRequired===true);});}
+-function enqueue(queue,rule,item,kind,at,initialSeen){
++function enqueue(queue,rule,item,kind,at,seen,whatsappScope){
+ var key=contactKey(item);if(!key)return null;var cycle=kind+":"+at;
+-if(initialSeen?initialSeen.has(key):pendingFor(queue,rule.id,key,cycle))return null;
+-var e={id:uid(),followUpId:rule.id,contactKey:key,phoneNumber:contactPhone(item),chatId:(item.contact&&item.contact.chatId)||null,chatName:contactName(item),trigger:kind,cycle:cycle,enqueuedAtMs:at,status:"pending",firedAtMs:null,errorMessage:null};queue.push(e);if(initialSeen)initialSeen.add(key);return e;
++if(seen.has(key))return null;
++var e={id:uid(),followUpId:rule.id,whatsappScope:whatsappScope,contactKey:key,phoneNumber:contactPhone(item),chatId:(item.contact&&item.contact.chatId)||null,chatName:contactName(item),trigger:kind,cycle:cycle,enqueuedAtMs:at,status:"pending",firedAtMs:null,errorMessage:null};queue.push(e);seen.add(key);return e;
+ }
+-async function syncMembership(rules,crms,queue,membership,t){
++async function syncMembership(rules,crms,queue,membership,t,whatsappScope){
+ var changed=false,memChanged=false,activeIds=new Set();
+ for(var ri=0;ri<rules.length;ri++){
+ var rule=rules[ri];if(!rule.active||!rule.source||!rule.source.crmId||!rule.source.columnId)continue;activeIds.add(rule.id);
+ var col=currentColumn(crms,rule.source);if(!col.exists)continue;
+-var prev=membership.rules[rule.id]||{members:{},initialized:false};var nextMembers={};
+-col.items.forEach(function(item){var k=contactKey(item);if(k)nextMembers[k]={phoneNumber:contactPhone(item),chatId:item.contact&&item.contact.chatId||null,chatName:contactName(item)};});
++var prev=membership.rules[rule.id]||{members:{},initialized:false};var nextMembers={},itemsByKey=new Map();
++col.items.forEach(function(item){
++var key=contactKey(item);if(!key)return;
++if(!itemsByKey.has(key))itemsByKey.set(key,item);
++nextMembers[key]={phoneNumber:contactPhone(item),chatId:item.contact&&item.contact.chatId||null,chatName:contactName(item)};
++});
+ if(!prev.initialized){
+ if(triggerKind(rule)!=="exit"){
+ var initialSeen=new Set(queue.filter(function(row){return row&&row.followUpId===rule.id;}).map(function(row){return row.contactKey;}));
+-col.items.forEach(function(item){if(enqueue(queue,rule,item,triggerKind(rule),t,initialSeen))changed=true;});
++col.items.forEach(function(item){if(enqueue(queue,rule,item,triggerKind(rule),t,initialSeen,whatsappScope))changed=true;});
+ }
+ }else{
++var truncatedLegacy=prev.membersVersion!==2&&Object.keys(prev.members||{}).length===200;
+ var added=Object.keys(nextMembers).filter(function(k){return!prev.members[k];});
+ var removed=Object.keys(prev.members||{}).filter(function(k){return!nextMembers[k];});
+-added.forEach(function(k){var item=col.items.find(function(x){return contactKey(x)===k;});if(item&&triggerKind(rule)!=="exit"&&enqueue(queue,rule,item,triggerKind(rule),t))changed=true;});
++var activeKeys=new Set(),removedKeys=new Set(removed);
++if(added.length||removed.length)queue.forEach(function(row){
++if(row.followUpId!==rule.id)return;
++if(removedKeys.has(row.contactKey)&&row.status==="pending"&&row.trigger==="timing"){
++row.status="cancelled";row.errorMessage="contato saiu da tab antes do disparo";row.cancelledAtMs=t;changed=true;
++}
++if(row.status==="pending"||row.status==="sending"||row.durableReviewRequired===true)activeKeys.add(row.contactKey);
++});
++added.forEach(function(k){var item=itemsByKey.get(k);if(!item||triggerKind(rule)==="exit")return;
++var entry=enqueue(queue,rule,item,triggerKind(rule),t,activeKeys,whatsappScope);
++if(!entry)return;
++if(truncatedLegacy){
++entry.status="error";entry.durableReviewRequired=true;entry.errorCode="FOLLOWUP_MEMBERSHIP_REVIEW_REQUIRED";
++entry.errorMessage="O histórico anterior de membros pode estar incompleto. Revise esta entrada antes de enviar.";
++}
++changed=true;});
+ removed.forEach(function(k){
+-queue.forEach(function(q){if(q.followUpId===rule.id&&q.contactKey===k&&q.status==="pending"&&q.trigger==="timing"){q.status="cancelled";q.errorMessage="contato saiu da tab antes do disparo";q.cancelledAtMs=t;changed=true;}});
+-if(triggerKind(rule)==="exit"){var p=prev.members[k]||{};if(enqueue(queue,rule,{contact:{phoneNumber:p.phoneNumber,chatId:p.chatId,name:p.chatName}},"exit",t))changed=true;}
++if(triggerKind(rule)==="exit"){var p=prev.members[k]||{};if(enqueue(queue,rule,{contact:{phoneNumber:p.phoneNumber,chatId:p.chatId,name:p.chatName}},"exit",t,activeKeys,whatsappScope))changed=true;}
+ });
+ if(added.length||removed.length)emit("FollowUpMembershipChanged",{followUpId:rule.id,chatsAdded:added,chatsRemoved:removed});
+ }
+-membership.rules[rule.id]={members:nextMembers,initialized:true,updatedAt:t};memChanged=true;
++if(!prev.initialized||prev.membersVersion!==2||Object.keys(prev.members||{}).length!==Object.keys(nextMembers).length||
++Object.keys(nextMembers).some(function(key){
++var was=prev.members&&prev.members[key],now=nextMembers[key];
++return !was||was.phoneNumber!==now.phoneNumber||was.chatId!==now.chatId||was.chatName!==now.chatName;
++})){
++membership.rules[rule.id]={members:nextMembers,membersVersion:2,initialized:true,updatedAt:t};memChanged=true;
++}
+ }
+ Object.keys(membership.rules).forEach(function(id){if(!activeIds.has(id)){delete membership.rules[id];memChanged=true;}});
+ return{queueChanged:changed,membershipChanged:memChanged};
+ }
+ function isTickCurrent(epoch){return started&&!pageSuspended&&lifecycleEpoch===epoch;}
+-function isDue(entry,rule,t){if(entry.status!=="pending")return false;if(entry.trigger==="enter"||entry.trigger==="exit")return true;return t>=Number(entry.enqueuedAtMs||0)+timingMs(rule);}
+-async function fireDue(rules,queue,t,lease,epoch,outcomes){var changed=false;outcomes=outcomes||[];
++function isDue(entry,rule,t){if(entry.status!=="pending"||entry.durableReviewRequired===true)return false;if(entry.trigger==="enter"||entry.trigger==="exit")return true;return t>=Number(entry.enqueuedAtMs||0)+timingMs(rule);}
++async function fireDue(rules,queue,t,lease,epoch,outcomes,accountScope,checkpoint){var changed=false;outcomes=outcomes||[];
+ for(var i=0;i<queue.length;i++){if(!isTickCurrent(epoch)||lease&&!lease.isActive())break;var e=queue[i],rule=rules.find(function(r){return r.id===e.followUpId;});if(!rule){if(e.status==="pending"){e.status="cancelled";e.errorMessage="regra removida";changed=true;}continue;}if(!rule.active||!isDue(e,rule,t))continue;
+ var aid=typeof window.__extActivityTrack==="function"?"followup:"+e.id:null,attemptToken="followup-attempt:"+String(e.id)+":"+String(t)+":"+Math.random().toString(36).slice(2,10);
+ var claimedDurable=false;
+-try{if(!isTickCurrent(epoch))break;if(cancelledFollowupIds.has(e.id))throw Object.assign(new Error("Follow-up cancelado manualmente"),{code:"FOLLOWUP_CANCELLED_MANUAL"});if(lease)lease.assertActive();var claim=await window.__extDataMutationClient.followup("queue_claim",{id:e.id,expectedStatus:String(e.status||""),attemptToken:attemptToken,attemptedAtMs:t}),claimed=claim&&claim.item||null;if(!claimed)throw Object.assign(new Error("O Follow-up não confirmou a posse durável da fila."),{code:"FOLLOWUP_CLAIM_FAILED"});if(String(claimed.id||"")!==String(e.id)||claimed.status!=="sending"||String(claimed.attemptToken||"")!==attemptToken)
++try{if(!isTickCurrent(epoch))break;if(cancelledFollowupIds.has(e.id))throw Object.assign(new Error("Follow-up cancelado manualmente"),{code:"FOLLOWUP_CANCELLED_MANUAL"});if(lease)lease.assertActive();var claim=await window.__extDataMutationClient.followup("queue_claim",{expectedAccountScope:accountScope,id:e.id,expectedStatus:String(e.status||""),attemptToken:attemptToken,attemptedAtMs:t}),claimed=claim&&claim.item||null;if(!claimed)throw Object.assign(new Error("O Follow-up não confirmou a posse durável da fila."),{code:"FOLLOWUP_CLAIM_FAILED"});if(String(claimed.id||"")!==String(e.id)||claimed.status!=="sending"||String(claimed.attemptToken||"")!==attemptToken)
+ throw Object.assign(new Error("A resposta da posse durável não corresponde à execução solicitada. Nenhum envio será iniciado."),{code:"FOLLOWUP_CLAIM_MISMATCH"});
+-claimedDurable=true;Object.assign(e,claimed);changed=true;if(!isTickCurrent(epoch))break;if(aid)window.__extActivityTrack({action:"start",id:aid,type:"followup",title:rule.nome||"Follow-up",targetLabel:e.chatName||e.phoneNumber||"",status:"running",chatId:e.chatId||e.phoneNumber||"",executionId:"followup:"+e.id});if(lease)lease.assertActive();await dispatch(rule,e,lease);if(!isTickCurrent(epoch))break;e.status="sent";e.firedAtMs=Date.now();e.errorMessage=null;e.errorCode=null;e.durableReviewRequired=false;e.lastAttemptToken=e.attemptToken||attemptToken;delete e.attemptToken;outcomes.push({item:Object.assign({},e),activity:aid,action:"success",name:"FollowUpSent",payload:{followUpId:rule.id,queueId:e.id,trigger:e.trigger,contactKey:e.contactKey,chatId:e.chatId||null,phoneNumber:e.phoneNumber||null}});}
++claimedDurable=true;Object.assign(e,claimed);changed=true;if(!isTickCurrent(epoch))break;if(aid)window.__extActivityTrack({action:"start",id:aid,type:"followup",title:rule.nome||"Follow-up",targetLabel:e.chatName||e.phoneNumber||"",status:"running",chatId:e.chatId||e.phoneNumber||"",executionId:"followup:"+e.id});if(lease)lease.assertActive();var result=await dispatch(rule,e,lease);if(!isTickCurrent(epoch))break;var sent=!!(result&&result.remoteEffectSucceeded===true);e.status=sent?"sent":"processed";if(result&&result.childExecutionId)e.childExecutionId=result.childExecutionId;e.firedAtMs=Date.now();e.errorMessage=null;e.errorCode=null;e.durableReviewRequired=false;e.lastAttemptToken=e.attemptToken||attemptToken;delete e.attemptToken;outcomes.push({item:Object.assign({},e),activity:aid,action:"success",name:sent?"FollowUpSent":"FollowUpProcessed",payload:{followUpId:rule.id,queueId:e.id,trigger:e.trigger,contactKey:e.contactKey,chatId:e.chatId||null,phoneNumber:e.phoneNumber||null}});}
+ catch(err){
+ if(!claimedDurable&&!cancelledFollowupIds.has(e.id)&&!(err&&err.code==="FOLLOWUP_CANCELLED_MANUAL"))throw err;
+ changed=true;
+ var durableTerminal=!!(err&&(err.remoteEffectSucceeded===true||err.remoteEffectUncertain===true||err.durableReviewRequired===true)||window.__extSendSafetyManager&&typeof window.__extSendSafetyManager.isDurableTerminalError==="function"&&window.__extSendSafetyManager.isDurableTerminalError(err));e.lastAttemptToken=e.attemptToken||attemptToken;delete e.attemptToken;if((cancelledFollowupIds.has(e.id)||(err&&err.code==="FOLLOWUP_CANCELLED_MANUAL"))&&!durableTerminal){e.status="cancelled";e.cancelledAtMs=Date.now();e.errorMessage="cancelado manualmente";e.errorCode=null;e.durableReviewRequired=false;outcomes.push({item:Object.assign({},e),activity:aid,action:"cancel",name:"FollowUpCancelled",payload:{followUpId:rule.id,queueId:e.id,manual:true}});}else{e.status="error";e.errorMessage=err&&err.message?err.message:String(err);e.errorCode=err&&err.code||"FOLLOWUP_ACTION_ERROR";e.durableReviewRequired=durableTerminal===true;outcomes.push({item:Object.assign({},e),activity:aid,action:"error",name:"FollowUpFailed",payload:{followUpId:rule.id,queueId:e.id,error:e.errorMessage,errorCode:e.errorCode,durableReviewRequired:e.durableReviewRequired===true,contactKey:e.contactKey,chatId:e.chatId||null,phoneNumber:e.phoneNumber||null}});}}finally{cancelledFollowupIds.delete(e.id);}
++if(checkpoint&&outcomes.length&&isTickCurrent(epoch)){
++await checkpoint(outcomes[outcomes.length-1]);
++outcomes.pop();
++}
+ }return changed;
+ }
+ async function publishFollowUpOutcomes(outcomes,queue,lease,epoch){
+@@ -120,7 +162,11 @@
+ }
+ function runTick(reason){
+ var epoch=lifecycleEpoch;
+-var op=queueStateMutation(async function(){
++if(queuedTick&&queuedTick.epoch===epoch)return queuedTick.promise;
++var scheduled={epoch:epoch,promise:null};
++queuedTick=scheduled;
++var op=tickMutex.then(async function(){
++if(queuedTick===scheduled)queuedTick=null;
+ if(!isTickCurrent(epoch))return;
+ var preRules=await loadRules(),preQueue=await loadQueue();
+ if(!isTickCurrent(epoch))return;
+@@ -131,29 +177,49 @@
+ }
+ return window.__extWithAutomationLease("followup-tick",async function(lease){
+ if(!isTickCurrent(epoch))return;
+-if(window.__extPlanGate&&await window.__extPlanGate.isRestricted())return;
++var planGate=window.__extPlanGate;
++if(!planGate||typeof planGate.isRestricted!=="function")throw Object.assign(new Error("A autorização do Follow-up está indisponível."),{code:"FOLLOWUP_PLAN_UNAVAILABLE"});
++if(await planGate.isRestricted())return;
+ if(!isTickCurrent(epoch))return;
+ lease.assertActive();
+-var recovery=await window.__extDataMutationClient.followup("recover_orphans",{}),rules=await loadRules(),queue=await loadQueue(),crms=await loadCrm(),m=await loadMembership(),t=Date.now();
++var accountScope=await repo().accountScopeId();
++var senderIdentity=window.__extFunnelActionWhatsappIdentity;
++if(!senderIdentity||typeof senderIdentity.currentScope!=="function")throw Object.assign(new Error("Identidade WhatsApp indisponível."),{code:"FOLLOWUP_SENDER_SCOPE_UNAVAILABLE"});
++var whatsappScope=await senderIdentity.currentScope();
++if(!/^[a-f0-9]{64}$/.test(String(whatsappScope||"")))throw Object.assign(new Error("Identidade WhatsApp inválida."),{code:"FOLLOWUP_SENDER_SCOPE_UNAVAILABLE"});
++var recovery=await window.__extDataMutationClient.followup("recover_orphans",{expectedAccountScope:accountScope}),rules=await loadRules(),queue=await loadQueue(),crms=await loadCrm(),m=await loadMembership(),t=Date.now();
+ if(!isTickCurrent(epoch))return;
+ lease.assertActive();
+-var sync=await syncMembership(rules,crms,queue,m,t);
+-if(!isTickCurrent(epoch))return;
+-if(recovery&&Number(recovery.recoveredCount)>0)sync.queueChanged=true;
+-var outcomes=[],fired=lease.isActive()?await fireDue(rules,queue,t,lease,epoch,outcomes):false;
++var sync=await syncMembership(rules,crms,queue,m,t,whatsappScope);
+ if(!isTickCurrent(epoch))return;
+-var committedQueue=queue;
+-if(sync.queueChanged||fired||sync.membershipChanged){
+-var committed=await window.__extDataMutationClient.followup("engine_commit",{queue:queue,membership:m});
++async function commitQueue(){
++lease.assertActive();
++var committed=await window.__extDataMutationClient.followup("engine_commit",{expectedAccountScope:accountScope,queue:queue,membership:m});
+ if(!committed||!Array.isArray(committed.queue))throw Object.assign(new Error("O Follow-up não confirmou o estado persistido da execução."),{code:"FOLLOWUP_COMMIT_UNCONFIRMED"});
+-committedQueue=committed.queue;
++queue=committed.queue;
++}
++if(sync.queueChanged){
++await commitQueue();
++if(!isTickCurrent(epoch))return;
++}
++async function checkpoint(outcome){
++lease.assertActive();
++var committed=await window.__extDataMutationClient.followup("engine_commit",{expectedAccountScope:accountScope,queue:[outcome.item]});
++if(!committed||!Array.isArray(committed.queue))throw Object.assign(new Error("A conclusão desta entrada não foi confirmada."),{code:"FOLLOWUP_COMMIT_UNCONFIRMED"});
++await publishFollowUpOutcomes([outcome],committed.queue,lease,epoch);
+ }
+-if(!isTickCurrent(epoch))return;lease.assertActive();await publishFollowUpOutcomes(outcomes,committedQueue,lease,epoch);
++var outcomes=[],fired=lease.isActive()?await fireDue(rules,queue,t,lease,epoch,outcomes,accountScope,checkpoint):false;
++if(!isTickCurrent(epoch))return;
++if(sync.membershipChanged&&!sync.queueChanged)await commitQueue();
++if(recovery&&Number(recovery.recoveredCount)>0)sync.queueChanged=true;
++if(!isTickCurrent(epoch))return;
+ lease.assertActive();
+ if(isTickCurrent(epoch))emit("FollowUpTickCompleted",{reason:reason||"fallback",queueChanged:sync.queueChanged||fired});
+ });
+ });
+-return op.catch(function(err){if(window.__extReportRuntimeError)window.__extReportRuntimeError("FOLLOWUP_TICK_FAILED",err);emit("FollowUpTickFailed",{error:err&&err.message||String(err)});});
++scheduled.promise=op.catch(function(err){if(window.__extReportRuntimeError)window.__extReportRuntimeError("FOLLOWUP_TICK_FAILED",err);emit("FollowUpTickFailed",{error:err&&err.message||String(err)});});
++tickMutex=scheduled.promise.catch(function(){});
++return scheduled.promise;
+ }
+ async function cancelOnReply(payload){
+ var data=payload&&payload.data||payload||{};var from=data.from&&data.from._serialized||data.author&&data.author._serialized||data.from||payload&&payload.author||"";if(!from)return;
+--- a/app/content/features/broadcast/panel.js
++++ b/app/content/features/broadcast/panel.js
+@@ -805,12 +805,18 @@
+ return"~"+(hours<10?hours.toFixed(1).replace(".",","):Math.ceil(hours))+" hora(s)";
+ }
+ async function renderPreflightStep(stepEl){
++var pending=extDomEl("p",{role:"status",text:"Validando a campanha. Você pode voltar enquanto aguarda."});
++var back=extDomEl("button",{type:"button","class":"secondary",text:"Voltar"});
++back.addEventListener("click",function(){renderConfigStep(stepEl);});
++stepEl.replaceChildren(pending,back);
++function currentReview(){return pending.isConnected&&pending.parentNode===stepEl;}
++try{
++
+ var typeDef=TYPE_ICONS.find(function(type){return type.type===state.selectedType;}),tags=state.selectedTagNames||[],recipientCount=(state.contactEntries||[]).length,duplicateCount=(state.manualDuplicates||0)+(state.labelDuplicates||0),totalReceived=recipientCount+duplicateCount+(state.invalidIgnored||0);
+ var safety=window.__extSendSafetyManager;if(!safety||typeof safety.preflightRecipients!=="function")throw Object.assign(new Error("Proteção de Envio indisponível; campanha bloqueada."),{code:"SEND_SAFETY_UNAVAILABLE"});
+ var batchId=state.preflightCampaignId||(state.preflightCampaignId="bulk-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,10));
+-var preflight=await safety.preflightRecipients((state.contactEntries||[]).map(function(entry){return entry.value;}),{source:"bulk",campaignId:batchId,enforceRecipientCooldown:true});state.safetyPreflight=preflight;
++var preflight=await safety.preflightRecipients((state.contactEntries||[]).map(function(entry){return entry.value;}),{source:"bulk",campaignId:batchId,enforceRecipientCooldown:true});if(!currentReview())return;state.safetyPreflight=preflight;
+ var allowedSet=new Set((preflight.allowedRecipients||[]).map(function(v){return String(v).replace(/\D/g,"");})),eligible=(state.contactEntries||[]).filter(function(entry){return allowedSet.has(String(entry.value).replace(/\D/g,""));}),risk=preflight.risk||{label:"Atenção baixa",reasons:[]};state.preflightEligibleEntries=eligible;
+-stepEl.replaceChildren();
+ var preflightSection=extDomEl("section",{"class":"extuiDisparosPreflight","aria-labelledby":"extuiDisparosPreflightTitle"});
+ preflightSection.appendChild(extDomEl("div",{"class":"extuiDisparosPreflightEyebrow",text:"Revisão final"}));
+ preflightSection.appendChild(extDomEl("h3",{id:"extuiDisparosPreflightTitle",text:"Confirme antes de enviar"}));
+@@ -857,12 +863,14 @@
+ }
+ if(state.selectedType==="funnel"){
+ var flatFunnel=await previewBulkStaticFunnel(state.selectedItemId);
++if(!currentReview())return;
+ var verifiedFunnel=inspectAuthorityReview("funnel",flatFunnel);
+ state.preflightFunnelSnapshot=flatFunnel;
+ renderReviewedPlan("funnel",verifiedFunnel);
+ }
+ if(state.selectedType==="flow"){
+ var linearFlow=await previewBulkStaticFlow(state.selectedItemId);
++if(!currentReview())return;
+ var verifiedFlow=inspectAuthorityReview("flow",linearFlow);
+ state.preflightFlowSnapshot=linearFlow;
+ renderReviewedPlan("flow",verifiedFlow);
+@@ -903,10 +911,24 @@
+ extDomEl("button",{type:"button",id:"extuiDisparosPreflightBack","class":"secondary",text:"Voltar"}),
+ extDomEl("button",{type:"button",id:"extuiDisparosPreflightConfirm","class":"primary",disabled:true,text:"Confirmar disparo"})
+ ]));
+-stepEl.appendChild(preflightSection);
++if(!currentReview())return;
++stepEl.replaceChildren(preflightSection);
+ stepEl.querySelector("#extuiDisparosPreflightBack").addEventListener("click",function(){renderConfigStep(stepEl);});
+-var consent=stepEl.querySelector("#extuiDisparosConsentCheck"),optout=stepEl.querySelector("#extuiDisparosOptoutCheck"),confirmBtn=stepEl.querySelector("#extuiDisparosPreflightConfirm");var flowCheck=stepEl.querySelector("#extuiDisparosFlowReviewCheck"),funnelCheck=stepEl.querySelector("#extuiDisparosFunnelReviewCheck");function sync(){confirmBtn.disabled=!(consent.checked&&optout.checked&&(!flowCheck||flowCheck.checked)&&(!funnelCheck||funnelCheck.checked)&&preflight.ok===true&&eligible.length>0);}consent.addEventListener("change",sync);optout.addEventListener("change",sync);if(flowCheck)flowCheck.addEventListener("change",sync);if(funnelCheck)funnelCheck.addEventListener("change",sync);sync();
+-confirmBtn.addEventListener("click",async function(){confirmBtn.disabled=true;state.consentConfirmed=consent.checked===true;state.optOutReviewed=optout.checked===true;state.preflightFlowApproved=!!flowCheck&&flowCheck.checked===true;state.preflightFunnelApproved=!!funnelCheck&&funnelCheck.checked===true;try{await enqueueAndStart(state);renderStatusStep(stepEl);}catch(err){var code=String(err&&err.code||"");toast(code.indexOf("SEND_SAFETY_")===0?(err.message||"O disparo foi bloqueado pela Proteção de Envio."):(code.indexOf("BULK_FLOW_")===0||code.indexOf("BULK_FUNNEL_")===0||code.indexOf("BULK_PLAN_")===0)?(err.message||"O Fluxo mudou. Volte à revisão antes de enviar."):"Não foi possível iniciar o disparo. Recarregue a página (F5) e tente de novo.",true);sync();}});
++var consent=stepEl.querySelector("#extuiDisparosConsentCheck"),optout=stepEl.querySelector("#extuiDisparosOptoutCheck"),confirmBtn=stepEl.querySelector("#extuiDisparosPreflightConfirm");var flowCheck=stepEl.querySelector("#extuiDisparosFlowReviewCheck"),funnelCheck=stepEl.querySelector("#extuiDisparosFunnelReviewCheck");var confirming=false,revision=0;function sync(){revision++;confirmBtn.disabled=confirming||!(consent.checked&&optout.checked&&(!flowCheck||flowCheck.checked)&&(!funnelCheck||funnelCheck.checked)&&preflight.ok===true&&eligible.length>0);}consent.addEventListener("change",sync);optout.addEventListener("change",sync);if(flowCheck)flowCheck.addEventListener("change",sync);if(funnelCheck)funnelCheck.addEventListener("change",sync);sync();
++confirmBtn.addEventListener("click",async function(){
++if(confirming||confirmBtn.disabled)return;
++confirming=true;var acceptedRevision=revision;
++function approved(){return confirmBtn.isConnected&&acceptedRevision===revision;}
++confirmBtn.disabled=true;confirmBtn.textContent="Aguardando autorização…";
++state.consentConfirmed=consent.checked===true;state.optOutReviewed=optout.checked===true;state.preflightFlowApproved=!!flowCheck&&flowCheck.checked===true;state.preflightFunnelApproved=!!funnelCheck&&funnelCheck.checked===true;try{await enqueueAndStart(state,approved);if(confirmBtn.isConnected)renderStatusStep(stepEl);}catch(err){if(!confirmBtn.isConnected)return;var code=String(err&&err.code||"");toast(code.indexOf("SEND_SAFETY_")===0?(err.message||"O disparo foi bloqueado pela Proteção de Envio."):(code.indexOf("BULK_FLOW_")===0||code.indexOf("BULK_FUNNEL_")===0||code.indexOf("BULK_PLAN_")===0)?(err.message||"O Fluxo mudou. Volte à revisão antes de enviar."):"Não foi possível iniciar o disparo. Recarregue a página (F5) e tente de novo.",true);}finally{confirming=false;if(confirmBtn.isConnected){confirmBtn.textContent="Confirmar disparo";sync();}}});
++}catch(err){
++if(currentReview())pending.textContent="A revisão não foi confirmada. Volte para conferir a campanha.";
++else if(!preflightSection||!preflightSection.isConnected){
++reportRuntime("BULK_OBSOLETE_PREFLIGHT_FAILED",err);
++return;
++}
++throw err;
++}
+ }
+ var ITEM_STORAGE_BY_TYPE={
+ message:{key:"EXTUI:textMessageStore",listField:"textMessageList"},
+@@ -1583,9 +1605,12 @@
+ return flight;
+ }
+ window.__extDisparosCancelCurrent=cancelCurrentDispatch;
+-async function enqueueAndStart(currentState){
++async function enqueueAndStart(currentState,approved){
++function assertApproval(){if(!approved())throw bulkError("BULK_PLAN_REVIEW_CHANGED","A revisão da campanha mudou. Confirme novamente antes de iniciar.");}
++assertApproval();
+ await window.__extPlanGate.requirePaid("Disparos em massa");
+ var campaignWhatsappScope=await bulkCurrentWhatsappScope();
++assertApproval();
+ if(!currentState||currentState.consentConfirmed!==true||currentState.optOutReviewed!==true){
+ throw Object.assign(new Error("Confirme a autorização dos contatos e a revisão dos pedidos para não receber mensagens antes de iniciar o disparo."),{code:"SEND_SAFETY_CONSENT_REQUIRED"});
+ }
+@@ -1658,6 +1683,7 @@
+ if(bulkCancelFlight||await extStorageGet(REMOTE_CANCEL_KEY))throw bulkError("BULK_CONTROL_CANCEL_PENDING","Aguarde o cancelamento antes de iniciar outra campanha.");
+ if(await extStorageGet(REMOTE_PAUSE_KEY))throw bulkError("BULK_QUEUE_PAUSED","Outra aba mantém o disparo pausado. Confira o estado antes de iniciar.");
+ await requireBulkWhatsappScope(campaignWhatsappScope);
++assertApproval();
+ queue=await startQueue(queue);
+ traceBulkStage("queue","committed",batchId);
+ await requireBulkQueueScope(queue);
+@@ -2099,8 +2125,8 @@
+ var sequenceErr=new Error("ActionExecutor: "+sequenceDetail);
+ sequenceErr.code=sequenceResult&&sequenceResult.error&&sequenceResult.error.code||"BULK_ACTION_ERROR";
+ sequenceErr.effectDigest=sequenceResult&&sequenceResult.error&&sequenceResult.error.effectDigest||null;
+-sequenceErr.remoteEffectSucceeded=sequenceResult&&sequenceResult.error&&sequenceResult.error.remoteEffectSucceeded===true;
+-sequenceErr.remoteEffectUncertain=sequenceResult&&sequenceResult.error&&sequenceResult.error.remoteEffectUncertain===true;
++sequenceErr.remoteEffectSucceeded=!!(sequenceResult&&sequenceResult.remoteEffectSucceeded)||Number(sequenceResult&&sequenceResult.remoteActionsSucceeded)>0||sequenceResult&&sequenceResult.error&&sequenceResult.error.remoteEffectSucceeded===true;
++sequenceErr.remoteEffectUncertain=!sequenceResult||sequenceResult&&sequenceResult.error&&sequenceResult.error.remoteEffectUncertain===true;
+ sequenceErr.durableReviewRequired=sequenceResult&&sequenceResult.error&&sequenceResult.error.durableReviewRequired===true;
+ sequenceErr.actionSucceeded=item.actionSucceeded;sequenceErr.actionFailed=item.actionFailed;sequenceErr.actionNextIndex=item.actionNextIndex;
+ throw sequenceErr;
+--- a/app/background/authority/offscreen-options-data.js
++++ b/app/background/authority/offscreen-options-data.js
+@@ -297,10 +297,27 @@
+ function followEnvelope(raw,field,code,label){var env=globalThis.ExtensionStoreEnvelope;if(!env||typeof env.decode!=="function"||typeof env.replaceField!=="function")throw extError("STORE_ENVELOPE_UNAVAILABLE","O contrato de armazenamento do Follow-up não está disponível.");var decoded=env.decode(raw,{code:code,message:"Os dados de "+label+" estão inválidos e não serão sobrescritos."}),rows=decoded.state&&decoded.state[field];if(rows==null)rows=[];if(!Array.isArray(rows)||rows.some(function(row){return!row||typeof row!=="object"||Array.isArray(row);})){throw extError(code,"Os dados de "+label+" estão inválidos e não serão sobrescritos.");}return{raw:raw,decoded:decoded,rows:rows};}
+ function followRuleInput(raw){var rule=safe(raw,0);if(!rule||typeof rule!=="object"||Array.isArray(rule))throw extError("FOLLOWUP_RULE_INVALID","Regra de Follow-up inválida.");rule.id=safeMapKey(rule.id,180);if(!rule.id)throw extError("FOLLOWUP_RULE_INVALID","Regra de Follow-up sem identificador.");return rule;}
+ function followQueueInput(raw){var row=safe(raw,0);if(!row||typeof row!=="object"||Array.isArray(row))throw extError("FOLLOWUP_QUEUE_INVALID","Entrada da fila de Follow-up inválida.");row.id=txt(row.id,180);row.followUpId=txt(row.followUpId,180);if(!row.id||!row.followUpId)throw extError("FOLLOWUP_QUEUE_INVALID","Entrada da fila de Follow-up sem identificador.");row.contactKey=txt(row.contactKey,220);row.phoneNumber=txt(row.phoneNumber,80);row.chatId=txt(row.chatId,220);row.status=txt(row.status||"pending",32);return row;}
+-function followMembership(raw){if(raw==null||raw==="")return{schemaVersion:1,rules:{}};var parsed=raw;try{parsed=typeof raw==="string"?JSON.parse(raw):raw;}catch(err){throw extError("FOLLOWUP_MEMBERSHIP_CORRUPT","Os dados internos do Follow-up estão inválidos e não serão sobrescritos.",err);}if(!parsed||typeof parsed!=="object"||Array.isArray(parsed)||!parsed.rules||typeof parsed.rules!=="object"||Array.isArray(parsed.rules))throw extError("FOLLOWUP_MEMBERSHIP_CORRUPT","Os dados internos do Follow-up estão inválidos e não serão sobrescritos.");var out={schemaVersion:1,rules:{},updatedAt:Math.max(0,Number(parsed.updatedAt)||0)};Object.keys(parsed.rules).slice(0,1000).forEach(function(id){var key=safeMapKey(id,180);if(key)out.rules[key]=safe(parsed.rules[id],0);});return out;}
+-function followStatusTerminal(status){return status==="sent"||status==="error"||status==="cancelled";}
++function followMembership(raw){if(raw==null||raw==="")return{schemaVersion:1,rules:{}};var parsed=raw;try{parsed=typeof raw==="string"?JSON.parse(raw):raw;}catch(err){throw extError("FOLLOWUP_MEMBERSHIP_CORRUPT","Os dados internos do Follow-up estão inválidos e não serão sobrescritos.",err);}if(!parsed||typeof parsed!=="object"||Array.isArray(parsed)||!parsed.rules||typeof parsed.rules!=="object"||Array.isArray(parsed.rules))throw extError("FOLLOWUP_MEMBERSHIP_CORRUPT","Os dados internos do Follow-up estão inválidos e não serão sobrescritos.");var out={schemaVersion:1,rules:{},updatedAt:Math.max(0,Number(parsed.updatedAt)||0)};var ruleKeys=Object.keys(parsed.rules);
++if(ruleKeys.length>1000)throw extError("FOLLOWUP_MEMBERSHIP_LIMIT","O histórico excede o limite de regras e foi preservado.");
++ruleKeys.forEach(function(id){
++var key=safeMapKey(id,180);
++if(!key||key!==id)throw extError("FOLLOWUP_MEMBERSHIP_CORRUPT","Identificador de regra inválido no histórico.");
++var source=parsed.rules[id],rule=safe(source,0);
++if(!rule||typeof rule!=="object"||Array.isArray(rule))throw extError("FOLLOWUP_MEMBERSHIP_CORRUPT","Registro de regra inválido no histórico.");
++if(source.members!=null){
++if(typeof source.members!=="object"||Array.isArray(source.members))throw extError("FOLLOWUP_MEMBERSHIP_CORRUPT","Lista de membros inválida no histórico.");
++rule.members=Object.create(null);
++Object.keys(source.members).forEach(function(member){
++if(safeMapKey(member,220)!==member||!member)throw extError("FOLLOWUP_MEMBERSHIP_CORRUPT","Identificador de membro inválido no histórico.");
++rule.members[member]=safe(source.members[member],0);
++});
++}
++out.rules[key]=rule;
++});return out;}
++function followStatusTerminal(status){return status==="processed"||status==="sent"||status==="error"||status==="cancelled";}
+ function followQueueTimestamp(row){return Math.max(0,Number(row&&row.firedAtMs)||0,Number(row&&row.cancelledAtMs)||0,Number(row&&row.attemptedAtMs)||0,Number(row&&row.enqueuedAtMs)||0);}
+-function compactFollowQueue(rows,t){var now=Number(t)||Date.now(),active={pending:true,sending:true},terminal=[];var keep=(Array.isArray(rows)?rows:[]).filter(function(item){if(!item)return false;if(active[item.status])return true;var ts=followQueueTimestamp(item)||now;if(now-ts>FOLLOWUP_TERMINAL_MAX_AGE_MS)return false;terminal.push({item:item,ts:ts});return false;});terminal.sort(function(a,b){return b.ts-a.ts;});return keep.concat(terminal.slice(0,FOLLOWUP_TERMINAL_MAX).map(function(row){return row.item;}));}
++function followNeedsEvidence(row){return!!row&&(row.status==="sending"||row.durableReviewRequired===true);}
++function compactFollowQueue(rows,t){var now=Number(t)||Date.now(),active={pending:true,sending:true},terminal=[];var keep=(Array.isArray(rows)?rows:[]).filter(function(item){if(!item)return false;if(active[item.status]||followNeedsEvidence(item))return true;var ts=followQueueTimestamp(item)||now;if(now-ts>FOLLOWUP_TERMINAL_MAX_AGE_MS)return false;terminal.push({item:item,ts:ts});return false;});terminal.sort(function(a,b){return b.ts-a.ts;});return keep.concat(terminal.slice(0,FOLLOWUP_TERMINAL_MAX).map(function(row){return row.item;}));}
+ function followReplace(raw,field,rows,code,label){return globalThis.ExtensionStoreEnvelope.replaceField(raw,field,rows,{code:code,message:"Os dados de "+label+" estão inválidos e não serão sobrescritos."});}
+ var followReadOrigins=new WeakMap();
+ function pinFollowRead(value,origin){followReadOrigins.set(value,origin);return value;}
+@@ -311,27 +328,28 @@
+ function writeFollowBatch(values,readSnapshots){return writeAccountBatch(values,readSnapshots.map(followReadOrigin));}
+ function mergeFollowQueue(current,incoming,allowedIds){
+ var merged=new Map();
+-(current||[]).forEach(function(row){var clean=followQueueInput(row);if(allowedIds.has(clean.followUpId))merged.set(clean.id,clean);});
++(current||[]).forEach(function(row){var clean=followQueueInput(row);if(allowedIds.has(clean.followUpId)||followNeedsEvidence(clean))merged.set(clean.id,clean);});
+ (incoming||[]).forEach(function(row){
+-var next=followQueueInput(row);if(!allowedIds.has(next.followUpId))return;
+-var existing=merged.get(next.id);
++var next=followQueueInput(row),existing=merged.get(next.id);
++if(existing&&existing.followUpId!==next.followUpId)return;
++if(!allowedIds.has(next.followUpId)&&!(existing&&existing.status==="sending"))return;
+ if(existing){
+ if(followStatusTerminal(existing.status))return;
+ if(existing.status==="sending"){
+ if(next.status==="pending"||next.status==="sending")return;
+ var claim=String(existing.attemptToken||""),completed=String(next.lastAttemptToken||"");
+-if(!claim||claim!==completed||["sent","error","cancelled"].indexOf(next.status)<0)return;
++if(!claim||claim!==completed||!followStatusTerminal(next.status))return;
+ }else if(existing.status==="pending"){
+-if(next.status==="sending"||next.status==="sent")return;
++if(next.status==="sending"||next.status==="sent"||next.status==="processed")return;
+ }else return;
+-}else if(next.status==="sending"||next.status==="sent"){
++}else if(next.status==="sending"||next.status==="sent"||next.status==="processed"){
+ return;
+ }
+ merged.set(next.id,next);
+ });
+ return compactFollowQueue(Array.from(merged.values()),Date.now());
+ }
+-async function mutateFollowup(action,payload,expectedScope){await extServerAuthorityRequire("followup.manage");await extPlanRequirePaidBg("followup");var rulesSnap=await readFollowRules(expectedScope),rules=rulesSnap.rows.map(followRuleInput),ruleId,idx,queueSnap,membership,values;if(action==="rule_create"){var created=followRuleInput(payload.rule);if(rules.some(function(r){return String(r.id)===created.id;}))throw extError("FOLLOWUP_RULE_CONFLICT","A regra de Follow-up já existe ou mudou em outra janela.");if(rules.length>=1000)throw extError("FOLLOWUP_RULE_LIMIT","O limite seguro de 1.000 regras de Follow-up foi atingido.");rules.push(created);await writeFollowBatch({[FOLLOWUP_RULE_KEY]:followReplace(rulesSnap.raw,"followUpList",rules,"FOLLOWUP_STORE_CORRUPT","Follow-up")},[rulesSnap]);return{rule:created,count:rules.length};}if(action==="rule_restore"){var restored=followRuleInput(payload.rule);if(rules.some(function(r){return String(r.id)===restored.id;})){restored.id=crypto.randomUUID?crypto.randomUUID():("followup-restored-"+Date.now()+"-"+Math.random().toString(36).slice(2,9));if(restored.nome)restored.nome=txt(String(restored.nome)+" (restaurado)",500);else if(restored.name)restored.name=txt(String(restored.name)+" (restaurado)",500);}if(rules.length>=1000)throw extError("FOLLOWUP_RULE_LIMIT","O limite seguro de 1.000 regras de Follow-up foi atingido.");rules.push(restored);await writeFollowBatch({[FOLLOWUP_RULE_KEY]:followReplace(rulesSnap.raw,"followUpList",rules,"FOLLOWUP_STORE_CORRUPT","Follow-up")},[rulesSnap]);return{rule:restored,count:rules.length};}if(action==="rule_set_active"){ruleId=txt(payload.id,180);idx=rules.findIndex(function(r){return String(r.id)===ruleId;});if(idx<0)throw extError("FOLLOWUP_RULE_NOT_FOUND","Regra de Follow-up não encontrada.");var expectedActive=payload.expectedActive;if(typeof expectedActive==="boolean"&&rules[idx].active===true!==expectedActive)throw extError("FOLLOWUP_RULE_CONFLICT","O estado da regra de Follow-up mudou em outra janela. Recarregue antes de alterar novamente.");rules[idx].active=payload.active===true;queueSnap=await readFollowQueue(expectedScope);membership=await readFollowMembership(expectedScope);var toggleNow=Date.now(),toggleQueue=queueSnap.rows.map(function(row){var next=followQueueInput(row);if(String(next.followUpId)===ruleId&&next.status==="pending"){next.status="cancelled";next.cancelledAtMs=toggleNow;next.errorMessage="regra desativada";}return next;});delete membership.rules[ruleId];membership.updatedAt=toggleNow;values={};values[FOLLOWUP_RULE_KEY]=followReplace(rulesSnap.raw,"followUpList",rules,"FOLLOWUP_STORE_CORRUPT","Follow-up");values[FOLLOWUP_QUEUE_KEY]=followReplace(queueSnap.raw,"queue",compactFollowQueue(toggleQueue,toggleNow),"FOLLOWUP_QUEUE_STORE_CORRUPT","fila de Follow-up");values[FOLLOWUP_MEMBERSHIP_KEY]=JSON.stringify(membership);await writeFollowBatch(values,[rulesSnap,queueSnap,membership]);return{rule:rules[idx]};}if(action==="rule_delete"){ruleId=txt(payload.id,180);var before=rules.length;rules=rules.filter(function(r){return String(r.id)!==ruleId;});if(rules.length===before)throw extError("FOLLOWUP_RULE_NOT_FOUND","Regra de Follow-up não encontrada.");queueSnap=await readFollowQueue(expectedScope);membership=await readFollowMembership(expectedScope);var nextQueue=queueSnap.rows.filter(function(row){return String(row&&row.followUpId||"")!==ruleId;});delete membership.rules[ruleId];membership.updatedAt=Date.now();values={};values[FOLLOWUP_RULE_KEY]=followReplace(rulesSnap.raw,"followUpList",rules,"FOLLOWUP_STORE_CORRUPT","Follow-up");values[FOLLOWUP_QUEUE_KEY]=followReplace(queueSnap.raw,"queue",compactFollowQueue(nextQueue,Date.now()),"FOLLOWUP_QUEUE_STORE_CORRUPT","fila de Follow-up");values[FOLLOWUP_MEMBERSHIP_KEY]=JSON.stringify(membership);await writeFollowBatch(values,[rulesSnap,queueSnap,membership]);return{removed:true,id:ruleId,count:rules.length};}if(action==="queue_claim"){queueSnap=await readFollowQueue(expectedScope);var claimId=txt(payload.id,180),claimIdx=queueSnap.rows.findIndex(function(row){return String(row&&row.id||"")===claimId;});if(claimIdx<0)throw extError("FOLLOWUP_QUEUE_NOT_FOUND","Entrada do Follow-up não encontrada.");var claimEntry=followQueueInput(queueSnap.rows[claimIdx]),claimExpected=txt(payload.expectedStatus,32),claimToken=txt(payload.attemptToken,180);if(!/^[A-Za-z0-9._:-]{8,180}$/.test(claimToken))throw extError("FOLLOWUP_ATTEMPT_TOKEN_INVALID","A tentativa do Follow-up não possui identidade durável válida.");if(claimEntry.status==="sending"&&claimEntry.cancelRequested===true)throw extError("FOLLOWUP_CLAIM_CANCELLED","O cancelamento já foi solicitado para esta tentativa de Follow-up.");if(claimEntry.status==="sending"&&String(claimEntry.attemptToken||"")===claimToken)return{claimed:true,item:claimEntry};if(claimExpected&&claimEntry.status!==claimExpected)throw extError("FOLLOWUP_QUEUE_CONFLICT","O estado do Follow-up mudou em outra janela.");if(claimEntry.status!=="pending")throw extError("FOLLOWUP_CLAIM_CONFLICT","Esta entrada do Follow-up não está disponível para execução.");claimEntry.status="sending";claimEntry.attemptToken=claimToken;claimEntry.attemptedAtMs=Math.max(1,Number(payload.attemptedAtMs)||Date.now());claimEntry.errorMessage=null;claimEntry.errorCode=null;claimEntry.durableReviewRequired=false;claimEntry.cancelRequested=false;var claimedRows=queueSnap.rows.map(function(row,index){return index===claimIdx?claimEntry:row;});await writeFollowBatch({[FOLLOWUP_QUEUE_KEY]:followReplace(queueSnap.raw,"queue",compactFollowQueue(claimedRows,Date.now()),"FOLLOWUP_QUEUE_STORE_CORRUPT","fila de Follow-up")},[queueSnap]);return{claimed:true,item:claimEntry};}if(action==="recover_orphans"){queueSnap=await readFollowQueue(expectedScope);var recoveryStamp=Date.now(),recovered=[];var recoveredRows=queueSnap.rows.map(function(row){var next=followQueueInput(row);if(next.status!=="sending")return next;next.status="error";next.errorMessage="Uma execução anterior do Follow-up foi interrompida com resultado incerto. O reenvio automático foi bloqueado.";next.errorCode="FOLLOWUP_RECOVERY_AMBIGUOUS";next.durableReviewRequired=true;next.recoveredAtMs=recoveryStamp;next.lastAttemptToken=String(next.attemptToken||"");delete next.attemptToken;delete next.cancelRequested;recovered.push(next.id);return next;});if(recovered.length)await writeFollowBatch({[FOLLOWUP_QUEUE_KEY]:followReplace(queueSnap.raw,"queue",compactFollowQueue(recoveredRows,recoveryStamp),"FOLLOWUP_QUEUE_STORE_CORRUPT","fila de Follow-up")},[queueSnap]);return{recoveredCount:recovered.length,recoveredIds:recovered};}if(action==="engine_commit"){queueSnap=await readFollowQueue(expectedScope);membership=await readFollowMembership(expectedScope);var incomingQueue=Array.isArray(payload.queue)?payload.queue:[],incomingMembership=followMembership(payload.membership||{schemaVersion:1,rules:{}}),allowedIds=new Set(rules.map(function(r){return String(r.id);})),mergedQueue=mergeFollowQueue(queueSnap.rows,incomingQueue,allowedIds),mergedMembership={schemaVersion:1,rules:{},updatedAt:Date.now()};Object.keys(membership.rules||{}).forEach(function(id){if(allowedIds.has(id))mergedMembership.rules[id]=membership.rules[id];});Object.keys(incomingMembership.rules||{}).forEach(function(id){if(!allowedIds.has(id))return;var incomingRule=incomingMembership.rules[id],currentRule=mergedMembership.rules[id],incomingUpdated=Math.max(0,Number(incomingRule&&incomingRule.updatedAt)||0),currentUpdated=Math.max(0,Number(currentRule&&currentRule.updatedAt)||0);if(!currentRule||incomingUpdated>=currentUpdated)mergedMembership.rules[id]=incomingRule;});values={};values[FOLLOWUP_QUEUE_KEY]=followReplace(queueSnap.raw,"queue",mergedQueue,"FOLLOWUP_QUEUE_STORE_CORRUPT","fila de Follow-up");values[FOLLOWUP_MEMBERSHIP_KEY]=JSON.stringify(mergedMembership);await writeFollowBatch(values,[queueSnap,membership]);return{queue:mergedQueue,membership:mergedMembership};}if(action==="queue_cancel"){queueSnap=await readFollowQueue(expectedScope);var qid=txt(payload.id,180),entry=queueSnap.rows.find(function(row){return String(row&&row.id||"")===qid;});if(!entry)return{cancelled:false,missing:true};var queueExpectedStatus=txt(payload.expectedStatus,32);if(queueExpectedStatus&&String(entry.status||"")!==queueExpectedStatus)throw extError("FOLLOWUP_QUEUE_CONFLICT","O estado do Follow-up mudou em outra janela. Atualize a fila antes de cancelar.");if(entry.status==="sent"||entry.status==="error")return{cancelled:false,item:entry};if(entry.status==="sending"){entry=followQueueInput(entry);entry.cancelRequested=true;entry.cancelRequestedAtMs=Date.now();var inFlightRows=queueSnap.rows.map(function(row){return String(row&&row.id||"")===qid?entry:row;});await writeFollowBatch({[FOLLOWUP_QUEUE_KEY]:followReplace(queueSnap.raw,"queue",compactFollowQueue(inFlightRows,Date.now()),"FOLLOWUP_QUEUE_STORE_CORRUPT","fila de Follow-up")},[queueSnap]);return{cancelled:true,pendingExecution:true,item:entry};}if(entry.status!=="cancelled"){entry=followQueueInput(entry);entry.status="cancelled";entry.cancelledAtMs=Date.now();entry.errorMessage="cancelado manualmente";entry.cancelRequested=false;var qrows=queueSnap.rows.map(function(row){return String(row&&row.id||"")===qid?entry:row;});await writeFollowBatch({[FOLLOWUP_QUEUE_KEY]:followReplace(queueSnap.raw,"queue",compactFollowQueue(qrows,Date.now()),"FOLLOWUP_QUEUE_STORE_CORRUPT","fila de Follow-up")},[queueSnap]);}return{cancelled:true,item:entry};}if(action==="cancel_contact"){queueSnap=await readFollowQueue(expectedScope);var contact=digits(payload.contact),cancelIds=new Set(rules.filter(function(r){return r.active&&r.cancelOnReply;}).map(function(r){return String(r.id);})),cancelled=[];var changed=queueSnap.rows.map(function(row){var next=followQueueInput(row);if(next.status==="pending"&&cancelIds.has(next.followUpId)&&digits(next.phoneNumber||next.chatId||next.contactKey)===contact){next.status="cancelled";next.cancelledAtMs=Date.now();next.errorMessage="contato respondeu antes do disparo";cancelled.push(next);}return next;});if(cancelled.length)await writeFollowBatch({[FOLLOWUP_QUEUE_KEY]:followReplace(queueSnap.raw,"queue",compactFollowQueue(changed,Date.now()),"FOLLOWUP_QUEUE_STORE_CORRUPT","fila de Follow-up")},[queueSnap]);return{cancelled:cancelled};}throw extError("FOLLOWUP_ACTION_INVALID","Operação de Follow-up inválida.");}
++async function mutateFollowup(action,payload,expectedScope){if(payload.expectedAccountScope!=null&&payload.expectedAccountScope!==expectedScope)throw extError("ACCOUNT_SCOPE_CHANGED","A conta da fila mudou antes da operação.");await extServerAuthorityRequire("followup.manage");await extPlanRequirePaidBg("followup");var rulesSnap=await readFollowRules(expectedScope),rules=rulesSnap.rows.map(followRuleInput),ruleId,idx,queueSnap,membership,values;if(action==="rule_create"){var created=followRuleInput(payload.rule);if(rules.some(function(r){return String(r.id)===created.id;}))throw extError("FOLLOWUP_RULE_CONFLICT","A regra de Follow-up já existe ou mudou em outra janela.");if(rules.length>=1000)throw extError("FOLLOWUP_RULE_LIMIT","O limite seguro de 1.000 regras de Follow-up foi atingido.");rules.push(created);await writeFollowBatch({[FOLLOWUP_RULE_KEY]:followReplace(rulesSnap.raw,"followUpList",rules,"FOLLOWUP_STORE_CORRUPT","Follow-up")},[rulesSnap]);return{rule:created,count:rules.length};}if(action==="rule_restore"){var restored=followRuleInput(payload.rule);if(rules.some(function(r){return String(r.id)===restored.id;})){restored.id=crypto.randomUUID?crypto.randomUUID():("followup-restored-"+Date.now()+"-"+Math.random().toString(36).slice(2,9));if(restored.nome)restored.nome=txt(String(restored.nome)+" (restaurado)",500);else if(restored.name)restored.name=txt(String(restored.name)+" (restaurado)",500);}if(rules.length>=1000)throw extError("FOLLOWUP_RULE_LIMIT","O limite seguro de 1.000 regras de Follow-up foi atingido.");rules.push(restored);await writeFollowBatch({[FOLLOWUP_RULE_KEY]:followReplace(rulesSnap.raw,"followUpList",rules,"FOLLOWUP_STORE_CORRUPT","Follow-up")},[rulesSnap]);return{rule:restored,count:rules.length};}if(action==="rule_set_active"){ruleId=txt(payload.id,180);idx=rules.findIndex(function(r){return String(r.id)===ruleId;});if(idx<0)throw extError("FOLLOWUP_RULE_NOT_FOUND","Regra de Follow-up não encontrada.");var expectedActive=payload.expectedActive;if(typeof expectedActive==="boolean"&&rules[idx].active===true!==expectedActive)throw extError("FOLLOWUP_RULE_CONFLICT","O estado da regra de Follow-up mudou em outra janela. Recarregue antes de alterar novamente.");rules[idx].active=payload.active===true;queueSnap=await readFollowQueue(expectedScope);membership=await readFollowMembership(expectedScope);var toggleNow=Date.now(),toggleQueue=queueSnap.rows.map(function(row){var next=followQueueInput(row);if(String(next.followUpId)===ruleId&&next.status==="pending"){next.status="cancelled";next.cancelledAtMs=toggleNow;next.errorMessage="regra desativada";}return next;});delete membership.rules[ruleId];membership.updatedAt=toggleNow;values={};values[FOLLOWUP_RULE_KEY]=followReplace(rulesSnap.raw,"followUpList",rules,"FOLLOWUP_STORE_CORRUPT","Follow-up");values[FOLLOWUP_QUEUE_KEY]=followReplace(queueSnap.raw,"queue",compactFollowQueue(toggleQueue,toggleNow),"FOLLOWUP_QUEUE_STORE_CORRUPT","fila de Follow-up");values[FOLLOWUP_MEMBERSHIP_KEY]=JSON.stringify(membership);await writeFollowBatch(values,[rulesSnap,queueSnap,membership]);return{rule:rules[idx]};}if(action==="rule_delete"){ruleId=txt(payload.id,180);var before=rules.length;rules=rules.filter(function(r){return String(r.id)!==ruleId;});if(rules.length===before)throw extError("FOLLOWUP_RULE_NOT_FOUND","Regra de Follow-up não encontrada.");queueSnap=await readFollowQueue(expectedScope);membership=await readFollowMembership(expectedScope);var nextQueue=queueSnap.rows.filter(function(row){return String(row&&row.followUpId||"")!==ruleId||followNeedsEvidence(row);});delete membership.rules[ruleId];membership.updatedAt=Date.now();values={};values[FOLLOWUP_RULE_KEY]=followReplace(rulesSnap.raw,"followUpList",rules,"FOLLOWUP_STORE_CORRUPT","Follow-up");values[FOLLOWUP_QUEUE_KEY]=followReplace(queueSnap.raw,"queue",compactFollowQueue(nextQueue,Date.now()),"FOLLOWUP_QUEUE_STORE_CORRUPT","fila de Follow-up");values[FOLLOWUP_MEMBERSHIP_KEY]=JSON.stringify(membership);await writeFollowBatch(values,[rulesSnap,queueSnap,membership]);return{removed:true,id:ruleId,count:rules.length};}if(action==="queue_claim"){queueSnap=await readFollowQueue(expectedScope);var claimId=txt(payload.id,180),claimIdx=queueSnap.rows.findIndex(function(row){return String(row&&row.id||"")===claimId;});if(claimIdx<0)throw extError("FOLLOWUP_QUEUE_NOT_FOUND","Entrada do Follow-up não encontrada.");var claimEntry=followQueueInput(queueSnap.rows[claimIdx]),claimExpected=txt(payload.expectedStatus,32),claimToken=txt(payload.attemptToken,180);if(!/^[A-Za-z0-9._:-]{8,180}$/.test(claimToken))throw extError("FOLLOWUP_ATTEMPT_TOKEN_INVALID","A tentativa do Follow-up não possui identidade durável válida.");if(claimEntry.status==="sending"&&claimEntry.cancelRequested===true)throw extError("FOLLOWUP_CLAIM_CANCELLED","O cancelamento já foi solicitado para esta tentativa de Follow-up.");if(claimEntry.status==="sending"&&String(claimEntry.attemptToken||"")===claimToken)return{claimed:true,item:claimEntry};if(claimExpected&&claimEntry.status!==claimExpected)throw extError("FOLLOWUP_QUEUE_CONFLICT","O estado do Follow-up mudou em outra janela.");if(claimEntry.durableReviewRequired===true)throw extError("FOLLOWUP_REVIEW_REQUIRED","Esta tentativa requer revisão antes de qualquer novo envio.");if(!rules.some(function(rule){return rule.id===claimEntry.followUpId&&rule.active;}))throw extError("FOLLOWUP_RULE_INACTIVE","A regra foi removida ou desativada antes da execução.");if(claimEntry.status!=="pending")throw extError("FOLLOWUP_CLAIM_CONFLICT","Esta entrada do Follow-up não está disponível para execução.");claimEntry.status="sending";claimEntry.attemptToken=claimToken;claimEntry.attemptedAtMs=Math.max(1,Number(payload.attemptedAtMs)||Date.now());claimEntry.errorMessage=null;claimEntry.errorCode=null;claimEntry.durableReviewRequired=false;claimEntry.cancelRequested=false;var claimedRows=queueSnap.rows.map(function(row,index){return index===claimIdx?claimEntry:row;});await writeFollowBatch({[FOLLOWUP_QUEUE_KEY]:followReplace(queueSnap.raw,"queue",compactFollowQueue(claimedRows,Date.now()),"FOLLOWUP_QUEUE_STORE_CORRUPT","fila de Follow-up")},[queueSnap]);return{claimed:true,item:claimEntry};}if(action==="recover_orphans"){queueSnap=await readFollowQueue(expectedScope);var recoveryStamp=Date.now(),recovered=[];var recoveredRows=queueSnap.rows.map(function(row){var next=followQueueInput(row);if(next.status!=="sending")return next;next.status="error";next.errorMessage="Uma execução anterior do Follow-up foi interrompida com resultado incerto. O reenvio automático foi bloqueado.";next.errorCode="FOLLOWUP_RECOVERY_AMBIGUOUS";next.durableReviewRequired=true;next.recoveredAtMs=recoveryStamp;next.lastAttemptToken=String(next.attemptToken||"");delete next.attemptToken;delete next.cancelRequested;recovered.push(next.id);return next;});if(recovered.length)await writeFollowBatch({[FOLLOWUP_QUEUE_KEY]:followReplace(queueSnap.raw,"queue",compactFollowQueue(recoveredRows,recoveryStamp),"FOLLOWUP_QUEUE_STORE_CORRUPT","fila de Follow-up")},[queueSnap]);return{recoveredCount:recovered.length,recoveredIds:recovered};}if(action==="engine_commit"){queueSnap=await readFollowQueue(expectedScope);membership=await readFollowMembership(expectedScope);var incomingQueue=Array.isArray(payload.queue)?payload.queue:[],incomingMembership=followMembership(payload.membership||{schemaVersion:1,rules:{}}),allowedIds=new Set(rules.map(function(r){return String(r.id);})),mergedQueue=mergeFollowQueue(queueSnap.rows,incomingQueue,allowedIds),mergedMembership={schemaVersion:1,rules:{},updatedAt:Date.now()};Object.keys(membership.rules||{}).forEach(function(id){if(allowedIds.has(id))mergedMembership.rules[id]=membership.rules[id];});Object.keys(incomingMembership.rules||{}).forEach(function(id){if(!allowedIds.has(id))return;var incomingRule=incomingMembership.rules[id],currentRule=mergedMembership.rules[id],incomingUpdated=Math.max(0,Number(incomingRule&&incomingRule.updatedAt)||0),currentUpdated=Math.max(0,Number(currentRule&&currentRule.updatedAt)||0);if(!currentRule||incomingUpdated>=currentUpdated)mergedMembership.rules[id]=incomingRule;});values={};values[FOLLOWUP_QUEUE_KEY]=followReplace(queueSnap.raw,"queue",mergedQueue,"FOLLOWUP_QUEUE_STORE_CORRUPT","fila de Follow-up");values[FOLLOWUP_MEMBERSHIP_KEY]=JSON.stringify(mergedMembership);await writeFollowBatch(values,[queueSnap,membership]);return{queue:mergedQueue,membership:mergedMembership};}if(action==="queue_cancel"){queueSnap=await readFollowQueue(expectedScope);var qid=txt(payload.id,180),entry=queueSnap.rows.find(function(row){return String(row&&row.id||"")===qid;});if(!entry)return{cancelled:false,missing:true};var queueExpectedStatus=txt(payload.expectedStatus,32);if(queueExpectedStatus&&String(entry.status||"")!==queueExpectedStatus)throw extError("FOLLOWUP_QUEUE_CONFLICT","O estado do Follow-up mudou em outra janela. Atualize a fila antes de cancelar.");if(entry.status==="sent"||entry.status==="processed"||entry.status==="error")return{cancelled:false,item:entry};if(entry.status==="sending"){entry=followQueueInput(entry);entry.cancelRequested=true;entry.cancelRequestedAtMs=Date.now();var inFlightRows=queueSnap.rows.map(function(row){return String(row&&row.id||"")===qid?entry:row;});await writeFollowBatch({[FOLLOWUP_QUEUE_KEY]:followReplace(queueSnap.raw,"queue",compactFollowQueue(inFlightRows,Date.now()),"FOLLOWUP_QUEUE_STORE_CORRUPT","fila de Follow-up")},[queueSnap]);return{cancelled:true,pendingExecution:true,item:entry};}if(entry.status!=="cancelled"){entry=followQueueInput(entry);entry.status="cancelled";entry.cancelledAtMs=Date.now();entry.errorMessage="cancelado manualmente";entry.cancelRequested=false;var qrows=queueSnap.rows.map(function(row){return String(row&&row.id||"")===qid?entry:row;});await writeFollowBatch({[FOLLOWUP_QUEUE_KEY]:followReplace(queueSnap.raw,"queue",compactFollowQueue(qrows,Date.now()),"FOLLOWUP_QUEUE_STORE_CORRUPT","fila de Follow-up")},[queueSnap]);}return{cancelled:true,item:entry};}if(action==="cancel_contact"){queueSnap=await readFollowQueue(expectedScope);var contact=digits(payload.contact),cancelIds=new Set(rules.filter(function(r){return r.active&&r.cancelOnReply;}).map(function(r){return String(r.id);})),cancelled=[];var changed=queueSnap.rows.map(function(row){var next=followQueueInput(row);if(next.status==="pending"&&cancelIds.has(next.followUpId)&&digits(next.phoneNumber||next.chatId||next.contactKey)===contact){next.status="cancelled";next.cancelledAtMs=Date.now();next.errorMessage="contato respondeu antes do disparo";cancelled.push(next);}return next;});if(cancelled.length)await writeFollowBatch({[FOLLOWUP_QUEUE_KEY]:followReplace(queueSnap.raw,"queue",compactFollowQueue(changed,Date.now()),"FOLLOWUP_QUEUE_STORE_CORRUPT","fila de Follow-up")},[queueSnap]);return{cancelled:cancelled};}throw extError("FOLLOWUP_ACTION_INVALID","Operação de Follow-up inválida.");}
+ function normalizeCrmFunnelPrefs(raw,existing){
+ var defaults={crmId:"",metric:"contacts",chart:"pyramid",sort:"original",legend:true,defaultChartV9:true};
+ if(raw==null||raw==="")return defaults;
+--- a/app/dashboard/features/followup/runtime.js
++++ b/app/dashboard/features/followup/runtime.js
+@@ -344,7 +344,8 @@
+ var ruleQueue=queue.filter(function(q){return q.followUpId===rule.id;});
+ var pendingCount=ruleQueue.filter(function(q){return q.status==="pending";}).length;
+ var sentCount=ruleQueue.filter(function(q){return q.status==="sent";}).length;
+-var fingerprint=JSON.stringify([rule.id,rule.nome,rule.sendType,!!rule.active,rule.source&&rule.source.crmId,rule.source&&rule.source.columnId,rule.acionamento&&rule.acionamento.type,rule.acionamento&&rule.acionamento.timing,pendingCount,sentCount,crm&&crm.name,column&&column.title]);
++var processedCount=ruleQueue.filter(function(q){return q.status==="processed";}).length;
++var fingerprint=JSON.stringify([rule.id,rule.nome,rule.sendType,!!rule.active,rule.source&&rule.source.crmId,rule.source&&rule.source.columnId,rule.acionamento&&rule.acionamento.type,rule.acionamento&&rule.acionamento.timing,pendingCount,sentCount,processedCount,crm&&crm.name,column&&column.title]);
+ var row=existingRows.get(String(rule.id||""));
+ if(!row||row.dataset.followupFingerprint!==fingerprint){
+ row=el("div",{class:"extuiFollowUpRow"});
+@@ -354,7 +355,7 @@
+ var mid=el("div",{class:"extuiFollowUpRowMid"});
+ mid.appendChild(el("div",{class:"name",text:rule.nome}));
+ mid.appendChild(el("div",{class:"meta",text:(crm&&crm.name||"CRM indisponível")+" → "+(column&&column.title||"Lista indisponível")+" · "+(rule.acionamento.type==="onEnter"?"na entrada":"após "+fmtTiming(rule.acionamento.timing))}));
+-mid.appendChild(el("div",{class:"meta",text:pendingCount+" aguardando · "+sentCount+" enviado(s)"}));
++mid.appendChild(el("div",{class:"meta",text:pendingCount+" aguardando · "+sentCount+" enviado(s)"+(processedCount?" · "+processedCount+" processado(s)":"")}));
+ row.appendChild(mid);
+ var switchLabel=el("label",{class:"extuiSwitch"});
+ var switchInput=el("input",{type:"checkbox"});
+--- a/app/content/features/workspace/panel-followup-domain-core.js
++++ b/app/content/features/workspace/panel-followup-domain-core.js
+@@ -188,10 +188,11 @@
+ var ruleQueue=queue.filter(function(q){return q.followUpId===rule.id;});
+ var pendingCount=ruleQueue.filter(function(q){return q.status==="pending";}).length;
+ var sentCount=ruleQueue.filter(function(q){return q.status==="sent";}).length;
++var processedCount=ruleQueue.filter(function(q){return q.status==="processed";}).length;
+ var row=document.createElement("div");
+ row.className="extuiNavAgendaRow";
+ var iconHost=document.createElement("span");iconHost.className="extuiNavAgendaRowIconHost";iconHost.appendChild(safeIconChip(panelBrand.followup.accent,panelBrand.followup.icon));
+-var mid=document.createElement("div");mid.className="extuiNavAgendaRowMid";var ruleName=document.createElement("div");ruleName.className="name";ruleName.textContent=String(rule.nome||"");var sourceMeta=document.createElement("div");sourceMeta.className="meta";sourceMeta.textContent=String((crm&&crm.name)||"CRM indisponível")+" → "+String((column&&column.title)||"Lista indisponível")+" · "+(rule.acionamento.type==="onEnter"?"na entrada":"após "+String(fmtTiming(rule.acionamento.timing)));var queueMeta=document.createElement("div");queueMeta.className="meta";queueMeta.textContent=String(pendingCount)+" aguardando · "+String(sentCount)+" enviado(s)";mid.append(ruleName,sourceMeta,queueMeta);row.append(iconHost,mid);
++var mid=document.createElement("div");mid.className="extuiNavAgendaRowMid";var ruleName=document.createElement("div");ruleName.className="name";ruleName.textContent=String(rule.nome||"");var sourceMeta=document.createElement("div");sourceMeta.className="meta";sourceMeta.textContent=String((crm&&crm.name)||"CRM indisponível")+" → "+String((column&&column.title)||"Lista indisponível")+" · "+(rule.acionamento.type==="onEnter"?"na entrada":"após "+String(fmtTiming(rule.acionamento.timing)));var queueMeta=document.createElement("div");queueMeta.className="meta";queueMeta.textContent=String(pendingCount)+" aguardando · "+String(sentCount)+" enviado(s)"+(processedCount?" · "+processedCount+" processado(s)":"");mid.append(ruleName,sourceMeta,queueMeta);row.append(iconHost,mid);
+ var sw=buildSwitch(rule.active,async function(next,previous){
+ try{
+ var changed=await window.__extDataMutationClient.followup("rule_set_active",{id:rule.id,active:next,expectedActive:rule.active===true});

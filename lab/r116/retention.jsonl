@@ -1,0 +1,3 @@
+{"label":"baseline","ms":89,"heap":1235952,"documents":1,"nodes":7,"jsEventListeners":14,"rpc":0,"observerAllocations":0,"retained":false}
+{"label":"burst","ms":452,"heap":6618052,"documents":1,"nodes":7,"jsEventListeners":14,"rpc":10000,"observerAllocations":0,"retained":true}
+{"label":"after-retention","ms":62480,"heap":1416740,"documents":1,"nodes":7,"jsEventListeners":14,"rpc":10000,"observerAllocations":0,"retained":false}

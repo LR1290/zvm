@@ -1,0 +1,3 @@
+PASS Fluxos: 3 active states x preparing/dispatching, second recovery idempotent
+PASS Funis: actual tick twice x restart/pause/cancel; no second step after ambiguous marker
+PASS Disparos: processor holds admitted and uncertain rows before iterating recipients

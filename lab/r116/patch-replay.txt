@@ -1,0 +1,9 @@
+patching file app/content/core/action-engine.js
+patching file app/content/core/send-safety.js
+patching file app/content/features/flows/engine.js
+patching file app/content/features/funnels/engine.js
+patching file app/content/features/followup/engine.js
+patching file app/content/features/broadcast/panel.js
+patching file app/background/authority/offscreen-options-data.js
+patching file app/dashboard/features/followup/runtime.js
+patching file app/content/features/workspace/panel-followup-domain-core.js

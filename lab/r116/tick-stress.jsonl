@@ -1,0 +1,10 @@
+{"version":"base","n":1,"reads":2,"ticks":1,"ms":0.10000000055879354,"active":5,"afterStop":0}
+{"version":"base","n":10,"reads":20,"ticks":10,"ms":0,"active":5,"afterStop":0}
+{"version":"base","n":100,"reads":200,"ticks":100,"ms":0.20000000018626451,"active":5,"afterStop":0}
+{"version":"base","n":1000,"reads":2000,"ticks":1000,"ms":8.099999999627471,"active":5,"afterStop":0}
+{"version":"base","n":10000,"reads":20000,"ticks":10000,"ms":64.3999999994412,"active":5,"afterStop":0}
+{"version":"candidate","n":1,"reads":2,"ticks":1,"ms":0.09999999962747097,"active":5,"afterStop":0}
+{"version":"candidate","n":10,"reads":2,"ticks":1,"ms":0,"active":5,"afterStop":0}
+{"version":"candidate","n":100,"reads":2,"ticks":1,"ms":0,"active":5,"afterStop":0}
+{"version":"candidate","n":1000,"reads":2,"ticks":1,"ms":0.2999999998137355,"active":5,"afterStop":0}
+{"version":"candidate","n":10000,"reads":2,"ticks":1,"ms":7.400000000372529,"active":5,"afterStop":0}

@@ -1,0 +1,2 @@
+{"version":"base","stableMembershipWriteRequests":1000,"afterSwitch":1,"legacyHeld":false}
+{"version":"candidate","stableMembershipWriteRequests":0,"afterSwitch":0,"legacyHeld":true}
