@@ -8,6 +8,10 @@ on:
       - 'tests/r82-session-continuity.test.js'
       - 'tests/r105-v4-account-lifetime.test.js'
       - 'tests/r106-v4-mongo-real.test.js'
+      - 'src/extension-v4-free-quota.js'
+      - 'tests/r98-v4-free-quota.test.js'
+      - 'lab/qa-auth/reconcile-r107.patch'
+      - 'lab/qa-auth/r107-client-reconcile.test.cjs'
       - '.github/workflows/zvm-v4-account-lifetime.yml'
   workflow_dispatch:
 
@@ -71,3 +75,19 @@ jobs:
         if: always()
         shell: bash
         run: docker rm -f zvm-r106-session-test >/dev/null 2>&1 || true
+
+  free-v4-midnight-reconciliation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.3'
+      - name: Test server reconciliation and syntax of offline client lab QA
+        run: |
+          node --check src/extension-v4-free-quota.js
+          node --check lab/qa-auth/r107-client-reconcile.test.cjs
+          node --test tests/r98-v4-free-quota.test.js

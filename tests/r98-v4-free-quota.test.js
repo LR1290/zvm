@@ -96,3 +96,65 @@ for (const itemType of ['audio','document','media']) {
     assert.equal((await run({...context,action:'check'})).limits[itemType].sent,10);
   });
 }
+
+
+// R107: read-only recovery of a reserve receipt lost at UTC midnight.
+test('R107: wrong-day reconcile finds prior-day reservation without charging twice',async()=>{
+ const x=ctx(),operationId=id(91);
+ await run({...x,action:'reserve',operationId,now:new Date('2026-11-19T23:59:58Z')});
+ const before=x.collection.mutations;
+ const result=await run({...x,action:'reconcile',operationId,period:'2026-11-20',
+  now:new Date('2026-11-20T00:00:02Z')});
+ assert.equal(result.operationStatus,'reserved');
+ assert.equal(result.period,'2026-11-19');
+ assert.equal(result.limits.message.sent,1);
+ assert.equal(x.collection.mutations,before,'reconcile must not write or resend');
+});
+test('R107: absent period probes the previous days and reports canonical period',async()=>{
+ const x=ctx(),operationId=id(92);
+ await run({...x,action:'reserve',operationId,now:new Date('2026-11-18T23:59:58Z')});
+ const result=await run({...x,action:'reconcile',operationId,now:new Date('2026-11-20T00:00:02Z')});
+ assert.equal(result.period,'2026-11-18');
+ assert.equal(result.operationStatus,'reserved');
+ await denied('invalid_period',()=>run({...x,action:'reconcile',operationId,
+  period:'2026-11-21',now:new Date('2026-11-20T00:00:02Z')}));
+});
+test('R107: duplicate operationId in distinct UTC days fails closed',async()=>{
+ const x=ctx(),operationId=id(93);
+ await run({...x,action:'reserve',operationId,now:new Date('2026-11-19T19:00:00Z')});
+ await run({...x,action:'reserve',operationId,now:new Date('2026-11-20T01:00:00Z')});
+ const before=x.collection.mutations;
+ await denied('operation_period_conflict',()=>run({...x,action:'reconcile',operationId,
+  now:new Date('2026-11-20T02:00:00Z')}));
+ assert.equal(x.collection.mutations,before,'ambiguous receipt cannot trigger writes');
+});
+test('R107: mismatched operation type on another day is never accepted',async()=>{
+ const x=ctx(),operationId=id(94);
+ await run({...x,action:'reserve',operationId,now:new Date('2026-11-19T23:00:00Z')});
+ await denied('operation_type_mismatch',()=>run({...x,action:'reconcile',
+  itemType:'audio',operationId,period:'2026-11-20',now:new Date('2026-11-20T01:00:00Z')}));
+});
+test('R107: no receipt, wrong subject, or outside retention never authorizes replay',async()=>{
+ const x=ctx(),operationId=id(95);
+ await run({...x,action:'reserve',operationId,now:new Date('2026-11-17T15:00:00Z')});
+ const t=new Date('2026-11-20T15:00:00Z');
+ const result=await run({...x,action:'reconcile',operationId,now:t});
+ assert.equal(result.operationStatus,'not_found');
+ await denied('invalid_period',()=>run({...x,action:'reconcile',operationId,
+  period:'2026-11-17',now:t}));
+ const other=await run({...x,action:'reconcile',operationId,now:t,
+  subject:{type:'account',id:'b'.repeat(64)}});
+ assert.equal(other.operationStatus,'not_found');
+});
+test('R107: settlement requires exact recovered period, never fallback writes',async()=>{
+ const x=ctx(),operationId=id(96);
+ await run({...x,action:'reserve',operationId,now:new Date('2026-11-19T23:58:00Z')});
+ const t=new Date('2026-11-20T00:02:00Z');
+ const recovered=await run({...x,action:'reconcile',operationId,period:'2026-11-20',now:t});
+ await denied('reservation_not_found',()=>run({...x,action:'settle',
+  operationId,period:'2026-11-20',ack:'uncertain',now:t}));
+ const final=await run({...x,action:'settle',operationId,
+  period:recovered.period,ack:'uncertain',now:t});
+ assert.equal(final.operationStatus,'uncertain');
+ assert.equal(final.limits.message.sent,1,'never double-charge a lost ACK');
+});
