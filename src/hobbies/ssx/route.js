@@ -313,14 +313,16 @@ function serveSSX2012(req, res, pathname) {
   if(serveSSXMedia(req,res,pathname))return true;
   if(ssxAuth.handleAuth(req,res,pathname))return true;
   const isAdmin=pathname===ssxAuth.BASE;
-  const isPreview = pathname === SSX_V37_PREVIEW_ROUTE || pathname === SSX_V37_PREVIEW_ROUTE + '/';
-  const isArchive = pathname === SSX_V36_ARCHIVE_ROUTE || pathname === SSX_V36_ARCHIVE_ROUTE + '/';
-  const isPublic = pathname === SSX_ROUTE || pathname === SSX_ROUTE + '/';
-  if (!isPublic && !isPreview && !isArchive && !isAdmin) return false;
-  if(isArchive && !ssxAuth.readSession(req)){
-    res.writeHead(303,{Location:ssxAuth.BASE+'/login','Cache-Control':'no-store',
+  const isAdminArchive=pathname===ssxAuth.BASE+'/archive';
+  const isLegacyArchive=pathname===SSX_V36_ARCHIVE_ROUTE || pathname===SSX_V36_ARCHIVE_ROUTE+'/';
+  if(isLegacyArchive){
+    res.writeHead(303,{Location:ssxAuth.BASE+'/archive','Cache-Control':'no-store',
       'X-Robots-Tag':'noindex'});res.end();return true;
   }
+  const isPreview = pathname === SSX_V37_PREVIEW_ROUTE || pathname === SSX_V37_PREVIEW_ROUTE + '/';
+  const isArchive = isAdminArchive;
+  const isPublic = pathname === SSX_ROUTE || pathname === SSX_ROUTE + '/';
+  if (!isPublic && !isPreview && !isArchive && !isAdmin) return false;
   const method = String(req.method || '').toUpperCase();
   if (method !== 'GET' && method !== 'HEAD') {
     res.writeHead(405, { Allow: 'GET, HEAD', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' });
