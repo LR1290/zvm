@@ -50,3 +50,9 @@ A sessão expira em até oito horas. Cookie HttpOnly, Secure, SameSite Strict. S
 - Não misturar credenciais ZVM, Discord e SSX; nunca escrever token administrativo nos assets do navegador.
 
 **Limitação:** a existência de `SSX_PUBLIC_BRIDGE_URL` não implanta o Apps Script. Se o Bridge não estiver publicado e funcional, o Live Sync permanece offline apesar do código correto.
+
+## Compatibilidade Chromium: POST de formulário
+
+A página de login e o painel de saída usam `Referrer-Policy: same-origin`. A política anterior `no-referrer` fazia Chromium enviar `Origin: null` em formulários POST mesmo para o próprio host, que era recusado pelo controle contra CSRF. `same-origin` preserva o cabeçalho para o login/logout local sem enviar `Referer` em requisições para origens externas. Não aceitar `Origin: null` nos endpoints administrativos.
+
+Os documentos de rankings e editor legado permanecem em sandbox de origem opaca. Para administrar, abrir diretamente a URL `/hobbies/ssx/ssx2012/admin/login` em uma aba própria. O próprio login e dashboard não carregam scripts remotos.
