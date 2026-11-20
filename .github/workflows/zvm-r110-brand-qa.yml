@@ -1,0 +1,25 @@
+name: ZVM R110 official brand name (no deployment)
+on:
+  pull_request:
+    paths:
+      - 'lab/qa-auth/r110-*'
+      - '.github/workflows/zvm-r110-brand-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  brand-name:
+    name: product label and MV3 identity regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Brand name, manifest compatibility, drift and dry-run
+        run: node --test lab/qa-auth/r110-official-product-name.test.cjs
+      - name: Syntax and file whitespace
+        run: |
+          node --check lab/qa-auth/r110-official-product-name.cjs
+          git diff --check
