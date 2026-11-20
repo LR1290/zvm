@@ -2388,7 +2388,15 @@ async function readExtensionSession(rawToken, deps = {}) {
   const doc = await db.collection(EXTENSION_SESSION_COLLECTION).findOne({ _id: hashExtensionSessionToken(rawToken) });
   if (!doc) return { ok: false, errorCode: 'invalid_session' };
   if (doc.revokedAt) return { ok: false, errorCode: 'session_revoked' };
-  if (!doc.expiresAt || new Date(doc.expiresAt).getTime() <= now.getTime()) {
+  const sessionExpiry = new Date(doc.expiresAt).getTime();
+  if (!doc.expiresAt || !Number.isFinite(sessionExpiry) || sessionExpiry <= now.getTime()) {
+    return { ok: false, errorCode: 'session_expired' };
+  }
+  // R105: the 30-day absolute account cap also applies to direct token reads.
+  // An old/overlong expiresAt must not remain valid after the hard deadline.
+  const absoluteExpiry = extensionAccountAbsoluteExpiryMs(doc);
+  if (Number.isNaN(absoluteExpiry) ||
+      (absoluteExpiry !== null && absoluteExpiry <= now.getTime())) {
     return { ok: false, errorCode: 'session_expired' };
   }
   return { ok: true, doc };
@@ -2507,20 +2515,27 @@ async function authorizeExtensionKeySession(input, deps = {}) {
   };
 }
 
+function extensionAccountAbsoluteExpiryMs(doc) {
+  if (doc?.authMethod !== 'password' || doc?.signedDev === true) return null;
+  // Pre-policy account sessions have no absoluteExpiresAt: anchor to their
+  // ORIGINAL creation. Never accept a stored absolute cutoff > 30 days.
+  const created = new Date(doc.createdAt).getTime();
+  if (!Number.isFinite(created)) return NaN;
+  const maximum = created + EXTENSION_ACCOUNT_SESSION_ABSOLUTE_TTL_MS;
+  const recorded = doc.absoluteExpiresAt == null
+    ? maximum : new Date(doc.absoluteExpiresAt).getTime();
+  return Number.isFinite(recorded) ? Math.min(maximum, recorded) : NaN;
+}
+
 function extensionRenewedAccountExpiry(doc, now) {
   const current = new Date(doc?.expiresAt || 0);
   if (!Number.isFinite(current.getTime())) return null;
   if (doc?.authMethod !== 'password' || doc?.signedDev === true) return current;
-  // Legacy sessions issued before this policy have no absoluteExpiresAt.
-  // Their original createdAt is the anchor: refresh never resets the 30-day cap.
-  const created = new Date(doc.createdAt);
-  if (!Number.isFinite(created.getTime())) return null;
-  const rawAbsolute = doc.absoluteExpiresAt == null
-    ? created.getTime() + EXTENSION_ACCOUNT_SESSION_ABSOLUTE_TTL_MS
-    : new Date(doc.absoluteExpiresAt).getTime();
-  if (!Number.isFinite(rawAbsolute) || rawAbsolute <= now.getTime()) return null;
-  const wanted = Math.min(now.getTime() + EXTENSION_ACCOUNT_SESSION_IDLE_TTL_MS, rawAbsolute);
-  return new Date(Math.max(current.getTime(), wanted));
+  const absolute = extensionAccountAbsoluteExpiryMs(doc);
+  if (!Number.isFinite(absolute) || absolute <= now.getTime()) return null;
+  const wanted = Math.min(now.getTime() + EXTENSION_ACCOUNT_SESSION_IDLE_TTL_MS, absolute);
+  // Never preserve an overlong legacy expiresAt above the absolute cap.
+  return new Date(Math.min(absolute, Math.max(current.getTime(), wanted)));
 }
 
 // A Chrome Web Store update changes buildId/fingerprint while retaining the

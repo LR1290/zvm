@@ -33,9 +33,29 @@ async function executeV4FreeQuota({ collection, subject, tier, action = 'check',
   const operation = operationId.toLowerCase(), path = 'receipts.' + operation, field = 'counts.' + itemType;
   const getOp = doc => doc && doc.receipts && doc.receipts[operation];
   if (action === 'reconcile') {
-    const doc = await collection.findOne({ _id: recordId }), op = getOp(doc);
-    if (op && op.type !== itemType) fail('operation_type_mismatch', 409);
-    return output(doc, target, now, { operationStatus: op?.status || 'not_found', duplicate: !!op });
+    // R107: after a lost reserve ACK, the client's clock/UTC rollover can
+    // point at the wrong day. Reconcile is READ-ONLY: look for the same
+    // immutable operationId only across the existing 3-day retention window.
+    // Never issue a new reservation or infer that a WhatsApp send occurred.
+    const dates = [target];
+    for (let offset = 0; offset <= 2; offset++) {
+      const day = utcPeriod(new Date(now.getTime() - offset * 86400000));
+      if (!dates.includes(day)) dates.push(day);
+    }
+    let found = null;
+    for (const day of dates) {
+      const doc = await collection.findOne({ _id: 'v4free:' + subjectId + ':' + day });
+      const op = getOp(doc);
+      if (!op) continue;
+      if (op.type !== itemType) fail('operation_type_mismatch', 409);
+      // A reused operationId in multiple periods is ambiguous: fail closed
+      // rather than returning the wrong receipt or authorizing a replay.
+      if (found) fail('operation_period_conflict', 409);
+      found = { day, doc, op };
+    }
+    return output(found?.doc || null, found?.day || target, now, {
+      operationStatus: found?.op.status || 'not_found', duplicate: !!found
+    });
   }
   if (action === 'settle') {
     if (!['confirmed','uncertain'].includes(String(ack))) fail('invalid_settlement', 400);

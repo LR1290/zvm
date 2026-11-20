@@ -1,0 +1,25 @@
+--- a/app/background/authority/license-authority.js
++++ b/app/background/authority/license-authority.js
+@@ -76,9 +76,21 @@
+   if(!/^[a-f0-9]{32,64}$/.test(operationId)||!rec||rec.itemType!==itemType)throw extError('EXTAPP_FREE_QUOTA_RESERVATION_REQUIRED','Reserva anterior não encontrada.');
+   if(action==='reconcile'){
+-    var recovered=await extFreeQuotaV4Request({action:'reconcile',itemType:itemType,period:rec.period,operationId:operationId},subject);await same();
+-    var list=await load();if(list[operationId]){list[operationId].status=recovered.operationStatus;await save(list);}
+-    return {free:true,operationId:operationId,period:rec.period,operationStatus:recovered.operationStatus,limits:recovered.limits};
++    // A lost reserve ACK around UTC midnight can leave a client-side period
++    // that differs from the authoritative server period. Reconcile is READ ONLY.
++    var recovered;
++    try{recovered=await extFreeQuotaV4Request({action:'reconcile',itemType:itemType,period:rec.period,operationId:operationId},subject);}
++    catch(err){if(!err||err.code!=='invalid_period')throw err;
++      recovered=await extFreeQuotaV4Request({action:'reconcile',itemType:itemType,operationId:operationId},subject);}
++    await same();
++    if(!/^\d{4}-\d{2}-\d{2}$/.test(String(recovered.period||'')))throw extError('EXTAPP_FREE_QUOTA_INVALID_RESPONSE','Periodo da reserva invalido.');
++    var list=await load();if(list[operationId]){
++      list[operationId].status=recovered.operationStatus;
++      if(recovered.operationStatus!=='not_found')list[operationId].period=recovered.period;
++      await save(list);
++    }
++    // Only the server can correct the period. Never retry a WhatsApp send.
++    return {free:true,operationId:operationId,period:recovered.operationStatus==='not_found'?rec.period:recovered.period,operationStatus:recovered.operationStatus,limits:recovered.limits};
+   }
+   if(!['confirmed','uncertain'].includes(String(extra.ack)))throw extError('EXTAPP_FREE_QUOTA_ACK_INVALID','Confirmação da mensagem inválida.');

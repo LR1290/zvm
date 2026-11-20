@@ -1,0 +1,93 @@
+name: ZVM Complete V4 account session hard-cap QA (no deployment)
+
+on:
+  pull_request:
+    paths:
+      - 'server.js'
+      - 'package.json'
+      - 'tests/r82-session-continuity.test.js'
+      - 'tests/r105-v4-account-lifetime.test.js'
+      - 'tests/r106-v4-mongo-real.test.js'
+      - 'src/extension-v4-free-quota.js'
+      - 'tests/r98-v4-free-quota.test.js'
+      - 'lab/qa-auth/reconcile-r107.patch'
+      - 'lab/qa-auth/r107-client-reconcile.test.cjs'
+      - '.github/workflows/zvm-v4-account-lifetime.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  account-session-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.3'
+      - name: Syntax and actual server V4 session tests (synthetic users only)
+        run: |
+          node --check server.js
+          node --check tests/r105-v4-account-lifetime.test.js
+          node tests/r82-session-continuity.test.js
+          node tests/r105-v4-account-lifetime.test.js
+
+  mongo-session-race-real:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.3'
+          cache: npm
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --omit=optional --no-audit --no-fund
+      - name: Start private ephemeral MongoDB 8 for synthetic V4 sessions
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --rm --name zvm-r106-session-test \
+            -p 127.0.0.1:27020:27017 mongo:8.0 --bind_ip_all
+          ready=0
+          for i in $(seq 1 45); do
+            if docker exec zvm-r106-session-test mongosh --quiet \
+              --eval 'db.adminCommand({ping:1}).ok' 2>/dev/null | grep -qx '1'; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = 1
+      - name: Read/refresh/expire/logout CAS with REAL MongoDB and fictional records
+        env:
+          CI: 'true'
+          GITHUB_ACTIONS: 'true'
+          ZVM_R106_EPHEMERAL_ACK: 'private-mongo-only'
+        run: node tests/r106-v4-mongo-real.test.js
+      - name: Destroy ephemeral database even if tests fail
+        if: always()
+        shell: bash
+        run: docker rm -f zvm-r106-session-test >/dev/null 2>&1 || true
+
+  free-v4-midnight-reconciliation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.3'
+      - name: Test server reconciliation and syntax of offline client lab QA
+        run: |
+          node --check src/extension-v4-free-quota.js
+          node --check lab/qa-auth/r107-client-reconcile.test.cjs
+          node --test tests/r98-v4-free-quota.test.js
