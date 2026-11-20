@@ -72,6 +72,16 @@
     const direct=$('ssxDirectActions');
     if(direct)direct.setAttribute('aria-label',(translations.navigation||copy.more)+' · '+copy.manage);
   }
+  // Source provenance is a page-level dialog, never another child of the ranking table.
+  // Native <dialog> keeps keyboard focus, Escape and stacking out of the filter DOM.
+  let sourceReturnFocus = null;
+  function openSourcesDialog(trigger) {
+    const dialog=$('ssxSourcesDialog');
+    if(!dialog)return;
+    sourceReturnFocus=trigger||document.activeElement;
+    if(!dialog.open)dialog.showModal();
+    dialog.querySelector('.ssx-sources-close')?.focus({preventScroll:true});
+  }
   // Public destinations and tools remain one-tap actions, not another menu.
   // The original v36 buttons stay in the DOM to retain their event handlers.
   function installMobileNavigation(){
@@ -116,14 +126,9 @@
       const actionButton=event.target.closest('[data-ssx-action]');
       if(!actionButton)return;
       const action=actionButton.dataset.ssxAction;
-      if(action==='sources'){
-        const sources=$('alpineSources');
-        if(sources){
-          sources.open=true;
-          sources.setAttribute('aria-expanded','true');
-          sources.scrollIntoView({block:'start',behavior:'smooth'});
-          sources.querySelector(':scope > summary')?.focus({preventScroll:true});
-        }
+      if(action==='sources' || action==='dataBtn'){
+        // Both "Dados" and "Sobre os dados" lead to one canonical public view.
+        openSourcesDialog(actionButton);
         return;
       }
       const target=$(action);
@@ -167,8 +172,12 @@
     const lang=$('langBtn');if(lang)lang.setAttribute('aria-label',copy.language);
     const advanced=$('alpineAdvancedFilters')?.querySelector(':scope > summary');
     if(advanced)advanced.textContent=copy.advanced;
-    const sources=$('alpineSources')?.querySelector(':scope > summary');
-    if(sources)sources.textContent=copy.sources;
+    const sourcesTitle=$('ssxSourcesTitle');
+    if(sourcesTitle)sourcesTitle.textContent=copy.sources;
+    const closeSources=$('ssxSourcesClose');
+    if(closeSources)closeSources.setAttribute('aria-label',({
+      pt:'Fechar',en:'Close',de:'Schließen',es:'Cerrar',nl:'Sluiten',fr:'Fermer'
+    })[language()]||'Close');
     const footer=document.querySelector('.footer');
     if(footer)footer.textContent=copy.footer;
     const eyebrow=document.querySelector('.hero-main > .eyebrow');
@@ -242,7 +251,7 @@
     }
     const eyebrow=document.querySelector('.hero-main > .eyebrow');
     eyebrow?.removeAttribute('data-i');
-    const advanced=$('alpineAdvancedFilters'),sources=$('alpineSources');
+    const advanced=$('alpineAdvancedFilters');
     const topN=$('topN')?.closest('.field');
     const actions=toolbar.querySelector('.toolbar-actions');
     if(advanced){
@@ -254,14 +263,6 @@
       if(topN)inner.append(topN);
       if(actions)inner.append(actions);
       advanced.append(inner);
-    }
-    // Sources are informational, not a filtering control. Never put the source
-    // disclosures inside "Mais filtros": that caused the header shortcut to
-    // jump into the middle of the ranking filters on desktop and mobile.
-    if(sources){
-      sources.classList.add('ssx-source-disclosure','ssx-sources-standalone');
-      sources.removeAttribute('aria-hidden');
-      toolbar.insertAdjacentElement('afterend',sources);
     }
     if(credits){
       const box=document.createElement('details');
@@ -1366,14 +1367,32 @@
 
     const src=document.querySelector('.source-strip'),policy=$('racePolicy');
     if(src){
-      const details=document.createElement('details');
-      details.id='alpineSources';
-      details.className='alpine-details';
-      const summary=text('summary','', '');
-      summary.dataset.alpineI18n='sources';
-      details.append(summary,src);
-      if(policy)details.append(policy);
-      modes.insertAdjacentElement('afterend',details);
+      const dialog=document.createElement('dialog');
+      dialog.id='ssxSourcesDialog';
+      dialog.className='ssx-sources-dialog';
+      dialog.setAttribute('aria-labelledby','ssxSourcesTitle');
+      const head=text('header','','ssx-sources-dialog-head');
+      const title=text('h2','','ssx-sources-dialog-title');
+      title.id='ssxSourcesTitle';
+      const close=text('button','×','ssx-sources-close');
+      close.id='ssxSourcesClose';
+      close.type='button';
+      close.setAttribute('aria-label','Fechar');
+      close.addEventListener('click',()=>dialog.close());
+      head.append(title,close);
+      const body=text('div','','ssx-sources-dialog-body');
+      body.id='alpineSources';
+      body.append(src);
+      if(policy)body.append(policy);
+      dialog.append(head,body);
+      dialog.addEventListener('click',event=>{
+        if(event.target===dialog)dialog.close();
+      });
+      dialog.addEventListener('close',()=>{
+        if(sourceReturnFocus?.isConnected)sourceReturnFocus.focus({preventScroll:true});
+        sourceReturnFocus=null;
+      });
+      document.body.append(dialog);
     }
     const categoryField=$('categoryField');
     if(categoryField){
@@ -1481,12 +1500,6 @@
     mountSheetControls(card,toolbar);
     mountSheetModeFilter(card);
     mountResetControl(toolbar);
-    // mountSheetControls reparents the toolbar into the scorecard. The source
-    // disclosure must be reparented *after* that move, not left behind by
-    // the original toolbar location in the DOM.
-    const sourceDisclosure=$('alpineSources');
-    if(sourceDisclosure)toolbar.after(sourceDisclosure);
-
     modes.addEventListener('click',event=>{
       const item=event.target.closest('[data-alpine-group]');
       if(item){
