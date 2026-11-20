@@ -2418,7 +2418,14 @@ async function resolveExtensionAccountEntitlement(user, deps = {}) {
   const now = extensionNow(deps);
   const keyStore = deps.keyStore || keys;
   const keyCode = sanitizeId(user?.keyCode, 32);
-  if (!keyCode) return { ok: true, keyCode: null, devAccess:false, entitlement: buildExtensionEntitlement({ now }) };
+  if (!keyCode) {
+    // QA-only: grant build access to the *designated verified Free account*.
+    // Its capabilities remain the original Free entitlement.
+    const subject = extensionSubject('account', user?._id).id;
+    const qaFreeAccess = process.env.ZVM_QA_VERIFY_ONLY === '1'
+      && require('./lab/signing-r104/qa-free.cjs').freeDevAccess(user, deps.db, subject);
+    return { ok: true, keyCode: null, devAccess: qaFreeAccess, entitlement: buildExtensionEntitlement({ now }) };
+  }
   const loaded = await (deps.ensureKeyLoadedEx || ensureKeyLoadedEx)(keyCode);
   if (loaded.dbError) return extensionAuthFailure('temporarily_unavailable', 503, { retryable: true });
   const keyRecord = loaded.found ? keyStore[keyCode] : null;
@@ -8685,7 +8692,10 @@ const ZVM_DEV_SIGNED_BUILDS_ALLOW = ZVM_LOCAL_SAFE_MODE ? false : /^(1|true|yes|
 let ZVM_DEV_SIGNING_CONFIG;
 let ZVM_DEV_SIGNING_CONFIG_ERROR = null;
 try {
-  ZVM_DEV_SIGNING_CONFIG = loadDevBuildSigningConfig(process.env);
+  // QA-only public verifier. Signing is always offline and private.
+  ZVM_DEV_SIGNING_CONFIG = process.env.ZVM_QA_VERIFY_ONLY === '1'
+    ? require('./lab/qa-completa-r104/qa-verifier-only.cjs').loadQaVerifierConfig(process.env)
+    : loadDevBuildSigningConfig(process.env);
 } catch (error) {
   ZVM_DEV_SIGNING_CONFIG_ERROR = error;
   ZVM_DEV_SIGNING_CONFIG = Object.freeze({
@@ -8694,7 +8704,7 @@ try {
     agentTokenHash: '', maxBuildAgeMs: 7 * 24 * 60 * 60 * 1000, sessionTtlMs: 12 * 60 * 60 * 1000,
   });
 }
-const ZVM_DEV_SIGNING_SERVICE = ZVM_DEV_SIGNING_CONFIG.enabled === true && !ZVM_DEV_SIGNING_CONFIG_ERROR
+const ZVM_DEV_SIGNING_SERVICE = ZVM_DEV_SIGNING_CONFIG.enabled === true && !!ZVM_DEV_SIGNING_CONFIG.privateKey && !ZVM_DEV_SIGNING_CONFIG_ERROR
   ? createDevBuildSigningService(ZVM_DEV_SIGNING_CONFIG)
   : null;
 
