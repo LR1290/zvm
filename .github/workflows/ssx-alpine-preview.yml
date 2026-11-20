@@ -17,6 +17,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Install runtime dependencies for favicon and SSX route
+        run: npm ci --omit=dev --ignore-scripts --no-audit --no-fund
       - name: Parse JS modules
         run: |
           node --check src/hobbies/ssx/route.js
