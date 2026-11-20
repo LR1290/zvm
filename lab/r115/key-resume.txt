@@ -1,0 +1,3 @@
+phone PASS 0
+response PASS 1
+storage PASS 1

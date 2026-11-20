@@ -1,0 +1,24 @@
+--- a/app/background/authority/send-effect-journal.js
++++ b/app/background/authority/send-effect-journal.js
+@@ -51,7 +51,9 @@
+ request.onerror=function(){if(settled)return;settled=true;if(dbp===pending)dbp=null;reject(request.error||fail("SEND_EFFECT_JOURNAL_UNAVAILABLE","O journal durável de envios não pôde ser aberto."));};
+ request.onblocked=function(){if(settled)return;settled=true;if(dbp===pending)dbp=null;reject(fail("SEND_EFFECT_JOURNAL_BLOCKED","O journal durável de envios está temporariamente bloqueado."));};
+ });
+-dbp=pending;return pending;
++dbp=pending;
++pending.catch(function(){if(dbp===pending)dbp=null;});
++return pending;
+ }
+ function requestResult(request){return new Promise(function(resolve,reject){request.onsuccess=function(){resolve(request.result);};request.onerror=function(){reject(request.error||fail("SEND_EFFECT_JOURNAL_IO","Falha ao acessar o journal durável de envios."));};});}
+ function transactionDone(tx){return new Promise(function(resolve,reject){tx.oncomplete=function(){resolve(true);};tx.onerror=function(){reject(tx.error||fail("SEND_EFFECT_JOURNAL_IO","Falha ao persistir o journal durável de envios."));};tx.onabort=function(){reject(tx.error||fail("SEND_EFFECT_JOURNAL_IO","A gravação do journal durável foi cancelada."));};});}
+--- a/app/content/security/session/auth-ui.js
++++ b/app/content/security/session/auth-ui.js
+@@ -358,6 +358,8 @@
+ var attempt=++attemptNumber;
+ var timer=setTimeout(function(){
+ if(attempt!==attemptNumber)return;
++if(waitingListener){window.removeEventListener("extui-s0-state",waitingListener);waitingListener=null;}
++if(!root.isConnected)return;
+ setAccountBusy(false);setKeyBusy(false);
+ setError("A confirmação ainda está pendente. Aguarde ou inicie outra tentativa.");
+ },750);
