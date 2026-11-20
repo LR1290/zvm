@@ -6,7 +6,7 @@ p.add_argument('--key',type=pathlib.Path)
 p.add_argument('--out',type=pathlib.Path)
 p.add_argument('--qa-host', required=True, help='Hostname HTTPS do ambiente QA previamente verificado')
 a=p.parse_args()
-if not re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.onrender\.com', a.qa_host) or a.qa_host=='zvm.onrender.com':p.error('Informe o hostname exclusivo QA compatível com o runtime R104')
+if not re.fullmatch(r'zvm-completa-qa-[a-z0-9-]+\.onrender\.com', a.qa_host):p.error('Informe hostname EXCLUSIVO zvm-completa-qa-*.onrender.com; produção/LITE não são permitidos')
 if bool(a.key)!=bool(a.out):p.error('--key e --out devem ser usados juntos')
 h=lambda b:hashlib.sha256(b).hexdigest()
 def encode(value,sort=False):
