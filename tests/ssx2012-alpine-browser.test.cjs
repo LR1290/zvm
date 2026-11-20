@@ -971,7 +971,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(trick.mode,'trick');
     assert.equal(trick.board,'none');
     assert.notEqual(trick.trick,'none');
-    const wings=await evaluate(cdp.send,sid,"(()=>{document.querySelector('[data-alpine-group=\"race\"]').click();document.querySelector('[data-alpine-mode=\"wings\"]').click();document.querySelector('#ssxDirectActions [data-ssx-action="sources"]').click();const sourceOpen=document.querySelector('#ssxSourcesDialog').open;document.querySelector('#ssxSourcesClose').click();return{mode:document.body.dataset.ssxMode,sourceOpen,wings:getComputedStyle(document.querySelector('#sheet td.mode-wings')).display,proof:!!document.querySelector('a.proof[href]')};})()");
+    const wings=await evaluate(cdp.send,sid,"(()=>{document.querySelector('[data-alpine-group=\"race\"]').click();document.querySelector('[data-alpine-mode=\"wings\"]').click();document.querySelector('#ssxDirectActions [data-ssx-action=sources]').click();const sourceOpen=document.querySelector('#ssxSourcesDialog').open;document.querySelector('#ssxSourcesClose').click();return{mode:document.body.dataset.ssxMode,sourceOpen,wings:getComputedStyle(document.querySelector('#sheet td.mode-wings')).display,proof:!!document.querySelector('a.proof[href]')};})()");
     assert.equal(wings.mode,'wings');
     assert.equal(wings.sourceOpen,true);
     assert.notEqual(wings.wings,'none');
