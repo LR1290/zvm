@@ -1,0 +1,45 @@
+name: ZVM R105 QA config verification (no deployment)
+
+on:
+  pull_request:
+    paths:
+      - "lab/qa-completa-r104/**"
+      - "lab/signing-r104/qa-only.patch"
+      - ".github/workflows/zvm-r105-qa-config.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qa-config:
+    name: verify QA isolation and public-only DEV attestation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Unit tests without network access to Atlas or Render
+        run: |
+          node --test lab/qa-completa-r104/*.test.cjs
+          node --test lab/signing-r104/qa-free.test.cjs
+      - name: Validate QA-only patches apply to exact server source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --check lab/signing-r104/qa-only.patch
+          git apply lab/signing-r104/qa-only.patch
+          git apply --check lab/qa-completa-r104/qa-verifier-only.patch
+          git apply lab/qa-completa-r104/qa-verifier-only.patch
+          node --check server.js
+          git diff --check
+      - name: Verify no private key or other QA secrets committed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -n -E -- '-----BEGIN (EC |RSA |ED25519 )?PRIVATE KEY-----' lab/qa-completa-r104/; then
+            echo 'Private key detected in QA configuration; refusing checkout'
+            exit 1
+          fi
