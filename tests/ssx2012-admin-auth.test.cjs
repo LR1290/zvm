@@ -63,6 +63,7 @@ test('admin email/password uses same-origin POST, signed HttpOnly cookie and no-
   assert.equal(login.status,200);
   assert.match(await login.text(),/type="email"/);
   assert.match(login.headers.get('content-security-policy'),/form-action 'self'/);
+  assert.equal(login.headers.get('referrer-policy'),'same-origin','Same-site HTML form POST must preserve Origin');
   const payload=new URLSearchParams({email:'admin@example.com',password});
   const forbidden=await fetch(base+ADMIN+'/login',{method:'POST',body:payload,redirect:'manual'});
   assert.equal(forbidden.status,403,'Login must reject cross-site or no-Origin POSTs');
@@ -82,6 +83,7 @@ test('admin email/password uses same-origin POST, signed HttpOnly cookie and no-
   assert.equal(admin.status,200);
   assert.equal(admin.headers.get('cache-control'),'no-store, private');
   assert.match(admin.headers.get('content-security-policy'),/default-src 'none'/);
+  assert.equal(admin.headers.get('referrer-policy'),'same-origin');
   const dashboard=await admin.text();
   assert.match(dashboard,/Painel administrativo/);
   assert.match(dashboard,/action="\/hobbies\/ssx\/ssx2012\/admin\/logout"/);
