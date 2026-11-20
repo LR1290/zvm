@@ -983,8 +983,14 @@
     const raw=typeof G!=='undefined'&&Array.isArray(G)?G:null;
     const tracks=typeof TRACKS!=='undefined'&&Array.isArray(TRACKS)?TRACKS:null;
     const meta=typeof META!=='undefined'?META:null;
+    const special=typeof SNG!=='undefined'&&Array.isArray(SNG)?SNG:null;
+    const refreshedRegions=meta?.regionalCapture==='2026-11-20';
+    const sourceCountsValid=refreshedRegions
+      ? Boolean(special&&Number(meta.googleRecords)===raw?.length+special.length&&
+        Number(meta.regionalGroupsUpdated)>=60&&raw?.length>=5400&&raw?.length<=6100)
+      : Number(meta?.googleRecords)===6024&&raw?.length===5887;
     if(!raw||!tracks||!meta||meta.snapshot!=='2026-08-22'||
-      Number(meta.googleRecords)!==6024||raw.length!==5887||tracks.length!==83)return [];
+      !sourceCountsValid||tracks.length!==83)return [];
     const rows=raw.filter(row=>Array.isArray(row)&&row[0]==='DEV Tracks');
     if(rows.length!==10)return [];
     const indexed=new Map();
