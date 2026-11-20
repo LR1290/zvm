@@ -23,6 +23,8 @@ jobs:
         run: |
           node --check src/hobbies/ssx/route.js
           node --check src/hobbies/ssx/admin-auth.js
+          node --check src/hobbies/ssx/admin-dashboard.js
+          node --check src/hobbies/ssx/live-endpoint.js
           node --check src/hobbies/ssx/alpine-v37.js
           node --check src/hobbies/ssx/special-categories-v1.js
           node --check src/hobbies/ssx/special-leaders-core.js
