@@ -1518,6 +1518,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
           adminView.body.includes('Painel administrativo'))break;
       await sleep(100);
     }
+    console.log('SSX_ADMIN_LOGIN_BROWSER_DIAGNOSTIC',JSON.stringify(adminView));
     assert.ok(adminView.body.includes('Painel administrativo'),
       'Browser login must issue a valid signed and Secure cookie');
     await cdp.send('Page.navigate',{url:adminBase+'/editor'},sid);
