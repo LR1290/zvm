@@ -6,6 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const zlib = require('node:zlib');
 const { SSX_FAVICON_ROUTE, serveSSXFavicon } = require('./official-favicon');
+const ssxAuth = require('./admin-auth');
 
 const SSX_ROUTE = '/hobbies/ssx/ssx2012';
 const SSX_V36_ARCHIVE_ROUTE = '/hobbies/ssx/ssx2012-v36';
@@ -82,6 +83,7 @@ let content = null;
 let packed = null;
 let error = false;
 let v37Preview = null;
+const ssxSiteVariants = new Map();
 
 // The upstream connector limits single-blob uploads. These ten binary chunks are
 // *one* deterministic gzip artifact, not runtime dependencies or duplicated code.
@@ -207,13 +209,118 @@ function bodyFor(encoding) {
   return content;
 }
 
+
+// Public live sync configuration is server-owned. Never trust a browser-provided
+// spreadsheet URL, and never embed an administrator/bot secret in HTML.
+function publicBridgeEndpoint() {
+  const raw=String(process.env.SSX_PUBLIC_BRIDGE_URL||'').trim();
+  try {
+    const u=new URL(raw);
+    if(u.protocol!=='https:' || u.hostname.toLowerCase()!=='script.google.com' ||
+      !/^\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(u.pathname) || u.search || u.hash || u.username || u.password) return '';
+    return u.toString();
+  } catch {return '';}
+}
+function configureLiveEndpoint(html, admin) {
+  const before="function loadLiveConfig(){LIVE_STATE.endpoint=normalizeAdminEndpoint(safeGet('ssx.live.endpoint','')||safeGet('ssx.admin.endpoint',''));";
+  const configured=JSON.stringify(publicBridgeEndpoint());
+  const replacement="function loadLiveConfig(){LIVE_STATE.endpoint=normalizeAdminEndpoint("+configured+
+    (admin?"||safeGet('ssx.live.endpoint','')||safeGet('ssx.admin.endpoint','')":"")+");";
+  if(!html.includes(before))throw new Error('SSX_LIVE_CONFIG_ANCHOR_MISSING');
+  return html.replace(before,replacement);
+}
+// The existing v36 frontend initializes its moderation inputs even when they
+// are unused. Replace the actual admin panels server-side with inert hidden
+// compatibility stubs: no privileged panel/configuration is shipped to players.
+function replaceDivById(html,id,replacement) {
+  const startPattern=new RegExp('<div\\b[^>]*\\bid="'+id+'"[^>]*>','i');
+  const found=startPattern.exec(html);
+  if(!found)throw new Error('SSX_PUBLIC_REDACTION_ANCHOR_MISSING:'+id);
+  const start=found.index;
+  const matcher=/<\/?div\b[^>]*>/gi;
+  matcher.lastIndex=start+found[0].length;
+  let depth=1,match;
+  while((match=matcher.exec(html))) {
+    if(/^<\//.test(match[0]))depth--;
+    else depth++;
+    if(depth===0)return html.slice(0,start)+replacement+html.slice(matcher.lastIndex);
+  }
+  throw new Error('SSX_PUBLIC_REDACTION_UNBALANCED:'+id);
+}
+function sanitizeSSXPublic(html) {
+  const adminInputs=['adminRider','adminResult','adminEvidence','adminEndpoint','adminToken'];
+  const adminSelects=['adminKind','adminCountry','adminRegion','adminTrack'];
+  const adminButtons=['adminPreviewBtn','adminSyncBtn','adminSaveBridge','adminPing'];
+  const adminMarkup='<div id="adminModal" class="overlay" hidden aria-hidden="true">'+
+    adminInputs.map(id=>'<input type="text" id="'+id+'" hidden>').join('')+
+    adminSelects.map(id=>'<select id="'+id+'" hidden></select>').join('')+
+    adminButtons.map(id=>'<button type="button" id="'+id+'" hidden></button>').join('')+
+    '<div id="adminCountryFlag"></div><span id="adminResultHelp"></span>'+
+    '<span id="adminResultIcon"></span><div id="adminPreview"></div>'+
+    '<div id="adminBridgeStatus"></div></div>';
+  const submissionsMarkup='<div id="submissionsModal" class="overlay" hidden aria-hidden="true">'+
+    '<input id="discordApiEndpoint" hidden><input id="discordAdminKey" hidden>'+
+    '<div id="discordStatus"></div><div id="submissionsList"></div></div>';
+  const publicSources='<div id="dataModal" class="overlay" aria-hidden="true">'+
+    '<div class="modal narrow"><div class="modal-head"><h2>Dados e fontes</h2>'+
+    '<button class="btn close" type="button" data-close="dataModal">×</button></div>'+
+    '<div class="modal-body"><p>Fontes históricas: Google Sheets e arquivo Ozmonet (2017). '+
+    'O arquivo offline permanece disponível caso o Live Sync esteja indisponível.</p>'+
+    '<p>Os rankings públicos são somente leitura. A configuração das integrações e a moderação '+
+    'são exclusivas da administração.</p><div id="selfAuditStatus"></div></div></div></div>';
+  html=replaceDivById(html,'adminModal',adminMarkup);
+  html=replaceDivById(html,'submissionsModal',submissionsMarkup);
+  html=replaceDivById(html,'dataModal',publicSources);
+  for(const id of ['adminBtn','submissionsBtn']){
+    const pattern=new RegExp('<button\\b(?=[^>]*\\bid="'+id+'")[^>]*>[\\s\\S]*?<\\/button>','i');
+    if(!pattern.test(html))throw new Error('SSX_PUBLIC_REDACTION_BUTTON_MISSING:'+id);
+    html=html.replace(pattern,'<button id="'+id+'" type="button" hidden aria-hidden="true"></button>');
+  }
+  const hide='<style id="ssx-public-security">[hidden]{display:none!important}'+
+    '#ssxManagement,#ssxManagementLabel,#adminBtn,#submissionsBtn,'+
+    '[data-ssx-action="adminBtn"],[data-ssx-action="submissionsBtn"],'+
+    '[data-ssx-mobile-label="admin"],[data-ssx-mobile-label="submissions"]{display:none!important}</style>';
+  if(!/<\/head\s*>/i.test(html))throw new Error('SSX_PUBLIC_HEAD_MISSING');
+  return html.replace(/<\/head\s*>/i,hide+'</head>');
+}
+function siteVariant(admin=false,fallback=false) {
+  const key=(admin?'admin':'public')+(fallback?'-fallback':'');
+  if(ssxSiteVariants.has(key))return ssxSiteVariants.get(key);
+  const original=fallback?content.toString('utf8'):loadV37Preview().content.toString('utf8');
+  const html=configureLiveEndpoint(admin?original:sanitizeSSXPublic(original),admin);
+  const data=Buffer.from(html,'utf8');
+  const variant={content:data,hash:crypto.createHash('sha256').update(data).digest('hex'),gzip:null,br:null};
+  ssxSiteVariants.set(key,variant);
+  return variant;
+}
+function siteBodyFor(encoding,admin=false,fallback=false) {
+  const variant=siteVariant(admin,fallback);
+  if(encoding==='gzip'){
+    if(!variant.gzip)variant.gzip=zlib.gzipSync(variant.content,{level:6});
+    return variant.gzip;
+  }
+  if(encoding==='br'){
+    if(!variant.br)variant.br=zlib.brotliCompressSync(variant.content,{
+      params:{[zlib.constants.BROTLI_PARAM_QUALITY]:4}
+    });
+    return variant.br;
+  }
+  return variant.content;
+}
+
 function serveSSX2012(req, res, pathname) {
   if(serveSSXFavicon(req,res,pathname))return true;
   if(serveSSXMedia(req,res,pathname))return true;
+  if(ssxAuth.handleAuth(req,res,pathname))return true;
+  const isAdmin=pathname===ssxAuth.BASE;
   const isPreview = pathname === SSX_V37_PREVIEW_ROUTE || pathname === SSX_V37_PREVIEW_ROUTE + '/';
   const isArchive = pathname === SSX_V36_ARCHIVE_ROUTE || pathname === SSX_V36_ARCHIVE_ROUTE + '/';
   const isPublic = pathname === SSX_ROUTE || pathname === SSX_ROUTE + '/';
-  if (!isPublic && !isPreview && !isArchive) return false;
+  if (!isPublic && !isPreview && !isArchive && !isAdmin) return false;
+  if(isArchive && !ssxAuth.readSession(req)){
+    res.writeHead(303,{Location:ssxAuth.BASE+'/login','Cache-Control':'no-store',
+      'X-Robots-Tag':'noindex'});res.end();return true;
+  }
   const method = String(req.method || '').toUpperCase();
   if (method !== 'GET' && method !== 'HEAD') {
     res.writeHead(405, { Allow: 'GET, HEAD', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' });
@@ -238,17 +345,23 @@ function serveSSX2012(req, res, pathname) {
   const encoding = pickEncoding(req.headers['accept-encoding']);
   let body, etag, fallback = false;
   try {
-    body = isArchive ? bodyFor(encoding) : v37BodyFor(encoding);
+    body = isArchive ? bodyFor(encoding) : siteBodyFor(encoding,isAdmin,false);
     etag = isArchive
-      ? '"ssx36-' + SHA256.slice(0, 24) + '-' + encoding + '"'
-      : (isPreview ? '"ssx38preview-' : '"ssx38-') + v37Preview.hash.slice(0, 24) + '-' + encoding + '"';
+      ? '"ssx36-' + SHA256.slice(0,24) + '-' + encoding + '"'
+      : '"ssx39-' + (isAdmin?'admin-':isPreview?'preview-':'public-')+
+        siteVariant(isAdmin,false).hash.slice(0,24) + '-' + encoding + '"';
   } catch (cause) {
     console.error('[SSX-HOBBY] Alpine v37 unavailable:', cause.code || cause.message);
     if (isPublic) {
       // Keep the original public address usable if Alpine assets fail to load.
       fallback = true;
-      body = bodyFor(encoding);
-      etag = '"ssx36fallback-' + SHA256.slice(0, 24) + '-' + encoding + '"';
+      try {
+        body=siteBodyFor(encoding,false,true);
+        etag='"ssx39public-fallback-'+siteVariant(false,true).hash.slice(0,24)+'-'+encoding+'"';
+      } catch(redactionError) {
+        res.writeHead(503,{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store'});
+        res.end(method==='HEAD'?undefined:'SSX temporarily unavailable');return true;
+      }
     } else {
       res.writeHead(503, { 'Content-Type':'text/plain; charset=utf-8', 'Cache-Control':'no-store', 'X-Robots-Tag':'noindex' });
       res.end(method === 'HEAD' ? undefined : 'SSX preview temporarily unavailable');
@@ -257,7 +370,7 @@ function serveSSX2012(req, res, pathname) {
   }
   const headers = {
     'Content-Type': 'text/html; charset=utf-8',
-    'Cache-Control': isPreview || fallback ? 'no-store' : 'public, max-age=300',
+    'Cache-Control': isPreview || fallback || isAdmin || isArchive ? 'no-store, private' : 'public, max-age=300',
     ETag: etag,
     Vary: 'Accept-Encoding',
     'Content-Length': body.length,
@@ -270,8 +383,8 @@ function serveSSX2012(req, res, pathname) {
     'Referrer-Policy': 'no-referrer',
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   };
-  headers['X-SSX-Variant'] = isPreview ? 'ssx-ui-v38-preview'
-    : isArchive ? 'v36-archive' : fallback ? 'v36-fallback' : 'ssx-ui-v38';
+  headers['X-SSX-Variant'] = isAdmin ? 'ssx-admin-v39' : isPreview ? 'ssx-ui-v39-preview'
+    : isArchive ? 'v36-archive-auth' : fallback ? 'v36-public-redacted' : 'ssx-ui-v39-public';
   if (encoding !== 'identity') headers['Content-Encoding'] = encoding;
   if (String(req.headers['if-none-match'] || '').trim() === etag) {
     delete headers['Content-Length'];
@@ -282,4 +395,4 @@ function serveSSX2012(req, res, pathname) {
   return true;
 }
 
-module.exports = { serveSSX2012, serveSSXMedia, SSX_ROUTE, SSX_V36_ARCHIVE_ROUTE, SSX_MEDIA_BASE, SSX_V37_PREVIEW_ROUTE, SHA256 };
+module.exports = { serveSSX2012, serveSSXMedia, SSX_ROUTE, SSX_V36_ARCHIVE_ROUTE, SSX_MEDIA_BASE, SSX_V37_PREVIEW_ROUTE, SHA256, publicBridgeEndpoint, sanitizeSSXPublic, ssxAuth };
