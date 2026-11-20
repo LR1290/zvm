@@ -9,6 +9,7 @@ const { SSX_FAVICON_ROUTE, serveSSXFavicon } = require('./official-favicon');
 const ssxAuth = require('./admin-auth');
 const ssxDashboard = require('./admin-dashboard');
 const { publicBridgeEndpoint } = require('./live-endpoint');
+const { updateHtml:applyReadOnlyRegionalSnapshot }=require('./sheet-r111');
 
 const SSX_ROUTE = '/hobbies/ssx/ssx2012';
 const SSX_V36_ARCHIVE_ROUTE = '/hobbies/ssx/ssx2012-v36';
@@ -280,9 +281,10 @@ function siteVariant(admin=false,fallback=false) {
   const key=(admin?'admin':'public')+(fallback?'-fallback':'');
   if(ssxSiteVariants.has(key))return ssxSiteVariants.get(key);
   const original=fallback?content.toString('utf8'):loadV37Preview().content.toString('utf8');
-  const html=configureLiveEndpoint(admin?original:sanitizeSSXPublic(original),admin);
+  const reconciled=applyReadOnlyRegionalSnapshot(original);
+  const html=configureLiveEndpoint(admin?reconciled.html:sanitizeSSXPublic(reconciled.html),admin);
   const data=Buffer.from(html,'utf8');
-  const variant={content:data,hash:crypto.createHash('sha256').update(data).digest('hex'),gzip:null,br:null};
+  const variant={content:data,hash:crypto.createHash('sha256').update(data).digest('hex'),gzip:null,br:null,regionalSummary:reconciled.summary};
   ssxSiteVariants.set(key,variant);
   return variant;
 }
@@ -386,8 +388,9 @@ function serveSSX2012(req, res, pathname) {
     'Referrer-Policy': 'no-referrer',
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   };
-  headers['X-SSX-Variant'] = isAdmin ? 'ssx-admin-v39' : isPreview ? 'ssx-ui-v39-preview'
-    : isArchive ? 'v36-archive-auth' : fallback ? 'v36-public-redacted' : 'ssx-ui-v39-public';
+  if(!isArchive)headers['X-SSX-Regional-Snapshot']='2026-11-20';
+  headers['X-SSX-Variant'] = isAdmin ? 'ssx-admin-v40' : isPreview ? 'ssx-ui-v40-preview'
+    : isArchive ? 'v36-archive-auth' : fallback ? 'v36-public-redacted' : 'ssx-ui-v40-public';
   if (encoding !== 'identity') headers['Content-Encoding'] = encoding;
   if (String(req.headers['if-none-match'] || '').trim() === etag) {
     delete headers['Content-Length'];
