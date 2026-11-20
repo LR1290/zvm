@@ -65,7 +65,7 @@ test('published and preview public SSX views agree; privileged views require aut
   const published=await rawFetch(base+SSX_ROUTE);
   assert.equal(published.status,200); assert.equal(enhanced.status,200);
   assert.equal(archived.status,303,'v36 archived admin document must not be publicly accessible');
-  assert.equal(archived.headers.location,'/hobbies/ssx/ssx2012/admin/login');
+  assert.equal(archived.headers.location,'/hobbies/ssx/ssx2012/admin/archive');
   assert.equal(published.headers['x-ssx-variant'],'ssx-ui-v39-public');
   assert.equal(enhanced.headers['x-ssx-variant'],'ssx-ui-v39-preview');
   assert.equal(published.headers['cache-control'],'public, max-age=300');
@@ -102,7 +102,7 @@ test('preview routes reject writes and directory probes; canonical trailing slas
   assert.equal(redirect.headers.location,SSX_V37_PREVIEW_ROUTE);
   const archiveRedirect=await rawFetch(base+SSX_V36_ARCHIVE_ROUTE+'/');
   assert.equal(archiveRedirect.status,303);
-  assert.equal(archiveRedirect.headers.location,'/hobbies/ssx/ssx2012/admin/login');
+  assert.equal(archiveRedirect.headers.location,'/hobbies/ssx/ssx2012/admin/archive');
   const publicRedirect=await rawFetch(base+SSX_ROUTE+'/');
   assert.equal(publicRedirect.status,308);
   assert.equal(publicRedirect.headers.location,SSX_ROUTE);
