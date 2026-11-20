@@ -668,3 +668,47 @@ body.ssx-alpine-v37.ssx-alpine-v38 .ssx-special-score{
     gap:8px;
   }
 }
+
+/* R110: informational source disclosure belongs to the results section,
+   never inside search/category filter controls. */
+body.ssx-alpine-v38 #alpineSources.ssx-sources-standalone {
+  box-sizing:border-box;
+  position:relative;
+  display:block;
+  width:100%;
+  max-width:none;
+  margin:12px 0 20px;
+  padding:0;
+  clear:both;
+  scroll-margin-top:125px;
+  border:1px solid #2c4c63;
+  border-radius:14px;
+  background:#102534;
+  overflow:visible;
+}
+body.ssx-alpine-v38 #alpineSources.ssx-sources-standalone > summary {
+  display:flex;
+  align-items:center;
+  cursor:pointer;
+  min-height:46px;
+  padding:12px 17px;
+  color:#d6eaf5;
+  background:#102534;
+  border-radius:14px;
+  font-weight:750;
+}
+body.ssx-alpine-v38 #alpineSources.ssx-sources-standalone[open] > summary {
+  border-radius:14px 14px 0 0;
+  border-bottom:1px solid #2c4c63;
+}
+body.ssx-alpine-v38 #alpineSources.ssx-sources-standalone > .source-strip,
+body.ssx-alpine-v38 #alpineSources.ssx-sources-standalone > .race-policy {
+  margin:0;
+  width:100%;
+  max-width:none;
+  padding:14px;
+}
+@media(max-width:640px){
+  body.ssx-alpine-v38 #alpineSources.ssx-sources-standalone {scroll-margin-top:105px}
+  body.ssx-alpine-v38 #alpineSources.ssx-sources-standalone > summary {min-height:48px;padding:14px}
+}
