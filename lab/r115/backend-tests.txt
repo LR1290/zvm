@@ -1,0 +1,30 @@
+R46.78: Mongo reconnect, replay, password and 2FA passed
+✔ tests/r46-78-v4-session-db-recovery.test.js (103.019448ms)
+✔ Free without key or phone can check quota (2.669831ms)
+✔ 50 concurrent duplicate reservations debit only once (3.603295ms)
+✔ 40 distinct requests cannot exceed 20 message sends (2.460993ms)
+✔ reported WAJS confirmation is hashed and never consumes twice (0.546955ms)
+✔ uncertain ack remains charged and later confirmed (0.3804ms)
+✔ one operation id cannot change item type (0.533655ms)
+✔ old post-send commit and client refund are forbidden (0.248836ms)
+✔ ack confirmation requires WA-JS message id (0.451225ms)
+✔ client-reported active schedule count denied (0.345118ms)
+✔ paid/key sessions cannot use free quota (0.315244ms)
+✔ Mongo error never becomes success (0.251361ms)
+✔ only reconciliation may read previous day (0.256137ms)
+✔ daily cap is not bypassed with new operation IDs (1.642859ms)
+✔ R100: confirmed acknowledgement wins after an uncertain CAS races first (0.388692ms)
+✔ R100: uncertain acknowledgement cannot downgrade a concurrent positive receipt (0.320542ms)
+✔ R100: conflicting WA-JS receipt hashes for one operation are rejected (0.267864ms)
+✔ R100: sustained CAS contention fails closed without claiming confirmation (0.310698ms)
+✔ concurrent Free reservations respect the daily cap for audio (1.059861ms)
+✔ concurrent Free reservations respect the daily cap for document (1.051157ms)
+✔ concurrent Free reservations respect the daily cap for media (1.186938ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 175.123789
