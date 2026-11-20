@@ -1475,6 +1475,11 @@
     mountSheetControls(card,toolbar);
     mountSheetModeFilter(card);
     mountResetControl(toolbar);
+    // mountSheetControls reparents the toolbar into the scorecard. The source
+    // disclosure must be reparented *after* that move, not left behind by
+    // the original toolbar location in the DOM.
+    const sourceDisclosure=$('alpineSources');
+    if(sourceDisclosure)toolbar.after(sourceDisclosure);
 
     modes.addEventListener('click',event=>{
       const item=event.target.closest('[data-alpine-group]');
