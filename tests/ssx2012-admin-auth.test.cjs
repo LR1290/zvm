@@ -154,3 +154,45 @@ test('login rate limit trusts Render-owned client IP but ignores attacker X-Forw
     assert.equal(ssxAuth.adminClientIp(req),'10.0.0.23');
   }finally{if(old===undefined)delete process.env.RENDER;else process.env.RENDER=old;}
 });
+
+
+test('R113 administrative center provides verified snapshot diagnostics and protected JSON export',()=>harness(async base=>{
+  const anonymous=await fetch(base+ADMIN+'/export.json',{redirect:'manual'});
+  assert.equal(anonymous.status,303);
+  assert.equal(anonymous.headers.get('location'),ADMIN+'/login');
+  const login=await fetch(base+ADMIN+'/login',{
+    method:'POST',body:new URLSearchParams({email:'admin@example.com',password}),
+    headers:{Origin:base},redirect:'manual'
+  });
+  assert.equal(login.status,303);
+  const cookie=login.headers.get('set-cookie').split(';')[0];
+  const dashboard=await fetch(base+ADMIN,{headers:{Cookie:cookie}});
+  assert.equal(dashboard.status,200);
+  const home=await dashboard.text();
+  assert.match(home,/Exportar cópia JSON/);
+  assert.match(home,/Live Sync ainda não conectado|Endereço cadastrado; conexão não verificada/);
+  assert.match(home,/Auditar integridade/);
+  const diagnostics=await fetch(base+ADMIN+'/diagnostics',{headers:{Cookie:cookie}});
+  assert.equal(diagnostics.status,200);
+  const content=await diagnostics.text();
+  assert.match(content,/Diagnóstico e integridade/);
+  assert.match(content,/2026-11-20/);
+  assert.match(content,/Sessão por cookie HttpOnly\/Secure/);
+  const exportResponse=await fetch(base+ADMIN+'/export.json',{headers:{Cookie:cookie}});
+  assert.equal(exportResponse.status,200);
+  assert.equal(exportResponse.headers.get('cache-control'),'no-store, private');
+  assert.match(exportResponse.headers.get('content-disposition'),/attachment; filename=/);
+  const exported=await exportResponse.json();
+  assert.equal(exported.schemaVersion,1);
+  assert.equal(exported.regionalSnapshotDate,'2026-11-20');
+  assert.equal(exported.spreadsheetId,'1SAk84oy05R0UK3JJ_JWJTskSqxj4GpGJkdRqfSmnx2I');
+  assert.ok(exported.regularRecords.length>5000);
+  assert.ok(Array.isArray(exported.specialRecords));
+  assert.equal(exported.regionalSummary.totalRecordsAfter,exported.regularRecords.length);
+  assert.equal((await fetch(base+ADMIN+'/diagnostics',{redirect:'manual'})).status,303);
+  const wrongMethod=await fetch(base+ADMIN+'/export.json',{method:'POST',headers:{Cookie:cookie}});
+  assert.equal(wrongMethod.status,405);
+  const head=await fetch(base+ADMIN+'/export.json',{method:'HEAD',headers:{Cookie:cookie}});
+  assert.equal(head.status,200);
+  assert.equal(await head.text(),'');
+}));

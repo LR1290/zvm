@@ -307,9 +307,9 @@ function serveSSX2012(req, res, pathname) {
   if(serveSSXFavicon(req,res,pathname))return true;
   if(serveSSXMedia(req,res,pathname))return true;
   if(ssxAuth.handleAuth(req,res,pathname))return true;
-  if(pathname===ssxAuth.BASE || pathname===ssxAuth.BASE+'/bridge-health'){
+  if([ssxAuth.BASE,ssxAuth.BASE+'/bridge-health',ssxAuth.BASE+'/diagnostics',ssxAuth.BASE+'/export.json'].includes(pathname)){
     // Route is already authenticated. This read-only handler can complete asynchronously.
-    ssxDashboard.serveDashboard(req,res,pathname).catch(()=>{
+    ssxDashboard.serveDashboard(req,res,pathname,()=>siteVariant(false,false)).catch(()=>{
       if(!res.headersSent){res.writeHead(503,{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store'});}
       if(!res.writableEnded)res.end('SSX administrator dashboard temporarily unavailable');
     });

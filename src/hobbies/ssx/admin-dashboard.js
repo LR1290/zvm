@@ -2,6 +2,7 @@
 // Standalone administrator dashboard: no scripts or ZVM commercial credentials.
 const { publicBridgeEndpoint } = require('./live-endpoint');
 const { BASE } = require('./admin-auth');
+const { CAPTURED,SHEETS,SHEET_ID,locate }=require('./sheet-r111');
 const HEADERS=Object.freeze({
   'Cache-Control':'no-store, private',
   'X-Content-Type-Options':'nosniff',
@@ -22,27 +23,77 @@ function page(title,content) {
     '/logout"><button class="secondary" type="submit">Sair</button></form></header>'+content+
     '</main></body></html>';
 }
-function dashboard() {
-  const ep=publicBridgeEndpoint();
-  const deployment=ep ? ep.split('/').at(-2)||'' : '';
-  const epLabel=ep?'Google Apps Script · '+deployment.slice(0,6)+'…'+deployment.slice(-5):
-    'Aguardando configuração no Render';
-  const epState=ep?'<span class="status ok">URL validada</span>':
-    '<span class="status warn">Bridge não configurado</span>';
+function dashboard(snapshot) {
+  const ep=publicBridgeEndpoint(),report=snapshot?.regionalSummary;
+  const status=ep?'<span class="status warn">Endereço cadastrado; conexão não verificada</span>':
+    '<span class="status warn">Live Sync ainda não conectado</span>';
+  const count=report&&Number.isSafeInteger(report.totalRecordsAfter)
+    ?report.totalRecordsAfter.toLocaleString('pt-BR'):'indisponível';
   return page('Painel administrativo',
-    '<p>Administração independente do portal comercial da ZVM. Visitantes não recebem estas ferramentas.</p>'+
-    '<div class="grid"><section><h2>Google Sheets Live Sync</h2>'+epState+
-    '<p>'+escape(epLabel)+'</p>'+
-    '<p>O endereço público é definido exclusivamente pelo servidor, não pelo navegador do jogador.</p>'+
-    '<nav><a href="'+BASE+'/bridge-health">Verificar Bridge v8 (leitura)</a></nav></section>'+
-    '<section><h2>Gerenciar recordes</h2>'+
-    '<p>Ferramentas legadas de revisão e moderação. As gravações continuam exigindo credenciais exclusivas de Google e Discord.</p>'+
-    '<nav><a href="'+BASE+'/editor">Abrir editor</a>'+
+    '<p>Central privada do SSX 2012. Sessão autenticada, independente das contas e licenças da ZVM.</p>'+
+    '<div class="grid">'+
+    '<section><h2>Rankings oficiais</h2><p class="status ok">Snapshot preservado · '+escape(CAPTURED)+'</p>'+
+    '<p><strong>'+escape(count)+'</strong> registros históricos na edição regional consolidada.</p>'+
+    '<p>'+escape(SHEETS.length)+' regiões reconciliadas. Fonte Google Sheets mantida somente leitura.</p>'+
+    '<nav><a href="'+BASE+'/export.json">Exportar cópia JSON</a>'+
+    '<a class="secondary" href="'+BASE+'/diagnostics">Auditar integridade</a></nav></section>'+
+    '<section><h2>Sincronização Google</h2>'+status+
+    '<p>'+(ep?'A URL /exec foi aceita pelo validador; clique abaixo para testar a implantação v8.':
+    'A URL /exec do Apps Script v8 ainda precisa ser cadastrada no Render.')+'</p>'+
+    '<nav><a href="'+BASE+'/bridge-health">Testar conexão (somente leitura)</a></nav></section>'+
+    '<section><h2>Ferramentas de administração</h2>'+
+    '<p>O editor histórico é protegido pela sessão. Publicação e moderação na planilha exigem a integração oficial.</p>'+
+    '<nav><a href="'+BASE+'/editor">Abrir editor histórico</a>'+
     '<a class="secondary" href="'+BASE+'/archive">Arquivo original v36</a></nav></section></div>'+
-    '<section><h2>Proteção dos dados</h2>'+
-    '<p>O histórico Ozmonet é somente leitura. Nenhuma aprovação ou anúncio é iniciado ao verificar a conexão.</p>'+
-    '<nav><a href="/hobbies/ssx/ssx2012" class="secondary">Visualizar site público</a></nav></section>'+
-    '<small>Não coloque senhas nem segredos no endereço do navegador.</small>');
+    '<section><h2>Operação segura</h2>'+
+    '<p>Download e auditoria funcionam sem acesso de escrita ao Google. A exportação não altera rankings, provas, Discord nem licenças.</p>'+
+    '<nav><a class="secondary" href="/hobbies/ssx/ssx2012">Ver página pública</a>'+
+    '<a class="secondary" href="'+BASE+'/diagnostics">Estado do sistema</a></nav></section>'+
+    '<small>Não insira senhas, tokens administrativos ou chaves em URLs e formulários públicos.</small>');
+}
+function diagnostics(snapshot) {
+  const summary=snapshot?.regionalSummary||null;
+  const ep=publicBridgeEndpoint();
+  const val=key=>summary&&Number.isSafeInteger(summary[key])?summary[key].toLocaleString('pt-BR'):'não verificado';
+  return page('Diagnóstico e integridade',
+    '<p>Visão somente leitura da versão publicada. Sem escrita na planilha ou chamadas aos sistemas comerciais.</p>'+
+    '<div class="grid">'+
+    '<section><h2>Fonte oficial</h2><p class="status ok">Snapshot regional · '+escape(CAPTURED)+'</p>'+
+    '<p>'+escape(SHEETS.length)+' regiões da planilha oficial preservadas.</p>'+
+    '<p>Registros após reconciliação: <strong>'+escape(val('totalRecordsAfter'))+'</strong>.</p>'+
+    '<p>Registros atualizados ou novos: '+escape(val('changedOrNewRows'))+'.</p></section>'+
+    '<section><h2>Revisão de dados</h2>'+
+    '<p>Grupos regionais atualizados: '+escape(val('regionalGroupsUpdated'))+'.</p>'+
+    '<p>Linhas para revisão: '+escape(val('reviewRows'))+'.</p>'+
+    '<p>Grupos preservados por segurança: '+escape(summary?.skippedGroups?.length??'não verificado')+'.</p></section>'+
+    '<section><h2>Integração</h2>'+
+    '<p class="status '+(ep?'warn':'bad')+'">'+
+    (ep?'Endpoint cadastrado; teste pendente':'Endpoint público não cadastrado')+'</p>'+
+    '<p>Uma URL configurada não comprova a sincronização. O teste real consulta apenas o ping v8.</p>'+
+    '<nav><a href="'+BASE+'/bridge-health">Verificar Bridge v8</a></nav></section></div>'+
+    '<section><h2>Segurança do administrador</h2>'+
+    '<p>Sessão por cookie HttpOnly/Secure; acesso anônimo bloqueado; fonte pública separada da administração.</p>'+
+    '<p>Esta tela não mostra credenciais, sessão nem segredos de integração.</p>'+
+    '<nav><a href="'+BASE+'/export.json">Exportar JSON autenticado</a>'+
+    '<a class="secondary" href="'+BASE+'">Voltar ao painel</a></nav></section>');
+}
+function exportSnapshot(snapshot) {
+  if(!snapshot?.content||!snapshot?.regionalSummary)throw new Error('SSX_SNAPSHOT_NOT_AVAILABLE');
+  const html=snapshot.content.toString('utf8');
+  const regular=locate(html,'G').value;
+  const special=locate(html,'SNG').value;
+  if(!Array.isArray(regular)||regular.length<5000||!Array.isArray(special))
+    throw new Error('SSX_EXPORT_INTEGRITY_FAILED');
+  return {
+    schemaVersion:1,
+    exportedAt:new Date().toISOString(),
+    source:'SSX 2012 R111 · cópia autenticada somente leitura',
+    regionalSnapshotDate:CAPTURED,
+    spreadsheetId:SHEET_ID,
+    regionalSummary:snapshot.regionalSummary,
+    regularRecords:regular,
+    specialRecords:special
+  };
 }
 function healthPage(info) {
   const cls=info.ok?'ok':info.configured?'bad':'warn';
@@ -91,15 +142,39 @@ async function checkBridge(transport=fetch) {
   }catch{}
   return {configured:true,ok:false,version:0};
 }
-async function serveDashboard(req,res,pathname) {
-  if(pathname!==BASE&&pathname!==BASE+'/bridge-health')return false;
+async function serveDashboard(req,res,pathname,getSnapshot) {
+  if(![BASE,BASE+'/bridge-health',BASE+'/diagnostics',BASE+'/export.json'].includes(pathname))return false;
   const method=String(req.method||'').toUpperCase();
   if(method!=='GET'&&method!=='HEAD'){
     res.writeHead(405,{...HEADERS,Allow:'GET, HEAD'});res.end();return true;
   }
-  if(pathname===BASE){send(res,method,dashboard());return true;}
-  const info=await checkBridge();
-  send(res,method,healthPage(info),info.configured?200:503);
+  if(pathname===BASE+'/bridge-health'){
+    const info=await checkBridge();
+    send(res,method,healthPage(info),info.ok?200:info.configured?502:503);
+    return true;
+  }
+  let snapshot;
+  try {snapshot=getSnapshot?.();}catch{
+    send(res,method,page('Fonte indisponível',
+      '<p>A leitura da cópia oficial falhou. Nenhuma informação foi alterada.</p>'+
+      '<a href="'+BASE+'">Voltar</a>'),503);
+    return true;
+  }
+  if(pathname===BASE+'/export.json'){
+    try {
+      const body=Buffer.from(JSON.stringify(exportSnapshot(snapshot)),'utf8');
+      res.writeHead(200,{...HEADERS,
+        'Content-Type':'application/json; charset=utf-8',
+        'Content-Disposition':'attachment; filename="SSX2012_R111_SNAPSHOT.json"',
+        'Content-Length':body.length});
+      res.end(method==='HEAD'?undefined:body);
+    }catch{
+      res.writeHead(503,{...HEADERS,'Content-Type':'text/plain; charset=utf-8'});
+      res.end(method==='HEAD'?undefined:'Exportação indisponível; fonte preservada.');
+    }
+    return true;
+  }
+  send(res,method,pathname===BASE?dashboard(snapshot):diagnostics(snapshot));
   return true;
 }
-module.exports={serveDashboard,dashboard,checkBridge,healthPage,HEADERS};
+module.exports={serveDashboard,dashboard,diagnostics,exportSnapshot,checkBridge,healthPage,HEADERS};
