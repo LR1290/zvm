@@ -27,15 +27,13 @@ jobs:
           node --test lab/signing-r104/qa-free.test.cjs
           node --test lab/signing-r104/fingerprint-order.test.cjs
           python3 -m py_compile lab/signing-r104/preparar.py lab/signing-r104/verificar.py
-      - name: Validate QA-only patches apply to exact server source
+      - name: Validate QA-only integrated server without reapplying patches
         shell: bash
         run: |
           set -euo pipefail
-          git apply --check lab/signing-r104/qa-only.patch
-          git apply lab/signing-r104/qa-only.patch
-          git apply --check lab/qa-completa-r104/qa-verifier-only.patch
-          git apply lab/qa-completa-r104/qa-verifier-only.patch
           node --check server.js
+          node --check lab/qa-completa-r104/start-qa.cjs
+          node -e "const s=require('fs').readFileSync('server.js','utf8');if(!s.includes('qa-verifier-only.cjs')||!s.includes('qa-free.cjs'))process.exit(1)"
           git diff --check
       - name: Verify no private key or other QA secrets committed
         shell: bash
