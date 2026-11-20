@@ -70,7 +70,9 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
   const ssxAdminPassword='Browser QA only password 2026!';
   const salt=Buffer.from('b5b5ba1ab5b5ba1ab5b5ba1ab5b5ba1a','hex');
   process.env.SSX_SITE_ADMIN_EMAIL='browser-qa@example.test';
-  process.env.SSX_SITE_ADMIN_PASSWORD_HASH='scrypt
+  process.env.SSX_SITE_ADMIN_PASSWORD_HASH='scrypt'+String.fromCharCode(36)+salt.toString('hex')+String.fromCharCode(36)+
+    crypto.scryptSync(ssxAdminPassword,salt,64,{N:16384,r:8,p:1,maxmem:32*1024*1024}).toString('hex');
+  process.env.SSX_SITE_ADMIN_SESSION_KEY=crypto.randomBytes(48).toString('hex');
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ssx-alpine-'));
   const chrome=spawn(chromeBinary(),[
     '--headless=new','--no-sandbox','--disable-gpu','--disable-dev-shm-usage',
