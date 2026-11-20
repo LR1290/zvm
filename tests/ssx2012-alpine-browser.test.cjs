@@ -5,6 +5,7 @@ const http=require('node:http');
 const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
+const crypto=require('node:crypto');
 const {spawn,execFileSync}=require('node:child_process');
 const {once}=require('node:events');
 const {test}=require('node:test');
@@ -66,6 +67,12 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
   server.listen(0,'127.0.0.1');
   await once(server,'listening');
   const url='http://127.0.0.1:'+server.address().port+SSX_V37_PREVIEW_ROUTE;
+  const ssxAdminPassword='Browser QA only password 2026!';
+  const salt=Buffer.from('b5b5ba1ab5b5ba1ab5b5ba1ab5b5ba1a','hex');
+  process.env.SSX_SITE_ADMIN_EMAIL='browser-qa@example.test';
+  process.env.SSX_SITE_ADMIN_PASSWORD_HASH='scrypt'+String.fromCharCode(36)+salt.toString('hex')+String.fromCharCode(36)+
+    crypto.scryptSync(ssxAdminPassword,salt,64,{N:16384,r:8,p:1,maxmem:32*1024*1024}).toString('hex');
+  process.env.SSX_SITE_ADMIN_SESSION_KEY=crypto.randomBytes(48).toString('hex');
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ssx-alpine-'));
   const chrome=spawn(chromeBinary(),[
     '--headless=new','--no-sandbox','--disable-gpu','--disable-dev-shm-usage',
@@ -125,7 +132,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
         overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};
     })()`);
     console.log('SSX_R69_DESKTOP_CONTROLS',JSON.stringify(desktopGeometry));
-    assert.ok(desktopGeometry.actions>=6,'Desktop shortcut row must expose direct actions');
+    assert.ok(desktopGeometry.actions>=4,'Desktop shortcut row must expose public actions');
     assert.equal(desktopGeometry.actionRows,1,'Desktop shortcuts must align in one orderly row');
     assert.equal(desktopGeometry.overlaps,false,'Desktop shortcuts must not collide');
     assert.ok(desktopGeometry.actionHeights.every(h=>h>=36),'Utility chips need real accessible click targets');
@@ -227,7 +234,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
       assert.ok(geometry.direct.right<=width+1&&geometry.direct.left>=-1,
         'R71 utility rail must remain inside the header at '+width+'px');
       assert.ok(geometry.overflow<=1,'No horizontal overflow at '+width+'px');
-      assert.equal(geometry.buttons,7,'Public action buttons must remain available');
+      assert.equal(geometry.buttons,5,'All five public actions must remain available; administrative actions are private');
       assert.equal(geometry.buttonCollision,false,'Wide action buttons must not overlap');
       assert.equal(geometry.archiveInsideCredits,false);
       if(width!==3440){
@@ -930,18 +937,18 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(grouped.viewClosed,false,'Display actions should be available immediately without an overflow menu');
     assert.equal(grouped.actionsInside,true,'Result options must retain both existing actions');
     assert.equal(grouped.fakeBootButtons,false,'Do not render non-interactive placeholders');
-    const interactions=await evaluate(cdp.send,sid,"(()=>{const about=document.querySelector('#aboutBtn');about.click();const opened=document.querySelector('#aboutModal').getAttribute('aria-hidden');document.querySelector('[data-close=\"aboutModal\"]').click();const direct=document.querySelector('#ssxDirectActions');const buttons=[...direct.querySelectorAll('button')];const toolsHidden=getComputedStyle(document.querySelector('#toolsGroup')).display==='none';const advanced=document.querySelector('#alpineAdvancedFilters');advanced.querySelector('summary').click();const filterOpen=advanced.open;advanced.querySelector('summary').click();return{opened,labels:buttons.map(b=>b.textContent.trim()),visible:buttons.every(b=>getComputedStyle(b).display!=='none'&&b.getBoundingClientRect().height>=36),toolsHidden,filterOpen,hasManagement:buttons.some(b=>b.dataset.ssxAction==='adminBtn')}})()");
+    const interactions=await evaluate(cdp.send,sid,"(()=>{const about=document.querySelector('#aboutBtn');about.click();const opened=document.querySelector('#aboutModal').getAttribute('aria-hidden');document.querySelector('[data-close=\"aboutModal\"]').click();const direct=document.querySelector('#ssxDirectActions');const buttons=[...direct.querySelectorAll('button')].filter(b=>getComputedStyle(b).display!=='none');const toolsHidden=getComputedStyle(document.querySelector('#toolsGroup')).display==='none';const advanced=document.querySelector('#alpineAdvancedFilters');advanced.querySelector('summary').click();const filterOpen=advanced.open;advanced.querySelector('summary').click();return{opened,labels:buttons.map(b=>b.textContent.trim()),visible:buttons.every(b=>getComputedStyle(b).display!=='none'&&b.getBoundingClientRect().height>=36),toolsHidden,filterOpen,hasManagement:buttons.some(b=>b.dataset.ssxAction==='adminBtn')}})()");
     assert.equal(interactions.opened,'false','About modal must still open');
-    assert.deepEqual(interactions.labels,['Ajustes','Guia','Dados','Submissões','Sobre os dados','Admin']);
+    assert.deepEqual(interactions.labels,['Ajustes','Guia','Dados','Sobre os dados']);
     assert.equal(interactions.visible,true,'All public/management actions must be accessible without More');
     assert.equal(interactions.toolsHidden,true,'The redundant overflow trigger must not appear');
-    assert.equal(interactions.hasManagement,true,'Admin and management shortcuts must be direct actions');
+    assert.equal(interactions.hasManagement,false,'Administrative controls must not be part of public shortcuts');
     assert.equal(interactions.filterOpen,true,'Only the advanced filter panel stays collapsed by default');
     const community=await evaluate(cdp.send,sid,"(()=>{const button=document.querySelector('#communityMenuBtn');button.click();const opened=document.querySelector('#introModal').getAttribute('aria-hidden');const header=document.querySelector('#introModal .modal-head h2').textContent;const sheetLabel=getComputedStyle(document.querySelector('#introModal [data-i=\"introFromSheet\"]')).display;document.querySelector('[data-close=\"introModal\"]').click();return {opened,header,sheetLabel,gearLabel:!!document.querySelector('#toolsMenuBtn [data-i=\"navTools\"]'),gearAria:document.querySelector('#toolsMenuBtn').getAttribute('aria-label'),snow:getComputedStyle(document.querySelector('#snowLayer')).display};})()");
     assert.equal(community.opened,'false','Community should directly open player guide');
     assert.doesNotMatch(community.header,/INTRO/i);
     assert.equal(community.sheetLabel,'none');
-    assert.equal(interactions.labels.length,6);
+    assert.equal(interactions.labels.length,4);
     assert.equal(community.snow,'none','Decorative snow animation should not distract from original game artwork');
 
     const art=await evaluate(cdp.send,sid,"(()=>{const hero=getComputedStyle(document.querySelector('.hero'),'::before').backgroundImage;const cards=Array.from(document.querySelectorAll('[data-alpine-group]')).map(el=>({mode:el.dataset.alpineGroup,source:getComputedStyle(el).getPropertyValue('--alpine-art')}));const footer=document.querySelector('#alpineArtCredits');return{hero,cards,notice:footer?.textContent||'',links:footer?.querySelectorAll('a').length||0};})()");
@@ -1170,9 +1177,9 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     fs.writeFileSync(path.join(process.cwd(),'artifacts','ssx-r42-mobile-regions.png'),Buffer.from(regionalShot.data,'base64'));
     assert.equal(mobile.mode,'wings');
     assert.ok(mobile.viewport<=430);
-    const directNav=await evaluate(cdp.send,sid,"(()=>{const quick=document.querySelector('#ssxMobileQuickNav');const direct=document.querySelector('#ssxDirectActions');const brand=document.querySelector('.brand');const menu=document.querySelector('#mobileMenuBtn');const buttons=[...direct.querySelectorAll('button')];return{quickLabels:[...quick.querySelectorAll('button')].map(b=>b.textContent),directLabels:buttons.map(b=>b.textContent),brandHidden:getComputedStyle(brand).display==='none',legacyHidden:getComputedStyle(document.querySelector('#topNav')).display==='none',hamburgerRemoved:menu===null,panelRemoved:!document.querySelector('#ssxMobileMore'),actionable:buttons.every(b=>b.getBoundingClientRect().height>=40),screenOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth}})()");
+    const directNav=await evaluate(cdp.send,sid,"(()=>{const quick=document.querySelector('#ssxMobileQuickNav');const direct=document.querySelector('#ssxDirectActions');const brand=document.querySelector('.brand');const menu=document.querySelector('#mobileMenuBtn');const buttons=[...direct.querySelectorAll('button')].filter(b=>getComputedStyle(b).display!=='none');return{quickLabels:[...quick.querySelectorAll('button')].map(b=>b.textContent),directLabels:buttons.map(b=>b.textContent),brandHidden:getComputedStyle(brand).display==='none',legacyHidden:getComputedStyle(document.querySelector('#topNav')).display==='none',hamburgerRemoved:menu===null,panelRemoved:!document.querySelector('#ssxMobileMore'),actionable:buttons.every(b=>b.getBoundingClientRect().height>=40),screenOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth}})()");
     assert.deepEqual(directNav.quickLabels,['Recordes','Riders','Comunidade','Sobre']);
-    assert.deepEqual(directNav.directLabels,['Ajustes','Guia','Dados','Submissões','Sobre os dados','Admin']);
+    assert.deepEqual(directNav.directLabels,['Ajustes','Guia','Dados','Sobre os dados']);
     assert.equal(directNav.brandHidden,false,'SSX 2012 branding must remain visible on mobile');
     assert.equal(directNav.legacyHidden,true);
     assert.equal(directNav.hamburgerRemoved,true);
@@ -1196,18 +1203,9 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.ok(compactHeader.utility.height<=60,'Mobile utilities must use a thin rail, not a three-row grid');
     assert.ok(compactHeader.docOverflow<=1);
     assert.equal(compactHeader.utilityOverflow,'auto','Mobile utilities must scroll within their own rail');
-    const reachableAdmin=await evaluate(cdp.send,sid,`(()=>{
-      const rail=document.querySelector('#ssxDirectActions');
-      const admin=rail.querySelector('[data-ssx-action=adminBtn]');
-      admin.scrollIntoView({block:'nearest',inline:'end',behavior:'instant'});
-      const a=admin.getBoundingClientRect(),r=rail.getBoundingClientRect();
-      const result={visible:a.left>=r.left-1&&a.right<=r.right+1,scrollLeft:rail.scrollLeft,
-        adminHeight:a.height,scrollWidth:rail.scrollWidth,clientWidth:rail.clientWidth};
-      rail.scrollLeft=0;
-      return result;
-    })()`);
-    assert.equal(reachableAdmin.visible,true,'Admin must remain reachable by horizontal scrolling');
-    assert.ok(reachableAdmin.adminHeight>=40);
+    const privateActions=await evaluate(cdp.send,sid,`(()=>({admin:getComputedStyle(document.querySelector('#ssxDirectActions [data-ssx-action=adminBtn]')).display,submissions:getComputedStyle(document.querySelector('#ssxDirectActions [data-ssx-action=submissionsBtn]')).display}))()`);
+    assert.equal(privateActions.admin,'none','Admin action must not be public');
+    assert.equal(privateActions.submissions,'none','Moderation action must not be public');
 
     const directChecks=await evaluate(cdp.send,sid,"(()=>{document.querySelector('#ssxDirectActions [data-ssx-action=introBtn]').click();const guide=document.querySelector('#introModal').getAttribute('aria-hidden');document.querySelector('[data-close=introModal]').click();document.querySelector('#ssxDirectActions [data-ssx-action=sources]').click();const sourcesOpen=document.querySelector('#alpineSources').open;const filtersOpen=document.querySelector('#alpineAdvancedFilters').open;return {guide,sourcesOpen,filtersOpen}})()");
     assert.equal(directChecks.guide,'false','Guide must open directly from the permanent navigation');
@@ -1367,7 +1365,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(portuguese.hero,'Conquiste a montanha.');
     const sourceSwitched=await evaluate(cdp.send,sid,"(()=>{document.querySelector('[data-source=\"google\"]').click();return {source:document.querySelector('#sourceSeg [data-source].active')?.dataset.source,bridge:!!document.querySelector('#liveTestBtn')};})()");
     assert.equal(sourceSwitched.source,'google','Existing Google Sheets source selection must still work');
-    assert.equal(sourceSwitched.bridge,true,'Original Bridge settings must remain in the DOM');
+    assert.equal(sourceSwitched.bridge,false,'Public rankings must not expose Bridge configuration controls');
     await evaluate(cdp.send,sid,"document.querySelector('[data-source=\"combined\"]').click()");
     await sleep(400);
     const combined=await evaluate(cdp.send,sid,"document.querySelector('#sourceSeg [data-source].active')?.dataset.source");
@@ -1499,6 +1497,81 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(shareFallback.visible,true,'Clipboard unavailable must reveal an editable-selectable public URL');
     assert.equal(shareFallback.link,targetLink.url);
     assert.equal(shareFallback.role,'status');
+
+    // Run an actual Chromium login to verify form POST and Secure cookie.
+    // The public SSX document has an opaque CSP origin. Start admin login in a
+    // fresh browsing context, as when an administrator opens their bookmarked URL.
+    const adminTab=await cdp.send('Target.createTarget',{url:'about:blank'});
+    const adminAttached=await cdp.send('Target.attachToTarget',
+      {targetId:adminTab.targetId,flatten:true});
+    const adminSid=adminAttached.sessionId;
+    await cdp.send('Page.enable',{},adminSid);
+    await cdp.send('Runtime.enable',{},adminSid);
+    const adminBase=url.slice(0,-SSX_V37_PREVIEW_ROUTE.length)+'/hobbies/ssx/ssx2012/admin';
+    await cdp.send('Page.navigate',{url:adminBase+'/login'},adminSid);
+    let loginReady=false;
+    for(let attempt=0;attempt<40;attempt++){
+      loginReady=Boolean(await evaluate(cdp.send,adminSid,
+        "!!document.querySelector('form[action$=\"/admin/login\"] input[type=email]')"));
+      if(loginReady)break;
+      await sleep(100);
+    }
+    assert.ok(loginReady,'Chromium must render SSX login');
+    await evaluate(cdp.send,adminSid,"(()=>{const form=document.querySelector('form[action$=\"/admin/login\"]');form.querySelector('[name=email]').value='browser-qa@example.test';form.querySelector('[name=password]').value='Browser QA only password 2026!';form.requestSubmit();return true})()");
+    let adminView;
+    for(let attempt=0;attempt<55;attempt++){
+      adminView=await evaluate(cdp.send,adminSid,
+        "({url:location.pathname,title:document.title,body:document.body?.innerText?.slice(0,250)||''})");
+      if(adminView.url==='/hobbies/ssx/ssx2012/admin'&&
+          adminView.body.includes('Painel administrativo'))break;
+      await sleep(100);
+    }
+    assert.ok(adminView.body.includes('Painel administrativo'),
+      'Browser login must issue a valid signed and Secure cookie');
+    await cdp.send('Page.navigate',{url:adminBase+'/editor'},adminSid);
+    let editorReady=false;
+    for(let attempt=0;attempt<45;attempt++){
+      editorReady=Boolean(await evaluate(cdp.send,adminSid,
+        "document.querySelector('#adminModal')!==null"));
+      if(editorReady)break;
+      await sleep(100);
+    }
+    assert.equal(editorReady,true,'Authenticated editor should load in Chromium');
+    const editorOrigin=await evaluate(cdp.send,adminSid,'globalThis.origin');
+    assert.equal(editorOrigin,'null','Legacy editor remains opaque-origin sandboxed');
+
+    // Logout must clear the browser cookie; a direct editor request afterwards
+    // must return to the login page without reading or changing record data.
+    await cdp.send('Page.navigate',{url:adminBase},adminSid);
+    let dashboardReady=false;
+    for(let attempt=0;attempt<45;attempt++){
+      dashboardReady=Boolean(await evaluate(cdp.send,adminSid,
+        "document.body?.innerText?.includes('Painel administrativo')"));
+      if(dashboardReady)break;
+      await sleep(100);
+    }
+    assert.ok(dashboardReady,'Secure session must still authorize the dashboard');
+    await evaluate(cdp.send,adminSid,
+      "(()=>{document.querySelector('form[action$=\"/admin/logout\"]').requestSubmit();return true})()");
+    let loggedOut=false;
+    for(let attempt=0;attempt<45;attempt++){
+      loggedOut=Boolean(await evaluate(cdp.send,adminSid,
+        "location.pathname.endsWith('/admin/login')&&!!document.querySelector('form[action$=\"/admin/login\"]')"));
+      if(loggedOut)break;
+      await sleep(100);
+    }
+    assert.equal(loggedOut,true,'Logout must redirect to login and clear the cookie');
+    await cdp.send('Page.navigate',{url:adminBase+'/editor'},adminSid);
+    let editorBlocked=false;
+    for(let attempt=0;attempt<45;attempt++){
+      editorBlocked=Boolean(await evaluate(cdp.send,adminSid,
+        "location.pathname.endsWith('/admin/login')&&!!document.querySelector('form[action$=\"/admin/login\"]')"));
+      if(editorBlocked)break;
+      await sleep(100);
+    }
+    assert.ok(editorBlocked,'Editor must reject an expired browser session after logout');
+
+
 
   } finally {
     cdp?.ws.close();

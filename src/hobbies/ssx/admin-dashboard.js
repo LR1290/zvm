@@ -1,0 +1,105 @@
+'use strict';
+// Standalone administrator dashboard: no scripts or ZVM commercial credentials.
+const { publicBridgeEndpoint } = require('./live-endpoint');
+const { BASE } = require('./admin-auth');
+const HEADERS=Object.freeze({
+  'Cache-Control':'no-store, private',
+  'X-Content-Type-Options':'nosniff',
+  'X-Robots-Tag':'noindex, nofollow, noarchive, nosnippet',
+  'Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; connect-src 'none'",
+  'Cross-Origin-Resource-Policy':'same-origin',
+  'Referrer-Policy':'same-origin',
+  'X-Frame-Options':'DENY'
+});
+const STYLE=':root{color-scheme:dark;font-family:system-ui,-apple-system,Segoe UI,sans-serif}*{box-sizing:border-box}body{margin:0;background:#06121c;color:#e7f4fb;line-height:1.5}main{max-width:980px;margin:auto;padding:36px 24px 72px}header{display:flex;justify-content:space-between;align-items:center;gap:24px}h1{font-size:clamp(1.8rem,3vw,2.5rem);margin:8px 0 16px}h2{font-size:1.15rem;margin:0 0 14px}p{color:#b5ccda;margin:9px 0}.eyebrow{text-transform:uppercase;letter-spacing:.16em;font-size:.72rem;font-weight:800;color:#26cee5}section{background:#102534;border:1px solid #28455a;border-radius:16px;padding:22px;margin:18px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}a,button{color:#071d28;background:#20c4df;border:0;border-radius:9px;display:inline-block;padding:11px 15px;font:inherit;font-weight:750;text-decoration:none;cursor:pointer}a.secondary,button.secondary{background:#243e52;color:#dceefa}a:focus-visible,button:focus-visible{outline:3px solid #fff;outline-offset:3px}nav{display:flex;gap:10px;flex-wrap:wrap}form{margin:0}.status{font-weight:800}.ok{color:#68ecc0}.warn{color:#ffd48a}.bad{color:#ffb6b2}small{color:#91acb9}';
+const escape=x=>String(x).replace(/[&<>"']/g,k=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[k]));
+function page(title,content) {
+  return '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">'+
+    '<meta name="viewport" content="width=device-width,initial-scale=1">'+
+    '<title>'+escape(title)+' · Administração SSX 2012</title><style>'+STYLE+'</style></head>'+
+    '<body><main><header><div><div class="eyebrow">SSX 2012 / ÁREA RESTRITA</div>'+
+    '<h1>'+escape(title)+'</h1></div><form method="post" action="'+BASE+
+    '/logout"><button class="secondary" type="submit">Sair</button></form></header>'+content+
+    '</main></body></html>';
+}
+function dashboard() {
+  const ep=publicBridgeEndpoint();
+  const deployment=ep ? ep.split('/').at(-2)||'' : '';
+  const epLabel=ep?'Google Apps Script · '+deployment.slice(0,6)+'…'+deployment.slice(-5):
+    'Aguardando configuração no Render';
+  const epState=ep?'<span class="status ok">URL validada</span>':
+    '<span class="status warn">Bridge não configurado</span>';
+  return page('Painel administrativo',
+    '<p>Administração independente do portal comercial da ZVM. Visitantes não recebem estas ferramentas.</p>'+
+    '<div class="grid"><section><h2>Google Sheets Live Sync</h2>'+epState+
+    '<p>'+escape(epLabel)+'</p>'+
+    '<p>O endereço público é definido exclusivamente pelo servidor, não pelo navegador do jogador.</p>'+
+    '<nav><a href="'+BASE+'/bridge-health">Verificar Bridge v8 (leitura)</a></nav></section>'+
+    '<section><h2>Gerenciar recordes</h2>'+
+    '<p>Ferramentas legadas de revisão e moderação. As gravações continuam exigindo credenciais exclusivas de Google e Discord.</p>'+
+    '<nav><a href="'+BASE+'/editor">Abrir editor</a>'+
+    '<a class="secondary" href="'+BASE+'/archive">Arquivo original v36</a></nav></section></div>'+
+    '<section><h2>Proteção dos dados</h2>'+
+    '<p>O histórico Ozmonet é somente leitura. Nenhuma aprovação ou anúncio é iniciado ao verificar a conexão.</p>'+
+    '<nav><a href="/hobbies/ssx/ssx2012" class="secondary">Visualizar site público</a></nav></section>'+
+    '<small>Não coloque senhas nem segredos no endereço do navegador.</small>');
+}
+function healthPage(info) {
+  const cls=info.ok?'ok':info.configured?'bad':'warn';
+  const msg=info.ok?'Bridge v'+info.version+' respondeu corretamente à consulta de leitura.':
+    info.configured?'A URL existe, mas o Bridge v8 não foi validado. Confira /exec e as permissões de leitura.':
+    'Configure SSX_PUBLIC_BRIDGE_URL no Render com a URL /exec do Apps Script.';
+  return page('Verificação do Live Sync',
+    '<section><h2>Teste não destrutivo</h2><p class="status '+cls+'">'+escape(msg)+'</p>'+
+    '<p>Verificado em '+escape(new Date().toISOString())+'</p>'+
+    '<p>Não foram efetuadas alterações na planilha, anúncios ou classificações.</p></section>'+
+    '<a href="'+BASE+'">Voltar ao painel</a>');
+}
+function send(res,method,html,status=200) {
+  const body=Buffer.from(html,'utf8');
+  res.writeHead(status,{...HEADERS,'Content-Type':'text/html; charset=utf-8','Content-Length':body.byteLength});
+  res.end(method==='HEAD'?undefined:body);
+}
+async function checkBridge(transport=fetch) {
+  const ep=publicBridgeEndpoint();
+  if(!ep)return {configured:false,ok:false,version:0};
+  const initial=new URL(ep);
+  initial.searchParams.set('action','ping');
+  let target=initial;
+  const signal=AbortSignal.timeout(10000);
+  try {
+    for(let n=0;n<4;n++){
+      const res=await transport(target,{method:'GET',redirect:'manual',signal,
+        headers:{Accept:'application/json'},credentials:'omit',cache:'no-store'});
+      if([301,302,303,307,308].includes(res.status)){
+        const next=new URL(res.headers.get('location')||'',target);
+        if(next.protocol!=='https:'||!['script.google.com','script.googleusercontent.com'].includes(next.hostname.toLowerCase())||
+          next.username||next.password)throw new Error('UNTRUSTED_REDIRECT');
+        target=next;continue;
+      }
+      if(!res.ok||Number(res.headers.get('content-length')||0)>32768)throw new Error('RESPONSE_INVALID');
+      let size=0;const parts=[];
+      for await(const bytes of res.body) {
+        size+=bytes.length;
+        if(size>32768)throw new Error('RESPONSE_OVERSIZE');
+        parts.push(Buffer.from(bytes));
+      }
+      const payload=JSON.parse(Buffer.concat(parts).toString('utf8'));
+      const version=Number(payload?.version||0);
+      return {configured:true,ok:payload?.ok===true&&Number.isSafeInteger(version)&&version>=8,version};
+    }
+  }catch{}
+  return {configured:true,ok:false,version:0};
+}
+async function serveDashboard(req,res,pathname) {
+  if(pathname!==BASE&&pathname!==BASE+'/bridge-health')return false;
+  const method=String(req.method||'').toUpperCase();
+  if(method!=='GET'&&method!=='HEAD'){
+    res.writeHead(405,{...HEADERS,Allow:'GET, HEAD'});res.end();return true;
+  }
+  if(pathname===BASE){send(res,method,dashboard());return true;}
+  const info=await checkBridge();
+  send(res,method,healthPage(info),info.configured?200:503);
+  return true;
+}
+module.exports={serveDashboard,dashboard,checkBridge,healthPage,HEADERS};

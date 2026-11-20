@@ -17,15 +17,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Install runtime dependencies for favicon and SSX route
+        run: npm ci --omit=dev --ignore-scripts --no-audit --no-fund
       - name: Parse JS modules
         run: |
           node --check src/hobbies/ssx/route.js
+          node --check src/hobbies/ssx/admin-auth.js
+          node --check src/hobbies/ssx/admin-dashboard.js
+          node --check src/hobbies/ssx/live-endpoint.js
           node --check src/hobbies/ssx/alpine-v37.js
           node --check src/hobbies/ssx/special-categories-v1.js
           node --check src/hobbies/ssx/special-leaders-core.js
           node --check src/hobbies/ssx/score-integrity.js
       - name: Run SSX v36 + v37 isolation regression
-        run: node --test tests/ssx2012-route.test.cjs tests/ssx2012-alpine-v37.test.cjs
+        run: node --test tests/ssx2012-route.test.cjs tests/ssx2012-admin-auth.test.cjs tests/ssx2012-alpine-v37.test.cjs
       - name: Read-only source provenance inventory
         run: node --test tests/ssx2012-source-inventory.test.cjs
       - name: Reconciliation proof and ID matching safeguards

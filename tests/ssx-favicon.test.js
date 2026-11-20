@@ -122,7 +122,10 @@ test('SSX Alpine page links only original PNG; v36 archive and root favicon stay
   assert.match(response.body.toString('utf8'),/<link rel="icon" type="image\/png" href="\/hobbies\/ssx\/ssx2012\/favicon\.png\?v=ea-original-white-r87">/);
   const archived={status:null,body:null};
   assert.equal(serveSSX2012({method:'GET',headers:{}},{writeHead(status){archived.status=status;},end(body){archived.body=body;}},SSX_ROUTE+'-v36'),true);
-  assert.equal(archived.status,200);
-  assert.equal(crypto.createHash('sha256').update(archived.body).digest('hex'), SHA256);
+  assert.equal(archived.status,303,'Legacy full HTML must redirect into authenticated admin scope');
+  const packed=require('node:path').join(__dirname,'../src/hobbies/ssx/packed');
+  const segments=Array.from({length:10},(_,i)=>require('node:fs').readFileSync(require('node:path').join(packed,'ssx2012.html.gz.part'+String(i).padStart(2,'0'))));
+  const original=require('node:zlib').gunzipSync(Buffer.concat(segments));
+  assert.equal(crypto.createHash('sha256').update(original).digest('hex'), SHA256);
   assert.equal(serveSSX2012({method:'GET',headers:{}},{writeHead(){},end(){}},'/favicon.ico'),false);
 });

@@ -67,7 +67,8 @@ test('single-face startup: no loading splash, real UI gated until ready',()=>har
  assert.match(html,/html:not\(\[data-ssx-boot="ready"\]\):not\(\[data-ssx-boot="fallback"\]\) body\{visibility:hidden\}/);
  assert.match(html,/id="ssx-boot-fallback"/);
  assert.match(html,/document\.documentElement\.dataset\.ssxBoot = 'ready'/);
- assert.equal(r.headers.get('x-ssx-variant'),'ssx-ui-v38');
- const archive=await (await fetch(base+'/hobbies/ssx/ssx2012-v36')).text();
- assert.ok(!archive.includes('id="ssx-boot-fallback"'),'Archived v36 source must stay unchanged');
+ assert.equal(r.headers.get('x-ssx-variant'),'ssx-ui-v39-public');
+ const archive=await fetch(base+'/hobbies/ssx/ssx2012-v36',{redirect:'manual'});
+ assert.equal(archive.status,303);
+ assert.equal(archive.headers.get('location'),'/hobbies/ssx/ssx2012/admin/archive');
 }));

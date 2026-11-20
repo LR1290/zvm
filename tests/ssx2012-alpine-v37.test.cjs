@@ -59,55 +59,40 @@ test('R84 ranking enhancement is read-only, local and movement-accessible',()=>{
   assert.match(css,/rider-name/);
   assert.match(css,/pos\.one/);
 });
-test('published v37 and preview are byte-identical; archival v36 remains byte-exact',()=>harness(async base=>{
-  const original=await rawFetch(base+SSX_V36_ARCHIVE_ROUTE);
+test('published and preview public SSX views agree; privileged views require authentication',()=>harness(async base=>{
+  const archived=await rawFetch(base+SSX_V36_ARCHIVE_ROUTE);
   const enhanced=await rawFetch(base+SSX_V37_PREVIEW_ROUTE);
   const published=await rawFetch(base+SSX_ROUTE);
-  assert.equal(published.status,200);
-  assert.equal(published.headers['x-ssx-variant'],'ssx-ui-v38');
+  assert.equal(published.status,200); assert.equal(enhanced.status,200);
+  assert.equal(archived.status,303,'v36 archived admin document must not be publicly accessible');
+  assert.equal(archived.headers.location,'/hobbies/ssx/ssx2012/admin/archive');
+  assert.equal(published.headers['x-ssx-variant'],'ssx-ui-v39-public');
+  assert.equal(enhanced.headers['x-ssx-variant'],'ssx-ui-v39-preview');
   assert.equal(published.headers['cache-control'],'public, max-age=300');
-  assert.deepEqual(published.body,enhanced.body, 'Published and tested preview versions must be identical');
+  assert.equal(enhanced.headers['cache-control'],'no-store, private');
+  assert.deepEqual(published.body,enhanced.body);
   assert.notEqual(published.headers.etag,enhanced.headers.etag);
-  assert.equal(original.headers['x-ssx-variant'],'v36-archive');
-  assert.equal(original.status,200);assert.equal(enhanced.status,200);
-  assert.equal(enhanced.headers['x-ssx-variant'],'ssx-ui-v38-preview');
-  assert.equal(enhanced.headers['cache-control'],'no-store');
-  assert.equal(original.headers['cache-control'],'public, max-age=300');
-  assert.notEqual(original.headers.etag,enhanced.headers.etag);
   assert.match(enhanced.headers['content-security-policy'],/sandbox allow-scripts/);
   assert.doesNotMatch(enhanced.headers['content-security-policy'],/allow-same-origin/);
-  assert.match(enhanced.headers['x-robots-tag'],/noindex/);
-  const baseline=original.body.toString('utf8');
   const view=enhanced.body.toString('utf8');
   assert.match(view,/id="ssx-alpine-v37-style"/);
   assert.match(view,/id="ssx-v38-design"/);
-  assert.match(view,/<link rel="icon" type="image\/png" href="\/hobbies\/ssx\/ssx2012\/favicon\.png\?v=ea-original-r86">/);
   assert.match(view,/id="ssx-r84-rank-style"/);
   assert.match(view,/id="ssx-r84-rank-script"/);
-  assert.match(view,/ssx-alpine-v38/);
   assert.match(view,/id="ssx-alpine-v37-script"/);
-  assert.match(view,/id="ssx-score-integrity-script"/);
-  assert.match(view,/id="ssx-special-categories-v1-script"/);
-  assert.match(view,/id="ssx-special-leaders-core-script"/);
   assert.match(view,/id="sheet"/);
-  assert.match(view,/id="sourceSeg"/);
-  const originalTitle=baseline.match(/<title>[^<]*<\/title>/i);
-  assert.ok(originalTitle);
-  const stripped=view
-    .replace(/<style id="ssx-first-paint-style">[\s\S]*?<\/style>/,'')
-    .replace(/<script id="ssx-boot-fallback">[\s\S]*?<\/script>/,'')
-    .replace(/<style id="ssx-alpine-v37-style">[\s\S]*?<\/style>/,'')
-    .replace(/<style id="ssx-v38-design">[\s\S]*?<\/style>/,'')
-    .replace(/<style id="ssx-r84-rank-style">[\s\S]*?<\/style>/,'')
-    .replace(/<script id="ssx-r84-rank-script">[\s\S]*?<\/script>/,'')
-    .replace(/<script id="ssx-alpine-v37-script">[\s\S]*?<\/script>/,'')
-    .replace(/<script id="ssx-score-integrity-script">[\s\S]*?<\/script>/,'')
-    .replace(/<script id="ssx-special-categories-v1-script">[\s\S]*?<\/script>/,'')
-    .replace(/<script id="ssx-special-leaders-core-script">[\s\S]*?<\/script>/,'')
-    .replace(/<link rel="icon" type="image\/png" href="\/hobbies\/ssx\/ssx2012\/favicon\.png\?v=ea-original-r86">/,'')
-    .replace(/<title>[^<]*<\/title>/i,originalTitle[0]);
-  assert.equal(stripped,baseline,'Record dataset, app code and legacy HTML must remain unchanged');
+  assert.match(view,/id="ssx-public-security"/);
+  assert.doesNotMatch(view, /class="modal admin-modal"/,'The real administrator modal must not be sent to visitors');
+  assert.doesNotMatch(view, /class="modal submissions-modal"/,'The moderation panel must not be sent to visitors');
+  assert.doesNotMatch(view, /id="liveSaveBtn"/,'The live config form must not be sent to visitors');
+  const dir=path.join(__dirname,'../src/hobbies/ssx/packed');
+  const chunks=Array.from({length:10},(_,i)=>fs.readFileSync(path.join(dir,'ssx2012.html.gz.part'+String(i).padStart(2,'0'))));
+  const baseline=zlib.gunzipSync(Buffer.concat(chunks));
+  const expected=require('../src/hobbies/ssx/route').SHA256;
+  assert.equal(require('node:crypto').createHash('sha256').update(baseline).digest('hex'),expected,
+    'Unmodified historic full document must remain intact on disk');
 }));
+
 test('preview routes reject writes and directory probes; canonical trailing slash redirects',()=>harness(async base=>{
   const paths=['/hobbies/ssx/','/hobbies/ssx/ssx2012-alpine-v37-preview.js','/hobbies/ssx/packed'];
   for(const p of paths)assert.equal((await rawFetch(base+p)).status,404);
@@ -116,12 +101,12 @@ test('preview routes reject writes and directory probes; canonical trailing slas
   assert.equal(redirect.status,308);
   assert.equal(redirect.headers.location,SSX_V37_PREVIEW_ROUTE);
   const archiveRedirect=await rawFetch(base+SSX_V36_ARCHIVE_ROUTE+'/');
-  assert.equal(archiveRedirect.status,308);
-  assert.equal(archiveRedirect.headers.location,SSX_V36_ARCHIVE_ROUTE);
+  assert.equal(archiveRedirect.status,303);
+  assert.equal(archiveRedirect.headers.location,'/hobbies/ssx/ssx2012/admin/archive');
   const publicRedirect=await rawFetch(base+SSX_ROUTE+'/');
   assert.equal(publicRedirect.status,308);
   assert.equal(publicRedirect.headers.location,SSX_ROUTE);
-  assert.equal((await rawFetch(base+SSX_V36_ARCHIVE_ROUTE,'identity','POST')).status,405);
+  assert.equal((await rawFetch(base+SSX_V36_ARCHIVE_ROUTE,'identity','POST')).status,303);
 }));
 test('v37 preview supports HEAD, gzip, brotli and encoded ETags independently',()=>harness(async base=>{
   const uri=base+SSX_V37_PREVIEW_ROUTE;
