@@ -2470,7 +2470,24 @@ async function authorizeExtensionKeySession(input, deps = {}) {
     return extensionAuthFailure('phone_limit_global', 403);
   }
   const maxUses = typeof keyRecord.maxUses === 'number' ? keyRecord.maxUses : MAX_USES;
-  const claim = await (deps.claimPhoneSlot || claimPhoneSlotAtomic)(keyCode, phoneNumber, maxUses);
+  const claimSlot = deps.claimPhoneSlot || claimPhoneSlotAtomic;
+  let claim = await claimSlot(keyCode, phoneNumber, maxUses);
+  // The atomic phone-slot helper refreshes the canonical key from Mongo on a
+  // refused claim. Admins may have raised maxUses since the key was cached:
+  // retry exactly once against the newly observed limit, never by ignoring it.
+  if (claim.status === 'limit_reached') {
+    const refreshed = keyStore[keyCode];
+    const refreshedMaxUses = typeof refreshed?.maxUses === 'number' ? refreshed.maxUses : MAX_USES;
+    const limitIncreased = refreshedMaxUses === -1 ||
+      (Number.isSafeInteger(refreshedMaxUses) && refreshedMaxUses > maxUses);
+    const phones = Array.isArray(refreshed?.phones) ? refreshed.phones : [];
+    const hasSlot = (refreshedMaxUses === -1 || phones.length < refreshedMaxUses) &&
+      phones.length < MAX_PHONES_GLOBAL;
+    if (refreshed?.active === true && extensionLicenseIsUsable(refreshed) &&
+        limitIncreased && hasSlot) {
+      claim = await claimSlot(keyCode, phoneNumber, refreshedMaxUses);
+    }
+  }
   if (claim.status === 'limit_reached') return extensionAuthFailure('phone_limit', 403);
   if (keyRecord.expireDuration && !keyRecord.expiresAt) {
     const activated = await (deps.activateDeferredKey || activateDeferredKey)(keyCode);
