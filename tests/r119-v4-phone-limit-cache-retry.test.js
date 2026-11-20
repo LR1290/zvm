@@ -15,6 +15,7 @@ function makeRunner(record, claim) {
     MAX_USES: 3,
     MAX_PHONES_GLOBAL: 50,
     Date, Promise,
+    isFreeAuthKey: value => String(value||'').toLowerCase()==='free',
     sanitizeId: value => String(value || ''),
     normalizePhone: value => String(value || '').replace(/\D/g, ''),
     safeScalar: value => String(value || ''),
