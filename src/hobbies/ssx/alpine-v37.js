@@ -117,12 +117,12 @@
       if(!actionButton)return;
       const action=actionButton.dataset.ssxAction;
       if(action==='sources'){
-        const advanced=$('alpineAdvancedFilters');
         const sources=$('alpineSources');
-        if(advanced)advanced.open=true;
         if(sources){
           sources.open=true;
-          sources.scrollIntoView({block:'start',behavior:'instant'});
+          sources.setAttribute('aria-expanded','true');
+          sources.scrollIntoView({block:'start',behavior:'smooth'});
+          sources.querySelector(':scope > summary')?.focus({preventScroll:true});
         }
         return;
       }
@@ -253,11 +253,15 @@
       if(category)inner.append(category);
       if(topN)inner.append(topN);
       if(actions)inner.append(actions);
-      if(sources){
-        sources.classList.add('ssx-source-disclosure');
-        inner.append(sources);
-      }
       advanced.append(inner);
+    }
+    // Sources are informational, not a filtering control. Never put the source
+    // disclosures inside "Mais filtros": that caused the header shortcut to
+    // jump into the middle of the ranking filters on desktop and mobile.
+    if(sources){
+      sources.classList.add('ssx-source-disclosure','ssx-sources-standalone');
+      sources.removeAttribute('aria-hidden');
+      toolbar.insertAdjacentElement('afterend',sources);
     }
     if(credits){
       const box=document.createElement('details');
