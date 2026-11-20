@@ -919,7 +919,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(publicUI.title,'SSX 2012 · Recordes da Comunidade');
     assert.equal(publicUI.heroDesc,'Race It!, Trick It! e Survive It!: tempos, pontuações e provas em vídeo.');
     assert.equal(publicUI.statsBelowHero,true,'Community counts should appear below hero like the Canva reference');
-    assert.equal(publicUI.snapshotLabel,'recordes na captura de 2026-08-22','An archived source must not be presented as live records');
+    assert.equal(publicUI.snapshotLabel,'regiões revisadas 20/11/2026 · extras 22/08/2026','Regional capture and historical extras must be labeled separately');
     assert.equal(publicUI.recordsNav,true);
     assert.equal(publicUI.aboutInMainNav,true);
     assert.equal(publicUI.advancedClosed,true);
@@ -1353,7 +1353,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     const translated=await evaluate(cdp.send,sid,"({hero:document.querySelector('#heroTitle').textContent,more:document.querySelector('#alpinePositionsToggle').textContent,language:document.querySelector('#langName').textContent,snapshotLabel:document.querySelector('[data-ssx-snapshot-count-label]')?.textContent})");
     assert.equal(translated.hero,'Conquer the mountain.','New page headline must follow original language selector');
     assert.equal(translated.language.trim(),'English');
-    assert.equal(translated.snapshotLabel,'records in the 2026-08-22 snapshot','Dated snapshot label must translate without becoming current/live');
+    assert.equal(translated.snapshotLabel,'regions checked 2026-11-20 · extras 2026-08-22','Mixed dated sources must translate without being called a live feed');
     const translatedArchive=await evaluate(cdp.send,sid,"(()=>({title:document.querySelector('#ssxSpecialTitle')?.textContent,note:document.querySelector('#ssxSpecialNote')?.textContent,group:document.querySelector('#ssxSpecialTabs [aria-pressed=true]')?.dataset.ssxSpecialGroup}))()");
     assert.match(translatedArchive.title,/Special challenges/i);
     assert.match(translatedArchive.note,/2026-08-22/);
