@@ -62,6 +62,9 @@ async function evaluate(send,session,expression){
 test('Alpine v37 renders and responds to interactions in desktop and mobile Chromium',{timeout:120000},async()=>{
   const server=http.createServer((req,res)=>{
     const pathname=new URL(req.url,'http://127.0.0.1').pathname;
+    if(req.method==='POST'&&pathname.endsWith('/admin/login')){
+      console.log('SSX_CHROME_POST_META',JSON.stringify({origin:req.headers.origin||null,host:req.headers.host||null,site:req.headers['sec-fetch-site']||null,referer:!!req.headers.referer}));
+    }
     if(!serveSSX2012(req,res,pathname)){res.writeHead(404);res.end();}
   });
   server.listen(0,'127.0.0.1');
