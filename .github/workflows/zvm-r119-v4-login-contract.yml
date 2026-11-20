@@ -1,0 +1,29 @@
+name: ZVM R119 V4 license login (no deployment)
+on:
+  pull_request:
+    paths:
+      - 'server.js'
+      - 'tests/r119-v4-phone-limit-cache-retry.test.js'
+      - '.github/workflows/zvm-r119-v4-login-contract.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.3'
+      - name: Validate production syntax
+        run: node --check server.js
+      - name: Test V4 license phone-slot concurrency and renewal
+        run: node tests/r119-v4-phone-limit-cache-retry.test.js
+      - name: Test V4 account login, MFA, replay and database recovery
+        run: |
+          node tests/r46-78-v4-session-db-recovery.test.js
+          node tests/r46-79-v4-login-mfa-replay.test.js
