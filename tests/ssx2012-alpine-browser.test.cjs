@@ -62,9 +62,6 @@ async function evaluate(send,session,expression){
 test('Alpine v37 renders and responds to interactions in desktop and mobile Chromium',{timeout:120000},async()=>{
   const server=http.createServer((req,res)=>{
     const pathname=new URL(req.url,'http://127.0.0.1').pathname;
-    if(req.method==='POST'&&pathname.endsWith('/admin/login')){
-      console.log('SSX_CHROME_POST_META',JSON.stringify({origin:req.headers.origin||null,host:req.headers.host||null,site:req.headers['sec-fetch-site']||null,referer:!!req.headers.referer}));
-    }
     if(!serveSSX2012(req,res,pathname)){res.writeHead(404);res.end();}
   });
   server.listen(0,'127.0.0.1');
@@ -1529,7 +1526,6 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
           adminView.body.includes('Painel administrativo'))break;
       await sleep(100);
     }
-    console.log('SSX_ADMIN_LOGIN_BROWSER_DIAGNOSTIC',JSON.stringify(adminView));
     assert.ok(adminView.body.includes('Painel administrativo'),
       'Browser login must issue a valid signed and Secure cookie');
     await cdp.send('Page.navigate',{url:adminBase+'/editor'},adminSid);
@@ -1543,6 +1539,38 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(editorReady,true,'Authenticated editor should load in Chromium');
     const editorOrigin=await evaluate(cdp.send,adminSid,'globalThis.origin');
     assert.equal(editorOrigin,'null','Legacy editor remains opaque-origin sandboxed');
+
+    // Logout must clear the browser cookie; a direct editor request afterwards
+    // must return to the login page without reading or changing record data.
+    await cdp.send('Page.navigate',{url:adminBase},adminSid);
+    let dashboardReady=false;
+    for(let attempt=0;attempt<45;attempt++){
+      dashboardReady=Boolean(await evaluate(cdp.send,adminSid,
+        "document.body?.innerText?.includes('Painel administrativo')"));
+      if(dashboardReady)break;
+      await sleep(100);
+    }
+    assert.ok(dashboardReady,'Secure session must still authorize the dashboard');
+    await evaluate(cdp.send,adminSid,
+      "(()=>{document.querySelector('form[action$=\"/admin/logout\"]').requestSubmit();return true})()");
+    let loggedOut=false;
+    for(let attempt=0;attempt<45;attempt++){
+      loggedOut=Boolean(await evaluate(cdp.send,adminSid,
+        "location.pathname.endsWith('/admin/login')&&!!document.querySelector('form[action$=\"/admin/login\"]')"));
+      if(loggedOut)break;
+      await sleep(100);
+    }
+    assert.equal(loggedOut,true,'Logout must redirect to login and clear the cookie');
+    await cdp.send('Page.navigate',{url:adminBase+'/editor'},adminSid);
+    let editorBlocked=false;
+    for(let attempt=0;attempt<45;attempt++){
+      editorBlocked=Boolean(await evaluate(cdp.send,adminSid,
+        "location.pathname.endsWith('/admin/login')&&!!document.querySelector('form[action$=\"/admin/login\"]')"));
+      if(editorBlocked)break;
+      await sleep(100);
+    }
+    assert.ok(editorBlocked,'Editor must reject an expired browser session after logout');
+
 
 
   } finally {
