@@ -16,7 +16,9 @@
 | `/hobbies/ssx/ssx2012` | Rankings e fontes públicas, sem painel/moderação administrativa |
 | `/hobbies/ssx/ssx2012-alpine-v37-preview` | Igual ao conteúdo público, também sem painéis administrativos |
 | `/hobbies/ssx/ssx2012/admin/login` | Formulário de e-mail e senha, sem vínculo com login comercial da ZVM |
-| `/hobbies/ssx/ssx2012/admin` | Interface original de administração, somente com cookie válido |
+| `/hobbies/ssx/ssx2012/admin` | Painel administrativo independente, sem JavaScript, com logout e teste de saúde do Bridge |
+| `/hobbies/ssx/ssx2012/admin/editor` | Editor completo legado, protegido por cookie e CSP de origem opaca |
+| `/hobbies/ssx/ssx2012/admin/bridge-health` | Ping do Apps Script em HTTPS realizado pelo servidor, sem escrita |
 | `/hobbies/ssx/ssx2012/admin/archive` | HTML v36 original completo, somente após autenticação |
 | `/hobbies/ssx/ssx2012-v36` | Redirecionamento ao arquivo autenticado |
 
@@ -39,7 +41,9 @@ A sessão expira em até oito horas. Cookie HttpOnly, Secure, SameSite Strict. S
 - Anônimo recebe 303 na administração e no arquivo v36.
 - HTML público não contém formulários completos ou botões de moderação ativos.
 - Login incorreto não gera sessão; POST cross-origin recusado; cookies forjados recusados.
-- Login correto abre administração; `logout` deve invalidar o cookie no cliente.
+- Login correto abre o painel, o editor só funciona depois da autenticação, `logout` deve limpar o cookie no navegador.
+- Verificação de saúde usa somente `action=ping`, exige Bridge v8 ou superior, segue redirecionamento HTTPS apenas entre `script.google.com` e `script.googleusercontent.com` e limita resposta a 32 KiB.
+- O editor legado foi mantido isolado por CSP (origem opaca). Sua configuração de sessão pode não persistir entre acessos; o painel principal é a interface administrativa estável.
 - Live Sync com URL validada; snapshot offline continua exibido diante de falha.
 - Revisões da planilha devem atualizar o público sem escrever, revisar ou alterar valores não autorizados.
 - Chromium desktop/mobile sem regressão de navegação.
