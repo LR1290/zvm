@@ -1,0 +1,3 @@
+{"version":"R115","first":"SEND_EFFECT_JOURNAL_UNAVAILABLE","second":"SEND_EFFECT_JOURNAL_UNAVAILABLE"}
+{"version":"candidate","first":"SEND_EFFECT_JOURNAL_UNAVAILABLE","second":true}
+{"started":[1,99],"recovered":[false,true,"SEND_EFFECT_OWNER_MISMATCH"]}

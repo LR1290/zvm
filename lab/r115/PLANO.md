@@ -1,6 +1,6 @@
 # Auditoria global | continuidade da R114
 
-Base 4256874a2b39af21cfffa5d98f127170a273e65a, PR #150. Comentário integral consultado em https://github.com/mythos52/zvm/pull/150#issuecomment-7030484256. Texto integral do mandato pendente de disponibilização.
+Base 4256874a2b39af21cfffa5d98f127170a273e65a, PR #150. Comentário integral consultado em https://github.com/mythos52/zvm/pull/150#issuecomment-7030484256. Mandato integral recebido e confrontado na rodada seguinte. Ver [plano atualizado](../zvm-audit/PLANO_EXECUCAO.md).
 
 1. **Inventário e dependências (P1)**. inventory.csv contém caminho, bytes e SHA-256 para cada arquivo da extensão candidata. dependency-edges.csv permite buscar tanto os consumidores quanto os arquivos referenciados. A extração é lexical, inclui literais de metadados e não resolve todas as chamadas JavaScript ou recursos dinâmicos. Completar o grafo com os namespaces compartilhados, RPC e registros lazy antes de eliminar qualquer dependência.
 2. **Autenticação (P0)**. Exercitar conta e KEY com integridade atrasada, conta sem resposta, troca de formulário e falhas tardias. Aceite integral requer ainda provar, com armazenamento real e reinício do worker, que uma resposta antiga jamais reativa a sessão e que timeout não concede autoridade. A interface libera nova tentativa manual após 750 ms de espera. O timer não revoga sessões no servidor.
