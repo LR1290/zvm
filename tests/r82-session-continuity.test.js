@@ -14,7 +14,7 @@ function part(from,to){
 const accountTtl=7*24*60*60*1000, absoluteTtl=30*24*60*60*1000, keyTtl=24*60*60*1000;
 const script=[
  part('async function createExtensionSession(','async function readExtensionSession('),
- part('function extensionRenewedAccountExpiry(','// Reset tokens atuais'),
+ part('function extensionAccountAbsoluteExpiryMs(','// Reset tokens atuais'),
 ].join('\n');
 const clock=new Date('2026-11-19T13:00:00.000Z');
 const expiry=(ms)=>new Date(clock.getTime()+ms);
