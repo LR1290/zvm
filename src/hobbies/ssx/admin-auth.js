@@ -52,7 +52,7 @@ const baseHeaders = {
   'Cache-Control':'no-store, private',
   'X-Content-Type-Options':'nosniff',
   'X-Robots-Tag':'noindex, nofollow, noarchive',
-  'Referrer-Policy':'no-referrer',
+  'Referrer-Policy':'same-origin',
   'X-Frame-Options':'DENY',
   'Cross-Origin-Resource-Policy':'same-origin'
 };
