@@ -60,7 +60,7 @@ function send(res,method,html,status=200) {
   res.writeHead(status,{...HEADERS,'Content-Type':'text/html; charset=utf-8','Content-Length':body.byteLength});
   res.end(method==='HEAD'?undefined:body);
 }
-async function checkBridge() {
+async function checkBridge(transport=fetch) {
   const ep=publicBridgeEndpoint();
   if(!ep)return {configured:false,ok:false,version:0};
   const initial=new URL(ep);
@@ -69,7 +69,7 @@ async function checkBridge() {
   const signal=AbortSignal.timeout(10000);
   try {
     for(let n=0;n<4;n++){
-      const res=await fetch(target,{method:'GET',redirect:'manual',signal,
+      const res=await transport(target,{method:'GET',redirect:'manual',signal,
         headers:{Accept:'application/json'},credentials:'omit',cache:'no-store'});
       if([301,302,303,307,308].includes(res.status)){
         const next=new URL(res.headers.get('location')||'',target);
