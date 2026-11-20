@@ -208,4 +208,4 @@ function updateHtml(html) {
   const signature=crypto.createHash('sha256').update(JSON.stringify(result.summary)).digest('hex');
   return {html:out,summary:{...result.summary,auditSignature:signature}};
 }
-module.exports={SHEET_ID,CAPTURED,SHEETS,metric,cellSource,refresh,updateHtml};
+module.exports={SHEET_ID,CAPTURED,SHEETS,metric,cellSource,refresh,updateHtml,locate};
