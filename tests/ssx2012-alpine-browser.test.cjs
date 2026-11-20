@@ -1196,7 +1196,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.ok(compactHeader.utility.height<=60,'Mobile utilities must use a thin rail, not a three-row grid');
     assert.ok(compactHeader.docOverflow<=1);
     assert.equal(compactHeader.utilityOverflow,'auto','Mobile utilities must scroll within their own rail');
-    const privateActions=await evaluate(cdp.send,sid,\"(()=>({admin:getComputedStyle(document.querySelector('#ssxDirectActions [data-ssx-action=adminBtn]')).display,submissions:getComputedStyle(document.querySelector('#ssxDirectActions [data-ssx-action=submissionsBtn]')).display}))()\");
+    const privateActions=await evaluate(cdp.send,sid,`(()=>({admin:getComputedStyle(document.querySelector('#ssxDirectActions [data-ssx-action=adminBtn]')).display,submissions:getComputedStyle(document.querySelector('#ssxDirectActions [data-ssx-action=submissionsBtn]')).display}))()`);
     assert.equal(privateActions.admin,'none','Admin action must not be public');
     assert.equal(privateActions.submissions,'none','Moderation action must not be public');
 
