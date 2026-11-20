@@ -66,8 +66,8 @@ test('published and preview public SSX views agree; privileged views require aut
   assert.equal(published.status,200); assert.equal(enhanced.status,200);
   assert.equal(archived.status,303,'v36 archived admin document must not be publicly accessible');
   assert.equal(archived.headers.location,'/hobbies/ssx/ssx2012/admin/archive');
-  assert.equal(published.headers['x-ssx-variant'],'ssx-ui-v39-public');
-  assert.equal(enhanced.headers['x-ssx-variant'],'ssx-ui-v39-preview');
+  assert.equal(published.headers['x-ssx-variant'],'ssx-ui-v40-public');
+  assert.equal(enhanced.headers['x-ssx-variant'],'ssx-ui-v40-preview');
   assert.equal(published.headers['cache-control'],'public, max-age=300');
   assert.equal(enhanced.headers['cache-control'],'no-store, private');
   assert.deepEqual(published.body,enhanced.body);
@@ -290,7 +290,7 @@ test('public SSX UI has neutral brand/title and no Edition release promotion',()
 
 test('six locale labels identify 6,024 Google records as a dated snapshot',()=>{
   const js=fs.readFileSync(path.join(__dirname,'../src/hobbies/ssx/alpine-v37.js'),'utf8');
-  const labels=["recordes na captura de 2026-08-22","records in the 2026-08-22 snapshot","Rekorde in der Aufnahme vom 22.08.2026","récords en la captura del 22-08-2026","records in momentopname van 22-08-2026","records dans la capture du 22/08/2026"];
+  const labels=["regiões revisadas 20/11/2026 · extras 22/08/2026","regions checked 2026-11-20 · extras 2026-08-22","Regionen geprüft 20.11.2026 · Extras 22.08.2026","regiones revisadas 20-11-2026 · extras 22-08-2026","regio’s nagekeken 20-11-2026 · extra’s 22-08-2026","régions vérifiées le 20/11/2026 · extras 22/08/2026"];
   assert.equal(labels.length,6);
   for(const label of labels)assert.ok(js.includes("snapshotRecords:'"+label+"'"),'Missing dated locale label: '+label);
   assert.match(js,/capturedRecordsLabel\.removeAttribute\('data-i'\)/);
