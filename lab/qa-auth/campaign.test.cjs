@@ -1,7 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
 const src=fs.readFileSync(path.join(process.env.ZVM_LAB_SOURCE || path.join(__dirname,'../staging'),'app/content/core/send-safety.js'),'utf8');
-const start=src.indexOf('  function extBoundedSendTask('),end=src.indexOf('  async function runJob(',start);
+const start=src.indexOf('function extBoundedSendTask('),end=src.indexOf('async function runJob(',start);
 assert(start>=0&&end>start);
 test('campaign timeout remains uncertain after late ACK and dispatches once',async()=>{
   let expire,finish,budget,calls=0;
@@ -15,7 +15,7 @@ test('campaign timeout remains uncertain after late ACK and dispatches once',asy
   finish('ack'); await Promise.resolve();assert.equal(calls,1);
 });
 const panel=fs.readFileSync(path.join(process.env.ZVM_LAB_SOURCE || path.join(__dirname,'../staging'),'app/content/features/broadcast/panel.js'),'utf8');
-const begin=panel.indexOf('  function bulkPreDispatchUnadmitted('), finish=panel.indexOf('  async function runBulkWatchdog(',begin);
+const begin=panel.indexOf('function bulkPreDispatchUnadmitted('), finish=panel.indexOf('async function runBulkWatchdog(',begin);
 assert(begin>=0&&finish>begin);
 test('campaign recovery requeues only pre-dispatch delay',()=>{
   const env={};vm.runInNewContext(panel.slice(begin,finish),env);
@@ -24,10 +24,10 @@ test('campaign recovery requeues only pre-dispatch delay',()=>{
   for(const evidence of [{actionAttemptToken:'pending'},{effectProofs:['receipt']},{remoteEffectUncertain:true},{remoteEffectSucceeded:true},{state:'paused'},{state:'cancelled'},{durableReviewRequired:true},{processorStage:'dispatch'}])
     assert.equal(env.bulkPreDispatchUnadmitted({...delay,...evidence}),false);
 });
-for(const [folder,kind,endMarker] of [['flows','Flow','  async function createBoundFlowInstance'],['funnels','Funnel','  // O armazenamento']]){
+for(const [folder,kind,endMarker] of [['flows','Flow','async function createBoundFlowInstance'],['funnels','Funnel','function retainFunnelExecutions']]){
   test(kind+' refuses continuation after account switch or loss of identity',async()=>{
     const source=fs.readFileSync(path.join(process.env.ZVM_LAB_SOURCE || path.join(__dirname,'../staging'),'app/content/features',folder,'engine.js'),'utf8');
-    const start=source.indexOf('  async function current'+kind+'SenderScope'),end=source.indexOf(endMarker,start);
+    const start=source.indexOf('async function current'+kind+'SenderScope'),end=source.indexOf(endMarker,start);
     assert(start>=0&&end>start);
     let scope='a'.repeat(64);
     const env={window:{__extFunnelActionWhatsappIdentity:{currentScope:async()=>scope}},flowTerminalError:(code,msg)=>Object.assign(Error(msg),{code})};
@@ -42,7 +42,7 @@ for(const [folder,kind,endMarker] of [['flows','Flow','  async function createBo
 }
 test('follow-up preserves uncertain effect across cancellation and next tick',async()=>{
   const src=fs.readFileSync(path.join(process.env.ZVM_LAB_SOURCE || path.join(__dirname,'../staging'),'app/content/features/followup/engine.js'),'utf8');
-  const start=src.indexOf('  function isTickCurrent('),end=src.indexOf('  async function publishFollowUpOutcomes(',start);
+  const start=src.indexOf('function isTickCurrent('),end=src.indexOf('async function publishFollowUpOutcomes(',start);
   assert(start>=0&&end>start);
   const cancelled=new Set(),outcomes=[];
   let sends=0;
@@ -63,7 +63,7 @@ test('follow-up preserves uncertain effect across cancellation and next tick',as
   assert.equal(sends,1);
 });
 test('restarted watchdog persists ambiguity and retains earlier positive evidence',async()=>{
-  const end=panel.indexOf('  var REMOTE_CANCEL_KEY',finish);
+  const end=panel.indexOf('var REMOTE_CANCEL_KEY',finish);
   assert(end>finish);
   const rows=[{state:'sending',actionAttemptToken:'admitted',remoteEffectSucceeded:true}];
   const events=[];

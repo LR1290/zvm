@@ -1,0 +1,17 @@
+--- a/app/shared/core/theme-system.js
++++ b/app/shared/core/theme-system.js
+@@ -543,11 +543,12 @@
+ if(root.location&&root.location.hostname==="web.whatsapp.com"){
+ var _lastAutoMode="",_lastNativeSurfaceSignature="",_autoThemeTimer=0;
+ function refreshAutoTheme(){var detected=detectWhatsAppMode()||(_whatsAppModeCache==="dark"?"dark":"light"),surface=nativeWhatsAppSurfacePalette(detected),sig=surfaceSignature(detected,surface);publishWhatsAppSnapshot(detected,surface);if(detected===_lastAutoMode&&sig===_lastNativeSurfaceSignature)return;load().then(function(o){var m=resolvedMode(o),nextSurface=nativeWhatsAppSurfacePalette(m),nextSig=surfaceSignature(m,nextSurface);publishWhatsAppSnapshot(m,nextSurface);_lastAutoMode=m;_lastNativeSurfaceSignature=nextSig;if(o.mode==="auto")apply(o);}).catch(function(err){if(root.__extReportRuntimeError)root.__extReportRuntimeError("THEME_AUTO_REFRESH_FAILED",err);});}
+-function scheduleAutoThemeRefresh(){clearTimeout(_autoThemeTimer);_autoThemeTimer=setTimeout(refreshAutoTheme,120);}
++function scheduleAutoThemeRefresh(){if(_autoThemeTimer)return;_autoThemeTimer=setTimeout(function(){_autoThemeTimer=0;refreshAutoTheme();},120);}
+ if(root.MutationObserver&&root.document){
+ var _autoThemeObservedApp=null,_autoThemeStructureOff=null;
+ var _autoThemeAttributeObserver=new MutationObserver(function(){scheduleAutoThemeRefresh();});
+-function bindAutoThemeObservedApp(){var nextApp=root.document.getElementById("app");if(nextApp===_autoThemeObservedApp)return;_autoThemeObservedApp=nextApp;try{if(nextApp)_autoThemeAttributeObserver.observe(nextApp,{attributes:true,attributeFilter:["class","style","data-theme"]});}catch(_){}}
++var appThemeObserver=new MutationObserver(scheduleAutoThemeRefresh);
++function bindAutoThemeObservedApp(){var nextApp=root.document.getElementById("app");if(nextApp===_autoThemeObservedApp)return;appThemeObserver.disconnect();_autoThemeObservedApp=nextApp;try{if(nextApp)appThemeObserver.observe(nextApp,{attributes:true,attributeFilter:["class","style","data-theme"]});}catch(_){}}
+ try{if(root.document.documentElement)_autoThemeAttributeObserver.observe(root.document.documentElement,{attributes:true,attributeFilter:["class","data-theme"]});}catch(_){}
+ try{if(root.document.body)_autoThemeAttributeObserver.observe(root.document.body,{attributes:true,attributeFilter:["class","style","data-theme"]});}catch(_){}
+ var structureBroker=root.__extWhatsAppStructureBroker;

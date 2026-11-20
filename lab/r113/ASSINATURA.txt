@@ -1,0 +1,7 @@
+R113 — ferramentas locais de laboratório, requer Python 3.9+ e Node 24.
+No Windows, extraia o kit em pasta privada. Use o ZIP R112 original da pasta FONTES da transferência.
+Prévia sem chave:
+py -3 prepare-owner.py "CAMINHO_DO_ZIP_R112"
+Assinatura exclusivamente no computador do proprietário:
+py -3 prepare-owner.py "CAMINHO_DO_ZIP_R112" --key "CAMINHO_LOCAL_DA_CHAVE_PRIVADA" --out "R113-DEV-QA.zip"
+Use o arquivo PEM ou PKCS8 em base64 fora da pasta de trabalho e de qualquer pasta sincronizada. O processo valida a chave pública, o conjunto de bytes, o verificador interno completo e uma adulteração antes de gravar o ZIP. Confira validade UTC e SHA-256 impressos. Este kit não é instalável e não contém a chave institucional nem a KEY PRO. A instalação da saída requer perfil Chrome autorizado e aceite do backend QA.
