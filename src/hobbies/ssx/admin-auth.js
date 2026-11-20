@@ -146,4 +146,4 @@ function handleAuth(req,res,pathname) {
   if(method!=='GET' && method!=='HEAD'){res.writeHead(405,{...baseHeaders,Allow:'GET, HEAD'});res.end();return true;}
   return false; // Authenticated: let SSX route deliver the protected page.
 }
-module.exports={BASE,config,readSession,handleAuth};
+module.exports={BASE,config,readSession,handleAuth,adminClientIp};
