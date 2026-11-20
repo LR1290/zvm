@@ -669,46 +669,87 @@ body.ssx-alpine-v37.ssx-alpine-v38 .ssx-special-score{
   }
 }
 
-/* R110: informational source disclosure belongs to the results section,
-   never inside search/category filter controls. */
-body.ssx-alpine-v38 #alpineSources.ssx-sources-standalone {
+/* R112: one page-level public source dialog, not a second block inside rankings. */
+body.ssx-alpine-v37.ssx-alpine-v38 #ssxSourcesDialog {
   box-sizing:border-box;
+  position:fixed;
+  inset:0;
+  width:min(90vw,820px);
+  max-width:820px;
+  max-height:min(84vh,780px);
+  margin:auto;
+  padding:0;
+  display:none;
+  flex-direction:column;
+  background:#102534;
+  color:#e7f5fc;
+  border:1px solid #3a6278;
+  border-radius:18px;
+  box-shadow:0 28px 100px rgba(0,0,0,.6);
+  overflow:hidden;
+}
+body.ssx-alpine-v37.ssx-alpine-v38 #ssxSourcesDialog[open] {display:flex}
+body.ssx-alpine-v37.ssx-alpine-v38 #ssxSourcesDialog::backdrop {
+  background:rgba(2,12,21,.76);
+  backdrop-filter:blur(3px);
+}
+body.ssx-alpine-v37.ssx-alpine-v38 .ssx-sources-dialog-head {
   position:relative;
+  flex:0 0 auto;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:16px;
+  background:#0b2130;
+  border-bottom:1px solid #315164;
+  padding:16px 20px;
+}
+body.ssx-alpine-v37.ssx-alpine-v38 .ssx-sources-dialog-title {
+  font-size:clamp(1.1rem,2.4vw,1.45rem);
+  color:#e7f5fc;
+  margin:0;
+}
+body.ssx-alpine-v37.ssx-alpine-v38 .ssx-sources-close {
+  border:1px solid #4a7184;
+  background:#18374a;
+  color:#f5fbff;
+  width:40px;
+  height:40px;
+  border-radius:10px;
+  font-size:25px;
+  line-height:1;
+  cursor:pointer;
+  flex:0 0 auto;
+}
+body.ssx-alpine-v37.ssx-alpine-v38 .ssx-sources-close:focus-visible {
+  outline:3px solid #5ce7fa;
+  outline-offset:2px;
+}
+body.ssx-alpine-v37.ssx-alpine-v38 #alpineSources.ssx-sources-dialog-body {
+  min-height:0;
+  width:100%;
+  max-width:none;
+  display:block;
+  flex:1 1 auto;
+  overflow:auto;
+  overscroll-behavior:contain;
+  padding:18px;
+}
+body.ssx-alpine-v37.ssx-alpine-v38 #alpineSources > .source-strip,
+body.ssx-alpine-v37.ssx-alpine-v38 #alpineSources > .race-policy {
+  position:static;
   display:block;
   width:100%;
   max-width:none;
-  margin:12px 0 20px;
-  padding:0;
-  clear:both;
-  scroll-margin-top:125px;
-  border:1px solid #2c4c63;
-  border-radius:14px;
-  background:#102534;
-  overflow:visible;
-}
-body.ssx-alpine-v38 #alpineSources.ssx-sources-standalone > summary {
-  display:flex;
-  align-items:center;
-  cursor:pointer;
-  min-height:46px;
-  padding:12px 17px;
-  color:#d6eaf5;
-  background:#102534;
-  border-radius:14px;
-  font-weight:750;
-}
-body.ssx-alpine-v38 #alpineSources.ssx-sources-standalone[open] > summary {
-  border-radius:14px 14px 0 0;
-  border-bottom:1px solid #2c4c63;
-}
-body.ssx-alpine-v38 #alpineSources.ssx-sources-standalone > .source-strip,
-body.ssx-alpine-v38 #alpineSources.ssx-sources-standalone > .race-policy {
-  margin:0;
-  width:100%;
-  max-width:none;
-  padding:14px;
+  margin:0 0 12px;
+  box-sizing:border-box;
 }
 @media(max-width:640px){
-  body.ssx-alpine-v38 #alpineSources.ssx-sources-standalone {scroll-margin-top:105px}
-  body.ssx-alpine-v38 #alpineSources.ssx-sources-standalone > summary {min-height:48px;padding:14px}
+  body.ssx-alpine-v37.ssx-alpine-v38 #ssxSourcesDialog{
+    width:calc(100vw - 24px);
+    max-height:calc(100dvh - 36px);
+    border-radius:14px;
+  }
+  body.ssx-alpine-v37.ssx-alpine-v38 .ssx-sources-dialog-head{padding:12px 14px}
+  body.ssx-alpine-v37.ssx-alpine-v38 #alpineSources.ssx-sources-dialog-body{padding:12px}
 }
