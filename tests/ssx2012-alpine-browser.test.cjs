@@ -1499,20 +1499,28 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(shareFallback.role,'status');
 
     // Run an actual Chromium login to verify form POST and Secure cookie.
+    // The public SSX document has an opaque CSP origin. Start admin login in a
+    // fresh browsing context, as when an administrator opens their bookmarked URL.
+    const adminTab=await cdp.send('Target.createTarget',{url:'about:blank'});
+    const adminAttached=await cdp.send('Target.attachToTarget',
+      {targetId:adminTab.targetId,flatten:true});
+    const adminSid=adminAttached.sessionId;
+    await cdp.send('Page.enable',{},adminSid);
+    await cdp.send('Runtime.enable',{},adminSid);
     const adminBase=url.slice(0,-SSX_V37_PREVIEW_ROUTE.length)+'/hobbies/ssx/ssx2012/admin';
-    await cdp.send('Page.navigate',{url:adminBase+'/login'},sid);
+    await cdp.send('Page.navigate',{url:adminBase+'/login'},adminSid);
     let loginReady=false;
     for(let attempt=0;attempt<40;attempt++){
-      loginReady=Boolean(await evaluate(cdp.send,sid,
+      loginReady=Boolean(await evaluate(cdp.send,adminSid,
         "!!document.querySelector('form[action$=\"/admin/login\"] input[type=email]')"));
       if(loginReady)break;
       await sleep(100);
     }
     assert.ok(loginReady,'Chromium must render SSX login');
-    await evaluate(cdp.send,sid,"(()=>{const form=document.querySelector('form[action$=\"/admin/login\"]');form.querySelector('[name=email]').value='browser-qa@example.test';form.querySelector('[name=password]').value='Browser QA only password 2026!';form.requestSubmit();return true})()");
+    await evaluate(cdp.send,adminSid,"(()=>{const form=document.querySelector('form[action$=\"/admin/login\"]');form.querySelector('[name=email]').value='browser-qa@example.test';form.querySelector('[name=password]').value='Browser QA only password 2026!';form.requestSubmit();return true})()");
     let adminView;
     for(let attempt=0;attempt<55;attempt++){
-      adminView=await evaluate(cdp.send,sid,
+      adminView=await evaluate(cdp.send,adminSid,
         "({url:location.pathname,title:document.title,body:document.body?.innerText?.slice(0,250)||''})");
       if(adminView.url==='/hobbies/ssx/ssx2012/admin'&&
           adminView.body.includes('Painel administrativo'))break;
@@ -1521,16 +1529,16 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     console.log('SSX_ADMIN_LOGIN_BROWSER_DIAGNOSTIC',JSON.stringify(adminView));
     assert.ok(adminView.body.includes('Painel administrativo'),
       'Browser login must issue a valid signed and Secure cookie');
-    await cdp.send('Page.navigate',{url:adminBase+'/editor'},sid);
+    await cdp.send('Page.navigate',{url:adminBase+'/editor'},adminSid);
     let editorReady=false;
     for(let attempt=0;attempt<45;attempt++){
-      editorReady=Boolean(await evaluate(cdp.send,sid,
+      editorReady=Boolean(await evaluate(cdp.send,adminSid,
         "document.querySelector('#adminModal')!==null"));
       if(editorReady)break;
       await sleep(100);
     }
     assert.equal(editorReady,true,'Authenticated editor should load in Chromium');
-    const editorOrigin=await evaluate(cdp.send,sid,'globalThis.origin');
+    const editorOrigin=await evaluate(cdp.send,adminSid,'globalThis.origin');
     assert.equal(editorOrigin,'null','Legacy editor remains opaque-origin sandboxed');
 
 
