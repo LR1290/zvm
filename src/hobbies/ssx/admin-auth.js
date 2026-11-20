@@ -69,6 +69,25 @@ function loginPage(message='') {
   (message?'<p class="error" role="alert">'+escape(message)+'</p>':'')+
   '<form method="post" action="'+BASE+'/login" autocomplete="on"><label for="email">E-mail</label><input id="email" name="email" type="email" autocomplete="username" required maxlength="254"><label for="password">Senha</label><input id="password" name="password" type="password" autocomplete="current-password" required minlength="12"><button type="submit">Entrar na administração</button></form><p><a href="/hobbies/ssx/ssx2012">Voltar aos recordes</a></p></main></body></html>';
 }
+
+function setupPage() {
+  // Credentials are deliberately never generated from a public GET.
+  // This page must not suggest that an unconfigured login accepts passwords.
+  return '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">'+
+    '<meta name="viewport" content="width=device-width,initial-scale=1">'+
+    '<meta name="robots" content="noindex,nofollow">'+
+    '<title>SSX 2012 · Administração protegida</title>'+
+    '<style>:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#061521;color:#e8f5ff;'+
+    'min-height:100vh;display:grid;place-items:center;padding:24px;font:16px/1.6 system-ui,sans-serif}'+
+    'main{max-width:520px;width:100%;padding:32px;background:#102637;border:1px solid #335368;border-radius:20px}'+
+    'h1{font-size:clamp(1.4rem,4vw,1.9rem);margin:0 0 12px}p{color:#b5cbd7}'+
+    'a{display:inline-block;margin-top:18px;padding:11px 16px;color:#08202b;background:#22c1d8;'+
+    'border-radius:10px;text-decoration:none;font-weight:750}a:focus-visible{outline:3px solid white}</style></head>'+
+    '<body><main><h1>Administração protegida</h1>'+
+    '<p>A página administrativa já está instalada, mas as credenciais do responsável ainda não foram ativadas no servidor.</p>'+
+    '<p>Por segurança, nenhum visitante pode criar uma conta administrativa ou entrar sem autorização.</p>'+
+    '<a href="/hobbies/ssx/ssx2012">Voltar aos recordes</a></main></body></html>';
+}
 function originAllowed(req) {
   const origin=String(req.headers.origin||'');
   const host=String(req.headers.host||'').toLowerCase();
@@ -112,7 +131,7 @@ function handleAuth(req,res,pathname) {
   if(!isLogin && !isLogout && !isAdmin)return false;
   const settings=config();
   if(!settings){
-    send(res,503,'SSX administrator credentials are not configured. Contact the server administrator.',{'Content-Type':'text/plain; charset=utf-8'},method);return true;
+    send(res,503,setupPage(),{'Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"},method);return true;
   }
   if(isLogin){
     if(method==='GET' || method==='HEAD'){if(readSession(req))replyRedirect(res,BASE);else send(res,200,loginPage(),{'Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"},method);return true;}

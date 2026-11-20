@@ -41,6 +41,11 @@ test('missing credentials fail closed independently of normal SSX viewing',()=>h
   try{
     const r=await fetch(base+ADMIN,{redirect:'manual'});
     assert.equal(r.status,503);
+    assert.match(r.headers.get('content-security-policy'),/form-action 'none'/);
+    const setup=await r.text();
+    assert.match(setup,/Administração protegida/);
+    assert.match(setup,/credenciais do responsável ainda não foram ativadas/);
+    assert.doesNotMatch(setup,/SSX_SITE_ADMIN_PASSWORD_HASH|scrypt\$/);
     assert.equal((await fetch(base+SSX_ROUTE)).status,200);
   }finally{process.env.SSX_SITE_ADMIN_EMAIL=email;}
 }));
