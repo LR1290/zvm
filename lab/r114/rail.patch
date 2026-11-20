@@ -1,0 +1,34 @@
+--- a/app/sidebar/native-whatsapp-rail.js
++++ b/app/sidebar/native-whatsapp-rail.js
+@@ -41,7 +41,7 @@
+ }
+ function removeHost(){if(unmountLanguage){unmountLanguage();unmountLanguage=null;}hideTooltip();if(tooltip)tooltip.remove();tooltip=null;var host=document.getElementById(HOST_ID);if(host)host.remove();mountedSection=null;if(usingStructureBroker)clearObserver();}
+ function makeButton(item){
+-var el=document.createElement("button");el.type="button";
++var el=document.createElement("button");el.type="button";el.disabled=true;el.setAttribute("aria-disabled","true");
+ el.className="extuiNativeWaRailButton";el.dataset.key=item.key;el.dataset.command=item.command||"";el.style.setProperty("--extui-native-accent",item.accent||"#00c85a");el.setAttribute("aria-label",item.label);
+ var icons=root.ExtensionUI&&root.ExtensionUI.sidebarIcons;el.appendChild(svg(icons&&typeof icons.svg==="function"?icons.svg(item.icon):""));
+ el.addEventListener("click",function(ev){ev.preventDefault();var lifecycle=root.ExtensionUI&&root.ExtensionUI.sidebarLifecycle;if(!lifecycle||typeof lifecycle.dispatch!=="function")return;lifecycle.dispatch(item.command,"whatsapp-native-rail",{toggle:true}).then(refreshStates).catch(function(err){report("NATIVE_WA_RAIL_COMMAND_FAILED",err);});});
+@@ -128,19 +128,14 @@
+ var command=button.dataset.command;
+ if(!command)return Promise.resolve(null);
+ return boundedRailState(bus,command).then(function(state){
+-return{button:button,enabled:!!(state&&state.registered!==false&&state.enabled!==false)};
+-},function(){return{button:button,enabled:false};});
+-})).then(function(results){
+-if(generation!==refreshGeneration||!host.isConnected)return;
+-results.forEach(function(result){
+-if(!result||!result.button.isConnected||!host.contains(result.button))return;
+-var button=result.button,enabled=result.enabled;
++if(generation!==refreshGeneration||!host.isConnected||!button.isConnected||!host.contains(button))return;
++var enabled=!!(state&&state.registered===true&&state.enabled===true);
+ if(button.disabled===enabled)button.disabled=!enabled;
+ setRailAttribute(button,"aria-disabled",!enabled);
+ setRailAttribute(button,"data-active","false");
+ setRailAttribute(button,"aria-pressed","false");
+ });
+-}).finally(function(){
++})).finally(function(){
+ if(generation!==refreshGeneration)return;
+ refreshInFlight=false;
+ if(refreshPending){refreshPending=false;requestStateRefresh(0);}

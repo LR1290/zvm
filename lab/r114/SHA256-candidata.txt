@@ -1,0 +1,2 @@
+b096c48ac0e878f9b9cdecd97b7136aa358d3da45312b7c930b0c3b4d030245c  app/content/security/session/auth-ui.js
+b844fed2f06c60345b4875eb22a8ce426c5ecaece21c7989e7aac33b5c3c3b93  app/sidebar/native-whatsapp-rail.js
