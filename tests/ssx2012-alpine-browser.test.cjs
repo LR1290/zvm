@@ -227,7 +227,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
       assert.ok(geometry.direct.right<=width+1&&geometry.direct.left>=-1,
         'R71 utility rail must remain inside the header at '+width+'px');
       assert.ok(geometry.overflow<=1,'No horizontal overflow at '+width+'px');
-      assert.equal(geometry.buttons,7,'Public action buttons must remain available');
+      assert.equal(geometry.buttons,5,'All five public actions must remain available; administrative actions are private');
       assert.equal(geometry.buttonCollision,false,'Wide action buttons must not overlap');
       assert.equal(geometry.archiveInsideCredits,false);
       if(width!==3440){
