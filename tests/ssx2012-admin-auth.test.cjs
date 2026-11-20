@@ -84,7 +84,7 @@ test('admin email/password uses same-origin POST, signed HttpOnly cookie and no-
   const html=await admin.text();
   assert.match(html,/class="modal admin-modal"/);
   assert.match(html,/id="liveSaveBtn"/);
-  const archive=await fetch(base+SSX_V36_ARCHIVE_ROUTE,{headers:{Cookie:cookie},redirect:'manual'});
+  const archive=await fetch(base+ADMIN+'/archive',{headers:{Cookie:cookie},redirect:'manual'});
   assert.equal(archive.status,200);
   const forged=cookie.slice(0,-2)+'zz';
   assert.equal((await fetch(base+ADMIN,{headers:{Cookie:forged},redirect:'manual'})).status,303);
