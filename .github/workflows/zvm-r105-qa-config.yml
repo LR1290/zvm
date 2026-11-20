@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - "lab/qa-completa-r104/**"
-      - "lab/signing-r104/qa-only.patch"
+      - "lab/signing-r104/**"
       - ".github/workflows/zvm-r105-qa-config.yml"
   workflow_dispatch:
 
@@ -25,6 +25,8 @@ jobs:
         run: |
           node --test lab/qa-completa-r104/*.test.cjs
           node --test lab/signing-r104/qa-free.test.cjs
+          node --test lab/signing-r104/fingerprint-order.test.cjs
+          python3 -m py_compile lab/signing-r104/preparar.py lab/signing-r104/verificar.py
       - name: Validate QA-only patches apply to exact server source
         shell: bash
         run: |
