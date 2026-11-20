@@ -91,7 +91,7 @@ function cookieHeader(value,expired=false) {
 function handleAuth(req,res,pathname) {
   const method=String(req.method||'').toUpperCase();
   const isLogin=pathname===BASE+'/login',isLogout=pathname===BASE+'/logout';
-  const isAdmin=pathname===BASE || pathname===BASE+'/archive';
+  const isAdmin=[BASE,BASE+'/archive',BASE+'/editor',BASE+'/bridge-health'].includes(pathname);
   if(!isLogin && !isLogout && !isAdmin)return false;
   const settings=config();
   if(!settings){
