@@ -2,6 +2,8 @@
 
 // Independent SSX administrator account: no ZVM portal, license or admin session is reused.
 const crypto = require('node:crypto');
+const net = require('node:net');
+const { resolveClientIp } = require('../../../client-ip-policy');
 const BASE = '/hobbies/ssx/ssx2012/admin';
 const COOKIE = 'ssx_admin';
 const TTL_MS = 8 * 60 * 60 * 1000;
@@ -73,6 +75,21 @@ function originAllowed(req) {
   try {const u=new URL(origin);return u.host.toLowerCase()===host && (u.protocol==='https:' || (u.protocol==='http:' && /^localhost(?::|$)|^127\.0\.0\.1(?::|$)/.test(host))); }
   catch{return false;}
 }
+function adminClientIp(req) {
+  const normalize = raw => {
+    let value=String(raw||'').trim();
+    if(value.startsWith('::ffff:'))value=value.slice(7);
+    return net.isIP(value) ? value.toLowerCase() : '';
+  };
+  const isRender=String(process.env.RENDER||'').toLowerCase()==='true';
+  return resolveClientIp({
+    headers:req.headers||{},
+    remoteAddress:req.socket?.remoteAddress||'',
+    trustProxyHeaders:isRender,
+    isRender,
+    normalize
+  });
+}
 function limit(ip, success=false) {
   const now=Date.now(), key=String(ip||'unknown');
   if(attempts.size>2048)for(const [k,v] of attempts)if(v.until<now)attempts.delete(k);
@@ -101,7 +118,7 @@ function handleAuth(req,res,pathname) {
     if(method==='GET' || method==='HEAD'){if(readSession(req))replyRedirect(res,BASE);else send(res,200,loginPage(),{'Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"},method);return true;}
     if(method!=='POST'){res.writeHead(405,{...baseHeaders,Allow:'GET, HEAD, POST'});res.end();return true;}
     if(!originAllowed(req)){send(res,403,'Origem inválida',{'Content-Type':'text/plain; charset=utf-8'});return true;}
-    const ip=req.socket?.remoteAddress||'unknown';
+    const ip=adminClientIp(req);
     if(limit(ip,false)){send(res,429,loginPage('Muitas tentativas. Tente novamente mais tarde.'),{'Retry-After':'900'});return true;}
     const size=Number(req.headers['content-length']||0);
     if(size>4096 || !/^application\/x-www-form-urlencoded(?:;|$)/i.test(String(req.headers['content-type']||''))){
@@ -113,8 +130,9 @@ function handleAuth(req,res,pathname) {
       const fields=new URLSearchParams(Buffer.concat(chunks).toString('utf8'));
       const email=String(fields.get('email')||'').trim().toLowerCase();
       const password=fields.get('password')||'';
-      let good=false;
-      try{good=same(email,settings.email) && checkPassword(password,settings);}catch{good=false;}
+      let passwordGood=false;
+      try{passwordGood=checkPassword(password,settings);}catch{passwordGood=false;}
+      const good=passwordGood && same(email,settings.email);
       if(!good){send(res,401,loginPage('Credenciais inválidas.'),{'Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"});return;}
       limit(ip,true);replyRedirect(res,BASE,{'Set-Cookie':cookieHeader(newSession(settings))});
     });return true;
