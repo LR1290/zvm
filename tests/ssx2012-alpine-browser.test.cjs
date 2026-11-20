@@ -1358,7 +1358,7 @@ test('Alpine v37 renders and responds to interactions in desktop and mobile Chro
     assert.equal(portuguese.hero,'Conquiste a montanha.');
     const sourceSwitched=await evaluate(cdp.send,sid,"(()=>{document.querySelector('[data-source=\"google\"]').click();return {source:document.querySelector('#sourceSeg [data-source].active')?.dataset.source,bridge:!!document.querySelector('#liveTestBtn')};})()");
     assert.equal(sourceSwitched.source,'google','Existing Google Sheets source selection must still work');
-    assert.equal(sourceSwitched.bridge,true,'Original Bridge settings must remain in the DOM');
+    assert.equal(sourceSwitched.bridge,false,'Public rankings must not expose Bridge configuration controls');
     await evaluate(cdp.send,sid,"document.querySelector('[data-source=\"combined\"]').click()");
     await sleep(400);
     const combined=await evaluate(cdp.send,sid,"document.querySelector('#sourceSeg [data-source].active')?.dataset.source");
