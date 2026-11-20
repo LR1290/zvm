@@ -34,9 +34,13 @@ for n in sorted(raw.keys()-{ip,bp}):
     tree.update(f'{n}\0{h(data)}\0{len(data)}\n'.encode())
     row={'path':n}
     if n=='manifest.json':
-        row['mode']='manifest-json-v1'
         data=encode({k:v for k,v in m.items() if k not in ('key','update_url')},True)
-    row.update(sha256=h(data),size=len(data));rows.append(row)
+    row.update(sha256=h(data),size=len(data))
+    # Keep insertion order identical to the runtime's JSON.stringify({path,sha256,size,mode}).
+    # Putting mode before sha256 previously signed a fingerprint the browser rejected.
+    if n=='manifest.json':
+        row['mode']='manifest-json-v1'
+    rows.append(row)
 fp=h(encode({'extensionVersion':m['version'],'files':rows}))
 bid=f'zvm-dev-{m["version"]}-s{tree.hexdigest()[:12]}'
 now=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='milliseconds').replace('+00:00','Z')
