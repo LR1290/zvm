@@ -133,3 +133,17 @@ test('GET administrative health and editor remain protected when credentials are
     assert.equal(a.status,303);assert.equal(b.status,303);
   } finally {process.env.SSX_PUBLIC_BRIDGE_URL=address;}
 }));
+
+test('login rate limit trusts Render-owned client IP but ignores attacker X-Forwarded-For',()=>{
+  const old=process.env.RENDER;
+  const req={headers:{'cf-connecting-ip':'203.0.113.72','x-forwarded-for':'198.51.100.3'},
+    socket:{remoteAddress:'10.0.0.23'}};
+  try{
+    process.env.RENDER='true';
+    assert.equal(ssxAuth.adminClientIp(req),'203.0.113.72');
+    req.headers['x-forwarded-for']='192.0.2.90';
+    assert.equal(ssxAuth.adminClientIp(req),'203.0.113.72');
+    process.env.RENDER='';
+    assert.equal(ssxAuth.adminClientIp(req),'10.0.0.23');
+  }finally{if(old===undefined)delete process.env.RENDER;else process.env.RENDER=old;}
+});
