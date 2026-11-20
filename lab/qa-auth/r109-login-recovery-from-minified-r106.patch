@@ -1,0 +1,59 @@
+--- a/app/content/security/session/auth-ui.js
++++ b/app/content/security/session/auth-ui.js
+@@ -114 +114,2 @@
+-["button",{"type":"button","class":"extuiNavPrimaryBtn extuiLoginSubmitBtn","id":"extappOfflineRetryBtn"},["Verificar"]]
++["button",{"type":"button","class":"extuiNavPrimaryBtn extuiLoginSubmitBtn","id":"extappOfflineRetryBtn"},["Verificar"]],
++["button",{"type":"button","class":"extuiLoginAltBtn","id":"extappOfflineUseKeyBtn"},["Entrar com chave ou conta"]]
+@@ -119,0 +121 @@
++var _manualLoginRecovery=false,_preferKeyOnLogin=false;
+@@ -126,0 +129,4 @@
++function recoveryLoginPermitted(detail){
++var code=String(detail&&detail.errorCode||""),domain=faultDomainFor(detail);
++return domain!=="INTEGRITY"&&code!=="EXTENSION_CONTEXT_INVALIDATED"&&!/^(?:EXTENSION_INTEGRITY_|BUILD_IDENTITY_)/.test(code);
++}
+@@ -142,0 +149 @@
++var recovery=root.querySelector("#extappOfflineUseKeyBtn");if(recovery){var allowed=recoveryLoginPermitted(detail);recovery.hidden=!allowed;recovery.style.display=allowed?"":"none";}
+@@ -200,0 +208,7 @@
++var recovery=root.querySelector("#extappOfflineUseKeyBtn");
++if(recovery)recovery.addEventListener("click",function(){
++if(!recoveryLoginPermitted(_authGateDetail))return;
++_manualLoginRecovery=true;_preferKeyOnLogin=true;++_authGateGeneration;
++// Login is NOT authorization: authenticated surfaces remain suspended.
++setAuthGateState("login");
++});
+@@ -249,0 +264,7 @@
++function renderLoginOverlay(){
++var root=buildOverlay();wireOverlay(root);
++if(_preferKeyOnLogin){
++_preferKeyOnLogin=false;
++var keyButton=root.querySelector("#extappUseKeyBtn");if(keyButton)keyButton.click();
++}
++}
+@@ -256 +277 @@
+-function applyFallback(desired){fallbackDesired=String(desired||"none");if(fallbackDesired==="login"){removeOfflineOverlay();var loginRoot=buildOverlay();wireOverlay(loginRoot);}else if(fallbackDesired==="offline"){removeOverlay();buildOfflineOverlay(_authGateDetail);}else{removeOverlay();removeOfflineOverlay();fallbackDesired="none";}return{connected:false,desired:fallbackDesired,visible:fallbackDesired};}
++function applyFallback(desired){fallbackDesired=String(desired||"none");if(fallbackDesired==="login"){removeOfflineOverlay();renderLoginOverlay();}else if(fallbackDesired==="offline"){removeOverlay();buildOfflineOverlay(_authGateDetail);}else{removeOverlay();removeOfflineOverlay();fallbackDesired="none";}return{connected:false,desired:fallbackDesired,visible:fallbackDesired};}
+@@ -267 +288 @@
+-showLogin:function(){var root=buildOverlay();wireOverlay(root);},
++showLogin:renderLoginOverlay,
+@@ -345,0 +367,5 @@
++// An old cached credential must not trap users in a retry-only screen.
++// Manual reauthentication is allowed for recoverable session/boot faults;
++// integrity and stale-extension context still fail closed.
++if(_manualLoginRecovery&&recoveryLoginPermitted(detail))return Promise.resolve();
++_manualLoginRecovery=false;
+@@ -360 +386 @@
+-setAuthGateState("login",detail);
++_manualLoginRecovery=false;setAuthGateState("login",detail);
+@@ -362 +388 @@
+-setAuthGateState("login",detail);
++_manualLoginRecovery=false;setAuthGateState("login",detail);
+@@ -366 +392 @@
+-setAuthGateState("none");
++_manualLoginRecovery=false;setAuthGateState("none");
+@@ -379 +405 @@
+-if(access&&access.authorized===true){setAuthGateState("none");return;}
++if(access&&access.authorized===true){_manualLoginRecovery=false;setAuthGateState("none");return;}
+--- a/app/shared/core/boot-kernel.js
++++ b/app/shared/core/boot-kernel.js
+@@ -57,0 +58 @@
++if(/^(?:SESSION_RESPONSE_INVALID|SERVER_SESSION_RESPONSE_INVALID|SESSION_TIMEOUT|SERVER_SESSION_TIMEOUT)$/.test(code))return"HOST";
