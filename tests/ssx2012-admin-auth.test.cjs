@@ -95,7 +95,7 @@ test('admin email/password uses same-origin POST, signed HttpOnly cookie and no-
   assert.doesNotMatch(dashboard,/adminToken|ADMIN_API_KEY|class="modal admin-modal"/);
   const editor=await fetch(base+ADMIN+'/editor',{headers:{Cookie:cookie},redirect:'manual'});
   assert.equal(editor.status,200);
-  assert.equal(editor.headers.get('x-ssx-variant'),'ssx-admin-v39');
+  assert.equal(editor.headers.get('x-ssx-variant'),'ssx-admin-v40');
   const html=await editor.text();
   assert.match(html,/class="modal admin-modal"/);
   assert.match(html,/id="liveSaveBtn"/);
