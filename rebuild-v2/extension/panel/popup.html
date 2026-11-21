@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ZVM | Núcleo V2</title>
+  <link rel="stylesheet" href="popup.css">
+  <script src="popup.js" type="module"></script>
+</head>
+<body>
+  <main>
+    <header><span class="mark" aria-hidden="true">Z</span><div><h1>ZVM Automações</h1><p>Núcleo V2 · Laboratório independente</p></div></header>
+    <section aria-labelledby="health-label">
+      <h2 id="health-label">Diagnóstico do núcleo</h2>
+      <dl>
+        <div><dt>Service worker</dt><dd id="worker">Verificando</dd></div>
+        <div><dt>WhatsApp Web (guia ativa)</dt><dd id="web">Verificando</dd></div>
+        <div><dt>Preferências locais</dt><dd id="storage">Verificando</dd></div>
+        <div><dt>Automação</dt><dd>Desativada neste estágio</dd></div>
+      </dl>
+      <button id="refresh" type="button">Verificar novamente</button>
+    </section>
+    <section aria-labelledby="privacy-label">
+      <h2 id="privacy-label">Privacidade</h2>
+      <label class="setting"><input id="diagnostics" type="checkbox" disabled> Habilitar diagnóstico local</label>
+      <p class="note">Esta versão não lê mensagens, não envia mensagens e não faz requisições ao servidor comercial.</p>
+    </section>
+    <p id="status" role="status" aria-live="polite">Inicializando…</p>
+  </main>
+</body>
+</html>

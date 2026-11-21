@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "ZVM Automações | Núcleo V2 (Laboratório)",
+  "short_name": "ZVM Núcleo V2",
+  "description": "Núcleo independente em reconstrução: integridade do runtime, diagnóstico local e persistência de preferências.",
+  "version": "0.1.0",
+  "minimum_chrome_version": "120",
+  "permissions": ["storage"],
+  "action": {"default_title": "ZVM | Núcleo V2", "default_popup": "panel/popup.html"},
+  "background": {"service_worker": "background/worker.js", "type": "module"},
+  "content_scripts": [{
+    "matches": ["https://web.whatsapp.com/*"],
+    "js": ["content/presence.js"],
+    "run_at": "document_idle",
+    "all_frames": false
+  }]
+}

@@ -1,0 +1,16 @@
+ZVM AUTOMACOES - NUCLEO V2 - LABORATORIO
+
+ATENCAO: ESTE PACOTE NAO E A FERRAMENTA COMERCIAL.
+Nao desinstale sua ZVM atual e nao use este laboratorio para clientes.
+
+1. Extraia o ZIP inteiro em uma pasta do Windows.
+2. No Google Chrome, abra chrome://extensions
+3. Ative Modo do desenvolvedor.
+4. Clique Carregar sem compactacao.
+5. Selecione a subpasta extension (nao selecione a pasta externa).
+6. Clique no icone ZVM Nucleo V2 para abrir o painel de diagnostico.
+7. Para verificar a ponte, abra https://web.whatsapp.com e abra novamente o painel.
+8. O painel deve exibir Service worker: Respondendo e Preferencias: Integras (v1).
+
+Este pacote NAO envia mensagens, NAO faz login comercial e NAO precisa de chave de produto.
+Sera necessario testar em seu Chrome real antes de qualquer homologacao.
